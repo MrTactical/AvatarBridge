@@ -11,7 +11,7 @@ namespace AvatarBridge
         [MenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")]
         static void Open()
         {
-            var window = GetWindow<AvatarBridgeWindow>("Avatar Bridge");
+            var window = GetWindow<AvatarBridgeWindow>("Avatar Bridge " + BridgeDefines.Version);
             window.minSize = new Vector2(380, 500);
         }
 
@@ -30,7 +30,8 @@ namespace AvatarBridge
             scroll = EditorGUILayout.BeginScrollView(scroll);
 
             GUILayout.Space(8);
-            EditorGUILayout.LabelField("VRChat → ChilloutVR avatar conversion", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField($"VRChat → ChilloutVR avatar conversion  (AvatarBridge v{BridgeDefines.Version})",
+                EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 "Pick a VRChat avatar from the scene. AvatarBridge clones it, sets up a CVRAvatar, " +
                 "merges the animators, rebuilds the menu as Advanced Avatar Settings, converts " +

@@ -31,11 +31,12 @@ namespace AvatarBridge
         {
             "OGB/", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
         };
-        // "wholesome" and its helper layers belong to the Wholesome SPS audio add-on.
+        // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
+        // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
+        // face-gesture smoothing system, which must survive.
         static readonly string[] SpsLayerHints =
         {
-            "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector",
-            "wholesome", "frametime counter", "max(gestureleft", "either fist"
+            "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector", "wholesome"
         };
         static readonly string[] SpsObjectHints =
         {
@@ -102,6 +103,7 @@ namespace AvatarBridge
             }
 
             RemoveLayers(ctx, master, vrcLayers, layerHints, strippedFuryIds, IsStrippedParam);
+            PruneDirectBlendTrees(ctx, master, vrcLayers, IsStrippedParam);
             if (ctx.Settings.stripSpsSystems)
             {
                 RemoveObjects(ctx);
@@ -149,6 +151,102 @@ namespace AvatarBridge
                 master.layers = master.layers
                     .Where(l => l.stateMachine == null || !removedMachines.Contains(l.stateMachine))
                     .ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Modern VRCFury merges many features into shared direct blend trees ("DBT"),
+        /// with clips that write animator parameters (AAPs) as math. When a system is
+        /// stripped, its branches must be pruned out of those shared trees or its
+        /// leftover math keeps running (integrating garbage values forever).
+        /// </summary>
+        static void PruneDirectBlendTrees(BridgeContext ctx, AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers, Func<string, bool> isStripped)
+        {
+            int pruned = 0;
+            foreach (var layer in vrcLayers.ToList())
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = PruneTree(child.state.motion, isStripped, ref pruned);
+                    }
+                });
+            }
+            if (pruned > 0)
+            {
+                ctx.Report.Converted(Category, $"Pruned {pruned} stripped branch(es) from shared blend trees",
+                    "Removes leftover VRCFury parameter math for the stripped systems.");
+            }
+        }
+
+        static Motion PruneTree(Motion motion, Func<string, bool> isStripped, ref int pruned)
+        {
+            if (!(motion is BlendTree tree))
+            {
+                return motion;
+            }
+            var children = tree.children;
+            var kept = new List<ChildMotion>(children.Length);
+            foreach (var child in children)
+            {
+                bool drop = false;
+                if (tree.blendType == BlendTreeType.Direct)
+                {
+                    if (!string.IsNullOrEmpty(child.directBlendParameter) && isStripped(child.directBlendParameter))
+                    {
+                        drop = true;
+                    }
+                    else if (child.motion is AnimationClip clip && ClipWritesOnlyStrippedParams(clip, isStripped))
+                    {
+                        drop = true;
+                    }
+                }
+                if (drop)
+                {
+                    pruned++;
+                    continue;
+                }
+                var keptChild = child;
+                keptChild.motion = PruneTree(child.motion, isStripped, ref pruned);
+                kept.Add(keptChild);
+            }
+            if (kept.Count != children.Length)
+            {
+                tree.children = kept.ToArray();
+            }
+            return tree;
+        }
+
+        static bool ClipWritesOnlyStrippedParams(AnimationClip clip, Func<string, bool> isStripped)
+        {
+            var bindings = UnityEditor.AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Length == 0)
+            {
+                return false;
+            }
+            foreach (var binding in bindings)
+            {
+                if (binding.type != typeof(Animator) || !string.IsNullOrEmpty(binding.path) ||
+                    !isStripped(binding.propertyName))
+                {
+                    return false;
+                }
+            }
+            return UnityEditor.AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0;
+        }
+
+        internal static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            visit(machine);
+            foreach (var child in machine.stateMachines)
+            {
+                WalkMachines(child.stateMachine, visit);
             }
         }
 

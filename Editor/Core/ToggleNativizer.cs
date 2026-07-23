@@ -92,14 +92,39 @@ namespace AvatarBridge
                     $"{targets.Count} object(s) toggled natively by CVR; layer \"{layer.name}\" removed.");
             }
 
-            if (removedMachines.Count == 0)
+            // Modern VRCFury merges many toggles as branches of shared direct blend
+            // trees; pull pure object toggles out of those too.
+            bool aborted = false;
+            foreach (var layer in vrcLayers)
+            {
+                if (aborted)
+                {
+                    break;
+                }
+                string layerName = layer.name;
+                SystemStripper.WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (!aborted && child.state.motion is BlendTree tree)
+                        {
+                            NativizeTreeToggles(ctx, tree, entriesByParam, nativizedParams, layerName, ref aborted);
+                        }
+                    }
+                });
+            }
+
+            if (removedMachines.Count == 0 && nativizedParams.Count == 0)
             {
                 return;
             }
 
-            master.layers = master.layers
-                .Where(l => l.stateMachine == null || !removedMachines.Contains(l.stateMachine))
-                .ToArray();
+            if (removedMachines.Count > 0)
+            {
+                master.layers = master.layers
+                    .Where(l => l.stateMachine == null || !removedMachines.Contains(l.stateMachine))
+                    .ToArray();
+            }
 
             // Parameters nothing references any more disappear from the controller, so the
             // CCK generates them fresh as real bools (checkbox in the menu AND inspector).
@@ -120,6 +145,80 @@ namespace AvatarBridge
             }
             ctx.Report.Converted(Category,
                 $"{nativizedParams.Count} toggle(s) handed to CVR's own animator builder");
+        }
+
+        static void NativizeTreeToggles(BridgeContext ctx, BlendTree tree,
+            Dictionary<string, CVRAdvancedSettingsEntry> entriesByParam,
+            HashSet<string> nativizedParams, string layerName, ref bool aborted)
+        {
+            var children = tree.children;
+            var kept = new List<ChildMotion>(children.Length);
+            bool changed = false;
+            foreach (var child in children)
+            {
+                if (!aborted &&
+                    tree.blendType == BlendTreeType.Direct &&
+                    !string.IsNullOrEmpty(child.directBlendParameter) &&
+                    entriesByParam.TryGetValue(child.directBlendParameter, out var entry) &&
+                    child.motion is AnimationClip clip)
+                {
+                    var targets = ExtractPureToggleTargets(clip);
+                    if (targets != null && targets.Count > 0)
+                    {
+                        if (ApplyTargets(ctx, entry, targets))
+                        {
+                            nativizedParams.Add(child.directBlendParameter);
+                            changed = true;
+                            ctx.Report.Converted(Category, entry.name,
+                                $"{targets.Count} object(s) toggled natively by CVR; branch removed from \"{layerName}\".");
+                            continue; // drop this branch
+                        }
+                        aborted = true;
+                    }
+                }
+                var keptChild = child;
+                if (child.motion is BlendTree subTree)
+                {
+                    NativizeTreeToggles(ctx, subTree, entriesByParam, nativizedParams, layerName, ref aborted);
+                }
+                kept.Add(keptChild);
+            }
+            if (changed)
+            {
+                tree.children = kept.ToArray();
+            }
+        }
+
+        /// <summary>Targets of a clip that ONLY flips GameObjects on/off; null otherwise.</summary>
+        static List<TargetInfo> ExtractPureToggleTargets(AnimationClip clip)
+        {
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Length == 0)
+            {
+                return null;
+            }
+            var targets = new List<TargetInfo>();
+            foreach (var binding in bindings)
+            {
+                if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
+                {
+                    return null;
+                }
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve != null && curve.length > 0)
+                {
+                    targets.Add(new TargetInfo
+                    {
+                        Path = binding.path,
+                        OnState = curve.keys[curve.length - 1].value > 0.5f
+                    });
+                }
+            }
+            if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0)
+            {
+                return null;
+            }
+            return targets;
         }
 
         // ---------------------------------------------------------------- analysis ----

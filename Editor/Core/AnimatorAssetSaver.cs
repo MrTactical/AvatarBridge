@@ -27,6 +27,57 @@ namespace AvatarBridge
             }
 
             AssetDatabase.SaveAssets();
+            ValidateSavedController(controller, assetPath);
+        }
+
+        /// <summary>
+        /// Guards against silent data loss: if any state failed to persist (a missed
+        /// AddObjectToAsset), the reloaded controller shrinks and layers break in-game
+        /// with no visible error. Compare counts and complain loudly.
+        /// </summary>
+        static void ValidateSavedController(AnimatorController original, string assetPath)
+        {
+            var reloaded = AssetDatabase.LoadAssetAtPath<AnimatorController>(assetPath);
+            if (reloaded == null)
+            {
+                Debug.LogError($"[AvatarBridge] Saved controller could not be reloaded from {assetPath}!");
+                return;
+            }
+            int originalLayers = original.layers.Length;
+            int reloadedLayers = reloaded.layers.Length;
+            int originalStates = CountStates(original);
+            int reloadedStates = CountStates(reloaded);
+            if (originalLayers != reloadedLayers || originalStates != reloadedStates)
+            {
+                Debug.LogError($"[AvatarBridge] Controller lost data on save: layers {originalLayers}->{reloadedLayers}, " +
+                               $"states {originalStates}->{reloadedStates}. Report this at the AvatarBridge repo.");
+            }
+            else
+            {
+                Debug.Log($"[AvatarBridge] Controller saved intact: {reloadedLayers} layers, {reloadedStates} states.");
+            }
+        }
+
+        static int CountStates(AnimatorController controller)
+        {
+            int count = 0;
+            void Walk(AnimatorStateMachine machine)
+            {
+                if (machine == null)
+                {
+                    return;
+                }
+                count += machine.states.Length;
+                foreach (var child in machine.stateMachines)
+                {
+                    Walk(child.stateMachine);
+                }
+            }
+            foreach (var layer in controller.layers)
+            {
+                Walk(layer.stateMachine);
+            }
+            return count;
         }
 
         static void Add(Object obj, AnimatorController asset, HashSet<Object> seen)
