@@ -32,9 +32,19 @@ namespace AvatarBridge
                 .Where(g => g.Count() > 1))
             {
                 int active = group.Count(pb => pb.isActiveAndEnabled);
-                ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
-                    $"VRChat toggles between them at runtime; {active} started enabled and only those were " +
-                    "activated. Review the generated components and delete the variants you don't need.");
+                if (active == 0)
+                {
+                    ctx.Report.Warning(Category, $"\"{group.Key.name}\" has NO active physics",
+                        $"All {group.Count()} PhysBones on this chain were disabled when baked, so every " +
+                        "generated cloth starts disabled and the chain will not move. Enable the variant " +
+                        "you want on the converted avatar.");
+                }
+                else
+                {
+                    ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
+                        $"VRChat toggles between them at runtime; {active} started enabled and only those were " +
+                        "activated. Review the generated components and delete the variants you don't need.");
+                }
             }
 
             switch (ctx.Settings.physicsTarget)

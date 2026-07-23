@@ -169,16 +169,24 @@ namespace AvatarBridge
                     .ToArray();
             }
 
-            // Parameters nothing references any more disappear from the controller, so the
-            // CCK generates them fresh as real bools (checkbox in the menu AND inspector).
+            // The parameter must STAY in the controller: the CCK inspector validates every
+            // menu entry against it and flags a missing one with a red warning. It is
+            // simply retyped to a real bool, which is what the generated toggle drives.
             var stillReferenced = new HashSet<string>();
             foreach (var layer in master.layers)
             {
                 stillReferenced.UnionWith(SystemStripper.CollectParameterRefs(layer.stateMachine));
             }
-            master.parameters = master.parameters
-                .Where(p => !nativizedParams.Contains(p.name) || stillReferenced.Contains(p.name))
-                .ToArray();
+            var parameters = master.parameters;
+            foreach (var param in parameters)
+            {
+                if (nativizedParams.Contains(param.name) && !stillReferenced.Contains(param.name))
+                {
+                    param.type = AnimatorControllerParameterType.Bool;
+                    param.defaultBool = param.defaultFloat != 0f;
+                }
+            }
+            master.parameters = parameters;
             foreach (var param in nativizedParams)
             {
                 if (!stillReferenced.Contains(param) && entriesByParam[param].setting != null)

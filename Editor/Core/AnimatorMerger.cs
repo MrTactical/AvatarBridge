@@ -142,16 +142,11 @@ namespace AvatarBridge
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
             AnimatorAssetSaver.Save(master, controllerPath);
 
-            var overrides = new AnimatorOverrideController(master)
-            {
-                name = master.name + "_Overrides"
-            };
-            string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
-            FileUtil.DeleteFileOrDirectory(overridesPath);
-            AssetDatabase.CreateAsset(overrides, overridesPath);
+            // No override controller is generated: the CCK's "Override Controller" field is
+            // an INPUT for a user's pre-existing overrides, and an empty one adds nothing.
+            FileUtil.DeleteFileOrDirectory($"{ctx.OutputDir}/{master.name}_Overrides.overrideController");
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
-            ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
             if (animator != null)

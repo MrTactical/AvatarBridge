@@ -27,9 +27,10 @@ namespace AvatarBridge
         static readonly string[] GogoParamPrefixes = { "Go/" };
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
+        // "OGB" (no separator) also catches OGB_ENABLED and friends.
         static readonly string[] SpsParamPrefixes =
         {
-            "OGB/", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
+            "OGB", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
         };
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
