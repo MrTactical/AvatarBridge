@@ -152,7 +152,7 @@ namespace AvatarBridge
             }
         }
 
-        static HashSet<string> CollectParameterRefs(AnimatorStateMachine machine)
+        internal static HashSet<string> CollectParameterRefs(AnimatorStateMachine machine)
         {
             var refs = new HashSet<string>();
             void AddRef(string name)

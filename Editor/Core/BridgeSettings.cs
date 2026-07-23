@@ -32,6 +32,9 @@ namespace AvatarBridge
         public bool convertFxLayer = true;
 
         [Header("Parameters")]
+        // Simple object on/off toggles get handed to CVR's own animator builder: the
+        // Fury-baked FX layer is removed and the CCK generates a clean bool toggle.
+        public bool nativizeObjectToggles = true;
         // When enabled, animator parameters that are not network-synced in VRChat get the
         // CVR "#" local-only prefix so network traffic matches the original avatar.
         public bool preserveParameterSyncState = true;

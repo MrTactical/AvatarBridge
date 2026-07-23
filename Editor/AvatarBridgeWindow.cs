@@ -139,6 +139,11 @@ namespace AvatarBridge
                         new GUIContent("Recreate built-in VRC colliders as pointers",
                             "Head/hands/fingers pointers so converted receivers keep reacting to other players."),
                         settings.createDefaultColliderPointers);
+                    settings.nativizeObjectToggles = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Native CVR toggles for simple objects (recommended)",
+                            "Object on/off toggles are rebuilt with CVR's own animator builder as real " +
+                            "bool checkboxes instead of VRCFury's float-driven FX layers."),
+                        settings.nativizeObjectToggles);
                     settings.preserveParameterSyncState = EditorGUILayout.ToggleLeft(
                         new GUIContent("Preserve parameter sync state",
                             "Non-synced VRC parameters get CVR's '#' local-only prefix."),

@@ -124,6 +124,7 @@ namespace AvatarBridge
             GesturePass(master, vrcLayers, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
+            ToggleNativizer.Run(ctx, master, vrcLayers);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
