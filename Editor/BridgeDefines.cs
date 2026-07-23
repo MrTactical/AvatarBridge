@@ -23,7 +23,7 @@ namespace AvatarBridge
     public static class BridgeDefines
     {
         /// <summary>Tool version, shown in the converter window title.</summary>
-        public const string Version = "0.1.8";
+        public const string Version = "0.1.9";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";

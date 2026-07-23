@@ -39,6 +39,7 @@ namespace AvatarBridge
                 return;
             }
             _targetsUnsupportedReported = false;
+            _dumpedTargetFields = false;
 
             var entriesByParam = new Dictionary<string, CVRAdvancedSettingsEntry>();
             foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
@@ -558,21 +559,51 @@ namespace AvatarBridge
                     continue;
                 }
                 var item = Activator.CreateInstance(elementType);
-                TrySetMember(item, "gameObject", transform.gameObject);
-                TrySetMember(item, "onState", target.OnState);
-                TrySetMember(item, "treePath", target.Path);
+                AssignTargetMembers(item, transform.gameObject, target.OnState, target.Path);
                 list.Add(item);
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
             return true;
         }
 
-        static void TrySetMember(object target, string name, object value)
+        static bool _dumpedTargetFields;
+
+        /// <summary>
+        /// CCK target entry field names vary between versions, so assign by TYPE:
+        /// the GameObject field gets the object, the bool field gets the on-state,
+        /// a string field mentioning "path" gets the hierarchy path.
+        /// </summary>
+        static void AssignTargetMembers(object item, GameObject go, bool onState, string path)
         {
-            var field = target.GetType().GetField(name, BindingFlags.Public | BindingFlags.Instance);
-            if (field != null && (value == null || field.FieldType.IsInstanceOfType(value) || field.FieldType == value.GetType()))
+            var fields = item.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+            if (!_dumpedTargetFields)
             {
-                try { field.SetValue(target, value); } catch { }
+                Debug.Log("[AvatarBridge] CCK toggle target fields: " +
+                          string.Join(", ", fields.Select(f => $"{f.FieldType.Name} {f.Name}")));
+                _dumpedTargetFields = true;
+            }
+            foreach (var field in fields)
+            {
+                try
+                {
+                    if (field.FieldType == typeof(GameObject))
+                    {
+                        field.SetValue(item, go);
+                    }
+                    else if (field.FieldType == typeof(bool))
+                    {
+                        field.SetValue(item, onState);
+                    }
+                    else if (field.FieldType == typeof(string) &&
+                             field.Name.ToLowerInvariant().Contains("path"))
+                    {
+                        field.SetValue(item, path);
+                    }
+                }
+                catch
+                {
+                    // leave the field at its default
+                }
             }
         }
     }

@@ -128,6 +128,7 @@ namespace AvatarBridge
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
+            RehomeVolatileAssets(master, vrcLayers, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -710,13 +711,42 @@ namespace AvatarBridge
 
         static void RenamePass(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
+            // Menu-driven parameter names like "VF121_Clothing/Bennett Clothes/Cloak/Cloak"
+            // break the CCK's controller autogeneration (spaces/slashes). Rename them to
+            // clean names derived from their menu label, consistently everywhere.
+            var sanitizedNames = new Dictionary<string, string>();
+            var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
+            foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+            {
+                string machineName = entry.machineName;
+                if (string.IsNullOrEmpty(machineName) || sanitizedNames.ContainsKey(machineName))
+                {
+                    continue;
+                }
+                if (machineName.IndexOfAny(new[] { ' ', '/', '\\', '(', ')', '<', '>', '\'', '"', ',' }) < 0)
+                {
+                    continue; // already CCK-safe
+                }
+                string clean = SanitizeParameterName(string.IsNullOrEmpty(entry.name) ? machineName : entry.name);
+                string candidate = clean;
+                int suffix = 2;
+                while (takenNames.Contains(candidate) || sanitizedNames.ContainsValue(candidate))
+                {
+                    candidate = clean + suffix++;
+                }
+                sanitizedNames[machineName] = candidate;
+                ctx.Report.Converted(Category, $"Parameter \"{machineName}\"",
+                    $"Renamed to CCK-safe \"{candidate}\".");
+            }
+
             string Rename(string name)
             {
                 if (string.IsNullOrEmpty(name))
                 {
                     return name;
                 }
-                string result = ParameterRenameMap.TryGetValue(name, out var mapped) ? mapped : name;
+                string result = sanitizedNames.TryGetValue(name, out var sanitized) ? sanitized
+                    : ParameterRenameMap.TryGetValue(name, out var mapped) ? mapped : name;
                 bool preserved = CvrCoreParameters.Contains(result) ||
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
@@ -955,6 +985,110 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category, "VRC built-in parameters without CVR equivalent",
                     string.Join(", ", unsupportedPresent.Distinct()) + " — they keep their default value.");
+            }
+        }
+
+        static string SanitizeParameterName(string source)
+        {
+            var parts = System.Text.RegularExpressions.Regex
+                .Split(source ?? "", "[^A-Za-z0-9]+")
+                .Where(p => p.Length > 0)
+                .Select(p => char.ToUpperInvariant(p[0]) + p.Substring(1));
+            string result = string.Concat(parts);
+            if (string.IsNullOrEmpty(result))
+            {
+                result = "Param";
+            }
+            if (char.IsDigit(result[0]))
+            {
+                result = "P" + result;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// VRCFury bakes its generated clips and masks into Packages/com.vrcfury.temp,
+        /// which Fury DELETES on the next build — leaving every reference as "None".
+        /// Copy anything volatile into our own controller so the output is self-contained.
+        /// </summary>
+        static void RehomeVolatileAssets(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            var clipMap = new Dictionary<AnimationClip, AnimationClip>();
+
+            bool IsVolatile(UnityEngine.Object obj)
+            {
+                string path = AssetDatabase.GetAssetPath(obj);
+                return !string.IsNullOrEmpty(path) &&
+                       path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase);
+            }
+
+            AnimationClip RehomeClip(AnimationClip clip)
+            {
+                if (clip == null || !IsVolatile(clip))
+                {
+                    return clip;
+                }
+                if (!clipMap.TryGetValue(clip, out var clone))
+                {
+                    clone = UnityEngine.Object.Instantiate(clip);
+                    clone.name = clip.name;
+                    clipMap[clip] = clone;
+                }
+                return clone;
+            }
+
+            Motion RehomeMotion(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    return RehomeClip(clip);
+                }
+                if (motion is BlendTree tree)
+                {
+                    var children = tree.children;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        children[i].motion = RehomeMotion(children[i].motion);
+                    }
+                    tree.children = children;
+                }
+                return motion;
+            }
+
+            foreach (var layer in vrcLayers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = RehomeMotion(child.state.motion);
+                    }
+                });
+            }
+
+            var layers = master.layers;
+            int rehomedMasks = 0;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                var mask = layers[i].avatarMask;
+                if (mask != null && IsVolatile(mask))
+                {
+                    var clone = UnityEngine.Object.Instantiate(mask);
+                    clone.name = mask.name;
+                    layers[i].avatarMask = clone;
+                    rehomedMasks++;
+                }
+            }
+            if (rehomedMasks > 0)
+            {
+                master.layers = layers;
+            }
+
+            if (clipMap.Count > 0 || rehomedMasks > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Re-homed {clipMap.Count} clip(s) and {rehomedMasks} mask(s) out of VRCFury's temp assets",
+                    "Fury deletes Packages/com.vrcfury.temp on its next build; without copies, motions would turn to 'None'.");
             }
         }
 
