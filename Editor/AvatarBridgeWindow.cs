@@ -97,10 +97,15 @@ namespace AvatarBridge
                     "waste ~15 synced parameters."),
                 settings.stripGogoLoco);
             settings.stripSpsSystems = EditorGUILayout.ToggleLeft(
-                new GUIContent("Remove SPS / OGB / PCS (recommended)",
-                    "VRChat-specific penetration & haptics systems. Their shaders, contacts and " +
-                    "parameters do not function in CVR and burn large amounts of sync budget."),
+                new GUIContent("Remove SPS / OGB / PCS / Wholesome (recommended)",
+                    "VRChat-specific penetration, haptics & audio add-on systems. Their shaders, " +
+                    "contacts and parameters do not function in CVR and burn sync budget."),
                 settings.stripSpsSystems);
+            settings.extraStripKeywords = EditorGUILayout.TextField(
+                new GUIContent("Extra strip keywords",
+                    "Comma separated. Each is used as a parameter prefix and a layer-name match " +
+                    "for additional VRC-only systems to remove."),
+                settings.extraStripKeywords);
 
             // ---- Animator ------------------------------------------------------------
             GUILayout.Space(6);

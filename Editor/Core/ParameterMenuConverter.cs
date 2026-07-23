@@ -61,6 +61,15 @@ namespace AvatarBridge
             var entries = new List<CVRAdvancedSettingsEntry>();
             var usedNames = new HashSet<string>();
 
+            // Menu entries show the leaf name ("Cloak"), qualified by their parent menu
+            // only when several controls share the same leaf ("Hoodie (Tops)").
+            var leafCounts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in uses)
+            {
+                string leaf = ShortName(pair.Value[0].DisplayName);
+                leafCounts[leaf] = leafCounts.TryGetValue(leaf, out var n) ? n + 1 : 1;
+            }
+
             if (vrcParams != null && vrcParams.parameters != null)
             {
                 foreach (var p in vrcParams.parameters)
@@ -69,7 +78,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    var entry = BuildEntry(ctx, p, uses.TryGetValue(p.name, out var paramUses) ? paramUses : null, usedNames);
+                    var entry = BuildEntry(ctx, p, uses.TryGetValue(p.name, out var paramUses) ? paramUses : null, usedNames, leafCounts);
                     if (entry != null)
                     {
                         entries.Add(entry);
@@ -94,7 +103,7 @@ namespace AvatarBridge
         }
 
         static CVRAdvancedSettingsEntry BuildEntry(BridgeContext ctx, VRCExpressionParameters.Parameter p,
-            List<MenuUse> paramUses, HashSet<string> usedNames)
+            List<MenuUse> paramUses, HashSet<string> usedNames, Dictionary<string, int> leafCounts)
         {
             bool hasMenu = paramUses != null && paramUses.Count > 0;
             if (!hasMenu && !ctx.Settings.exposeMenulessSyncedParameters)
@@ -108,7 +117,9 @@ namespace AvatarBridge
                 return null;
             }
 
-            string display = hasMenu ? paramUses[0].DisplayName : p.name;
+            string display = hasMenu
+                ? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
+                : FriendlyParamName(p.name);
             display = MakeUnique(display, usedNames);
 
             // Menu buttons become impulse parameters (auto-reset shortly after being set).
@@ -401,6 +412,27 @@ namespace AvatarBridge
         {
             int slash = display.LastIndexOf('/');
             return slash >= 0 && slash < display.Length - 1 ? display.Substring(slash + 1) : display;
+        }
+
+        static string FriendlyMenuName(string fullPath, Dictionary<string, int> leafCounts)
+        {
+            string leaf = ShortName(fullPath);
+            if (leafCounts.TryGetValue(leaf, out var count) && count > 1)
+            {
+                var segments = fullPath.Split('/');
+                if (segments.Length >= 2)
+                {
+                    return $"{leaf} ({segments[segments.Length - 2]})";
+                }
+            }
+            return leaf;
+        }
+
+        /// <summary>Menuless parameters: drop VRCFury's "VF12_" id prefix and any path.</summary>
+        static string FriendlyParamName(string name)
+        {
+            string clean = System.Text.RegularExpressions.Regex.Replace(name, @"^VF\d+_", "");
+            return ShortName(clean);
         }
 
         static string MakeUnique(string name, HashSet<string> usedNames)

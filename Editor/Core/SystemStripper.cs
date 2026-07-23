@@ -29,9 +29,14 @@ namespace AvatarBridge
 
         static readonly string[] SpsParamPrefixes =
         {
-            "OGB/", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD"
+            "OGB/", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
         };
-        static readonly string[] SpsLayerHints = { "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector" };
+        // "wholesome" and its helper layers belong to the Wholesome SPS audio add-on.
+        static readonly string[] SpsLayerHints =
+        {
+            "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector",
+            "wholesome", "frametime counter", "max(gestureleft", "either fist"
+        };
         static readonly string[] SpsObjectHints =
         {
             "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket",
@@ -53,6 +58,20 @@ namespace AvatarBridge
                 paramPrefixes.AddRange(SpsParamPrefixes);
                 layerHints.AddRange(SpsLayerHints);
             }
+            // User-supplied keywords (comma separated) act as both parameter prefixes and
+            // layer-name hints, for add-ons this list doesn't know about yet.
+            if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
+            {
+                foreach (var raw in ctx.Settings.extraStripKeywords.Split(','))
+                {
+                    string keyword = raw.Trim();
+                    if (keyword.Length >= 2)
+                    {
+                        paramPrefixes.Add(keyword);
+                        layerHints.Add(keyword.ToLowerInvariant());
+                    }
+                }
+            }
             if (paramPrefixes.Count == 0)
             {
                 return;
@@ -62,7 +81,27 @@ namespace AvatarBridge
                 !string.IsNullOrEmpty(name) &&
                 paramPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
-            RemoveLayers(ctx, master, vrcLayers, layerHints, IsStrippedParam);
+            // VRCFury tags every generated layer with its component id ("[VF77] ...").
+            // If a component's synced parameters are stripped, all its layers go too.
+            var strippedFuryIds = new HashSet<string>();
+            var vrcParams = ctx.SourceDescriptor.expressionParameters;
+            if (vrcParams != null && vrcParams.parameters != null)
+            {
+                foreach (var p in vrcParams.parameters)
+                {
+                    if (string.IsNullOrEmpty(p.name) || !IsStrippedParam(p.name))
+                    {
+                        continue;
+                    }
+                    var match = System.Text.RegularExpressions.Regex.Match(p.name, @"^VF(\d+)_");
+                    if (match.Success)
+                    {
+                        strippedFuryIds.Add(match.Groups[1].Value);
+                    }
+                }
+            }
+
+            RemoveLayers(ctx, master, vrcLayers, layerHints, strippedFuryIds, IsStrippedParam);
             if (ctx.Settings.stripSpsSystems)
             {
                 RemoveObjects(ctx);
@@ -82,13 +121,15 @@ namespace AvatarBridge
         // ------------------------------------------------------------------ layers ----
 
         static void RemoveLayers(BridgeContext ctx, AnimatorController master,
-            List<AnimatorControllerLayer> vrcLayers, List<string> layerHints, Func<string, bool> isStripped)
+            List<AnimatorControllerLayer> vrcLayers, List<string> layerHints,
+            HashSet<string> strippedFuryIds, Func<string, bool> isStripped)
         {
             var removedMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in vrcLayers.ToList())
             {
                 string lower = layer.name.ToLowerInvariant();
-                bool nameHit = layerHints.Any(lower.Contains);
+                bool nameHit = layerHints.Any(lower.Contains) ||
+                               strippedFuryIds.Any(id => layer.name.Contains($"[VF{id}]"));
 
                 var refs = CollectParameterRefs(layer.stateMachine);
                 int strippedRefs = refs.Count(isStripped);
@@ -296,16 +337,25 @@ namespace AvatarBridge
             {
                 stillReferenced.UnionWith(CollectParameterRefs(layer.stateMachine));
             }
+            var menuNames = new HashSet<string>(
+                ctx.CvrAvatar.avatarSettings.settings.Select(e => e.machineName));
 
+            // Any parameter that nothing reads, nothing syncs and no menu drives is dead
+            // weight left behind by removed layers (VRCFury internals, stripped systems).
             var parameters = master.parameters;
             var kept = parameters
-                .Where(p => !isStripped(p.name) || stillReferenced.Contains(p.name))
+                .Where(p => stillReferenced.Contains(p.name) ||
+                            menuNames.Contains(p.name) ||
+                            AnimatorMerger.CvrCoreParameters.Contains(p.name) ||
+                            GestureMap.GestureParameters.Contains(p.name) ||
+                            ctx.PreserveParameters.Contains(p.name) ||
+                            ctx.ContactParameters.Contains(p.name))
                 .ToArray();
             int removed = parameters.Length - kept.Length;
             if (removed > 0)
             {
                 master.parameters = kept;
-                ctx.Report.Converted(Category, $"Removed {removed} unreferenced animator parameter(s)");
+                ctx.Report.Converted(Category, $"Removed {removed} dead animator parameter(s)");
             }
         }
     }

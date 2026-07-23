@@ -47,9 +47,12 @@ namespace AvatarBridge
         // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15
         // synced parameters (incl. a 256-value emote int) on layers that fight CVR.
         public bool stripGogoLoco = true;
-        // SPS/OGB/TPS haptics and PCS are VRChat-specific; their contacts, shaders and
-        // parameters don't function in CVR and burn huge amounts of sync budget.
+        // SPS/OGB/TPS haptics, PCS and the Wholesome add-on are VRChat-specific; their
+        // contacts, shaders and parameters don't function in CVR and burn sync budget.
         public bool stripSpsSystems = true;
+        // Comma-separated extra keywords; matched as parameter prefixes AND layer-name
+        // substrings, for VRC-only add-ons the built-in lists don't know about.
+        public string extraStripKeywords = "";
 
         [Header("Contacts")]
         public bool convertContacts = true;

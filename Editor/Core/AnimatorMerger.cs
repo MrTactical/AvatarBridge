@@ -48,7 +48,7 @@ namespace AvatarBridge
         };
 
         // Parameters ChilloutVR drives itself; these must never be renamed or prefixed.
-        static readonly HashSet<string> CvrCoreParameters = new HashSet<string>
+        internal static readonly HashSet<string> CvrCoreParameters = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
             "GestureLeft", "GestureRight", "GestureLeftIdx", "GestureRightIdx",
@@ -126,6 +126,8 @@ namespace AvatarBridge
             SystemStripper.Run(ctx, master, vrcLayers);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
+            ReconcileAasInputTypes(master, ctx);
+            WarnLocomotionOverrides(vrcLayers, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
@@ -952,6 +954,125 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category, "VRC built-in parameters without CVR equivalent",
                     string.Join(", ", unsupportedPresent.Distinct()) + " — they keep their default value.");
+            }
+        }
+
+        /// <summary>
+        /// VRCFury bakes bool menu parameters as FLOAT animator parameters. CVR writes
+        /// menu values using the entry's declared type — writing Bool into a Float
+        /// animator parameter silently does nothing, which kills every toggle. Align
+        /// each menu entry's type with the actual animator parameter type.
+        /// </summary>
+        static void ReconcileAasInputTypes(AnimatorController master, BridgeContext ctx)
+        {
+            var types = new Dictionary<string, AnimatorControllerParameterType>();
+            foreach (var param in master.parameters)
+            {
+                types[param.name] = param.type;
+            }
+
+            int retyped = 0;
+            foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+            {
+                if (entry.setting == null || string.IsNullOrEmpty(entry.machineName))
+                {
+                    continue;
+                }
+                if (!types.TryGetValue(entry.machineName, out var animatorType))
+                {
+                    continue;
+                }
+                ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType desired;
+                switch (animatorType)
+                {
+                    case AnimatorControllerParameterType.Int:
+                        desired = ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType.Int;
+                        break;
+                    case AnimatorControllerParameterType.Bool:
+                        desired = ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType.Bool;
+                        break;
+                    default:
+                        desired = ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType.Float;
+                        break;
+                }
+                if (entry.setting.usedType != desired)
+                {
+                    entry.setting.usedType = desired;
+                    retyped++;
+                }
+            }
+            if (retyped > 0)
+            {
+                EditorUtility.SetDirty(ctx.CvrAvatar);
+                ctx.Report.Converted(Category, $"{retyped} menu entr(ies) retyped to match animator parameters",
+                    "Prevents dead toggles when VRCFury bakes bool parameters as floats.");
+            }
+        }
+
+        /// <summary>
+        /// FX-sourced layers that animate body muscles or transforms fight ChilloutVR's
+        /// locomotion. Flag them so the user knows exactly which layer is responsible.
+        /// </summary>
+        static void WarnLocomotionOverrides(List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            var bodyMuscleNames = new HashSet<string>(HumanTrait.MuscleName.Select(name =>
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(name, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (.*)$");
+                return match.Success ? $"{match.Groups[1].Value}Hand.{match.Groups[2].Value}.{match.Groups[3].Value}" : name;
+            }));
+            bool IsFingerCurve(string property) => property.Contains("Hand.");
+            bool IsRootCurve(string property) =>
+                property.StartsWith("RootT") || property.StartsWith("RootQ") ||
+                property.StartsWith("MotionT") || property.StartsWith("MotionQ");
+
+            foreach (var layer in vrcLayers)
+            {
+                if (layer.name == "LeftHand" || layer.name == "RightHand")
+                {
+                    continue; // hand pose layers are supposed to animate finger muscles
+                }
+                bool animatesBody = false;
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        foreach (var clip in CollectClips(child.state.motion))
+                        {
+                            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                            {
+                                if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path) &&
+                                    (IsRootCurve(binding.propertyName) ||
+                                     (bodyMuscleNames.Contains(binding.propertyName) && !IsFingerCurve(binding.propertyName))))
+                                {
+                                    animatesBody = true;
+                                }
+                            }
+                        }
+                    }
+                });
+                if (animatesBody)
+                {
+                    ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
+                        "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                }
+            }
+        }
+
+        static IEnumerable<AnimationClip> CollectClips(Motion motion)
+        {
+            if (motion is AnimationClip clip)
+            {
+                yield return clip;
+            }
+            else if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children)
+                {
+                    foreach (var nested in CollectClips(child.motion))
+                    {
+                        yield return nested;
+                    }
+                }
             }
         }
 
