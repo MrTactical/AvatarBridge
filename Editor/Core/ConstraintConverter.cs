@@ -128,8 +128,8 @@ namespace AvatarBridge
             }
             unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
             unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
-            unity.translationAxes = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
-            unity.rotationAxes = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
+            unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
+            unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Parent constraint");
@@ -145,7 +145,7 @@ namespace AvatarBridge
             }
             unity.translationOffset = Get(vrc, "PositionOffset", Vector3.zero);
             unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
-            unity.translationAxes = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
+            unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Position constraint");
@@ -161,7 +161,7 @@ namespace AvatarBridge
             }
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
-            unity.rotationAxes = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
+            unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Rotation constraint");
@@ -177,7 +177,7 @@ namespace AvatarBridge
             }
             unity.scaleOffset = Get(vrc, "ScaleOffset", Vector3.one);
             unity.scaleAtRest = Get(vrc, "ScaleAtRest", vrc.transform.localScale);
-            unity.scalingAxes = AxesFrom(vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
+            unity.scalingAxis = AxesFrom(vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Scale constraint");
