@@ -10,13 +10,17 @@ Every conversion produces a `ConversionReport.md` that honestly lists what was c
 
 ## Requirements
 
-| What | Version |
-|---|---|
-| Unity | **2022.3.22f1** (same version VRChat and CCK 4 use) |
-| VRChat Avatars SDK | SDK3, 3.10.x tested |
-| ChilloutVR CCK | **4.0.x** (tested against 4.0.1; CCK 3 paths are also handled) |
-| MagicaCloth2 *(optional)* | for PhysBone physics conversion (recommended — most CVR users have it) |
-| DynamicBone *(optional)* | fallback physics target; the free [VRLabs Dynamic-Bones-Stub](https://github.com/VRLabs/Dynamic-Bones-Stub) also works |
+| What | Version | Notes |
+|---|---|---|
+| Unity | **2022.3.22f1** | same version VRChat and CCK 4 use |
+| VRChat Avatars SDK | SDK3, 3.10.x tested | already in any Creator Companion avatar project |
+| ChilloutVR CCK | **4.0.x** | tested against 4.0.1; CCK 3 paths are also handled |
+| [VRCFury](https://vrcfury.com/download) | current | only if your avatars use it — most modern ones do, and it's usually already installed via VCC |
+| [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended PhysBone target; most ChilloutVR avatars use it |
+| [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative PhysBone target; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
+
+Neither physics package is required: choose **Convert PhysBones to → None** and everything
+except jiggle physics still converts.
 
 ## Installation
 
@@ -29,10 +33,22 @@ Every conversion produces a `ConversionReport.md` that honestly lists what was c
    (Avatars SDK, VRCFury and the avatar are already inside). Never convert in your real
    upload project. Open the copy and make sure it compiles cleanly before continuing.
 3. **ChilloutVR CCK 4** — import the unitypackage.
-4. **MagicaCloth2** (recommended) and/or **DynamicBone** — whichever physics target you
-   plan to use.
-5. **VRCFury** — [download](https://vrcfury.com/download) and install it *if* your
-   avatars use it (most modern ones do) and it isn't already in the project.
+4. **A physics package — optional.** Needed only to convert PhysBone jiggle (hair, ears,
+   tails, skirts). Pick one:
+   - [**MagicaCloth2**](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307)
+     (paid, recommended) — the modern jiggle-physics system most ChilloutVR avatars use.
+     This is the best-quality conversion target.
+   - [**DynamicBone**](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743)
+     (paid) — the older system ChilloutVR also supports natively. The free
+     [VRLabs Dynamic-Bones-Stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough
+     to *convert* an avatar, though the physics won't run in the editor.
+   - **Neither?** Set **Convert PhysBones to → None** in the converter window. Everything
+     else (toggles, menus, animators, contacts, constraints) still converts — you just
+     get no jiggle physics, and can add it by hand later.
+5. **VRCFury** — needed if your avatars use it (most modern ones do). Usually it's
+   already installed through the Creator Companion, so check the project first: if you
+   see VRCFury components on your avatar, or a *VRCFury* entry in VCC's package list,
+   you're done. Otherwise add it via VCC or from [vrcfury.com](https://vrcfury.com/download).
 6. **Avatar packages** — only if you're adding avatars that aren't in the project yet:
    import them now, *after* VRCFury.
 7. **AvatarBridge** — always last. Grab the `.unitypackage` from the
@@ -50,6 +66,7 @@ detecting what's installed.
 | Symptom | Cause & fix |
 |---|---|
 | Converter window shows a ✔/✘ checklist instead of options | A required SDK is missing — import it, let Unity recompile, reopen the window. |
+| Don't own MagicaCloth2 or DynamicBone | Set **Convert PhysBones to → None**. Everything but jiggle physics converts. |
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, which corrupted its Fury component data. Delete the avatar's assets and scene copies, then re-import its package with VRCFury already installed. |
 | Physics target warning in the converter window | MagicaCloth2 / DynamicBone isn't installed, or needs one more recompile to be detected. |
 | Project completely wedged after an out-of-order import | Close Unity, delete the `Library` folder, reopen and let it reimport. |
@@ -58,7 +75,8 @@ detecting what's installed.
 
 1. Open **Tools → Avatar Bridge → VRChat to ChilloutVR Converter**.
 2. Drop your scene avatar (the object with the `VRCAvatarDescriptor`) into the field.
-3. Pick the physics target (MagicaCloth2 recommended) and check the options.
+3. Pick the physics target (MagicaCloth2 recommended, or **None** if you don't own either
+   physics package) and check the options.
 4. **Convert avatar.** The original is deactivated; a `<name> (ChilloutVR)` clone appears.
 5. Read `Assets/AvatarBridge/Output/<name>/ConversionReport.md`, fix anything flagged,
    then upload through the CCK as usual.
