@@ -133,6 +133,7 @@ namespace AvatarBridge
             ReconcileAasInputTypes(master, ctx);
             CreateParameterStreams(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
+            DeduplicateLayers(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -1429,6 +1430,33 @@ namespace AvatarBridge
                         yield return nested;
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Two layers must never share one state machine: the later layer sits in its
+        /// default (usually empty) state and, with write-defaults on, overwrites whatever
+        /// the earlier one animates — silently killing that toggle.
+        /// </summary>
+        static void DeduplicateLayers(AnimatorController master, BridgeContext ctx)
+        {
+            var seenMachines = new HashSet<AnimatorStateMachine>();
+            var kept = new List<AnimatorControllerLayer>();
+            var dropped = new List<string>();
+            foreach (var layer in master.layers)
+            {
+                if (layer.stateMachine != null && !seenMachines.Add(layer.stateMachine))
+                {
+                    dropped.Add(layer.name);
+                    continue;
+                }
+                kept.Add(layer);
+            }
+            if (dropped.Count > 0)
+            {
+                master.layers = kept.ToArray();
+                ctx.Report.Warning(Category, $"Removed {dropped.Count} duplicate layer(s)",
+                    string.Join(", ", dropped.Distinct()) + " — duplicates would have overwritten the working layer.");
             }
         }
 

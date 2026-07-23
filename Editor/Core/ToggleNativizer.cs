@@ -253,7 +253,8 @@ namespace AvatarBridge
                     !string.IsNullOrEmpty(child.directBlendParameter) &&
                     entriesByParam.ContainsKey(child.directBlendParameter) &&
                     !expandedParams.Contains(child.directBlendParameter) &&
-                    child.motion is AnimationClip clip)
+                    child.motion is AnimationClip clip &&
+                    !LayerNameExists(master, expandedLayers, "Toggle " + entriesByParam[child.directBlendParameter].name))
                 {
                     var entry = entriesByParam[child.directBlendParameter];
                     expandedLayers.Add(BuildToggleLayer(master, entry, child.directBlendParameter, clip));
@@ -274,6 +275,12 @@ namespace AvatarBridge
             {
                 tree.children = kept.ToArray();
             }
+        }
+
+        static bool LayerNameExists(AnimatorController master,
+            List<AnimatorControllerLayer> pending, string name)
+        {
+            return master.layers.Any(l => l.name == name) || pending.Any(l => l.name == name);
         }
 
         /// <summary>A per-toggle layer exactly like a hand-authored Unity toggle.</summary>
