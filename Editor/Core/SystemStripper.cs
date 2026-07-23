@@ -170,53 +170,135 @@ namespace AvatarBridge
                 {
                     foreach (var child in machine.states)
                     {
-                        child.state.motion = PruneTree(child.state.motion, isStripped, ref pruned);
+                        child.state.motion = PruneMotion(child.state.motion, isStripped, ref pruned);
                     }
                 });
             }
             if (pruned > 0)
             {
-                ctx.Report.Converted(Category, $"Pruned {pruned} stripped branch(es) from shared blend trees",
+                ctx.Report.Converted(Category, $"Pruned {pruned} stripped branch(es)/tree(s) from shared blend trees",
                     "Removes leftover VRCFury parameter math for the stripped systems.");
+            }
+
+            // Layers reduced to empty states (their whole content was stripped math) go too.
+            var inert = new List<AnimatorControllerLayer>();
+            foreach (var layer in vrcLayers.ToList())
+            {
+                if (IsLayerInert(layer))
+                {
+                    inert.Add(layer);
+                    vrcLayers.Remove(layer);
+                    ctx.Report.Converted(Category, $"Removed emptied animator layer \"{layer.name}\"",
+                        "All of its content belonged to stripped systems.");
+                }
+            }
+            if (inert.Count > 0)
+            {
+                var machines = new HashSet<AnimatorStateMachine>(inert.Select(l => l.stateMachine));
+                master.layers = master.layers
+                    .Where(l => l.stateMachine == null || !machines.Contains(l.stateMachine))
+                    .ToArray();
             }
         }
 
-        static Motion PruneTree(Motion motion, Func<string, bool> isStripped, ref int pruned)
+        /// <summary>
+        /// Recursive dead-code elimination for motions:
+        ///  - a clip is dead when it only writes stripped parameters (Fury AAP math)
+        ///  - a tree is dead when it blends ON a stripped parameter (its entire subtree
+        ///    exists to respond to a system that no longer exists)
+        ///  - a direct tree drops dead children; any tree whose children are all dead
+        ///    is dead itself
+        /// Returns null when the whole motion is dead.
+        /// </summary>
+        static Motion PruneMotion(Motion motion, Func<string, bool> isStripped, ref int pruned)
         {
-            if (!(motion is BlendTree tree))
+            if (motion == null)
             {
+                return null;
+            }
+            if (motion is AnimationClip clip)
+            {
+                if (ClipWritesOnlyStrippedParams(clip, isStripped))
+                {
+                    pruned++;
+                    return null;
+                }
                 return motion;
             }
+
+            var tree = (BlendTree)motion;
+            bool is2D = tree.blendType == BlendTreeType.SimpleDirectional2D ||
+                        tree.blendType == BlendTreeType.FreeformDirectional2D ||
+                        tree.blendType == BlendTreeType.FreeformCartesian2D;
+            if (tree.blendType != BlendTreeType.Direct &&
+                !string.IsNullOrEmpty(tree.blendParameter) && isStripped(tree.blendParameter))
+            {
+                pruned++;
+                return null;
+            }
+            if (is2D && !string.IsNullOrEmpty(tree.blendParameterY) && isStripped(tree.blendParameterY))
+            {
+                pruned++;
+                return null;
+            }
+
             var children = tree.children;
             var kept = new List<ChildMotion>(children.Length);
+            bool anyAlive = false;
             foreach (var child in children)
             {
-                bool drop = false;
-                if (tree.blendType == BlendTreeType.Direct)
-                {
-                    if (!string.IsNullOrEmpty(child.directBlendParameter) && isStripped(child.directBlendParameter))
-                    {
-                        drop = true;
-                    }
-                    else if (child.motion is AnimationClip clip && ClipWritesOnlyStrippedParams(clip, isStripped))
-                    {
-                        drop = true;
-                    }
-                }
-                if (drop)
+                if (tree.blendType == BlendTreeType.Direct &&
+                    !string.IsNullOrEmpty(child.directBlendParameter) && isStripped(child.directBlendParameter))
                 {
                     pruned++;
                     continue;
                 }
+                var newMotion = PruneMotion(child.motion, isStripped, ref pruned);
+                if (tree.blendType == BlendTreeType.Direct && newMotion == null)
+                {
+                    // Dead branch in a direct tree contributes nothing; drop it entirely.
+                    pruned++;
+                    continue;
+                }
                 var keptChild = child;
-                keptChild.motion = PruneTree(child.motion, isStripped, ref pruned);
+                keptChild.motion = newMotion;
+                if (newMotion != null)
+                {
+                    anyAlive = true;
+                }
+                // Non-direct trees keep their slot layout (thresholds/positions) even if
+                // a child motion died, so blending between the others stays correct.
                 kept.Add(keptChild);
             }
-            if (kept.Count != children.Length)
+
+            if (!anyAlive)
             {
-                tree.children = kept.ToArray();
+                pruned++;
+                return null;
             }
+            tree.children = kept.ToArray();
             return tree;
+        }
+
+        static bool IsLayerInert(AnimatorControllerLayer layer)
+        {
+            bool inert = true;
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                if (machine.behaviours != null && machine.behaviours.Length > 0)
+                {
+                    inert = false;
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state.motion != null ||
+                        (child.state.behaviours != null && child.state.behaviours.Length > 0))
+                    {
+                        inert = false;
+                    }
+                }
+            });
+            return inert;
         }
 
         static bool ClipWritesOnlyStrippedParams(AnimationClip clip, Func<string, bool> isStripped)

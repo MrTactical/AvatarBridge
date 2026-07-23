@@ -114,7 +114,49 @@ namespace AvatarBridge
                 });
             }
 
-            if (removedMachines.Count == 0 && nativizedParams.Count == 0)
+            // Branches still keyed to toggle menu entries animate more than plain object
+            // state (blendshapes, renderers, materials). Expand those into classic
+            // hand-authored-style On/Off toggle layers instead of leaving them buried in
+            // VRCFury's merged service tree.
+            var expandedLayers = new List<AnimatorControllerLayer>();
+            var expandedParams = new HashSet<string>();
+            foreach (var layer in vrcLayers)
+            {
+                SystemStripper.WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state.motion is BlendTree tree)
+                        {
+                            ExpandToggleBranches(ctx, master, tree, entriesByParam, expandedLayers, expandedParams);
+                        }
+                    }
+                });
+            }
+            if (expandedLayers.Count > 0)
+            {
+                master.layers = master.layers.Concat(expandedLayers).ToArray();
+                vrcLayers.AddRange(expandedLayers);
+            }
+
+            // Fury's merged-service layer name means nothing to humans; whatever internal
+            // parameter math survives gets an honest label.
+            var relabeled = master.layers;
+            bool didRelabel = false;
+            for (int i = 0; i < relabeled.Length; i++)
+            {
+                if (relabeled[i].name.Contains("LayerToTreeService"))
+                {
+                    relabeled[i].name = "[FX] Internal Parameter Math (VRCFury)";
+                    didRelabel = true;
+                }
+            }
+            if (didRelabel)
+            {
+                master.layers = relabeled;
+            }
+
+            if (removedMachines.Count == 0 && nativizedParams.Count == 0 && expandedLayers.Count == 0)
             {
                 return;
             }
@@ -187,6 +229,109 @@ namespace AvatarBridge
             {
                 tree.children = kept.ToArray();
             }
+        }
+
+        static void ExpandToggleBranches(BridgeContext ctx, AnimatorController master, BlendTree tree,
+            Dictionary<string, CVRAdvancedSettingsEntry> entriesByParam,
+            List<AnimatorControllerLayer> expandedLayers, HashSet<string> expandedParams)
+        {
+            var children = tree.children;
+            var kept = new List<ChildMotion>(children.Length);
+            bool changed = false;
+            foreach (var child in children)
+            {
+                if (tree.blendType == BlendTreeType.Direct &&
+                    !string.IsNullOrEmpty(child.directBlendParameter) &&
+                    entriesByParam.ContainsKey(child.directBlendParameter) &&
+                    !expandedParams.Contains(child.directBlendParameter) &&
+                    child.motion is AnimationClip clip)
+                {
+                    var entry = entriesByParam[child.directBlendParameter];
+                    expandedLayers.Add(BuildToggleLayer(master, entry, child.directBlendParameter, clip));
+                    expandedParams.Add(child.directBlendParameter);
+                    changed = true;
+                    ctx.Report.Converted(Category, entry.name,
+                        "Expanded into a classic On/Off toggle layer (it animates more than object on/off).");
+                    continue;
+                }
+                var keptChild = child;
+                if (child.motion is BlendTree subTree)
+                {
+                    ExpandToggleBranches(ctx, master, subTree, entriesByParam, expandedLayers, expandedParams);
+                }
+                kept.Add(keptChild);
+            }
+            if (changed)
+            {
+                tree.children = kept.ToArray();
+            }
+        }
+
+        /// <summary>A per-toggle layer exactly like a hand-authored Unity toggle.</summary>
+        static AnimatorControllerLayer BuildToggleLayer(AnimatorController master,
+            CVRAdvancedSettingsEntry entry, string parameter, AnimationClip clip)
+        {
+            bool isBoolParam = master.parameters
+                .Any(p => p.name == parameter && p.type == AnimatorControllerParameterType.Bool);
+
+            var off = new AnimatorState { name = "Off", writeDefaultValues = true, hideFlags = HideFlags.HideInHierarchy };
+            var on = new AnimatorState { name = "On", motion = clip, writeDefaultValues = true, hideFlags = HideFlags.HideInHierarchy };
+
+            var toOn = new AnimatorStateTransition
+            {
+                destinationState = on,
+                hasExitTime = false,
+                duration = 0f,
+                hideFlags = HideFlags.HideInHierarchy,
+                conditions = new[]
+                {
+                    new AnimatorCondition
+                    {
+                        parameter = parameter,
+                        mode = isBoolParam ? AnimatorConditionMode.If : AnimatorConditionMode.Greater,
+                        threshold = 0.5f
+                    }
+                }
+            };
+            var toOff = new AnimatorStateTransition
+            {
+                destinationState = off,
+                hasExitTime = false,
+                duration = 0f,
+                hideFlags = HideFlags.HideInHierarchy,
+                conditions = new[]
+                {
+                    new AnimatorCondition
+                    {
+                        parameter = parameter,
+                        mode = isBoolParam ? AnimatorConditionMode.IfNot : AnimatorConditionMode.Less,
+                        threshold = 0.5f
+                    }
+                }
+            };
+            off.transitions = new[] { toOn };
+            on.transitions = new[] { toOff };
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "Toggle " + entry.name,
+                hideFlags = HideFlags.HideInHierarchy,
+                states = new[]
+                {
+                    new ChildAnimatorState { state = off, position = new Vector3(250, 0, 0) },
+                    new ChildAnimatorState { state = on, position = new Vector3(250, 120, 0) }
+                }
+            };
+            bool defaultOn = entry.setting is CVRAdvancesAvatarSettingGameObjectToggle toggle && toggle.defaultValue;
+            machine.defaultState = defaultOn ? on : off;
+
+            return new AnimatorControllerLayer
+            {
+                name = "Toggle " + entry.name,
+                defaultWeight = 1f,
+                blendingMode = AnimatorLayerBlendingMode.Override,
+                stateMachine = machine
+            };
         }
 
         /// <summary>Targets of a clip that ONLY flips GameObjects on/off; null otherwise.</summary>
