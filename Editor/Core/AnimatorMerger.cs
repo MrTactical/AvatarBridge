@@ -36,15 +36,15 @@ namespace AvatarBridge
         };
 
         // VRChat parameter -> ChilloutVR core parameter.
+        // GestureLeftWeight/RightWeight are NOT renamed: a CVRParameterStream feeds them
+        // from the real trigger values instead (see CreateParameterStreams).
         static readonly Dictionary<string, string> ParameterRenameMap = new Dictionary<string, string>
         {
             { "Viseme", "VisemeIdx" },
             { "Voice", "VisemeLoudness" },
             { "Seated", "Sitting" },
             { "InStation", "Sitting" },
-            { "IsOnFriendsList", "IsFriend" },
-            { "GestureLeftWeight", "GestureLeft" },
-            { "GestureRightWeight", "GestureRight" }
+            { "IsOnFriendsList", "IsFriend" }
         };
 
         // Parameters ChilloutVR drives itself; these must never be renamed or prefixed.
@@ -67,9 +67,10 @@ namespace AvatarBridge
         };
 
         // VRC built-ins with no CVR equivalent; they stay as frozen local parameters.
+        // (MuteSelf/VRMode/GestureWeights are handled via CVRParameterStream instead.)
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
-            "TrackingType", "VRMode", "MuteSelf", "Earmuffs", "Upright", "AngularY",
+            "TrackingType", "Earmuffs", "Upright", "AngularY", "AFK",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
             "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
             "EyeHeightAsPercent", "IsAnimatorEnabled"
@@ -125,9 +126,11 @@ namespace AvatarBridge
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             ToggleNativizer.Run(ctx, master, vrcLayers);
+            BoolifyToggleParameters(master, ctx);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
+            CreateParameterStreams(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
 
@@ -366,13 +369,10 @@ namespace AvatarBridge
                     options = RewriteGestureCondition(condition, ctx);
                     anyChanged = true;
                 }
-                else if (GestureMap.GestureWeightParameters.Contains(condition.parameter))
-                {
-                    options = RewriteWeightCondition(condition, ctx);
-                    anyChanged = true;
-                }
                 else
                 {
+                    // GestureLeftWeight/RightWeight conditions pass through unchanged: a
+                    // CVRParameterStream feeds those parameters the real trigger values.
                     options = new List<List<AnimatorCondition>> { new List<AnimatorCondition> { condition } };
                 }
 
@@ -466,33 +466,6 @@ namespace AvatarBridge
                 new AnimatorCondition { parameter = condition.parameter, mode = AnimatorConditionMode.Greater, threshold = r.min },
                 new AnimatorCondition { parameter = condition.parameter, mode = AnimatorConditionMode.Less, threshold = r.max }
             }).ToList();
-        }
-
-        static List<List<AnimatorCondition>> RewriteWeightCondition(AnimatorCondition condition, BridgeContext ctx)
-        {
-            // In CVR the fist gesture value IS the analog weight (0..1). Point the
-            // condition at GestureLeft/Right and guard Greater checks so other gestures
-            // (values 2..6) don't trigger it.
-            string target = condition.parameter == "GestureLeftWeight" ? "GestureLeft" : "GestureRight";
-            var group = new List<AnimatorCondition>
-            {
-                new AnimatorCondition { parameter = target, mode = condition.mode, threshold = condition.threshold }
-            };
-            if (condition.mode == AnimatorConditionMode.Greater)
-            {
-                group.Add(new AnimatorCondition
-                {
-                    parameter = target,
-                    mode = AnimatorConditionMode.Less,
-                    threshold = 1f + GestureMap.Epsilon
-                });
-            }
-            else
-            {
-                ctx.Report.Approximated(Category, $"{condition.parameter} {condition.mode} {condition.threshold}",
-                    "Weight compare mapped onto the analog fist value; may behave differently while other gestures are held.");
-            }
-            return new List<List<AnimatorCondition>> { group };
         }
 
         static T CloneForBranch<T>(T src) where T : AnimatorTransitionBase, new()
@@ -986,6 +959,258 @@ namespace AvatarBridge
                 ctx.Report.Skipped(Category, "VRC built-in parameters without CVR equivalent",
                     string.Join(", ", unsupportedPresent.Distinct()) + " — they keep their default value.");
             }
+        }
+
+        /// <summary>
+        /// VRCFury bakes toggles as float parameters. When a toggle parameter is used
+        /// ONLY in transition conditions (typical after nativizing/expanding toggles),
+        /// it can safely become a real Bool — cleaner menu, cleaner sync, no 0.5 checks.
+        /// Parameters read by blend trees, motion time, drivers or written by AAP clips
+        /// must stay float.
+        /// </summary>
+        static void BoolifyToggleParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var toggleParams = new HashSet<string>(ctx.CvrAvatar.avatarSettings.settings
+                .Where(e => e.setting is ABI.CCK.Scripts.CVRAdvancesAvatarSettingGameObjectToggle &&
+                            !string.IsNullOrEmpty(e.machineName))
+                .Select(e => e.machineName));
+            if (toggleParams.Count == 0)
+            {
+                return;
+            }
+
+            // Everything that reads/writes parameters outside of transition conditions.
+            var nonConditionRefs = new HashSet<string>();
+            void NoteMotion(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    nonConditionRefs.Add(tree.blendParameter);
+                    nonConditionRefs.Add(tree.blendParameterY);
+                    foreach (var child in tree.children)
+                    {
+                        if (tree.blendType == BlendTreeType.Direct)
+                        {
+                            nonConditionRefs.Add(child.directBlendParameter);
+                        }
+                        NoteMotion(child.motion);
+                    }
+                }
+                else if (motion is AnimationClip clip)
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                        {
+                            nonConditionRefs.Add(binding.propertyName); // AAP write
+                        }
+                    }
+                }
+            }
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var behaviour in machine.behaviours.OfType<AnimatorDriver>())
+                    {
+                        foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
+                        {
+                            nonConditionRefs.Add(task.targetName);
+                            nonConditionRefs.Add(task.aName);
+                            nonConditionRefs.Add(task.bName);
+                        }
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state.timeParameterActive) nonConditionRefs.Add(state.timeParameter);
+                        if (state.speedParameterActive) nonConditionRefs.Add(state.speedParameter);
+                        if (state.mirrorParameterActive) nonConditionRefs.Add(state.mirrorParameter);
+                        if (state.cycleOffsetParameterActive) nonConditionRefs.Add(state.cycleOffsetParameter);
+                        NoteMotion(state.motion);
+                        foreach (var behaviour in state.behaviours.OfType<AnimatorDriver>())
+                        {
+                            foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
+                            {
+                                nonConditionRefs.Add(task.targetName);
+                                nonConditionRefs.Add(task.aName);
+                                nonConditionRefs.Add(task.bName);
+                            }
+                        }
+                    }
+                });
+            }
+
+            var boolified = new HashSet<string>();
+            var parameters = master.parameters;
+            foreach (var param in parameters)
+            {
+                if (param.type == AnimatorControllerParameterType.Float &&
+                    toggleParams.Contains(param.name) &&
+                    !nonConditionRefs.Contains(param.name))
+                {
+                    param.type = AnimatorControllerParameterType.Bool;
+                    param.defaultBool = param.defaultFloat != 0f;
+                    boolified.Add(param.name);
+                }
+            }
+            if (boolified.Count == 0)
+            {
+                return;
+            }
+            master.parameters = parameters;
+
+            // Rewrite every condition on the retyped parameters to bool comparisons.
+            void RewriteBoolConditions(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    var conditions = transition.conditions;
+                    bool changed = false;
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        if (!boolified.Contains(conditions[i].parameter))
+                        {
+                            continue;
+                        }
+                        AnimatorConditionMode mode;
+                        switch (conditions[i].mode)
+                        {
+                            case AnimatorConditionMode.Greater: mode = AnimatorConditionMode.If; break;
+                            case AnimatorConditionMode.Less: mode = AnimatorConditionMode.IfNot; break;
+                            case AnimatorConditionMode.Equals:
+                                mode = conditions[i].threshold != 0f ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
+                                break;
+                            case AnimatorConditionMode.NotEqual:
+                                mode = conditions[i].threshold != 0f ? AnimatorConditionMode.IfNot : AnimatorConditionMode.If;
+                                break;
+                            default: mode = conditions[i].mode; break;
+                        }
+                        conditions[i].mode = mode;
+                        conditions[i].threshold = 0f;
+                        changed = true;
+                    }
+                    if (changed)
+                    {
+                        transition.conditions = conditions;
+                    }
+                }
+            }
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    RewriteBoolConditions(machine.anyStateTransitions);
+                    RewriteBoolConditions(machine.entryTransitions);
+                    foreach (var child in machine.states)
+                    {
+                        RewriteBoolConditions(child.state.transitions);
+                    }
+                });
+            }
+
+            ctx.Report.Converted(Category, $"{boolified.Count} toggle parameter(s) retyped Float -> Bool",
+                "They were only used in conditions; menu and sync now use real bools.");
+        }
+
+        /// <summary>
+        /// CVR Parameter Streams feed values VRChat provided as built-in parameters:
+        /// trigger squeeze (GestureLeft/RightWeight), mute state and VR mode. Entries are
+        /// created via reflection because enum member layouts vary between CCK versions.
+        /// </summary>
+        static void CreateParameterStreams(AnimatorController master, BridgeContext ctx)
+        {
+            var streamables = new[]
+            {
+                (bare: "GestureLeftWeight", streamType: "TriggerLeftValue"),
+                (bare: "GestureRightWeight", streamType: "TriggerRightValue"),
+                (bare: "MuteSelf", streamType: "LocalPlayerMuted"),
+                (bare: "VRMode", streamType: "DeviceMode")
+            };
+            var wanted = new List<(string paramName, string streamType, string bare)>();
+            foreach (var param in master.parameters)
+            {
+                string bare = param.name.TrimStart('#');
+                foreach (var s in streamables)
+                {
+                    if (bare == s.bare)
+                    {
+                        wanted.Add((param.name, s.streamType, s.bare));
+                    }
+                }
+            }
+            if (wanted.Count == 0)
+            {
+                return;
+            }
+
+            var entryType = typeof(CVRParameterStream).Assembly.GetType("ABI.CCK.Components.CVRParameterStreamEntry");
+            var typeEnum = entryType?.GetNestedType("Type");
+            var targetEnum = entryType?.GetNestedType("TargetType");
+            var appEnum = entryType?.GetNestedType("ApplicationType");
+            if (entryType == null || typeEnum == null)
+            {
+                ctx.Report.Warning(Category, "CVRParameterStream entries unavailable on this CCK version",
+                    "GestureLeftWeight/MuteSelf/VRMode parameters keep their defaults.");
+                return;
+            }
+
+            object ParseEnum(Type enumType, string name)
+            {
+                if (enumType == null)
+                {
+                    return null;
+                }
+                try { return Enum.Parse(enumType, name, true); }
+                catch { return null; }
+            }
+            void SetField(object target, string fieldName, object value)
+            {
+                var field = entryType.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+                if (field != null && value != null)
+                {
+                    try { field.SetValue(target, value); } catch { }
+                }
+            }
+
+            var stream = ctx.Target.GetComponent<CVRParameterStream>();
+            if (stream == null)
+            {
+                stream = ctx.Target.AddComponent<CVRParameterStream>();
+            }
+            var entriesField = stream.GetType().GetField("entries", BindingFlags.Public | BindingFlags.Instance);
+            var entries = entriesField?.GetValue(stream) as System.Collections.IList;
+            if (entries == null && entriesField != null)
+            {
+                entries = (System.Collections.IList)Activator.CreateInstance(entriesField.FieldType);
+                entriesField.SetValue(stream, entries);
+            }
+            if (entries == null)
+            {
+                ctx.Report.Warning(Category, "CVRParameterStream has no entries list on this CCK version",
+                    "Stream-fed parameters keep their defaults.");
+                return;
+            }
+
+            foreach (var w in wanted)
+            {
+                var streamTypeValue = ParseEnum(typeEnum, w.streamType);
+                if (streamTypeValue == null)
+                {
+                    ctx.Report.Skipped(Category, $"Parameter stream {w.streamType}",
+                        $"Stream type not found on this CCK version; \"{w.paramName}\" keeps its default.");
+                    continue;
+                }
+                var entry = Activator.CreateInstance(entryType);
+                SetField(entry, "type", streamTypeValue);
+                SetField(entry, "targetType", ParseEnum(targetEnum, "Animator"));
+                SetField(entry, "applicationType", ParseEnum(appEnum, "Override"));
+                SetField(entry, "parameterName", w.paramName);
+                entries.Add(entry);
+                ctx.Report.Converted(Category, $"\"{w.paramName}\" fed by CVR Parameter Stream ({w.streamType})",
+                    "Behaves like the VRChat built-in parameter.");
+            }
+            EditorUtility.SetDirty(stream);
         }
 
         static string SanitizeParameterName(string source)
