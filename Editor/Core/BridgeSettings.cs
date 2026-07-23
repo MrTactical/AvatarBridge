@@ -43,6 +43,14 @@ namespace AvatarBridge
         public PhysicsTarget physicsTarget = PhysicsTarget.MagicaCloth2;
         public bool deleteConvertedPhysBones = true;
 
+        [Header("VRChat-only system stripping")]
+        // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15
+        // synced parameters (incl. a 256-value emote int) on layers that fight CVR.
+        public bool stripGogoLoco = true;
+        // SPS/OGB/TPS haptics and PCS are VRChat-specific; their contacts, shaders and
+        // parameters don't function in CVR and burn huge amounts of sync budget.
+        public bool stripSpsSystems = true;
+
         [Header("Contacts")]
         public bool convertContacts = true;
         // Recreate VRChat's built-in hand/head/torso colliders as CVR pointers so contact

@@ -134,6 +134,26 @@ namespace AvatarBridge
                     };
 
                 case VRCExpressionParameters.ValueType.Float:
+                    // VRCFury bakes most toggles as float parameters driven by blend
+                    // trees. When every menu use is a toggle/button, expose a checkbox
+                    // (writing 0/1 into the float) instead of a slider.
+                    if (hasMenu && paramUses.All(u =>
+                            u.Type == VRCExpressionsMenu.Control.ControlType.Toggle ||
+                            u.Type == VRCExpressionsMenu.Control.ControlType.Button))
+                    {
+                        ctx.Report.Converted(Category, p.name, $"Toggle \"{display}\" (float parameter)");
+                        return new CVRAdvancedSettingsEntry
+                        {
+                            name = display,
+                            machineName = p.name,
+                            unlinkNameFromMachineName = true,
+                            setting = new CVRAdvancesAvatarSettingGameObjectToggle
+                            {
+                                defaultValue = p.defaultValue != 0,
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
+                            }
+                        };
+                    }
                     if (hasMenu && paramUses.Any(u =>
                         u.Type == VRCExpressionsMenu.Control.ControlType.TwoAxisPuppet))
                     {
@@ -242,7 +262,7 @@ namespace AvatarBridge
 
             foreach (var control in menu.controls)
             {
-                string display = prefix + control.name;
+                string display = prefix + CleanMenuName(control.name);
                 switch (control.type)
                 {
                     case VRCExpressionsMenu.Control.ControlType.Toggle:
@@ -359,6 +379,22 @@ namespace AvatarBridge
                         : (int)condition.threshold);
                 }
             }
+        }
+
+        /// <summary>
+        /// Menu names frequently carry TextMeshPro markup (GoGo Loco headers etc.);
+        /// CVR menus render them literally, so strip tags and newlines.
+        /// </summary>
+        static string CleanMenuName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return "-";
+            }
+            string clean = System.Text.RegularExpressions.Regex.Replace(name, "<[^>]*>", "");
+            clean = clean.Replace("\r", " ").Replace("\n", " ");
+            clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s+", " ").Trim();
+            return string.IsNullOrEmpty(clean) ? "-" : clean;
         }
 
         static string ShortName(string display)

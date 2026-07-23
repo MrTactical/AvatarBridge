@@ -100,7 +100,11 @@ namespace AvatarBridge
                     }
 
                     var clone = copier.CloneLayer(srcLayer);
-                    clone.name = MakeUniqueLayerName(masterLayers, $"[{id}] {clone.name}");
+                    // Converted hand-pose layers take over the CCK's LeftHand/RightHand
+                    // slots (those were removed above), keeping the controller readable.
+                    string cvrHandName = GetCvrHandLayerName(id, srcLayer);
+                    clone.name = MakeUniqueLayerName(masterLayers,
+                        cvrHandName ?? $"[{id}] {clone.name}");
                     if (firstLayerOfController)
                     {
                         // Unity forces a controller's first layer to weight 1; once merged it
@@ -119,6 +123,7 @@ namespace AvatarBridge
 
             GesturePass(master, vrcLayers, ctx);
             BehaviourPass(master, vrcLayers, ctx);
+            SystemStripper.Run(ctx, master, vrcLayers);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
 
@@ -1012,6 +1017,25 @@ namespace AvatarBridge
             {
                 WalkMachines(child.stateMachine, visit);
             }
+        }
+
+        static string GetCvrHandLayerName(VRCAvatarDescriptor.AnimLayerType id, AnimatorControllerLayer srcLayer)
+        {
+            if (id != VRCAvatarDescriptor.AnimLayerType.Gesture)
+            {
+                return null;
+            }
+            string maskName = srcLayer.avatarMask != null ? srcLayer.avatarMask.name : "";
+            string layerName = srcLayer.name.ToLowerInvariant();
+            if (maskName == "vrc_Hand Left" || layerName.Contains("left"))
+            {
+                return "LeftHand";
+            }
+            if (maskName == "vrc_Hand Right" || layerName.Contains("right"))
+            {
+                return "RightHand";
+            }
+            return null;
         }
 
         static string MakeUniqueLayerName(List<AnimatorControllerLayer> layers, string name)

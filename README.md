@@ -98,6 +98,22 @@ detecting what's installed.
 Tuning constants (`GravityScale`, damping range) sit at the top of
 `Editor/Core/Physics/MagicaClothWriter.cs` if the feel needs adjusting.
 
+## VRChat-only system stripping
+
+Two subsystems common on modern avatars are dead weight in ChilloutVR, and AvatarBridge
+strips them by default (both toggleable in the window):
+
+- **GoGo Loco** — CVR ships its own locomotion, flight and emote system; GoGo's layers
+  fight it and waste ~15 synced parameters (including a 256-value emote int).
+- **SPS / OGB / TPS haptics and PCS** — VRChat-specific penetration/haptics stacks. Their
+  shaders and contact conventions don't function in CVR, and they typically burn more
+  sync budget than everything else combined.
+
+Stripping removes their animator layers, scene objects, menu entries and synced
+parameters. Any surviving reference falls back to a local (`#`) parameter, so nothing
+breaks — it just stops syncing. On a Fury-heavy test avatar this took the sync usage
+from ~3100/3200 bits to a comfortable fraction of the budget.
+
 ## VRCFury avatars
 
 Most modern avatars use [VRCFury](https://vrcfury.com/), which only creates its real

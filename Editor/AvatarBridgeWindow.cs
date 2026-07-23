@@ -88,6 +88,20 @@ namespace AvatarBridge
                 }
             }
 
+            // ---- VRChat-only systems ---------------------------------------------------
+            GUILayout.Space(6);
+            EditorGUILayout.LabelField("Strip VRChat-only systems", EditorStyles.boldLabel);
+            settings.stripGogoLoco = EditorGUILayout.ToggleLeft(
+                new GUIContent("Remove GoGo Loco (recommended)",
+                    "CVR has its own locomotion, flight and emotes. GoGo's layers fight them and " +
+                    "waste ~15 synced parameters."),
+                settings.stripGogoLoco);
+            settings.stripSpsSystems = EditorGUILayout.ToggleLeft(
+                new GUIContent("Remove SPS / OGB / PCS (recommended)",
+                    "VRChat-specific penetration & haptics systems. Their shaders, contacts and " +
+                    "parameters do not function in CVR and burn large amounts of sync budget."),
+                settings.stripSpsSystems);
+
             // ---- Animator ------------------------------------------------------------
             GUILayout.Space(6);
             showAnimatorOptions = EditorGUILayout.Foldout(showAnimatorOptions, "Animator layers", true);
