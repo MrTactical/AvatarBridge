@@ -20,36 +20,39 @@ Every conversion produces a `ConversionReport.md` that honestly lists what was c
 
 ## Installation
 
-> ⚠️ **Import order matters.** Importing these packages out of order can leave the project
-> with broken scripting defines or compile errors that are annoying to untangle. Follow the
-> steps top to bottom.
+> ⚠️ **Import order matters.** Follow the steps top to bottom and let Unity finish
+> compiling after each one. Importing out of order can corrupt VRCFury data or leave
+> broken scripting defines.
 
 1. **Unity 2022.3.22f1** — the exact version both the current VRChat SDK and CCK 4 target.
-2. **Duplicate your VRChat avatar project** (made with the Creator Companion, so the
-   Avatars SDK is already inside). The conversion project will contain both SDKs —
-   never do this in your real upload project.
-3. Open the copy and let it compile cleanly **before** importing anything else.
-4. Import the ChilloutVR **CCK 4** unitypackage. Let it finish compiling.
-5. Import **MagicaCloth2** (recommended) and/or **DynamicBone** — whichever physics
-   target you plan to use. Let it finish compiling.
-5b. **If your avatar uses VRCFury: install VRCFury *before* importing the avatar
-   package.** Avatars imported while Fury is missing end up with "Missing Script"
-   components whose data gets corrupted ("Found a null SerializeReference" when Fury
-   later tries to build). If that happened, delete the avatar's assets and re-import
-   its package with Fury already installed.
-6. Import **AvatarBridge last**: grab the `.unitypackage` from the
+2. **A VRChat avatar project copy** — duplicate your existing Creator Companion project
+   (Avatars SDK, VRCFury and the avatar are already inside). Never convert in your real
+   upload project. Open the copy and make sure it compiles cleanly before continuing.
+3. **ChilloutVR CCK 4** — import the unitypackage.
+4. **MagicaCloth2** (recommended) and/or **DynamicBone** — whichever physics target you
+   plan to use.
+5. **VRCFury** — [download](https://vrcfury.com/download) and install it *if* your
+   avatars use it (most modern ones do) and it isn't already in the project.
+6. **Avatar packages** — only if you're adding avatars that aren't in the project yet:
+   import them now, *after* VRCFury.
+7. **AvatarBridge** — always last. Grab the `.unitypackage` from the
    [Releases page](https://github.com/MrTactical/AvatarBridge/releases), or copy this
    repository into the project as `Assets/AvatarBridge`. It must live under `Assets`,
    not `Packages` — that's how the optional MagicaCloth2 / DynamicBone integration
    resolves automatically.
 
-**One extra recompile right after importing AvatarBridge is normal** — that's the tool
+One extra recompile right after importing AvatarBridge is normal — that's the tool
 registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines after
 detecting what's installed.
 
-Got the order wrong anyway? Usually recoverable: import whatever is missing, let Unity
-recompile, and reopen the window — it shows a ✔/✘ checklist of what it can and can't see.
-If the project is truly wedged, delete the `Library` folder and let Unity reimport.
+### Install troubleshooting
+
+| Symptom | Cause & fix |
+|---|---|
+| Converter window shows a ✔/✘ checklist instead of options | A required SDK is missing — import it, let Unity recompile, reopen the window. |
+| VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, which corrupted its Fury component data. Delete the avatar's assets and scene copies, then re-import its package with VRCFury already installed. |
+| Physics target warning in the converter window | MagicaCloth2 / DynamicBone isn't installed, or needs one more recompile to be detected. |
+| Project completely wedged after an out-of-order import | Close Unity, delete the `Library` folder, reopen and let it reimport. |
 
 ## Usage
 
