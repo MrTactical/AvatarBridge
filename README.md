@@ -32,6 +32,11 @@ Every conversion produces a `ConversionReport.md` that honestly lists what was c
 4. Import the ChilloutVR **CCK 4** unitypackage. Let it finish compiling.
 5. Import **MagicaCloth2** (recommended) and/or **DynamicBone** — whichever physics
    target you plan to use. Let it finish compiling.
+5b. **If your avatar uses VRCFury: install VRCFury *before* importing the avatar
+   package.** Avatars imported while Fury is missing end up with "Missing Script"
+   components whose data gets corrupted ("Found a null SerializeReference" when Fury
+   later tries to build). If that happened, delete the avatar's assets and re-import
+   its package with Fury already installed.
 6. Import **AvatarBridge last**: grab the `.unitypackage` from the
    [Releases page](https://github.com/MrTactical/AvatarBridge/releases), or copy this
    repository into the project as `Assets/AvatarBridge`. It must live under `Assets`,
