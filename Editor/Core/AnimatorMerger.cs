@@ -18,7 +18,7 @@ namespace AvatarBridge
     /// AvatarAnimator, then rewrites everything VRC-specific:
     ///
     ///  - GestureLeft/GestureRight int values -> CVR float values (with range conditions)
-    ///  - GestureLeftWeight/RightWeight       -> GestureLeft/Right (CVR fist is analog)
+    ///  - GestureLeftWeight/RightWeight       -> fed by a CVRParameterStream (trigger value)
     ///  - VRC parameter names                 -> CVR core names (Viseme -> VisemeIdx, ...)
     ///  - non-synced parameters               -> "#" prefix (CVR local-only convention)
     ///  - menu Buttons                        -> "&lt;impulse=0.1&gt;" auto-reset parameters
@@ -732,7 +732,7 @@ namespace AvatarBridge
                 return result;
             }
 
-            // Parameters (dedupe after rename; e.g. GestureLeftWeight folds into GestureLeft).
+            // Parameters (dedupe after rename; e.g. Viseme folds into VisemeIdx).
             var newParams = new List<AnimatorControllerParameter>();
             var seenNames = new HashSet<string>();
             foreach (var param in master.parameters)
