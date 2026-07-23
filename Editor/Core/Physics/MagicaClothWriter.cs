@@ -35,6 +35,12 @@ namespace AvatarBridge
         {
             var holder = new GameObject("MagicaCloth_" + data.Root.name);
             holder.transform.SetParent(ctx.Target.transform, false);
+            if (!data.InitiallyActive)
+            {
+                holder.SetActive(false);
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Source PhysBone was disabled; cloth created disabled. Animator toggles that enabled it are not re-wired.");
+            }
 
             var cloth = holder.AddComponent<MagicaCloth>();
             var sdata = cloth.SerializeData;

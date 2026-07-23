@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
 
@@ -21,6 +22,19 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, "No PhysBones found");
                 return;
+            }
+
+            // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let
+            // the animator switch between them; all get converted, but only the ones that
+            // were enabled start active, and the user should review which they keep.
+            foreach (var group in physBones
+                .GroupBy(pb => pb.rootTransform != null ? pb.rootTransform : pb.transform)
+                .Where(g => g.Count() > 1))
+            {
+                int active = group.Count(pb => pb.isActiveAndEnabled);
+                ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
+                    $"VRChat toggles between them at runtime; {active} started enabled and only those were " +
+                    "activated. Review the generated components and delete the variants you don't need.");
             }
 
             switch (ctx.Settings.physicsTarget)

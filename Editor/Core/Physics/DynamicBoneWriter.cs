@@ -34,6 +34,12 @@ namespace AvatarBridge
         {
             var db = data.SourceGameObject.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
+            if (!data.InitiallyActive)
+            {
+                db.enabled = false;
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Source PhysBone was disabled; DynamicBone created disabled. Animator toggles that enabled it are not re-wired.");
+            }
 
             db.m_Elasticity = Mathf.Clamp01(data.Pull) * ElasticityScale;
             if (PhysBoneChainData.HasCurve(data.PullCurve))
