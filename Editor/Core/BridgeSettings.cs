@@ -10,6 +10,14 @@ namespace AvatarBridge
         None
     }
 
+    public enum ToggleStyle
+    {
+        /// <summary>Every toggle becomes a classic Off/On animator layer with its own clip.</summary>
+        AnimatorLayers,
+        /// <summary>Object toggles are handed to CVR's builder as GameObject targets.</summary>
+        CvrNativeTargets
+    }
+
     /// <summary>
     /// All user-facing conversion options. Serialized so the editor window remembers them.
     /// </summary>
@@ -32,9 +40,12 @@ namespace AvatarBridge
         public bool convertFxLayer = true;
 
         [Header("Parameters")]
-        // Simple object on/off toggles get handed to CVR's own animator builder: the
-        // Fury-baked FX layer is removed and the CCK generates a clean bool toggle.
+        // Master switch for rebuilding VRCFury's merged toggles into something readable.
         public bool nativizeObjectToggles = true;
+        // AnimatorLayers keeps every toggle inside the generated controller (works
+        // without pressing "Create Controller"); CvrNativeTargets defers object toggles
+        // to the CCK's own builder via GameObject targets.
+        public ToggleStyle toggleStyle = ToggleStyle.AnimatorLayers;
         // When enabled, animator parameters that are not network-synced in VRChat get the
         // CVR "#" local-only prefix so network traffic matches the original avatar.
         public bool preserveParameterSyncState = true;

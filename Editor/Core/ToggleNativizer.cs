@@ -58,6 +58,8 @@ namespace AvatarBridge
 
             var removedMachines = new HashSet<AnimatorStateMachine>();
             var nativizedParams = new HashSet<string>();
+            bool useNativeTargets = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            var renamedLayers = new List<(AnimatorStateMachine machine, string name)>();
 
             foreach (var layer in vrcLayers.ToList())
             {
@@ -81,6 +83,21 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+
+                if (!useNativeTargets)
+                {
+                    // The layer is already a working Off/On toggle — just give it a
+                    // human name instead of VRCFury's "[FX] [VF121] ..." label.
+                    string friendly = "Toggle " + entry.name;
+                    if (layer.name != friendly && !LayerNameExists(master, new List<AnimatorControllerLayer>(), friendly))
+                    {
+                        renamedLayers.Add((layer.stateMachine, friendly));
+                        ctx.Report.Converted(Category, entry.name,
+                            $"Kept as its own animator layer (renamed from \"{layer.name}\").");
+                    }
+                    continue;
+                }
+
                 if (!ApplyTargets(ctx, entry, targets))
                 {
                     return; // CCK version without native targets; keep animator toggles
@@ -94,25 +111,29 @@ namespace AvatarBridge
             }
 
             // Modern VRCFury merges many toggles as branches of shared direct blend
-            // trees; pull pure object toggles out of those too.
+            // trees; pull pure object toggles out of those too. Only needed for the
+            // CVR-native style — the layer style expands every branch below instead.
             bool aborted = false;
-            foreach (var layer in vrcLayers)
+            if (useNativeTargets)
             {
-                if (aborted)
+                foreach (var layer in vrcLayers)
                 {
-                    break;
-                }
-                string layerName = layer.name;
-                SystemStripper.WalkMachines(layer.stateMachine, machine =>
-                {
-                    foreach (var child in machine.states)
+                    if (aborted)
                     {
-                        if (!aborted && child.state.motion is BlendTree tree)
-                        {
-                            NativizeTreeToggles(ctx, tree, entriesByParam, nativizedParams, layerName, ref aborted);
-                        }
+                        break;
                     }
-                });
+                    string layerName = layer.name;
+                    SystemStripper.WalkMachines(layer.stateMachine, machine =>
+                    {
+                        foreach (var child in machine.states)
+                        {
+                            if (!aborted && child.state.motion is BlendTree tree)
+                            {
+                                NativizeTreeToggles(ctx, tree, entriesByParam, nativizedParams, layerName, ref aborted);
+                            }
+                        }
+                    });
+                }
             }
 
             // Branches still keyed to toggle menu entries animate more than plain object
@@ -157,7 +178,22 @@ namespace AvatarBridge
                 master.layers = relabeled;
             }
 
-            if (removedMachines.Count == 0 && nativizedParams.Count == 0 && expandedLayers.Count == 0)
+            if (renamedLayers.Count > 0)
+            {
+                var byMachine = renamedLayers.ToDictionary(r => r.machine, r => r.name);
+                var layers = master.layers;
+                for (int i = 0; i < layers.Length; i++)
+                {
+                    if (layers[i].stateMachine != null && byMachine.TryGetValue(layers[i].stateMachine, out var newName))
+                    {
+                        layers[i].name = newName;
+                    }
+                }
+                master.layers = layers;
+            }
+
+            if (removedMachines.Count == 0 && nativizedParams.Count == 0 &&
+                expandedLayers.Count == 0 && renamedLayers.Count == 0)
             {
                 return;
             }
@@ -194,8 +230,17 @@ namespace AvatarBridge
                     entriesByParam[param].setting.usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool;
                 }
             }
-            ctx.Report.Converted(Category,
-                $"{nativizedParams.Count} toggle(s) handed to CVR's own animator builder");
+            if (nativizedParams.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{nativizedParams.Count} toggle(s) handed to CVR's own animator builder");
+            }
+            if (expandedLayers.Count > 0 || renamedLayers.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{expandedLayers.Count + renamedLayers.Count} toggle(s) given their own animator layer",
+                    "They work from the generated controller without running \"Create Controller\".");
+            }
         }
 
         static void NativizeTreeToggles(BridgeContext ctx, BlendTree tree,

@@ -141,10 +141,20 @@ namespace AvatarBridge
                             "Head/hands/fingers pointers so converted receivers keep reacting to other players."),
                         settings.createDefaultColliderPointers);
                     settings.nativizeObjectToggles = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Native CVR toggles for simple objects (recommended)",
-                            "Object on/off toggles are rebuilt with CVR's own animator builder as real " +
-                            "bool checkboxes instead of VRCFury's float-driven FX layers."),
+                        new GUIContent("Rebuild VRCFury toggles (recommended)",
+                            "Pulls toggles out of VRCFury's merged blend tree so each one is a readable, " +
+                            "working toggle instead of float math."),
                         settings.nativizeObjectToggles);
+                    using (new EditorGUI.DisabledScope(!settings.nativizeObjectToggles))
+                    {
+                        settings.toggleStyle = (ToggleStyle)EditorGUILayout.EnumPopup(
+                            new GUIContent("Toggle style",
+                                "Animator Layers: every toggle gets its own Off/On layer in the generated " +
+                                "controller and works immediately.\n" +
+                                "CVR Native Targets: object toggles are left to the CCK's own builder " +
+                                "(you must press \"Create Controller\" on the avatar)."),
+                            settings.toggleStyle);
+                    }
                     settings.preserveParameterSyncState = EditorGUILayout.ToggleLeft(
                         new GUIContent("Preserve parameter sync state",
                             "Non-synced VRC parameters get CVR's '#' local-only prefix."),
