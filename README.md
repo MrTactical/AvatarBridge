@@ -20,15 +20,31 @@ Every conversion produces a `ConversionReport.md` that honestly lists what was c
 
 ## Installation
 
-1. **Duplicate your VRChat avatar project** (the conversion project will contain both SDKs;
-   don't risk your upload project).
-2. Import the ChilloutVR **CCK 4** unitypackage into the copy.
-3. Copy this repository into the project as `Assets/AvatarBridge`
-   (it must live under `Assets`, not `Packages` — that's how the optional MagicaCloth2 /
-   DynamicBone integration resolves automatically).
-4. Optionally import MagicaCloth2 and/or DynamicBone. AvatarBridge detects them and
-   enables the matching converter (scripting defines `AVATARBRIDGE_MAGICA` /
-   `AVATARBRIDGE_DYNBONE` are managed automatically).
+> ⚠️ **Import order matters.** Importing these packages out of order can leave the project
+> with broken scripting defines or compile errors that are annoying to untangle. Follow the
+> steps top to bottom.
+
+1. **Unity 2022.3.22f1** — the exact version both the current VRChat SDK and CCK 4 target.
+2. **Duplicate your VRChat avatar project** (made with the Creator Companion, so the
+   Avatars SDK is already inside). The conversion project will contain both SDKs —
+   never do this in your real upload project.
+3. Open the copy and let it compile cleanly **before** importing anything else.
+4. Import the ChilloutVR **CCK 4** unitypackage. Let it finish compiling.
+5. Import **MagicaCloth2** (recommended) and/or **DynamicBone** — whichever physics
+   target you plan to use. Let it finish compiling.
+6. Import **AvatarBridge last**: grab the `.unitypackage` from the
+   [Releases page](https://github.com/MrTactical/AvatarBridge/releases), or copy this
+   repository into the project as `Assets/AvatarBridge`. It must live under `Assets`,
+   not `Packages` — that's how the optional MagicaCloth2 / DynamicBone integration
+   resolves automatically.
+
+**One extra recompile right after importing AvatarBridge is normal** — that's the tool
+registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines after
+detecting what's installed.
+
+Got the order wrong anyway? Usually recoverable: import whatever is missing, let Unity
+recompile, and reopen the window — it shows a ✔/✘ checklist of what it can and can't see.
+If the project is truly wedged, delete the `Library` folder and let Unity reimport.
 
 ## Usage
 
