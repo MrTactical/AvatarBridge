@@ -55,7 +55,9 @@ namespace AvatarBridge
                         "The CCK upload will likely complain about them; enable cleanup or remove them manually.");
                 }
 
-                if (settings.cloneAvatar)
+                // Deactivate the original whenever we worked on a separate object
+                // (explicit clone or a VRCFury-baked copy).
+                if (ctx.Target != descriptor.gameObject)
                 {
                     descriptor.gameObject.SetActive(false);
                 }
@@ -94,6 +96,31 @@ namespace AvatarBridge
         static void PrepareTarget(BridgeContext ctx)
         {
             var source = ctx.SourceDescriptor.gameObject;
+
+            // VRCFury avatars must be baked by VRCFury itself first, otherwise every
+            // Fury-driven feature (toggles, linked clothing, full controllers) is lost.
+            if (ctx.Settings.bakeVrcFury)
+            {
+                var baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                if (baked != null)
+                {
+                    var bakedDescriptor = baked.GetComponentInChildren<VRCAvatarDescriptor>(true);
+                    // Read everything (menus, params, layers) from the baked data and
+                    // convert the baked copy in place; the original stays untouched.
+                    ctx.SourceDescriptor = bakedDescriptor;
+                    ctx.Target = bakedDescriptor.gameObject;
+                    ctx.Target.name = source.name + " (ChilloutVR)";
+                    ctx.Target.SetActive(true);
+                    Undo.RegisterCreatedObjectUndo(ctx.Target, "AvatarBridge conversion");
+                    return;
+                }
+                if (VRCFuryBaker.HasFuryComponents(source))
+                {
+                    ctx.Report.Warning("VRCFury", "Converting WITHOUT a VRCFury bake",
+                        "Fury-driven features will be missing from the result. " + VRCFuryBaker.ManualInstruction);
+                }
+            }
+
             if (ctx.Settings.cloneAvatar)
             {
                 ctx.Target = UnityEngine.Object.Instantiate(source);

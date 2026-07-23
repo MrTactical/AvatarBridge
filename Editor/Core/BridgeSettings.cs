@@ -19,6 +19,9 @@ namespace AvatarBridge
         [Header("General")]
         public bool cloneAvatar = true;
         public bool deleteVrcComponents = true;
+        // Run VRCFury's own "Build a Test Copy" pipeline first so Fury toggles, linked
+        // clothing, full controllers etc. are baked into real layers before converting.
+        public bool bakeVrcFury = true;
         public string outputFolder = "Assets/AvatarBridge/Output";
 
         [Header("Animator layers to merge")]

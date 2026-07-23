@@ -47,6 +47,21 @@ namespace AvatarBridge
                 settings.cloneAvatar);
             settings.deleteVrcComponents = EditorGUILayout.ToggleLeft(
                 "Delete VRC components after conversion", settings.deleteVrcComponents);
+            settings.bakeVrcFury = EditorGUILayout.ToggleLeft(
+                new GUIContent("Bake VRCFury first (recommended)",
+                    "Runs VRCFury's own 'Build a Test Copy' pipeline before converting, so Fury " +
+                    "toggles, linked clothing and full controllers become real layers that convert."),
+                settings.bakeVrcFury);
+
+            if (avatar != null && VRCFuryBaker.HasFuryComponents(avatar.gameObject))
+            {
+                EditorGUILayout.HelpBox(settings.bakeVrcFury
+                        ? "VRCFury detected on this avatar. It will be baked with VRCFury's own builder " +
+                          "first, so all Fury features carry over into the conversion."
+                        : "VRCFury detected on this avatar! With baking disabled, every Fury-driven " +
+                          "feature (toggles, clothing, menus) will be MISSING from the result.",
+                    settings.bakeVrcFury ? MessageType.Info : MessageType.Warning);
+            }
 
             // ---- Physics -------------------------------------------------------------
             GUILayout.Space(6);

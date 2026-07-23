@@ -90,6 +90,24 @@ If the project is truly wedged, delete the `Library` folder and let Unity reimpo
 Tuning constants (`GravityScale`, damping range) sit at the top of
 `Editor/Core/Physics/MagicaClothWriter.cs` if the feel needs adjusting.
 
+## VRCFury avatars
+
+Most modern avatars use [VRCFury](https://vrcfury.com/), which only creates its real
+animator layers, parameters and menus **at build time** — converting such an avatar
+directly would silently lose every Fury feature (toggles, linked clothing, full
+controllers, GogoLoco hooks…).
+
+AvatarBridge handles this automatically: when it detects VRCFury components it first runs
+**VRCFury's own "Build a Test Copy" pipeline** (via reflection, so any Fury version works
+without a hard dependency), then converts the fully-baked copy. The baked avatar contains
+plain FX layers, expression parameters, menus and PhysBones with all Fury components
+already stripped — exactly what the converter needs. Fury's internal `VF##_`-prefixed
+parameters come out non-synced and are automatically marked local (`#` prefix) in CVR.
+
+If the automatic bake fails (e.g. an unusual VRCFury version), the report tells you the
+manual route: right-click the avatar → **VRCFury → Build a Test Copy**, then run
+AvatarBridge on the test copy.
+
 ## Known limitations
 
 - **PhysBone interaction features** — grabbing, posing, stretch/squish and the
