@@ -153,7 +153,7 @@ OSCmooth) so nothing fights over the same blendshapes.
 - **Native** *(default)* — detects the avatar's FT blendshapes (Unified Expressions /
   SRanipal) and sets up ChilloutVR's built-in `CVRFaceTracking` component, auto-mapping the
   shapes. Self-contained, no extra packages — but the built-in solver is a bit stiff.
-- **DragonSkyRunner** — injects [DragonSkyRunner's CVR Eye & Face Tracking](https://booth.pm/en/items/5761383)
+- **DragonSkyRunner** — injects [DragonSkyRunner's CVR Eye & Face Tracking]
   animator: its layers and parameters are copied straight into the generated controller. It's
   a lightweight, CVR-native rig — direct float parameters, no binary encoding or smoothing
   (≈50 synced floats + 2 bools). A CVR face-tracking OSC mod (VRCFaceTracking + Kafe's OSC
