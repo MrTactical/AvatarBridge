@@ -22,9 +22,10 @@ namespace AvatarBridge
     {
         /// <summary>Native CVR: add and auto-map a CVRFaceTracking component (blendshape-based).</summary>
         Native,
-        /// <summary>Strip any existing FT rig and inject DragonSkyRunner's lightweight CVR
-        /// Eye &amp; Face Tracking animator (its layers/params are copied into the controller).
-        /// Requires that package present in the project.</summary>
+        /// <summary>CVR-VRCFT (parameter-based). Strip any existing FT rig and inject the
+        /// bundled DragonSkyRunner "CVR Eye &amp; Face Tracking" animator, repathed onto this
+        /// avatar (eye-tracking empties + rotation constraints generated automatically). The
+        /// enum name is kept for serialization stability; the UI labels it "CVR VRCFT".</summary>
         DragonSkyRunner,
         /// <summary>Leave face tracking entirely to the user.</summary>
         None

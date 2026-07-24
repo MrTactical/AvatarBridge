@@ -5,18 +5,18 @@ using UnityEditor.Animations;
 namespace AvatarBridge
 {
     /// <summary>
-    /// Soft (dependency-free) detection of the injectable CVR face-tracking animator used
-    /// by the DragonSkyRunner mode. AvatarBridge never references the package's types, so
-    /// there's no hard dependency — it just looks the controller up in the AssetDatabase by
-    /// its stable asset GUID (falling back to the folder / a name search). When the mode is
-    /// selected but the package isn't present, the window points the user at where to get it.
+    /// Locates the CVR-VRCFT face-tracking animator that AvatarBridge injects. The rig is
+    /// DragonSkyRunner's "CVR Eye &amp; Face Tracking" and ships bundled under
+    /// Assets/AvatarBridge/FaceTracking, so this normally always resolves; the lookup is by
+    /// the controller's stable asset GUID (with a name-search fallback) so it still works if
+    /// the assets are relocated. IsInstalled only reports false if the bundle was deleted.
     /// </summary>
     public static class FaceTrackingPackages
     {
-        public const string DisplayName = "DragonSkyRunner — CVR Eye & Face Tracking";
-        public const string Url = "https://booth.pm/en/items/5761383";
+        public const string DisplayName = "CVR VRCFT — Eye & Face Tracking (DragonSkyRunner)";
+        public const string Url = "https://github.com/DragonSkyRunner/ChilloutVR-Facetracking-Animator-Package";
 
-        // Stable GUID of "Face Tracking Layers.controller" shipped in the package.
+        // Stable GUID of "Face Tracking Layers.controller" (bundled from the package).
         const string ControllerGuid = "d9d4007a1a5aa2347a6a360555797b47";
 
         public static AnimatorController LoadController()

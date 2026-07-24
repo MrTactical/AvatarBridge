@@ -176,14 +176,8 @@ namespace AvatarBridge
                     settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                     settings.convertHeadChop = EditorGUILayout.ToggleLeft("Convert VRC Head Chop", settings.convertHeadChop);
                     settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);
-                    settings.faceTrackingMode = (FaceTrackingMode)EditorGUILayout.EnumPopup(
-                        new GUIContent("Face tracking",
-                            "Native: auto-add and map a CVRFaceTracking component (blendshape-based).\n" +
-                            "DragonSkyRunner: strip any existing FT and inject DragonSkyRunner's lightweight " +
-                            "CVR Eye & Face Tracking animator; needs that package installed.\n" +
-                            "None: leave face tracking entirely to you."),
-                        settings.faceTrackingMode);
-                    DrawDragonSkyRunnerFtNotice();
+                    DrawFaceTrackingModeDropdown();
+                    DrawCvrVrcftFtNotice();
                     settings.outputFolder = EditorGUILayout.TextField("Output folder", settings.outputFolder);
                 }
             }
@@ -206,16 +200,38 @@ namespace AvatarBridge
             else if (ftPackageMissing)
             {
                 EditorGUILayout.HelpBox(
-                    $"DragonSkyRunner face tracking needs \"{FaceTrackingPackages.DisplayName}\" in the project, " +
-                    "and it wasn't found. Import it (or switch Face tracking to Native or None) to convert.",
-                    MessageType.Warning);
+                    $"CVR VRCFT face tracking needs the bundled \"{FaceTrackingPackages.DisplayName}\" assets " +
+                    "(Assets/AvatarBridge/FaceTracking), and they weren't found. Reimport AvatarBridge, or switch " +
+                    "Face tracking to Native or None.", MessageType.Warning);
             }
 
             DrawReport();
             EditorGUILayout.EndScrollView();
         }
 
-        void DrawDragonSkyRunnerFtNotice()
+        static readonly FaceTrackingMode[] FtModes =
+            { FaceTrackingMode.Native, FaceTrackingMode.DragonSkyRunner, FaceTrackingMode.None };
+
+        void DrawFaceTrackingModeDropdown()
+        {
+            var labels = new[]
+            {
+                new GUIContent("Native",
+                    "Auto-add and map a CVRFaceTracking component (blendshape-based)."),
+                new GUIContent("CVR VRCFT — parameter (DragonSkyRunner)",
+                    "Strip any existing FT and inject DragonSkyRunner's bundled CVR Eye & Face Tracking " +
+                    "animator, repathed onto this avatar (eye empties + constraints generated automatically)."),
+                new GUIContent("None", "Leave face tracking entirely to you."),
+            };
+            int index = Mathf.Max(0, System.Array.IndexOf(FtModes, settings.faceTrackingMode));
+            index = EditorGUILayout.Popup(
+                new GUIContent("Face tracking",
+                    "How to handle VRCFaceTracking. Native and CVR-VRCFT both strip any existing FT rig first."),
+                index, labels);
+            settings.faceTrackingMode = FtModes[index];
+        }
+
+        void DrawCvrVrcftFtNotice()
         {
             if (settings.faceTrackingMode != FaceTrackingMode.DragonSkyRunner)
             {
@@ -223,20 +239,21 @@ namespace AvatarBridge
             }
             if (FaceTrackingPackages.IsInstalled())
             {
-                EditorGUILayout.HelpBox($"Detected \"{FaceTrackingPackages.DisplayName}\". AvatarBridge strips the " +
-                    "avatar's existing FT and injects this rig's layers/parameters into the generated animator. " +
-                    "Assumes Unified-Expressions blendshapes on a mesh named \"Body\".", MessageType.Info);
+                EditorGUILayout.HelpBox("Injects DragonSkyRunner's CVR Eye & Face Tracking rig (bundled) into the " +
+                    "generated animator and repaths it onto this avatar: it generates \"EyeTracking.L/.R\" empties " +
+                    "at the eye bones and constrains the eyes to them. Assumes Unified-Expressions blendshapes; eye " +
+                    "gaze may want tuning per the package readme. Credit: DragonSkyRunner.", MessageType.Info);
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    if (GUILayout.Button("DragonSkyRunner's package (GitHub)  ↗", EditorStyles.linkLabel))
+                    {
+                        Application.OpenURL(FaceTrackingPackages.Url);
+                    }
+                }
                 return;
             }
-            EditorGUILayout.HelpBox($"\"{FaceTrackingPackages.DisplayName}\" isn't installed. Import it to use this " +
-                "mode (the Convert button is disabled until then):", MessageType.Warning);
-            using (new EditorGUI.IndentLevelScope())
-            {
-                if (GUILayout.Button($"Get {FaceTrackingPackages.DisplayName}  ↗", EditorStyles.linkLabel))
-                {
-                    Application.OpenURL(FaceTrackingPackages.Url);
-                }
-            }
+            EditorGUILayout.HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't found — " +
+                "reimport AvatarBridge (the Convert button is disabled until then).", MessageType.Warning);
         }
 
         void DrawReport()

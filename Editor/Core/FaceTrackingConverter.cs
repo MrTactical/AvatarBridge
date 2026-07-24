@@ -54,13 +54,13 @@ namespace AvatarBridge
 
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
             {
-                // The avatar's existing FT rig is stripped and DragonSkyRunner's animator is
-                // injected in AnimatorMerger; the native CVRFaceTracking component is not
-                // added. Just report the package state here.
+                // The avatar's existing FT rig is stripped and the bundled CVR-VRCFT animator
+                // is injected + repathed in AnimatorMerger (FaceTrackingInjector); the native
+                // CVRFaceTracking component is not added. Just report the bundle state here.
                 if (!FaceTrackingPackages.IsInstalled())
                 {
-                    ctx.Report.Error(Category, "DragonSkyRunner FT selected, but the package isn't installed",
-                        $"Import \"{FaceTrackingPackages.DisplayName}\" and convert again.");
+                    ctx.Report.Error(Category, "CVR-VRCFT face tracking selected, but its bundled assets are missing",
+                        $"Reimport AvatarBridge so \"{FaceTrackingPackages.DisplayName}\" is present, then convert again.");
                 }
                 return;
             }
