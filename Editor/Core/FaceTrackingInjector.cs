@@ -250,28 +250,51 @@ namespace AvatarBridge
 
         static void AddFaceMeshRemap(BridgeContext ctx, Dictionary<string, string> remap)
         {
-            var mesh = FindFaceMesh(ctx);
+            var mesh = ResolveFaceMesh(ctx);
             if (mesh == null)
             {
+                // Couldn't identify the face mesh — leave the clips pointing at "Body" (the
+                // rig's assumption). If that's wrong, the user re-points them by hand.
                 return;
             }
             string path = ctx.PathInTarget(mesh.transform);
-            if (!string.IsNullOrEmpty(path) && path != PkgFaceMesh)
+            if (string.IsNullOrEmpty(path) || path == PkgFaceMesh)
             {
-                remap[PkgFaceMesh] = path;
-                ctx.Report.Converted(Category, $"Face-tracking blendshapes repathed to \"{path}\"",
-                    "The rig assumes a face mesh named \"Body\"; rebound to this avatar's face mesh instead.");
+                // Already correct (the face mesh IS "Body" at the expected path) — no remap.
+                return;
             }
+            remap[PkgFaceMesh] = path;
+            ctx.Report.Converted(Category, $"Face-tracking blendshapes repathed to \"{path}\"",
+                "The rig assumes a face mesh named \"Body\"; rebound to this avatar's face mesh instead.");
         }
 
-        static SkinnedMeshRenderer FindFaceMesh(BridgeContext ctx)
+        /// <summary>
+        /// The face mesh the FT blendshapes belong on. Prefers the descriptor's own viseme
+        /// mesh (CVRAvatar.bodyMesh) — the authoritative choice — then a mesh literally named
+        /// "Body", then a shape-count heuristic that skips VRCFury FT *debug* meshes (which
+        /// carry the full Unified-Expressions set purely for visualisation and otherwise win
+        /// the heuristic).
+        /// </summary>
+        static SkinnedMeshRenderer ResolveFaceMesh(BridgeContext ctx)
         {
+            if (ctx.CvrAvatar != null && ctx.CvrAvatar.bodyMesh != null)
+            {
+                return ctx.CvrAvatar.bodyMesh;
+            }
+            var meshes = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var smr in meshes)
+            {
+                if (string.Equals(smr.name, "Body", StringComparison.OrdinalIgnoreCase))
+                {
+                    return smr;
+                }
+            }
             SkinnedMeshRenderer best = null;
-            int bestScore = -1;
-            foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            int bestScore = 0;
+            foreach (var smr in meshes)
             {
                 var m = smr.sharedMesh;
-                if (m == null || m.blendShapeCount == 0)
+                if (m == null || m.blendShapeCount == 0 || IsDebugMesh(ctx, smr))
                 {
                     continue;
                 }
@@ -284,10 +307,6 @@ namespace AvatarBridge
                         score++;
                     }
                 }
-                if (string.Equals(smr.name, "Body", StringComparison.OrdinalIgnoreCase))
-                {
-                    score += 1; // tie-break toward the conventional name
-                }
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -295,6 +314,15 @@ namespace AvatarBridge
                 }
             }
             return bestScore > 0 ? best : null;
+        }
+
+        /// <summary>VRCFury's Unified-Expressions debug window and similar non-face meshes.</summary>
+        static bool IsDebugMesh(BridgeContext ctx, SkinnedMeshRenderer smr)
+        {
+            string name = smr.name.ToLowerInvariant();
+            string path = ctx.PathInTarget(smr.transform).ToLowerInvariant();
+            return name.Contains("debug") || path.Contains("debug")
+                   || path.Contains("vf_ue") || path.Contains("ft_debug") || path.Contains("worldobject");
         }
 
         // ---------------------------------------------------------------- repath --------
