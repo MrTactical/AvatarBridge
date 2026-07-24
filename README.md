@@ -253,7 +253,7 @@ right-click the avatar → **VRCFury → Build a Test Copy**, then run AvatarBri
   [runtime construction docs](https://magicasoft.jp/en/mc2_runtime_build/).
 - VRCFury avatars are baked by [VRCFury](https://vrcfury.com/)'s own builder — AvatarBridge
   bundles no Fury code and has no hard dependency on it.
-- [DragonSkyRunner's CVR Eye & Face Tracking](https://booth.pm/en/items/5761383) and the
+- [DragonSkyRunner's CVR Eye & Face Tracking] and the
   [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod are
   optional third-party projects AvatarBridge detects/injects but does not bundle.
 
