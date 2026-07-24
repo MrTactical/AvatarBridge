@@ -18,11 +18,29 @@ namespace AvatarBridge
             public string DisplayName;
             public string Url;
             public string[] FolderCandidates; // UPM/Assets folders that indicate presence
-            public string SignatureSearch;    // AssetDatabase.FindAssets query as a fallback
+            public string[] AssetGuids;       // signature asset GUIDs (most robust — resolve anywhere)
         }
 
         public static readonly Package[] Known =
         {
+            new Package
+            {
+                // Jerry's templates: the VRCFury FT prefabs avatars reference by GUID.
+                DisplayName = "VRCFT — Jerry's Templates (adjerry91)",
+                Url = "https://github.com/adjerry91/VRCFaceTracking-Templates",
+                FolderCandidates = new[]
+                {
+                    "Packages/adjerry91.vrcft.templates",
+                    "Assets/adjerry91.vrcft.templates"
+                },
+                AssetGuids = new[]
+                {
+                    "40f7093df8038624c89c1bf989071a1d", // VRCFury - Face Tracking - UE Blendshapes.prefab
+                    "b022bab8112640045a1d4c5c7ba78fac", // UE Blendshapes TongueSteps
+                    "643e30d54e87ee8408452f49e3a1fdf5", // ARKit Blendshapes
+                    "4eb9be63cec72ad41826a2dbc5ac710c"  // SRanipal Blendshapes
+                }
+            },
             new Package
             {
                 DisplayName = "Pawlygon VRC-Facetracking",
@@ -32,7 +50,7 @@ namespace AvatarBridge
                     "Packages/net.pawlygon.vrc-facetracking",
                     "Assets/net.pawlygon.vrc-facetracking"
                 },
-                SignatureSearch = "Pawlygon Face Tracking t:AnimatorController"
+                AssetGuids = new string[0]
             }
         };
 
@@ -45,9 +63,14 @@ namespace AvatarBridge
                     return true;
                 }
             }
-            if (!string.IsNullOrEmpty(package.SignatureSearch))
+            foreach (var guid in package.AssetGuids)
             {
-                return AssetDatabase.FindAssets(package.SignatureSearch).Length > 0;
+                // A resolvable GUID means the exact signature asset is in the project,
+                // regardless of whether it was imported under Packages/ or Assets/.
+                if (!string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(guid)))
+                {
+                    return true;
+                }
             }
             return false;
         }
