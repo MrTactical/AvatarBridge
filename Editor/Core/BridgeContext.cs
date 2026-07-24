@@ -34,9 +34,6 @@ namespace AvatarBridge
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
         public List<string> ParameterOrder = new List<string>();
-        // Parameters owned by a face-tracking template package (Jerry's / Pawlygon): the
-        // FT animator layers drive these, so they must never become menu toggles.
-        public HashSet<string> FaceTrackingParameters = new HashSet<string>();
 
         public Animator TargetAnimator => Target != null ? Target.GetComponent<Animator>() : null;
 

@@ -22,9 +22,10 @@ namespace AvatarBridge
     {
         /// <summary>Native CVR: add and auto-map a CVRFaceTracking component (blendshape-based).</summary>
         Native,
-        /// <summary>Keep the avatar's parameter-based FT animator (smoothing params stay local);
-        /// do not add the native component. Requires a supporting FT template package present.</summary>
-        ParameterBased,
+        /// <summary>Strip any existing FT rig and inject DragonSkyRunner's lightweight CVR
+        /// Eye &amp; Face Tracking animator (its layers/params are copied into the controller).
+        /// Requires that package present in the project.</summary>
+        DragonSkyRunner,
         /// <summary>Leave face tracking entirely to the user.</summary>
         None
     }
@@ -96,7 +97,8 @@ namespace AvatarBridge
         public bool convertHeadChop = true;
         public bool convertSpatialAudio = true;
         // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
-        // based). None = leave it to the user / a parameter-based template (Pawlygon etc).
+        // based); DragonSkyRunner = inject that package's animator layers/params; None =
+        // leave it to the user. Native and DragonSkyRunner both strip any existing FT rig.
         public FaceTrackingMode faceTrackingMode = FaceTrackingMode.Native;
     }
 }

@@ -131,7 +131,7 @@ Every row carries an honest status:
 | Built-in VRC colliders (hands, fingers, head…) | `CVRPointer`s with standard tags | 🔷 | only for tags your receivers listen to |
 | VRC Constraints (all 6 types) | Unity constraints | 🔷 | Parent/Position/Rotation/Scale/LookAt tested; Aim untested. `Freeze To World` and target-transform redirection are ⚠️ dropped |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | 🔷 | cloth objects named after their PhysBone parameter so grab-reactive FX works for anyone running the mod; `_Stretch` / `_Squish` / `_IsPosed` have no equivalent |
-| Face-tracking blendshapes | native `CVRFaceTracking` **or** kept parameter-based rig | 🔷 | your choice — see [Face tracking](#face-tracking) |
+| Face-tracking blendshapes | native `CVRFaceTracking` **or** injected DragonSkyRunner rig | 🔷 | your choice — see [Face tracking](#face-tracking) |
 | VRC Head Chop | `FPRExclusion` | 🔷 | ⚠️ show/hide only — fractional scale factors can't be represented |
 | VRC Spatial Audio Source | `AudioSource` spatial settings | 🔷 | ⚠️ approximation; gain curve not reproduced exactly |
 | `Viseme`, `Voice`, `Seated`, `IsOnFriendsList`… | `VisemeIdx`, `VisemeLoudness`, `Sitting`, `IsFriend`… | 🔷 | CVR core parameter renames |
@@ -146,30 +146,28 @@ while VRChat's are signed, so velocity-driven blends are worth a check.
 
 ## Face tracking
 
-VRChat face-tracking avatars carry over two ways — pick one in the **Face tracking** dropdown:
+Pick one in the **Face tracking** dropdown. Both Native and DragonSkyRunner first strip
+whatever FT rig the avatar shipped with (VRCFaceTracking / Jerry's Templates / Pawlygon /
+OSCmooth) so nothing fights over the same blendshapes.
 
-- **Native** *(default)* — detects the avatar's FT blendshapes (VRCFaceTracking / Unified
-  Expressions / SRanipal) and sets up ChilloutVR's built-in `CVRFaceTracking` component,
-  auto-mapping the shapes. Self-contained, no extra packages — but the built-in solver is a
-  bit stiff.
-- **Parameter-based** — keeps the avatar's own parameter-driven FT animator (from VRCFury + a
-  template package) instead of the native component. The FT animator carries through the
-  VRCFury bake, its OSCmooth smoothing parameters stay local (`#`) so per-frame smoothing
-  isn't broken by network sync, and the native component is *not* added (it would fight the
-  animator for the same blendshapes). A CVR face-tracking OSC mod drives it at runtime.
-  Smoother and more configurable.
+- **Native** *(default)* — detects the avatar's FT blendshapes (Unified Expressions /
+  SRanipal) and sets up ChilloutVR's built-in `CVRFaceTracking` component, auto-mapping the
+  shapes. Self-contained, no extra packages — but the built-in solver is a bit stiff.
+- **DragonSkyRunner** — injects [DragonSkyRunner's CVR Eye & Face Tracking](https://booth.pm/en/items/5761383)
+  animator: its layers and parameters are copied straight into the generated controller. It's
+  a lightweight, CVR-native rig — direct float parameters, no binary encoding or smoothing
+  (≈50 synced floats + 2 bools). A CVR face-tracking OSC mod (VRCFaceTracking + Kafe's OSC
+  mod) drives it at runtime. Smoother and more expressive than the built-in.
 - **None** — leave face tracking entirely to you.
 
-Parameter-based mode needs a supporting FT template package in the project. AvatarBridge
-**soft-detects** it (no hard dependency); if none is found it greys out the Convert button and
-links you to get one. Recognised packages:
+DragonSkyRunner mode needs that package in the project. AvatarBridge **soft-detects** it
+(no hard dependency, by its controller's asset GUID); if it's missing the Convert button
+greys out and links you to it.
 
-- [VRCFT — Jerry's Templates (adjerry91)](https://github.com/adjerry91/VRCFaceTracking-Templates)
-- [Pawlygon VRC-Facetracking](https://github.com/PawlygonStudio/VRC-Facetracking)
-
-> If your avatar's face tracking is a VRCFury component (it usually is), that template package
-> must be present for AvatarBridge's VRCFury bake to resolve it — a **"Missing Prefab"** on
-> the FT object means the package isn't imported yet.
+> The injected rig assumes Unified-Expressions blendshapes on a mesh named **"Body"**. After
+> converting, set up the **Eye Tracking** / **Face Tracking** toggles in Advanced Avatar
+> Settings and tune the eye-gaze animations per the package's readme — it's a drop-in
+> *starting point*, not a zero-touch result.
 
 ## PhysBones → MagicaCloth2
 
@@ -255,10 +253,9 @@ right-click the avatar → **VRCFury → Build a Test Copy**, then run AvatarBri
   [runtime construction docs](https://magicasoft.jp/en/mc2_runtime_build/).
 - VRCFury avatars are baked by [VRCFury](https://vrcfury.com/)'s own builder — AvatarBridge
   bundles no Fury code and has no hard dependency on it.
-- Face-tracking template packages ([Jerry's Templates](https://github.com/adjerry91/VRCFaceTracking-Templates),
-  [Pawlygon](https://github.com/PawlygonStudio/VRC-Facetracking)) and the
+- [DragonSkyRunner's CVR Eye & Face Tracking](https://booth.pm/en/items/5761383) and the
   [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod are
-  optional third-party projects AvatarBridge detects but does not bundle.
+  optional third-party projects AvatarBridge detects/injects but does not bundle.
 
 ## License
 

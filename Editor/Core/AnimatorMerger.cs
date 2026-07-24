@@ -141,7 +141,7 @@ namespace AvatarBridge
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
-            StripFaceTrackingIfNative(master, vrcLayers, ctx);
+            StripExistingFaceTracking(master, vrcLayers, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
             BoolifyToggleParameters(master, ctx);
             RenamePass(master, vrcLayers, ctx);
@@ -151,6 +151,7 @@ namespace AvatarBridge
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
+            FaceTrackingInjector.Inject(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
@@ -1613,19 +1614,18 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// In Native face-tracking mode the CVRFaceTracking component drives the face
-        /// blendshapes, so a parameter-based FT animator (baked in from a VRCFury FT rig)
-        /// is redundant and fights it for the same shapes. Remove the FT-dominated animator
-        /// layers and their now-unreferenced FT parameters. Parameter-based / None modes
-        /// keep them.
+        /// Both Native and DragonSkyRunner modes replace the avatar's face tracking, so the
+        /// existing FT rig baked in from a VRCFury FT template (VRCFaceTracking / Jerry's /
+        /// Pawlygon / OSCmooth) is removed — its FT-dominated animator layers and their
+        /// now-unreferenced FT parameters. None mode keeps them.
         /// </summary>
-        static void StripFaceTrackingIfNative(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        static void StripExistingFaceTracking(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            if (ctx.Settings.faceTrackingMode != FaceTrackingMode.Native || ctx.FaceTrackingParameters.Count == 0)
+            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
                 return;
             }
-            bool IsFt(string name) => FaceTrackingParameters.IsFaceTracking(name, ctx.FaceTrackingParameters);
+            bool IsFt(string name) => FaceTrackingParameters.IsFaceTracking(name);
 
             var removedMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in vrcLayers.ToList())
@@ -1662,9 +1662,9 @@ namespace AvatarBridge
             if (removedMachines.Count > 0 || removedParams > 0)
             {
                 ctx.Report.Converted("Face tracking",
-                    $"Native mode: removed {removedMachines.Count} parameter-based FT layer(s) and {removedParams} FT parameter(s)",
-                    "The native CVRFaceTracking component drives face tracking, so the baked-in " +
-                    "parameter-based FT animator was removed to avoid fighting it for the same blendshapes.");
+                    $"Removed the avatar's existing FT rig — {removedMachines.Count} layer(s), {removedParams} parameter(s)",
+                    "This mode provides its own face tracking, so the baked-in FT animator was removed " +
+                    "to avoid fighting it for the same blendshapes.");
             }
         }
 

@@ -52,27 +52,15 @@ namespace AvatarBridge
                 return;
             }
 
-            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.ParameterBased)
+            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
             {
-                // The avatar's own parameter-driven FT animator carries over through the
-                // normal FX merge, and its OSCmooth smoothing / AAP proxy parameters are
-                // already marked local ("#") by the parameter rename pass — which is what
-                // keeps the per-frame smoothing from being broken by network sync. So the
-                // only thing to do here is NOT add the native CVRFaceTracking component,
-                // which would fight the animator for the same blendshapes.
-                var package = FaceTrackingPackages.FirstInstalled();
-                if (package != null)
+                // The avatar's existing FT rig is stripped and DragonSkyRunner's animator is
+                // injected in AnimatorMerger; the native CVRFaceTracking component is not
+                // added. Just report the package state here.
+                if (!FaceTrackingPackages.IsInstalled())
                 {
-                    ctx.Report.Converted(Category, "Parameter-based face tracking kept",
-                        $"Detected \"{package.DisplayName}\". The avatar's FT animator is carried over and its " +
-                        "smoothing parameters stay local; the native CVRFaceTracking component is not added. " +
-                        "Finish setup with the package's own tooling.");
-                }
-                else
-                {
-                    ctx.Report.Warning(Category, "Parameter-based FT chosen, but no template package found",
-                        "The FT animator is carried over as-is, but you'll need a supporting FT template " +
-                        "package for it to work in CVR.");
+                    ctx.Report.Error(Category, "DragonSkyRunner FT selected, but the package isn't installed",
+                        $"Import \"{FaceTrackingPackages.DisplayName}\" and convert again.");
                 }
                 return;
             }
