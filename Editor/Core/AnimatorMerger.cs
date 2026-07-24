@@ -123,7 +123,9 @@ namespace AvatarBridge
 
             master.layers = masterLayers.ToArray();
 
+            _neededGestureIdxParameters.Clear();
             GesturePass(master, vrcLayers, ctx);
+            EnsureIntParameters(master, _neededGestureIdxParameters, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             ToggleNativizer.Run(ctx, master, vrcLayers);
@@ -403,19 +405,38 @@ namespace AvatarBridge
 
         static List<List<AnimatorCondition>> RewriteGestureCondition(AnimatorCondition condition, BridgeContext ctx)
         {
-            // Which VRC gesture ints (0..7) satisfy the original integer condition?
+            // Redirect discrete gesture checks onto CVR's integer index parameter, which
+            // maps 1:1 with VRChat's gesture ints (after value remapping).
+            string idxParam = GestureMap.IdxParameterFor(condition.parameter);
+            _neededGestureIdxParameters.Add(idxParam);
+
+            AnimatorCondition Idx(AnimatorConditionMode mode, int value) =>
+                new AnimatorCondition { parameter = idxParam, mode = mode, threshold = value };
+
+            // Exact comparisons stay single conditions.
+            if (condition.mode == AnimatorConditionMode.Equals)
+            {
+                return new List<List<AnimatorCondition>>
+                {
+                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, GestureMap.VrcToCvrIdx((int)condition.threshold)) }
+                };
+            }
+            if (condition.mode == AnimatorConditionMode.NotEqual)
+            {
+                return new List<List<AnimatorCondition>>
+                {
+                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.NotEqual, GestureMap.VrcToCvrIdx((int)condition.threshold)) }
+                };
+            }
+
+            // Greater/Less compare VRChat's numeric ordering, which differs from CVR's, so
+            // enumerate the matching gestures and OR discrete equals checks on the index.
             var matched = new List<int>();
             for (int g = 0; g <= 7; g++)
             {
-                bool match;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.Equals: match = g == (int)condition.threshold; break;
-                    case AnimatorConditionMode.NotEqual: match = g != (int)condition.threshold; break;
-                    case AnimatorConditionMode.Greater: match = g > condition.threshold; break;
-                    case AnimatorConditionMode.Less: match = g < condition.threshold; break;
-                    default: match = true; break;
-                }
+                bool match = condition.mode == AnimatorConditionMode.Greater ? g > condition.threshold
+                           : condition.mode == AnimatorConditionMode.Less ? g < condition.threshold
+                           : true;
                 if (match)
                 {
                     matched.Add(g);
@@ -429,40 +450,16 @@ namespace AvatarBridge
             }
             if (matched.Count == 0)
             {
-                // Never true; keep it never-true with an impossible range.
+                // Never true; an index value that can't occur ([-1..6]).
                 return new List<List<AnimatorCondition>>
                 {
-                    new List<AnimatorCondition>
-                    {
-                        new AnimatorCondition { parameter = condition.parameter, mode = AnimatorConditionMode.Greater, threshold = float.MaxValue }
-                    }
+                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, 99) }
                 };
             }
 
-            // Convert matched gestures to CVR value intervals and merge adjacent ones.
-            var intervals = matched
-                .Select(g => GestureMap.CvrRangeForVrcGesture(g))
-                .OrderBy(r => r.min)
+            return matched
+                .Select(g => new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, GestureMap.VrcToCvrIdx(g)) })
                 .ToList();
-            var merged = new List<(float min, float max)>();
-            foreach (var interval in intervals)
-            {
-                if (merged.Count > 0 && interval.min <= merged[merged.Count - 1].max + 0.01f)
-                {
-                    merged[merged.Count - 1] = (merged[merged.Count - 1].min,
-                        Mathf.Max(merged[merged.Count - 1].max, interval.max));
-                }
-                else
-                {
-                    merged.Add(interval);
-                }
-            }
-
-            return merged.Select(r => new List<AnimatorCondition>
-            {
-                new AnimatorCondition { parameter = condition.parameter, mode = AnimatorConditionMode.Greater, threshold = r.min },
-                new AnimatorCondition { parameter = condition.parameter, mode = AnimatorConditionMode.Less, threshold = r.max }
-            }).ToList();
         }
 
         static T CloneForBranch<T>(T src) where T : AnimatorTransitionBase, new()
@@ -1457,6 +1454,39 @@ namespace AvatarBridge
                 master.layers = kept.ToArray();
                 ctx.Report.Warning(Category, $"Removed {dropped.Count} duplicate layer(s)",
                     string.Join(", ", dropped.Distinct()) + " — duplicates would have overwritten the working layer.");
+            }
+        }
+
+        // Gesture-index parameters (GestureLeftIdx/RightIdx) that the rewritten gesture
+        // conditions now reference and that must exist on the controller as ints.
+        static readonly HashSet<string> _neededGestureIdxParameters = new HashSet<string>();
+
+        static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
+        {
+            if (names.Count == 0)
+            {
+                return;
+            }
+            var parameters = master.parameters.ToList();
+            var existing = new HashSet<string>(parameters.Select(p => p.name));
+            int added = 0;
+            foreach (var name in names)
+            {
+                if (existing.Add(name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Int
+                    });
+                    added++;
+                }
+            }
+            if (added > 0)
+            {
+                master.parameters = parameters.ToArray();
+                ctx.Report.Converted(Category, $"Added {added} gesture index parameter(s)",
+                    "GestureLeftIdx/RightIdx drive the discrete gesture conditions.");
             }
         }
 

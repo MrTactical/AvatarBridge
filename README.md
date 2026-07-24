@@ -154,7 +154,7 @@ status:
 | FX / Gesture layers (Base, Additive, Action optional) | merged into one CVR animator on top of the CCK `AvatarAnimator` | ✅ | CVR hand layers are removed when the Gesture layer is converted |
 | PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (MagicaCloth2) | DynamicBone path is 🔷; see mapping below |
 | Non-synced parameters | `#`-prefixed (CVR local-only convention) | ✅ | keeps network traffic equivalent; test avatar went 3088 → 240 of 3200 sync bits |
-| `GestureLeft/Right` int values | CVR float gesture values | ✅ | mapping verified against the official CCK parameter reference — Open Hand −1, Fist 0–1, Thumbs Up 2, Gun 3, Point 4, Peace 5, Rock'n'Roll 6 |
+| `GestureLeft/Right` int conditions | CVR `GestureLeftIdx/RightIdx` (int) | 🔷 | discrete gesture checks map 1:1 onto CVR's integer index parameters; values verified against the official CCK reference (Open Hand −1, Fist 1, Thumbs Up 2, Gun 3, Point 4, Peace 5, Rock'n'Roll 6). Blend trees keep the analog `GestureLeft` float |
 | `GestureLeftWeight/RightWeight`, `MuteSelf`, `VRMode` | fed by a `CVRParameterStream` | 🔷 | trigger squeeze / mute / VR-mode piped from the game like VRChat's built-ins |
 | VRC Parameter Driver | CCK `AnimatorDriver` | 🔷 | Set / Add / Random / Copy incl. range conversion; Random on a bool is ⚠️ (chance weighting is lost) |
 | Contact senders | `CVRPointer` (one per collision tag) | 🔷 | with matching trigger collider shape |
@@ -167,11 +167,14 @@ status:
 | Face-tracking blendshapes (VRCFaceTracking / Unified / SRanipal) | native `CVRFaceTracking` component | 🔷 | auto-detected and auto-mapped; VRChat's OSC-driven FX plumbing is dropped in favour of CVR's native path |
 | Menu **Button** controls | `<impulse=0.1>` auto-reset parameters | 🔷 | this convention comes from CCK 3-era tooling and hasn't been re-verified on CCK 4 |
 
-**A note on movement parameters.** VRChat and ChilloutVR name these differently *and mean
-different things*: VRChat's `VelocityX/Y/Z` is world-space movement speed, while CVR's
-`MovementX/Y` is thumbstick/input deflection. They are **not** interchangeable, so
-AvatarBridge does not auto-rename between them. Locomotion is left to CVR's own system by
-default (the Base layer isn't converted unless you opt in), which sidesteps the mismatch.
+**A note on movement parameters.** ChilloutVR now exposes `VelocityX/Y/Z` as core
+parameters (world-space movement speed), the same concept as VRChat's `VelocityX/Y/Z` —
+so those line up and AvatarBridge keeps them under their own names (they're in CVR's core
+set). CVR's `MovementX/Y` is a *separate* thing — thumbstick/input deflection in `[-1..1]`
+— not an equivalent of VRChat velocity, so nothing is auto-renamed between the two.
+Locomotion is still left to CVR's own system by default (the Base layer isn't converted
+unless you opt in). One caveat: CVR documents `VelocityX/Y/Z` as `[0.0 … ∞]` (magnitude)
+while VRChat's are signed, so velocity-driven locomotion blends are worth a check.
 
 ### PhysBones → MagicaCloth2 mapping
 

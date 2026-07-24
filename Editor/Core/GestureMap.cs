@@ -3,26 +3,27 @@ using System.Collections.Generic;
 namespace AvatarBridge
 {
     /// <summary>
-    /// VRChat and ChilloutVR both expose GestureLeft/GestureRight, but the values differ.
+    /// VRChat and ChilloutVR both expose GestureLeft/GestureRight, but the numbering
+    /// differs. Confirmed against the official CCK "Core Parameters" reference:
     ///
-    ///   VRChat (int)          ChilloutVR (float)
-    ///   0 Neutral             0
-    ///   1 Fist                0..1 (analog: trigger squeeze amount while fisting)
-    ///   2 Open Hand           -1
-    ///   3 Point               4
-    ///   4 Peace               5
-    ///   5 Rock'n'Roll         6
-    ///   6 Gun                 3
-    ///   7 Thumbs Up           2
+    ///   Gesture       VRChat int    CVR float / int
+    ///   Neutral       0             0
+    ///   Fist          1             0.0..1.0 float, index 1 (fist is analog on the float)
+    ///   Open Hand     2             -1
+    ///   Point         3             4
+    ///   Peace         4             5
+    ///   Rock'n'Roll   5             6
+    ///   Gun           6             3
+    ///   Thumbs Up     7             2
     ///
-    /// Because CVR's parameter is a float and the fist value is analog, integer Equals /
-    /// NotEqual conditions must be rewritten as float range checks.
+    /// CVR also exposes GestureLeftIdx/GestureRightIdx (Int, [-1..6]) — the discrete
+    /// gesture without analog fist weighting. Discrete Equals/NotEqual conditions map
+    /// cleanly onto those integer parameters, so we redirect conditions there instead of
+    /// doing fragile float-range matching on the analog GestureLeft float. Blend trees and
+    /// motion-time still use the float GestureLeft so fist weighting stays smooth.
     /// </summary>
     public static class GestureMap
     {
-        public const float Epsilon = 0.35f;   // half-window for exact gesture values
-        public const float FistFloor = 0.005f; // fist is (0..1]; anything above this counts
-
         public static readonly HashSet<string> GestureParameters = new HashSet<string>
         {
             "GestureLeft", "GestureRight"
@@ -32,6 +33,17 @@ namespace AvatarBridge
         {
             "GestureLeftWeight", "GestureRightWeight"
         };
+
+        /// <summary>The discrete integer-index parameter matching a gesture parameter.</summary>
+        public static string IdxParameterFor(string gestureParameter)
+        {
+            switch (gestureParameter)
+            {
+                case "GestureLeft": return "GestureLeftIdx";
+                case "GestureRight": return "GestureRightIdx";
+                default: return gestureParameter;
+            }
+        }
 
         public static float VrcToCvr(float vrcGesture)
         {
@@ -49,24 +61,7 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Float window that detects the CVR value corresponding to a VRC gesture int.
-        /// </summary>
-        public static (float min, float max) CvrRangeForVrcGesture(float vrcGesture)
-        {
-            int gesture = (int)vrcGesture;
-            if (gesture == 0)
-            {
-                // Neutral must not swallow small analog fist values.
-                return (-Epsilon, FistFloor);
-            }
-            if (gesture == 1)
-            {
-                // Fist is analog: any squeeze counts.
-                return (FistFloor, 1f + Epsilon);
-            }
-            float cvr = VrcToCvr(gesture);
-            return (cvr - Epsilon, cvr + Epsilon);
-        }
+        /// <summary>VRChat gesture int → ChilloutVR discrete gesture index.</summary>
+        public static int VrcToCvrIdx(int vrcGesture) => (int)VrcToCvr(vrcGesture);
     }
 }
