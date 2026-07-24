@@ -18,6 +18,15 @@ namespace AvatarBridge
         CvrNativeTargets
     }
 
+    public enum FaceTrackingMode
+    {
+        /// <summary>Native CVR: add and auto-map a CVRFaceTracking component (blendshape-based).</summary>
+        Native,
+        /// <summary>Leave face tracking to the user (e.g. a parameter-based template like
+        /// Pawlygon VRC-Facetracking, set up with its own installer).</summary>
+        None
+    }
+
     /// <summary>
     /// All user-facing conversion options. Serialized so the editor window remembers them.
     /// </summary>
@@ -84,8 +93,8 @@ namespace AvatarBridge
         public bool convertConstraints = true;
         public bool convertHeadChop = true;
         public bool convertSpatialAudio = true;
-        // Detect face-tracking blendshapes (VRCFaceTracking / Unified Expressions or
-        // SRanipal) and set up CVR's native CVRFaceTracking component.
-        public bool setupFaceTracking = true;
+        // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
+        // based). None = leave it to the user / a parameter-based template (Pawlygon etc).
+        public FaceTrackingMode faceTrackingMode = FaceTrackingMode.Native;
     }
 }

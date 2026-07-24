@@ -45,8 +45,11 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
-            if (!ctx.Settings.setupFaceTracking)
+            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
+                ctx.Report.Skipped(Category, "Native face tracking not set up (chosen)",
+                    "Face-tracking mode is set to None — set it up yourself, e.g. a parameter-based " +
+                    "template like Pawlygon VRC-Facetracking via its own installer.");
                 return;
             }
             if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null)

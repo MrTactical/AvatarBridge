@@ -176,11 +176,12 @@ namespace AvatarBridge
                     settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                     settings.convertHeadChop = EditorGUILayout.ToggleLeft("Convert VRC Head Chop", settings.convertHeadChop);
                     settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);
-                    settings.setupFaceTracking = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Set up native face tracking",
-                            "If the avatar has VRCFaceTracking / Unified Expressions / SRanipal blendshapes, " +
-                            "add and auto-map a CVRFaceTracking component."),
-                        settings.setupFaceTracking);
+                    settings.faceTrackingMode = (FaceTrackingMode)EditorGUILayout.EnumPopup(
+                        new GUIContent("Face tracking",
+                            "Native: auto-add and map a CVRFaceTracking component (blendshape-based).\n" +
+                            "None: leave face tracking to you — e.g. a parameter-based template like " +
+                            "Pawlygon VRC-Facetracking, set up with its own installer."),
+                        settings.faceTrackingMode);
                     settings.outputFolder = EditorGUILayout.TextField("Output folder", settings.outputFolder);
                 }
             }

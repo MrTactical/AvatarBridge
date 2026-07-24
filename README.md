@@ -168,7 +168,7 @@ status:
 | VRC Head Chop | `FPRExclusion` | 🔷 | ⚠️ show/hide only — scale factors between 0 and 1 can't be represented |
 | VRC Spatial Audio Source | `AudioSource` spatial settings | 🔷 | ⚠️ approximation; the gain curve is not reproduced exactly |
 | `Viseme`, `Voice`, `Seated`, `IsOnFriendsList`… | `VisemeIdx`, `VisemeLoudness`, `Sitting`, `IsFriend`… | 🔷 | CVR core parameter renames |
-| Face-tracking blendshapes (VRCFaceTracking / Unified / SRanipal) | native `CVRFaceTracking` component | 🔷 | auto-detected and auto-mapped; VRChat's OSC-driven FX plumbing is dropped in favour of CVR's native path |
+| Face-tracking blendshapes (VRCFaceTracking / Unified / SRanipal) | native `CVRFaceTracking` component | 🔷 | auto-detected and auto-mapped (**Face tracking → Native**, default). Set **Face tracking → None** to use a parameter-based template like [Pawlygon VRC-Facetracking](https://github.com/PawlygonStudio/VRC-Facetracking) instead — AvatarBridge then leaves it alone and you run that package's own installer |
 | Menu **Button** controls | `<impulse=0.1>` auto-reset parameters | 🔷 | this convention comes from CCK 3-era tooling and hasn't been re-verified on CCK 4 |
 
 **A note on movement parameters.** ChilloutVR now exposes `VelocityX/Y/Z` as core
