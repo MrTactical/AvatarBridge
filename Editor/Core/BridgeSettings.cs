@@ -97,6 +97,9 @@ namespace AvatarBridge
         public bool convertConstraints = true;
         public bool convertHeadChop = true;
         public bool convertSpatialAudio = true;
+        // If the VRChat descriptor didn't set an eyelid/blink blendshape, auto-detect blink
+        // shapes on the face mesh (e.g. "Blink L"/"Blink R") and wire CVR's Eye Blink Settings.
+        public bool wireBlinkBlendshapes = true;
         // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
         // based); DragonSkyRunner = inject that package's animator layers/params; None =
         // leave it to the user. Native and DragonSkyRunner both strip any existing FT rig.

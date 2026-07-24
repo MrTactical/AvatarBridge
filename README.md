@@ -118,7 +118,7 @@ Every row carries an honest status:
 
 | VRChat | ChilloutVR | Status | Notes |
 |---|---|---|---|
-| Avatar descriptor (viewpoint, voice, face mesh, visemes, blink) | `CVRAvatar` | ✅ | voice position placed at the head bone like VRChat |
+| Avatar descriptor (viewpoint, voice, face mesh, visemes, blink) | `CVRAvatar` | ✅ | voice position placed at the head bone like VRChat; if the descriptor set no blink, blink blendshapes (`Blink L`/`Blink R` etc.) are auto-detected off the mesh and CVR's Eye Blink Settings wired |
 | Expression parameters + menus | Advanced Avatar Settings (toggles / sliders / dropdowns) | ✅ | entries named after the menu control's label (`Cloak`), qualified only on collisions (`Hoodie (Tops)`) |
 | Clothing / prop toggles | one `Toggle <name>` animator layer each | ✅ | pulled out of VRCFury's merged blend tree into classic Off/On layers |
 | Toggle parameters | real `bool` parameters | ✅ | VRCFury bakes toggles as floats; those used only in conditions are retyped |

@@ -1,4 +1,8 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System;
+using System.Linq;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -97,6 +101,10 @@ namespace AvatarBridge
                 cvrAvatar.blinkBlendshape[0] = blinkShape;
                 ctx.Report.Converted(Category, "Blink blendshape", blinkShape);
             }
+            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, cvrAvatar))
+            {
+                // Reported inside.
+            }
             else
             {
                 ctx.Report.Warning(Category, "Blink blendshape", "None found (eye look eyelid blendshapes not set).");
@@ -111,6 +119,104 @@ namespace AvatarBridge
             };
 
             EditorUtility.SetDirty(cvrAvatar);
+        }
+
+        /// <summary>
+        /// Fallback when the VRChat descriptor has no eyelid/blink blendshape: detect blink
+        /// shapes on the face mesh by name (e.g. "Blink L"/"Blink R" or a single "Blink") and
+        /// turn on CVR's Eye Blink Settings. This also makes the CVR-VRCFT rig's
+        /// "eye-tracking off" state blink — its ON/OFF clips drive useBlinkBlendshapes, which
+        /// does nothing until blink shapes are wired here.
+        /// </summary>
+        static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)
+        {
+            var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
+            if (mesh == null)
+            {
+                return false;
+            }
+            DetectBlinkShapes(mesh, out string left, out string right, out string combined);
+            if (left == null && right == null && combined == null)
+            {
+                return false;
+            }
+
+            cvrAvatar.useBlinkBlendshapes = true;
+            if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
+            {
+                cvrAvatar.blinkBlendshape = new string[4];
+            }
+
+            if (left != null && right != null)
+            {
+                cvrAvatar.blinkBlendshape[0] = left;   // Left Blink slot
+                cvrAvatar.blinkBlendshape[1] = right;  // Right Blink slot
+                SetBlinkMode(cvrAvatar, "Separate");
+                ctx.Report.Converted(Category, "Blink blendshapes auto-detected",
+                    $"Descriptor set none; wired CVR blink to \"{left}\" / \"{right}\" (Separate). Enables " +
+                    "CVR's native blink and the CVR-VRCFT rig's eye-tracking-off fallback. Verify L/R aren't swapped.");
+            }
+            else
+            {
+                string single = combined ?? left ?? right;
+                cvrAvatar.blinkBlendshape[0] = single;
+                SetBlinkMode(cvrAvatar, "Combined");
+                ctx.Report.Converted(Category, "Blink blendshape auto-detected",
+                    $"Descriptor set none; wired CVR blink to \"{single}\" (Combined).");
+            }
+            return true;
+        }
+
+        static void DetectBlinkShapes(Mesh mesh, out string left, out string right, out string combined)
+        {
+            left = right = combined = null;
+            for (int i = 0; i < mesh.blendShapeCount; i++)
+            {
+                string name = mesh.GetBlendShapeName(i);
+                string lower = name.ToLowerInvariant();
+                if (!lower.Contains("blink"))
+                {
+                    continue;
+                }
+                if (IsSide(lower, "left", 'l'))
+                {
+                    left = left ?? name;
+                }
+                else if (IsSide(lower, "right", 'r'))
+                {
+                    right = right ?? name;
+                }
+                else
+                {
+                    combined = combined ?? name;
+                }
+            }
+        }
+
+        // A shape belongs to a side if it spells the word out, or has the side letter as a
+        // standalone token (e.g. "Blink L", "blink_r", "L_Blink") — not just any 'l'/'r'.
+        static bool IsSide(string lower, string word, char letter)
+        {
+            return lower.Contains(word)
+                   || Regex.IsMatch(lower, $@"(^|[ _.\-]){letter}([ _.\-]|$)");
+        }
+
+        // The blink-mode field/enum name varies across CCK versions; find it by its members.
+        static void SetBlinkMode(CVRAvatar cvrAvatar, string modeName)
+        {
+            foreach (var f in cvrAvatar.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!f.FieldType.IsEnum)
+                {
+                    continue;
+                }
+                var names = Enum.GetNames(f.FieldType);
+                if (names.Contains("Separate") && names.Contains("Combined") && names.Contains(modeName))
+                {
+                    f.SetValue(cvrAvatar, Enum.Parse(f.FieldType, modeName));
+                    return;
+                }
+            }
         }
 
         static string GetBlinkBlendshapeName(VRCAvatarDescriptor vrc, SkinnedMeshRenderer face)

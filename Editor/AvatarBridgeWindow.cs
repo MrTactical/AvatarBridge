@@ -176,6 +176,11 @@ namespace AvatarBridge
                     settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                     settings.convertHeadChop = EditorGUILayout.ToggleLeft("Convert VRC Head Chop", settings.convertHeadChop);
                     settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);
+                    settings.wireBlinkBlendshapes = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Auto-wire blink blendshapes",
+                            "If the VRChat descriptor set no eyelid/blink shape, detect blink blendshapes on the " +
+                            "face mesh (e.g. \"Blink L\"/\"Blink R\") and turn on CVR's Eye Blink Settings."),
+                        settings.wireBlinkBlendshapes);
                     DrawFaceTrackingModeDropdown();
                     DrawCvrVrcftFtNotice();
                     settings.outputFolder = EditorGUILayout.TextField("Output folder", settings.outputFolder);
