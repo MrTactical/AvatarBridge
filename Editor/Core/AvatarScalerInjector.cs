@@ -67,7 +67,7 @@ namespace AvatarBridge
             var parameters = master.parameters.ToList();
             var have = new HashSet<string>(parameters.Select(p => p.name));
             var collisions = new List<string>();
-            float inputDefault = 2.2f;
+            float inputDefault = 1.3f;
             foreach (var p in source.parameters)
             {
                 if (p.name == HeightParam)

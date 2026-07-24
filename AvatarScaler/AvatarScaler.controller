@@ -134,7 +134,7 @@ AnimatorController:
   m_AnimatorParameters:
   - m_Name: Output
     m_Type: 1
-    m_DefaultFloat: 2.2
+    m_DefaultFloat: 1.3
     m_DefaultInt: 0
     m_DefaultBool: 0
     m_Controller: {fileID: 0}
@@ -152,7 +152,7 @@ AnimatorController:
     m_Controller: {fileID: 0}
   - m_Name: Input
     m_Type: 1
-    m_DefaultFloat: 2.2
+    m_DefaultFloat: 1.3
     m_DefaultInt: 0
     m_DefaultBool: 0
     m_Controller: {fileID: 0}

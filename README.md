@@ -18,9 +18,10 @@ keeping as much working as possible and leaving you a clean starting point to fi
   repath). Your choice.
 - **Mod-aware** — PhysBone grab reactions (`_IsGrabbed` / `_Angle`) are wired for the
   [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod.
-- **Optional avatar scaler** — a bundled height scaler with *linear (constant-speed) smoothing*
-  so size changes glide instead of snapping, exposed as a **"Height (M)"** menu. Off by default
-  (scale values are calibrated per avatar). Credit: [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
+- **Avatar scaler** — a bundled height scaler with *linear (constant-speed) smoothing* so size
+  changes glide instead of snapping, exposed as a **"Height (M)"** menu (default 1.3m). On by
+  default; toggle it off under Advanced Settings. Scale values are calibrated per avatar.
+  Credit: [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
 
 > **Status: early but working.** A full VRCFury avatar — clothing toggles, MagicaCloth
 > physics, dozens of contacts, face tracking — converts and runs in ChilloutVR. Anything
