@@ -22,8 +22,8 @@ Every conversion produces a `ConversionReport.md` listing what converted 1:1, wh
 approximated, and what has no ChilloutVR equivalent — the table below marks which parts
 have actually been confirmed in-game.
 
-> **Status: early but working.** A full VRCFury avatar (~24 clothing toggles, MagicaCloth
-> physics, 50+ contacts) converts and runs in ChilloutVR. Expect rough edges on anything
+> **Status: early but working.** A full VRCFury avatar ( toggles, MagicaCloth
+> physics, contacts) converts and runs in ChilloutVR. Expect rough edges on anything
 > marked 🔷 below, and please open issues.
 
 ## Read this first: it's a head start, not a magic button
