@@ -228,6 +228,32 @@ so expect to nudge values (tuning constants are at the top of
 reflection since MagicaCloth2's fields move between versions; a mismatch is reported, not
 silently dropped. `maxStretch` (squash & stretch) has no equivalent and is skipped.
 
+### PhysBones → DynamicBone
+
+If you pick **DynamicBone** as the physics target instead (ChilloutVR supports it natively;
+the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) works for conversion-only
+projects), PhysBones map like this:
+
+| PhysBone | DynamicBone |
+|---|---|
+| pull (+ curve) | `m_Elasticity` (scaled) + elasticity distribution curve |
+| spring / momentum | `m_Damping` (inverted) |
+| stiffness (+ curve) | `m_Stiffness` + stiffness distribution curve |
+| immobile (+ curve) | `m_Inert` + inert distribution curve |
+| radius (+ curve) | `m_Radius` + radius distribution curve |
+| gravity, gravityFalloff | `m_Gravity` + `m_Force`, split by √falloff so overall magnitude is preserved |
+| endpoint position | `m_EndOffset` |
+| ignore transforms | `m_Exclusions` |
+| colliders (sphere/capsule/plane) | `DynamicBoneCollider` / `DynamicBonePlaneCollider` |
+| limit type Angle/Hinge/Polar | ⚠️ no equivalent — skipped |
+| maxStretch (squash & stretch) | ⚠️ no equivalent — skipped |
+
+Same *feel*-approximation caveat: DynamicBone's useful ranges differ, so pull is scaled into
+`m_Elasticity` and spring is inverted/remapped into `m_Damping` (tuning constants at the top of
+`Editor/Core/Physics/DynamicBoneWriter.cs`). The gravity split mirrors VRChat's own
+DynamicBone→PhysBone import math (`gravity² = m_Gravity² + m_Force²`). DynamicBone has no angle
+limits, so PhysBone limit types are skipped.
+
 ## VRChat-only system stripping
 
 Two subsystems that are dead weight in ChilloutVR are stripped by default (both toggleable):
