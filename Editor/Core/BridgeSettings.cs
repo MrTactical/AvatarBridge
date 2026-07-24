@@ -78,5 +78,8 @@ namespace AvatarBridge
         public bool convertConstraints = true;
         public bool convertHeadChop = true;
         public bool convertSpatialAudio = true;
+        // Detect face-tracking blendshapes (VRCFaceTracking / Unified Expressions or
+        // SRanipal) and set up CVR's native CVRFaceTracking component.
+        public bool setupFaceTracking = true;
     }
 }

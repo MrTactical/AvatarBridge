@@ -38,6 +38,7 @@ namespace AvatarBridge
                 PrepareTarget(ctx);
 
                 DescriptorConverter.Run(ctx);
+                FaceTrackingConverter.Run(ctx);
                 ParameterMenuConverter.Run(ctx);
                 PhysBoneConverter.Run(ctx);
                 ContactsConverter.Run(ctx);

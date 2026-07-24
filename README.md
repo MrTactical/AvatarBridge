@@ -14,6 +14,8 @@ What makes it different from older converters:
   parameters.
 - **VRChat-only bloat is removed.** GoGo Loco, SPS/OGB/PCS and friends are stripped, which
   on the test avatar cut sync usage from 3088 to 240 of 3200 bits.
+- **Face tracking is set up for you.** VRCFaceTracking / Unified Expressions / SRanipal
+  blendshapes are detected and wired into CVR's native `CVRFaceTracking` component.
 
 Every conversion produces a `ConversionReport.md` listing what converted 1:1, what was
 approximated, and what has no ChilloutVR equivalent — the table below marks which parts
@@ -124,7 +126,7 @@ status:
 | FX / Gesture layers (Base, Additive, Action optional) | merged into one CVR animator on top of the CCK `AvatarAnimator` | ✅ | CVR hand layers are removed when the Gesture layer is converted |
 | PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (MagicaCloth2) | DynamicBone path is 🔷; see mapping below |
 | Non-synced parameters | `#`-prefixed (CVR local-only convention) | ✅ | keeps network traffic equivalent; test avatar went 3088 → 240 of 3200 sync bits |
-| `GestureLeft/Right` int values | CVR float gesture values | 🔷 | full remap incl. analog fist — **the one to test first**, see caveat below |
+| `GestureLeft/Right` int values | CVR float gesture values | ✅ | mapping verified against the official CCK parameter reference — Open Hand −1, Fist 0–1, Thumbs Up 2, Gun 3, Point 4, Peace 5, Rock'n'Roll 6 |
 | `GestureLeftWeight/RightWeight`, `MuteSelf`, `VRMode` | fed by a `CVRParameterStream` | 🔷 | trigger squeeze / mute / VR-mode piped from the game like VRChat's built-ins |
 | VRC Parameter Driver | CCK `AnimatorDriver` | 🔷 | Set / Add / Random / Copy incl. range conversion; Random on a bool is ⚠️ (chance weighting is lost) |
 | Contact senders | `CVRPointer` (one per collision tag) | 🔷 | with matching trigger collider shape |
@@ -134,15 +136,14 @@ status:
 | VRC Head Chop | `FPRExclusion` | 🔷 | ⚠️ show/hide only — scale factors between 0 and 1 can't be represented |
 | VRC Spatial Audio Source | `AudioSource` spatial settings | 🔷 | ⚠️ approximation; the gain curve is not reproduced exactly |
 | `Viseme`, `Voice`, `Seated`, `IsOnFriendsList`… | `VisemeIdx`, `VisemeLoudness`, `Sitting`, `IsFriend`… | 🔷 | CVR core parameter renames |
+| Face-tracking blendshapes (VRCFaceTracking / Unified / SRanipal) | native `CVRFaceTracking` component | 🔷 | auto-detected and auto-mapped; VRChat's OSC-driven FX plumbing is dropped in favour of CVR's native path |
 | Menu **Button** controls | `<impulse=0.1>` auto-reset parameters | 🔷 | this convention comes from CCK 3-era tooling and hasn't been re-verified on CCK 4 |
 
-**Gesture caveat worth knowing about.** AvatarBridge remaps VRChat's gesture numbers to
-different ChilloutVR values (fist `1`, open hand `-1`, point `4`, peace `5`, rock'n'roll
-`6`, gun `3`, thumbs up `2`), matching what existing converters do. The
-[VRWiki parameter page](https://vrwiki.info/wiki/Converting_VRC_Parameters_to_ChilloutVR)
-instead documents CVR's gestures as plain `0–7`, same as VRChat. The two can't both be
-right — if your facial expressions fire on the *wrong* hand poses in game, that's this,
-and it's a one-line fix in `Editor/Core/GestureMap.cs`. Please open an issue if you hit it.
+**A note on movement parameters.** VRChat and ChilloutVR name these differently *and mean
+different things*: VRChat's `VelocityX/Y/Z` is world-space movement speed, while CVR's
+`MovementX/Y` is thumbstick/input deflection. They are **not** interchangeable, so
+AvatarBridge does not auto-rename between them. Locomotion is left to CVR's own system by
+default (the Base layer isn't converted unless you opt in), which sidesteps the mismatch.
 
 ### PhysBones → MagicaCloth2 mapping
 
@@ -212,8 +213,9 @@ AvatarBridge on the test copy.
 
 **Not converted at all** (no ChilloutVR equivalent, or not implemented yet):
 
-- **Eye look / eye tracking.** Only the blink blendshape is transferred. Set up eye
-  movement yourself under *Eye Look Settings* on the `CVRAvatar` component.
+- **Eye look / gaze.** Only the blink blendshape is transferred. Set up eye movement
+  yourself under *Eye Look Settings* on the `CVRAvatar` component. (Blendshape-based face
+  tracking, including eye-region shapes, *is* set up automatically — see the table above.)
 - **PhysBone interaction** — grabbing, posing, stretch/squish and the
   `_IsGrabbed` / `_Angle` / `_Stretch` parameters (reported per chain).
 - **VRC state behaviours** other than Parameter Driver — Animator Layer Control, Tracking
@@ -245,8 +247,9 @@ ChilloutVR, and expect to tune physics feel by hand.
 - Gesture value tables, CVR core parameter list and several conversion patterns were
   studied from [vrc3cvr](https://github.com/imagitama/vrc3cvr) (MIT) and the
   [Narazaka fork](https://github.com/Narazaka/vrc3cvr) — thank you to those authors.
-- CVR Parameter Stream mappings (trigger values, mute state, device mode) come from the
-  [VRWiki parameter conversion page](https://vrwiki.info/wiki/Converting_VRC_Parameters_to_ChilloutVR).
+- Gesture value mapping and the CVR Parameter Stream approach follow the official
+  ChilloutVR *Avatar Animator Parameters* and *Parameter Stream* references, cross-checked
+  against [vrc3cvr](https://github.com/imagitama/vrc3cvr).
 - Gravity split formula for the DynamicBone fallback mirrors the relation documented by
   [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone).
 - MagicaCloth2 API usage follows the official
