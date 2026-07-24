@@ -1625,7 +1625,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            bool IsFt(string name) => !string.IsNullOrEmpty(name) && ctx.FaceTrackingParameters.Contains(name.TrimStart('#'));
+            bool IsFt(string name) => FaceTrackingParameters.IsFaceTracking(name, ctx.FaceTrackingParameters);
 
             var removedMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in vrcLayers.ToList())

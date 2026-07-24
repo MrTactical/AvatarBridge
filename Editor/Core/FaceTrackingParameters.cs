@@ -18,6 +18,29 @@ namespace AvatarBridge
     /// </summary>
     public static class FaceTrackingParameters
     {
+        /// <summary>
+        /// True for any face-tracking parameter — either an exact name from a detected
+        /// package's parameter asset (the synced binary bits and control flags), or one of
+        /// the OSCmooth / FT namespaces the FT animator uses internally
+        /// (e.g. "OSCm/Proxy/FT/v2/MouthUp", "OSCm/Remote/BinaryMod", "FT/v2/EyeSquintLeft1").
+        /// The internal ones never appear in the expression-parameters asset, so pattern
+        /// matching is required alongside the collected exact names.
+        /// </summary>
+        public static bool IsFaceTracking(string rawName, HashSet<string> collected)
+        {
+            if (string.IsNullOrEmpty(rawName))
+            {
+                return false;
+            }
+            string name = rawName.TrimStart('#');
+            if (collected.Contains(name) || collected.Contains(rawName))
+            {
+                return true;
+            }
+            return name.StartsWith("OSCm/") || name.Contains("/OSCm/") ||
+                   name.StartsWith("FT/") || name.Contains("/FT/");
+        }
+
         public static HashSet<string> Collect()
         {
             var names = new HashSet<string>();

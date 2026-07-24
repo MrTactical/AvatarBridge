@@ -81,7 +81,7 @@ namespace AvatarBridge
                     }
                     // Face-tracking template parameters are driven by the FT animator
                     // layers — never expose them as menu toggles.
-                    if (ctx.FaceTrackingParameters.Contains(p.name))
+                    if (FaceTrackingParameters.IsFaceTracking(p.name, ctx.FaceTrackingParameters))
                     {
                         ftSkipped++;
                         continue;
