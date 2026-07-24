@@ -8,19 +8,20 @@ using UnityEngine;
 namespace AvatarBridge
 {
     /// <summary>
-    /// VRCFury bakes generated meshes (SPS-deformed bodies, blendshape/mesh-optimizer output,
-    /// merged armatures…) as sub-assets under Packages/com.vrcfury.temp, and it deletes that
-    /// folder on its next build. A converted avatar that still points at those temp meshes
-    /// loses them — a SkinnedMeshRenderer with a null sharedMesh renders nothing, so the whole
-    /// avatar comes back **blank/invisible** (and CVR's inspector throws in GetBlendshapeNames).
+    /// VRCFury bakes generated assets — meshes (SPS-deformed bodies, blendshape/mesh-optimizer
+    /// output, merged armatures), and materials/shaders (SPS-patched, poiyomi-locked) — under
+    /// Packages/com.vrcfury.temp, and it deletes that folder on its next build. A converted
+    /// avatar that still points at those temp assets loses them:
+    ///   * a null sharedMesh renders nothing → the avatar comes back **blank/invisible**;
+    ///   * a null material/shader renders **pink** and drops out of the scene.
     ///
-    /// This copies every renderer mesh that lives in the volatile temp into the output folder
-    /// and repoints the renderers, making the avatar self-contained. It is the mesh-side
-    /// sibling of AnimatorMerger.RehomeVolatileAssets (which does this for clips/masks).
+    /// This copies every renderer mesh, material and (generated) shader that lives in the
+    /// volatile temp into the output folder and repoints the renderers, making the avatar
+    /// self-contained. Mesh-side sibling of AnimatorMerger.RehomeVolatileAssets (clips/masks).
     /// </summary>
     public static class SceneAssetRehomer
     {
-        const string Category = "Meshes";
+        const string Category = "Assets";
 
         static bool IsVolatile(UnityEngine.Object obj)
         {
@@ -37,43 +38,55 @@ namespace AvatarBridge
         {
             var skinned = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             var filters = ctx.Target.GetComponentsInChildren<MeshFilter>(true);
+            var renderers = ctx.Target.GetComponentsInChildren<Renderer>(true);
 
-            bool any = false;
-            foreach (var smr in skinned) if (IsVolatile(smr.sharedMesh)) { any = true; break; }
-            if (!any) foreach (var mf in filters) if (IsVolatile(mf.sharedMesh)) { any = true; break; }
-            if (!any)
+            if (!AnyVolatile(skinned, filters, renderers))
             {
-                return; // nothing baked into temp — meshes are permanent project assets
+                return; // everything is a permanent project asset — nothing to rescue
             }
 
-            string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedMeshes";
+            string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
             EnsureFolder(dir);
 
-            var map = new Dictionary<Mesh, Mesh>();
+            var meshMap = new Dictionary<Mesh, Mesh>();
+            var matMap = new Dictionary<Material, Material>();
+            var shaderMap = new Dictionary<Shader, Shader>();
+
             foreach (var smr in skinned)
             {
-                var rehomed = RehomeMesh(smr.sharedMesh, dir, map);
-                if (rehomed != smr.sharedMesh)
-                {
-                    smr.sharedMesh = rehomed;
-                    EditorUtility.SetDirty(smr);
-                }
+                var m = RehomeMesh(smr.sharedMesh, dir, meshMap);
+                if (m != smr.sharedMesh) { smr.sharedMesh = m; EditorUtility.SetDirty(smr); }
             }
             foreach (var mf in filters)
             {
-                var rehomed = RehomeMesh(mf.sharedMesh, dir, map);
-                if (rehomed != mf.sharedMesh)
-                {
-                    mf.sharedMesh = rehomed;
-                    EditorUtility.SetDirty(mf);
-                }
+                var m = RehomeMesh(mf.sharedMesh, dir, meshMap);
+                if (m != mf.sharedMesh) { mf.sharedMesh = m; EditorUtility.SetDirty(mf); }
+            }
+            foreach (var r in renderers)
+            {
+                RehomeMaterials(r, dir, matMap, shaderMap);
             }
             AssetDatabase.SaveAssets();
 
             ctx.Report.Converted(Category,
-                $"Re-homed {map.Count} VRCFury-baked mesh(es) out of temp",
-                "These were generated into Packages/com.vrcfury.temp, which Fury deletes on its next build — " +
-                "without saved copies the avatar's renderers go null (invisible). Saved to " + dir + ".");
+                $"Re-homed {meshMap.Count} mesh(es), {matMap.Count} material(s), {shaderMap.Count} shader(s) out of temp",
+                "VRCFury generated these into Packages/com.vrcfury.temp, which it deletes on its next build — " +
+                "without saved copies the avatar goes invisible (null mesh) or pink (null material/shader). " +
+                "Saved to " + dir + ".");
+        }
+
+        static bool AnyVolatile(SkinnedMeshRenderer[] skinned, MeshFilter[] filters, Renderer[] renderers)
+        {
+            foreach (var smr in skinned) if (IsVolatile(smr.sharedMesh)) return true;
+            foreach (var mf in filters) if (IsVolatile(mf.sharedMesh)) return true;
+            foreach (var r in renderers)
+            {
+                foreach (var mat in r.sharedMaterials)
+                {
+                    if (IsVolatile(mat) || (mat != null && IsVolatile(mat.shader))) return true;
+                }
+            }
+            return false;
         }
 
         static Mesh RehomeMesh(Mesh mesh, string dir, Dictionary<Mesh, Mesh> map)
@@ -88,9 +101,77 @@ namespace AvatarBridge
             }
             var copy = UnityEngine.Object.Instantiate(mesh);
             copy.name = mesh.name;
-            string path = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mesh.name)}.asset");
-            AssetDatabase.CreateAsset(copy, path);
+            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mesh.name)}.asset"));
             map[mesh] = copy;
+            return copy;
+        }
+
+        static void RehomeMaterials(Renderer r, string dir,
+            Dictionary<Material, Material> matMap, Dictionary<Shader, Shader> shaderMap)
+        {
+            var mats = r.sharedMaterials;
+            bool changed = false;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var rehomed = RehomeMaterial(mats[i], dir, matMap, shaderMap);
+                if (rehomed != mats[i])
+                {
+                    mats[i] = rehomed;
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                r.sharedMaterials = mats;
+                EditorUtility.SetDirty(r);
+            }
+        }
+
+        static Material RehomeMaterial(Material mat, string dir,
+            Dictionary<Material, Material> matMap, Dictionary<Shader, Shader> shaderMap)
+        {
+            if (mat == null || !IsVolatile(mat))
+            {
+                return mat; // permanent (or null) — leave it alone
+            }
+            if (matMap.TryGetValue(mat, out var existing))
+            {
+                return existing;
+            }
+            var copy = UnityEngine.Object.Instantiate(mat);
+            copy.name = mat.name;
+            // A generated (SPS/locked) shader lives in temp too — rescue it so the copy isn't pink.
+            if (IsVolatile(copy.shader))
+            {
+                copy.shader = RehomeShader(copy.shader, dir, shaderMap);
+            }
+            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mat.name)}.mat"));
+            matMap[mat] = copy;
+            return copy;
+        }
+
+        static Shader RehomeShader(Shader shader, string dir, Dictionary<Shader, Shader> map)
+        {
+            if (!IsVolatile(shader))
+            {
+                return shader;
+            }
+            if (map.TryGetValue(shader, out var existing))
+            {
+                return existing;
+            }
+            string src = AssetDatabase.GetAssetPath(shader);
+            // Only standalone .shader files can be copied cleanly; leave anything else as-is.
+            if (!src.EndsWith(".shader", StringComparison.OrdinalIgnoreCase))
+            {
+                map[shader] = shader;
+                return shader;
+            }
+            string dst = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(shader.name)}.shader");
+            Shader copy = AssetDatabase.CopyAsset(src, dst)
+                ? AssetDatabase.LoadAssetAtPath<Shader>(dst)
+                : shader;
+            map[shader] = copy;
             return copy;
         }
 
@@ -105,13 +186,14 @@ namespace AvatarBridge
         {
             if (string.IsNullOrEmpty(n))
             {
-                return "Mesh";
+                return "Asset";
             }
             foreach (var c in Path.GetInvalidFileNameChars())
             {
                 n = n.Replace(c, '_');
             }
-            return n;
+            // Shader names use '/' as category separators — not valid in file names.
+            return n.Replace('/', '_');
         }
     }
 }

@@ -97,7 +97,7 @@ registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines
 | Window shows a ✔/✘ checklist instead of options | A required SDK is missing — import it, let Unity recompile, reopen the window. |
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, corrupting its Fury data. Delete the avatar's assets and scene copies, then re-import with VRCFury already installed. |
 | Convert button greyed out with a face-tracking warning | **Unity Animator Blendtrees (DSR)** is selected but its bundled assets (`Assets/AvatarBridge/FaceTracking`) are missing — reimport AvatarBridge, or switch **Face tracking** to another mode. |
-| Converted avatar is blank / invisible in-game (CVR inspector throws in `GetBlendshapeNames`) | VRCFury baked the avatar's meshes into its temp folder and later deleted it, orphaning them (null `sharedMesh`). Fixed in 0.8.2+ — AvatarBridge now copies those meshes into the output; re-convert on the latest build. |
+| Converted avatar is blank / invisible, or some materials go **pink** and vanish on Play | VRCFury baked the avatar's meshes/materials/shaders into its temp folder and later deleted it, orphaning them (null mesh = invisible, null material/shader = pink). Fixed in 0.9.1+ (meshes since 0.8.2) — AvatarBridge now copies those assets into `<output>/RehomedAssets`; re-convert on the latest build. |
 | Physics target warning | MagicaCloth2 / DynamicBone isn't installed, or needs one more recompile to be detected. |
 | Project wedged after an out-of-order import | Close Unity, delete the `Library` folder, reopen and let it reimport. |
 
