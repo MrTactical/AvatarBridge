@@ -141,6 +141,7 @@ namespace AvatarBridge
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
+            StripFaceTrackingIfNative(master, vrcLayers, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
             BoolifyToggleParameters(master, ctx);
             RenamePass(master, vrcLayers, ctx);
@@ -158,11 +159,16 @@ namespace AvatarBridge
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
             AnimatorAssetSaver.Save(master, controllerPath);
 
-            // No override controller is generated: the CCK's "Override Controller" field is
-            // an INPUT for a user's pre-existing overrides, and an empty one adds nothing.
-            FileUtil.DeleteFileOrDirectory($"{ctx.OutputDir}/{master.name}_Overrides.overrideController");
+            // Generate the override controller wrapping the base. ChilloutVR uses this as
+            // the avatar's runtime controller (it's what the "Override Controller" slot
+            // expects), so it must be present, not left empty.
+            var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
+            string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
+            FileUtil.DeleteFileOrDirectory(overridesPath);
+            AssetDatabase.CreateAsset(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
+            ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
             if (animator != null)
@@ -1604,6 +1610,62 @@ namespace AvatarBridge
                 converted++;
             }
             return result.ToArray();
+        }
+
+        /// <summary>
+        /// In Native face-tracking mode the CVRFaceTracking component drives the face
+        /// blendshapes, so a parameter-based FT animator (baked in from a VRCFury FT rig)
+        /// is redundant and fights it for the same shapes. Remove the FT-dominated animator
+        /// layers and their now-unreferenced FT parameters. Parameter-based / None modes
+        /// keep them.
+        /// </summary>
+        static void StripFaceTrackingIfNative(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            if (ctx.Settings.faceTrackingMode != FaceTrackingMode.Native || ctx.FaceTrackingParameters.Count == 0)
+            {
+                return;
+            }
+            bool IsFt(string name) => !string.IsNullOrEmpty(name) && ctx.FaceTrackingParameters.Contains(name.TrimStart('#'));
+
+            var removedMachines = new HashSet<AnimatorStateMachine>();
+            foreach (var layer in vrcLayers.ToList())
+            {
+                var refs = SystemStripper.CollectParameterRefs(layer.stateMachine);
+                if (refs.Count == 0)
+                {
+                    continue;
+                }
+                int ftRefs = refs.Count(IsFt);
+                if (ftRefs > 0 && ftRefs >= refs.Count * 0.6f)
+                {
+                    removedMachines.Add(layer.stateMachine);
+                    vrcLayers.Remove(layer);
+                }
+            }
+            if (removedMachines.Count > 0)
+            {
+                master.layers = master.layers
+                    .Where(l => l.stateMachine == null || !removedMachines.Contains(l.stateMachine))
+                    .ToArray();
+            }
+
+            var stillReferenced = new HashSet<string>();
+            foreach (var layer in master.layers)
+            {
+                stillReferenced.UnionWith(SystemStripper.CollectParameterRefs(layer.stateMachine));
+            }
+            var parameters = master.parameters;
+            int before = parameters.Length;
+            master.parameters = parameters.Where(p => !IsFt(p.name) || stillReferenced.Contains(p.name)).ToArray();
+            int removedParams = before - master.parameters.Length;
+
+            if (removedMachines.Count > 0 || removedParams > 0)
+            {
+                ctx.Report.Converted("Face tracking",
+                    $"Native mode: removed {removedMachines.Count} parameter-based FT layer(s) and {removedParams} FT parameter(s)",
+                    "The native CVRFaceTracking component drives face tracking, so the baked-in " +
+                    "parameter-based FT animator was removed to avoid fighting it for the same blendshapes.");
+            }
         }
 
         static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
