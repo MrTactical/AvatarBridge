@@ -156,9 +156,11 @@ fights over the same blendshapes.
   auto-mapping the shapes. Self-contained — but the built-in solver is a bit stiff.
 - **Unity Animator Blendtrees (DSR)** — injects DragonSkyRunner's *CVR Eye & Face Tracking*
   rig (**bundled** with AvatarBridge — no separate import) and rebuilds it onto your avatar:
-  its layers and ~56 parameters are copied into the generated controller, and every clip is
-  repathed onto your actual eye bones and face mesh. Direct float params, no binary encoding
-  or smoothing — smoother and more expressive than the built-in.
+  its layers and ~56 parameters are copied into the generated controller, every clip is
+  repathed onto your actual eye bones and face mesh, and its shape vocabulary is **reconciled
+  to whatever combined/split blendshapes your mesh actually has** (VRCFT blended-shape rules —
+  e.g. driving a single `LipFunnel` when the rig has the four quadrants, or vice versa). Direct
+  float params, no binary encoding or smoothing — smoother and more expressive than the built-in.
 - **None** — leave face tracking entirely to you.
 
 **Either mode still needs a tracking source at runtime** — this is true of *any* CVR

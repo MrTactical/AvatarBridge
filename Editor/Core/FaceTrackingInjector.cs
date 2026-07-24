@@ -106,10 +106,10 @@ namespace AvatarBridge
             // ---- generate the eye rig and repath the clips onto this avatar -------------
             // Do this while we still hold the authoritative layer references, BEFORE handing
             // them to master.layers (whose setter can detach the state-machine objects).
-            var remap = new Dictionary<string, string>();
+            var pathRemap = new Dictionary<string, string>();
             try
             {
-                BuildEyeRig(ctx, remap);
+                BuildEyeRig(ctx, pathRemap);
             }
             catch (Exception e)
             {
@@ -117,26 +117,111 @@ namespace AvatarBridge
                     $"Face shapes still injected; eye gaze not wired. {e.Message}");
                 Debug.LogException(e);
             }
-            AddFaceMeshRemap(ctx, remap);
 
-            int repathed = 0;
-            if (remap.Count > 0)
+            // Resolve the face mesh once — used for both the path repath and the blendshape
+            // reconciliation below.
+            var faceMesh = ResolveFaceMesh(ctx);
+            string faceMeshPath = faceMesh != null ? ctx.PathInTarget(faceMesh.transform) : PkgFaceMesh;
+            if (faceMesh != null && !string.IsNullOrEmpty(faceMeshPath) && faceMeshPath != PkgFaceMesh)
+            {
+                pathRemap[PkgFaceMesh] = faceMeshPath;
+                ctx.Report.Converted(Category, $"Face-tracking blendshapes repathed to \"{faceMeshPath}\"",
+                    "The rig assumes a face mesh named \"Body\"; rebound to this avatar's face mesh instead.");
+            }
+
+            // Reconcile the rig's shape vocabulary against what the mesh actually has (combined
+            // vs split Unified-Expressions shapes).
+            Dictionary<string, ShapeAction> shapePlan = null;
+            if (faceMesh != null && faceMesh.sharedMesh != null)
+            {
+                var meshActual = new Dictionary<string, string>();
+                var mesh = faceMesh.sharedMesh;
+                for (int i = 0; i < mesh.blendShapeCount; i++)
+                {
+                    string n = mesh.GetBlendShapeName(i);
+                    meshActual[n.ToLowerInvariant()] = n;
+                }
+                var rigShapes = CollectRigFaceShapes(injectedLayers);
+                shapePlan = UnifiedBlendshapes.BuildPlan(rigShapes, meshActual, out var unmapped);
+                ReportReconciliation(ctx, faceMesh.name, shapePlan, unmapped);
+            }
+
+            int rewritten = 0;
+            if (pathRemap.Count > 0 || (shapePlan != null && shapePlan.Count > 0))
             {
                 var cache = new Dictionary<AnimationClip, AnimationClip>();
                 foreach (var layer in injectedLayers)
                 {
-                    RepathMachine(layer.stateMachine, remap, cache);
+                    RewriteMachine(layer.stateMachine, pathRemap, shapePlan, faceMeshPath, cache);
                 }
-                // A clone was made whenever the cached value differs from its key.
-                repathed = cache.Count(kv => kv.Key != kv.Value);
+                rewritten = cache.Count(kv => kv.Key != kv.Value);
             }
 
             master.layers = layers.ToArray();
 
             ctx.Report.Converted(Category,
                 $"Injected CVR-VRCFT face tracking — {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
-                $"DragonSkyRunner's rig, repathed onto this avatar ({repathed} clip(s) rebound). Eye gaze " +
+                $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Eye gaze " +
                 "magnitude may want tuning per the package readme; verify the eye RotationConstraints in play mode.");
+        }
+
+        /// <summary>All blendshape names the injected clips drive on the package's face mesh.</summary>
+        static HashSet<string> CollectRigFaceShapes(List<AnimatorControllerLayer> layers)
+        {
+            var shapes = new HashSet<string>();
+            var seen = new HashSet<AnimationClip>();
+            void Walk(Motion m)
+            {
+                if (m is BlendTree bt)
+                {
+                    foreach (var child in bt.children) Walk(child.motion);
+                }
+                else if (m is AnimationClip clip && clip != null && seen.Add(clip))
+                {
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.path == PkgFaceMesh && b.propertyName.StartsWith("blendShape."))
+                        {
+                            shapes.Add(b.propertyName.Substring("blendShape.".Length));
+                        }
+                    }
+                }
+            }
+            foreach (var layer in layers)
+            {
+                WalkMachine(layer.stateMachine, Walk);
+            }
+            return shapes;
+        }
+
+        static void WalkMachine(AnimatorStateMachine machine, Action<Motion> onMotion)
+        {
+            if (machine == null) return;
+            foreach (var s in machine.states) onMotion(s.state.motion);
+            foreach (var child in machine.stateMachines) WalkMachine(child.stateMachine, onMotion);
+        }
+
+        static void ReportReconciliation(BridgeContext ctx, string meshName,
+            Dictionary<string, ShapeAction> plan, List<string> unmapped)
+        {
+            int collapsed = plan.Count(kv => kv.Value.Op == ShapeOp.Redirect);
+            int expanded = plan.Count(kv => kv.Value.Op == ShapeOp.Expand);
+            if (collapsed > 0 || expanded > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Reconciled {collapsed + expanded} FT blendshape(s) to \"{meshName}\"",
+                    $"Mapped the rig's shapes to what the mesh has via VRCFT blended-shape rules — " +
+                    $"{collapsed} split→combined (scaled to avoid over-driving), {expanded} combined→split. " +
+                    "An approximation; asymmetric expressions on combined-only meshes land at partial strength.");
+            }
+            if (unmapped != null && unmapped.Count > 0)
+            {
+                string list = string.Join(", ", unmapped.Take(12));
+                if (unmapped.Count > 12) list += $", +{unmapped.Count - 12} more";
+                ctx.Report.Approximated(Category,
+                    $"{unmapped.Count} FT shape(s) have no equivalent on \"{meshName}\"",
+                    $"These won't move — the mesh has neither the shape nor a combined/split match: {list}.");
+            }
         }
 
         // ---------------------------------------------------------------- eye rig -------
@@ -248,26 +333,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(rc);
         }
 
-        static void AddFaceMeshRemap(BridgeContext ctx, Dictionary<string, string> remap)
-        {
-            var mesh = ResolveFaceMesh(ctx);
-            if (mesh == null)
-            {
-                // Couldn't identify the face mesh — leave the clips pointing at "Body" (the
-                // rig's assumption). If that's wrong, the user re-points them by hand.
-                return;
-            }
-            string path = ctx.PathInTarget(mesh.transform);
-            if (string.IsNullOrEmpty(path) || path == PkgFaceMesh)
-            {
-                // Already correct (the face mesh IS "Body" at the expected path) — no remap.
-                return;
-            }
-            remap[PkgFaceMesh] = path;
-            ctx.Report.Converted(Category, $"Face-tracking blendshapes repathed to \"{path}\"",
-                "The rig assumes a face mesh named \"Body\"; rebound to this avatar's face mesh instead.");
-        }
-
         /// <summary>
         /// The face mesh the FT blendshapes belong on. Prefers the descriptor's own viseme
         /// mesh (CVRAvatar.bodyMesh) — the authoritative choice — then a mesh literally named
@@ -325,9 +390,10 @@ namespace AvatarBridge
                    || path.Contains("vf_ue") || path.Contains("ft_debug") || path.Contains("worldobject");
         }
 
-        // ---------------------------------------------------------------- repath --------
+        // ------------------------------------------------------ path + shape rewrite ----
 
-        static void RepathMachine(AnimatorStateMachine machine, Dictionary<string, string> remap,
+        static void RewriteMachine(AnimatorStateMachine machine, Dictionary<string, string> pathRemap,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (machine == null)
@@ -337,16 +403,17 @@ namespace AvatarBridge
             var states = machine.states;
             for (int i = 0; i < states.Length; i++)
             {
-                states[i].state.motion = RepathMotion(states[i].state.motion, remap, cache);
+                states[i].state.motion = RewriteMotion(states[i].state.motion, pathRemap, shapePlan, faceMeshPath, cache);
             }
             machine.states = states;
             foreach (var child in machine.stateMachines)
             {
-                RepathMachine(child.stateMachine, remap, cache);
+                RewriteMachine(child.stateMachine, pathRemap, shapePlan, faceMeshPath, cache);
             }
         }
 
-        static Motion RepathMotion(Motion motion, Dictionary<string, string> remap,
+        static Motion RewriteMotion(Motion motion, Dictionary<string, string> pathRemap,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (motion is BlendTree tree)
@@ -354,7 +421,7 @@ namespace AvatarBridge
                 var kids = tree.children;
                 for (int i = 0; i < kids.Length; i++)
                 {
-                    kids[i].motion = RepathMotion(kids[i].motion, remap, cache);
+                    kids[i].motion = RewriteMotion(kids[i].motion, pathRemap, shapePlan, faceMeshPath, cache);
                 }
                 bool auto = tree.useAutomaticThresholds;
                 tree.useAutomaticThresholds = false;
@@ -364,12 +431,19 @@ namespace AvatarBridge
             }
             if (motion is AnimationClip clip)
             {
-                return RepathClip(clip, remap, cache);
+                return RewriteClip(clip, pathRemap, shapePlan, faceMeshPath, cache);
             }
             return motion;
         }
 
-        static AnimationClip RepathClip(AnimationClip clip, Dictionary<string, string> remap,
+        const string ShapePrefix = "blendShape.";
+
+        /// <summary>
+        /// Clone-on-write copy of a clip with its curves rebound: paths remapped onto this
+        /// avatar, and face blendshapes reconciled to the mesh's shape set (combined/split).
+        /// </summary>
+        static AnimationClip RewriteClip(AnimationClip clip, Dictionary<string, string> pathRemap,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (clip == null)
@@ -383,8 +457,8 @@ namespace AvatarBridge
 
             var floatBindings = AnimationUtility.GetCurveBindings(clip);
             var objBindings = AnimationUtility.GetObjectReferenceCurveBindings(clip);
-            bool needs = floatBindings.Any(b => remap.ContainsKey(b.path))
-                         || objBindings.Any(b => remap.ContainsKey(b.path));
+            bool needs = floatBindings.Any(b => NeedsRewrite(b, pathRemap, shapePlan))
+                         || objBindings.Any(b => pathRemap.ContainsKey(b.path));
             if (!needs)
             {
                 cache[clip] = clip;
@@ -395,21 +469,63 @@ namespace AvatarBridge
             clone.name = clip.name;
             clone.hideFlags = HideFlags.None;
 
+            // Rebuild the float curves from scratch so shape collapses can merge onto one
+            // binding. Keyed by "path|type|property" → summed curve.
+            var outCurves = new Dictionary<string, KeyValuePair<EditorCurveBinding, AnimationCurve>>();
+            void Emit(EditorCurveBinding binding, AnimationCurve curve)
+            {
+                string key = binding.path + "|" + binding.type.FullName + "|" + binding.propertyName;
+                if (outCurves.TryGetValue(key, out var existing))
+                {
+                    outCurves[key] = new KeyValuePair<EditorCurveBinding, AnimationCurve>(
+                        binding, SumCurves(existing.Value, curve));
+                }
+                else
+                {
+                    outCurves[key] = new KeyValuePair<EditorCurveBinding, AnimationCurve>(binding, curve);
+                }
+            }
+
             foreach (var b in floatBindings)
             {
-                if (!remap.TryGetValue(b.path, out var newPath))
-                {
-                    continue;
-                }
                 var curve = AnimationUtility.GetEditorCurve(clone, b);
-                AnimationUtility.SetEditorCurve(clone, b, null);
-                var nb = b;
-                nb.path = newPath;
-                AnimationUtility.SetEditorCurve(clone, nb, curve);
+                string newPath = pathRemap.TryGetValue(b.path, out var p) ? p : b.path;
+
+                bool isFaceShape = b.path == PkgFaceMesh && b.propertyName.StartsWith(ShapePrefix);
+                string shape = isFaceShape ? b.propertyName.Substring(ShapePrefix.Length) : null;
+
+                if (isFaceShape && shapePlan != null && shapePlan.TryGetValue(shape, out var action))
+                {
+                    foreach (var target in action.Targets)
+                    {
+                        var nb = b;
+                        nb.path = faceMeshPath;
+                        nb.propertyName = ShapePrefix + target;
+                        Emit(nb, action.Scale == 1f ? curve : ScaleCurve(curve, action.Scale));
+                    }
+                }
+                else
+                {
+                    var nb = b;
+                    nb.path = newPath;
+                    Emit(nb, curve);
+                }
             }
+
+            // Replace all float curves: clear the originals, then write the merged set.
+            foreach (var b in floatBindings)
+            {
+                AnimationUtility.SetEditorCurve(clone, b, null);
+            }
+            foreach (var kv in outCurves.Values)
+            {
+                AnimationUtility.SetEditorCurve(clone, kv.Key, kv.Value);
+            }
+
+            // Object-reference curves (none in this rig, but keep them path-correct).
             foreach (var b in objBindings)
             {
-                if (!remap.TryGetValue(b.path, out var newPath))
+                if (!pathRemap.TryGetValue(b.path, out var newPath))
                 {
                     continue;
                 }
@@ -422,6 +538,45 @@ namespace AvatarBridge
 
             cache[clip] = clone;
             return clone;
+        }
+
+        static bool NeedsRewrite(EditorCurveBinding b, Dictionary<string, string> pathRemap,
+            Dictionary<string, ShapeAction> shapePlan)
+        {
+            if (pathRemap.ContainsKey(b.path))
+            {
+                return true;
+            }
+            if (shapePlan != null && b.path == PkgFaceMesh && b.propertyName.StartsWith(ShapePrefix))
+            {
+                return shapePlan.ContainsKey(b.propertyName.Substring(ShapePrefix.Length));
+            }
+            return false;
+        }
+
+        static AnimationCurve ScaleCurve(AnimationCurve src, float scale)
+        {
+            var keys = src.keys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i].value *= scale;
+                keys[i].inTangent *= scale;
+                keys[i].outTangent *= scale;
+            }
+            return new AnimationCurve(keys) { preWrapMode = src.preWrapMode, postWrapMode = src.postWrapMode };
+        }
+
+        /// <summary>Sums two curves over the union of their keyframe times (blend-tree semantics).</summary>
+        static AnimationCurve SumCurves(AnimationCurve a, AnimationCurve b)
+        {
+            var times = a.keys.Select(k => k.time).Concat(b.keys.Select(k => k.time))
+                         .Distinct().OrderBy(t => t).ToArray();
+            var result = new AnimationCurve { preWrapMode = a.preWrapMode, postWrapMode = a.postWrapMode };
+            foreach (var t in times)
+            {
+                result.AddKey(new Keyframe(t, a.Evaluate(t) + b.Evaluate(t)));
+            }
+            return result;
         }
     }
 }
