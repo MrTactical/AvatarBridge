@@ -63,6 +63,7 @@ namespace AvatarBridge
                     descriptor.gameObject.SetActive(false);
                 }
 
+                ReportSyncUsage(ctx);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();
@@ -77,6 +78,27 @@ namespace AvatarBridge
                 Debug.LogException(e);
             }
             return report;
+        }
+
+        /// <summary>
+        /// Reports the real sync-bit usage so users don't misread the CCK inspector's
+        /// two-number "(overrides, base+menu)" counter. AvatarBridge keeps everything in
+        /// the base controller, so the first number is always 0 — the second is what syncs.
+        /// </summary>
+        static void ReportSyncUsage(BridgeContext ctx)
+        {
+            try
+            {
+                var usage = ctx.CvrAvatar.GetParameterSyncUsage();
+                int used = usage.Item2; // base controller + menu entries = actual sync
+                ctx.Report.Converted("Sync", $"{used} of 3200 sync bits used",
+                    "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
+                    "override controller, which AvatarBridge doesn't use — so \"0\" there is expected, not a problem.");
+            }
+            catch (Exception e)
+            {
+                ctx.Report.Warning("Sync", "Could not read sync usage", e.Message);
+            }
         }
 
         static void PrepareOutputFolder(BridgeContext ctx)
