@@ -181,6 +181,11 @@ namespace AvatarBridge
                             "If the VRChat descriptor set no eyelid/blink shape, detect blink blendshapes on the " +
                             "face mesh (e.g. \"Blink L\"/\"Blink R\") and turn on CVR's Eye Blink Settings."),
                         settings.wireBlinkBlendshapes);
+                    settings.addAvatarScaler = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Add avatar scaler",
+                            "Inject a bundled height scaler with linear (constant-speed) smoothing and a " +
+                            "\"Height (M)\" menu. Scale values are calibrated to the source avatar — tune per avatar."),
+                        settings.addAvatarScaler);
                     DrawFaceTrackingModeDropdown();
                     DrawCvrVrcftFtNotice();
                     settings.outputFolder = EditorGUILayout.TextField("Output folder", settings.outputFolder);

@@ -152,6 +152,7 @@ namespace AvatarBridge
             DeduplicateLayers(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
+            AvatarScalerInjector.Inject(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
