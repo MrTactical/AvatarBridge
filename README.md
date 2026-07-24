@@ -157,14 +157,21 @@ fights over the same blendshapes.
 - **Unity Animator Blendtrees (DSR)** — injects DragonSkyRunner's *CVR Eye & Face Tracking*
   rig (**bundled** with AvatarBridge — no separate import) and rebuilds it onto your avatar:
   its layers and ~56 parameters are copied into the generated controller, and every clip is
-  repathed onto your actual eye bones and face mesh. At runtime it's driven over **CVR's
-  native OSC** — no extra mod: run the [VRCFaceTracking](https://store.steampowered.com/app/3329480/VRCFaceTracking/)
-  Steam tool, then in ChilloutVR set *Settings → Implementation → Face tracking* → Eye/Mouth
-  Tracking Module to **OSC**. Direct float params, no binary encoding or smoothing — smoother
-  and more expressive than the built-in.
+  repathed onto your actual eye bones and face mesh. Direct float params, no binary encoding
+  or smoothing — smoother and more expressive than the built-in.
 - **None** — leave face tracking entirely to you.
 
-**Eye tracking is wired automatically.** The rig steers two empties (`EyeTracking.L/.R`);
+**Either mode still needs a tracking source at runtime** — this is true of *any* CVR
+face-tracking avatar, not just AvatarBridge's: run the
+[VRCFaceTracking](https://store.steampowered.com/app/3329480/VRCFaceTracking/) Steam tool for
+your hardware, then in ChilloutVR set *Settings → Implementation → Face tracking* →
+**Eye/Mouth Tracking Module** to **OSC** (or the native module for your headset — SRanipal /
+Tobii). Without a source feeding it, neither the native component nor the blendtree rig moves.
+
+### Blendtree mode — automatic eye rig
+
+This part is **specific to Unity Animator Blendtrees (DSR)** — the Native component does its
+own eye tracking and needs none of it. The DSR rig steers two empties (`EyeTracking.L/.R`);
 AvatarBridge generates those at your eye bones and adds a `RotationConstraint` to each eye
 bone that follows its empty. The bundled ON/OFF clips toggle that constraint against CVR's
 native eye-look/blink, so no mesh edits are needed. Because the rig's clips are authored
@@ -172,12 +179,12 @@ against a fixed hierarchy and a mesh named `Body`, AvatarBridge clone-on-write r
 onto your avatar (Unity animation paths are case-sensitive, so this matters even when your
 bones are "the same" names).
 
-> A **drop-in starting point, not zero-touch.** It assumes Unified-Expressions blendshapes.
-> After converting: set up the **Eye Tracking** / **Face Tracking** toggles in Advanced Avatar
-> Settings, check the generated eye `RotationConstraints` in play mode, and tune the eye-gaze
-> magnitude per DragonSkyRunner's readme. As DSR notes, neither this nor the native path picks
-> up *every* possible combination of face shapes an avatar might use — expect some manual
-> touch-up on unusual rigs.
+> The blendtree rig is a **drop-in starting point, not zero-touch.** It assumes
+> Unified-Expressions blendshapes. After converting: set up the **Eye Tracking** / **Face
+> Tracking** toggles in Advanced Avatar Settings, check the generated eye `RotationConstraints`
+> in play mode, and tune the eye-gaze magnitude per DragonSkyRunner's readme. As DSR notes,
+> neither the blendtree rig nor the native path picks up *every* possible combination of face
+> shapes an avatar might use — expect some manual touch-up on unusual rigs.
 
 The rig is bundled from
 [DragonSkyRunner's CVR Eye & Face Tracking](https://github.com/DragonSkyRunner/ChilloutVR-Facetracking-Animator-Package)
