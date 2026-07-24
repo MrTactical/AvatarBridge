@@ -86,6 +86,11 @@ namespace AvatarBridge
                     }
                     settings.deleteConvertedPhysBones = EditorGUILayout.ToggleLeft(
                         "Delete PhysBones after converting", settings.deleteConvertedPhysBones);
+                    settings.grabbyBonesSupport = EditorGUILayout.ToggleLeft(
+                        new GUIContent("GrabbyBones mod support",
+                            "Name converted cloth objects after their PhysBone parameter so the GrabbyBones " +
+                            "mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic."),
+                        settings.grabbyBonesSupport);
                 }
             }
 
@@ -163,6 +168,11 @@ namespace AvatarBridge
                         new GUIContent("Expose menu-less synced parameters",
                             "Synced parameters without a menu control still get a CVR menu entry so they sync."),
                         settings.exposeMenulessSyncedParameters);
+                    settings.integerHandGestures = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Integer hand-pose gestures",
+                            "Convert the CCK's native hand-pose layers to select gestures via GestureLeftIdx/" +
+                            "RightIdx. The analog fist (trigger-pressure finger curl) stays on the float."),
+                        settings.integerHandGestures);
                     settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                     settings.convertHeadChop = EditorGUILayout.ToggleLeft("Convert VRC Head Chop", settings.convertHeadChop);
                     settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);

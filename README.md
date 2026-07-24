@@ -17,6 +17,9 @@ What makes it different from older converters:
   on the test avatar cut sync usage from 3088 to 240 of 3200 bits.
 - **Face tracking is set up for you.** VRCFaceTracking / Unified Expressions / SRanipal
   blendshapes are detected and wired into CVR's native `CVRFaceTracking` component.
+- **Mod-aware where it helps.** PhysBone grab reactions (`_IsGrabbed` / `_Angle`) are
+  wired up for the [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones)
+  mod, so avatars that reacted to being grabbed still do.
 
 Every conversion produces a `ConversionReport.md` listing what converted 1:1, what was
 approximated, and what has no ChilloutVR equivalent — the table below marks which parts
@@ -154,7 +157,8 @@ status:
 | FX / Gesture layers (Base, Additive, Action optional) | merged into one CVR animator on top of the CCK `AvatarAnimator` | ✅ | CVR hand layers are removed when the Gesture layer is converted |
 | PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (MagicaCloth2) | DynamicBone path is 🔷; see mapping below |
 | Non-synced parameters | `#`-prefixed (CVR local-only convention) | ✅ | keeps network traffic equivalent; test avatar went 3088 → 240 of 3200 sync bits |
-| `GestureLeft/Right` int conditions | CVR `GestureLeftIdx/RightIdx` (int) | 🔷 | discrete gesture checks map 1:1 onto CVR's integer index parameters; values verified against the official CCK reference (Open Hand −1, Fist 1, Thumbs Up 2, Gun 3, Point 4, Peace 5, Rock'n'Roll 6). Blend trees keep the analog `GestureLeft` float |
+| `GestureLeft/Right` int conditions | CVR `GestureLeftIdx/RightIdx` (int) | 🔷 | discrete gesture checks map 1:1 onto CVR's integer index parameters, in both the FX layers and the CCK's own hand-pose layers; values verified against the official CCK reference (Open Hand −1, Fist 1, Thumbs Up 2, Gun 3, Point 4, Peace 5, Rock'n'Roll 6). The analog fist (trigger-pressure finger curl) stays on the float `GestureLeft` |
+| PhysBone `_IsGrabbed` / `_Angle` | driven by the [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | 🔷 | converted cloth objects are named after their PhysBone parameter, so grab-reactive FX logic works for anyone running the mod; `_Stretch` / `_Squish` / `_IsPosed` have no equivalent |
 | `GestureLeftWeight/RightWeight`, `MuteSelf`, `VRMode` | fed by a `CVRParameterStream` | 🔷 | trigger squeeze / mute / VR-mode piped from the game like VRChat's built-ins |
 | VRC Parameter Driver | CCK `AnimatorDriver` | 🔷 | Set / Add / Random / Copy incl. range conversion; Random on a bool is ⚠️ (chance weighting is lost) |
 | Contact senders | `CVRPointer` (one per collision tag) | 🔷 | with matching trigger collider shape |
@@ -247,8 +251,8 @@ AvatarBridge on the test copy.
 - **Eye look / gaze.** Only the blink blendshape is transferred. Set up eye movement
   yourself under *Eye Look Settings* on the `CVRAvatar` component. (Blendshape-based face
   tracking, including eye-region shapes, *is* set up automatically — see the table above.)
-- **PhysBone interaction** — grabbing, posing, stretch/squish and the
-  `_IsGrabbed` / `_Angle` / `_Stretch` parameters (reported per chain).
+- **PhysBone posing, stretch and squish** — and the `_Stretch` / `_Squish` / `_IsPosed`
+  parameters (reported per chain). *Grabbing* is partially supported — see below.
 - **VRC state behaviours** other than Parameter Driver — Animator Layer Control, Tracking
   Control, Locomotion Control, Playable Layer Control, Animator Play Audio. Removed and
   counted in the report.

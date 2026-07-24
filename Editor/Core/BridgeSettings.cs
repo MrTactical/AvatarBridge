@@ -52,10 +52,16 @@ namespace AvatarBridge
         // Expose VRChat-synced parameters that have no menu control as CVR menu entries so
         // they still sync (contacts/OSC-driven setups).
         public bool exposeMenulessSyncedParameters = true;
+        // Convert the CCK's native hand-pose layers to select discrete gestures via the
+        // integer GestureLeftIdx/RightIdx (analog fist stays on the float parameter).
+        public bool integerHandGestures = true;
 
         [Header("Physics")]
         public PhysicsTarget physicsTarget = PhysicsTarget.MagicaCloth2;
         public bool deleteConvertedPhysBones = true;
+        // Name converted MagicaCloth objects after their PhysBone parameter so the
+        // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
+        public bool grabbyBonesSupport = true;
 
         [Header("VRChat-only system stripping")]
         // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15

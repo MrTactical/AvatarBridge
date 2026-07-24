@@ -24,6 +24,8 @@ namespace AvatarBridge
                 return;
             }
 
+            GrabbyBonesSupport.Reset();
+
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let
             // the animator switch between them; all get converted, but only the ones that
             // were enabled start active, and the user should review which they keep.

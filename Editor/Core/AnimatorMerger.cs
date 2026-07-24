@@ -126,6 +126,10 @@ namespace AvatarBridge
             _neededGestureIdxParameters.Clear();
             _gestureConditionsRedirected = 0;
             GesturePass(master, vrcLayers, ctx);
+            if (ctx.Settings.integerHandGestures)
+            {
+                ConvertHandLayerGesturesToIdx(master, ctx);
+            }
             EnsureIntParameters(master, _neededGestureIdxParameters, ctx);
             if (_gestureConditionsRedirected > 0)
             {
@@ -1471,6 +1475,114 @@ namespace AvatarBridge
         // conditions now reference and that must exist on the controller as ints.
         static readonly HashSet<string> _neededGestureIdxParameters = new HashSet<string>();
         static int _gestureConditionsRedirected;
+
+        /// <summary>
+        /// Converts the CCK's native LeftHand/RightHand hand-pose layers to use the integer
+        /// GestureLeftIdx/RightIdx for discrete gesture selection, while leaving the analog
+        /// fist untouched. The CCK detects each discrete gesture with a tight float window
+        /// (e.g. GestureRight in (3.9, 4.1) = Point); a window that contains exactly one
+        /// integer gesture value is replaced with a single "Idx Equals value". Windows that
+        /// span the fist/neutral region (0..1) and every blend tree stay on the float
+        /// parameter, so trigger-pressure finger curl is preserved.
+        /// </summary>
+        static void ConvertHandLayerGesturesToIdx(AnimatorController master, BridgeContext ctx)
+        {
+            int converted = 0;
+            foreach (var layer in master.layers)
+            {
+                if (layer.name != "LeftHand" && layer.name != "RightHand")
+                {
+                    continue;
+                }
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    machine.anyStateTransitions = RewriteHandTransitions(machine.anyStateTransitions, ref converted);
+                    machine.entryTransitions = RewriteHandTransitions(machine.entryTransitions, ref converted);
+                    foreach (var child in machine.states)
+                    {
+                        child.state.transitions = RewriteHandTransitions(child.state.transitions, ref converted);
+                    }
+                });
+            }
+            if (converted > 0)
+            {
+                ctx.Report.Converted(Category, $"{converted} hand-pose transition(s) switched to integer gestures",
+                    "The CCK hand layers now select discrete gestures via GestureLeftIdx/RightIdx; the analog " +
+                    "fist (trigger-pressure finger curl) stays on the float parameter.");
+            }
+        }
+
+        static T[] RewriteHandTransitions<T>(T[] transitions, ref int converted) where T : AnimatorTransitionBase
+        {
+            foreach (var transition in transitions)
+            {
+                var conditions = transition.conditions;
+                // Only single-gesture-parameter transitions are safe to collapse.
+                var gestureParams = conditions
+                    .Where(c => GestureMap.GestureParameters.Contains(c.parameter))
+                    .Select(c => c.parameter)
+                    .Distinct()
+                    .ToList();
+                if (gestureParams.Count != 1)
+                {
+                    continue;
+                }
+                string param = gestureParams[0];
+
+                float lo = float.NegativeInfinity, hi = float.PositiveInfinity;
+                int? equalsValue = null;
+                bool usable = true;
+                foreach (var c in conditions.Where(c => c.parameter == param))
+                {
+                    switch (c.mode)
+                    {
+                        case AnimatorConditionMode.Greater: lo = Mathf.Max(lo, c.threshold); break;
+                        case AnimatorConditionMode.Less: hi = Mathf.Min(hi, c.threshold); break;
+                        case AnimatorConditionMode.Equals: equalsValue = Mathf.RoundToInt(c.threshold); break;
+                        default: usable = false; break; // NotEqual etc. — leave as-is
+                    }
+                }
+                if (!usable)
+                {
+                    continue;
+                }
+
+                var matched = new List<int>();
+                if (equalsValue.HasValue)
+                {
+                    matched.Add(equalsValue.Value);
+                }
+                else
+                {
+                    for (int k = -1; k <= 6; k++)
+                    {
+                        if (k > lo && k < hi)
+                        {
+                            matched.Add(k);
+                        }
+                    }
+                }
+                // Exactly one integer gesture in the window → safe discrete replacement.
+                // (Fist/neutral windows contain 0 and 1, so they are left on the float.)
+                if (matched.Count != 1)
+                {
+                    continue;
+                }
+
+                string idxParam = GestureMap.IdxParameterFor(param);
+                _neededGestureIdxParameters.Add(idxParam);
+                var kept = conditions.Where(c => c.parameter != param).ToList();
+                kept.Add(new AnimatorCondition
+                {
+                    parameter = idxParam,
+                    mode = AnimatorConditionMode.Equals,
+                    threshold = matched[0]
+                });
+                transition.conditions = kept.ToArray();
+                converted++;
+            }
+            return transitions;
+        }
 
         static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
         {

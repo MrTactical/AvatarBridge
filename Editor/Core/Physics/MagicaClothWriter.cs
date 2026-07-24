@@ -33,7 +33,16 @@ namespace AvatarBridge
         public static void Write(BridgeContext ctx, PhysBoneChainData data,
             Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache)
         {
-            var holder = new GameObject("MagicaCloth_" + data.Root.name);
+            // The GrabbyBones mod derives its animator parameters from the GameObject name
+            // that holds the cloth component: "<name>_IsGrabbed" and "<name>_Angle". Naming
+            // the holder after the PhysBone's parameter makes those line up with the FX
+            // logic the avatar already has (e.g. "CPB_L" -> "CPB_L_IsGrabbed").
+            string holderName = "MagicaCloth_" + data.Root.name;
+            if (ctx.Settings.grabbyBonesSupport && !string.IsNullOrEmpty(data.Parameter))
+            {
+                holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
+            }
+            var holder = new GameObject(holderName);
             holder.transform.SetParent(ctx.Target.transform, false);
             if (!data.InitiallyActive)
             {
@@ -203,8 +212,17 @@ namespace AvatarBridge
             }
             if (!string.IsNullOrEmpty(data.Parameter))
             {
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
+                if (ctx.Settings.grabbyBonesSupport)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"PhysBone parameter \"{data.Parameter}\": _IsGrabbed and _Angle work via the GrabbyBones " +
+                        "mod (cloth object named to match). _Stretch/_Squish/_IsPosed have no equivalent.");
+                }
+                else
+                {
+                    ctx.Report.Skipped(Category, data.Root.name,
+                        $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
+                }
             }
         }
 
