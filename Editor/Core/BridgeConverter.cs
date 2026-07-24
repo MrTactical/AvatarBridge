@@ -36,6 +36,9 @@ namespace AvatarBridge
             {
                 PrepareOutputFolder(ctx);
                 PrepareTarget(ctx);
+                // Rescue VRCFury-baked meshes out of its volatile temp before anything else
+                // reads them (otherwise they orphan to null → invisible avatar).
+                SceneAssetRehomer.Run(ctx);
 
                 DescriptorConverter.Run(ctx);
                 FaceTrackingConverter.Run(ctx);
