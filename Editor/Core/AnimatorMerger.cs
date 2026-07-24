@@ -1507,81 +1507,103 @@ namespace AvatarBridge
             if (converted > 0)
             {
                 ctx.Report.Converted(Category, $"{converted} hand-pose transition(s) switched to integer gestures",
-                    "The CCK hand layers now select discrete gestures via GestureLeftIdx/RightIdx; the analog " +
-                    "fist (trigger-pressure finger curl) stays on the float parameter.");
+                    "The CCK hand layers now select every discrete gesture via GestureLeftIdx/RightIdx (no float " +
+                    "conditions left to conflict); the analog fist finger-curl stays in the fist state's blend tree.");
             }
         }
 
-        static T[] RewriteHandTransitions<T>(T[] transitions, ref int converted) where T : AnimatorTransitionBase
+        static T[] RewriteHandTransitions<T>(T[] transitions, ref int converted) where T : AnimatorTransitionBase, new()
         {
+            var result = new List<T>(transitions.Length);
             foreach (var transition in transitions)
             {
                 var conditions = transition.conditions;
-                // Only single-gesture-parameter transitions are safe to collapse.
                 var gestureParams = conditions
                     .Where(c => GestureMap.GestureParameters.Contains(c.parameter))
                     .Select(c => c.parameter)
                     .Distinct()
                     .ToList();
+
+                // No gesture condition, or an unsafe multi-gesture-param transition: keep as-is.
                 if (gestureParams.Count != 1)
                 {
+                    result.Add(transition);
                     continue;
                 }
                 string param = gestureParams[0];
 
                 float lo = float.NegativeInfinity, hi = float.PositiveInfinity;
-                int? equalsValue = null;
-                bool usable = true;
+                var equalsValues = new List<int>();
+                var notEqualsValues = new List<int>();
                 foreach (var c in conditions.Where(c => c.parameter == param))
                 {
                     switch (c.mode)
                     {
                         case AnimatorConditionMode.Greater: lo = Mathf.Max(lo, c.threshold); break;
                         case AnimatorConditionMode.Less: hi = Mathf.Min(hi, c.threshold); break;
-                        case AnimatorConditionMode.Equals: equalsValue = Mathf.RoundToInt(c.threshold); break;
-                        default: usable = false; break; // NotEqual etc. — leave as-is
+                        case AnimatorConditionMode.Equals: equalsValues.Add(Mathf.RoundToInt(c.threshold)); break;
+                        case AnimatorConditionMode.NotEqual: notEqualsValues.Add(Mathf.RoundToInt(c.threshold)); break;
+                        default: break;
                     }
                 }
-                if (!usable)
-                {
-                    continue;
-                }
 
+                // Which discrete gesture indices (-1..6) satisfy the original condition set?
                 var matched = new List<int>();
-                if (equalsValue.HasValue)
+                for (int k = -1; k <= 6; k++)
                 {
-                    matched.Add(equalsValue.Value);
-                }
-                else
-                {
-                    for (int k = -1; k <= 6; k++)
+                    if (k > lo && k < hi &&
+                        (equalsValues.Count == 0 || equalsValues.Contains(k)) &&
+                        !notEqualsValues.Contains(k))
                     {
-                        if (k > lo && k < hi)
-                        {
-                            matched.Add(k);
-                        }
+                        matched.Add(k);
                     }
                 }
-                // Exactly one integer gesture in the window → safe discrete replacement.
-                // (Fist/neutral windows contain 0 and 1, so they are left on the float.)
-                if (matched.Count != 1)
+
+                var nonGesture = conditions.Where(c => !GestureMap.GestureParameters.Contains(c.parameter)).ToList();
+                string idxParam = GestureMap.IdxParameterFor(param);
+
+                if (matched.Count == 0)
                 {
+                    result.Add(transition); // never happens for real hand layers; leave untouched
+                    continue;
+                }
+                _neededGestureIdxParameters.Add(idxParam);
+
+                if (matched.Count == 8)
+                {
+                    // Always true on the gesture: drop the gesture conditions entirely.
+                    transition.conditions = nonGesture.ToArray();
+                    result.Add(transition);
+                    converted++;
                     continue;
                 }
 
-                string idxParam = GestureMap.IdxParameterFor(param);
-                _neededGestureIdxParameters.Add(idxParam);
-                var kept = conditions.Where(c => c.parameter != param).ToList();
-                kept.Add(new AnimatorCondition
+                // One transition per matched index, all selecting on the integer parameter.
+                // Consistent Idx-only conditions across the layer means no float/int mix,
+                // so the state can't flicker when the two parameters momentarily disagree.
+                bool first = true;
+                foreach (int k in matched)
                 {
-                    parameter = idxParam,
-                    mode = AnimatorConditionMode.Equals,
-                    threshold = matched[0]
-                });
-                transition.conditions = kept.ToArray();
+                    T target;
+                    if (first)
+                    {
+                        target = transition;
+                        first = false;
+                    }
+                    else
+                    {
+                        target = CloneForBranch(transition);
+                    }
+                    var branch = new List<AnimatorCondition>(nonGesture)
+                    {
+                        new AnimatorCondition { parameter = idxParam, mode = AnimatorConditionMode.Equals, threshold = k }
+                    };
+                    target.conditions = branch.ToArray();
+                    result.Add(target);
+                }
                 converted++;
             }
-            return transitions;
+            return result.ToArray();
         }
 
         static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
