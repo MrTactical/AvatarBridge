@@ -70,12 +70,20 @@ namespace AvatarBridge
                 leafCounts[leaf] = leafCounts.TryGetValue(leaf, out var n) ? n + 1 : 1;
             }
 
+            int ftSkipped = 0;
             if (vrcParams != null && vrcParams.parameters != null)
             {
                 foreach (var p in vrcParams.parameters)
                 {
                     if (string.IsNullOrEmpty(p.name))
                     {
+                        continue;
+                    }
+                    // Face-tracking template parameters are driven by the FT animator
+                    // layers — never expose them as menu toggles.
+                    if (ctx.FaceTrackingParameters.Contains(p.name))
+                    {
+                        ftSkipped++;
                         continue;
                     }
                     var entry = BuildEntry(ctx, p, uses.TryGetValue(p.name, out var paramUses) ? paramUses : null, usedNames, leafCounts);
@@ -96,6 +104,12 @@ namespace AvatarBridge
                 int index = ctx.ParameterOrder.IndexOf(e.machineName);
                 return index == -1 ? int.MaxValue : index;
             }).ToList();
+
+            if (ftSkipped > 0)
+            {
+                ctx.Report.Converted(Category, $"{ftSkipped} face-tracking parameter(s) left as-is",
+                    "Not exposed as menu toggles — the FT animator layers drive them.");
+            }
 
             ctx.CvrAvatar.avatarSettings.settings = entries;
             UnityEditor.EditorUtility.SetDirty(ctx.CvrAvatar);

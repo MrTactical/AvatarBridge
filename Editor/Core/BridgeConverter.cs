@@ -37,6 +37,16 @@ namespace AvatarBridge
                 PrepareOutputFolder(ctx);
                 PrepareTarget(ctx);
 
+                // FT template params are driven by the FT animator layers, not user
+                // controls — collect them up front so the menu/toggle passes skip them.
+                ctx.FaceTrackingParameters = FaceTrackingParameters.Collect();
+                if (ctx.FaceTrackingParameters.Count > 0)
+                {
+                    report.Converted("Face tracking",
+                        $"{ctx.FaceTrackingParameters.Count} face-tracking parameter(s) recognised",
+                        "Kept as animator-driven FT parameters; excluded from menu/toggle conversion.");
+                }
+
                 DescriptorConverter.Run(ctx);
                 FaceTrackingConverter.Run(ctx);
                 ParameterMenuConverter.Run(ctx);
