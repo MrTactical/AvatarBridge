@@ -124,8 +124,17 @@ namespace AvatarBridge
             master.layers = masterLayers.ToArray();
 
             _neededGestureIdxParameters.Clear();
+            _gestureConditionsRedirected = 0;
             GesturePass(master, vrcLayers, ctx);
             EnsureIntParameters(master, _neededGestureIdxParameters, ctx);
+            if (_gestureConditionsRedirected > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{_gestureConditionsRedirected} gesture condition(s) redirected to integer GestureLeftIdx/RightIdx",
+                    "Your gesture logic now uses exact int values. The CCK's own LeftHand/RightHand " +
+                    "hand-pose layers intentionally keep the native float GestureLeft/GestureRight — that " +
+                    "is how ChilloutVR poses fingers, so seeing float there is correct, not unconverted.");
+            }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             ToggleNativizer.Run(ctx, master, vrcLayers);
@@ -409,6 +418,7 @@ namespace AvatarBridge
             // maps 1:1 with VRChat's gesture ints (after value remapping).
             string idxParam = GestureMap.IdxParameterFor(condition.parameter);
             _neededGestureIdxParameters.Add(idxParam);
+            _gestureConditionsRedirected++;
 
             AnimatorCondition Idx(AnimatorConditionMode mode, int value) =>
                 new AnimatorCondition { parameter = idxParam, mode = mode, threshold = value };
@@ -1460,6 +1470,7 @@ namespace AvatarBridge
         // Gesture-index parameters (GestureLeftIdx/RightIdx) that the rewritten gesture
         // conditions now reference and that must exist on the controller as ints.
         static readonly HashSet<string> _neededGestureIdxParameters = new HashSet<string>();
+        static int _gestureConditionsRedirected;
 
         static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
         {
