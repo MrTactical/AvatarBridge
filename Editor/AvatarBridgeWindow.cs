@@ -64,6 +64,23 @@ namespace AvatarBridge
                     settings.bakeVrcFury ? MessageType.Info : MessageType.Warning);
             }
 
+            settings.bakeModularAvatar = EditorGUILayout.ToggleLeft(
+                new GUIContent("Bake Modular Avatar first (recommended)",
+                    "For MA avatars without VRCFury: runs NDMF's manual bake so Modular Avatar " +
+                    "features (merge armature, menus, params, reactive toggles) become real components " +
+                    "that convert. MA+VRCFury avatars are already covered by the VRCFury bake."),
+                settings.bakeModularAvatar);
+
+            if (avatar != null && ModularAvatarBaker.HasModularAvatarComponents(avatar.gameObject))
+            {
+                EditorGUILayout.HelpBox(settings.bakeModularAvatar
+                        ? "Modular Avatar / NDMF detected on this avatar. It will be baked via NDMF's " +
+                          "manual bake first (unless VRCFury already bakes it), so MA features carry over."
+                        : "Modular Avatar detected on this avatar! With baking disabled, MA-driven " +
+                          "features will be MISSING from the result.",
+                    settings.bakeModularAvatar ? MessageType.Info : MessageType.Warning);
+            }
+
             // ---- Physics -------------------------------------------------------------
             GUILayout.Space(6);
             showPhysicsOptions = EditorGUILayout.Foldout(showPhysicsOptions, "PhysBones", true);

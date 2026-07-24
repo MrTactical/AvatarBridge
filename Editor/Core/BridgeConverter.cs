@@ -125,25 +125,37 @@ namespace AvatarBridge
 
             // VRCFury avatars must be baked by VRCFury itself first, otherwise every
             // Fury-driven feature (toggles, linked clothing, full controllers) is lost.
+            // Fury's bake also runs NDMF internally, so it covers avatars that use both
+            // VRCFury and Modular Avatar.
             if (ctx.Settings.bakeVrcFury)
             {
                 var baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
                 if (baked != null)
                 {
-                    var bakedDescriptor = baked.GetComponentInChildren<VRCAvatarDescriptor>(true);
-                    // Read everything (menus, params, layers) from the baked data and
-                    // convert the baked copy in place; the original stays untouched.
-                    ctx.SourceDescriptor = bakedDescriptor;
-                    ctx.Target = bakedDescriptor.gameObject;
-                    ctx.Target.name = source.name + " (ChilloutVR)";
-                    ctx.Target.SetActive(true);
-                    Undo.RegisterCreatedObjectUndo(ctx.Target, "AvatarBridge conversion");
+                    AdoptBakedCopy(ctx, baked, source);
                     return;
                 }
                 if (VRCFuryBaker.HasFuryComponents(source))
                 {
                     ctx.Report.Warning("VRCFury", "Converting WITHOUT a VRCFury bake",
                         "Fury-driven features will be missing from the result. " + VRCFuryBaker.ManualInstruction);
+                }
+            }
+
+            // Modular Avatar / NDMF, for MA avatars that don't also use VRCFury (those are
+            // already handled above). NDMF's manual bake applies MA and hands back a copy.
+            if (ctx.Settings.bakeModularAvatar)
+            {
+                var baked = ModularAvatarBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                if (baked != null)
+                {
+                    AdoptBakedCopy(ctx, baked, source);
+                    return;
+                }
+                if (ModularAvatarBaker.HasModularAvatarComponents(source))
+                {
+                    ctx.Report.Warning("Modular Avatar", "Converting WITHOUT a Modular Avatar bake",
+                        "MA-driven features will be missing from the result. " + ModularAvatarBaker.ManualInstruction);
                 }
             }
 
@@ -159,6 +171,19 @@ namespace AvatarBridge
                 ctx.Target = source;
                 Undo.RegisterFullObjectHierarchyUndo(ctx.Target, "AvatarBridge conversion");
             }
+        }
+
+        /// <summary>Adopts a baked copy (from VRCFury or Modular Avatar) as the conversion target.</summary>
+        static void AdoptBakedCopy(BridgeContext ctx, GameObject baked, GameObject source)
+        {
+            var bakedDescriptor = baked.GetComponentInChildren<VRCAvatarDescriptor>(true);
+            // Read everything (menus, params, layers) from the baked data and convert the
+            // baked copy in place; the original stays untouched.
+            ctx.SourceDescriptor = bakedDescriptor;
+            ctx.Target = bakedDescriptor.gameObject;
+            ctx.Target.name = source.name + " (ChilloutVR)";
+            ctx.Target.SetActive(true);
+            Undo.RegisterCreatedObjectUndo(ctx.Target, "AvatarBridge conversion");
         }
 
         static void WriteReportFile(BridgeContext ctx)

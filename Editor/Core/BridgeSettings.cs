@@ -43,6 +43,10 @@ namespace AvatarBridge
         // Run VRCFury's own "Build a Test Copy" pipeline first so Fury toggles, linked
         // clothing, full controllers etc. are baked into real layers before converting.
         public bool bakeVrcFury = true;
+        // Bake Modular Avatar / NDMF (merge armature, menus, params, reactive toggles…) via
+        // NDMF's manual bake before converting — for MA avatars that don't also use VRCFury
+        // (a VRCFury bake already runs NDMF, so MA+Fury avatars are covered by the Fury bake).
+        public bool bakeModularAvatar = true;
         public string outputFolder = "Assets/AvatarBridge/Output";
 
         [Header("Animator layers to merge")]

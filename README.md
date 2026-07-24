@@ -5,8 +5,9 @@ keeping as much working as possible and leaving you a clean starting point to fi
 
 **What sets it apart from older converters:**
 
-- **VRCFury avatars work** — it runs Fury's own builder first, then converts the baked
-  result, so toggles, linked clothing and full controllers survive.
+- **VRCFury & Modular Avatar avatars work** — it runs Fury's own builder (and, for MA-only
+  avatars, NDMF's manual bake) first, then converts the baked result, so toggles, linked
+  clothing, merged armatures and full controllers survive.
 - **PhysBones become real physics** — built-in **PhysBones → MagicaCloth2** (or DynamicBone),
   no external tool needed.
 - **Readable toggles** — clothing/prop toggles come out as one clean `Toggle <name>` layer
@@ -53,6 +54,7 @@ It saves an experienced creator hours; it won't turn a beginner into one.
 | VRChat Avatars SDK | SDK3, 3.10.x tested | already in any Creator Companion avatar project |
 | ChilloutVR CCK | **4.0.x** | tested against 4.0.1; CCK 3 paths are also handled |
 | [VRCFury](https://vrcfury.com/download) | current | only if your avatars use it — most do, and it's usually already installed via VCC |
+| [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use it — baked via NDMF's manual bake before converting |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended PhysBone target; most ChilloutVR avatars use it |
 | [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative PhysBone target; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
 
