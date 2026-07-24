@@ -90,7 +90,7 @@ registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines
 |---|---|
 | Window shows a ✔/✘ checklist instead of options | A required SDK is missing — import it, let Unity recompile, reopen the window. |
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, corrupting its Fury data. Delete the avatar's assets and scene copies, then re-import with VRCFury already installed. |
-| Convert button greyed out with a face-tracking warning | **CVR VRCFT** is selected but its bundled assets (`Assets/AvatarBridge/FaceTracking`) are missing — reimport AvatarBridge, or switch **Face tracking** to Native/None. |
+| Convert button greyed out with a face-tracking warning | **Unity Animator Blendtrees (DSR)** is selected but its bundled assets (`Assets/AvatarBridge/FaceTracking`) are missing — reimport AvatarBridge, or switch **Face tracking** to another mode. |
 | Physics target warning | MagicaCloth2 / DynamicBone isn't installed, or needs one more recompile to be detected. |
 | Project wedged after an out-of-order import | Close Unity, delete the `Library` folder, reopen and let it reimport. |
 
@@ -147,15 +147,15 @@ while VRChat's are signed, so velocity-driven blends are worth a check.
 
 ## Face tracking
 
-Pick one in the **Face tracking** dropdown. Both Native and CVR VRCFT first strip whatever
-FT rig the avatar shipped with (VRCFaceTracking / Jerry's Templates / Pawlygon / OSCmooth) so
-nothing fights over the same blendshapes.
+Pick one in the **Face tracking** dropdown. Both options first strip whatever FT rig the
+avatar shipped with (VRCFaceTracking / Jerry's Templates / Pawlygon / OSCmooth) so nothing
+fights over the same blendshapes.
 
-- **Native** *(default)* — detects the avatar's FT blendshapes (Unified Expressions /
-  SRanipal) and sets up ChilloutVR's built-in `CVRFaceTracking` component, auto-mapping the
-  shapes. Self-contained — but the built-in solver is a bit stiff.
-- **CVR VRCFT (parameter)** — injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
-  (**bundled** with AvatarBridge — no separate import) and rebuilds it onto your avatar:
+- **Native CVR Component** *(default)* — detects the avatar's FT blendshapes (Unified
+  Expressions / SRanipal) and sets up ChilloutVR's built-in `CVRFaceTracking` component,
+  auto-mapping the shapes. Self-contained — but the built-in solver is a bit stiff.
+- **Unity Animator Blendtrees (DSR)** — injects DragonSkyRunner's *CVR Eye & Face Tracking*
+  rig (**bundled** with AvatarBridge — no separate import) and rebuilds it onto your avatar:
   its layers and ~56 parameters are copied into the generated controller, and every clip is
   repathed onto your actual eye bones and face mesh. At runtime it's driven over **CVR's
   native OSC** — no extra mod: run the [VRCFaceTracking](https://store.steampowered.com/app/3329480/VRCFaceTracking/)

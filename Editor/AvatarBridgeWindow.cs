@@ -216,11 +216,13 @@ namespace AvatarBridge
         {
             var labels = new[]
             {
-                new GUIContent("Native",
-                    "Auto-add and map a CVRFaceTracking component (blendshape-based)."),
-                new GUIContent("CVR VRCFT — parameter (DragonSkyRunner)",
-                    "Strip any existing FT and inject DragonSkyRunner's bundled CVR Eye & Face Tracking " +
-                    "animator, repathed onto this avatar (eye empties + constraints generated automatically)."),
+                new GUIContent("Native CVR Component",
+                    "ChilloutVR's built-in CVRFaceTracking component drives the blendshapes directly. " +
+                    "Auto-added and mapped. Self-contained, but a bit stiff."),
+                new GUIContent("Unity Animator Blendtrees (DSR)",
+                    "DragonSkyRunner's bundled rig: face shapes driven by animator blend trees, eye tracking " +
+                    "via generated empties + rotation constraints. Injected and repathed onto this avatar " +
+                    "automatically. Smoother and more expressive."),
                 new GUIContent("None", "Leave face tracking entirely to you."),
             };
             int index = Mathf.Max(0, System.Array.IndexOf(FtModes, settings.faceTrackingMode));
