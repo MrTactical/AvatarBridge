@@ -22,8 +22,10 @@ namespace AvatarBridge
     {
         /// <summary>Native CVR: add and auto-map a CVRFaceTracking component (blendshape-based).</summary>
         Native,
-        /// <summary>Leave face tracking to the user (e.g. a parameter-based template like
-        /// Pawlygon VRC-Facetracking, set up with its own installer).</summary>
+        /// <summary>Keep the avatar's parameter-based FT animator (smoothing params stay local);
+        /// do not add the native component. Requires a supporting FT template package present.</summary>
+        ParameterBased,
+        /// <summary>Leave face tracking entirely to the user.</summary>
         None
     }
 

@@ -179,16 +179,20 @@ namespace AvatarBridge
                     settings.faceTrackingMode = (FaceTrackingMode)EditorGUILayout.EnumPopup(
                         new GUIContent("Face tracking",
                             "Native: auto-add and map a CVRFaceTracking component (blendshape-based).\n" +
-                            "None: leave face tracking to you — e.g. a parameter-based template like " +
-                            "Pawlygon VRC-Facetracking, set up with its own installer."),
+                            "Parameter-based: keep the avatar's own parameter-driven FT animator (smoothing " +
+                            "params stay local); needs a supporting FT template package installed.\n" +
+                            "None: leave face tracking entirely to you."),
                         settings.faceTrackingMode);
+                    DrawParameterBasedFtNotice();
                     settings.outputFolder = EditorGUILayout.TextField("Output folder", settings.outputFolder);
                 }
             }
 
             // ---- Convert -------------------------------------------------------------
             GUILayout.Space(10);
-            using (new EditorGUI.DisabledScope(avatar == null))
+            bool ftPackageMissing = settings.faceTrackingMode == FaceTrackingMode.ParameterBased
+                                    && !FaceTrackingPackages.AnyInstalled();
+            using (new EditorGUI.DisabledScope(avatar == null || ftPackageMissing))
             {
                 if (GUILayout.Button("Convert avatar", GUILayout.Height(32)))
                 {
@@ -199,9 +203,45 @@ namespace AvatarBridge
             {
                 EditorGUILayout.HelpBox("Assign a scene object with a VRCAvatarDescriptor.", MessageType.None);
             }
+            else if (ftPackageMissing)
+            {
+                EditorGUILayout.HelpBox(
+                    "Parameter-based face tracking needs a supporting FT template package in the project, " +
+                    "and none was found. Install one (or switch Face tracking to Native or None) to convert.",
+                    MessageType.Warning);
+            }
 
             DrawReport();
             EditorGUILayout.EndScrollView();
+        }
+
+        void DrawParameterBasedFtNotice()
+        {
+            if (settings.faceTrackingMode != FaceTrackingMode.ParameterBased)
+            {
+                return;
+            }
+            var installed = FaceTrackingPackages.FirstInstalled();
+            if (installed != null)
+            {
+                EditorGUILayout.HelpBox($"Detected \"{installed.DisplayName}\" — parameter-based FT is available. " +
+                    "AvatarBridge keeps the avatar's FT animator and its smoothing parameters local; finish setup " +
+                    "with the package's own tooling.", MessageType.Info);
+                return;
+            }
+
+            EditorGUILayout.HelpBox("No supported parameter-based FT template package is installed. " +
+                "Add one to use this mode (the Convert button is disabled until then):", MessageType.Warning);
+            using (new EditorGUI.IndentLevelScope())
+            {
+                foreach (var package in FaceTrackingPackages.Known)
+                {
+                    if (GUILayout.Button($"Get {package.DisplayName}  ↗", EditorStyles.linkLabel))
+                    {
+                        Application.OpenURL(package.Url);
+                    }
+                }
+            }
         }
 
         void DrawReport()

@@ -47,11 +47,36 @@ namespace AvatarBridge
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
-                ctx.Report.Skipped(Category, "Native face tracking not set up (chosen)",
-                    "Face-tracking mode is set to None — set it up yourself, e.g. a parameter-based " +
-                    "template like Pawlygon VRC-Facetracking via its own installer.");
+                ctx.Report.Skipped(Category, "Face tracking not set up (chosen)",
+                    "Face-tracking mode is None — set it up yourself.");
                 return;
             }
+
+            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.ParameterBased)
+            {
+                // The avatar's own parameter-driven FT animator carries over through the
+                // normal FX merge, and its OSCmooth smoothing / AAP proxy parameters are
+                // already marked local ("#") by the parameter rename pass — which is what
+                // keeps the per-frame smoothing from being broken by network sync. So the
+                // only thing to do here is NOT add the native CVRFaceTracking component,
+                // which would fight the animator for the same blendshapes.
+                var package = FaceTrackingPackages.FirstInstalled();
+                if (package != null)
+                {
+                    ctx.Report.Converted(Category, "Parameter-based face tracking kept",
+                        $"Detected \"{package.DisplayName}\". The avatar's FT animator is carried over and its " +
+                        "smoothing parameters stay local; the native CVRFaceTracking component is not added. " +
+                        "Finish setup with the package's own tooling.");
+                }
+                else
+                {
+                    ctx.Report.Warning(Category, "Parameter-based FT chosen, but no template package found",
+                        "The FT animator is carried over as-is, but you'll need a supporting FT template " +
+                        "package for it to work in CVR.");
+                }
+                return;
+            }
+
             if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null)
             {
                 ctx.Report.Converted(Category, "Avatar already has a CVRFaceTracking component; left as-is.");
