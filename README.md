@@ -24,10 +24,10 @@ keeping as much working as possible and leaving you a clean starting point to fi
   default; toggle it off under Advanced Settings. Scale values are calibrated per avatar.
   Credit: [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
 
-> **Status: early but working.** A full VRCFury avatar — clothing toggles, MagicaCloth
-> physics, dozens of contacts, face tracking — converts and runs in ChilloutVR. Anything
-> marked 🔷 in the tables below is correct in Unity but not yet confirmed in-game. Please
-> open issues.
+> **Status: working, actively refined.** Full VRCFury and Modular Avatar avatars — clothing
+> toggles, MagicaCloth physics, dozens of contacts, face tracking, even heavy SPS / poiyomi
+> avatars — convert and run in ChilloutVR. Rows marked 🔷 in the tables below are correct in
+> Unity but not yet independently confirmed in-game. Bugs and requests → open an issue.
 
 ## It's a head start, not a magic button
 
@@ -76,9 +76,9 @@ except jiggle physics still converts.
    (paid, recommended), [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743)
    (paid; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to
    convert), or neither (set **Convert PhysBones to → None**).
-5. **VRCFury** — if your avatars use it (most do). Usually already installed via VCC; check
-   for VRCFury components on the avatar or a *VRCFury* entry in the VCC package list.
-   Otherwise add it from [vrcfury.com](https://vrcfury.com/download).
+5. **VRCFury / Modular Avatar** — whichever your avatars use (most use one or both). Usually
+   already installed via VCC; check the avatar for VRCFury or Modular Avatar components.
+   Otherwise add [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/docs/intro).
 6. **Avatars** — import any avatars not already in the project *after* VRCFury. The CVR-VRCFT
    face-tracking rig is bundled with AvatarBridge, so there's nothing extra to import for it
    (see [Face tracking](#face-tracking)).
@@ -199,6 +199,16 @@ The rig is bundled from
 [DragonSkyRunner's CVR Eye & Face Tracking](https://github.com/DragonSkyRunner/ChilloutVR-Facetracking-Animator-Package)
 and used with permission. See [Credits](#credits) for the redistribution note.
 
+## Avatar scaler
+
+On by default (toggle **Add avatar scaler** in Advanced Settings), AvatarBridge injects a
+bundled height scaler with **linear, constant-speed smoothing** — size changes glide instead
+of snapping — driven by a **"Height (M)"** input in the CVR menu (default 1.3m). The scale
+values are calibrated per avatar, so treat the default as a starting point: tune the
+`Anim_AvatarScale_Slider_Min/Max` clips and the `Height (M)` default under
+`Assets/AvatarBridge/AvatarScaler` for your avatar's real proportions. Smoothing math is
+[JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
+
 ## PhysBones → MagicaCloth2
 
 | PhysBone | MagicaCloth2 |
@@ -234,14 +244,23 @@ references fall back to local (`#`) parameters, so nothing breaks — it just st
 There's also an **Extra strip keywords** field for VRChat-only add-ons this list doesn't know
 about yet (matched as both a parameter prefix and a layer-name fragment).
 
-## VRCFury avatars
+## VRCFury & Modular Avatar
 
-Most modern avatars use [VRCFury](https://vrcfury.com/), which only builds its real animator
-layers, parameters and menus **at upload time** — converting one directly would lose every
-Fury feature. AvatarBridge handles this automatically: it runs **VRCFury's own "Build a Test
-Copy" pipeline** (via reflection, so any Fury version works with no hard dependency), then
-converts the fully-baked copy. If the auto-bake fails, the report tells you the manual route:
-right-click the avatar → **VRCFury → Build a Test Copy**, then run AvatarBridge on that copy.
+Most modern avatars are built with [VRCFury](https://vrcfury.com/) and/or
+[Modular Avatar](https://modular-avatar.nadena.dev/), which only assemble their real animator
+layers, parameters, menus and merged meshes **at build time** — converting one directly would
+lose every feature. AvatarBridge bakes them first, then converts the fully-baked copy:
+
+- **VRCFury** — runs Fury's own *"Build a Test Copy"* pipeline. If the auto-bake fails, the
+  report gives you the manual route: right-click the avatar → **VRCFury → Build a Test Copy**,
+  then run AvatarBridge on that copy.
+- **Modular Avatar** — runs NDMF's own *manual bake* (`AvatarProcessor.ManualProcessAvatar`).
+  Note a VRCFury Test Copy already runs NDMF internally, so **MA + VRCFury** avatars are baked
+  by the Fury step; the MA bake is for **MA-only** avatars. Manual route: **Tools → Modular
+  Avatar → Manual bake avatar**, then run AvatarBridge on the result.
+
+Both are invoked via reflection, so any version works with no hard dependency, and both bakes
+are toggleable in the window (on by default).
 
 ## Known limitations
 
@@ -267,8 +286,9 @@ right-click the avatar → **VRCFury → Build a Test Copy**, then run AvatarBri
 - **2D blend trees driven by `GestureLeft/Right`** are flagged for manual review.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert,
   but only the ones enabled at bake time start active — if none were, the report says so.
-- **Shaders are untouched** — Poiyomi etc. generally work, but VRChat-specific rendering
-  (SPS/TPS penetration shaders especially) will not.
+- **Shaders aren't translated** — Poiyomi etc. work as-is, and VRCFury-baked materials/shaders
+  (SPS-patched, locked) are rescued out of Fury's temp so they don't render pink — but
+  VRChat-specific rendering (SPS/TPS penetration especially) won't *function* in CVR.
 
 ## Credits
 
