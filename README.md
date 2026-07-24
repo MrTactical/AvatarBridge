@@ -1,7 +1,8 @@
 # AvatarBridge — VRChat → ChilloutVR avatar converter
 
 AvatarBridge is a Unity Editor tool that converts a **VRChat SDK3 avatar** into a
-**ChilloutVR CCK avatar** in one click, keeping as much functionality as possible.
+**ChilloutVR CCK avatar**, keeping as much functionality as possible and leaving you a
+working starting point to finish by hand.
 
 What makes it different from older converters:
 
@@ -24,6 +25,33 @@ have actually been confirmed in-game.
 > **Status: early but working.** A full VRCFury avatar (~24 clothing toggles, MagicaCloth
 > physics, 50+ contacts) converts and runs in ChilloutVR. Expect rough edges on anything
 > marked 🔷 below, and please open issues.
+
+## Read this first: it's a head start, not a magic button
+
+AvatarBridge does the tedious 90% — rebuilding the animator, menus, physics, contacts and
+face tracking — so you don't have to do it by hand. It does **not** turn avatar setup into
+a no-brainer, and it never will: VRChat and ChilloutVR are different platforms, VRCFury
+setups are effectively infinite in variety, and no tool can read intent or cover every
+edge case.
+
+So this tool assumes **you already know your way around Unity and avatar setup.** You
+should be comfortable with the Animator window, blend trees, the CVRAvatar component, and
+reading a hierarchy. If a toggle animates something unexpected, a physics chain needs
+tuning, or a menu entry points at the wrong object, that's yours to finish — the tool got
+you to the 90%, not the 100%.
+
+Concretely, every conversion:
+
+- **Produces a report you are expected to read.** `ConversionReport.md` lists everything
+  marked *Warning*, *Approximated* or *Skipped*. Those are the spots that need your eyes.
+- **Should be tested in ChilloutVR before you call it done.** The editor can't show you
+  gestures, contacts or synced parameters actually running.
+- **Is a starting point to build on, not a finished upload.** Treat the output like a
+  fresh avatar port you're now polishing, because that's what it is.
+
+If you don't know Unity yet, that's fine — but learn the basics first, or grab someone who
+has. This tool will save an experienced creator hours; it won't make an inexperienced one
+into one.
 
 ## Requirements
 
