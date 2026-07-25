@@ -35,15 +35,25 @@ namespace AvatarBridge
                 }
                 string typeName = component.GetType().Name;
                 bool ok;
-                switch (typeName)
+                try
                 {
-                    case "VRCParentConstraint": ok = ConvertParent(ctx, component); break;
-                    case "VRCPositionConstraint": ok = ConvertPosition(ctx, component); break;
-                    case "VRCRotationConstraint": ok = ConvertRotation(ctx, component); break;
-                    case "VRCScaleConstraint": ok = ConvertScale(ctx, component); break;
-                    case "VRCAimConstraint": ok = ConvertAim(ctx, component); break;
-                    case "VRCLookAtConstraint": ok = ConvertLookAt(ctx, component); break;
-                    default: continue;
+                    switch (typeName)
+                    {
+                        case "VRCParentConstraint": ok = ConvertParent(ctx, component); break;
+                        case "VRCPositionConstraint": ok = ConvertPosition(ctx, component); break;
+                        case "VRCRotationConstraint": ok = ConvertRotation(ctx, component); break;
+                        case "VRCScaleConstraint": ok = ConvertScale(ctx, component); break;
+                        case "VRCAimConstraint": ok = ConvertAim(ctx, component); break;
+                        case "VRCLookAtConstraint": ok = ConvertLookAt(ctx, component); break;
+                        default: continue;
+                    }
+                }
+                catch (Exception e)
+                {
+                    // One malformed constraint must not abort the whole conversion.
+                    ctx.Report.Warning(Category, component.name,
+                        $"Constraint conversion failed and was skipped: {e.Message}");
+                    continue;
                 }
                 if (ok)
                 {
@@ -82,9 +92,14 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                var transform = Get<Transform>(item, "SourceTransform", null);
+                if (transform == null)
+                {
+                    continue; // a source with no transform constrains to nothing — and null-sources crash AddSource
+                }
                 result.Add(new SourceData
                 {
-                    Transform = Get<Transform>(item, "SourceTransform", null),
+                    Transform = transform,
                     Weight = Get(item, "Weight", 1f),
                     ParentPositionOffset = Get(item, "ParentPositionOffset", Vector3.zero),
                     ParentRotationOffset = Get(item, "ParentRotationOffset", Vector3.zero)
