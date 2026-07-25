@@ -25,8 +25,21 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones -> MagicaCloth2";
 
-        // Tunable feel constants; adjust if conversions come out too stiff/loose.
-        public static float GravityScale = 9.8f;
+        // Tunable feel constants. For reference when adjusting these, MagicaCloth2's own
+        // defaults are: gravity 5.0, damping 0.05, radius 0.02, angle-restoration stiffness
+        // 0.2 (tapering 1.0 at the root to 0.2 at the tip), velocity attenuation 0.8,
+        // world/local inertia 1.0.
+
+        /// <summary>
+        /// PhysBone gravity is a 0..1 fraction of standard gravity, MagicaCloth2's is an
+        /// acceleration, so a PhysBone at 1.0 converts to real gravity. Note this lands above
+        /// Magica's own default of 5.0 — that default is an artistic choice for cloth, whereas
+        /// the goal here is to reproduce what the PhysBone was actually doing.
+        /// </summary>
+        public static float GravityScale = 9.81f;
+
+        // PhysBone "spring" is bounciness, which is the inverse of air resistance. The range
+        // brackets Magica's 0.05 default so a mid-range PhysBone lands near Magica-native feel.
         public static float MaxDamping = 0.15f;
         public static float MinDamping = 0.01f;
 
@@ -82,40 +95,57 @@ namespace AvatarBridge
                 sdata.gravity = 0f;
             }
 
-            // Immobile: reduce how much world movement shakes the chain.
+            // Immobile: how much the chain ignores being moved around.
+            // PhysBone's immobileType decides *which* movement is ignored, and MagicaCloth2
+            // splits exactly the same way — world inertia is the character travelling through
+            // the world, local inertia is animation moving the bones. Mapping onto the matching
+            // axis is a 1:1 conversion; applying both for "World" would wrongly deaden the
+            // chain against the avatar's own animation.
             if (data.Immobile > 0f)
             {
-                bool applied = TrySetMember(sdata.inertiaConstraint, "worldInertia", Mathf.Clamp01(1f - data.Immobile));
+                float inertia = Mathf.Clamp01(1f - data.Immobile);
+                bool allMotion = !data.ImmobileTypeName.Contains("World");
+
+                bool applied = TrySetMember(sdata.inertiaConstraint, "worldInertia", inertia);
+                if (allMotion)
+                {
+                    // "All Motion" also damps the animation's own movement.
+                    applied &= TrySetMember(sdata.inertiaConstraint, "localInertia", inertia);
+                }
                 if (!applied)
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
                         "Immobile could not be mapped to inertia on this MagicaCloth2 version.");
                 }
-                if (data.ImmobileTypeName.Contains("World"))
-                {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        "Immobile type 'World' approximated with world inertia.");
-                }
             }
 
-            // Angle limits.
+            // Angle limits. Only the axes the limit type actually uses are read: an 'Angle'
+            // (cone) or 'Hinge' limit is defined by maxAngleX alone, and taking the larger of
+            // X/Z there would let a stale Z value quietly widen the limit.
             if (data.LimitTypeName != "None")
             {
-                float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
+                bool polar = data.LimitTypeName == "Polar";
+                float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
+
                 bool applied = TrySetMember(sdata.angleLimitConstraint, "useAngleLimit", true) &&
                                TrySetCurveValue(sdata.angleLimitConstraint, "limitAngle", limitAngle);
-                if (applied)
-                {
-                    if (data.LimitTypeName != "Angle" || !Mathf.Approximately(data.MaxAngleX, data.MaxAngleZ))
-                    {
-                        ctx.Report.Approximated(Category, data.Root.name,
-                            $"Limit type '{data.LimitTypeName}' approximated with a symmetric {limitAngle:0}° angle limit.");
-                    }
-                }
-                else
+                if (!applied)
                 {
                     ctx.Report.Skipped(Category, data.Root.name,
                         $"Angle limit ({data.LimitTypeName}) could not be applied on this MagicaCloth2 version.");
+                }
+                else if (polar && !Mathf.Approximately(data.MaxAngleX, data.MaxAngleZ))
+                {
+                    // Magica's limit is a single cone, so a two-axis polar limit loses its shape.
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Polar limit ({data.MaxAngleX:0}° / {data.MaxAngleZ:0}°) became a symmetric " +
+                        $"{limitAngle:0}° cone — MagicaCloth2 limits a single angle per bone.");
+                }
+                else if (data.LimitTypeName == "Hinge")
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Hinge limit became a {limitAngle:0}° cone — MagicaCloth2 has no single-axis " +
+                        "hinge, so the bone can also swing off-axis.");
                 }
             }
 
@@ -208,7 +238,10 @@ namespace AvatarBridge
         {
             if (data.MaxStretch > 0f)
             {
-                ctx.Report.Skipped(Category, data.Root.name, "Max Stretch (squash & stretch) is not converted.");
+                ctx.Report.Skipped(Category, data.Root.name,
+                    $"Max Stretch ({data.MaxStretch:0.##}) is not converted — MagicaCloth2's BoneCloth keeps " +
+                    "each bone at its rest length, so a chain can swing but never stretch. Chains that relied " +
+                    "on stretching for their look will sit tighter than they did in VRChat.");
             }
             if (!string.IsNullOrEmpty(data.Parameter))
             {

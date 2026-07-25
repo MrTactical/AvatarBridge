@@ -233,22 +233,30 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 
 ## PhysBones → MagicaCloth2
 
-| PhysBone | MagicaCloth2 |
-|---|---|
-| pull / stiffness (+curves) | angle restoration stiffness |
-| spring / momentum | damping (inverted) + velocity attenuation |
-| gravity, gravityFalloff | gravity (m/s², scaled ×9.8), gravityFalloff (1:1) |
-| immobile | world inertia (inverted) |
-| radius + curve | particle radius + curve |
-| limit type Angle/Hinge/Polar | angle limit (symmetric approximation for Hinge/Polar) |
-| ignore transforms | bone attribute *Invalid* |
-| colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders |
+| PhysBone | MagicaCloth2 | Fidelity |
+|---|---|---|
+| pull / stiffness (+curves) | angle restoration stiffness (+ depth curve) | close |
+| spring / momentum | damping (inverted) + velocity attenuation | close |
+| gravity | gravity — PhysBone's 0..1 is a fraction of real gravity, so 1.0 → 9.81 m/s² | 1:1 |
+| gravityFalloff | gravity falloff | **exact** — both are "reduce gravity while near the rest pose" |
+| immobile, type **World** | world inertia (inverted) | **exact** — Magica splits the same way |
+| immobile, type **All Motion** | world **and** local inertia (inverted) | **exact** |
+| radius + curve | particle radius + curve | 1:1 |
+| limit type **Angle** | angle limit from `maxAngleX` (the cone angle) | 1:1 |
+| limit type **Hinge** | angle limit cone — Magica has no single-axis hinge, so it can also swing off-axis | ⚠️ approximated |
+| limit type **Polar** | single symmetric cone from the larger of `maxAngleX`/`maxAngleZ` | ⚠️ approximated |
+| ignore transforms | bone attribute *Invalid* | 1:1 |
+| colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders | 1:1 |
+| maxStretch | — | ⚠️ dropped: BoneCloth keeps bones at rest length, so chains swing but never stretch |
 
-This is a *feel* approximation, not a physics-accurate translation — the two solvers differ,
-so expect to nudge values (tuning constants are at the top of
-`Editor/Core/Physics/MagicaClothWriter.cs`). `immobile` and the angle limits are applied via
-reflection since MagicaCloth2's fields move between versions; a mismatch is reported, not
-silently dropped. `maxStretch` (squash & stretch) has no equivalent and is skipped.
+Rows marked **exact** or **1:1** carry the same meaning in both systems; the rest are noted in
+the conversion report so you know what to check. The two solvers still differ, so expect to
+nudge the feel — tuning constants sit at the top of `Editor/Core/Physics/MagicaClothWriter.cs`,
+documented against MagicaCloth2's own defaults (gravity 5.0, damping 0.05, radius 0.02, angle
+restoration 0.2, velocity attenuation 0.8) so you have a reference point.
+
+`immobile` and the angle limits are applied via reflection, since MagicaCloth2 moves fields
+between versions; a mismatch is reported rather than silently dropped.
 
 ### PhysBones → DynamicBone
 
