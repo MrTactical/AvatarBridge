@@ -61,7 +61,20 @@ namespace AvatarBridge
         static T Persist<T>(T asset, string assetPath, System.Action<string> populate) where T : Object
         {
             bool replacing = !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(assetPath));
-            string buildPath = replacing ? ScratchPathFor(assetPath) : assetPath;
+            string scratchDir = replacing ? ScratchDirFor(assetPath) : null;
+            string buildPath = assetPath;
+
+            if (replacing)
+            {
+                // A scratch FOLDER, keeping the real file name — never a scratch file name.
+                // CreateAsset renames the object after the file it writes, so building as
+                // "__AvatarBridge_rebuild.controller" bakes that name into the asset and into
+                // everything derived from it: the override controller took its own name from
+                // the controller's and landed at the wrong path entirely.
+                Directory.CreateDirectory(AbsolutePath(scratchDir));
+                AssetDatabase.Refresh();
+                buildPath = scratchDir + "/" + Path.GetFileName(assetPath);
+            }
 
             FileUtil.DeleteFileOrDirectory(buildPath);
             AssetDatabase.Refresh();
@@ -75,7 +88,7 @@ namespace AvatarBridge
             }
 
             File.Copy(AbsolutePath(buildPath), AbsolutePath(assetPath), true);
-            AssetDatabase.DeleteAsset(buildPath);
+            AssetDatabase.DeleteAsset(scratchDir);
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
 
             // The object we built belonged to the scratch asset just deleted; the live one is
@@ -89,10 +102,9 @@ namespace AvatarBridge
             return persisted;
         }
 
-        static string ScratchPathFor(string assetPath)
+        static string ScratchDirFor(string assetPath)
         {
-            string dir = Path.GetDirectoryName(assetPath).Replace('\\', '/');
-            return $"{dir}/__AvatarBridge_rebuild{Path.GetExtension(assetPath)}";
+            return Path.GetDirectoryName(assetPath).Replace('\\', '/') + "/__AvatarBridgeRebuild";
         }
 
         static string AbsolutePath(string assetPath)
