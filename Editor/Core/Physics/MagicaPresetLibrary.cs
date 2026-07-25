@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -9,105 +10,260 @@ using MagicaCloth2;
 namespace AvatarBridge
 {
     /// <summary>
-    /// Picks the MagicaCloth2 preset that best fits a PhysBone chain, and applies it.
+    /// Works out what kind of chain a PhysBone is, and loads the MagicaCloth2 preset for it.
     ///
-    /// This exists because deriving MagicaCloth2 settings from PhysBone settings does not
-    /// really work. PhysBones and DynamicBone are the same algorithm — per-bone rotational
-    /// springs — so their parameters correspond one to one. MagicaCloth2 is a particle
-    /// position solver: it moves particles and derives bone rotations from where they land.
-    /// Numbers carried across that gap are analogies, and analogies drift under load.
+    /// Deriving MagicaCloth2 values from PhysBone values does not work — the two are different
+    /// kinds of simulation (see MagicaClothWriter). What DOES work is picking a whole
+    /// configuration that someone tuned as a set, because MagicaCloth2's parameters interact:
+    /// damping, stiffness, inertia and radius only make sense together. So nothing here
+    /// computes a number. It classifies, then loads.
     ///
-    /// MagicaCloth2 ships its own presets (Assets/MagicaCloth2/Res/Preset), which are what
-    /// its users actually start from — nobody hand-derives the eight values in that
-    /// inspector. Starting from a preset built by the solver's own author and matched to the
-    /// kind of chain is a far better first approximation than any conversion arithmetic, and
-    /// it leaves the avatar somewhere a human would recognise as a starting point.
+    /// Lookup order for a class, first hit wins:
     ///
-    /// The PhysBone still supplies everything structural — which bones, which colliders,
-    /// which transforms to ignore — and its values go into the report so a chain that wants
-    /// tuning can get it.
+    ///   1. "MC2_AvatarBridge_&lt;Class&gt;.json"  — tuned for this kind of chain, anywhere in
+    ///                                          the project. Drop your own in to override.
+    ///   2. the class's MagicaCloth2 fallback  — one of MagicaCloth2's own shipped presets
+    ///   3. nothing                            — MagicaCloth2's component defaults
+    ///
+    /// That ordering is why the class list can be finer-grained than MagicaCloth2's preset set
+    /// without inventing anything: every class already resolves to a sensible MagicaCloth2
+    /// preset today, and tuning one class is a drop-in file that changes only that class.
+    ///
+    /// **Authoring a preset:** set a chain up the way you want it in the MagicaCloth inspector,
+    /// press Save on its Preset dropdown, and name the file after the class. MagicaCloth2 writes
+    /// exactly the JSON this reads. See Assets/AvatarBridge/Presets/README.md.
     /// </summary>
     public static class MagicaPresetLibrary
     {
-        public const string Tail = "MC2_Preset_Tail";
-        public const string Cape = "MC2_Preset_Cape";
-        public const string Skirt = "MC2_Preset_Skirt";
-        public const string SoftSkirt = "MC2_Preset_SoftSkirt";
-        public const string FrontHair = "MC2_Preset_FrontHair";
-        public const string LongHair = "MC2_Preset_LongHair";
-        public const string ShortHair = "MC2_Preset_ShortHair";
-        public const string Accessory = "MC2_Preset_Accessory";
-        public const string SoftSpring = "MC2_Preset_SoftSpring";
-        public const string MiddleSpring = "MC2_Preset_MiddleSpring";
-        public const string HardSpring = "MC2_Preset_HardSpring";
+        /// <summary>A kind of chain, and the MagicaCloth2 preset to use until one is tuned for it.</summary>
+        public class ChainClass
+        {
+            public readonly string Name;
+            public readonly string Fallback;
+            public ChainClass(string name, string fallback) { Name = name; Fallback = fallback; }
+        }
 
-        static readonly Dictionary<string, string> JsonCache = new Dictionary<string, string>();
+        // MagicaCloth2's own presets, in Assets/MagicaCloth2/Res/Preset.
+        const string Tail = "MC2_Preset_Tail";
+        const string Cape = "MC2_Preset_Cape";
+        const string Skirt = "MC2_Preset_Skirt";
+        const string SoftSkirt = "MC2_Preset_SoftSkirt";
+        const string FrontHair = "MC2_Preset_FrontHair";
+        const string LongHair = "MC2_Preset_LongHair";
+        const string ShortHair = "MC2_Preset_ShortHair";
+        const string Accessory = "MC2_Preset_Accessory";
+        const string SoftSpring = "MC2_Preset_SoftSpring";
+        const string MiddleSpring = "MC2_Preset_MiddleSpring";
+        const string HardSpring = "MC2_Preset_HardSpring";
+
+        /// <summary>Prefix for AvatarBridge's own presets, which take priority over MagicaCloth2's.</summary>
+        public const string CustomPrefix = "MC2_AvatarBridge_";
+
+        // Every class the classifier can produce, with the MagicaCloth2 preset it falls back to.
+        // Kept in one place so the set is greppable and the "what could I tune?" list is obvious.
+        static readonly ChainClass
+            ClsBreast = new ChainClass("Breast", SoftSpring),
+            ClsButt = new ChainClass("Butt", SoftSpring),
+            ClsBelly = new ChainClass("Belly", SoftSpring),
+            ClsThigh = new ChainClass("Thigh", SoftSpring),
+            ClsEar = new ChainClass("Ear", SoftSpring),
+            ClsWhisker = new ChainClass("Whisker", ShortHair),
+            ClsFluff = new ChainClass("Fluff", ShortHair),
+            ClsHairFront = new ChainClass("HairFront", FrontHair),
+            ClsHairLong = new ChainClass("HairLong", LongHair),
+            ClsHairShort = new ChainClass("HairShort", ShortHair),
+            ClsAhoge = new ChainClass("Ahoge", ShortHair),
+            ClsTailLong = new ChainClass("TailLong", Tail),
+            ClsTailShort = new ChainClass("TailShort", Tail),
+            ClsWing = new ChainClass("Wing", Cape),
+            ClsHorn = new ChainClass("Horn", HardSpring),
+            ClsSkirt = new ChainClass("Skirt", Skirt),
+            ClsDress = new ChainClass("Dress", SoftSkirt),
+            ClsCape = new ChainClass("Cape", Cape),
+            ClsRibbon = new ChainClass("Ribbon", Accessory),
+            ClsSleeve = new ChainClass("Sleeve", Accessory),
+            ClsClothStrip = new ChainClass("ClothStrip", Accessory),
+            ClsEarring = new ChainClass("Earring", Accessory),
+            ClsNecklace = new ChainClass("Necklace", Accessory),
+            ClsCharm = new ChainClass("Charm", Accessory),
+            ClsFloaty = new ChainClass("Floaty", SoftSpring),
+            ClsStiff = new ChainClass("Stiff", HardSpring),
+            ClsSpringy = new ChainClass("Springy", MiddleSpring),
+            ClsLoose = new ChainClass("Loose", SoftSpring);
+
+        /// <summary>Every class, so the window and docs can list what's tunable.</summary>
+        public static IEnumerable<ChainClass> AllClasses => new[]
+        {
+            ClsBreast, ClsButt, ClsBelly, ClsThigh, ClsEar, ClsWhisker, ClsFluff,
+            ClsHairFront, ClsHairLong, ClsHairShort, ClsAhoge,
+            ClsTailLong, ClsTailShort, ClsWing, ClsHorn,
+            ClsSkirt, ClsDress, ClsCape, ClsRibbon, ClsSleeve, ClsClothStrip,
+            ClsEarring, ClsNecklace, ClsCharm,
+            ClsFloaty, ClsStiff, ClsSpringy, ClsLoose
+        };
 
         /// <summary>
-        /// Chooses a preset from what the chain IS where the name says so, and from how hard
-        /// the PhysBone pulled back to its rest pose where it doesn't.
+        /// What kind of chain this is. Names decide it where they say something; where they
+        /// don't, the PhysBone's character does — but only as a CHOICE between tuned presets,
+        /// never as arithmetic.
+        ///
+        /// Order matters and is load-bearing: "twintail" contains "tail" but is hair, "earring"
+        /// contains "ear" but is jewellery, "belly" contains "bell" but is not a bell.
         /// </summary>
-        public static string ChooseFor(PhysBoneChainData data)
+        public static ChainClass Classify(PhysBoneChainData data)
         {
             string n = data.Root.name.ToLowerInvariant();
-            var tokens = Tokenize(data.Root.name);
+            var t = Tokenize(data.Root.name);
+            int bones = CountBones(data.Root);
 
-            // Hair is checked first on purpose: "twintail" and "ponytail" contain "tail" but
-            // are hair, and want hair's lighter, faster settling rather than a tail's weight.
-            if (HasToken(tokens, "bang") || Has(n, "hair", "twintail", "ponytail", "pigtail", "braid", "ahoge", "fringe"))
+            // --- hair, before anything containing "tail" ---------------------------------
+            if (Has(n, "ahoge") || HasToken(t, "antenna"))
             {
-                if (HasToken(tokens, "front", "bang") || Has(n, "fringe", "ahoge"))
+                return ClsAhoge;
+            }
+            if (HasToken(t, "bang") || Has(n, "hair", "twintail", "ponytail", "pigtail", "braid", "fringe"))
+            {
+                if (HasToken(t, "front", "bang") || Has(n, "fringe"))
                 {
-                    return FrontHair;
+                    return ClsHairFront;
                 }
-                return CountBones(data.Root) >= 5 ? LongHair : ShortHair;
-            }
-            if (HasToken(tokens, "tail"))
-            {
-                return Tail;
-            }
-            if (HasToken(tokens, "cape", "cloak", "mantle", "coat"))
-            {
-                return Cape;
-            }
-            if (Has(n, "skirt", "dress", "apron"))
-            {
-                return Skirt;
-            }
-            if (HasToken(tokens, "bell", "tag", "collar", "strap")
-                || Has(n, "earring", "ribbon", "charm", "jewel", "pendant", "necklace", "zipper", "accessor"))
-            {
-                return Accessory;
+                return bones >= 5 || Has(n, "twintail", "ponytail", "pigtail", "braid", "long")
+                    ? ClsHairLong : ClsHairShort;
             }
 
-            // Nothing structural in the name — breast, butt, tummy, ears, unnamed props. Pick
-            // by how strongly the PhysBone restored to rest, which is the one axis these three
-            // presets differ along and the one PhysBone value that means the same on both sides.
+            // --- head & face, earring before ear ------------------------------------------
+            if (Has(n, "earring"))
+            {
+                return ClsEarring;
+            }
+            if (HasToken(t, "ear"))
+            {
+                return ClsEar;
+            }
+            if (HasToken(t, "whisker", "beard"))
+            {
+                return ClsWhisker;
+            }
+            if (HasToken(t, "tuft", "fluff", "fur", "mane", "ruff"))
+            {
+                return ClsFluff;
+            }
+            if (HasToken(t, "horn", "antler"))
+            {
+                return ClsHorn;
+            }
+
+            // --- appendages ----------------------------------------------------------------
+            if (HasToken(t, "tail"))
+            {
+                return bones >= 5 ? ClsTailLong : ClsTailShort;
+            }
+            if (HasToken(t, "wing"))
+            {
+                return ClsWing;
+            }
+
+            // --- garments. A named PART beats the garment it hangs off: "Apron_Ribbon" is the
+            //     ribbon simulating, not the apron. Generic "cloth" loses to a named garment.
+            if (Has(n, "ribbon") || HasToken(t, "bow"))
+            {
+                return ClsRibbon;
+            }
+            if (Has(n, "sleeve") || HasToken(t, "cuff"))
+            {
+                return ClsSleeve;
+            }
+            if (Has(n, "skirt"))
+            {
+                return ClsSkirt;
+            }
+            if (Has(n, "dress", "apron"))
+            {
+                return ClsDress;
+            }
+            if (HasToken(t, "cape", "cloak", "mantle", "coat", "hood"))
+            {
+                return ClsCape;
+            }
+            if (Has(n, "tassel", "scarf") || HasToken(t, "cloth", "sash", "strap", "belt", "strip", "flap"))
+            {
+                return ClsClothStrip;
+            }
+
+            // --- body jiggle -----------------------------------------------------------------
+            if (Has(n, "breast", "boob", "oppai", "bust"))
+            {
+                return ClsBreast;
+            }
+            if (Has(n, "booty", "glute") || HasToken(t, "butt", "ass", "rear"))
+            {
+                return ClsButt;
+            }
+            if (Has(n, "belly", "tummy", "stomach") || HasToken(t, "tum", "gut"))
+            {
+                return ClsBelly;
+            }
+            if (Has(n, "thigh"))
+            {
+                return ClsThigh;
+            }
+
+            // --- accessories ------------------------------------------------------------------
+            if (Has(n, "necklace", "pendant", "choker") || HasToken(t, "collar", "chain"))
+            {
+                return ClsNecklace;
+            }
+            if (Has(n, "charm", "jewel", "zipper", "keychain") || HasToken(t, "bell", "tag"))
+            {
+                return ClsCharm;
+            }
+
+            // --- nothing in the name: fall back to the PhysBone's character --------------------
+            // A chain the author gave no gravity was never meant to fall, whatever it is.
+            if (Mathf.Approximately(data.Gravity, 0f) && data.Immobile > 0.5f)
+            {
+                return ClsFloaty;
+            }
             float restore = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
             if (restore >= 0.6f)
             {
-                return HardSpring;
+                return ClsStiff;
             }
-            return restore >= 0.3f ? MiddleSpring : SoftSpring;
+            return restore >= 0.3f ? ClsSpringy : ClsLoose;
         }
 
         /// <summary>
-        /// Loads the preset's physics parameters over <paramref name="sdata"/>. MagicaCloth2's
-        /// ImportJson preserves the structural fields — clothType, rootBones, colliderList,
-        /// updateMode, animationPoseRatio, rootRotation — so this can run before or after the
-        /// chain is wired up without disturbing it.
+        /// Loads the preset for a class over <paramref name="sdata"/>. MagicaCloth2's ImportJson
+        /// keeps the structural fields — clothType, rootBones, colliderList, updateMode,
+        /// animationPoseRatio, rootRotation — so this can run either side of the wiring.
         ///
-        /// Called through reflection rather than directly: a MagicaCloth2 version without
-        /// ImportJson would otherwise stop the whole package compiling, where this just falls
-        /// back to deriving values from the PhysBone.
+        /// Called through reflection: a MagicaCloth2 version without ImportJson would otherwise
+        /// stop the whole package compiling, where this just falls through to its defaults.
         /// </summary>
-        public static bool TryApply(ClothSerializeData sdata, string presetName, out string error)
+        public static bool TryApply(ClothSerializeData sdata, ChainClass cls,
+            out string usedPreset, out bool isCustom, out string error)
         {
+            usedPreset = null;
+            isCustom = false;
             error = null;
-            string json = LoadJson(presetName);
+
+            string custom = CustomPrefix + cls.Name;
+            string json = LoadJson(custom);
+            if (json != null)
+            {
+                usedPreset = custom;
+                isCustom = true;
+            }
+            else
+            {
+                json = LoadJson(cls.Fallback);
+                usedPreset = cls.Fallback;
+            }
+
             if (string.IsNullOrEmpty(json))
             {
-                error = $"\"{presetName}.json\" was not found in this project";
+                error = $"neither \"{custom}.json\" nor \"{cls.Fallback}.json\" is in this project";
+                usedPreset = null;
                 return false;
             }
 
@@ -116,24 +272,26 @@ namespace AvatarBridge
             if (import == null)
             {
                 error = "this MagicaCloth2 version has no ImportJson";
+                usedPreset = null;
                 return false;
             }
             if (!(import.Invoke(sdata, new object[] { json }) is bool ok) || !ok)
             {
-                error = $"MagicaCloth2 rejected \"{presetName}.json\"";
+                error = $"MagicaCloth2 rejected \"{usedPreset}.json\"";
+                usedPreset = null;
                 return false;
             }
             return true;
         }
 
-        /// <summary>Human-readable preset name for the report ("MC2_Preset_LongHair" -> "Long Hair").</summary>
+        /// <summary>"MC2_Preset_LongHair" -> "Long Hair"; "MC2_AvatarBridge_HairFront" -> "Hair Front".</summary>
         public static string DisplayName(string presetName)
         {
-            string bare = presetName.Replace("MC2_Preset_", "");
+            string bare = presetName.Replace(CustomPrefix, "").Replace("MC2_Preset_", "");
             var sb = new System.Text.StringBuilder();
             for (int i = 0; i < bare.Length; i++)
             {
-                if (i > 0 && char.IsUpper(bare[i]))
+                if (i > 0 && char.IsUpper(bare[i]) && !char.IsUpper(bare[i - 1]))
                 {
                     sb.Append(' ');
                 }
@@ -141,6 +299,8 @@ namespace AvatarBridge
             }
             return sb.ToString();
         }
+
+        static readonly Dictionary<string, string> JsonCache = new Dictionary<string, string>();
 
         static string LoadJson(string presetName)
         {
@@ -152,7 +312,9 @@ namespace AvatarBridge
             foreach (string guid in AssetDatabase.FindAssets(presetName))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.EndsWith(".json"))
+                if (!path.EndsWith(".json") ||
+                    !System.IO.Path.GetFileNameWithoutExtension(path).Equals(presetName,
+                        System.StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -170,8 +332,7 @@ namespace AvatarBridge
         /// <summary>
         /// Substring match, for needles distinctive enough to be safe anywhere in a name
         /// ("hair" inside "backhair"). Short words must not use this: "bell" is inside "belly",
-        /// "coat" inside "petticoat", "tag" inside "stage" — all of which shipped as
-        /// mis-assigned presets before the split.
+        /// "ear" inside "earring", "ass" inside "glass".
         /// </summary>
         static bool Has(string haystack, params string[] needles)
         {
@@ -186,8 +347,8 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Whole-word match, for short needles that hide inside unrelated words. A trailing
-        /// "s" counts, so "Bagpack Straps" still reads as straps.
+        /// Whole-word match, for short needles that hide inside unrelated words. A trailing "s"
+        /// counts, so "Bagpack Straps" still reads as straps.
         /// </summary>
         static bool HasToken(string[] tokens, params string[] needles)
         {

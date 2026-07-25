@@ -70,14 +70,17 @@ namespace AvatarBridge
             // defaults. Still no arithmetic — it swaps one author-tuned baseline for another.
             // MagicaCloth2's ImportJson preserves the structural fields, so this is free to run
             // either side of the wiring below.
-            string preset = null;
+            string preset = null, chainClass = null;
+            bool customPreset = false;
             if (ctx.Settings.useMagicaPresets)
             {
-                preset = MagicaPresetLibrary.ChooseFor(data);
-                if (!MagicaPresetLibrary.TryApply(sdata, preset, out string presetError))
+                var cls = MagicaPresetLibrary.Classify(data);
+                chainClass = cls.Name;
+                if (!MagicaPresetLibrary.TryApply(sdata, cls, out preset, out customPreset, out string presetError))
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
-                        $"MagicaCloth2 preset not applied — {presetError}. Using MagicaCloth2's defaults instead.");
+                        $"No preset applied for chain class \"{cls.Name}\" — {presetError}. Using " +
+                        "MagicaCloth2's defaults instead.");
                     preset = null;
                 }
             }
@@ -137,7 +140,7 @@ namespace AvatarBridge
                 ApplyAngleLimit(ctx, data, sdata);
             }
 
-            ReportSourceSettings(ctx, data, preset);
+            ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
         }
 
@@ -146,11 +149,22 @@ namespace AvatarBridge
         /// information you'd need to tune a chain by hand, kept somewhere findable rather than
         /// being turned into MagicaCloth2 values it doesn't correspond to.
         /// </summary>
-        static void ReportSourceSettings(BridgeContext ctx, PhysBoneChainData data, string preset)
+        static void ReportSourceSettings(BridgeContext ctx, PhysBoneChainData data, string preset,
+            string chainClass, bool customPreset)
         {
-            string baseline = preset != null
-                ? $"the MagicaCloth2 \"{MagicaPresetLibrary.DisplayName(preset)}\" preset"
-                : "MagicaCloth2's defaults";
+            string baseline;
+            if (preset == null)
+            {
+                baseline = "MagicaCloth2's defaults";
+            }
+            else
+            {
+                // Naming the class as well as the preset makes a misread name obvious, and tells
+                // you which file to drop in if you want to tune this kind of chain.
+                baseline = $"the {(customPreset ? "custom" : "MagicaCloth2")} " +
+                           $"\"{MagicaPresetLibrary.DisplayName(preset)}\" preset (read as a " +
+                           $"\"{chainClass}\" chain)";
+            }
             ctx.Report.Converted(Category, data.Root.name,
                 $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
