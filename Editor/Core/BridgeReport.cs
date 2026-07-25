@@ -67,6 +67,12 @@ namespace AvatarBridge
             var sb = new StringBuilder();
             sb.AppendLine($"# AvatarBridge conversion report: {avatarName}");
             sb.AppendLine();
+            // Stamp the build that produced this. A report is the main thing users send when
+            // something's wrong, and without this there's no way to tell which version ran —
+            // which has already cost time chasing a "broken" fix that simply wasn't installed.
+            sb.AppendLine($"*AvatarBridge v{BridgeDefines.Version} · Unity {Application.unityVersion} · " +
+                          $"{System.DateTime.Now:yyyy-MM-dd HH:mm}*");
+            sb.AppendLine();
             sb.AppendLine($"Converted: {CountOf(ReportStatus.Converted)} | " +
                           $"Approximated: {CountOf(ReportStatus.Approximated)} | " +
                           $"Skipped: {CountOf(ReportStatus.Skipped)} | " +
