@@ -171,7 +171,10 @@ namespace AvatarBridge
             SystemStripper.Run(ctx, master, vrcLayers);
             StripExistingFaceTracking(master, vrcLayers, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
-            BoolifyToggleParameters(master, ctx);
+            // Before RenamePass, so the menu entries' machineNames still line up with the
+            // animator parameter names; and before CompactIntDropdowns, which needs the
+            // dropdown parameters to already be Ints.
+            ParameterTypeInference.Run(master, ctx);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
@@ -1016,157 +1019,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRCFury bakes toggles as float parameters. When a toggle parameter is used
-        /// ONLY in transition conditions (typical after nativizing/expanding toggles),
-        /// it can safely become a real Bool — cleaner menu, cleaner sync, no 0.5 checks.
-        /// Parameters read by blend trees, motion time, drivers or written by AAP clips
-        /// must stay float.
-        /// </summary>
-        static void BoolifyToggleParameters(AnimatorController master, BridgeContext ctx)
-        {
-            var toggleParams = new HashSet<string>(ctx.CvrAvatar.avatarSettings.settings
-                .Where(e => e.setting is ABI.CCK.Scripts.CVRAdvancesAvatarSettingGameObjectToggle &&
-                            !string.IsNullOrEmpty(e.machineName))
-                .Select(e => e.machineName));
-            if (toggleParams.Count == 0)
-            {
-                return;
-            }
-
-            // Everything that reads/writes parameters outside of transition conditions.
-            var nonConditionRefs = new HashSet<string>();
-            void NoteMotion(Motion motion)
-            {
-                if (motion is BlendTree tree)
-                {
-                    nonConditionRefs.Add(tree.blendParameter);
-                    nonConditionRefs.Add(tree.blendParameterY);
-                    foreach (var child in tree.children)
-                    {
-                        if (tree.blendType == BlendTreeType.Direct)
-                        {
-                            nonConditionRefs.Add(child.directBlendParameter);
-                        }
-                        NoteMotion(child.motion);
-                    }
-                }
-                else if (motion is AnimationClip clip)
-                {
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
-                        {
-                            nonConditionRefs.Add(binding.propertyName); // AAP write
-                        }
-                    }
-                }
-            }
-            foreach (var layer in master.layers)
-            {
-                WalkMachines(layer.stateMachine, machine =>
-                {
-                    foreach (var behaviour in machine.behaviours.OfType<AnimatorDriver>())
-                    {
-                        foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
-                        {
-                            nonConditionRefs.Add(task.targetName);
-                            nonConditionRefs.Add(task.aName);
-                            nonConditionRefs.Add(task.bName);
-                        }
-                    }
-                    foreach (var child in machine.states)
-                    {
-                        var state = child.state;
-                        if (state.timeParameterActive) nonConditionRefs.Add(state.timeParameter);
-                        if (state.speedParameterActive) nonConditionRefs.Add(state.speedParameter);
-                        if (state.mirrorParameterActive) nonConditionRefs.Add(state.mirrorParameter);
-                        if (state.cycleOffsetParameterActive) nonConditionRefs.Add(state.cycleOffsetParameter);
-                        NoteMotion(state.motion);
-                        foreach (var behaviour in state.behaviours.OfType<AnimatorDriver>())
-                        {
-                            foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
-                            {
-                                nonConditionRefs.Add(task.targetName);
-                                nonConditionRefs.Add(task.aName);
-                                nonConditionRefs.Add(task.bName);
-                            }
-                        }
-                    }
-                });
-            }
-
-            var boolified = new HashSet<string>();
-            var parameters = master.parameters;
-            foreach (var param in parameters)
-            {
-                if (param.type == AnimatorControllerParameterType.Float &&
-                    toggleParams.Contains(param.name) &&
-                    !nonConditionRefs.Contains(param.name))
-                {
-                    param.type = AnimatorControllerParameterType.Bool;
-                    param.defaultBool = param.defaultFloat != 0f;
-                    boolified.Add(param.name);
-                }
-            }
-            if (boolified.Count == 0)
-            {
-                return;
-            }
-            master.parameters = parameters;
-
-            // Rewrite every condition on the retyped parameters to bool comparisons.
-            void RewriteBoolConditions(AnimatorTransitionBase[] transitions)
-            {
-                foreach (var transition in transitions)
-                {
-                    var conditions = transition.conditions;
-                    bool changed = false;
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (!boolified.Contains(conditions[i].parameter))
-                        {
-                            continue;
-                        }
-                        AnimatorConditionMode mode;
-                        switch (conditions[i].mode)
-                        {
-                            case AnimatorConditionMode.Greater: mode = AnimatorConditionMode.If; break;
-                            case AnimatorConditionMode.Less: mode = AnimatorConditionMode.IfNot; break;
-                            case AnimatorConditionMode.Equals:
-                                mode = conditions[i].threshold != 0f ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
-                                break;
-                            case AnimatorConditionMode.NotEqual:
-                                mode = conditions[i].threshold != 0f ? AnimatorConditionMode.IfNot : AnimatorConditionMode.If;
-                                break;
-                            default: mode = conditions[i].mode; break;
-                        }
-                        conditions[i].mode = mode;
-                        conditions[i].threshold = 0f;
-                        changed = true;
-                    }
-                    if (changed)
-                    {
-                        transition.conditions = conditions;
-                    }
-                }
-            }
-            foreach (var layer in master.layers)
-            {
-                WalkMachines(layer.stateMachine, machine =>
-                {
-                    RewriteBoolConditions(machine.anyStateTransitions);
-                    RewriteBoolConditions(machine.entryTransitions);
-                    foreach (var child in machine.states)
-                    {
-                        RewriteBoolConditions(child.state.transitions);
-                    }
-                });
-            }
-
-            ctx.Report.Converted(Category, $"{boolified.Count} toggle parameter(s) retyped Float -> Bool",
-                "They were only used in conditions; menu and sync now use real bools.");
-        }
 
         /// <summary>
         /// A parameter can end up one type while some transitions still condition on it with a

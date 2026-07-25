@@ -145,7 +145,7 @@ Every row carries an honest status:
 | Avatar descriptor (viewpoint, voice, face mesh, visemes, blink) | `CVRAvatar` | ✅ | voice position placed at the head bone like VRChat; blink is wired with the matching Blink Mode — see [below](#blink-modes-dont-line-up) |
 | Expression parameters + menus | Advanced Avatar Settings (toggles / sliders / dropdowns) | ✅ | entries named after the menu control's label (`Cloak`), qualified only on collisions (`Hoodie (Tops)`) |
 | Clothing / prop toggles | one `Toggle <name>` animator layer each | ✅ | pulled out of VRCFury's merged blend tree into classic Off/On layers |
-| Toggle parameters | real `bool` parameters | ✅ | VRCFury bakes toggles as floats; those used only in conditions are retyped |
+| Parameter types | real `bool` / `int` / `float` | ✅ | VRCFury bakes every menu parameter as a float; each is retyped to what its menu control and animator conditions actually use — see [below](#parameter-types) |
 | FX / Gesture layers (Base, Additive, Action optional) | merged into one CVR animator over the CCK `AvatarAnimator` | ✅ | CVR hand layers are removed when the Gesture layer is converted |
 | PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (Magica) | DynamicBone path is 🔷; see [mapping](#physbones--magicacloth2) |
 | Non-synced parameters | `#`-prefixed (CVR local-only) | ✅ | keeps network traffic equivalent |
@@ -199,6 +199,30 @@ the two shapes to be **the same name but for the side token** — meshes routine
 blink families at once (`! - Blink L`/`! - Blink R` alongside `vrc.blink_left`/`vrc.blink_right`),
 and matching each side independently could take the left eye from one family and the right from
 another. If the descriptor named nothing at all, the same detection runs against the mesh directly.
+
+## Parameter types
+
+**VRCFury bakes every menu parameter as a `float`**, whatever it really is — a float can carry a
+bool or an int, and that saves it reasoning about intent. Harmless in VRChat. Not harmless in
+ChilloutVR, which writes a menu value using the entry's *own* declared type: write a Bool into a
+Float animator parameter and nothing happens at all. That is the single most common cause of
+"the toggle does nothing in game".
+
+So each parameter is retyped to what the avatar's own logic says it is, from two sources:
+
+- **The menu control it drives.** A Toggle is a bool, a Dropdown is an int, a Slider is a float.
+  That's what the author built.
+- **How the animator compares it**, for parameters with no menu control. A parameter matched with
+  `Equals` / `NotEqual` against whole numbers reaching 2 or more is a selector — nothing else
+  behaves that way.
+
+Against both sits one veto, checked first and absolute: anything read as a **quantity** — a blend
+tree, motion time, speed, cycle offset, or a parameter an animation clip writes — stays `float`,
+because those need the values in between. Vetoed parameters are listed in the report so you can
+see the tool declined rather than missed them.
+
+Transitions are rewritten to match whatever each parameter becomes, so nothing is left comparing a
+bool with `> 0.5` or an int fractionally.
 
 ## Face tracking
 
