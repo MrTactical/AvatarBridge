@@ -80,7 +80,7 @@ namespace AvatarBridge
 
             foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0)
+                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0 || IsDebugMesh(smr))
                 {
                     continue;
                 }
@@ -95,6 +95,24 @@ namespace AvatarBridge
                     bestScore = score;
                     bestMesh = smr;
                     bestIsUnified = isUnified;
+                }
+            }
+
+            // The descriptor already named the face mesh, and it outranks any score: a scoring
+            // contest is only needed when nothing authoritative is available. Applied when the
+            // named mesh carries face-tracking shapes at all, so an avatar whose visemes and FT
+            // live on different meshes still resolves by score.
+            var named = ctx.CvrAvatar != null ? ctx.CvrAvatar.bodyMesh : null;
+            if (named != null && named != bestMesh && named.sharedMesh != null && !IsDebugMesh(named))
+            {
+                var namedShapes = ShapeNames(named.sharedMesh);
+                int namedLegacy = CountMatches(namedShapes, legacyShapes);
+                int namedUnified = CountMatches(namedShapes, unifiedShapes);
+                if (Mathf.Max(namedLegacy, namedUnified) >= DetectionThreshold)
+                {
+                    bestMesh = named;
+                    bestIsUnified = namedUnified >= namedLegacy;
+                    bestScore = Mathf.Max(namedLegacy, namedUnified);
                 }
             }
 
@@ -165,6 +183,36 @@ namespace AvatarBridge
                 return list;
             }
             return fallback;
+        }
+
+        /// <summary>
+        /// VRCFury's Unified-Expressions debug window and similar non-face meshes.
+        ///
+        /// This has to be excluded rather than out-scored: the debug panel exists to show every
+        /// tracked shape, so it carries the COMPLETE shape set and beats the real face on any
+        /// count-based test. An avatar converted without this had its face tracking wired to the
+        /// debug window — every expression driving a floating panel while the face sat still.
+        /// The blendtree path has guarded against it since 0.6.8; this one had not.
+        /// </summary>
+        static bool IsDebugMesh(SkinnedMeshRenderer smr)
+        {
+            string name = smr.name.ToLowerInvariant();
+            if (name.Contains("debug") || name.Contains("vf_ue") || name.Contains("ft_debug"))
+            {
+                return true;
+            }
+            // The panel is usually named innocuously and betrayed by its parents instead
+            // (VRCFury - Face Tracking - UE Blendshapes/VF_UE_Debug/WorldObject/Window/FT_Debug).
+            for (var t = smr.transform; t != null; t = t.parent)
+            {
+                string n = t.name.ToLowerInvariant();
+                if (n.Contains("debug") || n.Contains("vf_ue") || n.Contains("ft_debug")
+                    || n.Contains("worldobject"))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }
