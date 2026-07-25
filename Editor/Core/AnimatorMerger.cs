@@ -158,6 +158,7 @@ namespace AvatarBridge
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
             // conditions behind). ChilloutVR silently drops such transitions.
             ReconcileConditionModes(master, ctx);
+            PruneDeadMenuEntries(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
@@ -1263,6 +1264,46 @@ namespace AvatarBridge
                     "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
                     "what leaves face-tracking's RemoteModeActive local/remote gate dead.");
             }
+        }
+
+        /// <summary>
+        /// Drops menu entries whose parameter doesn't exist on the final controller.
+        ///
+        /// A VRChat avatar can declare an expression parameter — and give it a menu control —
+        /// that no converted animator layer actually reads: it belonged to a playable layer
+        /// that wasn't converted (Action emotes, VRCEmote/VRCFaceBlend*), or to a system that
+        /// was stripped. Those entries are inert clutter: the menu shows a control, nothing
+        /// listens, and the CCK inspector flags the missing parameter in red. Run last, once
+        /// every rename and injection has settled, so names are final.
+        /// </summary>
+        static void PruneDeadMenuEntries(AnimatorController master, BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar.avatarSettings.settings;
+            if (settings == null || settings.Count == 0)
+            {
+                return;
+            }
+            var known = new HashSet<string>(master.parameters.Select(p => p.name));
+
+            var dead = settings
+                .Where(e => e != null && !string.IsNullOrEmpty(e.machineName) && !known.Contains(e.machineName))
+                .ToList();
+            if (dead.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var entry in dead)
+            {
+                settings.Remove(entry);
+                ctx.Report.Skipped(Category, $"Menu entry \"{entry.name}\" removed",
+                    $"Nothing in the converted animator reads \"{entry.machineName}\" — the parameter belongs " +
+                    "to a layer that wasn't converted (Action/emotes) or to a stripped system, so the control " +
+                    "would have sat in your menu doing nothing.");
+            }
+            EditorUtility.SetDirty(ctx.CvrAvatar);
+            ctx.Report.Converted(Category, $"Removed {dead.Count} dead menu entr(ies)",
+                "They had no matching animator parameter, so they could never have done anything.");
         }
 
         /// <summary>

@@ -233,6 +233,9 @@ namespace AvatarBridge
                 };
             }
 
+            // What the animator actually reacts to, and the state name behind each value.
+            var animatorValues = ScanIntUsage(ctx.SourceDescriptor, p.name);
+
             var valueNames = new Dictionary<int, string>();
             if (hasMenu)
             {
@@ -243,24 +246,55 @@ namespace AvatarBridge
             }
             else
             {
-                foreach (int v in ScanIntValues(ctx.SourceDescriptor, p.name))
+                foreach (var kv in animatorValues)
                 {
-                    valueNames[v] = p.name + " = " + v;
+                    valueNames[kv.Key] = kv.Value ?? (p.name + " = " + kv.Key);
                 }
             }
             int maxValue = Mathf.Max(valueNames.Count > 0 ? valueNames.Keys.Max() : 0, (int)p.defaultValue);
             maxValue = Mathf.Min(maxValue, 255);
 
+            // ChilloutVR dropdowns map option INDEX to the parameter value, so reaching value
+            // N requires N+1 entries — the gaps can't be removed. Fill them as usefully as
+            // possible: a value the animator responds to gets its state's name (a working
+            // option the VRChat menu never exposed); one nothing reacts to is labelled as
+            // such, rather than an ambiguous "---".
             var options = new List<CVRAdvancedSettingsDropDownEntry>();
+            int live = 0, inert = 0;
             for (int i = 0; i <= maxValue; i++)
             {
-                options.Add(new CVRAdvancedSettingsDropDownEntry
+                string label;
+                if (valueNames.TryGetValue(i, out var menuLabel))
                 {
-                    name = valueNames.TryGetValue(i, out var label) ? label : "---"
-                });
+                    label = menuLabel;
+                    live++;
+                }
+                else if (animatorValues.TryGetValue(i, out var stateName))
+                {
+                    label = stateName ?? $"Option {i}";
+                    live++;
+                }
+                else
+                {
+                    label = "(unused)";
+                    inert++;
+                }
+                options.Add(new CVRAdvancedSettingsDropDownEntry { name = label });
             }
 
-            ctx.Report.Converted(Category, p.name, $"Dropdown \"{display}\" with {options.Count} options");
+            if (inert > 0)
+            {
+                ctx.Report.Approximated(Category, p.name,
+                    $"Dropdown \"{display}\": {options.Count} options, of which {live} do something and " +
+                    $"{inert} are inert padding. ChilloutVR dropdowns map the option's position to the " +
+                    $"parameter value, so reaching this parameter's highest used value ({maxValue}) needs " +
+                    $"{maxValue + 1} entries — the gaps can't be removed, only labelled \"(unused)\". " +
+                    "Delete them on the CVRAvatar only if you also stop needing the values above them.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category, p.name, $"Dropdown \"{display}\" with {options.Count} options");
+            }
             return new CVRAdvancedSettingsEntry
             {
                 name = display,
@@ -347,12 +381,16 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// For int parameters without menu controls: find every value the animators compare
-        /// against, so the generated dropdown covers all meaningful states.
+        /// Every value the animators compare this int parameter against, mapped to the name
+        /// of the state an "Equals" on it leads to (null when there's no usable name).
+        ///
+        /// Two uses: naming the options of a menu-less parameter, and — because ChilloutVR
+        /// dropdowns are index-addressed and so must span 0..max — telling a value that
+        /// genuinely does something from one that's only there to pad the gap.
         /// </summary>
-        static IEnumerable<int> ScanIntValues(VRCAvatarDescriptor vrc, string parameterName)
+        static Dictionary<int, string> ScanIntUsage(VRCAvatarDescriptor vrc, string parameterName)
         {
-            var values = new HashSet<int> { 0 };
+            var values = new Dictionary<int, string> { { 0, null } };
             foreach (var layer in vrc.baseAnimationLayers)
             {
                 if (layer.animatorController is AnimatorController controller)
@@ -366,7 +404,7 @@ namespace AvatarBridge
             return values;
         }
 
-        static void ScanMachine(AnimatorStateMachine machine, string parameterName, HashSet<int> values)
+        static void ScanMachine(AnimatorStateMachine machine, string parameterName, Dictionary<int, string> values)
         {
             if (machine == null)
             {
@@ -376,16 +414,16 @@ namespace AvatarBridge
             {
                 foreach (var transition in child.state.transitions)
                 {
-                    ScanConditions(transition.conditions, parameterName, values);
+                    ScanConditions(transition, parameterName, values);
                 }
             }
             foreach (var transition in machine.anyStateTransitions)
             {
-                ScanConditions(transition.conditions, parameterName, values);
+                ScanConditions(transition, parameterName, values);
             }
             foreach (var transition in machine.entryTransitions)
             {
-                ScanConditions(transition.conditions, parameterName, values);
+                ScanConditions(transition, parameterName, values);
             }
             foreach (var child in machine.stateMachines)
             {
@@ -393,17 +431,48 @@ namespace AvatarBridge
             }
         }
 
-        static void ScanConditions(AnimatorCondition[] conditions, string parameterName, HashSet<int> values)
+        static void ScanConditions(AnimatorTransitionBase transition, string parameterName, Dictionary<int, string> values)
         {
-            foreach (var condition in conditions)
+            foreach (var condition in transition.conditions)
             {
-                if (condition.parameter == parameterName)
+                if (condition.parameter != parameterName)
                 {
-                    values.Add(Mathf.Abs(condition.threshold - Mathf.Round(condition.threshold)) < 0.001f
-                        ? (int)Mathf.Round(condition.threshold)
-                        : (int)condition.threshold);
+                    continue;
+                }
+                int value = Mathf.Abs(condition.threshold - Mathf.Round(condition.threshold)) < 0.001f
+                    ? (int)Mathf.Round(condition.threshold)
+                    : (int)condition.threshold;
+
+                // Only "Equals" identifies a value with a state; Greater/Less/NotEqual say the
+                // value is referenced but not which state it selects.
+                string name = null;
+                if (condition.mode == AnimatorConditionMode.Equals && transition.destinationState != null)
+                {
+                    name = UsefulStateName(transition.destinationState.name);
+                }
+                if (!values.TryGetValue(value, out var existing) || (existing == null && name != null))
+                {
+                    values[value] = name;
                 }
             }
+        }
+
+        /// <summary>Rejects Unity's default/placeholder state names, which make poor menu labels.</summary>
+        static string UsefulStateName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+            string trimmed = name.Trim();
+            string lower = trimmed.ToLowerInvariant();
+            if (lower == "blend tree" || lower == "new state" || lower.StartsWith("state ") ||
+                lower == "on" || lower == "off" || lower == "idle" || lower == "default" ||
+                trimmed.All(char.IsDigit))
+            {
+                return null;
+            }
+            return trimmed;
         }
 
         /// <summary>
