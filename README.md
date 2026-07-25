@@ -102,6 +102,8 @@ registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines
 
 | Symptom | Cause & fix |
 |---|---|
+| Menu controls below a certain point don't respond in ChilloutVR | An invalid character in a menu parameter name breaks the CCK's Advanced Settings inspector, taking out every control drawn after it. Fixed in 1.1.3+ (`<impulse=0.1>` on Button parameters was the culprit) — re-convert on the latest build. |
+| Menu has controls that do nothing (`GestureLeft`, dropdown entries labelled `---`) | Fixed in 1.1.1–1.1.4 — dead entries are pruned, dropdown padding is removed by renumbering, and parameters ChilloutVR drives itself are no longer given controls. Re-convert on the latest build. |
 | Window shows a ✔/✘ checklist instead of options | The **CCK** is missing — import it, let Unity recompile, reopen the window. |
 | Window only offers "Set up any avatar", no Convert mode | The VRChat SDK isn't installed, so there's no VRChat avatar to read — import the SDK to convert. [Setup mode](#bonus-setup-mode-without-the-vrchat-sdk) runs meanwhile. |
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, corrupting its Fury data. Delete the avatar's assets and scene copies, then re-import with VRCFury already installed. |
@@ -237,6 +239,9 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 |---|---|---|
 | pull / stiffness (+curves) | angle restoration stiffness (+ depth curve) | close |
 | spring / momentum | damping (inverted) + velocity attenuation | close |
+| **Is Animated** | animation pose ratio (1.0) — the chain settles to the *animated* pose instead of fighting back to the initial one | **exact** |
+| **Multi Child Type: Ignore** (branching root) | root rotation 0.0 — Magica's own wording is "does not rotate" | **exact** |
+| Multi Child Type: First / Average | — | ⚠️ each branch simulates independently |
 | gravity | gravity — PhysBone's 0..1 is a fraction of real gravity, so 1.0 → 9.81 m/s² | 1:1 |
 | gravityFalloff | gravity falloff | **exact** — both are "reduce gravity while near the rest pose" |
 | immobile, type **World** | world inertia (inverted) | **exact** — Magica splits the same way |
@@ -247,7 +252,9 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 | limit type **Polar** | single symmetric cone from the larger of `maxAngleX`/`maxAngleZ` | ⚠️ approximated |
 | ignore transforms | bone attribute *Invalid* | 1:1 |
 | colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders | 1:1 |
-| maxStretch | — | ⚠️ dropped: BoneCloth keeps bones at rest length, so chains swing but never stretch |
+| maxStretch / maxSquish | — | ⚠️ dropped: BoneCloth keeps bones at rest length, so chains swing but never lengthen or compress |
+| limit rotation (pitch/roll/yaw) | — | ⚠️ dropped: Magica's limit cone is always centred on the rest pose |
+| grab & pose | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod, `_IsGrabbed` / `_Angle` only | ⚠️ partial |
 
 Rows marked **exact** or **1:1** carry the same meaning in both systems; the rest are noted in
 the conversion report so you know what to check. The two solvers still differ, so expect to

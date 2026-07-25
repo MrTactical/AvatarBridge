@@ -42,7 +42,16 @@ namespace AvatarBridge
         public float MaxAngleZ;
 
         public float MaxStretch;
+        public float MaxSquish;
         public string Parameter;          // PhysBone -> animator parameter feature
+
+        /// <summary>Animation is allowed to move the chain's rest pose.</summary>
+        public bool IsAnimated;
+        /// <summary>Ignore / First / Average — how a root with several children behaves.</summary>
+        public string MultiChildTypeName;
+        /// <summary>True when the root actually has more than one child, which is the only
+        /// case where MultiChildType means anything.</summary>
+        public bool RootHasMultipleChildren;
 
         public List<VRCPhysBoneCollider> Colliders = new List<VRCPhysBoneCollider>();
 
@@ -71,7 +80,10 @@ namespace AvatarBridge
                 MaxAngleX = pb.maxAngleX,
                 MaxAngleZ = pb.maxAngleZ,
                 MaxStretch = pb.maxStretch,
-                Parameter = pb.parameter
+                MaxSquish = ReadFloat(pb, "maxSquish", 0f),
+                Parameter = pb.parameter,
+                IsAnimated = pb.isAnimated,
+                MultiChildTypeName = pb.multiChildType.ToString()
             };
 
             // Stiffness only exists meaningfully in advanced integration.
@@ -98,7 +110,51 @@ namespace AvatarBridge
                     }
                 }
             }
+
+            // Multi Child Type only means anything when the root actually branches; with a
+            // single child it's inert, so the writers shouldn't act on it. Counted after the
+            // ignore list is filled, since ignored children don't count as branches.
+            int children = 0;
+            for (int i = 0; i < data.Root.childCount; i++)
+            {
+                if (!data.Ignores.Contains(data.Root.GetChild(i)))
+                {
+                    children++;
+                }
+            }
+            data.RootHasMultipleChildren = children > 1;
+
             return data;
+        }
+
+        /// <summary>
+        /// Reads a float the VRChat SDK may or may not expose under this name. Newer PhysBone
+        /// fields are read this way so a renamed or absent member degrades to the fallback
+        /// instead of breaking the build against a different SDK version.
+        /// </summary>
+        static float ReadFloat(object source, string fieldName, float fallback)
+        {
+            var type = source.GetType();
+            try
+            {
+                var field = type.GetField(fieldName,
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (field != null && field.FieldType == typeof(float))
+                {
+                    return (float)field.GetValue(source);
+                }
+                var property = type.GetProperty(fieldName,
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (property != null && property.PropertyType == typeof(float))
+                {
+                    return (float)property.GetValue(source);
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+            return fallback;
         }
 
         public static bool HasCurve(AnimationCurve curve) => curve != null && curve.length > 0;

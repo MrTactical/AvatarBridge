@@ -70,6 +70,23 @@ namespace AvatarBridge
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
             sdata.rootBones.Add(data.Root);
 
+            // "Is Animated" means animation is allowed to move the chain's rest pose, which is
+            // exactly what Magica's animation pose ratio blends towards (0 = restore to the
+            // initial pose, 1 = restore to the animated one). Without this, a chain whose bones
+            // are animated fights its way back to the T-pose instead of following the animation.
+            if (data.IsAnimated)
+            {
+                sdata.animationPoseRatio = 1f;
+            }
+
+            // Multi Child Type "Ignore" pins a branching root in place — VRChat's own guidance
+            // is that it's for hair. Magica says the same thing with rootRotation 0 ("does not
+            // rotate"); left at its 0.5 default the root would swing when it shouldn't.
+            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
+            {
+                sdata.rootRotation = 0f;
+            }
+
             // Particle radius.
             ApplyCurve(sdata.radius, Mathf.Max(0.001f, data.Radius), data.RadiusCurve);
 
@@ -182,8 +199,19 @@ namespace AvatarBridge
             }
 
             ReportUnconvertibleFeatures(ctx, data);
+
+            var notes = new List<string>();
+            if (data.IsAnimated)
+            {
+                notes.Add("follows the animated pose");
+            }
+            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
+            {
+                notes.Add("root pinned");
+            }
             ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth with {data.Colliders.Count} collider(s).");
+                $"BoneCloth with {data.Colliders.Count} collider(s)" +
+                (notes.Count > 0 ? $" ({string.Join(", ", notes)})." : "."));
         }
 
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
@@ -236,12 +264,20 @@ namespace AvatarBridge
 
         static void ReportUnconvertibleFeatures(BridgeContext ctx, PhysBoneChainData data)
         {
-            if (data.MaxStretch > 0f)
+            if (data.MaxStretch > 0f || data.MaxSquish > 0f)
             {
                 ctx.Report.Skipped(Category, data.Root.name,
-                    $"Max Stretch ({data.MaxStretch:0.##}) is not converted — MagicaCloth2's BoneCloth keeps " +
-                    "each bone at its rest length, so a chain can swing but never stretch. Chains that relied " +
-                    "on stretching for their look will sit tighter than they did in VRChat.");
+                    $"Stretch & Squish (max stretch {data.MaxStretch:0.##}, max squish {data.MaxSquish:0.##}) " +
+                    "is not converted — MagicaCloth2's BoneCloth keeps each bone at its rest length, so a chain " +
+                    "swings but never lengthens or compresses. Chains that leaned on stretching will sit tighter " +
+                    "than they did in VRChat.");
+            }
+            if (data.LimitTypeName != "None" && data.RootHasMultipleChildren &&
+                data.MultiChildTypeName != "Ignore")
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"Multi Child Type '{data.MultiChildTypeName}' has no MagicaCloth2 equivalent — every branch " +
+                    "off this root simulates independently, where VRChat blended them.");
             }
             if (!string.IsNullOrEmpty(data.Parameter))
             {
