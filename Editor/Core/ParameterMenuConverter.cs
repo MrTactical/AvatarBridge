@@ -26,6 +26,13 @@ namespace AvatarBridge
     {
         const string Category = "Parameters & menu";
 
+        /// <summary>
+        /// Label for a dropdown slot that exists only because ChilloutVR addresses options by
+        /// position — nothing in the avatar responds to its value. The animator merge removes
+        /// these where the parameter can safely be renumbered (AnimatorMerger.CompactIntDropdowns).
+        /// </summary>
+        public const string UnusedOption = "(unused)";
+
         class MenuUse
         {
             public string DisplayName;
@@ -276,25 +283,18 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    label = "(unused)";
+                    label = UnusedOption;
                     inert++;
                 }
                 options.Add(new CVRAdvancedSettingsDropDownEntry { name = label });
             }
 
-            if (inert > 0)
-            {
-                ctx.Report.Approximated(Category, p.name,
-                    $"Dropdown \"{display}\": {options.Count} options, of which {live} do something and " +
-                    $"{inert} are inert padding. ChilloutVR dropdowns map the option's position to the " +
-                    $"parameter value, so reaching this parameter's highest used value ({maxValue}) needs " +
-                    $"{maxValue + 1} entries — the gaps can't be removed, only labelled \"(unused)\". " +
-                    "Delete them on the CVRAvatar only if you also stop needing the values above them.");
-            }
-            else
-            {
-                ctx.Report.Converted(Category, p.name, $"Dropdown \"{display}\" with {options.Count} options");
-            }
+            // Gaps are reported later: the animator merge renumbers the parameter to remove
+            // them where it can, and only explains them when it can't (CompactIntDropdowns).
+            ctx.Report.Converted(Category, p.name,
+                inert > 0
+                    ? $"Dropdown \"{display}\" with {options.Count} options ({live} mapped to a value the avatar uses)"
+                    : $"Dropdown \"{display}\" with {options.Count} options");
             return new CVRAdvancedSettingsEntry
             {
                 name = display,

@@ -159,6 +159,7 @@ namespace AvatarBridge
             // conditions behind). ChilloutVR silently drops such transitions.
             ReconcileConditionModes(master, ctx);
             PruneDeadMenuEntries(master, ctx);
+            CompactIntDropdowns(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
@@ -1304,6 +1305,334 @@ namespace AvatarBridge
             EditorUtility.SetDirty(ctx.CvrAvatar);
             ctx.Report.Converted(Category, $"Removed {dead.Count} dead menu entr(ies)",
                 "They had no matching animator parameter, so they could never have done anything.");
+        }
+
+        /// <summary>
+        /// Removes the placeholder entries from int dropdowns by renumbering the parameter.
+        ///
+        /// ChilloutVR addresses dropdown options by POSITION — option 20 sets the parameter
+        /// to 20 — so a VRChat menu that used sparse values (say 1, 2 and 20) forces 21
+        /// entries, 18 of which do nothing. The option list can't be thinned on its own
+        /// without silently re-pointing every entry after the gap.
+        ///
+        /// But nothing requires the animator to keep the original numbers. Renumbering the
+        /// values it actually uses down to 0..N-1 — conditions, drivers and triggers
+        /// together — makes the dropdown exactly as long as it has real options, with no
+        /// placeholders at all and identical behaviour.
+        ///
+        /// Only safe for parameters used purely as discrete selectors, so anything treating
+        /// the value as a quantity (blend trees, motion time, arithmetic drivers, clips
+        /// writing it) disqualifies it and the padded list is kept.
+        /// </summary>
+        static void CompactIntDropdowns(AnimatorController master, BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar.avatarSettings.settings;
+            if (settings == null)
+            {
+                return;
+            }
+
+            int compactedEntries = 0, removedOptions = 0;
+            foreach (var entry in settings)
+            {
+                if (entry == null ||
+                    !(entry.setting is ABI.CCK.Scripts.CVRAdvancesAvatarSettingGameObjectDropdown dropdown) ||
+                    dropdown.options == null || dropdown.options.Count <= 2)
+                {
+                    continue;
+                }
+                var declared = master.parameters.FirstOrDefault(p => p.name == entry.machineName);
+                if (declared == null || declared.type != AnimatorControllerParameterType.Int)
+                {
+                    continue;
+                }
+
+                string param = entry.machineName;
+                if (!TryCollectSelectorValues(master, param, out var used))
+                {
+                    // Used as a quantity somewhere, so renumbering would change behaviour.
+                    // The placeholders have to stay — say so rather than leave them unexplained.
+                    int stuck = dropdown.options.Count(o => o != null && o.name == ParameterMenuConverter.UnusedOption);
+                    if (stuck > 0)
+                    {
+                        ctx.Report.Approximated(Category, $"Dropdown \"{entry.name}\" keeps {stuck} \"{ParameterMenuConverter.UnusedOption}\" option(s)",
+                            $"ChilloutVR selects dropdown options by position, so \"{param}\" needs an entry per " +
+                            "value up to its highest. It's normally renumbered to close those gaps, but here it's " +
+                            "also used as a quantity (a blend tree, motion time, or driver arithmetic), where " +
+                            "renumbering would change how the avatar behaves. Deleting the spare entries by hand " +
+                            "would shift every option after them onto the wrong value.");
+                    }
+                    continue;
+                }
+                used.Add(0);                       // keep the default/off slot reachable
+                used.Add(dropdown.defaultValue);
+
+                var oldOptions = dropdown.options;
+                var ordered = used.Where(v => v >= 0 && v < oldOptions.Count).Distinct().OrderBy(v => v).ToList();
+                if (ordered.Count == 0 || ordered.Count >= oldOptions.Count)
+                {
+                    continue; // already dense — nothing to gain
+                }
+
+                // Order-preserving, so relative comparisons keep their meaning.
+                var map = new Dictionary<int, int>();
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    map[ordered[i]] = i;
+                }
+
+                RemapIntConditions(master, param, map);
+                RemapIntDrivers(master, param, map);
+                RemapTriggerValues(ctx, param, map);
+
+                dropdown.options = ordered.Select(v => oldOptions[v]).ToList();
+                dropdown.defaultValue = map.TryGetValue(dropdown.defaultValue, out var newDefault) ? newDefault : 0;
+                declared.defaultInt = dropdown.defaultValue;
+                declared.defaultFloat = dropdown.defaultValue;
+
+                removedOptions += oldOptions.Count - dropdown.options.Count;
+                compactedEntries++;
+                ctx.Report.Converted(Category, $"Dropdown \"{entry.name}\" compacted",
+                    $"{oldOptions.Count} options -> {dropdown.options.Count}; the parameter's values were " +
+                    "renumbered to match, so every entry now does something.");
+            }
+
+            if (compactedEntries > 0)
+            {
+                EditorUtility.SetDirty(ctx.CvrAvatar);
+                ctx.Report.Converted(Category,
+                    $"Removed {removedOptions} placeholder dropdown option(s) across {compactedEntries} menu entr(ies)",
+                    "ChilloutVR dropdowns select by position, so gaps in the VRChat parameter's values would " +
+                    "otherwise appear as dead entries; the animator was renumbered instead.");
+            }
+        }
+
+        /// <summary>
+        /// Collects the values an int parameter is used with, or returns false if anything
+        /// treats it as a quantity rather than a discrete selection — in which case
+        /// renumbering it would change how the avatar behaves.
+        /// </summary>
+        static bool TryCollectSelectorValues(AnimatorController master, string param, out HashSet<int> values)
+        {
+            var found = new HashSet<int>();
+            values = found;
+            bool safe = true;
+
+            bool CollectTransitions(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    foreach (var condition in transition.conditions)
+                    {
+                        if (condition.parameter != param)
+                        {
+                            continue;
+                        }
+                        // Greater/Less compare magnitude; renumbering would move the boundary.
+                        if (condition.mode != AnimatorConditionMode.Equals &&
+                            condition.mode != AnimatorConditionMode.NotEqual)
+                        {
+                            return false;
+                        }
+                        found.Add(Mathf.RoundToInt(condition.threshold));
+                    }
+                }
+                return true;
+            }
+
+            bool CollectDriver(StateMachineBehaviour behaviour)
+            {
+                if (!(behaviour is AnimatorDriver driver))
+                {
+                    return true;
+                }
+                foreach (var task in driver.EnterTasks.Concat(driver.ExitTasks))
+                {
+                    if (task.targetName != param)
+                    {
+                        continue;
+                    }
+                    if (task.op != AnimatorDriverTask.Operator.Set)
+                    {
+                        return false; // arithmetic on the value
+                    }
+                    if (task.aType == AnimatorDriverTask.SourceType.Static)
+                    {
+                        found.Add(Mathf.RoundToInt(task.aValue));
+                    }
+                }
+                return true;
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    if (!safe)
+                    {
+                        return;
+                    }
+                    if (!CollectTransitions(machine.anyStateTransitions) ||
+                        !CollectTransitions(machine.entryTransitions))
+                    {
+                        safe = false;
+                        return;
+                    }
+                    foreach (var behaviour in machine.behaviours)
+                    {
+                        if (!CollectDriver(behaviour)) { safe = false; return; }
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if ((state.timeParameterActive && state.timeParameter == param) ||
+                            (state.speedParameterActive && state.speedParameter == param) ||
+                            (state.mirrorParameterActive && state.mirrorParameter == param) ||
+                            (state.cycleOffsetParameterActive && state.cycleOffsetParameter == param) ||
+                            MotionUsesParameter(state.motion, param))
+                        {
+                            safe = false;
+                            return;
+                        }
+                        if (!CollectTransitions(state.transitions)) { safe = false; return; }
+                        foreach (var behaviour in state.behaviours)
+                        {
+                            if (!CollectDriver(behaviour)) { safe = false; return; }
+                        }
+                    }
+                });
+                if (!safe)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>
+        static bool MotionUsesParameter(Motion motion, string param)
+        {
+            if (motion is BlendTree tree)
+            {
+                if (tree.blendParameter == param || tree.blendParameterY == param)
+                {
+                    return true;
+                }
+                foreach (var child in tree.children)
+                {
+                    if (child.directBlendParameter == param || MotionUsesParameter(child.motion, param))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            if (motion is AnimationClip clip)
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path) &&
+                        binding.propertyName == param)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        static void RemapIntConditions(AnimatorController master, string param, Dictionary<int, int> map)
+        {
+            void Remap(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    var conditions = transition.conditions;
+                    bool changed = false;
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        if (conditions[i].parameter != param)
+                        {
+                            continue;
+                        }
+                        int value = Mathf.RoundToInt(conditions[i].threshold);
+                        if (map.TryGetValue(value, out var mapped) && mapped != value)
+                        {
+                            conditions[i].threshold = mapped;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        transition.conditions = conditions;
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    Remap(machine.anyStateTransitions);
+                    Remap(machine.entryTransitions);
+                    foreach (var child in machine.states)
+                    {
+                        Remap(child.state.transitions);
+                    }
+                });
+            }
+        }
+
+        static void RemapIntDrivers(AnimatorController master, string param, Dictionary<int, int> map)
+        {
+            void RemapBehaviours(StateMachineBehaviour[] behaviours)
+            {
+                foreach (var behaviour in behaviours)
+                {
+                    if (!(behaviour is AnimatorDriver driver))
+                    {
+                        continue;
+                    }
+                    foreach (var task in driver.EnterTasks.Concat(driver.ExitTasks))
+                    {
+                        if (task.targetName == param &&
+                            task.aType == AnimatorDriverTask.SourceType.Static &&
+                            map.TryGetValue(Mathf.RoundToInt(task.aValue), out var mapped))
+                        {
+                            task.aValue = mapped;
+                        }
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    RemapBehaviours(machine.behaviours);
+                    foreach (var child in machine.states)
+                    {
+                        RemapBehaviours(child.state.behaviours);
+                    }
+                });
+            }
+        }
+
+        /// <summary>Contact triggers that set this parameter must follow the renumbering too.</summary>
+        static void RemapTriggerValues(BridgeContext ctx, string param, Dictionary<int, int> map)
+        {
+            foreach (var trigger in ctx.CvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
+            {
+                foreach (var task in trigger.enterTasks.Concat(trigger.exitTasks))
+                {
+                    if (task.settingName == param &&
+                        map.TryGetValue(Mathf.RoundToInt(task.settingValue), out var mapped))
+                    {
+                        task.settingValue = mapped;
+                    }
+                }
+                EditorUtility.SetDirty(trigger);
+            }
         }
 
         /// <summary>
