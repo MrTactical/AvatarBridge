@@ -12,7 +12,8 @@ keeping as much working as possible and leaving you a clean starting point to fi
   avatars, NDMF's manual bake) first, then converts the baked result, so toggles, linked
   clothing, merged armatures and full controllers survive.
 - **PhysBones become real physics** — built-in **PhysBones → MagicaCloth2** (or DynamicBone),
-  no external tool needed.
+  no external tool needed. Chains start from MagicaCloth2's own tuned presets rather than
+  numbers guessed out of the PhysBone, so they behave predictably and are easy to tune.
 - **Readable toggles** — clothing/prop toggles come out as one clean `Toggle <name>` layer
   each, driven by real `bool` parameters.
 - **Bloat removed** — GoGo Loco, SPS/OGB/PCS and friends are stripped (one test avatar went
@@ -147,7 +148,7 @@ Every row carries an honest status:
 | Clothing / prop toggles | one `Toggle <name>` animator layer each | ✅ | pulled out of VRCFury's merged blend tree into classic Off/On layers |
 | Parameter types | real `bool` / `int` / `float` | ✅ | VRCFury bakes every menu parameter as a float; each is retyped to what its menu control and animator conditions actually use — see [below](#parameter-types) |
 | FX / Gesture layers (Base, Additive, Action optional) | merged into one CVR animator over the CCK `AvatarAnimator` | ✅ | CVR hand layers are removed when the Gesture layer is converted |
-| PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (Magica) | DynamicBone path is 🔷; see [mapping](#physbones--magicacloth2) |
+| PhysBones (+ colliders) | **MagicaCloth2 BoneCloth** or DynamicBone | ✅ (Magica) | chain, colliders and ignores transfer; the *feel* comes from MagicaCloth2 rather than the PhysBone — see [why](#physbones--magicacloth2). DynamicBone is 🔷 and does map values across |
 | Non-synced parameters | `#`-prefixed (CVR local-only) | ✅ | keeps network traffic equivalent |
 | `GestureLeft/Right` gesture selection | CVR `GestureLeftIdx/RightIdx` (int) | 🔷 | discrete gestures map 1:1 onto the int index params in both the FX layers and the CCK hand-pose layers; the analog fist (trigger-pressure curl) stays on the float `GestureLeft` |
 | `GestureLeftWeight/RightWeight`, `MuteSelf`, `VRMode` | fed by a `CVRParameterStream` | 🔷 | trigger squeeze / mute / VR-mode piped from the game like VRChat's built-ins |
@@ -477,7 +478,9 @@ covers the genuinely SDK-free use case instead.
   occupants).
 - **2D blend trees driven by `GestureLeft/Right`** are flagged for manual review.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert,
-  but only the ones enabled at bake time start active — if none were, the report says so.
+  but only one is left driving the chain — two solvers on the same bones jitter rather than
+  blend. Nothing is deleted, so re-enabling a different variant is one checkbox; the report
+  names the one that was kept, and says so if none were active to begin with.
 - **Stacked same-type constraints** (two `VRCPositionConstraint`s on one object, etc.) are
   merged into one Unity constraint — Unity and CVR allow only one per type per object, so the
   second one's own offsets/rest values are dropped (its sources are kept; reported as

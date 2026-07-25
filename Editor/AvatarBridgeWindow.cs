@@ -245,44 +245,51 @@ namespace AvatarBridge
                         "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
                         "_IsGrabbed / _Angle grab-reactive logic."),
                     settings.grabbyBonesSupport);
-                if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
-                {
-                    settings.useMagicaPresets = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Start from MagicaCloth2 presets",
-                            "Give each chain the MagicaCloth2 preset that fits it — hair, tail, skirt, cape, " +
-                            "accessory, or a spring preset chosen by how firmly the PhysBone held its rest " +
-                            "pose. PhysBones and MagicaCloth2 are different solvers, so numbers copied across " +
-                            "are only analogies; a preset by MagicaCloth2's own author is a better starting " +
-                            "point. Bones, colliders and ignored transforms still come from the PhysBone. " +
-                            "Turn off to derive every value from the PhysBone instead."),
-                        settings.useMagicaPresets);
-                    settings.transferAngleLimits = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Transfer angle limits (1.1.2 behaviour)",
-                            "Copy each PhysBone's angle limit onto the cloth. MagicaCloth2's limit pushes on " +
-                            "particle positions rather than bone rotation, at a stiffness that snaps back hard, " +
-                            "so on some avatars this makes chains shake — and on others it's the best result " +
-                            "the tool gives. Try it if the physics feels loose; lower Angle Limit > Stiffness " +
-                            "on any chain that snaps."),
-                        settings.transferAngleLimits);
-                    settings.capParticleRadius = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Cap particle radius to bone spacing",
-                            "MagicaCloth2's radius is the particle size, not just a collision radius, and " +
-                            "particles wider than the gap between bones shove each other apart. Leave on unless " +
-                            "chains feel too thin — one avatar carried a 0.5 radius that VRChat ignored and " +
-                            "MagicaCloth2 turned into metre-wide spheres."),
-                        settings.capParticleRadius);
-                    settings.autoAssignNearbyColliders = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Auto-assign nearby colliders (experimental)",
-                            "Gives each cloth the avatar's own colliders that it starts clear of and could " +
-                            "swing into — a tail that passed through the leg in VRChat will collide with it " +
-                            "here. This improves on the original avatar rather than copying it, so check the " +
-                            "result before uploading. Every assignment is listed in the report."),
-                        settings.autoAssignNearbyColliders);
-                }
                 settings.deleteConvertedPhysBones = EditorGUILayout.ToggleLeft(
                     new GUIContent("Delete PhysBones after converting",
                         "Leave on — leftover PhysBone components upset the CCK upload checks."),
                     settings.deleteConvertedPhysBones);
+
+                if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+                {
+                    GUILayout.Space(6);
+                    EditorGUILayout.LabelField("MagicaCloth2 feel", EditorStyles.miniBoldLabel);
+                    EditorGUILayout.HelpBox(
+                        "Each chain gets its bones, colliders and ignored transforms from the PhysBone. " +
+                        "Everything else starts from MagicaCloth2's own tuned values — the two systems " +
+                        "simulate differently, so PhysBone numbers don't carry over. They're listed in the " +
+                        "report if you want to tune a chain by hand.",
+                        MessageType.None);
+
+                    settings.useMagicaPresets = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Match a preset to each chain",
+                            "Start each chain from the MagicaCloth2 preset that fits it — hair, tail, skirt, " +
+                            "cape or accessory by name, otherwise a soft/middle/hard spring chosen by how " +
+                            "firmly the PhysBone held its rest pose. Turn off to give every chain " +
+                            "MagicaCloth2's global defaults instead."),
+                        settings.useMagicaPresets);
+                    settings.capParticleRadius = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Cap particle radius to bone spacing",
+                            "MagicaCloth2's radius is the particle size, not just a collision radius, so " +
+                            "particles wider than the gap between bones shove each other apart. Leave on " +
+                            "unless chains come out feeling too thin."),
+                        settings.capParticleRadius);
+                    settings.transferAngleLimits = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Transfer angle limits",
+                            "Copy each PhysBone's limit angle onto the cloth. MagicaCloth2's limit pushes on " +
+                            "particle positions rather than bone rotation, at a stiffness that snaps back " +
+                            "hard — so this shakes some avatars and is the best result the tool gives on " +
+                            "others. Worth trying if chains feel loose; lower Angle Limit > Stiffness on any " +
+                            "chain that snaps."),
+                        settings.transferAngleLimits);
+                    settings.autoAssignNearbyColliders = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Auto-assign nearby colliders",
+                            "Also give each cloth the avatar's own colliders that it starts clear of and " +
+                            "could swing into — so a tail that passed through the leg in VRChat collides " +
+                            "with it here. This improves on the original avatar rather than copying it, so " +
+                            "check the result before uploading. Every assignment is listed in the report."),
+                        settings.autoAssignNearbyColliders);
+                }
             }
             GUILayout.Space(4);
         }
