@@ -58,6 +58,34 @@ namespace AvatarBridge
             "VelocityX", "VelocityY", "VelocityZ", "AFK"
         };
 
+        // Parameters a CVRParameterStream feeds from the game (see CreateParameterStreams).
+        static readonly HashSet<string> StreamFedParameters = new HashSet<string>
+        {
+            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode"
+        };
+
+        /// <summary>
+        /// True if ChilloutVR supplies this parameter's value itself — core avatar state
+        /// (gestures, locomotion, visemes) or something fed by a CVRParameterStream.
+        ///
+        /// VRChat avatars often declare these as synced expression parameters so their FX can
+        /// read them. They must never become menu controls: the game overwrites the value
+        /// every frame, so the control does nothing while still costing sync budget.
+        /// Takes the VRChat-side name, since this is asked before the rename pass.
+        /// </summary>
+        internal static bool IsGameDrivenParameter(string vrcParameterName)
+        {
+            if (string.IsNullOrEmpty(vrcParameterName))
+            {
+                return false;
+            }
+            string bare = vrcParameterName.TrimStart('#');
+            string mapped = ParameterRenameMap.TryGetValue(bare, out var renamed) ? renamed : bare;
+            return CvrCoreParameters.Contains(mapped)
+                   || StreamFedParameters.Contains(bare)
+                   || GestureMap.GestureWeightParameters.Contains(bare);
+        }
+
         // CVR drives these to non-zero at runtime; matching defaults avoids startup glitches.
         static readonly Dictionary<string, float> NonZeroDefaults = new Dictionary<string, float>
         {

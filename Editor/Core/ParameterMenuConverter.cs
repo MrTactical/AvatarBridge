@@ -127,6 +127,20 @@ namespace AvatarBridge
             List<MenuUse> paramUses, HashSet<string> usedNames, Dictionary<string, int> leafCounts)
         {
             bool hasMenu = paramUses != null && paramUses.Count > 0;
+
+            // ChilloutVR supplies some values itself — gestures, locomotion, visemes, and the
+            // stream-fed trigger/mute/VR-mode parameters. Avatars commonly declare those as
+            // synced so their FX can read them, but a menu control for one is worse than
+            // useless: the game overwrites it every frame, so the control does nothing while
+            // still occupying menu space and sync budget.
+            if (AnimatorMerger.IsGameDrivenParameter(p.name))
+            {
+                ctx.Report.Skipped(Category, p.name,
+                    "No menu control created — ChilloutVR drives this parameter itself, so the avatar's " +
+                    "animator still reads it, but a menu entry would only fight the game for the value.");
+                return null;
+            }
+
             if (!hasMenu && !ctx.Settings.exposeMenulessSyncedParameters)
             {
                 ctx.Report.Skipped(Category, p.name, "Not referenced by any menu control.");
