@@ -199,6 +199,7 @@ namespace AvatarBridge
             // Before pruning, while every reference is still visible.
             RepairPrefixedReferences(master, ctx);
             DeclareDanglingParameters(master, ctx);
+            DefaultLocalPlayerParameter(master, ctx);
             PruneOrphanedParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -1682,6 +1683,84 @@ namespace AvatarBridge
         /// animator parameters written by clips. Anything absent from this cannot affect the
         /// avatar no matter what its menu control does.
         /// </summary>
+        /// <summary>
+        /// Starts "IsLocal" at 1 when nothing in the animator writes it.
+        ///
+        /// VRChat sets IsLocal true on the wearer's own client, and avatars gate real work behind
+        /// it. ChilloutVR lists it as a local core parameter (CVRCommon.CoreParameters), so the
+        /// platform is expected to supply it — but VRChat declares it as a Bool while merged
+        /// controllers frequently end up with a Float, and a Bool write into a Float parameter
+        /// does nothing. Retyping isn't an option either: blend trees can only read Floats, and
+        /// avatars do use IsLocal as a blend parameter.
+        ///
+        /// So the default is the only lever, and 0 is the worst possible value — it means "this
+        /// is somebody else's avatar", permanently, so every local-gated state is unreachable. A
+        /// FinalIK quadruped arrived with 21 conditions on IsLocal and the drivers that switch
+        /// its puppet rig on sitting behind them: the whole body stayed in its rest pose, flat on
+        /// the floor, while the head still tracked.
+        ///
+        /// If ChilloutVR does write the parameter, it overwrites this immediately and nothing is
+        /// lost. If it doesn't, the avatar behaves as its author intended for its wearer.
+        /// </summary>
+        static void DefaultLocalPlayerParameter(AnimatorController master, BridgeContext ctx)
+        {
+            var parameters = master.parameters;
+            var isLocal = parameters.FirstOrDefault(p => p.name == "IsLocal");
+            if (isLocal == null)
+            {
+                return;
+            }
+            // Only when the avatar itself never sets it — if some layer drives IsLocal, that
+            // logic knows better than this does.
+            bool written = false;
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var behaviour in machine.behaviours.OfType<AnimatorDriver>())
+                    {
+                        foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
+                        {
+                            written |= task.targetName == "IsLocal";
+                        }
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        foreach (var behaviour in child.state.behaviours.OfType<AnimatorDriver>())
+                        {
+                            foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
+                            {
+                                written |= task.targetName == "IsLocal";
+                            }
+                        }
+                    }
+                });
+            }
+            if (written)
+            {
+                return;
+            }
+
+            bool alreadySet = isLocal.type == AnimatorControllerParameterType.Bool
+                ? isLocal.defaultBool
+                : !Mathf.Approximately(isLocal.defaultFloat, 0f);
+            if (alreadySet)
+            {
+                return;
+            }
+
+            isLocal.defaultBool = true;
+            isLocal.defaultInt = 1;
+            isLocal.defaultFloat = 1f;
+            master.parameters = parameters;
+
+            ctx.Report.Converted(Category, "\"IsLocal\" now starts at 1",
+                "Nothing in the animator writes it, and at 0 the avatar treats itself as somebody else's " +
+                "copy — every state gated on being the local player becomes unreachable, which can leave a " +
+                "rig sitting in its rest pose. ChilloutVR supplies this parameter itself and will overwrite " +
+                "the default if it does; this only matters when it doesn't.");
+        }
+
         /// <summary>
         /// Declares any parameter that transitions, blend trees or drivers still reference but
         /// the controller never defines.
