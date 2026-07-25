@@ -196,6 +196,8 @@ namespace AvatarBridge
             // it runs long before this and keeps anything a menu entry drives — so a parameter
             // whose only justification was an entry that PruneDeadMenuEntries then removed is
             // left behind, declared and inert, still costing sync bits if it was synced.
+            // Before pruning, while every reference is still visible.
+            RepairPrefixedReferences(master, ctx);
             PruneOrphanedParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -1668,6 +1670,126 @@ namespace AvatarBridge
         /// animator parameters written by clips. Anything absent from this cannot affect the
         /// avatar no matter what its menu control does.
         /// </summary>
+        /// <summary>
+        /// Points references at the "#"-prefixed parameter when the bare name they name doesn't
+        /// exist and the prefixed one does.
+        ///
+        /// Non-synced parameters get a leading "#" (ChilloutVR's local-only convention). A
+        /// reference left on the bare name after that is simply broken — Unity treats an unknown
+        /// parameter as 0 and ChilloutVR drops the transition, so the feature silently stops
+        /// working. Branwen showed "GestureLeftWeight" in ten blend trees while the declared,
+        /// stream-fed parameter was "#GestureLeftWeight", used seven times as motion time: the
+        /// same value, half the references renamed.
+        ///
+        /// This repairs the result rather than the cause. That's deliberate — the rewrite is
+        /// only ever applied where the bare name is undeclared AND the prefixed one exists, which
+        /// is exactly the broken shape and nothing else, so it holds regardless of which pass
+        /// dropped the reference. Anything it changes is reported, so a pass that keeps needing
+        /// this stays visible instead of being quietly papered over.
+        /// </summary>
+        static void RepairPrefixedReferences(AnimatorController master, BridgeContext ctx)
+        {
+            var declared = new HashSet<string>(master.parameters.Select(p => p.name));
+            var fixes = new Dictionary<string, string>();
+            foreach (string name in declared)
+            {
+                if (name.StartsWith("#") && !declared.Contains(name.Substring(1)))
+                {
+                    fixes[name.Substring(1)] = name;
+                }
+            }
+            if (fixes.Count == 0)
+            {
+                return;
+            }
+
+            var repaired = new HashSet<string>();
+            string Fix(string n)
+            {
+                if (n != null && fixes.TryGetValue(n, out var prefixed))
+                {
+                    repaired.Add(n);
+                    return prefixed;
+                }
+                return n;
+            }
+
+            void FixMotion(Motion motion)
+            {
+                if (!(motion is BlendTree tree))
+                {
+                    return;
+                }
+                tree.blendParameter = Fix(tree.blendParameter);
+                tree.blendParameterY = Fix(tree.blendParameterY);
+                var children = tree.children;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    children[i].directBlendParameter = Fix(children[i].directBlendParameter);
+                    FixMotion(children[i].motion);
+                }
+                tree.children = children;
+            }
+
+            void FixConditions(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    var conditions = transition.conditions;
+                    bool changed = false;
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        string fixedName = Fix(conditions[i].parameter);
+                        if (fixedName != conditions[i].parameter)
+                        {
+                            conditions[i].parameter = fixedName;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        transition.conditions = conditions;
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    FixConditions(machine.anyStateTransitions);
+                    FixConditions(machine.entryTransitions);
+                    foreach (var behaviour in machine.behaviours)
+                    {
+                        RenameInDriver(behaviour as AnimatorDriver, Fix);
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        state.timeParameter = Fix(state.timeParameter);
+                        state.speedParameter = Fix(state.speedParameter);
+                        state.mirrorParameter = Fix(state.mirrorParameter);
+                        state.cycleOffsetParameter = Fix(state.cycleOffsetParameter);
+                        FixMotion(state.motion);
+                        FixConditions(state.transitions);
+                        foreach (var behaviour in state.behaviours)
+                        {
+                            RenameInDriver(behaviour as AnimatorDriver, Fix);
+                        }
+                    }
+                });
+            }
+
+            if (repaired.Count > 0)
+            {
+                ctx.Report.Converted(Category, $"Repointed {repaired.Count} reference name(s) at their local parameter",
+                    $"{string.Join(", ", repaired.OrderBy(r => r).Take(12))}{(repaired.Count > 12 ? ", …" : "")} — " +
+                    "conditions, blend trees or drivers still named these without the \"#\" that marks a " +
+                    "ChilloutVR local parameter, while only the prefixed version was declared. Unity reads an " +
+                    "unknown parameter as 0, so those would have silently done nothing.");
+            }
+        }
+
         /// <summary>
         /// Removes parameters left declared but inert once the menu is settled.
         ///
