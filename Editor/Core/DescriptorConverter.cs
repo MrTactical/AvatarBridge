@@ -135,7 +135,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            DetectBlinkShapes(mesh, out string left, out string right, out string combined);
+            AvatarFeatureDetect.DetectBlinkShapes(mesh, out string left, out string right, out string combined);
             if (left == null && right == null && combined == null)
             {
                 return false;
@@ -151,7 +151,7 @@ namespace AvatarBridge
             {
                 cvrAvatar.blinkBlendshape[0] = left;   // Left Blink slot
                 cvrAvatar.blinkBlendshape[1] = right;  // Right Blink slot
-                SetBlinkMode(cvrAvatar, "Separate");
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
                 ctx.Report.Converted(Category, "Blink blendshapes auto-detected",
                     $"Descriptor set none; wired CVR blink to \"{left}\" / \"{right}\" (Separate). Enables " +
                     "CVR's native blink and the CVR-VRCFT rig's eye-tracking-off fallback. Verify L/R aren't swapped.");
@@ -160,63 +160,11 @@ namespace AvatarBridge
             {
                 string single = combined ?? left ?? right;
                 cvrAvatar.blinkBlendshape[0] = single;
-                SetBlinkMode(cvrAvatar, "Combined");
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
                 ctx.Report.Converted(Category, "Blink blendshape auto-detected",
                     $"Descriptor set none; wired CVR blink to \"{single}\" (Combined).");
             }
             return true;
-        }
-
-        static void DetectBlinkShapes(Mesh mesh, out string left, out string right, out string combined)
-        {
-            left = right = combined = null;
-            for (int i = 0; i < mesh.blendShapeCount; i++)
-            {
-                string name = mesh.GetBlendShapeName(i);
-                string lower = name.ToLowerInvariant();
-                if (!lower.Contains("blink"))
-                {
-                    continue;
-                }
-                if (IsSide(lower, "left", 'l'))
-                {
-                    left = left ?? name;
-                }
-                else if (IsSide(lower, "right", 'r'))
-                {
-                    right = right ?? name;
-                }
-                else
-                {
-                    combined = combined ?? name;
-                }
-            }
-        }
-
-        // A shape belongs to a side if it spells the word out, or has the side letter as a
-        // standalone token (e.g. "Blink L", "blink_r", "L_Blink") — not just any 'l'/'r'.
-        static bool IsSide(string lower, string word, char letter)
-        {
-            return lower.Contains(word)
-                   || Regex.IsMatch(lower, $@"(^|[ _.\-]){letter}([ _.\-]|$)");
-        }
-
-        // The blink-mode field/enum name varies across CCK versions; find it by its members.
-        static void SetBlinkMode(CVRAvatar cvrAvatar, string modeName)
-        {
-            foreach (var f in cvrAvatar.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
-            {
-                if (!f.FieldType.IsEnum)
-                {
-                    continue;
-                }
-                var names = Enum.GetNames(f.FieldType);
-                if (names.Contains("Separate") && names.Contains("Combined") && names.Contains(modeName))
-                {
-                    f.SetValue(cvrAvatar, Enum.Parse(f.FieldType, modeName));
-                    return;
-                }
-            }
         }
 
         static string GetBlinkBlendshapeName(VRCAvatarDescriptor vrc, SkinnedMeshRenderer face)

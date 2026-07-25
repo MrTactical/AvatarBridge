@@ -7,10 +7,12 @@ using VRC.SDK3.Avatars.Components;
 namespace AvatarBridge
 {
     /// <summary>
-    /// The AvatarBridge control panel. Laid out as a three-step flow (pick avatar →
-    /// options → convert) so a first-time user can convert without touching a single
-    /// option — the defaults suit most avatars, and everything unusual lives under
-    /// "Advanced options".
+    /// The AvatarBridge control panel.
+    ///
+    /// Two modes, because only half of what this tool does actually needs VRChat:
+    ///   Convert  — a VRChat avatar into a ChilloutVR one (needs the VRChat SDK).
+    ///   Set up   — prepare ANY humanoid for ChilloutVR (needs only the CCK).
+    /// With no VRChat SDK installed the window still works; it just offers Setup.
     /// </summary>
     public class AvatarBridgeWindow : EditorWindow
     {
@@ -24,13 +26,23 @@ namespace AvatarBridge
             window.minSize = new Vector2(400, 540);
         }
 
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
-        [SerializeField] BridgeSettings settings = new BridgeSettings();
+#if CVR_CCK_EXISTS
+#if VRC_SDK_VRCSDK3
+        // Mode only exists when there's a choice to make: without the VRChat SDK the
+        // window is Setup-only, so there's nothing to switch between.
+        enum Mode { Convert, Setup }
+        Mode mode = Mode.Convert;
         VRCAvatarDescriptor avatar;
+#endif
+        GameObject setupAvatar;
+
+        [SerializeField] BridgeSettings settings = new BridgeSettings();
         BridgeReport lastReport;
         Vector2 scroll;
         Vector2 reportScroll;
-        bool showPhysics = true;
+#if VRC_SDK_VRCSDK3
+        bool showPhysics = true;   // PhysBone conversion is convert-mode only
+#endif
         bool showFaceTracking = true;
         bool showAdvanced;
 
@@ -38,7 +50,6 @@ namespace AvatarBridge
 
         void OnEnable()
         {
-            // Remember the user's choices across editor restarts.
             if (EditorPrefs.HasKey(PrefsKey))
             {
                 try
@@ -98,6 +109,57 @@ namespace AvatarBridge
             DrawHeader();
             Separator();
 
+#if VRC_SDK_VRCSDK3
+            DrawModeSelector();
+            Separator();
+            if (mode == Mode.Convert)
+            {
+                DrawConvertFlow();
+            }
+            else
+            {
+                DrawSetupFlow();
+            }
+#else
+            EditorGUILayout.HelpBox(
+                "The VRChat SDK isn't installed, so converting VRChat avatars is unavailable — reading a " +
+                "VRChat avatar's components requires its SDK. Setup mode works without it.",
+                MessageType.Info);
+            GUILayout.Space(6);
+            DrawSetupFlow();
+#endif
+
+            Separator();
+            DrawFooter();
+
+            GUILayout.Space(10);
+            EditorGUILayout.EndScrollView();
+        }
+
+        void DrawHeader()
+        {
+            EditorGUILayout.LabelField("AvatarBridge", _title);
+            EditorGUILayout.LabelField($"ChilloutVR avatar tooling   ·   v{BridgeDefines.Version}", _subtitle);
+        }
+
+#if VRC_SDK_VRCSDK3
+        void DrawModeSelector()
+        {
+            mode = (Mode)GUILayout.Toolbar((int)mode,
+                new[] { "Convert a VRChat avatar", "Set up any avatar" }, GUILayout.Height(24));
+            GUILayout.Space(6);
+            EditorGUILayout.LabelField(mode == Mode.Convert
+                ? "<i>Translates a VRChat avatar to ChilloutVR: menu, toggles, physics, contacts, constraints and more.</i>"
+                : "<i>No VRChat avatar needed — sets up any humanoid for ChilloutVR: viewpoint, visemes, blink, " +
+                  "face tracking and the height scaler.</i>", _rich);
+        }
+#endif
+
+        // ----------------------------------------------------------- convert flow ----
+
+#if VRC_SDK_VRCSDK3
+        void DrawConvertFlow()
+        {
             StepHeader("1", "Pick your VRChat avatar");
             DrawAvatarPicker();
             Separator();
@@ -115,53 +177,6 @@ namespace AvatarBridge
             StepHeader("3", "Convert");
             DrawConvertButton();
             DrawReport();
-
-            Separator();
-            DrawFooter();
-
-            GUILayout.Space(10);
-            EditorGUILayout.EndScrollView();
-        }
-
-        /// <summary>Help + reporting links, always reachable.</summary>
-        void DrawFooter()
-        {
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("Troubleshooting  ↗", EditorStyles.linkLabel))
-                {
-                    Application.OpenURL(BridgeLinks.Troubleshooting);
-                }
-                GUILayout.Space(12);
-                if (GUILayout.Button("Report an issue  ↗", EditorStyles.linkLabel))
-                {
-                    BridgeLinks.OpenBugReport(lastReport);
-                }
-                if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
-                {
-                    GUILayout.Space(12);
-                    if (GUILayout.Button(new GUIContent($"Discord: {BridgeLinks.DiscordUser}",
-                            "Click to copy the handle. Best for quick questions — please use " +
-                            "GitHub issues for bugs so they don't get lost."), EditorStyles.linkLabel))
-                    {
-                        BridgeLinks.CopyDiscord();
-                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
-                    }
-                }
-                GUILayout.FlexibleSpace();
-            }
-        }
-
-        void DrawHeader()
-        {
-            EditorGUILayout.LabelField("AvatarBridge", _title);
-            EditorGUILayout.LabelField($"VRChat → ChilloutVR avatar converter   ·   v{BridgeDefines.Version}", _subtitle);
-            GUILayout.Space(4);
-            EditorGUILayout.HelpBox(
-                "Converts a copy of your avatar: viewpoint, visemes, menu, toggles, PhysBones, contacts, " +
-                "constraints, face tracking and more. Your original avatar is never touched, and every " +
-                "change is listed in a conversion report.",
-                MessageType.Info);
         }
 
         void DrawAvatarPicker()
@@ -197,8 +212,6 @@ namespace AvatarBridge
                     settings.bakeModularAvatar ? MessageType.Info : MessageType.Warning);
             }
         }
-
-        // ------------------------------------------------------------------ sections --
 
         void DrawPhysicsSection()
         {
@@ -238,70 +251,6 @@ namespace AvatarBridge
             GUILayout.Space(4);
         }
 
-        static readonly FaceTrackingMode[] FtModes =
-            { FaceTrackingMode.Native, FaceTrackingMode.DragonSkyRunner, FaceTrackingMode.None };
-
-        void DrawFaceTrackingSection()
-        {
-            showFaceTracking = EditorGUILayout.Foldout(showFaceTracking, "Face tracking", true, EditorStyles.foldoutHeader);
-            if (!showFaceTracking)
-            {
-                return;
-            }
-            using (new EditorGUI.IndentLevelScope())
-            {
-                var labels = new[]
-                {
-                    new GUIContent("Native CVR Component",
-                        "ChilloutVR's built-in CVRFaceTracking component drives the blendshapes directly. " +
-                        "Auto-added and mapped. Self-contained, but a bit stiff."),
-                    new GUIContent("Unity Animator Blendtrees (DSR)",
-                        "DragonSkyRunner's bundled rig: face shapes driven by animator blend trees, eye tracking " +
-                        "via generated empties + rotation constraints, rebuilt onto this avatar automatically. " +
-                        "Smoother and more expressive."),
-                    new GUIContent("None", "Leave face tracking entirely to you."),
-                };
-                int index = Mathf.Max(0, System.Array.IndexOf(FtModes, settings.faceTrackingMode));
-                index = EditorGUILayout.Popup(
-                    new GUIContent("Face tracking",
-                        "Both set-up modes replace any face-tracking rig already baked into the avatar."),
-                    index, labels);
-                settings.faceTrackingMode = FtModes[index];
-
-                if (settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
-                {
-                    if (FaceTrackingPackages.IsInstalled())
-                    {
-                        EditorGUILayout.HelpBox(
-                            "Injects DragonSkyRunner's CVR Eye & Face Tracking rig (bundled) and rebuilds it onto " +
-                            "this avatar — including an auto-generated eye-tracking rig. Eye gaze strength may want " +
-                            "tuning per the package readme. Credit: DragonSkyRunner.", MessageType.Info);
-                        if (GUILayout.Button("DragonSkyRunner's package (GitHub)  ↗", EditorStyles.linkLabel))
-                        {
-                            Application.OpenURL(FaceTrackingPackages.Url);
-                        }
-                    }
-                    else
-                    {
-                        EditorGUILayout.HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't " +
-                            "found — reimport AvatarBridge (the Convert button is disabled until then).",
-                            MessageType.Warning);
-                    }
-                }
-            }
-            GUILayout.Space(4);
-        }
-
-        void DrawScalerToggle()
-        {
-            settings.addAvatarScaler = EditorGUILayout.ToggleLeft(
-                new GUIContent("Add height scaler  (\"Height (M)\" menu)",
-                    "A smooth avatar scaler. Auto-calibrated: the menu value is real metres and defaults to this " +
-                    "avatar's measured height, so it spawns at exactly its original size."),
-                settings.addAvatarScaler);
-            GUILayout.Space(4);
-        }
-
         void DrawAdvancedSection()
         {
             showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced options", true, EditorStyles.foldoutHeader);
@@ -312,10 +261,7 @@ namespace AvatarBridge
             using (new EditorGUI.IndentLevelScope())
             {
                 EditorGUILayout.LabelField("General", EditorStyles.boldLabel);
-                settings.cloneAvatar = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Work on a clone (recommended)",
-                        "The original avatar object stays untouched and gets deactivated."),
-                    settings.cloneAvatar);
+                DrawCommonGeneralOptions();
                 settings.bakeVrcFury = EditorGUILayout.ToggleLeft(
                     new GUIContent("Bake VRCFury first (recommended)",
                         "Runs VRCFury's own 'Build a Test Copy' pipeline before converting."),
@@ -327,9 +273,6 @@ namespace AvatarBridge
                     settings.bakeModularAvatar);
                 settings.deleteVrcComponents = EditorGUILayout.ToggleLeft(
                     "Delete VRC components after conversion", settings.deleteVrcComponents);
-                settings.outputFolder = EditorGUILayout.TextField(
-                    new GUIContent("Output folder", "Where generated assets and the report go. Must be inside Assets."),
-                    settings.outputFolder);
 
                 GUILayout.Space(6);
                 EditorGUILayout.LabelField("Remove VRChat-only systems", EditorStyles.boldLabel);
@@ -404,16 +347,10 @@ namespace AvatarBridge
                     new GUIContent("Convert VRC Head Chop", "First-person show/hide, including its toggle animations."),
                     settings.convertHeadChop);
                 settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);
-                settings.wireBlinkBlendshapes = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Auto-wire blink blendshapes",
-                        "If the VRChat descriptor set no blink shape, detect one on the face mesh " +
-                        "(e.g. \"Blink L\"/\"Blink R\") and turn on CVR's Eye Blink Settings."),
-                    settings.wireBlinkBlendshapes);
+                DrawBlinkToggle();
             }
             GUILayout.Space(4);
         }
-
-        // ------------------------------------------------------------------ convert ---
 
         void DrawConvertButton()
         {
@@ -444,6 +381,188 @@ namespace AvatarBridge
                     "Face tracking to Native or None.", MessageType.Warning);
             }
         }
+#endif // VRC_SDK_VRCSDK3
+
+        // ------------------------------------------------------------- setup flow ----
+
+        void DrawSetupFlow()
+        {
+            StepHeader("1", "Pick any avatar");
+            setupAvatar = (GameObject)EditorGUILayout.ObjectField(
+                new GUIContent("Avatar", "Any avatar in the scene. A Humanoid rig gives the best result."),
+                setupAvatar, typeof(GameObject), true);
+
+            if (setupAvatar == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "Drag any avatar here from the Hierarchy — it doesn't need to be a VRChat avatar.",
+                    MessageType.None);
+            }
+            else
+            {
+                var animator = setupAvatar.GetComponent<Animator>();
+                if (animator == null || !animator.isHuman)
+                {
+                    EditorGUILayout.HelpBox(
+                        "This isn't a Humanoid rig. Setup still runs, but the viewpoint is estimated from the " +
+                        "mesh bounds and eye tracking can't be wired. Set the rig to Humanoid in the model's " +
+                        "import settings for a proper result.",
+                        MessageType.Warning);
+                }
+                if (setupAvatar.GetComponent<ABI.CCK.Components.CVRAvatar>() != null)
+                {
+                    EditorGUILayout.HelpBox(
+                        "This avatar already has a CVRAvatar component. Setup will reconfigure it — its " +
+                        "Advanced Avatar Settings are rebuilt from scratch.",
+                        MessageType.Warning);
+                }
+            }
+            Separator();
+
+            StepHeader("2", "Choose what gets set up");
+            EditorGUILayout.LabelField(
+                "<i>Viewpoint, visemes and blink are always detected and wired.</i>", _rich);
+            GUILayout.Space(4);
+            DrawFaceTrackingSection();
+            DrawScalerToggle();
+            DrawSetupAdvancedSection();
+            Separator();
+
+            StepHeader("3", "Set up");
+            DrawSetupButton();
+            DrawReport();
+        }
+
+        void DrawSetupAdvancedSection()
+        {
+            showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced options", true, EditorStyles.foldoutHeader);
+            if (!showAdvanced)
+            {
+                return;
+            }
+            using (new EditorGUI.IndentLevelScope())
+            {
+                DrawCommonGeneralOptions();
+                DrawBlinkToggle();
+            }
+            GUILayout.Space(4);
+        }
+
+        void DrawSetupButton()
+        {
+            bool ftPackageMissing = settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner
+                                    && !FaceTrackingPackages.IsInstalled();
+            using (new EditorGUI.DisabledScope(setupAvatar == null || ftPackageMissing))
+            {
+                var previous = GUI.backgroundColor;
+                GUI.backgroundColor = setupAvatar != null && !ftPackageMissing
+                    ? new Color(0.55f, 0.85f, 0.55f)
+                    : previous;
+                string label = setupAvatar == null ? "Set up avatar" : $"Set up \"{setupAvatar.name}\"";
+                if (GUILayout.Button(label, GUILayout.Height(36)))
+                {
+                    lastReport = CvrSetup.Run(setupAvatar, settings);
+                }
+                GUI.backgroundColor = previous;
+            }
+
+            if (setupAvatar == null)
+            {
+                EditorGUILayout.HelpBox("Pick an avatar in step 1 first.", MessageType.None);
+            }
+            else if (ftPackageMissing)
+            {
+                EditorGUILayout.HelpBox(
+                    "The bundled face-tracking assets are missing — reimport AvatarBridge, or set " +
+                    "Face tracking to Native or None.", MessageType.Warning);
+            }
+        }
+
+        // ---------------------------------------------------------- shared sections ----
+
+        void DrawCommonGeneralOptions()
+        {
+            settings.cloneAvatar = EditorGUILayout.ToggleLeft(
+                new GUIContent("Work on a clone (recommended)",
+                    "The original avatar object stays untouched and gets deactivated."),
+                settings.cloneAvatar);
+            settings.outputFolder = EditorGUILayout.TextField(
+                new GUIContent("Output folder", "Where generated assets and the report go. Must be inside Assets."),
+                settings.outputFolder);
+        }
+
+        void DrawBlinkToggle()
+        {
+            settings.wireBlinkBlendshapes = EditorGUILayout.ToggleLeft(
+                new GUIContent("Auto-wire blink blendshapes",
+                    "Detect blink blendshapes on the face mesh (e.g. \"Blink L\"/\"Blink R\") and turn on " +
+                    "CVR's Eye Blink Settings."),
+                settings.wireBlinkBlendshapes);
+        }
+
+        static readonly FaceTrackingMode[] FtModes =
+            { FaceTrackingMode.Native, FaceTrackingMode.DragonSkyRunner, FaceTrackingMode.None };
+
+        void DrawFaceTrackingSection()
+        {
+            showFaceTracking = EditorGUILayout.Foldout(showFaceTracking, "Face tracking", true, EditorStyles.foldoutHeader);
+            if (!showFaceTracking)
+            {
+                return;
+            }
+            using (new EditorGUI.IndentLevelScope())
+            {
+                var labels = new[]
+                {
+                    new GUIContent("Native CVR Component",
+                        "ChilloutVR's built-in CVRFaceTracking component drives the blendshapes directly. " +
+                        "Auto-added and mapped. Self-contained, but a bit stiff."),
+                    new GUIContent("Unity Animator Blendtrees (DSR)",
+                        "DragonSkyRunner's bundled rig: face shapes driven by animator blend trees, eye tracking " +
+                        "via generated empties + rotation constraints, rebuilt onto this avatar automatically. " +
+                        "Smoother and more expressive."),
+                    new GUIContent("None", "Leave face tracking entirely to you."),
+                };
+                int index = Mathf.Max(0, System.Array.IndexOf(FtModes, settings.faceTrackingMode));
+                index = EditorGUILayout.Popup(
+                    new GUIContent("Face tracking",
+                        "Both set-up modes replace any face-tracking rig already on the avatar."),
+                    index, labels);
+                settings.faceTrackingMode = FtModes[index];
+
+                if (settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
+                {
+                    if (FaceTrackingPackages.IsInstalled())
+                    {
+                        EditorGUILayout.HelpBox(
+                            "Injects DragonSkyRunner's CVR Eye & Face Tracking rig (bundled) and rebuilds it onto " +
+                            "this avatar — including an auto-generated eye-tracking rig. Eye gaze strength may want " +
+                            "tuning per the package readme. Credit: DragonSkyRunner.", MessageType.Info);
+                        if (GUILayout.Button("DragonSkyRunner's package (GitHub)  ↗", EditorStyles.linkLabel))
+                        {
+                            Application.OpenURL(FaceTrackingPackages.Url);
+                        }
+                    }
+                    else
+                    {
+                        EditorGUILayout.HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't " +
+                            "found — reimport AvatarBridge (the button is disabled until then).",
+                            MessageType.Warning);
+                    }
+                }
+            }
+            GUILayout.Space(4);
+        }
+
+        void DrawScalerToggle()
+        {
+            settings.addAvatarScaler = EditorGUILayout.ToggleLeft(
+                new GUIContent("Add height scaler  (\"Height (M)\" menu)",
+                    "A smooth avatar scaler. Auto-calibrated: the menu value is real metres and defaults to this " +
+                    "avatar's measured height, so it spawns at exactly its original size."),
+                settings.addAvatarScaler);
+            GUILayout.Space(4);
+        }
 
         // ------------------------------------------------------------------- report ---
 
@@ -460,19 +579,19 @@ namespace AvatarBridge
 
             if (errors > 0)
             {
-                EditorGUILayout.HelpBox($"Conversion finished with {errors} error(s) — see below.", MessageType.Error);
+                EditorGUILayout.HelpBox($"Finished with {errors} error(s) — see below.", MessageType.Error);
             }
             else if (warnings > 0)
             {
-                EditorGUILayout.HelpBox($"Converted! {warnings} thing(s) may want a look — see below.", MessageType.Warning);
+                EditorGUILayout.HelpBox($"Done! {warnings} thing(s) may want a look — see below.", MessageType.Warning);
             }
             else
             {
-                EditorGUILayout.HelpBox("Converted! The avatar is ready for the CCK's upload checks.", MessageType.Info);
+                EditorGUILayout.HelpBox("Done! The avatar is ready for the CCK's upload checks.", MessageType.Info);
             }
 
             EditorGUILayout.LabelField(
-                $"<b><color=#7bc97b>{lastReport.CountOf(ReportStatus.Converted)} converted</color></b>   " +
+                $"<b><color=#7bc97b>{lastReport.CountOf(ReportStatus.Converted)} done</color></b>   " +
                 $"<color=#c9b97b>{lastReport.CountOf(ReportStatus.Approximated)} approximated</color>   " +
                 $"<color=#999999>{lastReport.CountOf(ReportStatus.Skipped)} skipped</color>   " +
                 $"<color=#e0a96d>{warnings} warnings</color>   " +
@@ -501,14 +620,12 @@ namespace AvatarBridge
                 }
             }
 
-            // Something went wrong — make reporting it the obvious next step, with the
-            // report file one click away so it actually gets attached.
             if (errors > 0 || warnings > 0)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     if (GUILayout.Button(new GUIContent("Report an issue",
-                            "Opens a pre-filled GitHub issue. Please attach the ConversionReport.md — " +
+                            "Opens a pre-filled GitHub issue. Please attach the report — " +
                             "most bugs are diagnosed straight from it."), GUILayout.Height(24)))
                     {
                         BridgeLinks.OpenBugReport(lastReport);
@@ -523,7 +640,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Only issues are listed here; the full list lives in ConversionReport.md.
+            // Only issues are listed here; the full list lives in the report file.
             reportScroll = EditorGUILayout.BeginScrollView(reportScroll, GUILayout.MinHeight(100), GUILayout.MaxHeight(200));
             foreach (var entry in lastReport.Entries)
             {
@@ -539,21 +656,53 @@ namespace AvatarBridge
             }
             EditorGUILayout.EndScrollView();
         }
+
+        // ------------------------------------------------------------------- footer ---
+
+        void DrawFooter()
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Troubleshooting  ↗", EditorStyles.linkLabel))
+                {
+                    Application.OpenURL(BridgeLinks.Troubleshooting);
+                }
+                GUILayout.Space(12);
+                if (GUILayout.Button("Report an issue  ↗", EditorStyles.linkLabel))
+                {
+                    BridgeLinks.OpenBugReport(lastReport);
+                }
+                if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
+                {
+                    GUILayout.Space(12);
+                    if (GUILayout.Button(new GUIContent($"Discord: {BridgeLinks.DiscordUser}",
+                            "Click to copy the handle. Best for quick questions — please use " +
+                            "GitHub issues for bugs so they don't get lost."), EditorStyles.linkLabel))
+                    {
+                        BridgeLinks.CopyDiscord();
+                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
+                    }
+                }
+                GUILayout.FlexibleSpace();
+            }
+        }
 #else
         void OnGUI()
         {
             GUILayout.Space(10);
             EditorGUILayout.LabelField("AvatarBridge", new GUIStyle(EditorStyles.boldLabel) { fontSize = 18 });
             GUILayout.Space(6);
-            EditorGUILayout.HelpBox("AvatarBridge needs both SDKs in this project before it can run:", MessageType.Warning);
+            EditorGUILayout.HelpBox(
+                "AvatarBridge needs the ChilloutVR CCK — that's what it builds avatars for.",
+                MessageType.Warning);
             EditorGUILayout.LabelField(
-                (BridgeDefines.HasVrcAvatarSdk ? "✔" : "✘") + "  VRChat Avatars SDK (SDK3)");
+                (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended)  — required");
             EditorGUILayout.LabelField(
-                (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended)");
+                (BridgeDefines.HasVrcAvatarSdk ? "✔" : "✘") + "  VRChat Avatars SDK (SDK3)  — only to convert VRChat avatars");
             GUILayout.Space(6);
             EditorGUILayout.HelpBox(
-                "Import the missing package(s), let Unity recompile, and reopen this window. " +
-                "See the AvatarBridge README for the recommended project setup.",
+                "Import the CCK, let Unity recompile, and reopen this window. Without the VRChat SDK you can " +
+                "still use Setup mode to prepare any avatar for ChilloutVR.",
                 MessageType.Info);
 
             GUILayout.Space(10);
@@ -567,16 +716,6 @@ namespace AvatarBridge
                 if (GUILayout.Button("Report an issue  ↗", EditorStyles.linkLabel))
                 {
                     BridgeLinks.OpenBugReport();
-                }
-                if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
-                {
-                    GUILayout.Space(12);
-                    if (GUILayout.Button(new GUIContent($"Discord: {BridgeLinks.DiscordUser}",
-                            "Click to copy the handle."), EditorStyles.linkLabel))
-                    {
-                        BridgeLinks.CopyDiscord();
-                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
-                    }
                 }
                 GUILayout.FlexibleSpace();
             }

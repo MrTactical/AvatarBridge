@@ -1,0 +1,295 @@
+#if CVR_CCK_EXISTS
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEngine;
+using ABI.CCK.Components;
+using ABI.CCK.Scripts;
+
+namespace AvatarBridge
+{
+    /// <summary>
+    /// Setup mode: prepares ANY humanoid avatar for ChilloutVR, with **no VRChat SDK
+    /// involved at all**.
+    ///
+    /// The conversion path exists to translate VRChat data. Everything else AvatarBridge
+    /// does — the viewpoint, visemes and blink wiring, face tracking, the height scaler —
+    /// is CVR-side work that never needed VRChat in the first place. This runs exactly
+    /// those passes against features read straight off the rig and meshes, so it works on
+    /// a Booth model, an original avatar, or one that was already converted.
+    ///
+    /// What it deliberately does NOT do: anything requiring VRChat data (menus and
+    /// parameters from expression assets, PhysBone/contact conversion, animator merging).
+    /// Those need the VRChat SDK to read, so they live in the conversion path.
+    /// </summary>
+    public static class CvrSetup
+    {
+        const string Category = "CVR setup";
+
+        static readonly string[] CckAnimatorPaths =
+        {
+            "Assets/CVR.CCK/Assets/Avatar/Animations/AvatarAnimator.controller", // CCK 4.x
+            "Assets/ABI.CCK/Animations/AvatarAnimator.controller"                // CCK 3.x
+        };
+
+        public static BridgeReport Run(GameObject avatar, BridgeSettings settings)
+        {
+            var report = new BridgeReport();
+            var ctx = new BridgeContext { Settings = settings, Report = report };
+
+            try
+            {
+                PrepareOutputFolder(ctx, avatar);
+                PrepareTarget(ctx, avatar);
+
+                SetupCvrAvatar(ctx);
+
+                var controller = BuildController(ctx);
+                FaceTrackingConverter.Run(ctx);
+                FaceTrackingInjector.Inject(controller, ctx);
+                AvatarScalerInjector.Inject(controller, ctx);
+                SaveController(ctx, controller);
+
+                WriteReportFile(ctx);
+                EditorUtility.SetDirty(ctx.CvrAvatar);
+                AssetDatabase.SaveAssets();
+                Selection.activeGameObject = ctx.Target;
+
+                report.Converted(Category, "Finished",
+                    $"\"{ctx.Target.name}\" is set up for ChilloutVR.");
+            }
+            catch (Exception e)
+            {
+                report.Error(Category, "Unhandled exception", e.Message);
+                Debug.LogException(e);
+            }
+            return report;
+        }
+
+        // ------------------------------------------------------------------- target ----
+
+        static void PrepareTarget(BridgeContext ctx, GameObject avatar)
+        {
+            if (ctx.Settings.cloneAvatar)
+            {
+                ctx.Target = UnityEngine.Object.Instantiate(avatar);
+                ctx.Target.name = avatar.name + " (ChilloutVR)";
+                ctx.Target.SetActive(true);
+                Undo.RegisterCreatedObjectUndo(ctx.Target, "AvatarBridge setup");
+                avatar.SetActive(false);
+            }
+            else
+            {
+                ctx.Target = avatar;
+                Undo.RegisterFullObjectHierarchyUndo(ctx.Target, "AvatarBridge setup");
+            }
+        }
+
+        // ---------------------------------------------------------------- CVRAvatar ----
+
+        static void SetupCvrAvatar(BridgeContext ctx)
+        {
+            var cvrAvatar = ctx.Target.GetComponent<CVRAvatar>() ?? ctx.Target.AddComponent<CVRAvatar>();
+            ctx.CvrAvatar = cvrAvatar;
+
+            var animator = ctx.TargetAnimator;
+            bool humanoid = animator != null && animator.isHuman;
+            if (!humanoid)
+            {
+                ctx.Report.Warning(Category, "Avatar is not a humanoid rig",
+                    "The viewpoint is estimated from the mesh bounds and eye tracking can't be wired. " +
+                    "Set the rig to Humanoid in the model's import settings for a proper result.");
+            }
+
+            // --- viewpoint & voice ---------------------------------------------------
+            cvrAvatar.viewPosition = AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
+            cvrAvatar.voicePosition = AvatarFeatureDetect.EstimateVoicePosition(ctx.Target, animator);
+            ctx.Report.Converted(Category, "Viewpoint and voice position",
+                $"Viewpoint estimated at {cvrAvatar.viewPosition.y:0.00} m " +
+                (humanoid ? "from the eye/head bones" : "from the mesh bounds") +
+                " — check it in the scene view and nudge if the first-person camera sits wrong.");
+
+            // --- face mesh -----------------------------------------------------------
+            var face = AvatarFeatureDetect.FindFaceMesh(ctx.Target);
+            if (face != null)
+            {
+                cvrAvatar.bodyMesh = face;
+                ctx.Report.Converted(Category, "Face mesh", face.name);
+            }
+            else
+            {
+                ctx.Report.Warning(Category, "No face mesh found",
+                    "No skinned mesh with blendshapes — visemes, blink and face tracking are skipped.");
+            }
+
+            // --- visemes -------------------------------------------------------------
+            var mesh = face != null ? face.sharedMesh : null;
+            var visemes = AvatarFeatureDetect.DetectVisemes(mesh);
+            if (visemes != null)
+            {
+                cvrAvatar.useVisemeLipsync = true;
+                cvrAvatar.visemeBlendshapes = visemes;
+                int found = visemes.Count(v => !string.IsNullOrEmpty(v));
+                ctx.Report.Converted(Category, "Visemes", $"{found} of 15 auto-detected on \"{face.name}\"");
+            }
+            else if (mesh != null)
+            {
+                ctx.Report.Warning(Category, "Visemes not detected",
+                    "No standard viseme blendshapes (vrc.v_aa / v_aa / aa …) on the face mesh. " +
+                    "Assign them by hand on the CVRAvatar if the avatar has them under other names.");
+            }
+
+            // --- blink ---------------------------------------------------------------
+            WireBlink(ctx, cvrAvatar, mesh);
+
+            // --- advanced settings container ----------------------------------------
+            cvrAvatar.avatarUsesAdvancedSettings = true;
+            cvrAvatar.avatarSettings = new CVRAdvancedAvatarSettings
+            {
+                settings = new List<CVRAdvancedSettingsEntry>(),
+                initialized = true
+            };
+            EditorUtility.SetDirty(cvrAvatar);
+        }
+
+        static void WireBlink(BridgeContext ctx, CVRAvatar cvrAvatar, Mesh mesh)
+        {
+            if (!ctx.Settings.wireBlinkBlendshapes || mesh == null)
+            {
+                return;
+            }
+            AvatarFeatureDetect.DetectBlinkShapes(mesh, out string left, out string right, out string combined);
+            if (left == null && right == null && combined == null)
+            {
+                return;
+            }
+
+            cvrAvatar.useBlinkBlendshapes = true;
+            if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
+            {
+                cvrAvatar.blinkBlendshape = new string[4];
+            }
+
+            if (left != null && right != null)
+            {
+                cvrAvatar.blinkBlendshape[0] = left;
+                cvrAvatar.blinkBlendshape[1] = right;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
+                ctx.Report.Converted(Category, "Blink blendshapes",
+                    $"Wired to \"{left}\" / \"{right}\" (Separate). Verify L/R aren't swapped.");
+            }
+            else
+            {
+                string single = combined ?? left ?? right;
+                cvrAvatar.blinkBlendshape[0] = single;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+                ctx.Report.Converted(Category, "Blink blendshape", $"Wired to \"{single}\" (Combined).");
+            }
+        }
+
+        // --------------------------------------------------------------- controller ----
+
+        /// <summary>
+        /// A fresh controller built from the CCK's own AvatarAnimator, deep-copied so the
+        /// CCK asset is never mutated. Face tracking and the scaler inject their layers
+        /// into this.
+        /// </summary>
+        static AnimatorController BuildController(BridgeContext ctx)
+        {
+            var master = new AnimatorController();
+            AnimatorController source = null;
+            foreach (var path in CckAnimatorPaths)
+            {
+                source = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                if (source != null)
+                {
+                    break;
+                }
+            }
+
+            if (source == null)
+            {
+                ctx.Report.Warning(Category, "CCK AvatarAnimator.controller not found",
+                    "Starting from an empty controller; the CCK usually regenerates its locomotion layers on upload.");
+                return master;
+            }
+
+            var copier = new AnimatorDeepCopier();
+            master.parameters = source.parameters.Select(AnimatorDeepCopier.CloneParameter).ToArray();
+            master.layers = source.layers.Select(copier.CloneLayer).ToArray();
+            ctx.Report.Converted(Category, "CCK base animator",
+                $"Copied {master.layers.Length} layer(s) — locomotion, hand poses and emotes stay CVR-native.");
+            return master;
+        }
+
+        static void SaveController(BridgeContext ctx, AnimatorController master)
+        {
+            master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
+            ctx.MergedController = master;
+
+            string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
+            AnimatorAssetSaver.Save(master, controllerPath);
+
+            var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
+            string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
+            FileUtil.DeleteFileOrDirectory(overridesPath);
+            AssetDatabase.CreateAsset(overrides, overridesPath);
+
+            ctx.CvrAvatar.avatarSettings.baseController = master;
+            ctx.CvrAvatar.overrides = overrides;
+
+            var animator = ctx.TargetAnimator;
+            if (animator != null)
+            {
+                animator.runtimeAnimatorController = master;
+            }
+            EditorUtility.SetDirty(ctx.CvrAvatar);
+        }
+
+        // ------------------------------------------------------------------ output ----
+
+        static void PrepareOutputFolder(BridgeContext ctx, GameObject avatar)
+        {
+            string safeName = SanitizeFileName(avatar.name).Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                safeName = "Avatar";
+            }
+
+            string folder = (ctx.Settings.outputFolder ?? "").Trim().Replace('\\', '/').TrimEnd('/');
+            if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
+            {
+                ctx.Report.Warning(Category, $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
+                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
+                folder = "Assets/AvatarBridge/Output";
+            }
+            ctx.OutputDir = folder + "/" + safeName;
+
+            Directory.CreateDirectory(Path.GetFullPath(Path.Combine(Application.dataPath, "..", ctx.OutputDir)));
+            AssetDatabase.Refresh();
+        }
+
+        static void WriteReportFile(BridgeContext ctx)
+        {
+            string path = ctx.OutputDir + "/SetupReport.md";
+            string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
+            File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name));
+            AssetDatabase.ImportAsset(path);
+            ctx.Report.SavedReportPath = path;
+            Debug.Log($"[AvatarBridge] Setup report written to {path}");
+        }
+
+        static string SanitizeFileName(string name)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                name = name.Replace(c, '_');
+            }
+            return name;
+        }
+    }
+}
+#endif
