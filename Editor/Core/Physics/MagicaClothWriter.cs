@@ -69,66 +69,45 @@ namespace AvatarBridge
             var cloth = holder.AddComponent<MagicaCloth>();
             var sdata = cloth.SerializeData;
 
+            // Preset first: importing one replaces the entire serialize data, root bones and
+            // collider list included, so everything structural has to be applied afterwards.
+            string preset = null;
+            if (ctx.Settings.useMagicaPresets)
+            {
+                preset = MagicaPresetLibrary.ChooseFor(data);
+                if (!MagicaPresetLibrary.TryApply(sdata, preset, out string presetError))
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"MagicaCloth2 preset not applied — {presetError}. Falling back to values derived " +
+                        "from the PhysBone.");
+                    preset = null;
+                }
+            }
+
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
+            sdata.rootBones.Clear();
             sdata.rootBones.Add(data.Root);
 
-            // Particle radius. The one place a straight copy is actively unsafe: PhysBone's
-            // radius only decides what the chain collides with, so a chain with no colliders
-            // ignores it and large leftover values are harmless. MagicaCloth2's is the particle
-            // size, and a particle wider than the gap between bones overlaps its neighbours,
-            // which the solver resolves by shoving them apart. Half the bone spacing is the
-            // largest value where particles can touch but never overlap.
+            if (preset == null)
+            {
+                ApplyDerivedParameters(ctx, data, sdata);
+            }
+
+            // Particle radius bound, applied whichever route set it. PhysBone's radius only
+            // decides what the chain collides with, so a chain with no colliders ignores it and
+            // large leftover values are harmless. MagicaCloth2's is the particle size, and a
+            // particle wider than the gap between bones overlaps its neighbours, which the
+            // solver resolves by shoving them apart. Half the bone spacing is the largest value
+            // where particles can touch but never overlap. Presets are authored for roughly
+            // human-sized chains, so this matters for them too on a dense or tiny rig.
             float spacing = MeasureBoneSpacing(data.Root);
-            float requested = Mathf.Max(0.001f, data.Radius);
-            float radius = spacing > 0f ? Mathf.Min(requested, spacing * 0.5f) : requested;
-            ApplyCurve(sdata.radius, radius, data.RadiusCurve);
-            if (radius < requested * 0.999f)
+            if (spacing > 0f && sdata.radius.value > spacing * 0.5f)
             {
+                float was = sdata.radius.value;
+                sdata.radius.value = spacing * 0.5f;   // assign directly, keeping any depth curve
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"Collision radius {requested:0.###} reduced to {radius:0.###} — in MagicaCloth2 this is " +
-                    "the particle size rather than just a collision radius, and anything wider than the gap " +
-                    "between bones makes neighbouring particles overlap and shove each other apart.");
-            }
-
-            // Restoration toward the rest pose: PB pull, plus stiffness in advanced mode.
-            float restoration = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
-            ApplyCurve(sdata.angleRestorationConstraint.stiffness, restoration,
-                PhysBoneChainData.HasCurve(data.PullCurve) ? data.PullCurve : data.StiffnessCurve);
-
-            // Springiness: high PB spring = wobbly = low damping / low attenuation.
-            float spring = Mathf.Clamp01(data.Spring);
-            sdata.damping.SetValue(Mathf.Lerp(MaxDamping, MinDamping, spring));
-            sdata.angleRestorationConstraint.velocityAttenuation = Mathf.Clamp01(1f - spring);
-
-            // Gravity. PhysBone's 0..1 is a fraction of real gravity; a negative value points up.
-            if (!Mathf.Approximately(data.Gravity, 0f))
-            {
-                sdata.gravity = Mathf.Abs(data.Gravity) * GravityScale;
-                sdata.gravityDirection = new Unity.Mathematics.float3(0f, data.Gravity >= 0f ? -1f : 1f, 0f);
-                sdata.gravityFalloff = Mathf.Clamp01(data.GravityFalloff);
-            }
-            else
-            {
-                sdata.gravity = 0f;
-            }
-
-            // Immobile: reduce how much the avatar's own movement shakes the chain. Applied to
-            // world inertia only — MagicaCloth2 splits world and local inertia, but which of
-            // them a given PhysBone immobile type corresponds to is a guess, and guessing here
-            // has gone wrong before.
-            if (data.Immobile > 0f)
-            {
-                if (!TrySetMember(sdata.inertiaConstraint, "worldInertia", Mathf.Clamp01(1f - data.Immobile)))
-                {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        "Immobile could not be mapped to inertia on this MagicaCloth2 version.");
-                }
-                else if (!string.IsNullOrEmpty(data.ImmobileTypeName))
-                {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        $"Immobile {data.Immobile:0.##} (type '{data.ImmobileTypeName}') applied as world inertia. " +
-                        "If the chain still drags when you walk, raise Local Inertia on the cloth too.");
-                }
+                    $"Particle radius {was:0.###} reduced to {sdata.radius.value:0.###} — anything wider than " +
+                    "the gap between bones makes neighbouring particles overlap and shove each other apart.");
             }
 
             // Ignored transforms become "Invalid" (excluded) bones.
@@ -164,10 +143,70 @@ namespace AvatarBridge
             }
 
             ReportUnconvertibleFeatures(ctx, data);
-            ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth with {data.Colliders.Count} collider(s).");
+            if (preset != null)
+            {
+                ctx.Report.Converted(Category, data.Root.name,
+                    $"BoneCloth from the MagicaCloth2 \"{MagicaPresetLibrary.DisplayName(preset)}\" preset, " +
+                    $"{data.Colliders.Count} collider(s). Source PhysBone was pull {data.Pull:0.##}, spring " +
+                    $"{data.Spring:0.##}, gravity {data.Gravity:0.##}, immobile {data.Immobile:0.##} — tune " +
+                    "from the preset if this chain wants a different feel.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category, data.Root.name,
+                    $"BoneCloth with {data.Colliders.Count} collider(s).");
+            }
 
             return cloth;
+        }
+
+        /// <summary>
+        /// The direct PhysBone-value mapping, used when presets are switched off or the preset
+        /// files aren't in the project. Transfers only what means the same on both sides.
+        /// </summary>
+        static void ApplyDerivedParameters(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            ApplyCurve(sdata.radius, Mathf.Max(0.001f, data.Radius), data.RadiusCurve);
+
+            // Restoration toward the rest pose: PB pull, plus stiffness in advanced mode.
+            float restoration = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
+            ApplyCurve(sdata.angleRestorationConstraint.stiffness, restoration,
+                PhysBoneChainData.HasCurve(data.PullCurve) ? data.PullCurve : data.StiffnessCurve);
+
+            // Springiness: high PB spring = wobbly = low damping / low attenuation.
+            float spring = Mathf.Clamp01(data.Spring);
+            sdata.damping.SetValue(Mathf.Lerp(MaxDamping, MinDamping, spring));
+            sdata.angleRestorationConstraint.velocityAttenuation = Mathf.Clamp01(1f - spring);
+
+            // Gravity. PhysBone's 0..1 is a fraction of real gravity; a negative value points up.
+            if (!Mathf.Approximately(data.Gravity, 0f))
+            {
+                sdata.gravity = Mathf.Abs(data.Gravity) * GravityScale;
+                sdata.gravityDirection = new Unity.Mathematics.float3(0f, data.Gravity >= 0f ? -1f : 1f, 0f);
+                sdata.gravityFalloff = Mathf.Clamp01(data.GravityFalloff);
+            }
+            else
+            {
+                sdata.gravity = 0f;
+            }
+
+            // Immobile: reduce how much the avatar's own movement shakes the chain. Applied to
+            // world inertia only — MagicaCloth2 splits world and local inertia, but which of
+            // them a given PhysBone immobile type corresponds to is a guess.
+            if (data.Immobile > 0f)
+            {
+                if (!TrySetMember(sdata.inertiaConstraint, "worldInertia", Mathf.Clamp01(1f - data.Immobile)))
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        "Immobile could not be mapped to inertia on this MagicaCloth2 version.");
+                }
+                else if (!string.IsNullOrEmpty(data.ImmobileTypeName))
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Immobile {data.Immobile:0.##} (type '{data.ImmobileTypeName}') applied as world inertia. " +
+                        "If the chain still drags when you walk, raise Local Inertia on the cloth too.");
+                }
+            }
         }
 
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,

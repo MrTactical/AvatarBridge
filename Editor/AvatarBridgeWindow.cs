@@ -247,6 +247,15 @@ namespace AvatarBridge
                     settings.grabbyBonesSupport);
                 if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
                 {
+                    settings.useMagicaPresets = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Start from MagicaCloth2 presets",
+                            "Give each chain the MagicaCloth2 preset that fits it — hair, tail, skirt, cape, " +
+                            "accessory, or a spring preset chosen by how firmly the PhysBone held its rest " +
+                            "pose. PhysBones and MagicaCloth2 are different solvers, so numbers copied across " +
+                            "are only analogies; a preset by MagicaCloth2's own author is a better starting " +
+                            "point. Bones, colliders and ignored transforms still come from the PhysBone. " +
+                            "Turn off to derive every value from the PhysBone instead."),
+                        settings.useMagicaPresets);
                     settings.autoAssignNearbyColliders = EditorGUILayout.ToggleLeft(
                         new GUIContent("Auto-assign nearby colliders (experimental)",
                             "Gives each cloth the avatar's own colliders that it starts clear of and could " +

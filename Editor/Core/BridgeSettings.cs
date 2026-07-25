@@ -79,6 +79,12 @@ namespace AvatarBridge
         // Name converted MagicaCloth objects after their PhysBone parameter so the
         // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
+        // Start each cloth from the MagicaCloth2 preset that fits the chain, rather than from
+        // values derived out of the PhysBone. PhysBones and MagicaCloth2 are different solvers
+        // (rotational spring vs particle positions), so derived numbers are analogies; a preset
+        // written by MagicaCloth2's own author is a better starting point. Structure — bones,
+        // colliders, ignores — still comes from the PhysBone either way.
+        public bool useMagicaPresets = true;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided
         // in CVR exactly as it was in VRChat — turning this on improves on that rather than

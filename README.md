@@ -264,8 +264,45 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 
 ## PhysBones → MagicaCloth2
 
-The mapping is deliberately plain. It transfers the settings that mean the same thing on both
-sides, and **reports the rest with their values** instead of guessing at an equivalent.
+### Chains start from a MagicaCloth2 preset
+
+**PhysBones and MagicaCloth2 are different solvers.** PhysBones — like DynamicBone, which they
+replaced — are per-bone *rotational springs*. MagicaCloth2 is a *particle position* solver: it
+moves particles through space and derives bone rotations from where they land. Numbers carried
+across that gap are analogies, not translations, and analogies drift under load. Several rounds of
+increasingly careful mapping arithmetic all had to be walked back on real avatars.
+
+So by default each chain now starts from the **MagicaCloth2 preset that fits it** — the presets
+MagicaCloth2 ships in `Assets/MagicaCloth2/Res/Preset`, written by the solver's own author, which
+is what its users actually start from. Nobody hand-derives those values.
+
+| chain | preset |
+|---|---|
+| hair — front / bangs / fringe / ahoge | **Front Hair** |
+| hair — 5+ bones, twintails, ponytails, braids | **Long Hair** |
+| hair — shorter | **Short Hair** |
+| tail | **Tail** |
+| cape / cloak / mantle / coat | **Cape** |
+| skirt / dress / apron | **Skirt** |
+| earring, ribbon, bell, pendant, necklace, collar, strap, zipper | **Accessory** |
+| anything else — breasts, ears, props | **Soft / Middle / Hard Spring**, by how firmly the PhysBone held its rest pose |
+
+Hair is matched before tails on purpose, so `twintail` and `ponytail` get hair's lighter settling
+rather than a tail's weight.
+
+The PhysBone still supplies everything **structural** — which bones, which colliders, which
+transforms to ignore, whether the chain starts enabled — and its own values go into the report
+(`Source PhysBone was pull 0.4, spring 0.8, gravity 0, immobile 0.6`) so a chain that wants
+tuning can get it.
+
+Turn off **Start from MagicaCloth2 presets** to derive every value from the PhysBone instead,
+which is the mapping below. It's also the automatic fallback if the preset files aren't in the
+project.
+
+### Deriving values from the PhysBone instead
+
+Transfers the settings that mean the same thing on both sides, and **reports the rest with their
+values** rather than guessing at an equivalent.
 
 **Applied:**
 
