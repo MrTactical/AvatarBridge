@@ -245,6 +245,16 @@ namespace AvatarBridge
                         "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
                         "_IsGrabbed / _Angle grab-reactive logic."),
                     settings.grabbyBonesSupport);
+                if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+                {
+                    settings.autoAssignNearbyColliders = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Auto-assign nearby colliders (experimental)",
+                            "Gives each cloth the avatar's own colliders that it starts clear of and could " +
+                            "swing into — a tail that passed through the leg in VRChat will collide with it " +
+                            "here. This improves on the original avatar rather than copying it, so check the " +
+                            "result before uploading. Every assignment is listed in the report."),
+                        settings.autoAssignNearbyColliders);
+                }
                 settings.deleteConvertedPhysBones = EditorGUILayout.ToggleLeft(
                     new GUIContent("Delete PhysBones after converting",
                         "Leave on — leftover PhysBone components upset the CCK upload checks."),

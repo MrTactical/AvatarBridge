@@ -275,6 +275,37 @@ So the limit angle is **reported rather than applied**. Where you actually want 
 shouldn't fold backwards, say — tick **Angle Limit** on that MagicaCloth component, enter the
 angle from the report, and lower **Stiffness** until it stops snapping.
 
+### Auto-assign nearby colliders (optional, off by default)
+
+Both systems keep an **explicit per-chain collider list** — a PhysBone only collides with the
+colliders it names, and `Allow Collision` adds VRChat's *global* hand and finger colliders, never
+the avatar's own. So authors typically wire the body colliders into the skirt and dress chains and
+leave the tail, ears and hair with none. AvatarBridge copies those lists exactly, which means a
+tail that passed through the leg in VRChat keeps doing so in ChilloutVR.
+
+Turning this on goes further: each cloth is also handed any of the avatar's **own** converted
+colliders that it could plausibly swing into. Nothing is invented — only existing shapes get
+referenced by more chains.
+
+The rule that keeps it safe is **rest position**:
+
+> A collider is assigned only if **every bone of the chain starts outside it**, and some bone can
+> reach it — reach being a bone's distance from the chain root, since the chain hangs off a fixed
+> root and no bone can leave the sphere of that radius around it.
+
+That distinction matters. A tail tip swinging past the calf starts clear of it and only ever
+collides. Thigh jiggle sits permanently *inside* the hip capsule, and handing it that collider
+would make the solver eject it — so it's skipped. Colliders parented within the chain itself are
+skipped too (they travel with it), as are planes (unbounded, so "nearby" is meaningless).
+
+Only colliders that *some* chain already references are candidates — an avatar collider no
+PhysBone ever named isn't converted at all, so there's nothing to hand out.
+
+Every assignment is listed in the conversion report with the closest rest-pose approach, e.g.
+`Tail — auto-assigned 2 nearby collider(s): Calf.L (4.2 cm), Calf.R (5.1 cm)`. Since this
+deliberately departs from the source avatar, check the result in play mode before uploading and
+delete any assignment that makes a chain behave oddly.
+
 ## VRChat-only system stripping
 
 Two subsystems that are dead weight in ChilloutVR are stripped by default (both toggleable):

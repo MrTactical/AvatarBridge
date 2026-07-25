@@ -54,10 +54,15 @@ namespace AvatarBridge
                 case PhysicsTarget.MagicaCloth2:
 #if AVATARBRIDGE_MAGICA
                     var magicaColliderCache = new Dictionary<VRCPhysBoneCollider, MagicaCloth2.ColliderComponent>();
+                    var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
                     foreach (var pb in physBones)
                     {
-                        MagicaClothWriter.Write(ctx, PhysBoneChainData.Read(pb), magicaColliderCache);
+                        var chain = PhysBoneChainData.Read(pb);
+                        writtenCloths.Add((chain, MagicaClothWriter.Write(ctx, chain, magicaColliderCache)));
                     }
+                    // Runs last: every collider the avatar defines has to exist before a chain can
+                    // be offered one it didn't originally reference.
+                    MagicaColliderAutoAssign.Run(ctx, writtenCloths, magicaColliderCache);
 #else
                     ctx.Report.Error(Category, "MagicaCloth2 is not installed",
                         "Import MagicaCloth2 (or choose the DynamicBone target) and convert again.");

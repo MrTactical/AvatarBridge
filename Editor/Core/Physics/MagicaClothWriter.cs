@@ -43,7 +43,8 @@ namespace AvatarBridge
         public static float MaxDamping = 0.15f;
         public static float MinDamping = 0.01f;
 
-        public static void Write(BridgeContext ctx, PhysBoneChainData data,
+        /// <summary>Writes the cloth and returns it, so later passes can extend what it references.</summary>
+        public static MagicaCloth Write(BridgeContext ctx, PhysBoneChainData data,
             Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache)
         {
             // The GrabbyBones mod derives its animator parameters from the GameObject name
@@ -226,6 +227,8 @@ namespace AvatarBridge
             ctx.Report.Converted(Category, data.Root.name,
                 $"BoneCloth with {data.Colliders.Count} collider(s)" +
                 (notes.Count > 0 ? $" ({string.Join(", ", notes)})." : "."));
+
+            return cloth;
         }
 
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
