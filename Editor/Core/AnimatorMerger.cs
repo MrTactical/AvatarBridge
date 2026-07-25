@@ -192,6 +192,11 @@ namespace AvatarBridge
             VerifyMenuParameterNames(master, ctx);
             PruneDeadMenuEntries(master, ctx);
             CompactIntDropdowns(master, ctx);
+            // After the menu is final. SystemStripper already drops unreferenced parameters, but
+            // it runs long before this and keeps anything a menu entry drives — so a parameter
+            // whose only justification was an entry that PruneDeadMenuEntries then removed is
+            // left behind, declared and inert, still costing sync bits if it was synced.
+            PruneOrphanedParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -1657,6 +1662,48 @@ namespace AvatarBridge
         /// animator parameters written by clips. Anything absent from this cannot affect the
         /// avatar no matter what its menu control does.
         /// </summary>
+        /// <summary>
+        /// Removes parameters left declared but inert once the menu is settled.
+        ///
+        /// Kept only if something in the animator touches it, a menu entry drives it, a contact
+        /// writes it, or ChilloutVR supplies it (core, gesture and stream-fed parameters).
+        ///
+        /// Deliberately does NOT honour ctx.PreserveParameters, unlike SystemStripper's earlier
+        /// pass: that set exists to stop the RENAME pass altering synced names, which says
+        /// nothing about whether a parameter should still exist. And a synced VRChat parameter
+        /// doesn't carry its sync across anyway — in ChilloutVR a parameter syncs only via an
+        /// Advanced Settings entry, so once that entry is gone the parameter is inert.
+        /// </summary>
+        static void PruneOrphanedParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var referenced = CollectReferencedParameters(master);
+            var menuNames = new HashSet<string>(ctx.CvrAvatar.avatarSettings.settings
+                .Where(e => e != null && !string.IsNullOrEmpty(e.machineName))
+                .Select(e => e.machineName));
+
+            var parameters = master.parameters;
+            var kept = parameters
+                .Where(p => referenced.Contains(p.name) ||
+                            menuNames.Contains(p.name) ||
+                            IsGameDrivenParameter(p.name) ||
+                            GestureMap.GestureParameters.Contains(p.name) ||
+                            ctx.ContactParameters.Contains(p.name))
+                .ToArray();
+
+            int removed = parameters.Length - kept.Length;
+            if (removed == 0)
+            {
+                return;
+            }
+            var names = parameters.Select(p => p.name).Except(kept.Select(p => p.name)).ToList();
+            master.parameters = kept;
+            ctx.Report.Converted(Category, $"Removed {removed} orphaned animator parameter(s)",
+                $"{string.Join(", ", names.Take(12))}{(names.Count > 12 ? ", …" : "")} — nothing in the " +
+                "animator reads them and their menu entries were removed as dead, so they were declared and " +
+                "doing nothing. (They weren't costing sync either way: ChilloutVR syncs through Advanced " +
+                "Settings entries, not animator parameters.)");
+        }
+
         static HashSet<string> CollectReferencedParameters(AnimatorController master)
         {
             var referenced = new HashSet<string>();
