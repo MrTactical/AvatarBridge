@@ -191,19 +191,21 @@ namespace AvatarBridge
             CompactIntDropdowns(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
-            ctx.MergedController = master;
 
             // Persist controller + override controller and hook both to the CVRAvatar.
+            // Save hands back the persisted asset, which is a different object whenever an
+            // earlier run's controller was overwritten in place to keep its GUID — so
+            // everything below must reference that one, not the object we built.
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
-            AnimatorAssetSaver.Save(master, controllerPath);
+            master = AnimatorAssetSaver.Save(master, controllerPath);
+            ctx.MergedController = master;
 
             // Generate the override controller wrapping the base. ChilloutVR uses this as
             // the avatar's runtime controller (it's what the "Override Controller" slot
             // expects), so it must be present, not left empty.
             var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
             string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
-            FileUtil.DeleteFileOrDirectory(overridesPath);
-            AssetDatabase.CreateAsset(overrides, overridesPath);
+            overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
             ctx.CvrAvatar.overrides = overrides;

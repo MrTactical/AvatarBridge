@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -12,22 +13,91 @@ namespace AvatarBridge
     /// </summary>
     public static class AnimatorAssetSaver
     {
-        public static void Save(AnimatorController controller, string assetPath)
+        /// <summary>
+        /// Writes the controller to <paramref name="assetPath"/> and returns the persisted
+        /// asset — which is NOT always the object passed in, so callers must use what comes
+        /// back when wiring up components.
+        ///
+        /// Converting the same avatar twice used to break the first result. Deleting the file
+        /// takes its .meta with it, and .meta is where the GUID lives, so the rebuilt
+        /// controller came back with a fresh one and every existing reference — an earlier
+        /// converted copy still in the scene, a prefab, an override controller — silently
+        /// became "Missing (Runtime Animator Controller)". So when something is already at the
+        /// path, the new controller is built alongside it and only its bytes are copied over,
+        /// leaving the .meta (and the GUID everything resolves through) untouched.
+        /// </summary>
+        public static AnimatorController Save(AnimatorController controller, string assetPath)
         {
-            FileUtil.DeleteFileOrDirectory(assetPath);
-            AssetDatabase.Refresh();
-            AssetDatabase.CreateAsset(controller, assetPath);
-
-            var seen = new HashSet<Object>();
-            foreach (var layer in controller.layers)
+            return Persist(controller, assetPath, buildPath =>
             {
-                // Generated masks (hand/muscle replacements) live in memory until now.
-                Add(layer.avatarMask, controller, seen);
-                AddMachine(layer.stateMachine, controller, seen);
+                var seen = new HashSet<Object>();
+                foreach (var layer in controller.layers)
+                {
+                    // Generated masks (hand/muscle replacements) live in memory until now.
+                    Add(layer.avatarMask, controller, seen);
+                    AddMachine(layer.stateMachine, controller, seen);
+                }
+                AssetDatabase.SaveAssets();
+                ValidateSavedController(controller, buildPath);
+            });
+        }
+
+        /// <summary>
+        /// Same GUID-stable write for the override controller. ChilloutVR runs the avatar off
+        /// the override, so a changed GUID there breaks the avatar itself, not just references
+        /// to it.
+        /// </summary>
+        public static AnimatorOverrideController SaveOverride(AnimatorOverrideController overrides, string assetPath)
+        {
+            return Persist(overrides, assetPath, null);
+        }
+
+        /// <summary>
+        /// Creates the asset, lets <paramref name="populate"/> attach any sub-objects, and
+        /// returns whatever ends up living at <paramref name="assetPath"/>. When a previous
+        /// build is already there, the new asset is written beside it and only its bytes are
+        /// copied across, so the original .meta survives and the GUID never changes.
+        /// </summary>
+        static T Persist<T>(T asset, string assetPath, System.Action<string> populate) where T : Object
+        {
+            bool replacing = !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(assetPath));
+            string buildPath = replacing ? ScratchPathFor(assetPath) : assetPath;
+
+            FileUtil.DeleteFileOrDirectory(buildPath);
+            AssetDatabase.Refresh();
+            AssetDatabase.CreateAsset(asset, buildPath);
+            populate?.Invoke(buildPath);
+            AssetDatabase.SaveAssets();
+
+            if (!replacing)
+            {
+                return asset;
             }
 
-            AssetDatabase.SaveAssets();
-            ValidateSavedController(controller, assetPath);
+            File.Copy(AbsolutePath(buildPath), AbsolutePath(assetPath), true);
+            AssetDatabase.DeleteAsset(buildPath);
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+
+            // The object we built belonged to the scratch asset just deleted; the live one is
+            // whatever was reimported at the original path.
+            var persisted = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+            if (persisted == null)
+            {
+                Debug.LogError($"[AvatarBridge] Rebuilt asset could not be reloaded from {assetPath}!");
+                return asset;
+            }
+            return persisted;
+        }
+
+        static string ScratchPathFor(string assetPath)
+        {
+            string dir = Path.GetDirectoryName(assetPath).Replace('\\', '/');
+            return $"{dir}/__AvatarBridge_rebuild{Path.GetExtension(assetPath)}";
+        }
+
+        static string AbsolutePath(string assetPath)
+        {
+            return Path.GetFullPath(Path.Combine(Application.dataPath, "..", assetPath));
         }
 
         /// <summary>

@@ -228,15 +228,16 @@ namespace AvatarBridge
         static void SaveController(BridgeContext ctx, AnimatorController master)
         {
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
-            ctx.MergedController = master;
 
+            // Save hands back the persisted asset, which is a different object whenever an
+            // earlier run's controller was overwritten in place to keep its GUID.
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
-            AnimatorAssetSaver.Save(master, controllerPath);
+            master = AnimatorAssetSaver.Save(master, controllerPath);
+            ctx.MergedController = master;
 
             var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
             string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
-            FileUtil.DeleteFileOrDirectory(overridesPath);
-            AssetDatabase.CreateAsset(overrides, overridesPath);
+            overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
             ctx.CvrAvatar.overrides = overrides;

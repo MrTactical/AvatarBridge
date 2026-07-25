@@ -121,6 +121,42 @@ namespace AvatarBridge
             ctx.CvrAvatar.avatarSettings.settings = entries;
             UnityEditor.EditorUtility.SetDirty(ctx.CvrAvatar);
             ctx.Report.Converted(Category, $"{entries.Count} Advanced Avatar Settings entries created");
+            NoteParameterPackers(ctx, entries);
+        }
+
+        /// <summary>Prefixes used by the parameter-packing optimisers, whose synced slots look like junk.</summary>
+        static readonly string[] PackerPrefixes = { "MemOpt", "VFUP_", "VRCFuryUnlimited" };
+
+        /// <summary>
+        /// Flags entries that belong to a parameter-packing optimiser so nobody deletes them.
+        ///
+        /// These tools cut sync cost by making the avatar's real toggles LOCAL and syncing a
+        /// handful of packed slots instead, which animator drivers unpack on the receiving end.
+        /// The slots carry names like "MemOpt_BoolSyncer 0" and land in the ChilloutVR menu as
+        /// meaningless toggles, because the CCK has no way to sync a parameter without giving
+        /// it a menu entry — CVRAdvancedSettingsEntry simply has no hidden flag.
+        ///
+        /// So they cannot be removed, however much they look like clutter: they are the only
+        /// thing carrying those toggles to anyone else in the instance. Deleting them leaves an
+        /// avatar that works perfectly on your own screen and never changes on anyone else's.
+        /// </summary>
+        static void NoteParameterPackers(BridgeContext ctx, List<CVRAdvancedSettingsEntry> entries)
+        {
+            var packed = entries
+                .Where(e => PackerPrefixes.Any(p => (e.machineName ?? "").StartsWith(p)))
+                .Select(e => e.machineName)
+                .ToList();
+            if (packed.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning(Category, $"{packed.Count} packed sync slot(s) must stay in the menu",
+                $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")} — these belong to a " +
+                "parameter-packing optimiser. The avatar's real toggles are local, and these slots are what " +
+                "actually carries them to other players; animator drivers unpack them on arrival. They look " +
+                "like meaningless menu entries because ChilloutVR can't sync a parameter without one. Leave " +
+                "them alone — deleting them gives you an avatar whose toggles work on your screen and never " +
+                "change on anyone else's.");
         }
 
         static CVRAdvancedSettingsEntry BuildEntry(BridgeContext ctx, VRCExpressionParameters.Parameter p,

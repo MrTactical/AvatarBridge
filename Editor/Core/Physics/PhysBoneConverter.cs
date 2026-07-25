@@ -33,18 +33,35 @@ namespace AvatarBridge
                 .GroupBy(pb => pb.rootTransform != null ? pb.rootTransform : pb.transform)
                 .Where(g => g.Count() > 1))
             {
-                int active = group.Count(pb => pb.isActiveAndEnabled);
-                if (active == 0)
+                var enabled = group.Where(pb => pb.isActiveAndEnabled).ToList();
+                if (enabled.Count == 0)
                 {
                     ctx.Report.Warning(Category, $"\"{group.Key.name}\" has NO active physics",
                         $"All {group.Count()} PhysBones on this chain were disabled when baked, so every " +
                         "generated cloth starts disabled and the chain will not move. Enable the variant " +
                         "you want on the converted avatar.");
                 }
+                else if (enabled.Count > 1)
+                {
+                    // Two solvers on one chain always fight — they take turns moving the same
+                    // bones and the result is jitter, not a blend. Nothing is deleted, because
+                    // which variant the author wanted is their call: the extras are switched
+                    // off so only one drives the chain, and a checkbox puts any of them back.
+                    for (int i = 1; i < enabled.Count; i++)
+                    {
+                        enabled[i].enabled = false;
+                    }
+                    ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
+                        $"{enabled.Count} were enabled at once, which would give this chain {enabled.Count} " +
+                        "MagicaCloth components fighting over the same bones. The extras were switched off " +
+                        $"(not deleted), so only \"{DescribeVariant(enabled[0])}\" drives it — VRChat toggles " +
+                        "between these at runtime, so pick the variant you want and re-enable it instead if " +
+                        "this isn't the right one.");
+                }
                 else
                 {
                     ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
-                        $"VRChat toggles between them at runtime; {active} started enabled and only those were " +
+                        "VRChat toggles between them at runtime; 1 started enabled and only that one was " +
                         "activated. Review the generated components and delete the variants you don't need.");
                 }
             }
@@ -101,6 +118,18 @@ namespace AvatarBridge
                     Object.DestroyImmediate(collider);
                 }
             }
+        }
+
+        /// <summary>
+        /// Enough to tell stacked variants apart in the report. They often sit on the same
+        /// GameObject, so the name alone may not distinguish them; the parameter is what the
+        /// animator was switching between.
+        /// </summary>
+        static string DescribeVariant(VRCPhysBone pb)
+        {
+            return string.IsNullOrEmpty(pb.parameter)
+                ? pb.gameObject.name
+                : $"{pb.gameObject.name} ({pb.parameter})";
         }
     }
 }
