@@ -1,83 +1,72 @@
 # Chain presets
 
-Drop a tuned MagicaCloth2 preset in here and AvatarBridge will use it for every chain of that
-kind, on every avatar you convert.
+AvatarBridge sorts every PhysBone into one of 28 **chain classes**, then loads a MagicaCloth2
+preset for that class. This folder is where those presets live, and where you override them.
 
-## Why
+Lookup order, first hit wins:
 
-AvatarBridge doesn't derive MagicaCloth2 values from PhysBone values — the two are different
-kinds of simulation, so the numbers don't correspond (the main README explains this). What it does
-instead is work out **what kind of chain** each PhysBone is, and load a preset someone tuned for
-that kind.
+1. `MC2_AvatarBridge_<Class>.json` — anywhere in the project
+2. the class's MagicaCloth2 fallback — one of MagicaCloth2's own shipped presets
+3. MagicaCloth2's component defaults
 
-MagicaCloth2 ships presets for cloth types — hair, skirt, cape, tail, three generic springs. Those
-are what every class falls back to today. They say nothing about breasts, ears or belly jiggle,
-which is most of what a VRChat avatar's PhysBones actually are.
+## Authoring one
 
-That's the gap this folder fills. **Nothing here is guessed** — if a class has no file, it uses
-MagicaCloth2's own preset exactly as before.
+1. Convert an avatar, find a chain of the kind you want to tune, and tune its MagicaCloth
+   component **in play mode** until it feels right.
+2. Press **Save** on the component's **Preset** dropdown.
+3. Save it here as `MC2_AvatarBridge_<Class>.json`.
 
-## How to author one
+MagicaCloth2 writes exactly the JSON AvatarBridge reads, so there's no conversion step. It takes
+effect on the next conversion.
 
-1. Convert an avatar, then find a chain of the kind you want to tune — say a breast chain.
-2. Select its `MagicaCloth_*` object and tune the MagicaCloth component in play mode until it
-   feels right.
-3. Press **Save** on the component's **Preset** dropdown.
-4. Save it into this folder as `MC2_AvatarBridge_<Class>.json`, using a class name from the table
-   below.
+## What ships here, and what falls back
 
-MagicaCloth2's Save button writes exactly the JSON AvatarBridge reads, so there's no conversion
-step. The file takes effect on the next conversion.
+MagicaCloth2's own presets cover *cloth* — hair, skirt, cape, tail, three generic springs. Where
+one of those already fits, **nothing ships here** and the class falls straight through to it.
+Fourteen classes have no MagicaCloth2 equivalent at all, and those are the files in this folder.
 
-Presets are found anywhere in the project, so you can keep them outside this folder if you'd
-rather — the file **name** is what matters.
+Each shipped preset is a real MagicaCloth2 preset with **four fields changed** — the same four
+MagicaCloth2's own author varies between presets. Radius, inertia, shape restoration and culling
+are untouched, exactly as the base had them.
 
-## Classes
+| class | based on | gravity | damping | angle stiffness | vel. attenuation | reasoning |
+|---|---|---|---|---|---|---|
+| `Breast` | Soft Spring | 0 | 0.25 | 0.30 | 0.70 | no gravity or the bone droops permanently; firmer than Soft Spring so it settles instead of wobbling on |
+| `Butt` | Soft Spring | 0 | 0.30 | 0.35 | 0.65 | heavier, less travel than breast |
+| `Belly` | Soft Spring | 0 | 0.22 | 0.25 | 0.75 | softest and slowest of the body group |
+| `Thigh` | Middle Spring | 0 | 0.30 | 0.40 | 0.60 | tightest — thighs barely travel |
+| `Ear` | Soft Spring | 1.0 | 0.15 | 0.25 | 0.70 | light, quick to settle, a little droop |
+| `Whisker` | Short Hair | 0.5 | 0.12 | 0.20 | 0.60 | very thin, almost weightless |
+| `Fluff` | Short Hair | 1.0 | 0.15 | 0.25 | 0.65 | fur tufts — light, settles fast |
+| `Ahoge` | Short Hair | 1.0 | 0.08 | 0.12 | 0.70 | a single springy strand; lowest damping here so it bounces |
+| `Wing` | Cape | 4.0 | 0.15 | 0.30 | 0.65 | large like a cape but structured, so stiffer |
+| `Horn` | Hard Spring | 0 | 0.35 | 0.70 | 0.35 | nearly rigid — barely moves |
+| `TailShort` | Tail | 0 | 0.10 | 0.25 | 0.55 | stiffer than the long Tail preset; stubby tails don't whip |
+| `Ribbon` | Accessory | 2.0 | 0.10 | 0.12 | 0.65 | very light cloth, low stiffness so it flutters |
+| `Sleeve` | Accessory | 2.0 | 0.12 | 0.18 | 0.65 | cloth, but anchored along the arm |
+| `ClothStrip` | Accessory | 3.0 | 0.10 | 0.15 | 0.70 | generic hanging panel |
 
-Each row is a file you could add. The fallback column is what's used until you do.
+**These are a starting point, not tuned results.** They're reasoned from MagicaCloth2's own values
+and from how each kind of chain should behave — nobody has watched them move. Re-save any of them
+over the top once you have.
 
-| `MC2_AvatarBridge_…` | matched by | falls back to |
-|---|---|---|
-| `Breast` | breast, boob, oppai, bust | Soft Spring |
-| `Butt` | butt, booty, ass, glute, rear | Soft Spring |
-| `Belly` | belly, tummy, tum, stomach, gut | Soft Spring |
-| `Thigh` | thigh | Soft Spring |
-| `Ear` | ear *(not earring)* | Soft Spring |
-| `Whisker` | whisker, beard | Short Hair |
-| `HairFront` | hair + front / bang / fringe | Front Hair |
-| `HairLong` | hair with 5+ bones, twintail, ponytail, braid | Long Hair |
-| `HairShort` | any other hair | Short Hair |
-| `Ahoge` | ahoge, antenna | Short Hair |
-| `TailLong` | tail with 5+ bones | Tail |
-| `TailShort` | shorter tail | Tail |
-| `Wing` | wing | Cape |
-| `Horn` | horn, antler | Hard Spring |
-| `Skirt` | skirt | Skirt |
-| `Dress` | dress, apron | Soft Skirt |
-| `Cape` | cape, cloak, mantle, coat, hood | Cape |
-| `Ribbon` | ribbon, bow | Accessory |
-| `Sleeve` | sleeve, cuff | Accessory |
-| `ClothStrip` | cloth, sash, strap, belt, tassel, scarf, flap | Accessory |
-| `Earring` | earring | Accessory |
-| `Necklace` | necklace, pendant, choker, collar, chain | Accessory |
-| `Charm` | charm, jewel, bell, tag, zipper, keychain | Accessory |
-| `Floaty` | *no name match* — PhysBone had no gravity and high immobile | Soft Spring |
-| `Stiff` | *no name match* — pull/stiffness ≥ 0.6 | Hard Spring |
-| `Springy` | *no name match* — pull/stiffness ≥ 0.3 | Middle Spring |
-| `Loose` | *no name match* — anything else | Soft Spring |
+Classes that fall through to MagicaCloth2's presets, unchanged: `HairFront` → Front Hair,
+`HairLong` → Long Hair, `HairShort` → Short Hair, `TailLong` → Tail, `Skirt` → Skirt, `Dress` →
+Soft Skirt, `Cape` → Cape, `Earring` / `Necklace` / `Charm` → Accessory, and the four
+name-less classes `Floaty` / `Loose` → Soft Spring, `Springy` → Middle Spring, `Stiff` → Hard
+Spring.
 
-The conversion report names the class it read for every chain:
+## After the preset
 
-> `tail — BoneCloth on the MagicaCloth2 "Tail" preset (read as a "TailLong" chain), 3 collider(s).`
-
-So if a chain is classified wrongly, the report says so before you have to work it out from how it
-moves.
+Three PhysBone facts are applied on top, because they mean the same thing in both systems:
+gravity of zero stays zero, negative gravity points up, and `immobile` becomes world influence
+(MagicaCloth2 measures the same thing inverted). So a preset's gravity is a *default* — a chain
+whose author gave it none keeps none. Turn that off with **Fit the preset to the PhysBone**.
 
 ## Caveats
 
 - **The classifier reads bone names.** An unhelpfully named chain (`p_thing.001`) falls through to
-  the character classes, which is a coarse guess. That's why the class is in the report.
+  the name-less classes, which is a coarse guess. The report always names the class it read.
 - **Presets are global.** A file here applies to every avatar you convert. If one avatar wants
-  something different, tune that cloth directly after converting.
-- **Tune in play mode.** MagicaCloth2 builds at runtime, so edit-mode values tell you very little
-  about how a chain will actually move.
+  something different, tune that cloth after converting.
+- **Tune in play mode.** MagicaCloth2 builds at runtime, so edit-mode values tell you very little.
