@@ -137,12 +137,15 @@ namespace AvatarBridge
                 {
                     BridgeLinks.OpenBugReport(lastReport);
                 }
-                if (!string.IsNullOrEmpty(BridgeLinks.Discord))
+                if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
                 {
                     GUILayout.Space(12);
-                    if (GUILayout.Button("Discord  ↗", EditorStyles.linkLabel))
+                    if (GUILayout.Button(new GUIContent($"Discord: {BridgeLinks.DiscordUser}",
+                            "Click to copy the handle. Best for quick questions — please use " +
+                            "GitHub issues for bugs so they don't get lost."), EditorStyles.linkLabel))
                     {
-                        Application.OpenURL(BridgeLinks.Discord);
+                        BridgeLinks.CopyDiscord();
+                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
                     }
                 }
                 GUILayout.FlexibleSpace();
@@ -565,12 +568,14 @@ namespace AvatarBridge
                 {
                     BridgeLinks.OpenBugReport();
                 }
-                if (!string.IsNullOrEmpty(BridgeLinks.Discord))
+                if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
                 {
                     GUILayout.Space(12);
-                    if (GUILayout.Button("Discord  ↗", EditorStyles.linkLabel))
+                    if (GUILayout.Button(new GUIContent($"Discord: {BridgeLinks.DiscordUser}",
+                            "Click to copy the handle."), EditorStyles.linkLabel))
                     {
-                        Application.OpenURL(BridgeLinks.Discord);
+                        BridgeLinks.CopyDiscord();
+                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
                     }
                 }
                 GUILayout.FlexibleSpace();

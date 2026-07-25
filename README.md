@@ -363,6 +363,10 @@ Please re-run on the [latest release](https://github.com/MrTactical/AvatarBridge
 before reporting, and note that logs contain your project's file paths (and CVR logs your
 display name) — skim and redact if you'd rather not post them.
 
+**Quick questions** — *"is this expected?"*, *"which mode should I use?"* — can go to **`mrtactical`**
+on Discord instead. Anything reproducible is better off as a GitHub issue: those get tracked,
+linked to a fix and closed with a release, whereas Discord messages scroll away.
+
 ## Credits
 
 - Gesture tables, CVR core parameters and several conversion patterns were studied from

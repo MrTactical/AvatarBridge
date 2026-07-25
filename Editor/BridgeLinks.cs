@@ -19,8 +19,16 @@ namespace AvatarBridge
         public const string Releases = Repo + "/releases/latest";
         public const string Troubleshooting = Repo + "#install-troubleshooting";
 
-        /// <summary>Community chat. Empty string hides every Discord button.</summary>
-        public const string Discord = "";
+        /// <summary>
+        /// Maintainer's Discord handle for quick questions. A username isn't a URL, so the
+        /// UI offers it as copy-to-clipboard rather than a link. Empty hides those buttons.
+        /// </summary>
+        public const string DiscordUser = "mrtactical";
+
+        public static void CopyDiscord()
+        {
+            EditorGUIUtility.systemCopyBuffer = DiscordUser;
+        }
 
         /// <summary>Opens a bug report with the Environment field already filled in.</summary>
         public static void OpenBugReport(BridgeReport report = null)

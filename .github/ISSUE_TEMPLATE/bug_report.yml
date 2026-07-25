@@ -12,6 +12,9 @@ body:
         > ℹ️ Reports and logs contain your Unity project's file paths, and ChilloutVR logs contain your display name.
         > Have a skim before posting if that matters to you — feel free to redact.
 
+        For a quick question rather than a bug, the maintainer is **`mrtactical`** on Discord.
+        Please keep actual bugs here though — issues get tracked and closed with a release, Discord messages get lost.
+
   - type: textarea
     id: what_happened
     attributes:
