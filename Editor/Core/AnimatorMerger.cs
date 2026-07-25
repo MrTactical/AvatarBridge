@@ -1210,11 +1210,17 @@ namespace AvatarBridge
 
             string Rename(string n) => n != null && renames.TryGetValue(n, out var r) ? r : n;
 
-            foreach (var param in master.parameters)
+            // Hold the array. AnimatorController.parameters hands back a fresh copy on every
+            // read, so iterating the property and then assigning the property re-reads an
+            // untouched copy and throws the renames away — leaving the DECLARATION under the
+            // illegal name while every condition, driver and menu entry below moves to the
+            // clean one. Every other parameter edit in this file already does it this way.
+            var parameters = master.parameters;
+            foreach (var param in parameters)
             {
                 param.name = Rename(param.name);
             }
-            master.parameters = master.parameters;
+            master.parameters = parameters;
 
             foreach (var layer in master.layers)
             {
