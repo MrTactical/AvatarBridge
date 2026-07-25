@@ -53,6 +53,7 @@ namespace AvatarBridge
                 AvatarScalerInjector.Inject(controller, ctx);
                 SaveController(ctx, controller);
 
+                BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();

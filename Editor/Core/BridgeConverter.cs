@@ -71,6 +71,8 @@ namespace AvatarBridge
                 }
 
                 ReportSyncUsage(ctx);
+                // Last, so it validates and describes the avatar as it will actually ship.
+                BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();

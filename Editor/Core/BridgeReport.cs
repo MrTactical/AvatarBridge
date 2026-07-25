@@ -33,6 +33,15 @@ namespace AvatarBridge
         /// <summary>Asset path of the saved ConversionReport.md (set once written).</summary>
         public string SavedReportPath;
 
+        /// <summary>
+        /// Factual dump of the converted avatar, appended to the end of the report inside a
+        /// collapsed &lt;details&gt; block. Every bug diagnosed on this project so far needed
+        /// someone to grep the generated .controller by hand — which parameters exist, what
+        /// reads them, which conditions compare what. This puts those answers in the file the
+        /// reporter already attaches, so a bug report arrives answerable.
+        /// </summary>
+        public string Appendix;
+
         public void Add(ReportStatus status, string category, string subject, string detail = "")
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });
@@ -93,6 +102,18 @@ namespace AvatarBridge
                     }
                     sb.AppendLine();
                 }
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(Appendix))
+            {
+                sb.AppendLine("<details>");
+                sb.AppendLine("<summary><b>Diagnostics</b> — what the converted avatar actually " +
+                              "contains. Please leave this in when reporting a bug.</summary>");
+                sb.AppendLine();
+                sb.Append(Appendix);
+                sb.AppendLine();
+                sb.AppendLine("</details>");
                 sb.AppendLine();
             }
             return sb.ToString();
