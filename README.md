@@ -160,7 +160,7 @@ Every row carries an honest status:
 | VRC Head Chop | `FPRExclusion` | 🔷 | ⚠️ show/hide only — fractional scale factors can't be represented |
 | VRC Spatial Audio Source | `AudioSource` spatial settings | 🔷 | ⚠️ approximation; gain curve not reproduced exactly |
 | `Viseme`, `Voice`, `Seated`, `IsOnFriendsList`… | `VisemeIdx`, `VisemeLoudness`, `Sitting`, `IsFriend`… | 🔷 | CVR core parameter renames |
-| Menu **Button** controls | `<impulse=0.1>` auto-reset parameters | 🔷 | CCK 3-era convention, not re-verified on CCK 4 |
+| Menu **Button** controls | ordinary toggles | ⚠️ | ChilloutVR's menu has no momentary control, so a Button becomes a toggle you switch off again. (Before 1.1.3 these got a `<impulse=0.1>` suffix — a CCK 3 convention that CCK 4 rejects, breaking the Advanced Settings inspector.) |
 
 **Movement parameters.** CVR now has `VelocityX/Y/Z` core parameters (world-space speed), the
 same idea as VRChat's, so AvatarBridge keeps them under their own names. CVR's `MovementX/Y`

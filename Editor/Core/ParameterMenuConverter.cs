@@ -143,10 +143,16 @@ namespace AvatarBridge
                 : FriendlyParamName(p.name);
             display = MakeUnique(display, usedNames);
 
-            // Menu buttons become impulse parameters (auto-reset shortly after being set).
+            // VRChat menu Buttons are momentary — held while pressed, then reset. ChilloutVR's
+            // menu has no equivalent control type (Toggle/Dropdown/Color/Slider/Input… only), so
+            // they convert as ordinary toggles: the value stays until switched off.
             if (hasMenu && paramUses.All(u => u.Type == VRCExpressionsMenu.Control.ControlType.Button))
             {
                 ctx.ImpulseParameters.Add(p.name);
+                ctx.Report.Approximated(Category, p.name,
+                    $"\"{display}\" was a momentary Button in VRChat; ChilloutVR has no button control, " +
+                    "so it becomes a toggle you switch off again. If it drives a one-shot effect, add a " +
+                    "state in the animator that drives the parameter back to 0.");
             }
 
             switch (p.valueType)

@@ -21,7 +21,7 @@ namespace AvatarBridge
     ///  - GestureLeftWeight/RightWeight       -> fed by a CVRParameterStream (trigger value)
     ///  - VRC parameter names                 -> CVR core names (Viseme -> VisemeIdx, ...)
     ///  - non-synced parameters               -> "#" prefix (CVR local-only convention)
-    ///  - menu Buttons                        -> "&lt;impulse=0.1&gt;" auto-reset parameters
+    ///  - menu Buttons                        -> plain toggles (CVR has no momentary control)
     ///  - VRCAvatarParameterDriver            -> CCK AnimatorDriver
     ///  - VRC built-in avatar masks           -> equivalent generated masks
     /// </summary>
@@ -158,6 +158,7 @@ namespace AvatarBridge
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
             // conditions behind). ChilloutVR silently drops such transitions.
             ReconcileConditionModes(master, ctx);
+            VerifyMenuParameterNames(master, ctx);
             PruneDeadMenuEntries(master, ctx);
             CompactIntDropdowns(master, ctx);
 
@@ -751,10 +752,11 @@ namespace AvatarBridge
                 {
                     result = "#" + result;
                 }
-                if (ctx.ImpulseParameters.Contains(name))
-                {
-                    result += "<impulse=0.1>";
-                }
+                // NOTE: menu Buttons used to get a "<impulse=0.1>" suffix here — a ChilloutVR 3
+                // era convention. CCK 4 has no such feature, and worse, its Advanced Settings
+                // inspector only accepts [a-zA-Z0-9/-_#] in a machine name: the '<', '>', '=' and
+                // '.' broke the parameter picker for that entry and every control drawn after it,
+                // leaving most of the menu inert. Buttons now convert as plain toggles.
                 return result;
             }
 
@@ -1265,6 +1267,135 @@ namespace AvatarBridge
                     "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
                     "what leaves face-tracking's RemoteModeActive local/remote gate dead.");
             }
+        }
+
+        /// <summary>
+        /// Characters ChilloutVR accepts in a menu parameter name. Anything else breaks the
+        /// CCK's Advanced Settings inspector — its own field sanitiser is
+        /// <c>Regex.Replace(name, "[^a-zA-Z0-9/\-_#]", "")</c>, and feeding the parameter
+        /// picker a name outside that set takes out every control drawn after it.
+        /// </summary>
+        static readonly System.Text.RegularExpressions.Regex IllegalMenuNameChars =
+            new System.Text.RegularExpressions.Regex(@"[^a-zA-Z0-9/\-_#]");
+
+        /// <summary>
+        /// Last line of defence: renames any parameter whose name ChilloutVR can't accept,
+        /// keeping the menu entry and the animator in step. Nothing should reach here — the
+        /// rename pass already produces CCK-safe names — but a menu full of dead controls is
+        /// an expensive way to find out otherwise, so it's checked rather than assumed.
+        /// </summary>
+        static void VerifyMenuParameterNames(AnimatorController master, BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar.avatarSettings.settings;
+            if (settings == null)
+            {
+                return;
+            }
+
+            var taken = new HashSet<string>(master.parameters.Select(p => p.name));
+            var renames = new Dictionary<string, string>();
+            foreach (var entry in settings)
+            {
+                string name = entry?.machineName;
+                if (string.IsNullOrEmpty(name) || !IllegalMenuNameChars.IsMatch(name) ||
+                    renames.ContainsKey(name))
+                {
+                    continue;
+                }
+                string clean = IllegalMenuNameChars.Replace(name, "");
+                if (string.IsNullOrEmpty(clean))
+                {
+                    clean = "Param";
+                }
+                string candidate = clean;
+                int suffix = 2;
+                while (taken.Contains(candidate))
+                {
+                    candidate = clean + suffix++;
+                }
+                taken.Add(candidate);
+                renames[name] = candidate;
+            }
+            if (renames.Count == 0)
+            {
+                return;
+            }
+
+            string Rename(string n) => n != null && renames.TryGetValue(n, out var r) ? r : n;
+
+            foreach (var param in master.parameters)
+            {
+                param.name = Rename(param.name);
+            }
+            master.parameters = master.parameters;
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    RenameConditions(machine.anyStateTransitions, Rename);
+                    RenameConditions(machine.entryTransitions, Rename);
+                    foreach (var behaviour in machine.behaviours)
+                    {
+                        RenameInDriver(behaviour as AnimatorDriver, Rename);
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        state.timeParameter = Rename(state.timeParameter);
+                        state.speedParameter = Rename(state.speedParameter);
+                        state.mirrorParameter = Rename(state.mirrorParameter);
+                        state.cycleOffsetParameter = Rename(state.cycleOffsetParameter);
+                        RenameMotionParameters(state.motion, Rename);
+                        RenameConditions(state.transitions, Rename);
+                        foreach (var behaviour in state.behaviours)
+                        {
+                            RenameInDriver(behaviour as AnimatorDriver, Rename);
+                        }
+                    }
+                });
+            }
+
+            foreach (var entry in settings)
+            {
+                if (entry != null)
+                {
+                    entry.machineName = Rename(entry.machineName);
+                }
+            }
+            foreach (var trigger in ctx.CvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
+            {
+                trigger.settingName = Rename(trigger.settingName);
+                foreach (var task in trigger.enterTasks) task.settingName = Rename(task.settingName);
+                foreach (var task in trigger.exitTasks) task.settingName = Rename(task.settingName);
+                foreach (var task in trigger.stayTasks) task.settingName = Rename(task.settingName);
+            }
+            EditorUtility.SetDirty(ctx.CvrAvatar);
+
+            foreach (var pair in renames)
+            {
+                ctx.Report.Warning(Category, $"Parameter \"{pair.Key}\" renamed to \"{pair.Value}\"",
+                    "ChilloutVR only accepts letters, digits, '/', '-', '_' and '#' in a menu parameter " +
+                    "name; the original would have broken the Advanced Settings inspector.");
+            }
+        }
+
+        /// <summary>Renames blend-tree parameters in place (no clip rebinding — names only).</summary>
+        static void RenameMotionParameters(Motion motion, Func<string, string> rename)
+        {
+            if (!(motion is BlendTree tree))
+            {
+                return;
+            }
+            tree.blendParameter = rename(tree.blendParameter);
+            tree.blendParameterY = rename(tree.blendParameterY);
+            var children = tree.children;
+            for (int i = 0; i < children.Length; i++)
+            {
+                children[i].directBlendParameter = rename(children[i].directBlendParameter);
+                RenameMotionParameters(children[i].motion, rename);
+            }
+            tree.children = children;
         }
 
         /// <summary>
