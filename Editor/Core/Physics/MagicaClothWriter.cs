@@ -101,13 +101,18 @@ namespace AvatarBridge
             // where particles can touch but never overlap. Presets are authored for roughly
             // human-sized chains, so this matters for them too on a dense or tiny rig.
             float spacing = MeasureBoneSpacing(data.Root);
-            if (spacing > 0f && sdata.radius.value > spacing * 0.5f)
+            if (ctx.Settings.capParticleRadius && spacing > 0f && sdata.radius.value > spacing * 0.5f)
             {
                 float was = sdata.radius.value;
                 sdata.radius.value = spacing * 0.5f;   // assign directly, keeping any depth curve
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"Particle radius {was:0.###} reduced to {sdata.radius.value:0.###} — anything wider than " +
                     "the gap between bones makes neighbouring particles overlap and shove each other apart.");
+            }
+
+            if (ctx.Settings.transferAngleLimits)
+            {
+                ApplyAngleLimit(ctx, data, sdata);
             }
 
             // Ignored transforms become "Invalid" (excluded) bones.
@@ -263,7 +268,8 @@ namespace AvatarBridge
         /// </summary>
         static void ReportUnconvertibleFeatures(BridgeContext ctx, PhysBoneChainData data)
         {
-            if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName))
+            if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName)
+                && !ctx.Settings.transferAngleLimits)
             {
                 bool polar = data.LimitTypeName == "Polar";
                 float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
@@ -320,6 +326,64 @@ namespace AvatarBridge
                         $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
                 }
             }
+        }
+
+        /// <summary>
+        /// The 1.1.2 angle-limit transfer, behind the "Transfer angle limits" option.
+        ///
+        /// MagicaCloth2's limit constrains particle POSITIONS against a baseline pose where
+        /// PhysBone's constrains bone ROTATION against its parent, and MagicaCloth2's stiffness
+        /// defaults to 1 — a rigid snap-back. On a chain that is also animated, that fights the
+        /// animation every frame, which is what wrecked one test avatar's jiggle chains. On
+        /// another avatar the same transfer gave the best result the tool has produced. It is
+        /// avatar-dependent, so it is offered rather than decided; lower Stiffness on the cloth
+        /// if a chain snaps.
+        /// </summary>
+        static void ApplyAngleLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
+            {
+                return;
+            }
+            float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
+            bool applied = TrySetMember(sdata.angleLimitConstraint, "useAngleLimit", true)
+                           && TrySetCurveValue(sdata.angleLimitConstraint, "limitAngle", limitAngle);
+            if (applied)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.LimitTypeName} limit transferred as a symmetric {limitAngle:0}° angle limit. " +
+                    "If this chain snaps back or shakes, lower Angle Limit > Stiffness on the cloth, or turn " +
+                    "off \"Transfer angle limits\" and convert again.");
+            }
+            else
+            {
+                ctx.Report.Skipped(Category, data.Root.name,
+                    $"Angle limit ({data.LimitTypeName}) could not be applied on this MagicaCloth2 version.");
+            }
+        }
+
+        static bool TrySetCurveValue(object target, string fieldName, float value)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field == null)
+            {
+                return false;
+            }
+            if (field.GetValue(target) is CurveSerializeData curveData)
+            {
+                curveData.SetValue(value);
+                return true;
+            }
+            if (field.FieldType == typeof(float))
+            {
+                field.SetValue(target, value);
+                return true;
+            }
+            return false;
         }
 
         /// <summary>Average distance between bones down the chain, used to bound the particle radius.</summary>

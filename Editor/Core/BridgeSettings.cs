@@ -85,6 +85,12 @@ namespace AvatarBridge
         // written by MagicaCloth2's own author is a better starting point. Structure — bones,
         // colliders, ignores — still comes from the PhysBone either way.
         public bool useMagicaPresets = true;
+        // Both of these were unconditional in 1.1.2, which one tester reports as the best
+        // MagicaCloth2 result they've had — while the angle limit wrecked the jiggle chains on
+        // a different avatar, and an uncapped radius turned a 0.5 into metre-wide particles on
+        // a third. They are genuinely avatar-dependent, so they are exposed rather than decided.
+        public bool transferAngleLimits = false;
+        public bool capParticleRadius = true;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided
         // in CVR exactly as it was in VRChat — turning this on improves on that rather than

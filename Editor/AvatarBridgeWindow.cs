@@ -256,6 +256,21 @@ namespace AvatarBridge
                             "point. Bones, colliders and ignored transforms still come from the PhysBone. " +
                             "Turn off to derive every value from the PhysBone instead."),
                         settings.useMagicaPresets);
+                    settings.transferAngleLimits = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Transfer angle limits (1.1.2 behaviour)",
+                            "Copy each PhysBone's angle limit onto the cloth. MagicaCloth2's limit pushes on " +
+                            "particle positions rather than bone rotation, at a stiffness that snaps back hard, " +
+                            "so on some avatars this makes chains shake — and on others it's the best result " +
+                            "the tool gives. Try it if the physics feels loose; lower Angle Limit > Stiffness " +
+                            "on any chain that snaps."),
+                        settings.transferAngleLimits);
+                    settings.capParticleRadius = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Cap particle radius to bone spacing",
+                            "MagicaCloth2's radius is the particle size, not just a collision radius, and " +
+                            "particles wider than the gap between bones shove each other apart. Leave on unless " +
+                            "chains feel too thin — one avatar carried a 0.5 radius that VRChat ignored and " +
+                            "MagicaCloth2 turned into metre-wide spheres."),
+                        settings.capParticleRadius);
                     settings.autoAssignNearbyColliders = EditorGUILayout.ToggleLeft(
                         new GUIContent("Auto-assign nearby colliders (experimental)",
                             "Gives each cloth the avatar's own colliders that it starts clear of and could " +

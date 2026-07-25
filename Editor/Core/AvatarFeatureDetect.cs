@@ -33,6 +33,7 @@ namespace AvatarBridge
 
             var lefts = new List<string>();
             var rights = new List<string>();
+            var combineds = new List<string>();
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
                 string name = mesh.GetBlendShapeName(i);
@@ -51,9 +52,10 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    combined = combined ?? name;
+                    combineds.Add(name);
                 }
             }
+            combined = PlainestBlink(combineds);
 
             // Prefer two shapes that are the same name but for the side token. A mesh often
             // carries more than one blink family — "! - Blink L"/"! - Blink R" alongside
@@ -73,6 +75,33 @@ namespace AvatarBridge
 
             left = lefts.FirstOrDefault();
             right = rights.FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Of several both-eyes candidates, the one carrying the least decoration around the
+        /// word itself. Meshes accumulate leftovers — one avatar had both "blink" and
+        /// "blink_old", and taking whichever came first in mesh order wired the eyes to the
+        /// dead one. Ties keep mesh order.
+        /// </summary>
+        static string PlainestBlink(List<string> names)
+        {
+            string best = null;
+            int bestExtra = int.MaxValue;
+            foreach (string name in names)
+            {
+                string core = Regex.Replace(name.ToLowerInvariant(), @"[ _.\-]", "");
+                if (core.StartsWith("vrc"))
+                {
+                    core = core.Substring(3);
+                }
+                int extra = core.Length - "blink".Length;
+                if (extra < bestExtra)
+                {
+                    bestExtra = extra;
+                    best = name;
+                }
+            }
+            return best;
         }
 
         /// <summary>

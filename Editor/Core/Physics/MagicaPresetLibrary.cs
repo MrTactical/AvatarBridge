@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using MagicaCloth2;
@@ -48,22 +49,23 @@ namespace AvatarBridge
         public static string ChooseFor(PhysBoneChainData data)
         {
             string n = data.Root.name.ToLowerInvariant();
+            var tokens = Tokenize(data.Root.name);
 
             // Hair is checked first on purpose: "twintail" and "ponytail" contain "tail" but
             // are hair, and want hair's lighter, faster settling rather than a tail's weight.
-            if (Has(n, "hair", "bang", "ahoge", "fringe", "twintail", "ponytail", "pigtail", "braid"))
+            if (HasToken(tokens, "bang") || Has(n, "hair", "twintail", "ponytail", "pigtail", "braid", "ahoge", "fringe"))
             {
-                if (Has(n, "front", "bang", "fringe", "ahoge"))
+                if (HasToken(tokens, "front", "bang") || Has(n, "fringe", "ahoge"))
                 {
                     return FrontHair;
                 }
                 return CountBones(data.Root) >= 5 ? LongHair : ShortHair;
             }
-            if (Has(n, "tail"))
+            if (HasToken(tokens, "tail"))
             {
                 return Tail;
             }
-            if (Has(n, "cape", "cloak", "mantle", "coat"))
+            if (HasToken(tokens, "cape", "cloak", "mantle", "coat"))
             {
                 return Cape;
             }
@@ -71,8 +73,8 @@ namespace AvatarBridge
             {
                 return Skirt;
             }
-            if (Has(n, "earring", "ribbon", "bell", "charm", "jewel", "pendant", "necklace",
-                     "zipper", "collar", "strap", "tag", "accessor"))
+            if (HasToken(tokens, "bell", "tag", "collar", "strap")
+                || Has(n, "earring", "ribbon", "charm", "jewel", "pendant", "necklace", "zipper", "accessor"))
             {
                 return Accessory;
             }
@@ -150,6 +152,12 @@ namespace AvatarBridge
             return json;
         }
 
+        /// <summary>
+        /// Substring match, for needles distinctive enough to be safe anywhere in a name
+        /// ("hair" inside "backhair"). Short words must not use this: "bell" is inside "belly",
+        /// "coat" inside "petticoat", "tag" inside "stage" — all of which shipped as
+        /// mis-assigned presets before the split.
+        /// </summary>
         static bool Has(string haystack, params string[] needles)
         {
             foreach (string needle in needles)
@@ -160,6 +168,38 @@ namespace AvatarBridge
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Whole-word match, for short needles that hide inside unrelated words. A trailing
+        /// "s" counts, so "Bagpack Straps" still reads as straps.
+        /// </summary>
+        static bool HasToken(string[] tokens, params string[] needles)
+        {
+            foreach (string token in tokens)
+            {
+                foreach (string needle in needles)
+                {
+                    if (token == needle || (token.Length == needle.Length + 1
+                        && token[token.Length - 1] == 's' && token.StartsWith(needle)))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Splits a bone name into words on separators, digits and camelCase humps, so
+        /// "Yaoomi_DemonTail" yields "tail" while "detail_bone" does not.
+        /// </summary>
+        static string[] Tokenize(string name)
+        {
+            string spaced = Regex.Replace(name, @"([a-z0-9])([A-Z])", "$1 $2");
+            return spaced.ToLowerInvariant()
+                .Split(new[] { ' ', '_', '.', '-', '(', ')', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' },
+                    System.StringSplitOptions.RemoveEmptyEntries);
         }
 
         /// <summary>Depth of the chain, following first children — long hair hangs differently to short.</summary>
