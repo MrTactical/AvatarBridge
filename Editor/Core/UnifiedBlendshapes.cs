@@ -72,8 +72,53 @@ namespace AvatarBridge
             return d;
         }
 
+        // Alternate blendshape names for the same shape under other tracking standards. The
+        // rig drives Unified-Expressions names; a mesh may instead carry ARKit names, so a UE
+        // shape resolves against any of these. Only entries whose names actually DIFFER from UE
+        // beyond capitalization need listing (pure case differences are handled directly).
+        // ARKit's 52 shapes are Apple-fixed, so this mapping is stable; extend with SRanipal /
+        // Meta Movement here if needed. (Applied defensively — only used when the alt name is
+        // actually present on the mesh, so a wrong entry simply never fires.)
+        static readonly Dictionary<string, string[]> AltNames =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "EyeClosedLeft",   new[] { "eyeBlinkLeft" } },   // ARKit
+                { "EyeClosedRight",  new[] { "eyeBlinkRight" } },
+                { "MouthClosed",     new[] { "mouthClose" } },
+                { "LipFunnel",       new[] { "mouthFunnel" } },
+                { "LipPucker",       new[] { "mouthPucker" } },
+                { "LipSuckUpper",    new[] { "mouthRollUpper" } },
+                { "LipSuckLower",    new[] { "mouthRollLower" } },
+                { "MouthRaiserUpper", new[] { "mouthShrugUpper" } },
+                { "MouthRaiserLower", new[] { "mouthShrugLower" } },
+            };
+
         /// <summary>
-        /// Decides, for each shape the rig drives that the mesh lacks, how to reconcile it.
+        /// Returns the mesh's actual shape name for a UE shape, matching case-insensitively and
+        /// through the alternate-name table (ARKit etc.); null if the mesh has no equivalent.
+        /// </summary>
+        static string ResolveOnMesh(string ueName, Dictionary<string, string> meshActual)
+        {
+            if (meshActual.TryGetValue(ueName.ToLowerInvariant(), out var exact))
+            {
+                return exact; // same name, possibly different casing
+            }
+            if (AltNames.TryGetValue(ueName, out var alts))
+            {
+                foreach (var alt in alts)
+                {
+                    if (meshActual.TryGetValue(alt.ToLowerInvariant(), out var altActual))
+                    {
+                        return altActual;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Decides, for each shape the rig drives, how to reconcile it against the mesh's actual
+        /// shapes — matching by exact name, case, ARKit-vs-UE alias, or combined/split rules.
         /// <paramref name="meshActual"/> maps a lowercased shape name to its real casing.
         /// </summary>
         public static Dictionary<string, ShapeAction> BuildPlan(
@@ -88,9 +133,9 @@ namespace AvatarBridge
             var collapseCount = new Dictionary<string, int>();
             foreach (var shape in rig)
             {
-                if (meshActual.ContainsKey(shape.ToLowerInvariant())) continue;
+                if (ResolveOnMesh(shape, meshActual) != null) continue;
                 if (ComponentToCombined.TryGetValue(shape.ToLowerInvariant(), out var comb)
-                    && meshActual.ContainsKey(comb.ToLowerInvariant()))
+                    && ResolveOnMesh(comb, meshActual) != null)
                 {
                     collapseCount[comb] = collapseCount.TryGetValue(comb, out var n) ? n + 1 : 1;
                 }
@@ -98,28 +143,41 @@ namespace AvatarBridge
 
             foreach (var shape in rig)
             {
-                if (meshActual.ContainsKey(shape.ToLowerInvariant())) continue; // mesh has it → keep
+                var actual = ResolveOnMesh(shape, meshActual);
+                if (actual != null)
+                {
+                    // Present as-is → keep; present under a different name/case → redirect to it.
+                    if (actual != shape)
+                    {
+                        plan[shape] = new ShapeAction { Op = ShapeOp.Redirect, Targets = new[] { actual }, Scale = 1f };
+                    }
+                    continue;
+                }
 
                 // Collapse: this is a component and the mesh has its combined shape.
-                if (ComponentToCombined.TryGetValue(shape.ToLowerInvariant(), out var combined)
-                    && meshActual.TryGetValue(combined.ToLowerInvariant(), out var combinedActual))
+                if (ComponentToCombined.TryGetValue(shape.ToLowerInvariant(), out var combined))
                 {
-                    int n = collapseCount.TryGetValue(combined, out var c) ? c : 1;
-                    plan[shape] = new ShapeAction
+                    var combinedActual = ResolveOnMesh(combined, meshActual);
+                    if (combinedActual != null)
                     {
-                        Op = ShapeOp.Redirect,
-                        Targets = new[] { combinedActual },
-                        Scale = 1f / Math.Max(1, n)
-                    };
-                    continue;
+                        int n = collapseCount.TryGetValue(combined, out var c) ? c : 1;
+                        plan[shape] = new ShapeAction
+                        {
+                            Op = ShapeOp.Redirect,
+                            Targets = new[] { combinedActual },
+                            Scale = 1f / Math.Max(1, n)
+                        };
+                        continue;
+                    }
                 }
 
                 // Expand: this is a combined shape and the mesh has some of its components.
                 if (Combined.TryGetValue(shape, out var comps))
                 {
                     var present = comps
-                        .Where(x => meshActual.ContainsKey(x.ToLowerInvariant()))
-                        .Select(x => meshActual[x.ToLowerInvariant()])
+                        .Select(x => ResolveOnMesh(x, meshActual))
+                        .Where(x => x != null)
+                        .Distinct()
                         .ToArray();
                     if (present.Length > 0)
                     {

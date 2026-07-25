@@ -165,9 +165,11 @@ fights over the same blendshapes.
   rig (**bundled** with AvatarBridge — no separate import) and rebuilds it onto your avatar:
   its layers and ~56 parameters are copied into the generated controller, every clip is
   repathed onto your actual eye bones and face mesh, and its shape vocabulary is **reconciled
-  to whatever combined/split blendshapes your mesh actually has** (VRCFT blended-shape rules —
-  e.g. driving a single `LipFunnel` when the rig has the four quadrants, or vice versa). Direct
-  float params, no binary encoding or smoothing — smoother and more expressive than the built-in.
+  to whatever blendshapes your mesh actually has** — matching by name, casing, **ARKit ↔ Unified
+  Expressions** aliases (e.g. `eyeBlinkLeft` → `EyeClosedLeft`, `mouthClose` → `MouthClosed`),
+  and combined/split rules (a single `LipFunnel` vs the four quadrants). So an **ARKit avatar**
+  works with the UE rig without renaming a thing. Direct float params, no binary encoding or
+  smoothing — smoother and more expressive than the built-in.
 - **None** — leave face tracking entirely to you.
 
 **Either mode still needs a tracking source at runtime** — this is true of *any* CVR

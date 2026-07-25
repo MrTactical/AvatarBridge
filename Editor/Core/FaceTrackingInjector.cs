@@ -204,15 +204,17 @@ namespace AvatarBridge
         static void ReportReconciliation(BridgeContext ctx, string meshName,
             Dictionary<string, ShapeAction> plan, List<string> unmapped)
         {
-            int collapsed = plan.Count(kv => kv.Value.Op == ShapeOp.Redirect);
+            int redirected = plan.Count(kv => kv.Value.Op == ShapeOp.Redirect && kv.Value.Scale >= 1f);
+            int collapsed = plan.Count(kv => kv.Value.Op == ShapeOp.Redirect && kv.Value.Scale < 1f);
             int expanded = plan.Count(kv => kv.Value.Op == ShapeOp.Expand);
-            if (collapsed > 0 || expanded > 0)
+            if (redirected + collapsed + expanded > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Reconciled {collapsed + expanded} FT blendshape(s) to \"{meshName}\"",
-                    $"Mapped the rig's shapes to what the mesh has via VRCFT blended-shape rules — " +
-                    $"{collapsed} split→combined (scaled to avoid over-driving), {expanded} combined→split. " +
-                    "An approximation; asymmetric expressions on combined-only meshes land at partial strength.");
+                    $"Reconciled {redirected + collapsed + expanded} FT blendshape(s) to \"{meshName}\"",
+                    $"Mapped the rig's Unified-Expressions shapes onto what the mesh actually has — " +
+                    $"{redirected} name remap(s) (ARKit / casing), {collapsed} split→combined (scaled to avoid " +
+                    $"over-driving), {expanded} combined→split. Combined/split is an approximation; asymmetric " +
+                    "expressions on combined-only meshes land at partial strength.");
             }
             if (unmapped != null && unmapped.Count > 0)
             {
