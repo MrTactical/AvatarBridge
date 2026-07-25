@@ -305,6 +305,65 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(category, "All VRC components removed");
             }
+
+            StripCamerasAndListeners(ctx, category);
+            StripMissingScripts(ctx, category);
+        }
+
+        /// <summary>
+        /// Cameras (and their AudioListener companions) on an avatar break ChilloutVR:
+        /// its asset filter walks every Camera to sanitise render textures
+        /// (SharedFilter.HandleRenderTextureForCamera), and a stray/half-set camera makes
+        /// that NRE, aborting the whole avatar filter — the avatar then shows as the "Error"
+        /// robot. Avatars have no business carrying a Camera or AudioListener in CVR, so drop
+        /// them. The GameObjects (often constraint targets, e.g. a "3rd Person Camera" rig)
+        /// stay; only these components go.
+        /// </summary>
+        static void StripCamerasAndListeners(BridgeContext ctx, string category)
+        {
+            int cameras = 0, listeners = 0;
+            foreach (var cam in ctx.Target.GetComponentsInChildren<Camera>(true))
+            {
+                if (cam == null) continue;
+                var flare = cam.GetComponent<FlareLayer>();
+                if (flare != null) Object.DestroyImmediate(flare);
+                Object.DestroyImmediate(cam);
+                cameras++;
+            }
+            foreach (var listener in ctx.Target.GetComponentsInChildren<AudioListener>(true))
+            {
+                if (listener == null) continue;
+                Object.DestroyImmediate(listener);
+                listeners++;
+            }
+            if (cameras > 0 || listeners > 0)
+            {
+                ctx.Report.Converted(category,
+                    $"Removed {cameras} camera(s) and {listeners} audio listener(s)",
+                    "ChilloutVR's asset filter crashes on avatar cameras (blocking the whole avatar); " +
+                    "avatars shouldn't carry a Camera or AudioListener. The GameObjects were kept.");
+            }
+        }
+
+        /// <summary>
+        /// Missing scripts (e.g. a VRChat component whose script isn't present in this project)
+        /// survive the VRC sweep as null component slots — the sweep skips nulls — and then
+        /// trip CVR up on load ("The referenced script on this Behaviour ... is missing!").
+        /// Strip them from every GameObject.
+        /// </summary>
+        static void StripMissingScripts(BridgeContext ctx, string category)
+        {
+            int removed = 0;
+            foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                removed += GameObjectUtility.RemoveMonoBehavioursWithMissingScript(t.gameObject);
+            }
+            if (removed > 0)
+            {
+                ctx.Report.Converted(category, $"Removed {removed} missing-script component(s)",
+                    "Empty/missing MonoBehaviour slots left over from VRChat components — CVR flags these on load.");
+            }
         }
     }
 }

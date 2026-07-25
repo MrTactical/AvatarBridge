@@ -153,6 +153,11 @@ namespace AvatarBridge
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
+            // Run last: after every merge and injection, make sure no transition conditions
+            // it on a parameter using a comparison its final type can't express (e.g. a
+            // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
+            // conditions behind). ChilloutVR silently drops such transitions.
+            ReconcileConditionModes(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
             ctx.MergedController = master;
@@ -1127,6 +1132,137 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category, $"{boolified.Count} toggle parameter(s) retyped Float -> Bool",
                 "They were only used in conditions; menu and sync now use real bools.");
+        }
+
+        /// <summary>
+        /// A parameter can end up one type while some transitions still condition on it with a
+        /// comparison that type can't express — most often a Float/Bool type conflict that
+        /// "keeps Float" but leaves bool-style If/IfNot conditions behind (this is what breaks
+        /// the DSR face-tracking rig's RemoteModeActive local/remote gate). ChilloutVR's CCK
+        /// rejects such transitions ("parameter ... not compatible with condition type") and the
+        /// state silently never switches. Rewrite every condition's mode to match its
+        /// parameter's final type. Only invalid mode/type pairings are touched.
+        /// </summary>
+        static void ReconcileConditionModes(AnimatorController master, BridgeContext ctx)
+        {
+            var types = new Dictionary<string, AnimatorControllerParameterType>();
+            foreach (var p in master.parameters)
+            {
+                types[p.name] = p.type;
+            }
+
+            int fixedCount = 0;
+            var touched = new HashSet<string>();
+
+            void Reconcile(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    if (transition == null) continue;
+                    var conditions = transition.conditions;
+                    bool changed = false;
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        if (!types.TryGetValue(conditions[i].parameter, out var type))
+                        {
+                            continue;
+                        }
+                        var mode = conditions[i].mode;
+                        float threshold = conditions[i].threshold;
+                        var newMode = mode;
+                        float newThreshold = threshold;
+
+                        switch (type)
+                        {
+                            // Bool / Trigger accept only If / IfNot.
+                            case AnimatorControllerParameterType.Bool:
+                            case AnimatorControllerParameterType.Trigger:
+                                switch (mode)
+                                {
+                                    case AnimatorConditionMode.If:
+                                    case AnimatorConditionMode.IfNot:
+                                        break;
+                                    case AnimatorConditionMode.Greater:
+                                        newMode = AnimatorConditionMode.If; newThreshold = 0f; break;
+                                    case AnimatorConditionMode.Less:
+                                        newMode = AnimatorConditionMode.IfNot; newThreshold = 0f; break;
+                                    case AnimatorConditionMode.Equals:
+                                        newMode = threshold != 0f ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
+                                        newThreshold = 0f; break;
+                                    case AnimatorConditionMode.NotEqual:
+                                        newMode = threshold != 0f ? AnimatorConditionMode.IfNot : AnimatorConditionMode.If;
+                                        newThreshold = 0f; break;
+                                }
+                                break;
+
+                            // Float accepts only Greater / Less.
+                            case AnimatorControllerParameterType.Float:
+                                switch (mode)
+                                {
+                                    case AnimatorConditionMode.Greater:
+                                    case AnimatorConditionMode.Less:
+                                        break;
+                                    case AnimatorConditionMode.If:
+                                        newMode = AnimatorConditionMode.Greater; newThreshold = 0.5f; break;
+                                    case AnimatorConditionMode.IfNot:
+                                        newMode = AnimatorConditionMode.Less; newThreshold = 0.5f; break;
+                                    case AnimatorConditionMode.Equals:
+                                        newMode = AnimatorConditionMode.Greater; newThreshold = 0.5f; break;
+                                    case AnimatorConditionMode.NotEqual:
+                                        newMode = AnimatorConditionMode.Less; newThreshold = 0.5f; break;
+                                }
+                                break;
+
+                            // Int accepts Greater / Less / Equals / NotEqual (not If / IfNot).
+                            case AnimatorControllerParameterType.Int:
+                                switch (mode)
+                                {
+                                    case AnimatorConditionMode.If:
+                                        newMode = AnimatorConditionMode.NotEqual; newThreshold = 0f; break;
+                                    case AnimatorConditionMode.IfNot:
+                                        newMode = AnimatorConditionMode.Equals; newThreshold = 0f; break;
+                                }
+                                break;
+                        }
+
+                        if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
+                        {
+                            conditions[i].mode = newMode;
+                            conditions[i].threshold = newThreshold;
+                            changed = true;
+                            touched.Add(conditions[i].parameter);
+                            fixedCount++;
+                        }
+                    }
+                    if (changed)
+                    {
+                        transition.conditions = conditions;
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    Reconcile(machine.anyStateTransitions);
+                    Reconcile(machine.entryTransitions);
+                    foreach (var child in machine.states)
+                    {
+                        Reconcile(child.state.transitions);
+                    }
+                });
+            }
+
+            if (fixedCount > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Reconciled {fixedCount} transition condition(s) to their parameter's type",
+                    $"A merge/inject left conditions using a comparison the parameter type can't express " +
+                    $"(e.g. a bool-style If on a Float): {string.Join(", ", touched.OrderBy(n => n))}. " +
+                    "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
+                    "what leaves face-tracking's RemoteModeActive local/remote gate dead.");
+            }
         }
 
         /// <summary>
