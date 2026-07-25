@@ -179,18 +179,26 @@ to read them. Because VRChat offers nothing else, authors routinely point its si
 half of an L/R pair, so a descriptor commonly reads `vrc.blink_left`.
 
 Copying that name straight into CVR's first slot leaves Blink Mode on *Separate* with Right Blink
-empty — and only one eye ever closes. AvatarBridge therefore always sets the mode explicitly, and
-when the named shape is side-specific it looks for the partner on the same mesh:
+empty — and only one eye ever closes. So the mode is always set explicitly, and because what the
+descriptor names says little about what the mesh actually has, **a left/right pair wins whenever
+one exists** — ChilloutVR can drive the eyes independently, which is strictly more than VRChat's
+single slot could express:
 
-| descriptor names | result |
+| the mesh has | result |
 |---|---|
-| a both-eyes shape (`Blink`, `vrc.blink`) | slot 0 + **Combined** |
-| one side, partner found (`vrc.blink_left` → `vrc.blink_right`) | both slots + **Separate** |
-| one side, no partner | slot 0 + **Combined**, plus a ⚠️ warning — one eye is all that shape can close |
+| a left/right pair | both slots + **Separate**, even if the descriptor named a both-eyes shape |
+| no pair, descriptor named a both-eyes shape | slot 0 + **Combined** |
+| no pair, descriptor named one side | slot 0 + **Combined**, plus a ⚠️ warning — one eye is all that shape can close |
 
-If the descriptor named nothing at all, the same shapes are detected off the mesh directly. Side
-matching only accepts a spelled-out `left`/`right` or a standalone `l`/`r` token (`Blink L`,
-`blink_r`, `L_Blink`), so it can't be fooled by an unrelated `l` inside a word.
+The report says which shapes were used and why, so a deliberate Combined setup is one field to put
+back.
+
+Side matching only accepts a spelled-out `left`/`right` or a standalone `l`/`r` token (`Blink L`,
+`blink_r`, `L_Blink`), so an unrelated `l` inside a word can't trigger it. Pairing then requires
+the two shapes to be **the same name but for the side token** — meshes routinely carry several
+blink families at once (`! - Blink L`/`! - Blink R` alongside `vrc.blink_left`/`vrc.blink_right`),
+and matching each side independently could take the left eye from one family and the right from
+another. If the descriptor named nothing at all, the same detection runs against the mesh directly.
 
 ## Face tracking
 

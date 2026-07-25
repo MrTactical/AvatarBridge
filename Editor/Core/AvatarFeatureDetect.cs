@@ -1,5 +1,6 @@
 #if CVR_CCK_EXISTS
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -29,6 +30,9 @@ namespace AvatarBridge
             {
                 return;
             }
+
+            var lefts = new List<string>();
+            var rights = new List<string>();
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
                 string name = mesh.GetBlendShapeName(i);
@@ -39,17 +43,49 @@ namespace AvatarBridge
                 }
                 if (IsSide(lower, "left", 'l'))
                 {
-                    left = left ?? name;
+                    lefts.Add(name);
                 }
                 else if (IsSide(lower, "right", 'r'))
                 {
-                    right = right ?? name;
+                    rights.Add(name);
                 }
                 else
                 {
                     combined = combined ?? name;
                 }
             }
+
+            // Prefer two shapes that are the same name but for the side token. A mesh often
+            // carries more than one blink family — "! - Blink L"/"! - Blink R" alongside
+            // "vrc.blink_left"/"vrc.blink_right" — and taking the first of each side
+            // independently can pair the left eye of one family with the right of another.
+            foreach (string candidateLeft in lefts)
+            {
+                string stem = SideStem(candidateLeft, "left", 'l');
+                string match = rights.FirstOrDefault(r => SideStem(r, "right", 'r') == stem);
+                if (match != null)
+                {
+                    left = candidateLeft;
+                    right = match;
+                    return;
+                }
+            }
+
+            left = lefts.FirstOrDefault();
+            right = rights.FirstOrDefault();
+        }
+
+        /// <summary>
+        /// A shape name with its side marker and all separators removed, so the two halves of
+        /// a pair collapse to the same key while different families stay apart
+        /// ("! - Blink L" -> "!blink", "vrc.blink_left" -> "vrcblink").
+        /// </summary>
+        static string SideStem(string name, string word, char letter)
+        {
+            string lower = name.ToLowerInvariant();
+            lower = Regex.Replace(lower, word, "");
+            lower = Regex.Replace(lower, $@"(^|[ _.\-]){letter}([ _.\-]|$)", "$1$2");
+            return Regex.Replace(lower, @"[ _.\-]+", "");
         }
 
         /// <summary>

@@ -225,13 +225,17 @@ namespace AvatarBridge
         /// <summary>
         /// Wires CVR's Eye Blink Settings from the shape the VRChat descriptor named.
         ///
-        /// VRChat has exactly one eyelid slot and expects a shape that closes both eyes, while
-        /// ChilloutVR has two slots plus a mode that says how to read them. Authors do point
-        /// VRChat's single slot at one half of an L/R pair — "vrc.blink_left" — because in
-        /// VRChat nothing else is on offer. Copying that name into CVR's first slot and leaving
-        /// the mode alone gives Separate mode with Right Blink empty, so only one eye ever
-        /// closes. So the mode is always set explicitly here, and a side-specific shape sends us
-        /// looking for its partner on the same mesh.
+        /// VRChat has exactly one eyelid slot; ChilloutVR has two — Left Blink and Right Blink —
+        /// plus a mode saying how to read them. So the descriptor can only ever describe half of
+        /// what CVR wants, and what it names says little about what the mesh actually offers:
+        /// authors point that single slot at one half of a pair ("vrc.blink_left") or at a
+        /// both-eyes shape, in both cases because VRChat gives them no other choice.
+        ///
+        /// A separate L/R pair is therefore preferred whenever the mesh has one, whatever the
+        /// descriptor named — CVR can drive the eyes independently, which is strictly more than
+        /// the single slot could express. The mode is always set explicitly, because inheriting
+        /// the CCK's default of Separate while filling only slot 0 closes one eye and nothing
+        /// says why.
         /// </summary>
         static void WireDescriptorBlink(BridgeContext ctx, CVRAvatar cvrAvatar, string blinkShape, Mesh eyelidMesh)
         {
@@ -245,32 +249,35 @@ namespace AvatarBridge
             bool namesLeft = AvatarFeatureDetect.IsSide(lower, "left", 'l');
             bool namesRight = !namesLeft && AvatarFeatureDetect.IsSide(lower, "right", 'r');
 
+            AvatarFeatureDetect.DetectBlinkShapes(eyelidMesh, out string foundLeft, out string foundRight, out _);
+            string left = namesLeft ? blinkShape : foundLeft;
+            string right = namesRight ? blinkShape : foundRight;
+
+            if (!string.IsNullOrEmpty(left) && !string.IsNullOrEmpty(right))
+            {
+                cvrAvatar.blinkBlendshape[0] = left;
+                cvrAvatar.blinkBlendshape[1] = right;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
+                ctx.Report.Converted(Category, "Blink blendshapes",
+                    $"\"{left}\" / \"{right}\" (Separate). " + (namesLeft || namesRight
+                        ? $"The descriptor named only \"{blinkShape}\" — VRChat has a single eyelid slot — " +
+                          "so the other side was matched on the same mesh, otherwise one eye would never close."
+                        : $"The descriptor named \"{blinkShape}\", but this mesh also carries a separate " +
+                          "left/right pair, which ChilloutVR can drive independently. To go back to the " +
+                          $"single shape, set Blink Mode to Combined and put \"{blinkShape}\" in Left Blink."));
+                return;
+            }
+
             if (namesLeft || namesRight)
             {
-                AvatarFeatureDetect.DetectBlinkShapes(eyelidMesh, out string foundLeft, out string foundRight, out _);
-                string left = namesLeft ? blinkShape : foundLeft;
-                string right = namesRight ? blinkShape : foundRight;
-
-                if (!string.IsNullOrEmpty(left) && !string.IsNullOrEmpty(right))
-                {
-                    cvrAvatar.blinkBlendshape[0] = left;
-                    cvrAvatar.blinkBlendshape[1] = right;
-                    AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
-                    ctx.Report.Converted(Category, "Blink blendshapes",
-                        $"\"{left}\" / \"{right}\" (Separate). The VRChat descriptor only named " +
-                        $"\"{blinkShape}\" — it has a single eyelid slot — so the other side was matched " +
-                        "on the same mesh, otherwise only one eye would blink.");
-                    return;
-                }
-
-                // Side-specific with nothing to pair it with: one eye is all this shape can close.
+                // Half a pair with nothing to pair it with: one eye is all this shape can close.
                 cvrAvatar.blinkBlendshape[0] = blinkShape;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
                 ctx.Report.Warning(Category, "Blink blendshape",
                     $"The descriptor named \"{blinkShape}\", which closes one eye, and no matching " +
                     $"{(namesLeft ? "right" : "left")}-side shape was found on the same mesh. Wired as " +
-                    "Combined so it at least drives blinking; if the avatar has a separate shape for the " +
-                    "other eye, set Blink Mode to Separate and assign both on the CVRAvatar.");
+                    "Combined so it at least drives blinking; if the other eye's shape exists under a name " +
+                    "without a side marker, assign it on the CVRAvatar and set Blink Mode to Separate.");
                 return;
             }
 
