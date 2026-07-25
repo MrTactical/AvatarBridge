@@ -19,10 +19,11 @@ keeping as much working as possible and leaving you a clean starting point to fi
   repath). Your choice.
 - **Mod-aware** — PhysBone grab reactions (`_IsGrabbed` / `_Angle`) are wired for the
   [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod.
-- **Avatar scaler** — a bundled height scaler with *linear (constant-speed) smoothing* so size
-  changes glide instead of snapping, exposed as a **"Height (M)"** menu (default 1.3m). On by
-  default; toggle it off under Advanced Settings. Scale values are calibrated per avatar.
-  Credit: [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
+- **Avatar scaler** — a height scaler with *linear (constant-speed) smoothing* so size changes
+  glide instead of snapping, exposed as a **"Height (M)"** menu that **defaults to the avatar's
+  own measured eye height**, so it's the same size before and after conversion (and `Height (M)`
+  reads true metres). On by default; toggle off under Advanced Settings. Smoothing math:
+  [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
 
 > **Status: working, actively refined.** Full VRCFury and Modular Avatar avatars — clothing
 > toggles, MagicaCloth physics, dozens of contacts, face tracking, even heavy SPS / poiyomi
@@ -191,11 +192,11 @@ onto your avatar (Unity animation paths are case-sensitive, so this matters even
 bones are "the same" names).
 
 > The blendtree rig is a **drop-in starting point, not zero-touch.** It assumes
-> Unified-Expressions blendshapes. After converting: set up the **Eye Tracking** / **Face
-> Tracking** toggles in Advanced Avatar Settings, check the generated eye `RotationConstraints`
-> in play mode, and tune the eye-gaze magnitude per DragonSkyRunner's readme. As DSR notes,
-> neither the blendtree rig nor the native path picks up *every* possible combination of face
-> shapes an avatar might use — expect some manual touch-up on unusual rigs.
+> Unified-Expressions blendshapes. The **Eye Tracking** / **Face Tracking** menu toggles are
+> added for you; after converting, check the generated eye `RotationConstraints` in play mode
+> and tune the eye-gaze magnitude per DragonSkyRunner's readme. As DSR notes, neither the
+> blendtree rig nor the native path picks up *every* possible combination of face shapes an
+> avatar might use — expect some manual touch-up on unusual rigs.
 
 The rig is bundled from
 [DragonSkyRunner's CVR Eye & Face Tracking](https://github.com/DragonSkyRunner/ChilloutVR-Facetracking-Animator-Package)
@@ -203,12 +204,15 @@ and used with permission. See [Credits](#credits) for the redistribution note.
 
 ## Avatar scaler
 
-On by default (toggle **Add avatar scaler** in Advanced Settings), AvatarBridge injects a
-bundled height scaler with **linear, constant-speed smoothing** — size changes glide instead
-of snapping — driven by a **"Height (M)"** input in the CVR menu (default 1.3m). The scale
-values are calibrated per avatar, so treat the default as a starting point: tune the
-`Anim_AvatarScale_Slider_Min/Max` clips and the `Height (M)` default under
-`Assets/AvatarBridge/AvatarScaler` for your avatar's real proportions. Smoothing math is
+On by default (toggle **Add avatar scaler** in Advanced Settings), AvatarBridge adds a height
+scaler with **linear, constant-speed smoothing** — size changes glide instead of snapping —
+driven by a **"Height (M)"** input in the CVR menu.
+
+It's **calibrated to the avatar automatically**: AvatarBridge measures the avatar's eye height
+and generates the scale layer so `Height (M)` is true metres (`localScale = originalScale ×
+Height / measuredHeight`), with the menu defaulting to that measured height. So the avatar is
+**the same size before and after conversion**, and setting the menu to, say, `1.5` makes it
+1.5 m tall. Smoothing math is
 [JustSleightly's Controller Templates](https://notes.sleightly.dev/controller-templates).
 
 ## PhysBones → MagicaCloth2

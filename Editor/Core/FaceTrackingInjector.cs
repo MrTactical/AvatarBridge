@@ -159,10 +159,49 @@ namespace AvatarBridge
 
             master.layers = layers.ToArray();
 
+            // The rig needs Eye/Face Tracking toggles in Advanced Avatar Settings (per its readme).
+            AddTrackingToggles(ctx);
+
             ctx.Report.Converted(Category,
                 $"Injected CVR-VRCFT face tracking — {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
-                $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Eye gaze " +
-                "magnitude may want tuning per the package readme; verify the eye RotationConstraints in play mode.");
+                $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Added \"Eye Tracking\" " +
+                "and \"Face Tracking\" menu toggles. Eye gaze magnitude may want tuning per the package readme; " +
+                "verify the eye RotationConstraints in play mode.");
+        }
+
+        /// <summary>
+        /// Adds the "Eye Tracking" / "Face Tracking" Advanced Avatar Setting toggles the rig's
+        /// EyeTracking / FaceTracking bool parameters need (only relevant in this mode).
+        /// </summary>
+        static void AddTrackingToggles(BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar?.avatarSettings?.settings;
+            if (settings == null)
+            {
+                return;
+            }
+            AddToggle(settings, "Eye Tracking", "EyeTracking");
+            AddToggle(settings, "Face Tracking", "FaceTracking");
+        }
+
+        static void AddToggle(System.Collections.Generic.List<ABI.CCK.Components.CVRAdvancedSettingsEntry> settings,
+            string menuName, string paramName)
+        {
+            if (settings.Any(s => s != null && s.machineName == paramName))
+            {
+                return; // already exposed
+            }
+            settings.Add(new ABI.CCK.Components.CVRAdvancedSettingsEntry
+            {
+                name = menuName,
+                machineName = paramName,
+                unlinkNameFromMachineName = true,
+                setting = new ABI.CCK.Scripts.CVRAdvancesAvatarSettingGameObjectToggle
+                {
+                    defaultValue = true, // the rig defaults both on
+                    usedType = ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType.Bool
+                }
+            });
         }
 
         /// <summary>All blendshape names the injected clips drive on the package's face mesh.</summary>
