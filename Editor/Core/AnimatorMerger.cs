@@ -1298,9 +1298,15 @@ namespace AvatarBridge
                 return;
             }
             var known = new HashSet<string>(master.parameters.Select(p => p.name));
+            // A parameter can exist and still be inert: nothing conditions on it, no blend
+            // tree or clip touches it, no driver reads or writes it. One test avatar carried a
+            // 64-option instrument dropdown like this — the parameter survived because the
+            // layers that used it didn't, so the entry looked alive while doing nothing.
+            var referenced = CollectReferencedParameters(master);
 
             var dead = settings
-                .Where(e => e != null && !string.IsNullOrEmpty(e.machineName) && !known.Contains(e.machineName))
+                .Where(e => e != null && !string.IsNullOrEmpty(e.machineName)
+                            && (!known.Contains(e.machineName) || !referenced.Contains(e.machineName)))
                 .ToList();
             if (dead.Count == 0)
             {
@@ -1311,13 +1317,15 @@ namespace AvatarBridge
             {
                 settings.Remove(entry);
                 ctx.Report.Skipped(Category, $"Menu entry \"{entry.name}\" removed",
-                    $"Nothing in the converted animator reads \"{entry.machineName}\" — the parameter belongs " +
-                    "to a layer that wasn't converted (Action/emotes) or to a stripped system, so the control " +
-                    "would have sat in your menu doing nothing.");
+                    $"Nothing in the converted animator {(known.Contains(entry.machineName) ? "reads or writes" : "declares")} " +
+                    $"\"{entry.machineName}\" — the parameter belongs to a layer that wasn't converted " +
+                    "(Action/emotes) or to a stripped system, so the control would have sat in your menu " +
+                    "doing nothing.");
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
             ctx.Report.Converted(Category, $"Removed {dead.Count} dead menu entr(ies)",
-                "They had no matching animator parameter, so they could never have done anything.");
+                "Their parameter is either missing from the animator or present but never read, written or " +
+                "compared anywhere in it, so they could never have done anything.");
         }
 
         /// <summary>
@@ -1361,7 +1369,7 @@ namespace AvatarBridge
                 }
 
                 string param = entry.machineName;
-                if (!TryCollectSelectorValues(master, param, out var used))
+                if (!TryCollectSelectorValues(master, param, out var use))
                 {
                     // Used as a quantity somewhere, so renumbering would change behaviour.
                     // The placeholders have to stay — say so rather than leave them unexplained.
@@ -1370,18 +1378,61 @@ namespace AvatarBridge
                     {
                         ctx.Report.Approximated(Category, $"Dropdown \"{entry.name}\" keeps {stuck} \"{ParameterMenuConverter.UnusedOption}\" option(s)",
                             $"ChilloutVR selects dropdown options by position, so \"{param}\" needs an entry per " +
-                            "value up to its highest. It's normally renumbered to close those gaps, but here it's " +
-                            "also used as a quantity (a blend tree, motion time, or driver arithmetic), where " +
-                            "renumbering would change how the avatar behaves. Deleting the spare entries by hand " +
-                            "would shift every option after them onto the wrong value.");
+                            "value up to its highest. It's normally renumbered to close those gaps, but here the " +
+                            "value is also used as a quantity — a blend tree, motion time, or driver arithmetic — " +
+                            "where the numbers themselves matter and renumbering would change how the avatar " +
+                            "behaves. Deleting the spare entries by hand would shift every option after them onto " +
+                            "the wrong value.");
                     }
                     continue;
                 }
-                used.Add(0);                       // keep the default/off slot reachable
-                used.Add(dropdown.defaultValue);
-
                 var oldOptions = dropdown.options;
-                var ordered = used.Where(v => v >= 0 && v < oldOptions.Count).Distinct().OrderBy(v => v).ToList();
+                var kept = new HashSet<int>(use.Exact) { 0, dropdown.defaultValue };
+
+                // Values distinguished only by a "> t" or "< t" are interchangeable to the
+                // animator, but the menu still has to be able to reach that side of the
+                // boundary. Keep one option from each side that isn't already covered,
+                // preferring a named one over a placeholder so the label still means something.
+                int PickRepresentative(int from, int to)
+                {
+                    from = Mathf.Max(0, from);
+                    to = Mathf.Min(oldOptions.Count - 1, to);
+                    int fallback = -1;
+                    for (int v = from; v <= to; v++)
+                    {
+                        if (oldOptions[v] == null)
+                        {
+                            continue;
+                        }
+                        if (fallback < 0)
+                        {
+                            fallback = v;
+                        }
+                        if (oldOptions[v].name != ParameterMenuConverter.UnusedOption)
+                        {
+                            return v;
+                        }
+                    }
+                    return fallback;
+                }
+                foreach (int t in use.GreaterCuts)
+                {
+                    if (!kept.Any(v => v > t))
+                    {
+                        int rep = PickRepresentative(t + 1, oldOptions.Count - 1);
+                        if (rep >= 0) kept.Add(rep);
+                    }
+                }
+                foreach (int t in use.LessCuts)
+                {
+                    if (!kept.Any(v => v < t))
+                    {
+                        int rep = PickRepresentative(0, t - 1);
+                        if (rep >= 0) kept.Add(rep);
+                    }
+                }
+
+                var ordered = kept.Where(v => v >= 0 && v < oldOptions.Count).Distinct().OrderBy(v => v).ToList();
                 if (ordered.Count == 0 || ordered.Count >= oldOptions.Count)
                 {
                     continue; // already dense — nothing to gain
@@ -1394,7 +1445,7 @@ namespace AvatarBridge
                     map[ordered[i]] = i;
                 }
 
-                RemapIntConditions(master, param, map);
+                RemapIntConditions(master, param, map, ordered);
                 RemapIntDrivers(master, param, map);
                 RemapTriggerValues(ctx, param, map);
 
@@ -1425,10 +1476,32 @@ namespace AvatarBridge
         /// treats it as a quantity rather than a discrete selection — in which case
         /// renumbering it would change how the avatar behaves.
         /// </summary>
-        static bool TryCollectSelectorValues(AnimatorController master, string param, out HashSet<int> values)
+        /// <summary>
+        /// How a dropdown parameter is used: the values it is matched against exactly, and the
+        /// boundaries it is compared across.
+        /// </summary>
+        class SelectorUse
         {
-            var found = new HashSet<int>();
-            values = found;
+            public readonly HashSet<int> Exact = new HashSet<int>();
+            public readonly HashSet<int> GreaterCuts = new HashSet<int>();  // "> t"
+            public readonly HashSet<int> LessCuts = new HashSet<int>();     // "< t"
+        }
+
+        /// <summary>
+        /// Gathers what a dropdown parameter is compared against, or fails if renumbering it
+        /// could change behaviour.
+        ///
+        /// Greater/Less used to fail here, which is why avatars kept dropdowns full of
+        /// "(unused)" entries — one had 30 options for 10 real ones, another 256 for 13. They
+        /// don't have to: the compaction map is order-preserving, so a "&gt;" still partitions
+        /// the same values as long as its threshold moves with them. What genuinely can't
+        /// survive renumbering is arithmetic — a driver adding to the value, or reading it as
+        /// an operand — and quantity reads like blend trees and motion time.
+        /// </summary>
+        static bool TryCollectSelectorValues(AnimatorController master, string param, out SelectorUse use)
+        {
+            var found = new SelectorUse();
+            use = found;
             bool safe = true;
 
             bool CollectTransitions(AnimatorTransitionBase[] transitions)
@@ -1441,13 +1514,22 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        // Greater/Less compare magnitude; renumbering would move the boundary.
-                        if (condition.mode != AnimatorConditionMode.Equals &&
-                            condition.mode != AnimatorConditionMode.NotEqual)
+                        int threshold = Mathf.RoundToInt(condition.threshold);
+                        switch (condition.mode)
                         {
-                            return false;
+                            case AnimatorConditionMode.Equals:
+                            case AnimatorConditionMode.NotEqual:
+                                found.Exact.Add(threshold);
+                                break;
+                            case AnimatorConditionMode.Greater:
+                                found.GreaterCuts.Add(threshold);
+                                break;
+                            case AnimatorConditionMode.Less:
+                                found.LessCuts.Add(threshold);
+                                break;
+                            default:
+                                return false; // If/IfNot on an int: leave well alone
                         }
-                        found.Add(Mathf.RoundToInt(condition.threshold));
                     }
                 }
                 return true;
@@ -1461,6 +1543,11 @@ namespace AvatarBridge
                 }
                 foreach (var task in driver.EnterTasks.Concat(driver.ExitTasks))
                 {
+                    // Read as an operand: whatever it's feeding expects the original numbers.
+                    if (task.aName == param || task.bName == param)
+                    {
+                        return false;
+                    }
                     if (task.targetName != param)
                     {
                         continue;
@@ -1471,7 +1558,7 @@ namespace AvatarBridge
                     }
                     if (task.aType == AnimatorDriverTask.SourceType.Static)
                     {
-                        found.Add(Mathf.RoundToInt(task.aValue));
+                        found.Exact.Add(Mathf.RoundToInt(task.aValue));
                     }
                 }
                 return true;
@@ -1554,7 +1641,101 @@ namespace AvatarBridge
             return false;
         }
 
-        static void RemapIntConditions(AnimatorController master, string param, Dictionary<int, int> map)
+        /// <summary>
+        /// Every parameter name the controller actually touches — conditions, blend trees,
+        /// motion time/speed/mirror/cycle offset, driver targets and operands, and animated
+        /// animator parameters written by clips. Anything absent from this cannot affect the
+        /// avatar no matter what its menu control does.
+        /// </summary>
+        static HashSet<string> CollectReferencedParameters(AnimatorController master)
+        {
+            var referenced = new HashSet<string>();
+
+            void NoteMotion(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    referenced.Add(tree.blendParameter);
+                    referenced.Add(tree.blendParameterY);
+                    foreach (var child in tree.children)
+                    {
+                        if (tree.blendType == BlendTreeType.Direct)
+                        {
+                            referenced.Add(child.directBlendParameter);
+                        }
+                        NoteMotion(child.motion);
+                    }
+                }
+                else if (motion is AnimationClip clip)
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                        {
+                            referenced.Add(binding.propertyName);
+                        }
+                    }
+                }
+            }
+
+            void NoteConditions(AnimatorTransitionBase[] transitions)
+            {
+                foreach (var transition in transitions)
+                {
+                    foreach (var condition in transition.conditions)
+                    {
+                        referenced.Add(condition.parameter);
+                    }
+                }
+            }
+
+            void NoteDrivers(IEnumerable<StateMachineBehaviour> behaviours)
+            {
+                foreach (var driver in behaviours.OfType<AnimatorDriver>())
+                {
+                    foreach (var task in driver.EnterTasks.Concat(driver.ExitTasks))
+                    {
+                        referenced.Add(task.targetName);
+                        referenced.Add(task.aName);
+                        referenced.Add(task.bName);
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    NoteConditions(machine.anyStateTransitions);
+                    NoteConditions(machine.entryTransitions);
+                    NoteDrivers(machine.behaviours);
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state.timeParameterActive) referenced.Add(state.timeParameter);
+                        if (state.speedParameterActive) referenced.Add(state.speedParameter);
+                        if (state.mirrorParameterActive) referenced.Add(state.mirrorParameter);
+                        if (state.cycleOffsetParameterActive) referenced.Add(state.cycleOffsetParameter);
+                        NoteMotion(state.motion);
+                        NoteConditions(state.transitions);
+                        NoteDrivers(state.behaviours);
+                    }
+                });
+            }
+            return referenced;
+        }
+
+        /// <summary>
+        /// Moves every comparison onto the compacted numbering.
+        ///
+        /// Exact matches follow the map. Boundaries move by counting instead: because the map
+        /// is order-preserving, "&gt; t" still selects the same values if the threshold becomes
+        /// the index of the last kept value that does NOT exceed t. Worked through on a real
+        /// avatar — kept values [0,1,2,3,4,5,9,19,24,29], "&gt; 9" becomes "&gt; 6", which selects
+        /// indices 7,8,9 = values 19,24,29: the same set as before.
+        /// </summary>
+        static void RemapIntConditions(AnimatorController master, string param,
+            Dictionary<int, int> map, List<int> ordered)
         {
             void Remap(AnimatorTransitionBase[] transitions)
             {
@@ -1569,7 +1750,23 @@ namespace AvatarBridge
                             continue;
                         }
                         int value = Mathf.RoundToInt(conditions[i].threshold);
-                        if (map.TryGetValue(value, out var mapped) && mapped != value)
+                        int mapped;
+                        switch (conditions[i].mode)
+                        {
+                            case AnimatorConditionMode.Greater:
+                                mapped = ordered.Count(v => v <= value) - 1;
+                                break;
+                            case AnimatorConditionMode.Less:
+                                mapped = ordered.Count(v => v < value);
+                                break;
+                            default:
+                                if (!map.TryGetValue(value, out mapped))
+                                {
+                                    continue;
+                                }
+                                break;
+                        }
+                        if (mapped != value)
                         {
                             conditions[i].threshold = mapped;
                             changed = true;
