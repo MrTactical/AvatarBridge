@@ -198,6 +198,7 @@ namespace AvatarBridge
             // left behind, declared and inert, still costing sync bits if it was synced.
             // Before pruning, while every reference is still visible.
             RepairPrefixedReferences(master, ctx);
+            DeclareDanglingParameters(master, ctx);
             PruneOrphanedParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -1681,6 +1682,55 @@ namespace AvatarBridge
         /// animator parameters written by clips. Anything absent from this cannot affect the
         /// avatar no matter what its menu control does.
         /// </summary>
+        /// <summary>
+        /// Declares any parameter that transitions, blend trees or drivers still reference but
+        /// the controller never defines.
+        ///
+        /// This is damage control, not a cure. Something upstream fails to carry certain
+        /// declarations across on some avatars — a FinalIK quadruped arrived with a whole
+        /// "Controls/Synced/*" family referenced by blend trees while not one of them was
+        /// declared — and I have not found which pass drops them. What is certain is the cost of
+        /// leaving it: ChilloutVR DROPS a transition whose condition names an unknown parameter,
+        /// so a layer can stop advancing entirely, and Unity reports nothing.
+        ///
+        /// Declaring the missing name makes the controller self-consistent. A blend tree reading
+        /// it gets 0, exactly as it did before, but transitions survive and behave predictably
+        /// instead of silently disappearing. The parameters land as Float, which every reference
+        /// kind can read, and every one is named in the report — if that list is ever long, or
+        /// the same names recur across avatars, that is the trail to the real bug.
+        /// </summary>
+        static void DeclareDanglingParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var declared = new HashSet<string>(master.parameters.Select(p => p.name));
+            var missing = CollectReferencedParameters(master)
+                .Where(n => !string.IsNullOrEmpty(n) && !declared.Contains(n))
+                .OrderBy(n => n)
+                .ToList();
+            if (missing.Count == 0)
+            {
+                return;
+            }
+
+            var parameters = master.parameters.ToList();
+            foreach (string name in missing)
+            {
+                parameters.Add(new AnimatorControllerParameter
+                {
+                    name = name,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f
+                });
+            }
+            master.parameters = parameters.ToArray();
+
+            ctx.Report.Warning(Category, $"Declared {missing.Count} referenced parameter(s) that were missing",
+                $"{string.Join(", ", missing.Take(12))}{(missing.Count > 12 ? ", …" : "")} — transitions, blend " +
+                "trees or drivers name these but nothing declared them. ChilloutVR drops a transition whose " +
+                "condition names an unknown parameter, so they were added as Float 0 to keep those transitions " +
+                "alive. Whatever drove them in VRChat still won't, so treat this as a repair, not a fix — if a " +
+                "feature on this avatar is dead, start here.");
+        }
+
         /// <summary>
         /// Points references at the "#"-prefixed parameter when the bare name they name doesn't
         /// exist and the prefixed one does.
