@@ -248,12 +248,21 @@ namespace AvatarBridge
                 using (new EditorGUI.DisabledScope(settings.physicsTarget != PhysicsTarget.MagicaCloth2))
                 {
                     settings.generateBodyColliders = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Generate body colliders",
-                            "Many avatars define no PhysBone colliders, so their hair and tails would pass " +
-                            "straight through the body in ChilloutVR. This builds a collider set from the " +
-                            "humanoid rig — sized from the avatar's own bone lengths — and gives it to any " +
-                            "chain that arrived without colliders. Chains that already had them are untouched."),
+                        new GUIContent("Generate body colliders (situational)",
+                            "Builds a collider set from the humanoid rig — sized from the avatar's own bone " +
+                            "lengths — and gives it to chains that arrived without colliders.\n\n" +
+                            "Off by default. A chain with no colliders is usually body jiggle (breasts, butt, " +
+                            "thighs) that never needed any, and giving it a capsule for the body part it hangs " +
+                            "off makes that capsule push it outward.\n\n" +
+                            "Turn it on when hair or a skirt clips through the body — then check the result."),
                         settings.generateBodyColliders);
+                    if (settings.generateBodyColliders)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "Body colliders go to every chain that has none — including breast, butt and thigh " +
+                            "jiggle, which usually look wrong with them. Check those chains after converting.",
+                            MessageType.Warning);
+                    }
                 }
                 settings.deleteConvertedPhysBones = EditorGUILayout.ToggleLeft(
                     new GUIContent("Delete PhysBones after converting",

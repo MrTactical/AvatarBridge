@@ -12,9 +12,7 @@ keeping as much working as possible and leaving you a clean starting point to fi
   avatars, NDMF's manual bake) first, then converts the baked result, so toggles, linked
   clothing, merged armatures and full controllers survive.
 - **PhysBones become real physics** — built-in **PhysBones → MagicaCloth2** (or DynamicBone),
-  no external tool needed. Avatars that never defined PhysBone colliders get a **body collider
-  set generated from their own bone lengths**, so hair and tails collide instead of clipping
-  through.
+  no external tool needed.
 - **Readable toggles** — clothing/prop toggles come out as one clean `Toggle <name>` layer
   each, driven by real `bool` parameters.
 - **Bloat removed** — GoGo Loco, SPS/OGB/PCS and friends are stripped (one test avatar went
@@ -267,20 +265,24 @@ restoration 0.2, velocity attenuation 0.8) so you have a reference point.
 `immobile` and the angle limits are applied via reflection, since MagicaCloth2 moves fields
 between versions; a mismatch is reported rather than silently dropped.
 
-### Generated body colliders
+### Generated body colliders (optional, off by default)
 
-Plenty of avatars define no PhysBone colliders at all — VRChat supplies hand colliders, so
-authors often leave the body to clip. Converted as-is, those chains reach ChilloutVR with **no
-collision whatsoever** and hair, ears and tails sweep straight through the body.
+**Generate body colliders** builds a set from the humanoid rig — capsules along the hips, spine,
+chest, arms and legs plus a sphere at the head, each **sized from that avatar's own bone
+lengths** rather than assumed human proportions — and gives it to chains that arrived with no
+colliders of their own.
 
-So when a chain arrives without colliders, AvatarBridge gives it a generated set: capsules along
-the hips, spine, chest, arms and legs plus a sphere at the head, each **sized from that avatar's
-own bone lengths** rather than assumed human proportions — which matters, since a lot of these
-avatars aren't human-shaped. Chains that *did* bring colliders are left exactly as authored,
-because piling extra collision onto a tuned setup invites jitter.
+**It's off by default, and that's deliberate.** A chain with no colliders usually isn't an
+oversight: breast, butt, thigh and belly jiggle are authored without collision because they
+don't need any. Give one of those a capsule for the body part it hangs off and the capsule
+shoves it outward — which looks exactly as bad as it sounds.
 
-Needs a Humanoid rig (that's where the bones come from) and only applies to the MagicaCloth2
-target. Toggle it off with **Generate body colliders** under Physics.
+Turn it on when an avatar's **hair or skirt clips through the body**, then check the result.
+Whether a chain wants body collision is a judgement about that avatar — hair is rooted at the
+head and needs the skull collider, breast jiggle is rooted at the chest and must not have the
+chest one — and there's no reliable way to tell those apart automatically.
+
+Needs a Humanoid rig, and only applies to the MagicaCloth2 target.
 
 ### PhysBones → DynamicBone
 
