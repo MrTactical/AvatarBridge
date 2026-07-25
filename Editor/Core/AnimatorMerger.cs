@@ -1884,7 +1884,13 @@ namespace AvatarBridge
                 }
                 var entry = Activator.CreateInstance(entryType);
                 SetField(entry, "type", streamTypeValue);
-                SetField(entry, "targetType", ParseEnum(targetEnum, "Animator"));
+                // TargetType.Animator is the CCK's "Sub Animator" — an Animator on some target
+                // GameObject you nominate. Left as that, every entry sat with an empty target and
+                // the inspector's "Target object does not have an Animator component!" warning, so
+                // nothing was ever fed. AvatarAnimator is the avatar's own animator, which is what
+                // these parameters need; fall back to the old value if a CCK version lacks it.
+                SetField(entry, "targetType",
+                    ParseEnum(targetEnum, "AvatarAnimator") ?? ParseEnum(targetEnum, "Animator"));
                 SetField(entry, "applicationType", ParseEnum(appEnum, "Override"));
                 SetField(entry, "parameterName", w.paramName);
                 entries.Add(entry);

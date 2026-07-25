@@ -107,7 +107,8 @@ namespace AvatarBridge
             PruneDirectBlendTrees(ctx, master, vrcLayers, IsStrippedParam);
             if (ctx.Settings.stripSpsSystems)
             {
-                RemoveObjects(ctx);
+                // NOTE: the scene objects themselves are removed much earlier, by
+                // RemoveStrippedObjects — see the comment there for why.
                 RemoveOrphanedCvrComponents(ctx, IsStrippedParam);
             }
             RemoveMenuEntries(ctx, IsStrippedParam);
@@ -412,6 +413,25 @@ namespace AvatarBridge
         }
 
         // ----------------------------------------------------------------- objects ----
+
+        /// <summary>
+        /// Deletes the scene objects belonging to stripped VRChat-only systems, and does it
+        /// FIRST — before assets are re-homed, PhysBones are converted, or anything else reads
+        /// the hierarchy.
+        ///
+        /// Running it late (as part of the animator merge) meant AvatarBridge spent the whole
+        /// conversion working on content it was about to throw away: SPS materials and their
+        /// hidden shaders got rescued out of VRCFury's temp folder only to end up pink, and
+        /// SPS's PhysBones became MagicaCloth components whose root bones were then deleted
+        /// out from under them. One reported avatar came out with seventeen such orphans.
+        /// </summary>
+        internal static void RemoveStrippedObjects(BridgeContext ctx)
+        {
+            if (ctx.Settings.stripSpsSystems)
+            {
+                RemoveObjects(ctx);
+            }
+        }
 
         static void RemoveObjects(BridgeContext ctx)
         {

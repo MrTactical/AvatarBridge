@@ -36,7 +36,11 @@ namespace AvatarBridge
             {
                 PrepareOutputFolder(ctx);
                 PrepareTarget(ctx);
-                // Rescue VRCFury-baked meshes out of its volatile temp before anything else
+                // Delete the VRChat-only systems first, so nothing downstream wastes effort
+                // converting content that's about to be thrown away — or worse, leaves parts of
+                // it behind (rescued SPS shaders that render pink, cloth whose bones then vanish).
+                SystemStripper.RemoveStrippedObjects(ctx);
+                // Then rescue VRCFury-baked meshes out of its volatile temp before anything else
                 // reads them (otherwise they orphan to null → invisible avatar).
                 SceneAssetRehomer.Run(ctx);
 
