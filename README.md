@@ -299,6 +299,19 @@ Turn off **Start from MagicaCloth2 presets** to derive every value from the Phys
 which is the mapping below. It's also the automatic fallback if the preset files aren't in the
 project.
 
+### Two settings that are genuinely avatar-dependent
+
+Both were unconditional in 1.1.2, which one tester reports as the best MagicaCloth2 result the
+tool has given them — while the same two behaviours wrecked a different avatar. The evidence
+really does conflict, so they're exposed rather than decided:
+
+| setting | default | turn it the other way when |
+|---|---|---|
+| **Transfer angle limits** | off | the physics feels loose and unconstrained. MagicaCloth2's limit pushes on particle *positions* at a stiffness that snaps back hard, so on some avatars it shakes — lower Angle Limit → Stiffness on any chain that does |
+| **Cap particle radius to bone spacing** | on | chains feel too thin. Left on, it stops a PhysBone radius that VRChat ignored (one avatar had `0.5`) becoming metre-wide particles that shove each other apart |
+
+Turning the first on and the second off reproduces 1.1.2's mapping exactly.
+
 ### Deriving values from the PhysBone instead
 
 Transfers the settings that mean the same thing on both sides, and **reports the rest with their

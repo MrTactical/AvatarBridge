@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -91,8 +92,14 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Loads the preset over <paramref name="sdata"/>. Wipes everything, including root
-        /// bones and collider list, so callers must apply structural data AFTER this.
+        /// Loads the preset's physics parameters over <paramref name="sdata"/>. MagicaCloth2's
+        /// ImportJson preserves the structural fields — clothType, rootBones, colliderList,
+        /// updateMode, animationPoseRatio, rootRotation — so this can run before or after the
+        /// chain is wired up without disturbing it.
+        ///
+        /// Called through reflection rather than directly: a MagicaCloth2 version without
+        /// ImportJson would otherwise stop the whole package compiling, where this just falls
+        /// back to deriving values from the PhysBone.
         /// </summary>
         public static bool TryApply(ClothSerializeData sdata, string presetName, out string error)
         {
@@ -103,7 +110,15 @@ namespace AvatarBridge
                 error = $"\"{presetName}.json\" was not found in this project";
                 return false;
             }
-            if (!sdata.ImportJson(json))
+
+            var import = typeof(ClothSerializeData).GetMethod("ImportJson",
+                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+            if (import == null)
+            {
+                error = "this MagicaCloth2 version has no ImportJson";
+                return false;
+            }
+            if (!(import.Invoke(sdata, new object[] { json }) is bool ok) || !ok)
             {
                 error = $"MagicaCloth2 rejected \"{presetName}.json\"";
                 return false;

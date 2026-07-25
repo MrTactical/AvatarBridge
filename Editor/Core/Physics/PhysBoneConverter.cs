@@ -26,9 +26,9 @@ namespace AvatarBridge
 
             GrabbyBonesSupport.Reset();
 
-            // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let
-            // the animator switch between them; all get converted, but only the ones that
-            // were enabled start active, and the user should review which they keep.
+            // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
+            // animator switch between them. All get converted so nothing is lost, but at most
+            // one is left driving the chain — see below for why, and why none are deleted.
             foreach (var group in physBones
                 .GroupBy(pb => pb.rootTransform != null ? pb.rootTransform : pb.transform)
                 .Where(g => g.Count() > 1))

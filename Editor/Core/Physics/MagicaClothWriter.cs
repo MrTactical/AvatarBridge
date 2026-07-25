@@ -69,8 +69,10 @@ namespace AvatarBridge
             var cloth = holder.AddComponent<MagicaCloth>();
             var sdata = cloth.SerializeData;
 
-            // Preset first: importing one replaces the entire serialize data, root bones and
-            // collider list included, so everything structural has to be applied afterwards.
+            // Presets carry physics parameters only. MagicaCloth2's own ImportJson deliberately
+            // preserves the structural fields — clothType, rootBones, colliderList, updateMode,
+            // animationPoseRatio, rootRotation — so applying one neither needs nor destroys the
+            // work below, and the order of the two is free.
             string preset = null;
             if (ctx.Settings.useMagicaPresets)
             {
@@ -85,7 +87,6 @@ namespace AvatarBridge
             }
 
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
-            sdata.rootBones.Clear();
             sdata.rootBones.Add(data.Root);
 
             if (preset == null)
