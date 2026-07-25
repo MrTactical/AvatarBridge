@@ -122,8 +122,9 @@ namespace AvatarBridge
             }
 #else
             EditorGUILayout.HelpBox(
-                "The VRChat SDK isn't installed, so converting VRChat avatars is unavailable — reading a " +
-                "VRChat avatar's components requires its SDK. Setup mode works without it.",
+                "AvatarBridge's main job is converting VRChat avatars, which needs the VRChat SDK — it isn't " +
+                "installed, so that's unavailable here (a VRChat avatar's components can't be read without it).\n\n" +
+                "Setup mode below still works: it does the ChilloutVR-side setup on any humanoid.",
                 MessageType.Info);
             GUILayout.Space(6);
             DrawSetupFlow();
@@ -139,7 +140,7 @@ namespace AvatarBridge
         void DrawHeader()
         {
             EditorGUILayout.LabelField("AvatarBridge", _title);
-            EditorGUILayout.LabelField($"ChilloutVR avatar tooling   ·   v{BridgeDefines.Version}", _subtitle);
+            EditorGUILayout.LabelField($"VRChat → ChilloutVR avatar converter   ·   v{BridgeDefines.Version}", _subtitle);
         }
 
 #if VRC_SDK_VRCSDK3
@@ -149,9 +150,10 @@ namespace AvatarBridge
                 new[] { "Convert a VRChat avatar", "Set up any avatar" }, GUILayout.Height(24));
             GUILayout.Space(6);
             EditorGUILayout.LabelField(mode == Mode.Convert
-                ? "<i>Translates a VRChat avatar to ChilloutVR: menu, toggles, physics, contacts, constraints and more.</i>"
-                : "<i>No VRChat avatar needed — sets up any humanoid for ChilloutVR: viewpoint, visemes, blink, " +
-                  "face tracking and the height scaler.</i>", _rich);
+                ? "<i>The main event: translates a VRChat avatar to ChilloutVR — menu, toggles, physics, " +
+                  "contacts, constraints and more.</i>"
+                : "<i>Just the ChilloutVR-side setup — viewpoint, visemes, blink, face tracking and the height " +
+                  "scaler — on any humanoid. Handy for non-VRChat avatars; nothing here is converted.</i>", _rich);
         }
 #endif
 
@@ -693,16 +695,16 @@ namespace AvatarBridge
             EditorGUILayout.LabelField("AvatarBridge", new GUIStyle(EditorStyles.boldLabel) { fontSize = 18 });
             GUILayout.Space(6);
             EditorGUILayout.HelpBox(
-                "AvatarBridge needs the ChilloutVR CCK — that's what it builds avatars for.",
+                "AvatarBridge converts VRChat avatars to ChilloutVR. It needs both SDKs for that:",
                 MessageType.Warning);
             EditorGUILayout.LabelField(
-                (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended)  — required");
+                (BridgeDefines.HasVrcAvatarSdk ? "✔" : "✘") + "  VRChat Avatars SDK (SDK3)  — to read the avatar");
             EditorGUILayout.LabelField(
-                (BridgeDefines.HasVrcAvatarSdk ? "✔" : "✘") + "  VRChat Avatars SDK (SDK3)  — only to convert VRChat avatars");
+                (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended)  — always required");
             GUILayout.Space(6);
             EditorGUILayout.HelpBox(
-                "Import the CCK, let Unity recompile, and reopen this window. Without the VRChat SDK you can " +
-                "still use Setup mode to prepare any avatar for ChilloutVR.",
+                "Import the missing package(s), let Unity recompile, and reopen this window. " +
+                "With just the CCK you can still use Setup mode to prepare any avatar for ChilloutVR.",
                 MessageType.Info);
 
             GUILayout.Space(10);

@@ -1,12 +1,10 @@
-# AvatarBridge — ChilloutVR avatar tooling
+# AvatarBridge — VRChat → ChilloutVR avatar converter
 
-A Unity Editor tool with two modes:
+A Unity Editor tool that converts a **VRChat SDK3 avatar** into a **ChilloutVR CCK avatar**,
+keeping as much working as possible and leaving you a clean starting point to finish by hand.
 
-- **Convert** — turn a **VRChat SDK3 avatar** into a **ChilloutVR CCK avatar**, keeping as much
-  working as possible and leaving you a clean starting point to finish by hand.
-- **Set up** — prepare **any humanoid avatar** for ChilloutVR (viewpoint, visemes, blink, face
-  tracking, height scaler). **No VRChat SDK required** — works on a Booth model, an original
-  avatar, or one that's already been converted.
+*(Bonus: if you don't have the VRChat SDK installed, the tool still runs in
+[Setup mode](#bonus-setup-mode-without-the-vrchat-sdk) and prepares any humanoid for ChilloutVR.)*
 
 **What sets it apart from older converters:**
 
@@ -39,31 +37,6 @@ A Unity Editor tool with two modes:
 > marked 🔷 in the tables below are correct in Unity but not yet independently confirmed
 > in-game. Bugs and requests → open an issue.
 
-## Setup mode — no VRChat SDK needed
-
-Not every avatar comes from VRChat, and not everything AvatarBridge does is about VRChat.
-**Setup mode** points the CVR-side half of the tool at *any* avatar in your scene:
-
-| Does | Doesn't |
-|---|---|
-| Adds and configures the `CVRAvatar` (viewpoint estimated from the eye/head bones, voice position) | Menus and parameters — those come from VRChat expression assets |
-| Auto-detects **visemes** (`vrc.v_aa` / `v_aa` / `aa` …) and wires lip sync | PhysBone / contact conversion — needs VRChat components to read |
-| Auto-detects and wires **blink** blendshapes | Animator merging — there's no VRChat animator to merge |
-| Sets up **face tracking** — native `CVRFaceTracking` or the bundled DSR blendtree rig, including the generated eye rig | |
-| Injects the **height scaler**, auto-calibrated to the avatar | |
-| Builds a controller from the CCK's own `AvatarAnimator` and writes a `SetupReport.md` | |
-
-If the **VRChat SDK isn't installed at all**, the window opens straight into Setup mode — the
-CCK is the only hard requirement.
-
-> **Why can't the VRChat SDK just be stubbed out (like the DynamicBone stub)?** Because it's the
-> *input format*, not an optional dependency. Without it installed, a VRChat avatar's components
-> load as **missing scripts** — Unity can't deserialize them, so there's nothing for any amount of
-> reflection to read. A GUID-matching stub could technically recover the simple ones, but it can
-> never run VRCFury or Modular Avatar (real code needing the real SDK), so Fury avatars would
-> silently convert as empty shells. The SDK is free and one click in VCC/ALCOM; Setup mode covers
-> the genuinely SDK-free use case instead.
-
 ## It's a head start, not a magic button
 
 AvatarBridge does the tedious ~90% — rebuilding the animator, menus, physics, contacts and
@@ -86,8 +59,8 @@ It saves an experienced creator hours; it won't turn a beginner into one.
 | What | Version | Notes |
 |---|---|---|
 | Unity | **2022.3.22f1** | same version VRChat and CCK 4 use |
-| ChilloutVR CCK | **4.0.x** | **the only hard requirement** — it's what the tool builds for. Tested against 4.0.1; CCK 3 paths are also handled |
-| VRChat Avatars SDK | SDK3, 3.10.x tested | **only for Convert mode.** Already in any Creator Companion avatar project. Without it the window runs in Setup mode |
+| VRChat Avatars SDK | SDK3, 3.10.x tested | required to convert — already in any Creator Companion avatar project. (Without it the tool still runs in [Setup mode](#bonus-setup-mode-without-the-vrchat-sdk).) |
+| ChilloutVR CCK | **4.0.x** | always required — it's what the tool builds for. Tested against 4.0.1; CCK 3 paths are also handled |
 | [VRCFury](https://vrcfury.com/download) | current | only if your avatars use it — most do, and it's usually already installed via VCC |
 | [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use it — baked via NDMF's manual bake before converting |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended PhysBone target; most ChilloutVR avatars use it |
@@ -129,8 +102,8 @@ registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines
 
 | Symptom | Cause & fix |
 |---|---|
-| Window shows a ✔/✘ checklist instead of options | The **CCK** is missing — that's the one hard requirement. Import it, let Unity recompile, reopen the window. |
-| Window only offers "Set up any avatar", no Convert mode | The VRChat SDK isn't installed. That's expected — converting a VRChat avatar needs its SDK to read the avatar's components. Setup mode works without it. |
+| Window shows a ✔/✘ checklist instead of options | The **CCK** is missing — import it, let Unity recompile, reopen the window. |
+| Window only offers "Set up any avatar", no Convert mode | The VRChat SDK isn't installed, so there's no VRChat avatar to read — import the SDK to convert. [Setup mode](#bonus-setup-mode-without-the-vrchat-sdk) runs meanwhile. |
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, corrupting its Fury data. Delete the avatar's assets and scene copies, then re-import with VRCFury already installed. |
 | Convert button greyed out with a face-tracking warning | **Unity Animator Blendtrees (DSR)** is selected but its bundled assets (`Assets/AvatarBridge/FaceTracking`) are missing — reimport AvatarBridge, or switch **Face tracking** to another mode. |
 | Converted avatar is blank / invisible, or some materials go **pink** and vanish on Play | VRCFury baked the avatar's meshes/materials/shaders into its temp folder and later deleted it, orphaning them (null mesh = invisible, null material/shader = pink). Fixed in 0.9.1+ (meshes since 0.8.2) — AvatarBridge now copies those assets into `<output>/RehomedAssets`; re-convert on the latest build. |
@@ -336,6 +309,44 @@ lose every feature. AvatarBridge bakes them first, then converts the fully-baked
 
 Both are invoked via reflection, so any version works with no hard dependency, and both bakes
 are toggleable in the window (on by default).
+
+## Bonus: Setup mode (without the VRChat SDK)
+
+Converting is what AvatarBridge is for, and that needs the VRChat SDK. But the *second half* of
+what it does — the CVR-side setup — never needed VRChat at all, so it's available on its own.
+If the VRChat SDK isn't installed the window opens straight into **Setup mode**, and if it is,
+there's a mode switch at the top.
+
+Point it at any humanoid in your scene — a Booth model, an original, or an already-converted
+avatar — and it will:
+
+| Setup mode does | It can't (needs VRChat data) |
+|---|---|
+| Add and configure the `CVRAvatar` — viewpoint estimated from the eye/head bones, voice position | Menus and parameters, which live in VRChat expression assets |
+| Auto-detect **visemes** (`vrc.v_aa` / `v_aa` / `aa` …) and wire lip sync | PhysBone and contact conversion |
+| Auto-detect and wire **blink** blendshapes | Animator merging — there's no VRChat animator to merge |
+| Set up **face tracking** — native `CVRFaceTracking` or the bundled DSR rig, eye rig included | |
+| Inject the **height scaler**, auto-calibrated to the avatar | |
+| Build a controller from the CCK's `AvatarAnimator` and write a `SetupReport.md` | |
+
+<details>
+<summary><b>Why isn't the VRChat SDK just stubbed out, like the DynamicBone stub?</b></summary>
+
+Because it's the **input format**, not an optional dependency. Without it installed, a VRChat
+avatar's components load as **missing scripts** — Unity can't deserialize them, so there's
+nothing for any amount of reflection to read. The values survive in the YAML but are invisible
+to the editor API.
+
+A GUID-matching stub (how the VRLabs DynamicBone stub works) could technically recover the
+simple components, but: it can never run **VRCFury or Modular Avatar** — those are real code
+needing the real SDK — so Fury avatars would silently convert as empty shells; it collides with
+the real SDK when both are present; and Unity silently defaults any field whose name stops
+matching, so SDK updates would quietly produce wrong output.
+
+The DynamicBone stub exists to get around a paid asset. The VRChat SDK is free and one click in
+VCC/ALCOM — and you need the real one anyway the moment an avatar uses VRCFury. Setup mode
+covers the genuinely SDK-free use case instead.
+</details>
 
 ## Known limitations
 
