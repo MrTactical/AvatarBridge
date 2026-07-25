@@ -87,12 +87,12 @@ namespace AvatarBridge
         }
 
         // CVR drives these to non-zero at runtime; matching defaults avoids startup glitches.
+        // Anything CVR does NOT drive belongs in UnsupportedBuiltInDefaults instead — the scale
+        // and eye-height entries used to be listed here as well as in the unsupported set below,
+        // which are contradictory claims about the same parameter.
         static readonly Dictionary<string, float> NonZeroDefaults = new Dictionary<string, float>
         {
-            { "Grounded", 1f },
-            { "ScaleFactor", 1f },
-            { "ScaleFactorInverse", 1f },
-            { "EyeHeightAsPercent", 1f }
+            { "Grounded", 1f }
         };
 
         // VRC built-ins with no CVR equivalent; they stay as frozen local parameters.
@@ -199,7 +199,7 @@ namespace AvatarBridge
             // Before pruning, while every reference is still visible.
             RepairPrefixedReferences(master, ctx);
             DeclareDanglingParameters(master, ctx);
-            DefaultLocalPlayerParameter(master, ctx);
+            DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -1035,7 +1035,9 @@ namespace AvatarBridge
             if (unsupportedPresent.Count > 0)
             {
                 ctx.Report.Skipped(Category, "VRC built-in parameters without CVR equivalent",
-                    string.Join(", ", unsupportedPresent.Distinct()) + " — they keep their default value.");
+                    string.Join(", ", unsupportedPresent.Distinct()) + " — nothing writes them in game, so " +
+                    "they hold one value forever. Those with a known resting reading are set to it (see " +
+                    "\"given a resting value\" below); the rest sit at 0, which is correct for them.");
             }
         }
 
@@ -1684,34 +1686,101 @@ namespace AvatarBridge
         /// avatar no matter what its menu control does.
         /// </summary>
         /// <summary>
-        /// Starts "IsLocal" at 1 when nothing in the animator writes it.
+        /// VRChat built-ins ChilloutVR never writes, and the value each should rest at.
         ///
-        /// VRChat sets IsLocal true on the wearer's own client, and avatars gate real work behind
-        /// it. ChilloutVR lists it as a local core parameter (CVRCommon.CoreParameters), so the
-        /// platform is expected to supply it — but VRChat declares it as a Bool while merged
-        /// controllers frequently end up with a Float, and a Bool write into a Float parameter
-        /// does nothing. Retyping isn't an option either: blend trees can only read Floats, and
-        /// avatars do use IsLocal as a blend parameter.
+        /// Zero is not "neutral" for these — it is a specific and usually impossible state.
+        /// TrackingType 0 means "tracking not yet initialised", which VRChat leaves within a
+        /// frame of load; Upright 0 means lying flat on the floor. An avatar that keeps them at
+        /// 0 forever is being told something untrue about the player.
         ///
-        /// So the default is the only lever, and 0 is the worst possible value — it means "this
-        /// is somebody else's avatar", permanently, so every local-gated state is unreachable. A
-        /// FinalIK quadruped arrived with 21 conditions on IsLocal and the drivers that switch
-        /// its puppet rig on sitting behind them: the whole body stayed in its rest pose, flat on
-        /// the floor, while the head still tracked.
-        ///
-        /// If ChilloutVR does write the parameter, it overwrites this immediately and nothing is
-        /// lost. If it doesn't, the avatar behaves as its author intended for its wearer.
+        /// Values are VRChat's own resting readings: TrackingType 3 = head and two hands, the
+        /// most common real configuration and, being above zero, "initialised"; Upright 1 =
+        /// standing; IsLocal 1 = this is the wearer's own copy; scale 1 = unscaled; eye height
+        /// 1.6m = VRChat's default. Parameters whose honest resting value IS zero — AFK,
+        /// VelocityMagnitude, GroundProximity, InStation, ScaleModified, Earmuffs, AngularY —
+        /// are deliberately absent.
         /// </summary>
-        static void DefaultLocalPlayerParameter(AnimatorController master, BridgeContext ctx)
+        static readonly Dictionary<string, float> UnsupportedBuiltInDefaults = new Dictionary<string, float>
+        {
+            { "IsLocal", 1f },
+            { "TrackingType", 3f },
+            { "Upright", 1f },
+            { "AvatarVersion", 3f },
+            { "IsAnimatorEnabled", 1f },
+            { "ScaleFactor", 1f },
+            { "ScaleFactorInverse", 1f },
+            { "EyeHeightAsPercent", 1f },
+            { "EyeHeightAsMeters", 1.6f },
+        };
+
+        /// <summary>
+        /// Gives those built-ins their resting value when nothing in the animator writes them.
+        ///
+        /// AvatarBridge already reported these as "kept at their default value", which read like
+        /// a safe non-action and was the opposite. A FinalIK quadruped converted cleanly and then
+        /// lay flat on the floor: both of its Initialize states were gated on
+        /// "#TrackingType &gt; 0", nothing ever raised it above 0, so the drivers that switch its
+        /// puppet rig on never ran and 84 blend trees stayed at weight 0. The head still tracked,
+        /// because head and face tracking don't route through them.
+        ///
+        /// Only applied where no layer drives the parameter itself — logic that sets it knows
+        /// better than this table does — and each one is named in the report.
+        /// </summary>
+        static void DefaultUnsupportedBuiltIns(AnimatorController master, BridgeContext ctx)
         {
             var parameters = master.parameters;
-            var isLocal = parameters.FirstOrDefault(p => p.name == "IsLocal");
-            if (isLocal == null)
+            var changed = new List<string>();
+            // Both spellings are live: CVR marks local-only parameters with a leading "#", and an
+            // avatar can carry the prefixed and unprefixed copy at once.
+            foreach (var param in parameters)
+            {
+                string bare = param.name.StartsWith("#") ? param.name.Substring(1) : param.name;
+                if (UnsupportedBuiltInDefaults.TryGetValue(bare, out float value)
+                    && ApplyRestingValue(master, param, value))
+                {
+                    changed.Add($"{param.name} = {value:0.##}");
+                }
+            }
+            if (changed.Count == 0)
             {
                 return;
             }
-            // Only when the avatar itself never sets it — if some layer drives IsLocal, that
-            // logic knows better than this does.
+            master.parameters = parameters;
+            ctx.Report.Converted(Category, $"{changed.Count} VRChat built-in(s) given a resting value",
+                $"{string.Join(", ", changed)} — ChilloutVR doesn't supply these, and 0 isn't neutral for " +
+                "them: TrackingType 0 means tracking never initialised and Upright 0 means lying flat. Left " +
+                "at 0 they can hold a whole rig in its rest pose. Nothing in the animator writes them, so " +
+                "these are the values VRChat would be reporting.");
+        }
+
+        /// <summary>
+        /// Sets a parameter's default, unless the animator drives it or it is already non-zero.
+        /// </summary>
+        static bool ApplyRestingValue(AnimatorController master, AnimatorControllerParameter param, float value)
+        {
+            // Per type: Unity keeps defaultBool/defaultInt/defaultFloat as three independent
+            // fields, so an Int parameter defaulting to 2 still reads defaultFloat == 0. Testing
+            // the wrong one silently overwrites a default the author chose.
+            bool alreadySet;
+            switch (param.type)
+            {
+                case AnimatorControllerParameterType.Trigger:
+                    return false; // A trigger has no resting value to give it.
+                case AnimatorControllerParameterType.Bool:
+                    alreadySet = param.defaultBool;
+                    break;
+                case AnimatorControllerParameterType.Int:
+                    alreadySet = param.defaultInt != 0;
+                    break;
+                default:
+                    alreadySet = !Mathf.Approximately(param.defaultFloat, 0f);
+                    break;
+            }
+            if (alreadySet)
+            {
+                return false;
+            }
+
             bool written = false;
             foreach (var layer in master.layers)
             {
@@ -1721,7 +1790,7 @@ namespace AvatarBridge
                     {
                         foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
                         {
-                            written |= task.targetName == "IsLocal";
+                            written |= task.targetName == param.name;
                         }
                     }
                     foreach (var child in machine.states)
@@ -1730,7 +1799,7 @@ namespace AvatarBridge
                         {
                             foreach (var task in behaviour.EnterTasks.Concat(behaviour.ExitTasks))
                             {
-                                written |= task.targetName == "IsLocal";
+                                written |= task.targetName == param.name;
                             }
                         }
                     }
@@ -1738,27 +1807,13 @@ namespace AvatarBridge
             }
             if (written)
             {
-                return;
+                return false;
             }
 
-            bool alreadySet = isLocal.type == AnimatorControllerParameterType.Bool
-                ? isLocal.defaultBool
-                : !Mathf.Approximately(isLocal.defaultFloat, 0f);
-            if (alreadySet)
-            {
-                return;
-            }
-
-            isLocal.defaultBool = true;
-            isLocal.defaultInt = 1;
-            isLocal.defaultFloat = 1f;
-            master.parameters = parameters;
-
-            ctx.Report.Converted(Category, "\"IsLocal\" now starts at 1",
-                "Nothing in the animator writes it, and at 0 the avatar treats itself as somebody else's " +
-                "copy — every state gated on being the local player becomes unreachable, which can leave a " +
-                "rig sitting in its rest pose. ChilloutVR supplies this parameter itself and will overwrite " +
-                "the default if it does; this only matters when it doesn't.");
+            param.defaultBool = value > 0.5f;
+            param.defaultInt = Mathf.RoundToInt(value);
+            param.defaultFloat = value;
+            return true;
         }
 
         /// <summary>
