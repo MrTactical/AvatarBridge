@@ -104,8 +104,9 @@ namespace AvatarBridge
         // If the VRChat descriptor didn't set an eyelid/blink blendshape, auto-detect blink
         // shapes on the face mesh (e.g. "Blink L"/"Blink R") and wire CVR's Eye Blink Settings.
         public bool wireBlinkBlendshapes = true;
-        // Inject the bundled avatar scaler (Linear Smoothing + Size layers + "Height (M)" menu).
-        // Default 1.3m; scale values are calibrated to the source avatar and may want tuning.
+        // Inject the bundled avatar scaler (Linear Smoothing + generated Size layer + a
+        // "Height (M)" menu input). Auto-calibrated: the menu defaults to the avatar's
+        // measured eye height, so it spawns at its original size and the value is true metres.
         public bool addAvatarScaler = true;
         // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
         // based); DragonSkyRunner = inject that package's animator layers/params; None =

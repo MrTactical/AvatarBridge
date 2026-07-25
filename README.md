@@ -19,6 +19,9 @@ keeping as much working as possible and leaving you a clean starting point to fi
   repath). Your choice.
 - **Mod-aware** — PhysBone grab reactions (`_IsGrabbed` / `_Angle`) are wired for the
   [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod.
+- **Quad avatars convert** — FinalIK-driven quadruped/puppet rigs carry through intact
+  (ChilloutVR runs FinalIK natively), and avatar-breaking leftovers like stray cameras are
+  cleaned up so the avatar actually loads.
 - **Avatar scaler** — a height scaler with *linear (constant-speed) smoothing* so size changes
   glide instead of snapping, exposed as a **"Height (M)"** menu that **defaults to the avatar's
   own measured eye height**, so it's the same size before and after conversion (and `Height (M)`
@@ -27,8 +30,9 @@ keeping as much working as possible and leaving you a clean starting point to fi
 
 > **Status: working, actively refined.** Full VRCFury and Modular Avatar avatars — clothing
 > toggles, MagicaCloth physics, dozens of contacts, face tracking, even heavy SPS / poiyomi
-> avatars — convert and run in ChilloutVR. Rows marked 🔷 in the tables below are correct in
-> Unity but not yet independently confirmed in-game. Bugs and requests → open an issue.
+> avatars and **quadruped (FinalIK) puppet avatars** — convert and run in ChilloutVR. Rows
+> marked 🔷 in the tables below are correct in Unity but not yet independently confirmed
+> in-game. Bugs and requests → open an issue.
 
 ## It's a head start, not a magic button
 
@@ -99,18 +103,24 @@ registering its `AVATARBRIDGE_MAGICA` / `AVATARBRIDGE_DYNBONE` scripting defines
 | VRCFury error: *"Found a null SerializeReference"* | The avatar was imported while VRCFury was missing, corrupting its Fury data. Delete the avatar's assets and scene copies, then re-import with VRCFury already installed. |
 | Convert button greyed out with a face-tracking warning | **Unity Animator Blendtrees (DSR)** is selected but its bundled assets (`Assets/AvatarBridge/FaceTracking`) are missing — reimport AvatarBridge, or switch **Face tracking** to another mode. |
 | Converted avatar is blank / invisible, or some materials go **pink** and vanish on Play | VRCFury baked the avatar's meshes/materials/shaders into its temp folder and later deleted it, orphaning them (null mesh = invisible, null material/shader = pink). Fixed in 0.9.1+ (meshes since 0.8.2) — AvatarBridge now copies those assets into `<output>/RehomedAssets`; re-convert on the latest build. |
+| Avatar uploads fine but loads as the **"Error" robot** in ChilloutVR | The avatar carried a leftover Unity `Camera` (a common packed-unitypackage leftover, e.g. a "3rd Person Camera" rig) — CVR's asset filter crashes on it and blocks the whole avatar. Fixed in 0.9.9+ — cameras and audio listeners are stripped during cleanup; re-convert on the latest build. |
 | Physics target warning | MagicaCloth2 / DynamicBone isn't installed, or needs one more recompile to be detected. |
 | Project wedged after an out-of-order import | Close Unity, delete the `Library` folder, reopen and let it reimport. |
 
 ## Usage
 
+The window walks you through three steps:
+
 1. Open **Tools → Avatar Bridge → VRChat to ChilloutVR Converter**.
-2. Drop your scene avatar (the object with the `VRCAvatarDescriptor`) into the field.
-3. Review the options — the defaults are the recommended ones. Pick the physics target and
-   face-tracking mode.
-4. **Convert avatar.** The original is deactivated and a `<name> (ChilloutVR)` copy appears,
+2. **Step 1** — drop your scene avatar (the object with the `VRCAvatarDescriptor`) into the
+   field. VRCFury / Modular Avatar are detected and called out automatically.
+3. **Step 2** — pick the physics target and face-tracking mode. The defaults suit most
+   avatars; everything unusual lives under **Advanced options**. Your choices are remembered
+   between sessions.
+4. **Step 3 — Convert.** The original is deactivated and a `<name> (ChilloutVR)` copy appears,
    with its generated controller and report under `Assets/AvatarBridge/Output/<name>/`.
-5. Read `ConversionReport.md` and act on anything flagged.
+5. Read the conversion report (the **Open full report** button in the window takes you there)
+   and act on anything flagged.
 6. Upload through the CCK as usual.
 
 Re-converting always works on the **original** avatar — delete the previous `(ChilloutVR)`
@@ -138,7 +148,9 @@ Every row carries an honest status:
 | VRC Parameter Driver | CCK `AnimatorDriver` | 🔷 | Set / Add / Random / Copy incl. range conversion; random-on-a-bool is ⚠️ (chance weighting lost) |
 | Contacts (senders / receivers) | `CVRPointer` / `CVRAdvancedAvatarSettingsTrigger` | 🔷 | OnEnter → pulse, Proximity → distance stay task; Constant receivers are ⚠️ (exit resets to 0 even if a second pointer is inside) |
 | Built-in VRC colliders (hands, fingers, head…) | `CVRPointer`s with standard tags | 🔷 | only for tags your receivers listen to |
-| VRC Constraints (all 6 types) | Unity constraints | 🔷 | Parent/Position/Rotation/Scale/LookAt tested; Aim untested. `Freeze To World` and target-transform redirection are ⚠️ dropped |
+| VRC Constraints (all 6 types) | Unity constraints | ✅ | sources/weights/offsets/rest/axes transfer 1:1. `Freeze To World`, Aim world-up mode and target-transform redirection are ⚠️ dropped; several same-type constraints on one object are ⚠️ merged into one (Unity/CVR hard limit) |
+| FinalIK components (VRIK, CCD, FABRIK, Grounder Quadruped…) | kept as-is | ✅ | ChilloutVR whitelists and runs FinalIK natively; components and bone references carry through the conversion — quad avatars work |
+| Avatar cameras / audio listeners | removed | ✅ | a stray `Camera` on an avatar crashes ChilloutVR's asset filter (avatar loads as the "Error" robot); the components are stripped, the GameObjects (often constraint targets) stay |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | 🔷 | cloth objects named after their PhysBone parameter so grab-reactive FX works for anyone running the mod; `_Stretch` / `_Squish` / `_IsPosed` have no equivalent |
 | Face-tracking blendshapes | native `CVRFaceTracking` **or** bundled CVR-VRCFT rig (auto eye empties + constraints, per-avatar repath) | 🔷 | your choice — see [Face tracking](#face-tracking) |
 | VRC Head Chop | `FPRExclusion` | 🔷 | ⚠️ show/hide only — fractional scale factors can't be represented |
@@ -204,9 +216,9 @@ and used with permission. See [Credits](#credits) for the redistribution note.
 
 ## Avatar scaler
 
-On by default (toggle **Add avatar scaler** in Advanced Settings), AvatarBridge adds a height
-scaler with **linear, constant-speed smoothing** — size changes glide instead of snapping —
-driven by a **"Height (M)"** input in the CVR menu.
+On by default (the **Add height scaler** toggle in step 2 of the window), AvatarBridge adds a
+height scaler with **linear, constant-speed smoothing** — size changes glide instead of
+snapping — driven by a **"Height (M)"** input in the CVR menu.
 
 It's **calibrated to the avatar automatically**: AvatarBridge measures the avatar's eye height
 and generates the scale layer so `Height (M)` is true metres (`localScale = originalScale ×
@@ -318,6 +330,10 @@ are toggleable in the window (on by default).
 - **2D blend trees driven by `GestureLeft/Right`** are flagged for manual review.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert,
   but only the ones enabled at bake time start active — if none were, the report says so.
+- **Stacked same-type constraints** (two `VRCPositionConstraint`s on one object, etc.) are
+  merged into one Unity constraint — Unity and CVR allow only one per type per object, so the
+  second one's own offsets/rest values are dropped (its sources are kept; reported as
+  *Approximated*).
 - **Shaders aren't translated** — Poiyomi etc. work as-is, and VRCFury-baked materials/shaders
   (SPS-patched, locked) are rescued out of Fury's temp so they don't render pink — but
   VRChat-specific rendering (SPS/TPS penetration especially) won't *function* in CVR.

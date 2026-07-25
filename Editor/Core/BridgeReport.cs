@@ -30,6 +30,9 @@ namespace AvatarBridge
     {
         public readonly List<ReportEntry> Entries = new List<ReportEntry>();
 
+        /// <summary>Asset path of the saved ConversionReport.md (set once written).</summary>
+        public string SavedReportPath;
+
         public void Add(ReportStatus status, string category, string subject, string detail = "")
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });

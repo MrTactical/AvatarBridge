@@ -111,7 +111,25 @@ namespace AvatarBridge
             {
                 safeName = safeName.Replace(c, '_');
             }
-            ctx.OutputDir = ctx.Settings.outputFolder.TrimEnd('/') + "/" + safeName;
+            // Names like ".", ".." or all-dots would escape (or collide with) the output
+            // folder; so would an empty name. Fall back to a fixed name instead.
+            safeName = safeName.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                safeName = "Avatar";
+            }
+
+            // The output folder must stay inside the project's Assets folder — everything
+            // here is created via AssetDatabase, and delete/overwrite operations must never
+            // be able to point outside the project.
+            string folder = (ctx.Settings.outputFolder ?? "").Trim().Replace('\\', '/').TrimEnd('/');
+            if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
+            {
+                ctx.Report.Warning("Conversion", $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
+                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
+                folder = "Assets/AvatarBridge/Output";
+            }
+            ctx.OutputDir = folder + "/" + safeName;
 
             string absolute = Path.GetFullPath(Path.Combine(
                 Application.dataPath, "..", ctx.OutputDir));
@@ -192,6 +210,7 @@ namespace AvatarBridge
             string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
             File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name));
             AssetDatabase.ImportAsset(path);
+            ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] Report written to {path}");
         }
     }
