@@ -119,16 +119,10 @@ namespace AvatarBridge
             }
 
             // --- Blinking ------------------------------------------------------------
-            string blinkShape = GetBlinkBlendshapeName(vrc, sourceFace);
+            string blinkShape = GetBlinkBlendshapeName(vrc, sourceFace, out Mesh eyelidMesh);
             if (!string.IsNullOrEmpty(blinkShape))
             {
-                cvrAvatar.useBlinkBlendshapes = true;
-                if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 1)
-                {
-                    cvrAvatar.blinkBlendshape = new string[4];
-                }
-                cvrAvatar.blinkBlendshape[0] = blinkShape;
-                ctx.Report.Converted(Category, "Blink blendshape", blinkShape);
+                WireDescriptorBlink(ctx, cvrAvatar, blinkShape, eyelidMesh);
             }
             else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, cvrAvatar))
             {
@@ -206,19 +200,88 @@ namespace AvatarBridge
                     $"Descriptor set none; wired CVR blink to \"{left}\" / \"{right}\" (Separate). Enables " +
                     "CVR's native blink and the CVR-VRCFT rig's eye-tracking-off fallback. Verify L/R aren't swapped.");
             }
-            else
+            else if (combined != null)
             {
-                string single = combined ?? left ?? right;
-                cvrAvatar.blinkBlendshape[0] = single;
+                cvrAvatar.blinkBlendshape[0] = combined;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
                 ctx.Report.Converted(Category, "Blink blendshape auto-detected",
-                    $"Descriptor set none; wired CVR blink to \"{single}\" (Combined).");
+                    $"Descriptor set none; wired CVR blink to \"{combined}\" (Combined).");
+            }
+            else
+            {
+                // Half a pair and no combined shape — this can only ever close one eye.
+                string single = left ?? right;
+                cvrAvatar.blinkBlendshape[0] = single;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+                ctx.Report.Warning(Category, "Blink blendshape auto-detected",
+                    $"Descriptor set none, and only \"{single}\" was found — a {(left != null ? "left" : "right")}-side " +
+                    "shape with no counterpart, so blinking will close one eye. Wired as Combined; if the " +
+                    "other eye's shape exists under a name without a side marker, assign it on the CVRAvatar " +
+                    "and set Blink Mode to Separate.");
             }
             return true;
         }
 
-        static string GetBlinkBlendshapeName(VRCAvatarDescriptor vrc, SkinnedMeshRenderer face)
+        /// <summary>
+        /// Wires CVR's Eye Blink Settings from the shape the VRChat descriptor named.
+        ///
+        /// VRChat has exactly one eyelid slot and expects a shape that closes both eyes, while
+        /// ChilloutVR has two slots plus a mode that says how to read them. Authors do point
+        /// VRChat's single slot at one half of an L/R pair — "vrc.blink_left" — because in
+        /// VRChat nothing else is on offer. Copying that name into CVR's first slot and leaving
+        /// the mode alone gives Separate mode with Right Blink empty, so only one eye ever
+        /// closes. So the mode is always set explicitly here, and a side-specific shape sends us
+        /// looking for its partner on the same mesh.
+        /// </summary>
+        static void WireDescriptorBlink(BridgeContext ctx, CVRAvatar cvrAvatar, string blinkShape, Mesh eyelidMesh)
         {
+            cvrAvatar.useBlinkBlendshapes = true;
+            if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
+            {
+                cvrAvatar.blinkBlendshape = new string[4];
+            }
+
+            string lower = blinkShape.ToLowerInvariant();
+            bool namesLeft = AvatarFeatureDetect.IsSide(lower, "left", 'l');
+            bool namesRight = !namesLeft && AvatarFeatureDetect.IsSide(lower, "right", 'r');
+
+            if (namesLeft || namesRight)
+            {
+                AvatarFeatureDetect.DetectBlinkShapes(eyelidMesh, out string foundLeft, out string foundRight, out _);
+                string left = namesLeft ? blinkShape : foundLeft;
+                string right = namesRight ? blinkShape : foundRight;
+
+                if (!string.IsNullOrEmpty(left) && !string.IsNullOrEmpty(right))
+                {
+                    cvrAvatar.blinkBlendshape[0] = left;
+                    cvrAvatar.blinkBlendshape[1] = right;
+                    AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
+                    ctx.Report.Converted(Category, "Blink blendshapes",
+                        $"\"{left}\" / \"{right}\" (Separate). The VRChat descriptor only named " +
+                        $"\"{blinkShape}\" — it has a single eyelid slot — so the other side was matched " +
+                        "on the same mesh, otherwise only one eye would blink.");
+                    return;
+                }
+
+                // Side-specific with nothing to pair it with: one eye is all this shape can close.
+                cvrAvatar.blinkBlendshape[0] = blinkShape;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+                ctx.Report.Warning(Category, "Blink blendshape",
+                    $"The descriptor named \"{blinkShape}\", which closes one eye, and no matching " +
+                    $"{(namesLeft ? "right" : "left")}-side shape was found on the same mesh. Wired as " +
+                    "Combined so it at least drives blinking; if the avatar has a separate shape for the " +
+                    "other eye, set Blink Mode to Separate and assign both on the CVRAvatar.");
+                return;
+            }
+
+            cvrAvatar.blinkBlendshape[0] = blinkShape;
+            AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+            ctx.Report.Converted(Category, "Blink blendshape", $"\"{blinkShape}\" (Combined).");
+        }
+
+        static string GetBlinkBlendshapeName(VRCAvatarDescriptor vrc, SkinnedMeshRenderer face, out Mesh eyelidMesh)
+        {
+            eyelidMesh = null;
             if (vrc.customEyeLookSettings.eyelidType != VRCAvatarDescriptor.EyelidType.Blendshapes)
             {
                 return null;
@@ -236,6 +299,7 @@ namespace AvatarBridge
             {
                 return null;
             }
+            eyelidMesh = mesh;
             return mesh.GetBlendShapeName(eyelids[0]);
         }
     }

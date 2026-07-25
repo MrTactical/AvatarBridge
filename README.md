@@ -142,7 +142,7 @@ Every row carries an honest status:
 
 | VRChat | ChilloutVR | Status | Notes |
 |---|---|---|---|
-| Avatar descriptor (viewpoint, voice, face mesh, visemes, blink) | `CVRAvatar` | ✅ | voice position placed at the head bone like VRChat; if the descriptor set no blink, blink blendshapes (`Blink L`/`Blink R` etc.) are auto-detected off the mesh and CVR's Eye Blink Settings wired |
+| Avatar descriptor (viewpoint, voice, face mesh, visemes, blink) | `CVRAvatar` | ✅ | voice position placed at the head bone like VRChat; blink is wired with the matching Blink Mode — see [below](#blink-modes-dont-line-up) |
 | Expression parameters + menus | Advanced Avatar Settings (toggles / sliders / dropdowns) | ✅ | entries named after the menu control's label (`Cloak`), qualified only on collisions (`Hoodie (Tops)`) |
 | Clothing / prop toggles | one `Toggle <name>` animator layer each | ✅ | pulled out of VRCFury's merged blend tree into classic Off/On layers |
 | Toggle parameters | real `bool` parameters | ✅ | VRCFury bakes toggles as floats; those used only in conditions are retyped |
@@ -170,6 +170,27 @@ is a *separate* thing — thumbstick/input deflection in `[-1..1]` — so nothin
 between them. Locomotion is left to CVR's own system by default (the Base layer isn't
 converted unless you opt in). Caveat: CVR documents `VelocityX/Y/Z` as `[0…∞]` (magnitude)
 while VRChat's are signed, so velocity-driven blends are worth a check.
+
+### Blink modes don't line up
+
+VRChat has **one** eyelid blendshape slot and expects a shape that closes both eyes.
+ChilloutVR has **two** slots — Left Blink and Right Blink — plus a **Blink Mode** that says how
+to read them. Because VRChat offers nothing else, authors routinely point its single slot at one
+half of an L/R pair, so a descriptor commonly reads `vrc.blink_left`.
+
+Copying that name straight into CVR's first slot leaves Blink Mode on *Separate* with Right Blink
+empty — and only one eye ever closes. AvatarBridge therefore always sets the mode explicitly, and
+when the named shape is side-specific it looks for the partner on the same mesh:
+
+| descriptor names | result |
+|---|---|
+| a both-eyes shape (`Blink`, `vrc.blink`) | slot 0 + **Combined** |
+| one side, partner found (`vrc.blink_left` → `vrc.blink_right`) | both slots + **Separate** |
+| one side, no partner | slot 0 + **Combined**, plus a ⚠️ warning — one eye is all that shape can close |
+
+If the descriptor named nothing at all, the same shapes are detected off the mesh directly. Side
+matching only accepts a spelled-out `left`/`right` or a standalone `l`/`r` token (`Blink L`,
+`blink_r`, `L_Blink`), so it can't be fooled by an unrelated `l` inside a word.
 
 ## Face tracking
 
