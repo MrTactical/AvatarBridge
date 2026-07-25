@@ -44,7 +44,8 @@ namespace AvatarBridge
         public static float MinDamping = 0.01f;
 
         public static void Write(BridgeContext ctx, PhysBoneChainData data,
-            Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache)
+            Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache,
+            List<ColliderComponent> bodyColliders = null)
         {
             // The GrabbyBones mod derives its animator parameters from the GameObject name
             // that holds the cloth component: "<name>_IsGrabbed" and "<name>_Angle". Naming
@@ -185,6 +186,7 @@ namespace AvatarBridge
             }
 
             // Colliders.
+            bool usedBodyColliders = false;
             if (data.Colliders.Count > 0)
             {
                 sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
@@ -196,6 +198,20 @@ namespace AvatarBridge
                         sdata.colliderCollisionConstraint.colliderList.Add(collider);
                     }
                 }
+            }
+            else if (bodyColliders != null && bodyColliders.Count > 0)
+            {
+                // The author defined no colliders for this chain. In VRChat that's survivable —
+                // the game supplies hand colliders and the body is often just left to clip — but
+                // converted as-is the chain would sweep straight through the avatar. Give it the
+                // generated body set. Chains that DID bring colliders are left exactly as
+                // authored, since adding more invites jitter.
+                sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
+                foreach (var collider in bodyColliders)
+                {
+                    sdata.colliderCollisionConstraint.colliderList.Add(collider);
+                }
+                usedBodyColliders = true;
             }
 
             ReportUnconvertibleFeatures(ctx, data);
@@ -209,8 +225,11 @@ namespace AvatarBridge
             {
                 notes.Add("root pinned");
             }
+            string colliderText = usedBodyColliders
+                ? $"generated body colliders ({bodyColliders.Count})"
+                : $"{data.Colliders.Count} collider(s)";
             ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth with {data.Colliders.Count} collider(s)" +
+                $"BoneCloth with {colliderText}" +
                 (notes.Count > 0 ? $" ({string.Join(", ", notes)})." : "."));
         }
 

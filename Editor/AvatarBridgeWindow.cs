@@ -245,6 +245,16 @@ namespace AvatarBridge
                         "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
                         "_IsGrabbed / _Angle grab-reactive logic."),
                     settings.grabbyBonesSupport);
+                using (new EditorGUI.DisabledScope(settings.physicsTarget != PhysicsTarget.MagicaCloth2))
+                {
+                    settings.generateBodyColliders = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Generate body colliders",
+                            "Many avatars define no PhysBone colliders, so their hair and tails would pass " +
+                            "straight through the body in ChilloutVR. This builds a collider set from the " +
+                            "humanoid rig — sized from the avatar's own bone lengths — and gives it to any " +
+                            "chain that arrived without colliders. Chains that already had them are untouched."),
+                        settings.generateBodyColliders);
+                }
                 settings.deleteConvertedPhysBones = EditorGUILayout.ToggleLeft(
                     new GUIContent("Delete PhysBones after converting",
                         "Leave on — leftover PhysBone components upset the CCK upload checks."),

@@ -54,9 +54,25 @@ namespace AvatarBridge
                 case PhysicsTarget.MagicaCloth2:
 #if AVATARBRIDGE_MAGICA
                     var magicaColliderCache = new Dictionary<VRCPhysBoneCollider, MagicaCloth2.ColliderComponent>();
-                    foreach (var pb in physBones)
+
+                    // Built once for the whole avatar, then shared by any chain that arrived
+                    // without colliders of its own. Only worth generating if such a chain
+                    // exists — an avatar whose author set colliders up everywhere needs none.
+                    var chains = physBones.Select(PhysBoneChainData.Read).ToList();
+                    var bodyColliders = chains.Any(c => c.Colliders.Count == 0)
+                        ? MagicaBodyColliders.Build(ctx)
+                        : new List<MagicaCloth2.ColliderComponent>();
+                    if (bodyColliders.Count > 0)
                     {
-                        MagicaClothWriter.Write(ctx, PhysBoneChainData.Read(pb), magicaColliderCache);
+                        ctx.Report.Converted(Category, $"Generated {bodyColliders.Count} body collider(s)",
+                            "Sized from this avatar's own bone lengths and given to every chain that had no " +
+                            "colliders of its own, so hair and tails collide with the body instead of passing " +
+                            "through it. Chains that already had colliders were left as authored.");
+                    }
+
+                    foreach (var chain in chains)
+                    {
+                        MagicaClothWriter.Write(ctx, chain, magicaColliderCache, bodyColliders);
                     }
 #else
                     ctx.Report.Error(Category, "MagicaCloth2 is not installed",

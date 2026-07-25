@@ -79,6 +79,11 @@ namespace AvatarBridge
         // Name converted MagicaCloth objects after their PhysBone parameter so the
         // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
+        // Many avatars define no PhysBone colliders at all, because VRChat supplies hand
+        // colliders and authors leave the body to clip. Converted as-is those chains have no
+        // collision whatsoever, so build a body collider set from the humanoid rig and give it
+        // to any chain that arrived without colliders. (MagicaCloth2 target only.)
+        public bool generateBodyColliders = true;
 
         [Header("VRChat-only system stripping")]
         // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15
