@@ -135,6 +135,11 @@ namespace AvatarBridge
                     "the gap between bones makes neighbouring particles overlap and shove each other apart.");
             }
 
+            if (ctx.Settings.fitToPhysBone)
+            {
+                FitToPhysBone(ctx, data, sdata);
+            }
+
             if (ctx.Settings.transferAngleLimits)
             {
                 ApplyAngleLimit(ctx, data, sdata);
@@ -214,6 +219,61 @@ namespace AvatarBridge
                     ? $"PhysBone parameter \"{data.Parameter}\": _IsGrabbed and _Angle work via the GrabbyBones " +
                       "mod (cloth object named to match). _Stretch/_Squish/_IsPosed have no equivalent."
                     : $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
+            }
+        }
+
+        /// <summary>
+        /// Nudges the preset toward what the PhysBone actually asked for — but only for the
+        /// facts that mean the SAME THING in both systems, which is a very short list.
+        ///
+        /// Two kinds of statement survive the gap between a rotational spring and a particle
+        /// solver. **Categorical ones**: "this never falls", "this falls upward" — both systems
+        /// express those the same way, as a gravity of zero or a flipped direction. And **a
+        /// dimensionless ratio with the same meaning on both sides**: MagicaCloth2 documents
+        /// `worldInertia` as "World Influence (0.0 ~ 1.0)" and PhysBone's `immobile` is how much
+        /// the chain IGNORES that same movement — the same question in the same units, just
+        /// inverted. Neither involves converting one system's numbers into the other's.
+        ///
+        /// Everything else stays with the preset. Pull and stiffness are NOT here: MagicaCloth2's
+        /// angle restoration pushes on particle positions where PhysBone's pull rotates a bone
+        /// toward its parent, so there is no exchange rate between them — that assumption is what
+        /// produced every physics regression this tool has shipped.
+        /// </summary>
+        static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (Mathf.Approximately(data.Gravity, 0f))
+            {
+                // The author gave this chain no gravity, so it was never meant to hang. Presets
+                // carry their own (Long Hair ships 5.0), which would make it fall for the first
+                // time in ChilloutVR.
+                if (!Mathf.Approximately(sdata.gravity, 0f))
+                {
+                    sdata.gravity = 0f;
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        "Gravity set to 0 — the source PhysBone had none, so this chain was never " +
+                        "meant to hang under its own weight.");
+                }
+            }
+            else if (data.Gravity < 0f)
+            {
+                sdata.gravityDirection = new Unity.Mathematics.float3(0f, 1f, 0f);
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Gravity direction flipped to point up — the source PhysBone used negative gravity.");
+            }
+
+            // immobile -> world influence. Same 0..1 question on both sides ("how much does the
+            // avatar moving shake this chain"), opposite polarity. Only applied when the author
+            // actually set it, so a chain they left alone keeps the preset's own tuning.
+            if (data.Immobile > 0.01f)
+            {
+                float influence = Mathf.Clamp01(1f - data.Immobile);
+                if (TrySetMember(sdata.inertiaConstraint, "worldInertia", influence))
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"World influence set to {influence:0.##} — the source PhysBone was " +
+                        $"{data.Immobile:0.##} immobile, and MagicaCloth2 measures the same thing the " +
+                        "other way round.");
+                }
             }
         }
 

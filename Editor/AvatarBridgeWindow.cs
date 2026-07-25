@@ -268,6 +268,14 @@ namespace AvatarBridge
                             "firmly the PhysBone held its rest pose. Turn off to give every chain " +
                             "MagicaCloth2's global defaults instead."),
                         settings.useMagicaPresets);
+                    settings.fitToPhysBone = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Fit the preset to the PhysBone",
+                            "After the preset loads, apply the few PhysBone facts that mean the same " +
+                            "thing in MagicaCloth2: a chain with no gravity keeps none, negative gravity " +
+                            "points up, and immobile becomes world influence (MagicaCloth2 measures the " +
+                            "same thing the other way round). Pull, spring and stiffness are left out — " +
+                            "they have no MagicaCloth2 counterpart. Each adjustment is named in the report."),
+                        settings.fitToPhysBone);
                     settings.capParticleRadius = EditorGUILayout.ToggleLeft(
                         new GUIContent("Cap particle radius to bone spacing",
                             "MagicaCloth2's radius is the particle size, not just a collision radius, so " +

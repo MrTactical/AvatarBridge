@@ -90,6 +90,10 @@ namespace AvatarBridge
         // a different avatar, and an uncapped radius turned a 0.5 into metre-wide particles on
         // a third. They are genuinely avatar-dependent, so they are exposed rather than decided.
         public bool transferAngleLimits = false;
+        // After the preset loads, apply the handful of PhysBone facts that mean the same thing
+        // in MagicaCloth2 — no gravity, upward gravity, and immobile (which is world influence
+        // inverted). Deliberately excludes pull/spring/stiffness, which have no counterpart.
+        public bool fitToPhysBone = true;
         public bool capParticleRadius = true;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided
