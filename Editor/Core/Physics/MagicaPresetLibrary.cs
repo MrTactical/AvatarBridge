@@ -20,7 +20,7 @@ namespace AvatarBridge
     ///
     /// Lookup order for a class, first hit wins:
     ///
-    ///   1. "MC2_AvatarBridge_&lt;Class&gt;.json"  — tuned for this kind of chain, anywhere in
+    ///   1. "MC2_Preset_Bridge_&lt;Class&gt;.json"  — tuned for this kind of chain, anywhere in
     ///                                          the project. Drop your own in to override.
     ///   2. the class's MagicaCloth2 fallback  — one of MagicaCloth2's own shipped presets
     ///   3. nothing                            — MagicaCloth2's component defaults
@@ -56,8 +56,16 @@ namespace AvatarBridge
         const string MiddleSpring = "MC2_Preset_MiddleSpring";
         const string HardSpring = "MC2_Preset_HardSpring";
 
-        /// <summary>Prefix for AvatarBridge's own presets, which take priority over MagicaCloth2's.</summary>
-        public const string CustomPrefix = "MC2_AvatarBridge_";
+        /// <summary>
+        /// Prefix for AvatarBridge's own presets, which take priority over MagicaCloth2's.
+        ///
+        /// It deliberately starts with MagicaCloth2's own "MC2_Preset" — that is the filter its
+        /// preset dropdown searches on, and it groups the results by folder. Naming them this way
+        /// puts every AvatarBridge preset in its own section of that dropdown, so tuning one is
+        /// Load → adjust → Save without ever opening a file browser. The "Bridge_" part keeps
+        /// them from ever colliding with a MagicaCloth2 preset of the same name.
+        /// </summary>
+        public const string CustomPrefix = "MC2_Preset_Bridge_";
 
         // Every class the classifier can produce, with the MagicaCloth2 preset it falls back to.
         // Kept in one place so the set is greppable and the "what could I tune?" list is obvious.
@@ -284,7 +292,7 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>"MC2_Preset_LongHair" -> "Long Hair"; "MC2_AvatarBridge_HairFront" -> "Hair Front".</summary>
+        /// <summary>"MC2_Preset_LongHair" -> "Long Hair"; "MC2_Preset_Bridge_HairFront" -> "Hair Front".</summary>
         public static string DisplayName(string presetName)
         {
             string bare = presetName.Replace(CustomPrefix, "").Replace("MC2_Preset_", "");

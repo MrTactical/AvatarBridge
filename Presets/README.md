@@ -5,19 +5,24 @@ preset for that class. This folder is where those presets live, and where you ov
 
 Lookup order, first hit wins:
 
-1. `MC2_AvatarBridge_<Class>.json` — anywhere in the project
+1. `MC2_Preset_Bridge_<Class>.json` — anywhere in the project
 2. the class's MagicaCloth2 fallback — one of MagicaCloth2's own shipped presets
 3. MagicaCloth2's component defaults
 
 ## Authoring one
 
-1. Convert an avatar, find a chain of the kind you want to tune, and tune its MagicaCloth
-   component **in play mode** until it feels right.
-2. Press **Save** on the component's **Preset** dropdown.
-3. Save it here as `MC2_AvatarBridge_<Class>.json`.
+1. Convert an avatar and select a chain of the kind you want to tune.
+2. On its MagicaCloth component, open the **Preset** dropdown — these appear there, in their own
+   group below MagicaCloth2's, as `Bridge_Breast`, `Bridge_Ear` and so on. Load the one you're
+   tuning.
+3. Tune it **in play mode** until it feels right.
+4. Press **Save**, back into this folder, keeping the same `MC2_Preset_Bridge_<Class>.json` name.
 
-MagicaCloth2 writes exactly the JSON AvatarBridge reads, so there's no conversion step. It takes
-effect on the next conversion.
+MagicaCloth2 writes exactly the JSON AvatarBridge reads, so there's no conversion step, and it
+takes effect on the next conversion.
+
+*(The names start with `MC2_Preset` on purpose — that's the prefix MagicaCloth2's dropdown
+searches for. `Bridge_` keeps them from ever colliding with one of its own.)*
 
 ## What ships here, and what falls back
 
