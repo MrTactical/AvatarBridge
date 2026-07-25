@@ -338,6 +338,31 @@ are toggleable in the window (on by default).
   (SPS-patched, locked) are rescued out of Fury's temp so they don't render pink — but
   VRChat-specific rendering (SPS/TPS penetration especially) won't *function* in CVR.
 
+## Reporting a bug
+
+The fastest route: hit **Report an issue** in the AvatarBridge window (bottom of the panel, or
+next to the results whenever a run produced warnings or errors). It opens a pre-filled GitHub
+issue with your versions and detected packages already in it.
+
+Two things make a report solvable immediately:
+
+1. **Attach `ConversionReport.md`** — it's in `Assets/AvatarBridge/Output/<avatar name>/`, and the
+   window's **Open full report** / **Show in Project** buttons take you straight to it. Nearly
+   every bug fixed so far was diagnosed from this file.
+2. **Attach the right log**, which depends on where it went wrong:
+
+   | Symptom | Log to attach |
+   |---|---|
+   | Conversion errors, or the result looks wrong in Unity | Unity's console text or `Editor.log` |
+   | Avatar misbehaves, or won't load, **in ChilloutVR** | ChilloutVR's `Player.log` — `%USERPROFILE%\AppData\LocalLow\ChilloutVR\ChilloutVR\Player.log` |
+
+   A clean Unity log says nothing about an in-game failure; those live only in the CVR client
+   log. (This is exactly how the "Error robot" bug was found — the Unity log was spotless.)
+
+Please re-run on the [latest release](https://github.com/MrTactical/AvatarBridge/releases/latest)
+before reporting, and note that logs contain your project's file paths (and CVR logs your
+display name) — skim and redact if you'd rather not post them.
+
 ## Credits
 
 - Gesture tables, CVR core parameters and several conversion patterns were studied from

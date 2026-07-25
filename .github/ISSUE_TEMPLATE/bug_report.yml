@@ -1,0 +1,74 @@
+name: Bug report
+description: Something converted wrong, failed to upload, or misbehaves in ChilloutVR
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting — testers' reports and logs are how nearly every bug in this tool has been found.
+
+        **The conversion report is the single most useful thing you can attach.** Most issues are diagnosed straight from it.
+
+        > ℹ️ Reports and logs contain your Unity project's file paths, and ChilloutVR logs contain your display name.
+        > Have a skim before posting if that matters to you — feel free to redact.
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+      placeholder: |
+        e.g. "Converted my avatar, uploaded fine, but in ChilloutVR it shows as the Error robot."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where does it go wrong?
+      description: This tells me which log I need from you (see below).
+      options:
+        - Conversion fails or errors in Unity
+        - Conversion finishes, but the result looks wrong in Unity
+        - Avatar won't upload (the CCK complains)
+        - Avatar uploads, but loads as the "Error" robot in ChilloutVR
+        - Avatar loads, but something misbehaves in-game (toggles, face tracking, physics, gestures)
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >
+        The **Report an issue** button inside AvatarBridge fills this in for you.
+        Otherwise: AvatarBridge version, Unity version, CCK version, and whether the avatar uses VRCFury / Modular Avatar.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: attachments
+    attributes:
+      label: Attachments
+      description: |
+        **Drag the files into this issue box.** Which log I need depends on your answer above:
+
+        - **Unity-side problem** → the Unity console text or `Editor.log`
+        - **In-game problem** → ChilloutVR's **`Player.log`**, *not* the Unity log
+          (`%USERPROFILE%\AppData\LocalLow\ChilloutVR\ChilloutVR\Player.log`)
+
+        A clean Unity log tells us nothing about an in-game failure — the CVR client log is where those live.
+      options:
+        - label: I attached `ConversionReport.md` (found in `Assets/AvatarBridge/Output/<avatar name>/`)
+        - label: I attached the relevant log for the stage I picked above
+        - label: I re-ran the conversion on the **latest** AvatarBridge release before reporting
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, the avatar's name/creator if it's public, or anything unusual about its setup.
+    validations:
+      required: false

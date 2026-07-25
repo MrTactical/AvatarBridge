@@ -116,8 +116,37 @@ namespace AvatarBridge
             DrawConvertButton();
             DrawReport();
 
+            Separator();
+            DrawFooter();
+
             GUILayout.Space(10);
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>Help + reporting links, always reachable.</summary>
+        void DrawFooter()
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Troubleshooting  ↗", EditorStyles.linkLabel))
+                {
+                    Application.OpenURL(BridgeLinks.Troubleshooting);
+                }
+                GUILayout.Space(12);
+                if (GUILayout.Button("Report an issue  ↗", EditorStyles.linkLabel))
+                {
+                    BridgeLinks.OpenBugReport(lastReport);
+                }
+                if (!string.IsNullOrEmpty(BridgeLinks.Discord))
+                {
+                    GUILayout.Space(12);
+                    if (GUILayout.Button("Discord  ↗", EditorStyles.linkLabel))
+                    {
+                        Application.OpenURL(BridgeLinks.Discord);
+                    }
+                }
+                GUILayout.FlexibleSpace();
+            }
         }
 
         void DrawHeader()
@@ -469,6 +498,28 @@ namespace AvatarBridge
                 }
             }
 
+            // Something went wrong — make reporting it the obvious next step, with the
+            // report file one click away so it actually gets attached.
+            if (errors > 0 || warnings > 0)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button(new GUIContent("Report an issue",
+                            "Opens a pre-filled GitHub issue. Please attach the ConversionReport.md — " +
+                            "most bugs are diagnosed straight from it."), GUILayout.Height(24)))
+                    {
+                        BridgeLinks.OpenBugReport(lastReport);
+                    }
+                    if (GUILayout.Button(new GUIContent("Copy diagnostics",
+                            "Copies versions and detected packages to the clipboard."),
+                            GUILayout.Width(130), GUILayout.Height(24)))
+                    {
+                        BridgeLinks.CopyDiagnostics(lastReport);
+                        ShowNotification(new GUIContent("Diagnostics copied"));
+                    }
+                }
+            }
+
             // Only issues are listed here; the full list lives in ConversionReport.md.
             reportScroll = EditorGUILayout.BeginScrollView(reportScroll, GUILayout.MinHeight(100), GUILayout.MaxHeight(200));
             foreach (var entry in lastReport.Entries)
@@ -501,6 +552,29 @@ namespace AvatarBridge
                 "Import the missing package(s), let Unity recompile, and reopen this window. " +
                 "See the AvatarBridge README for the recommended project setup.",
                 MessageType.Info);
+
+            GUILayout.Space(10);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Setup guide  ↗", EditorStyles.linkLabel))
+                {
+                    Application.OpenURL(BridgeLinks.Troubleshooting);
+                }
+                GUILayout.Space(12);
+                if (GUILayout.Button("Report an issue  ↗", EditorStyles.linkLabel))
+                {
+                    BridgeLinks.OpenBugReport();
+                }
+                if (!string.IsNullOrEmpty(BridgeLinks.Discord))
+                {
+                    GUILayout.Space(12);
+                    if (GUILayout.Button("Discord  ↗", EditorStyles.linkLabel))
+                    {
+                        Application.OpenURL(BridgeLinks.Discord);
+                    }
+                }
+                GUILayout.FlexibleSpace();
+            }
         }
 #endif
     }
