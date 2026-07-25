@@ -56,14 +56,37 @@ namespace AvatarBridge
                 targetFace = match != null ? match.GetComponent<SkinnedMeshRenderer>() : null;
             }
 
+            bool faceMeshDetected = false;
+            if (targetFace == null)
+            {
+                // Plenty of avatars never set a viseme mesh (no lip sync, or jaw-bone lip
+                // sync). Detect the face mesh anyway: blink, face tracking and viseme
+                // detection all bind through bodyMesh, so leaving it null silently costs
+                // the avatar all three.
+                targetFace = AvatarFeatureDetect.FindFaceMesh(ctx.Target);
+                faceMeshDetected = targetFace != null;
+            }
+
             if (targetFace != null)
             {
                 cvrAvatar.bodyMesh = targetFace;
-                ctx.Report.Converted(Category, "Face mesh", targetFace.name);
+                if (faceMeshDetected)
+                {
+                    ctx.Report.Approximated(Category, "Face mesh auto-detected",
+                        $"The VRChat descriptor named no viseme mesh, so \"{targetFace.name}\" was picked " +
+                        "(most blendshapes, debug meshes skipped). Check it on the CVRAvatar if lip sync or " +
+                        "blink look wrong.");
+                }
+                else
+                {
+                    ctx.Report.Converted(Category, "Face mesh", targetFace.name);
+                }
             }
             else
             {
-                ctx.Report.Warning(Category, "Face mesh", "No viseme skinned mesh set on the VRC descriptor.");
+                ctx.Report.Warning(Category, "Face mesh",
+                    "No viseme mesh on the VRC descriptor, and no skinned mesh with blendshapes to fall back " +
+                    "on — visemes, blink and face tracking have nothing to bind to.");
             }
 
             if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape &&
@@ -80,13 +103,19 @@ namespace AvatarBridge
                 }
                 ctx.Report.Converted(Category, "Visemes", vrc.VisemeBlendShapes.Length + " blendshapes");
             }
+            else if (TryDetectVisemes(ctx, cvrAvatar, targetFace))
+            {
+                // Reported inside.
+            }
             else if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone)
             {
                 ctx.Report.Skipped(Category, "Jaw-flap lip sync", "CVR conversion only supports viseme blendshapes.");
             }
             else
             {
-                ctx.Report.Warning(Category, "Visemes", "No viseme blendshapes found on the VRC descriptor.");
+                ctx.Report.Warning(Category, "Visemes",
+                    "None on the VRC descriptor, and no standard viseme blendshapes (vrc.v_aa / v_aa / aa …) " +
+                    "on the face mesh — the avatar will have no lip sync in ChilloutVR.");
             }
 
             // --- Blinking ------------------------------------------------------------
@@ -119,6 +148,27 @@ namespace AvatarBridge
             };
 
             EditorUtility.SetDirty(cvrAvatar);
+        }
+
+        /// <summary>
+        /// Fallback when the descriptor declares no visemes: match the 15 standard viseme
+        /// blendshapes on the face mesh by their conventional names. Avatars that shipped
+        /// without lip sync configured get it for free in ChilloutVR.
+        /// </summary>
+        static bool TryDetectVisemes(BridgeContext ctx, CVRAvatar cvrAvatar, SkinnedMeshRenderer face)
+        {
+            var visemes = AvatarFeatureDetect.DetectVisemes(face != null ? face.sharedMesh : null);
+            if (visemes == null)
+            {
+                return false;
+            }
+            cvrAvatar.useVisemeLipsync = true;
+            cvrAvatar.visemeBlendshapes = visemes;
+            int found = visemes.Count(v => !string.IsNullOrEmpty(v));
+            ctx.Report.Approximated(Category, "Visemes auto-detected",
+                $"The VRChat descriptor declared none, so {found} of 15 were matched by name on " +
+                $"\"{face.name}\". Verify the mapping on the CVRAvatar.");
+            return true;
         }
 
         /// <summary>
