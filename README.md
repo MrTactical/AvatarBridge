@@ -288,17 +288,45 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 
 ## PhysBones → MagicaCloth2
 
-### Chains start from a MagicaCloth2 preset
+**The mapping transfers structure and nothing else.** Which bone the chain hangs from, which
+colliders it collides with, which transforms to leave out, and whether it started enabled. Every
+physics value stays at MagicaCloth2's own defaults.
 
-**PhysBones and MagicaCloth2 are different solvers.** PhysBones — like DynamicBone, which they
-replaced — are per-bone *rotational springs*. MagicaCloth2 is a *particle position* solver: it
-moves particles through space and derives bone rotations from where they land. Numbers carried
-across that gap are analogies, not translations, and analogies drift under load. Several rounds of
-increasingly careful mapping arithmetic all had to be walked back on real avatars.
+That is deliberate, and it took several attempts to arrive at. Earlier versions derived
+MagicaCloth2 settings from PhysBone settings — gravity scaled into m/s², spring inverted into
+damping, immobile inverted into inertia, pull folded into angle restoration. Every one of those
+looked reasonable and every one had to be walked back after a real avatar misbehaved.
 
-So by default each chain now starts from the **MagicaCloth2 preset that fits it** — the presets
-MagicaCloth2 ships in `Assets/MagicaCloth2/Res/Preset`, written by the solver's own author, which
-is what its users actually start from. Nobody hand-derives those values.
+The reason isn't that the numbers were wrong. **The two systems are different kinds of
+simulation.** PhysBones — like DynamicBone, which they were built to replace — are per-bone
+*rotational springs*. MagicaCloth2 is a *particle position* solver: it moves particles through
+space and reads bone rotations back out of where they land. A value meaning "springiness" to one
+doesn't mean anything in particular to the other, so arithmetic between them produces confident
+nonsense.
+
+So there is no arithmetic. A stock MagicaCloth2 BoneCloth is a known-good configuration tuned by
+the solver's own author; every converted chain behaves the same predictable way, and the
+PhysBone's own numbers go into the report so you can tune from there:
+
+> `tail — BoneCloth on MagicaCloth2's defaults, 3 collider(s). Source PhysBone was pull 0.2,`
+> `spring 0.4, stiffness 0, gravity 0, immobile 0.75, radius 0.02 — none of those transfer…`
+
+Stretch & squish, multi-child blending, `Is Animated`, angle limits and the grab parameters are
+reported the same way, each naming the field to change if that chain wants it.
+
+### Options
+
+None of these add arithmetic — they swap one author-tuned baseline for another, or copy a value
+across verbatim.
+
+| setting | default | what it does |
+|---|---|---|
+| **Start from MagicaCloth2 presets** | on | Uses the preset matching the kind of chain — hair, tail, skirt, cape, accessory, or a spring preset by how firmly the PhysBone held its rest pose — instead of the global defaults |
+| **Transfer angle limits** | off | Copies each PhysBone's limit angle across. MagicaCloth2's limit pushes on particle *positions* at a stiffness that snaps back hard, so this shakes some avatars and is the best result the tool gives on others |
+| **Cap particle radius to bone spacing** | on | A safety rail, not a conversion: MagicaCloth2's radius is the particle size, and particles wider than the gap between bones shove each other apart |
+| **Auto-assign nearby colliders** | off | See below |
+
+### Preset matching
 
 | chain | preset |
 |---|---|
@@ -312,89 +340,16 @@ is what its users actually start from. Nobody hand-derives those values.
 | anything else — breasts, ears, props | **Soft / Middle / Hard Spring**, by how firmly the PhysBone held its rest pose |
 
 Hair is matched before tails on purpose, so `twintail` and `ponytail` get hair's lighter settling
-rather than a tail's weight.
-
-The PhysBone still supplies everything **structural** — which bones, which colliders, which
-transforms to ignore, whether the chain starts enabled — and its own values go into the report
-(`Source PhysBone was pull 0.4, spring 0.8, gravity 0, immobile 0.6`) so a chain that wants
-tuning can get it.
-
-Turn off **Start from MagicaCloth2 presets** to derive every value from the PhysBone instead,
-which is the mapping below. It's also the automatic fallback if the preset files aren't in the
-project.
-
-### Two settings that are genuinely avatar-dependent
-
-Both were unconditional in 1.1.2, which one tester reports as the best MagicaCloth2 result the
-tool has given them — while the same two behaviours wrecked a different avatar. The evidence
-really does conflict, so they're exposed rather than decided:
-
-| setting | default | turn it the other way when |
-|---|---|---|
-| **Transfer angle limits** | off | the physics feels loose and unconstrained. MagicaCloth2's limit pushes on particle *positions* at a stiffness that snaps back hard, so on some avatars it shakes — lower Angle Limit → Stiffness on any chain that does |
-| **Cap particle radius to bone spacing** | on | chains feel too thin. Left on, it stops a PhysBone radius that VRChat ignored (one avatar had `0.5`) becoming metre-wide particles that shove each other apart |
-
-Turning the first on and the second off reproduces 1.1.2's mapping exactly.
-
-### Deriving values from the PhysBone instead
-
-Transfers the settings that mean the same thing on both sides, and **reports the rest with their
-values** rather than guessing at an equivalent.
-
-**Applied:**
-
-| PhysBone | MagicaCloth2 |
-|---|---|
-| pull / stiffness (+curves) | angle restoration stiffness (+ depth curve) |
-| spring / momentum | damping (inverted) + velocity attenuation |
-| gravity | gravity — PhysBone's 0..1 is a fraction of real gravity, so 1.0 → ~9.8 m/s²; a negative value points up |
-| gravityFalloff | gravity falloff — both mean "reduce gravity while near the rest pose" |
-| immobile | world inertia (inverted) |
-| radius + curve | particle radius + curve, **capped at half the bone spacing** (see below) |
-| ignore transforms | bone attribute *Invalid* |
-| colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders |
-
-**Reported, not applied** — each appears in the conversion report with its value and what to
-change if that chain wants it:
-
-| PhysBone | why |
-|---|---|
-| limit type Angle / Hinge / Polar | the two limits constrain different things — see below |
-| maxStretch / maxSquish | BoneCloth keeps bones at rest length, so chains swing but never lengthen or compress |
-| **Is Animated** | the cloth settles to its *initial* pose; set Animation Pose Ratio to 1 if an animated chain fights back |
-| **Multi Child Type** | branches simulate independently; for *Ignore*, set Root Rotation to 0 if the root swings when it shouldn't |
-| limit rotation (pitch/roll/yaw) | Magica's limit cone is always centred on the rest pose |
-| grab & pose | `_IsGrabbed` / `_Angle` via the [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod; `_Stretch` / `_Squish` / `_IsPosed` have no equivalent |
-
-### Why so much is reported rather than converted
-
-Earlier versions mapped most of the second table automatically, reasoning that the two systems
-had matching features. They don't, and the names actively mislead:
-
-- MagicaCloth2's **angle limit** constrains particle *positions* against a baseline pose; VRChat's
-  limits bone *rotation* against its parent.
-- MagicaCloth2's **radius** is the particle size that shapes the whole simulation proxy; VRChat's
-  is only a collision radius, ignored entirely by a chain with no colliders — so authors leave
-  large values lying around harmlessly. One avatar carried `0.5`, which became metre-wide particles.
-
-Converting on the strength of the shared name produced avatars that shook, snapped back, or
-inflated. A value sitting in the report is worth more than a confident wrong setting, so anything
-whose meaning isn't genuinely shared is handed to you with instructions instead.
-
-The two solvers still differ even where the mapping is sound, so expect to nudge the feel. Tuning
-constants sit at the top of `Editor/Core/Physics/MagicaClothWriter.cs`, documented against
-MagicaCloth2's own defaults (gravity 5.0, damping 0.05, radius 0.02, angle restoration 0.2,
-velocity attenuation 0.8) as a reference point.
-
-`immobile` is applied via reflection, since MagicaCloth2 moves fields between versions; a mismatch
-is reported rather than silently dropped.
+rather than a tail's weight. Short words match whole-word only — `belly` is not a bell, `detail`
+is not a tail — while longer distinctive ones match anywhere, so `backhair` is still hair.
 
 ### Adding an angle limit by hand
 
-Where you actually want one — a tail that shouldn't fold backwards, say — tick **Angle Limit** on
-that MagicaCloth component, enter the angle from the report, and lower **Stiffness** until it
-stops snapping. Stiffness defaults to `1`, a rigid snap-back, which is what makes an
-automatically-applied limit so destructive on a chain that is also being animated.
+Where you want one — a tail that shouldn't fold backwards, say — tick **Angle Limit** on that
+MagicaCloth component, enter the angle from the report, and lower **Stiffness** until it stops
+snapping. Stiffness defaults to `1`, a rigid snap-back, which is what makes a blanket transfer so
+destructive on a chain that is also being animated.
+
 
 ### Auto-assign nearby colliders (optional, off by default)
 
