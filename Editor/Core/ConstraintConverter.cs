@@ -52,7 +52,10 @@ namespace AvatarBridge
                 {
                     // One malformed constraint must not abort the whole conversion.
                     ctx.Report.Warning(Category, component.name,
-                        $"Constraint conversion failed and was skipped: {e.Message}");
+                        $"{typeName} conversion failed and was skipped: {e.Message}");
+                    // Full stack goes to the console so we can pinpoint the exact site if it recurs.
+                    Debug.LogWarning($"[AvatarBridge] {typeName} on '{component.name}' " +
+                        $"(path '{ctx.PathInTarget(component.transform)}') could not be converted:\n{e}");
                     continue;
                 }
                 if (ok)
