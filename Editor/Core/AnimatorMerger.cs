@@ -1369,7 +1369,7 @@ namespace AvatarBridge
                 }
 
                 string param = entry.machineName;
-                if (!TryCollectSelectorValues(master, param, out var use))
+                if (!TryCollectSelectorValues(master, param, out var use, out string blockedBy))
                 {
                     // Used as a quantity somewhere, so renumbering would change behaviour.
                     // The placeholders have to stay — say so rather than leave them unexplained.
@@ -1378,11 +1378,9 @@ namespace AvatarBridge
                     {
                         ctx.Report.Approximated(Category, $"Dropdown \"{entry.name}\" keeps {stuck} \"{ParameterMenuConverter.UnusedOption}\" option(s)",
                             $"ChilloutVR selects dropdown options by position, so \"{param}\" needs an entry per " +
-                            "value up to its highest. It's normally renumbered to close those gaps, but here the " +
-                            "value is also used as a quantity — a blend tree, motion time, or driver arithmetic — " +
-                            "where the numbers themselves matter and renumbering would change how the avatar " +
-                            "behaves. Deleting the spare entries by hand would shift every option after them onto " +
-                            "the wrong value.");
+                            $"value up to its highest. It's normally renumbered to close those gaps, but {blockedBy} " +
+                            "— renumbering would change how the avatar behaves. Deleting the spare entries by hand " +
+                            "would shift every option after them onto the wrong value.");
                     }
                     continue;
                 }
@@ -1498,11 +1496,13 @@ namespace AvatarBridge
         /// survive renumbering is arithmetic — a driver adding to the value, or reading it as
         /// an operand — and quantity reads like blend trees and motion time.
         /// </summary>
-        static bool TryCollectSelectorValues(AnimatorController master, string param, out SelectorUse use)
+        static bool TryCollectSelectorValues(AnimatorController master, string param,
+            out SelectorUse use, out string blockedBy)
         {
             var found = new SelectorUse();
             use = found;
             bool safe = true;
+            string reason = null;
 
             bool CollectTransitions(AnimatorTransitionBase[] transitions)
             {
@@ -1528,7 +1528,9 @@ namespace AvatarBridge
                                 found.LessCuts.Add(threshold);
                                 break;
                             default:
-                                return false; // If/IfNot on an int: leave well alone
+                                // If/IfNot on an int: treated as a flag, leave well alone.
+                                reason = "a transition treats it as an on/off flag rather than a selector";
+                                return false;
                         }
                     }
                 }
@@ -1546,6 +1548,7 @@ namespace AvatarBridge
                     // Read as an operand: whatever it's feeding expects the original numbers.
                     if (task.aName == param || task.bName == param)
                     {
+                        reason = "a driver reads it as an operand, so its numbers are passed on elsewhere";
                         return false;
                     }
                     if (task.targetName != param)
@@ -1554,12 +1557,16 @@ namespace AvatarBridge
                     }
                     if (task.op != AnimatorDriverTask.Operator.Set)
                     {
-                        return false; // arithmetic on the value
+                        reason = "a driver does arithmetic on it, where the numbers themselves matter";
+                        return false;
                     }
-                    if (task.aType == AnimatorDriverTask.SourceType.Static)
+                    if (task.aType != AnimatorDriverTask.SourceType.Static)
                     {
-                        found.Exact.Add(Mathf.RoundToInt(task.aValue));
+                        // Set from another parameter: that source would need renumbering too.
+                        reason = "a driver sets it from another parameter, which would keep the old numbering";
+                        return false;
                     }
+                    found.Exact.Add(Mathf.RoundToInt(task.aValue));
                 }
                 return true;
             }
@@ -1591,6 +1598,7 @@ namespace AvatarBridge
                             (state.cycleOffsetParameterActive && state.cycleOffsetParameter == param) ||
                             MotionUsesParameter(state.motion, param))
                         {
+                            reason = "a blend tree or motion time reads it as a quantity";
                             safe = false;
                             return;
                         }
@@ -1603,9 +1611,11 @@ namespace AvatarBridge
                 });
                 if (!safe)
                 {
+                    blockedBy = reason ?? "the value is used in a way renumbering would change";
                     return false;
                 }
             }
+            blockedBy = null;
             return true;
         }
 
