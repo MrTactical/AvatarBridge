@@ -44,8 +44,7 @@ namespace AvatarBridge
         public static float MinDamping = 0.01f;
 
         public static void Write(BridgeContext ctx, PhysBoneChainData data,
-            Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache,
-            List<ColliderComponent> bodyColliders = null)
+            Dictionary<VRCPhysBoneCollider, ColliderComponent> colliderCache)
         {
             // The GrabbyBones mod derives its animator parameters from the GameObject name
             // that holds the cloth component: "<name>_IsGrabbed" and "<name>_Angle". Naming
@@ -88,8 +87,29 @@ namespace AvatarBridge
                 sdata.rootRotation = 0f;
             }
 
-            // Particle radius.
-            ApplyCurve(sdata.radius, Mathf.Max(0.001f, data.Radius), data.RadiusCurve);
+            // Particle radius. The two systems mean different things by "radius", and taking
+            // PhysBone's at face value is what blows the simulation up:
+            //
+            //   PhysBone  - purely a collision radius. A chain with no colliders is unaffected
+            //               by it, so authors leave large values lying around harmlessly.
+            //   Magica    - the particle size, which shapes the whole proxy. A particle wider
+            //               than the gap between bones overlaps its neighbours and the solver
+            //               pushes them violently apart.
+            //
+            // So it's capped at half the chain's bone spacing: particles end up touching at
+            // most, never overlapping. One reported avatar carried a 0.5 m radius that VRChat
+            // ignored entirely and Magica turned into metre-wide spheres.
+            float spacing = MeasureBoneSpacing(data.Root);
+            float requested = Mathf.Max(0.001f, data.Radius);
+            float radius = spacing > 0f ? Mathf.Min(requested, spacing * 0.5f) : requested;
+            ApplyCurve(sdata.radius, radius, data.RadiusCurve);
+            if (radius < requested * 0.999f)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"Collision radius {requested:0.###} reduced to {radius:0.###} — in MagicaCloth2 this is " +
+                    "the particle size rather than just a collision radius, and anything wider than the gap " +
+                    "between bones makes neighbouring particles overlap and shove each other apart.");
+            }
 
             // Restoration toward the animated pose: PB pull, plus stiffness in advanced mode.
             float restoration = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
@@ -186,7 +206,6 @@ namespace AvatarBridge
             }
 
             // Colliders.
-            bool usedBodyColliders = false;
             if (data.Colliders.Count > 0)
             {
                 sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
@@ -198,20 +217,6 @@ namespace AvatarBridge
                         sdata.colliderCollisionConstraint.colliderList.Add(collider);
                     }
                 }
-            }
-            else if (bodyColliders != null && bodyColliders.Count > 0)
-            {
-                // The author defined no colliders for this chain. In VRChat that's survivable —
-                // the game supplies hand colliders and the body is often just left to clip — but
-                // converted as-is the chain would sweep straight through the avatar. Give it the
-                // generated body set. Chains that DID bring colliders are left exactly as
-                // authored, since adding more invites jitter.
-                sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
-                foreach (var collider in bodyColliders)
-                {
-                    sdata.colliderCollisionConstraint.colliderList.Add(collider);
-                }
-                usedBodyColliders = true;
             }
 
             ReportUnconvertibleFeatures(ctx, data);
@@ -225,11 +230,8 @@ namespace AvatarBridge
             {
                 notes.Add("root pinned");
             }
-            string colliderText = usedBodyColliders
-                ? $"generated body colliders ({bodyColliders.Count})"
-                : $"{data.Colliders.Count} collider(s)";
             ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth with {colliderText}" +
+                $"BoneCloth with {data.Colliders.Count} collider(s)" +
                 (notes.Count > 0 ? $" ({string.Join(", ", notes)})." : "."));
         }
 
@@ -312,6 +314,30 @@ namespace AvatarBridge
                         $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Average distance between consecutive bones down the chain — i.e. how far apart the
+        /// simulation's particles will sit. Walks the first-child line, which is representative
+        /// enough for sizing. Returns 0 when the chain has no children to measure.
+        /// </summary>
+        static float MeasureBoneSpacing(Transform root)
+        {
+            float total = 0f;
+            int steps = 0;
+            var current = root;
+            while (current != null && current.childCount > 0 && steps < 8)
+            {
+                var child = current.GetChild(0);
+                float step = Vector3.Distance(current.position, child.position);
+                if (step > 0.0001f)
+                {
+                    total += step;
+                    steps++;
+                }
+                current = child;
+            }
+            return steps > 0 ? total / steps : 0f;
         }
 
         static void ApplyCurve(CurveSerializeData target, float value, AnimationCurve curve)

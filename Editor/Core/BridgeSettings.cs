@@ -79,14 +79,6 @@ namespace AvatarBridge
         // Name converted MagicaCloth objects after their PhysBone parameter so the
         // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
-        // Builds a body collider set from the humanoid rig and gives it to chains that arrived
-        // without colliders of their own. OFF by default, and deliberately so: a chain with no
-        // colliders is usually body jiggle (breasts, butt, thighs, belly) that never needed any,
-        // and handing it a capsule for the body part it hangs off makes that capsule shove it
-        // outward. Worth enabling for avatars whose hair or skirts clip through the body, which
-        // is a judgement about the avatar rather than something detectable.
-        // (MagicaCloth2 target only.)
-        public bool generateBodyColliders = false;
 
         [Header("VRChat-only system stripping")]
         // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15
