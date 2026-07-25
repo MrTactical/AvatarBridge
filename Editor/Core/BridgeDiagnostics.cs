@@ -298,6 +298,12 @@ namespace AvatarBridge
         static Dictionary<string, Usage> CollectUsage(AnimatorController master)
         {
             var map = new Dictionary<string, Usage>();
+            // An "animated animator parameter" binding is type Animator with an empty path — but
+            // so is every humanoid MUSCLE curve Unity bakes into a locomotion clip: RootQ.x,
+            // LeftFootT.y, unknown_2 and hundreds more. They are not parameters and never appear
+            // in master.parameters, so requiring the name to be declared separates the two. A
+            // clip writing to an undeclared parameter does nothing anyway.
+            var declaredNames = new HashSet<string>(master.parameters.Select(p => p.name));
             Usage For(string name)
             {
                 if (string.IsNullOrEmpty(name))
@@ -331,7 +337,8 @@ namespace AvatarBridge
                 {
                     foreach (var b in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (b.type == typeof(Animator) && string.IsNullOrEmpty(b.path))
+                        if (b.type == typeof(Animator) && string.IsNullOrEmpty(b.path)
+                            && declaredNames.Contains(b.propertyName))
                         {
                             For(b.propertyName).ClipWrites++;
                         }

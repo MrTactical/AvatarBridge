@@ -1660,6 +1660,11 @@ namespace AvatarBridge
         static HashSet<string> CollectReferencedParameters(AnimatorController master)
         {
             var referenced = new HashSet<string>();
+            // Humanoid MUSCLE curves bind the same way an animated animator parameter does —
+            // type Animator, empty path — so a locomotion clip otherwise contributes hundreds of
+            // names like RootQ.x and LeftFootT.y. Requiring the name to be a declared parameter
+            // separates them; a clip writing to an undeclared parameter does nothing anyway.
+            var declaredNames = new HashSet<string>(master.parameters.Select(p => p.name));
 
             void NoteMotion(Motion motion)
             {
@@ -1680,7 +1685,8 @@ namespace AvatarBridge
                 {
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                        if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path)
+                            && declaredNames.Contains(binding.propertyName))
                         {
                             referenced.Add(binding.propertyName);
                         }
