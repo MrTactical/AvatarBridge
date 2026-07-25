@@ -161,7 +161,7 @@ namespace AvatarBridge
                           $"fit to PhysBone: `{s.fitToPhysBone}` · cap radius: `{s.capParticleRadius}` · " +
                           $"angle limits: `{s.transferAngleLimits}` · auto colliders: `{s.autoAssignNearbyColliders}`");
             sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · strip SPS: `{s.stripSpsSystems}` · " +
-                          $"face tracking: `{s.faceTracking}` · scaler: `{s.addAvatarScaler}`");
+                          $"face tracking: `{s.faceTrackingMode}` · scaler: `{s.addAvatarScaler}`");
             sb.AppendLine();
 
             sb.AppendLine("### Animator layers");
