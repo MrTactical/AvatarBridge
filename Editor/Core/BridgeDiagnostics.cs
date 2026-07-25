@@ -64,10 +64,15 @@ namespace AvatarBridge
 
             // Declared but inert. Not broken, but it is how a dead menu entry or a half-stripped
             // system shows up, and it costs sync bits if it's synced.
+            //
+            // Parameters ChilloutVR drives itself are excluded: the CCK's own animator declares
+            // GestureLeft, Grounded, IsLocal and friends whether or not this avatar's logic reads
+            // them, so flagging those would fire on every single conversion — and a check that
+            // always fires is a check people learn to scroll past.
             var inert = master.parameters
                 .Where(p => !usage.ContainsKey(p.name) || !usage[p.name].Any)
                 .Select(p => p.name)
-                .Where(n => !n.StartsWith("#"))
+                .Where(n => !n.StartsWith("#") && !IsPlatformDriven(n))
                 .ToList();
             if (inert.Count > 0)
             {
@@ -416,6 +421,33 @@ namespace AvatarBridge
             int n = 0;
             Walk(machine, m => n += m.states.Length);
             return n;
+        }
+
+        /// <summary>
+        /// Parameters the CCK's own base animator declares, which ChilloutVR writes from the
+        /// player rather than the avatar's logic. Kept here ungated because Setup mode has no
+        /// VRChat SDK and still copies that animator; the conversion path additionally defers to
+        /// <see cref="AnimatorMerger.IsGameDrivenParameter"/>, which knows about the
+        /// stream-fed ones too.
+        /// </summary>
+        static readonly HashSet<string> CckBaseParameters = new HashSet<string>
+        {
+            "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
+            "GestureLeft", "GestureRight", "GestureLeftIdx", "GestureRightIdx",
+            "Toggle", "Sitting", "Crouching", "Prone", "Flying", "Swimming",
+            "IsLocal", "VisemeIdx", "VisemeLoudness"
+        };
+
+        static bool IsPlatformDriven(string name)
+        {
+            string bare = name.TrimStart('#');
+#if VRC_SDK_VRCSDK3
+            if (AnimatorMerger.IsGameDrivenParameter(bare))
+            {
+                return true;
+            }
+#endif
+            return CckBaseParameters.Contains(bare);
         }
 
         /// <summary>Comma-joined, capped so one runaway list can't bury the rest of the report.</summary>
