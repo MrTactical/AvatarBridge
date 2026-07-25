@@ -247,9 +247,7 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 | immobile, type **World** | world inertia (inverted) | **exact** — Magica splits the same way |
 | immobile, type **All Motion** | world **and** local inertia (inverted) | **exact** |
 | radius + curve | particle radius + curve | 1:1 |
-| limit type **Angle** | angle limit from `maxAngleX` (the cone angle) | 1:1 |
-| limit type **Hinge** | angle limit cone — Magica has no single-axis hinge, so it can also swing off-axis | ⚠️ approximated |
-| limit type **Polar** | single symmetric cone from the larger of `maxAngleX`/`maxAngleZ` | ⚠️ approximated |
+| limit type Angle / Hinge / Polar | — | ⚠️ **not applied** — the angle is reported so you can add it by hand; see below |
 | ignore transforms | bone attribute *Invalid* | 1:1 |
 | colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders | 1:1 |
 | maxStretch / maxSquish | — | ⚠️ dropped: BoneCloth keeps bones at rest length, so chains swing but never lengthen or compress |
@@ -265,50 +263,17 @@ restoration 0.2, velocity attenuation 0.8) so you have a reference point.
 `immobile` and the angle limits are applied via reflection, since MagicaCloth2 moves fields
 between versions; a mismatch is reported rather than silently dropped.
 
-### Generated body colliders (optional, off by default)
+### Why angle limits aren't transferred
 
-**Generate body colliders** builds a set from the humanoid rig — capsules along the hips, spine,
-chest, arms and legs plus a sphere at the head, each **sized from that avatar's own bone
-lengths** rather than assumed human proportions — and gives it to chains that arrived with no
-colliders of their own.
+The two constraints look equivalent and aren't. **PhysBone** limits each bone's *rotation* to a
+cone around its parent's rest direction. **MagicaCloth2** constrains particle *positions* against
+a baseline pose, at a stiffness that defaults to a rigid snap-back — and on a chain that also
+follows animation, the limit fights the animation every frame instead of settling. Enabling it
+sent the jiggle chains on a test avatar haywire until it was switched off by hand.
 
-**It's off by default, and that's deliberate.** A chain with no colliders usually isn't an
-oversight: breast, butt, thigh and belly jiggle are authored without collision because they
-don't need any. Give one of those a capsule for the body part it hangs off and the capsule
-shoves it outward — which looks exactly as bad as it sounds.
-
-Turn it on when an avatar's **hair or skirt clips through the body**, then check the result.
-Whether a chain wants body collision is a judgement about that avatar — hair is rooted at the
-head and needs the skull collider, breast jiggle is rooted at the chest and must not have the
-chest one — and there's no reliable way to tell those apart automatically.
-
-Needs a Humanoid rig, and only applies to the MagicaCloth2 target.
-
-### PhysBones → DynamicBone
-
-If you pick **DynamicBone** as the physics target instead (ChilloutVR supports it natively;
-the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) works for conversion-only
-projects), PhysBones map like this:
-
-| PhysBone | DynamicBone |
-|---|---|
-| pull (+ curve) | `m_Elasticity` (scaled) + elasticity distribution curve |
-| spring / momentum | `m_Damping` (inverted) |
-| stiffness (+ curve) | `m_Stiffness` + stiffness distribution curve |
-| immobile (+ curve) | `m_Inert` + inert distribution curve |
-| radius (+ curve) | `m_Radius` + radius distribution curve |
-| gravity, gravityFalloff | `m_Gravity` + `m_Force`, split by √falloff so overall magnitude is preserved |
-| endpoint position | `m_EndOffset` |
-| ignore transforms | `m_Exclusions` |
-| colliders (sphere/capsule/plane) | `DynamicBoneCollider` / `DynamicBonePlaneCollider` |
-| limit type Angle/Hinge/Polar | ⚠️ no equivalent — skipped |
-| maxStretch (squash & stretch) | ⚠️ no equivalent — skipped |
-
-Same *feel*-approximation caveat: DynamicBone's useful ranges differ, so pull is scaled into
-`m_Elasticity` and spring is inverted/remapped into `m_Damping` (tuning constants at the top of
-`Editor/Core/Physics/DynamicBoneWriter.cs`). The gravity split mirrors VRChat's own
-DynamicBone→PhysBone import math (`gravity² = m_Gravity² + m_Force²`). DynamicBone has no angle
-limits, so PhysBone limit types are skipped.
+So the limit angle is **reported rather than applied**. Where you actually want one — a tail that
+shouldn't fold backwards, say — tick **Angle Limit** on that MagicaCloth component, enter the
+angle from the report, and lower **Stiffness** until it stops snapping.
 
 ## VRChat-only system stripping
 

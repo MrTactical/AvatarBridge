@@ -157,34 +157,27 @@ namespace AvatarBridge
                 }
             }
 
-            // Angle limits. Only the axes the limit type actually uses are read: an 'Angle'
-            // (cone) or 'Hinge' limit is defined by maxAngleX alone, and taking the larger of
-            // X/Z there would let a stale Z value quietly widen the limit.
+            // Angle limits are deliberately NOT transferred.
+            //
+            // The two constraints look equivalent and aren't. PhysBone limits each bone's
+            // rotation to a cone around its parent's rest direction. MagicaCloth2 constrains
+            // particle positions relative to a baseline pose, at a stiffness that defaults to a
+            // rigid snap-back — and where that baseline is an animated pose, the limit fights
+            // the animation every frame instead of settling. Enabling it wrecked the jiggle
+            // chains on a reported avatar badly enough that turning it off by hand was the fix.
+            //
+            // The angle is reported so it can be applied by hand where it's actually wanted:
+            // tick Angle Limit on the MagicaCloth component and lower its Stiffness.
             if (data.LimitTypeName != "None")
             {
                 bool polar = data.LimitTypeName == "Polar";
                 float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
-
-                bool applied = TrySetMember(sdata.angleLimitConstraint, "useAngleLimit", true) &&
-                               TrySetCurveValue(sdata.angleLimitConstraint, "limitAngle", limitAngle);
-                if (!applied)
-                {
-                    ctx.Report.Skipped(Category, data.Root.name,
-                        $"Angle limit ({data.LimitTypeName}) could not be applied on this MagicaCloth2 version.");
-                }
-                else if (polar && !Mathf.Approximately(data.MaxAngleX, data.MaxAngleZ))
-                {
-                    // Magica's limit is a single cone, so a two-axis polar limit loses its shape.
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        $"Polar limit ({data.MaxAngleX:0}° / {data.MaxAngleZ:0}°) became a symmetric " +
-                        $"{limitAngle:0}° cone — MagicaCloth2 limits a single angle per bone.");
-                }
-                else if (data.LimitTypeName == "Hinge")
-                {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        $"Hinge limit became a {limitAngle:0}° cone — MagicaCloth2 has no single-axis " +
-                        "hinge, so the bone can also swing off-axis.");
-                }
+                ctx.Report.Skipped(Category, data.Root.name,
+                    $"{data.LimitTypeName} limit ({limitAngle:0}°) not applied — MagicaCloth2's angle limit " +
+                    "constrains particle positions against a baseline pose rather than bone rotation, and on a " +
+                    "chain that also follows animation it fights it rather than settling. To add it anyway, " +
+                    $"tick Angle Limit on this cloth, set Limit Angle to {limitAngle:0} and lower Stiffness " +
+                    "until it stops snapping.");
             }
 
             // Ignored transforms become "Invalid" (excluded) bones.
