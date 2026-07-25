@@ -819,9 +819,20 @@ namespace AvatarBridge
             master.parameters = newParams.ToArray();
 
             var clipMap = new Dictionary<AnimationClip, AnimationClip>();
-            foreach (var layer in vrcLayers)
+            // Every state machine in the controller, not just the VRChat layers being merged.
+            // The rename map only ever contains VRChat parameter names, so applying it to the
+            // CCK's own layers is a no-op there — but a reference living outside vrcLayers used
+            // to keep the ORIGINAL name while the declaration moved to the CCK-safe one, which
+            // is a reference to a parameter that no longer exists. A quad avatar lost its leg
+            // tracking and grounder that way: "#Controls/Synced/LegsOffset_Hind" still named in
+            // transitions while the parameter had become "LegsOffsetHind".
+            var machines = master.layers.Select(l => l.stateMachine)
+                .Concat(vrcLayers.Select(l => l.stateMachine))
+                .Where(m => m != null)
+                .Distinct();
+            foreach (var stateMachine in machines)
             {
-                WalkMachines(layer.stateMachine, machine =>
+                WalkMachines(stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
