@@ -6,6 +6,8 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
@@ -184,22 +186,21 @@ namespace AvatarBridge
             AddToggle(settings, "Face Tracking", "FaceTracking");
         }
 
-        static void AddToggle(System.Collections.Generic.List<ABI.CCK.Components.CVRAdvancedSettingsEntry> settings,
-            string menuName, string paramName)
+        static void AddToggle(List<CVRAdvancedSettingsEntry> settings, string menuName, string paramName)
         {
             if (settings.Any(s => s != null && s.machineName == paramName))
             {
                 return; // already exposed
             }
-            settings.Add(new ABI.CCK.Components.CVRAdvancedSettingsEntry
+            settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = menuName,
                 machineName = paramName,
                 unlinkNameFromMachineName = true,
-                setting = new ABI.CCK.Scripts.CVRAdvancesAvatarSettingGameObjectToggle
+                setting = new CVRAdvancesAvatarSettingGameObjectToggle
                 {
                     defaultValue = true, // the rig defaults both on
-                    usedType = ABI.CCK.Scripts.CVRAdvancesAvatarSettingBase.ParameterType.Bool
+                    usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                 }
             });
         }
