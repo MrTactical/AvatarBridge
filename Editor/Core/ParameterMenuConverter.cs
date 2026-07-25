@@ -262,10 +262,11 @@ namespace AvatarBridge
             maxValue = Mathf.Min(maxValue, 255);
 
             // ChilloutVR dropdowns map option INDEX to the parameter value, so reaching value
-            // N requires N+1 entries — the gaps can't be removed. Fill them as usefully as
-            // possible: a value the animator responds to gets its state's name (a working
-            // option the VRChat menu never exposed); one nothing reacts to is labelled as
-            // such, rather than an ambiguous "---".
+            // N needs N+1 entries here. AnimatorMerger.CompactIntDropdowns usually renumbers
+            // the parameter afterwards and removes the gaps entirely; this fills them as
+            // usefully as possible for the cases where it can't: a value the animator responds
+            // to gets its state's name (a working option the VRChat menu never exposed), and
+            // one nothing reacts to is labelled as such rather than an ambiguous "---".
             var options = new List<CVRAdvancedSettingsDropDownEntry>();
             int live = 0, inert = 0;
             for (int i = 0; i <= maxValue; i++)
