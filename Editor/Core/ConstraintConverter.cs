@@ -51,9 +51,10 @@ namespace AvatarBridge
                 catch (Exception e)
                 {
                     // One malformed constraint must not abort the whole conversion.
+                    // The throwing site goes into the REPORT (not just the console) so the
+                    // report alone is enough to diagnose — no Editor.log needed.
                     ctx.Report.Warning(Category, component.name,
-                        $"{typeName} conversion failed and was skipped: {e.Message}");
-                    // Full stack goes to the console so we can pinpoint the exact site if it recurs.
+                        $"{typeName} conversion failed and was skipped: {e.GetType().Name}: {e.Message} [{TopFrame(e)}]");
                     Debug.LogWarning($"[AvatarBridge] {typeName} on '{component.name}' " +
                         $"(path '{ctx.PathInTarget(component.transform)}') could not be converted:\n{e}");
                     continue;
@@ -136,13 +137,18 @@ namespace AvatarBridge
 
         static bool ConvertParent(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<ParentConstraint>();
+            var unity = GetOrAdd<ParentConstraint>(vrc, out bool existed);
             var sources = ReadSources(vrc);
-            for (int i = 0; i < sources.Count; i++)
+            foreach (var s in sources)
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = sources[i].Transform, weight = sources[i].Weight });
-                unity.SetTranslationOffset(i, sources[i].ParentPositionOffset);
-                unity.SetRotationOffset(i, sources[i].ParentRotationOffset);
+                int idx = unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                unity.SetTranslationOffset(idx, s.ParentPositionOffset);
+                unity.SetRotationOffset(idx, s.ParentRotationOffset);
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "parent");
+                return true; // keep the first constraint's rest/axis; just merge these sources in
             }
             unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
             unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
@@ -156,10 +162,15 @@ namespace AvatarBridge
 
         static bool ConvertPosition(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<PositionConstraint>();
+            var unity = GetOrAdd<PositionConstraint>(vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "position");
+                return true;
             }
             unity.translationOffset = Get(vrc, "PositionOffset", Vector3.zero);
             unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
@@ -172,10 +183,15 @@ namespace AvatarBridge
 
         static bool ConvertRotation(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<RotationConstraint>();
+            var unity = GetOrAdd<RotationConstraint>(vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "rotation");
+                return true;
             }
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
@@ -188,10 +204,15 @@ namespace AvatarBridge
 
         static bool ConvertScale(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<ScaleConstraint>();
+            var unity = GetOrAdd<ScaleConstraint>(vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "scale");
+                return true;
             }
             unity.scaleOffset = Get(vrc, "ScaleOffset", Vector3.one);
             unity.scaleAtRest = Get(vrc, "ScaleAtRest", vrc.transform.localScale);
@@ -204,10 +225,15 @@ namespace AvatarBridge
 
         static bool ConvertAim(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<AimConstraint>();
+            var unity = GetOrAdd<AimConstraint>(vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "aim");
+                return true;
             }
             unity.aimVector = Get(vrc, "AimAxis", Vector3.forward);
             unity.upVector = Get(vrc, "UpAxis", Vector3.up);
@@ -222,10 +248,15 @@ namespace AvatarBridge
 
         static bool ConvertLookAt(BridgeContext ctx, Component vrc)
         {
-            var unity = vrc.gameObject.AddComponent<LookAtConstraint>();
+            var unity = GetOrAdd<LookAtConstraint>(vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            }
+            if (existed)
+            {
+                ReportMerged(ctx, vrc, "look-at");
+                return true;
             }
             unity.roll = Get(vrc, "Roll", 0f);
             var upTransform = Get<Transform>(vrc, "WorldUpTransform", null);
@@ -243,6 +274,45 @@ namespace AvatarBridge
         }
 
         // ---------------------------------------------------------------- helpers ----
+
+        /// <summary>
+        /// Unity's constraint components are [DisallowMultipleComponent], but a VRChat object
+        /// can carry several VRC constraints of the same kind. Reuse an existing Unity
+        /// constraint (from converting the first of its kind) instead of letting
+        /// AddComponent return null and NRE on the next use.
+        /// </summary>
+        static T GetOrAdd<T>(Component vrc, out bool existed) where T : Component
+        {
+            var existing = vrc.gameObject.GetComponent<T>();
+            existed = existing != null;
+            return existed ? existing : vrc.gameObject.AddComponent<T>();
+        }
+
+        static void ReportMerged(BridgeContext ctx, Component vrc, string kind)
+        {
+            ctx.Report.Approximated(Category, ctx.PathInTarget(vrc.transform),
+                $"Object had multiple {kind} constraints; Unity and ChilloutVR allow only one {kind} " +
+                $"constraint per object, so this one's sources were merged into the existing constraint " +
+                $"(the first constraint's offsets and rest values are kept).");
+        }
+
+        /// <summary>First AvatarBridge frame of an exception's stack, for the report line.</summary>
+        static string TopFrame(Exception e)
+        {
+            if (string.IsNullOrEmpty(e.StackTrace))
+            {
+                return "no stack";
+            }
+            foreach (var raw in e.StackTrace.Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith("at AvatarBridge."))
+                {
+                    return line.Substring(3); // drop the leading "at "
+                }
+            }
+            return e.StackTrace.Split('\n')[0].Trim();
+        }
 
         static Axis AxesFrom(object vrc, string x, string y, string z)
         {
