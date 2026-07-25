@@ -10,36 +10,37 @@ namespace AvatarBridge
     /// <summary>
     /// Writes a VRCPhysBone chain as a MagicaCloth2 BoneCloth.
     ///
-    /// Mapping (VRC semantics -> MagicaCloth2):
+    /// This is a deliberately plain mapping. It transfers the settings whose meaning is the
+    /// same on both sides and reports the rest, rather than trying to reconstruct VRChat
+    /// behaviour out of MagicaCloth2 features that merely share a name.
+    ///
     ///   pull / stiffness  -> angle restoration stiffness (force back to rest pose)
     ///   spring (momentum) -> damping (inverted) + velocity attenuation
-    ///   gravity           -> gravity in m/s^2 (PB 0..1 scaled by ~9.8)
+    ///   gravity           -> gravity in m/s^2 (PB 0..1 scaled by ~9.8), sign picks direction
     ///   gravityFalloff    -> gravityFalloff (identical 0..1 semantics)
     ///   immobile          -> world inertia reduction
-    ///   radius (+curve)   -> particle radius (+curve)
-    ///   limitType Angle   -> angle limit
+    ///   radius (+curve)   -> particle radius (+curve), capped so particles cannot overlap
     ///   ignoreTransforms  -> bone attribute "Invalid"
     ///   colliders         -> Magica sphere/capsule/plane colliders
+    ///
+    /// Everything else — angle limits, stretch & squish, multi-child blending, whether the
+    /// chain is animated — is written to the report with its value, for you to apply by hand
+    /// on the chains that actually want it.
+    ///
+    /// The history behind that split is worth keeping: earlier versions mapped several of
+    /// those automatically, on the reasoning that the two systems had matching features. They
+    /// do not. MagicaCloth2's angle limit constrains particle POSITIONS against a baseline
+    /// pose where VRChat's limits bone ROTATION against its parent; its radius is the particle
+    /// size that shapes the whole proxy where VRChat's is only a collision radius. Reasoning
+    /// from the names produced avatars that shook, snapped back, or inflated to metre-wide
+    /// spheres. A value in the report is worth more than a confident wrong setting.
     /// </summary>
     public static class MagicaClothWriter
     {
         const string Category = "PhysBones -> MagicaCloth2";
 
-        // Tunable feel constants. For reference when adjusting these, MagicaCloth2's own
-        // defaults are: gravity 5.0, damping 0.05, radius 0.02, angle-restoration stiffness
-        // 0.2 (tapering 1.0 at the root to 0.2 at the tip), velocity attenuation 0.8,
-        // world/local inertia 1.0.
-
-        /// <summary>
-        /// PhysBone gravity is a 0..1 fraction of standard gravity, MagicaCloth2's is an
-        /// acceleration, so a PhysBone at 1.0 converts to real gravity. Note this lands above
-        /// Magica's own default of 5.0 — that default is an artistic choice for cloth, whereas
-        /// the goal here is to reproduce what the PhysBone was actually doing.
-        /// </summary>
-        public static float GravityScale = 9.81f;
-
-        // PhysBone "spring" is bounciness, which is the inverse of air resistance. The range
-        // brackets Magica's 0.05 default so a mid-range PhysBone lands near Magica-native feel.
+        // Tunable feel constants; adjust if conversions come out too stiff/loose.
+        public static float GravityScale = 9.8f;
         public static float MaxDamping = 0.15f;
         public static float MinDamping = 0.01f;
 
@@ -71,35 +72,12 @@ namespace AvatarBridge
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
             sdata.rootBones.Add(data.Root);
 
-            // "Is Animated" means animation is allowed to move the chain's rest pose, which is
-            // exactly what Magica's animation pose ratio blends towards (0 = restore to the
-            // initial pose, 1 = restore to the animated one). Without this, a chain whose bones
-            // are animated fights its way back to the T-pose instead of following the animation.
-            if (data.IsAnimated)
-            {
-                sdata.animationPoseRatio = 1f;
-            }
-
-            // Multi Child Type "Ignore" pins a branching root in place — VRChat's own guidance
-            // is that it's for hair. Magica says the same thing with rootRotation 0 ("does not
-            // rotate"); left at its 0.5 default the root would swing when it shouldn't.
-            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
-            {
-                sdata.rootRotation = 0f;
-            }
-
-            // Particle radius. The two systems mean different things by "radius", and taking
-            // PhysBone's at face value is what blows the simulation up:
-            //
-            //   PhysBone  - purely a collision radius. A chain with no colliders is unaffected
-            //               by it, so authors leave large values lying around harmlessly.
-            //   Magica    - the particle size, which shapes the whole proxy. A particle wider
-            //               than the gap between bones overlaps its neighbours and the solver
-            //               pushes them violently apart.
-            //
-            // So it's capped at half the chain's bone spacing: particles end up touching at
-            // most, never overlapping. One reported avatar carried a 0.5 m radius that VRChat
-            // ignored entirely and Magica turned into metre-wide spheres.
+            // Particle radius. The one place a straight copy is actively unsafe: PhysBone's
+            // radius only decides what the chain collides with, so a chain with no colliders
+            // ignores it and large leftover values are harmless. MagicaCloth2's is the particle
+            // size, and a particle wider than the gap between bones overlaps its neighbours,
+            // which the solver resolves by shoving them apart. Half the bone spacing is the
+            // largest value where particles can touch but never overlap.
             float spacing = MeasureBoneSpacing(data.Root);
             float requested = Mathf.Max(0.001f, data.Radius);
             float radius = spacing > 0f ? Mathf.Min(requested, spacing * 0.5f) : requested;
@@ -112,7 +90,7 @@ namespace AvatarBridge
                     "between bones makes neighbouring particles overlap and shove each other apart.");
             }
 
-            // Restoration toward the animated pose: PB pull, plus stiffness in advanced mode.
+            // Restoration toward the rest pose: PB pull, plus stiffness in advanced mode.
             float restoration = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
             ApplyCurve(sdata.angleRestorationConstraint.stiffness, restoration,
                 PhysBoneChainData.HasCurve(data.PullCurve) ? data.PullCurve : data.StiffnessCurve);
@@ -122,7 +100,7 @@ namespace AvatarBridge
             sdata.damping.SetValue(Mathf.Lerp(MaxDamping, MinDamping, spring));
             sdata.angleRestorationConstraint.velocityAttenuation = Mathf.Clamp01(1f - spring);
 
-            // Gravity.
+            // Gravity. PhysBone's 0..1 is a fraction of real gravity; a negative value points up.
             if (!Mathf.Approximately(data.Gravity, 0f))
             {
                 sdata.gravity = Mathf.Abs(data.Gravity) * GravityScale;
@@ -134,51 +112,23 @@ namespace AvatarBridge
                 sdata.gravity = 0f;
             }
 
-            // Immobile: how much the chain ignores being moved around.
-            // PhysBone's immobileType decides *which* movement is ignored, and MagicaCloth2
-            // splits exactly the same way — world inertia is the character travelling through
-            // the world, local inertia is animation moving the bones. Mapping onto the matching
-            // axis is a 1:1 conversion; applying both for "World" would wrongly deaden the
-            // chain against the avatar's own animation.
+            // Immobile: reduce how much the avatar's own movement shakes the chain. Applied to
+            // world inertia only — MagicaCloth2 splits world and local inertia, but which of
+            // them a given PhysBone immobile type corresponds to is a guess, and guessing here
+            // has gone wrong before.
             if (data.Immobile > 0f)
             {
-                float inertia = Mathf.Clamp01(1f - data.Immobile);
-                bool allMotion = !data.ImmobileTypeName.Contains("World");
-
-                bool applied = TrySetMember(sdata.inertiaConstraint, "worldInertia", inertia);
-                if (allMotion)
-                {
-                    // "All Motion" also damps the animation's own movement.
-                    applied &= TrySetMember(sdata.inertiaConstraint, "localInertia", inertia);
-                }
-                if (!applied)
+                if (!TrySetMember(sdata.inertiaConstraint, "worldInertia", Mathf.Clamp01(1f - data.Immobile)))
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
                         "Immobile could not be mapped to inertia on this MagicaCloth2 version.");
                 }
-            }
-
-            // Angle limits are deliberately NOT transferred.
-            //
-            // The two constraints look equivalent and aren't. PhysBone limits each bone's
-            // rotation to a cone around its parent's rest direction. MagicaCloth2 constrains
-            // particle positions relative to a baseline pose, at a stiffness that defaults to a
-            // rigid snap-back — and where that baseline is an animated pose, the limit fights
-            // the animation every frame instead of settling. Enabling it wrecked the jiggle
-            // chains on a reported avatar badly enough that turning it off by hand was the fix.
-            //
-            // The angle is reported so it can be applied by hand where it's actually wanted:
-            // tick Angle Limit on the MagicaCloth component and lower its Stiffness.
-            if (data.LimitTypeName != "None")
-            {
-                bool polar = data.LimitTypeName == "Polar";
-                float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"{data.LimitTypeName} limit ({limitAngle:0}°) not applied — MagicaCloth2's angle limit " +
-                    "constrains particle positions against a baseline pose rather than bone rotation, and on a " +
-                    "chain that also follows animation it fights it rather than settling. To add it anyway, " +
-                    $"tick Angle Limit on this cloth, set Limit Angle to {limitAngle:0} and lower Stiffness " +
-                    "until it stops snapping.");
+                else if (!string.IsNullOrEmpty(data.ImmobileTypeName))
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Immobile {data.Immobile:0.##} (type '{data.ImmobileTypeName}') applied as world inertia. " +
+                        "If the chain still drags when you walk, raise Local Inertia on the cloth too.");
+                }
             }
 
             // Ignored transforms become "Invalid" (excluded) bones.
@@ -214,19 +164,8 @@ namespace AvatarBridge
             }
 
             ReportUnconvertibleFeatures(ctx, data);
-
-            var notes = new List<string>();
-            if (data.IsAnimated)
-            {
-                notes.Add("follows the animated pose");
-            }
-            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
-            {
-                notes.Add("root pinned");
-            }
             ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth with {data.Colliders.Count} collider(s)" +
-                (notes.Count > 0 ? $" ({string.Join(", ", notes)})." : "."));
+                $"BoneCloth with {data.Colliders.Count} collider(s).");
 
             return cloth;
         }
@@ -279,23 +218,55 @@ namespace AvatarBridge
             return collider;
         }
 
+        /// <summary>
+        /// Everything the mapping deliberately leaves alone, reported with its value so it can
+        /// be applied by hand where a chain actually needs it.
+        /// </summary>
         static void ReportUnconvertibleFeatures(BridgeContext ctx, PhysBoneChainData data)
         {
+            if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName))
+            {
+                bool polar = data.LimitTypeName == "Polar";
+                float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
+                ctx.Report.Skipped(Category, data.Root.name,
+                    $"{data.LimitTypeName} limit ({limitAngle:0}°) not applied — MagicaCloth2's angle limit " +
+                    "constrains particle positions against a baseline pose rather than bone rotation, and on a " +
+                    "chain that also follows animation it fights it rather than settling. To add it anyway, tick " +
+                    $"Angle Limit on this cloth, set Limit Angle to {limitAngle:0} and lower Stiffness until it " +
+                    "stops snapping.");
+            }
+
             if (data.MaxStretch > 0f || data.MaxSquish > 0f)
             {
                 ctx.Report.Skipped(Category, data.Root.name,
-                    $"Stretch & Squish (max stretch {data.MaxStretch:0.##}, max squish {data.MaxSquish:0.##}) " +
-                    "is not converted — MagicaCloth2's BoneCloth keeps each bone at its rest length, so a chain " +
+                    $"Stretch & Squish (max stretch {data.MaxStretch:0.##}, max squish {data.MaxSquish:0.##}) is " +
+                    "not converted — MagicaCloth2's BoneCloth keeps each bone at its rest length, so a chain " +
                     "swings but never lengthens or compresses. Chains that leaned on stretching will sit tighter " +
                     "than they did in VRChat.");
             }
-            if (data.LimitTypeName != "None" && data.RootHasMultipleChildren &&
-                data.MultiChildTypeName != "Ignore")
+
+            if (data.IsAnimated)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Source PhysBone had 'Is Animated' on. The cloth settles back to its INITIAL pose; if an " +
+                    "animation moves these bones and the chain fights it, set Animation Pose Ratio to 1 on this " +
+                    "cloth so it settles to the animated pose instead.");
+            }
+
+            if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName)
+                && data.MultiChildTypeName != "Ignore")
             {
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"Multi Child Type '{data.MultiChildTypeName}' has no MagicaCloth2 equivalent — every branch " +
                     "off this root simulates independently, where VRChat blended them.");
             }
+            else if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Multi Child Type 'Ignore' pins a branching root in VRChat. If this root swings when it " +
+                    "shouldn't, set Root Rotation to 0 on this cloth.");
+            }
+
             if (!string.IsNullOrEmpty(data.Parameter))
             {
                 if (ctx.Settings.grabbyBonesSupport)
@@ -312,11 +283,7 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Average distance between consecutive bones down the chain — i.e. how far apart the
-        /// simulation's particles will sit. Walks the first-child line, which is representative
-        /// enough for sizing. Returns 0 when the chain has no children to measure.
-        /// </summary>
+        /// <summary>Average distance between bones down the chain, used to bound the particle radius.</summary>
         static float MeasureBoneSpacing(Transform root)
         {
             float total = 0f;
@@ -370,30 +337,6 @@ namespace AvatarBridge
             {
                 return false;
             }
-        }
-
-        static bool TrySetCurveValue(object target, string fieldName, float value)
-        {
-            if (target == null)
-            {
-                return false;
-            }
-            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null)
-            {
-                return false;
-            }
-            if (field.GetValue(target) is CurveSerializeData curveData)
-            {
-                curveData.SetValue(value);
-                return true;
-            }
-            if (field.FieldType == typeof(float))
-            {
-                field.SetValue(target, value);
-                return true;
-            }
-            return false;
         }
 
         static string PathOf(Transform t) => t != null ? t.name : "(null)";

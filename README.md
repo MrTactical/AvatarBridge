@@ -264,45 +264,63 @@ Height / measuredHeight`), with the menu defaulting to that measured height. So 
 
 ## PhysBones → MagicaCloth2
 
-| PhysBone | MagicaCloth2 | Fidelity |
-|---|---|---|
-| pull / stiffness (+curves) | angle restoration stiffness (+ depth curve) | close |
-| spring / momentum | damping (inverted) + velocity attenuation | close |
-| **Is Animated** | animation pose ratio (1.0) — the chain settles to the *animated* pose instead of fighting back to the initial one | **exact** |
-| **Multi Child Type: Ignore** (branching root) | root rotation 0.0 — Magica's own wording is "does not rotate" | **exact** |
-| Multi Child Type: First / Average | — | ⚠️ each branch simulates independently |
-| gravity | gravity — PhysBone's 0..1 is a fraction of real gravity, so 1.0 → 9.81 m/s² | 1:1 |
-| gravityFalloff | gravity falloff | **exact** — both are "reduce gravity while near the rest pose" |
-| immobile, type **World** | world inertia (inverted) | **exact** — Magica splits the same way |
-| immobile, type **All Motion** | world **and** local inertia (inverted) | **exact** |
-| radius + curve | particle radius + curve | 1:1 |
-| limit type Angle / Hinge / Polar | — | ⚠️ **not applied** — the angle is reported so you can add it by hand; see below |
-| ignore transforms | bone attribute *Invalid* | 1:1 |
-| colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders | 1:1 |
-| maxStretch / maxSquish | — | ⚠️ dropped: BoneCloth keeps bones at rest length, so chains swing but never lengthen or compress |
-| limit rotation (pitch/roll/yaw) | — | ⚠️ dropped: Magica's limit cone is always centred on the rest pose |
-| grab & pose | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod, `_IsGrabbed` / `_Angle` only | ⚠️ partial |
+The mapping is deliberately plain. It transfers the settings that mean the same thing on both
+sides, and **reports the rest with their values** instead of guessing at an equivalent.
 
-Rows marked **exact** or **1:1** carry the same meaning in both systems; the rest are noted in
-the conversion report so you know what to check. The two solvers still differ, so expect to
-nudge the feel — tuning constants sit at the top of `Editor/Core/Physics/MagicaClothWriter.cs`,
-documented against MagicaCloth2's own defaults (gravity 5.0, damping 0.05, radius 0.02, angle
-restoration 0.2, velocity attenuation 0.8) so you have a reference point.
+**Applied:**
 
-`immobile` and the angle limits are applied via reflection, since MagicaCloth2 moves fields
-between versions; a mismatch is reported rather than silently dropped.
+| PhysBone | MagicaCloth2 |
+|---|---|
+| pull / stiffness (+curves) | angle restoration stiffness (+ depth curve) |
+| spring / momentum | damping (inverted) + velocity attenuation |
+| gravity | gravity — PhysBone's 0..1 is a fraction of real gravity, so 1.0 → ~9.8 m/s²; a negative value points up |
+| gravityFalloff | gravity falloff — both mean "reduce gravity while near the rest pose" |
+| immobile | world inertia (inverted) |
+| radius + curve | particle radius + curve, **capped at half the bone spacing** (see below) |
+| ignore transforms | bone attribute *Invalid* |
+| colliders (sphere/capsule/plane) | Magica sphere/capsule/plane colliders |
 
-### Why angle limits aren't transferred
+**Reported, not applied** — each appears in the conversion report with its value and what to
+change if that chain wants it:
 
-The two constraints look equivalent and aren't. **PhysBone** limits each bone's *rotation* to a
-cone around its parent's rest direction. **MagicaCloth2** constrains particle *positions* against
-a baseline pose, at a stiffness that defaults to a rigid snap-back — and on a chain that also
-follows animation, the limit fights the animation every frame instead of settling. Enabling it
-sent the jiggle chains on a test avatar haywire until it was switched off by hand.
+| PhysBone | why |
+|---|---|
+| limit type Angle / Hinge / Polar | the two limits constrain different things — see below |
+| maxStretch / maxSquish | BoneCloth keeps bones at rest length, so chains swing but never lengthen or compress |
+| **Is Animated** | the cloth settles to its *initial* pose; set Animation Pose Ratio to 1 if an animated chain fights back |
+| **Multi Child Type** | branches simulate independently; for *Ignore*, set Root Rotation to 0 if the root swings when it shouldn't |
+| limit rotation (pitch/roll/yaw) | Magica's limit cone is always centred on the rest pose |
+| grab & pose | `_IsGrabbed` / `_Angle` via the [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod; `_Stretch` / `_Squish` / `_IsPosed` have no equivalent |
 
-So the limit angle is **reported rather than applied**. Where you actually want one — a tail that
-shouldn't fold backwards, say — tick **Angle Limit** on that MagicaCloth component, enter the
-angle from the report, and lower **Stiffness** until it stops snapping.
+### Why so much is reported rather than converted
+
+Earlier versions mapped most of the second table automatically, reasoning that the two systems
+had matching features. They don't, and the names actively mislead:
+
+- MagicaCloth2's **angle limit** constrains particle *positions* against a baseline pose; VRChat's
+  limits bone *rotation* against its parent.
+- MagicaCloth2's **radius** is the particle size that shapes the whole simulation proxy; VRChat's
+  is only a collision radius, ignored entirely by a chain with no colliders — so authors leave
+  large values lying around harmlessly. One avatar carried `0.5`, which became metre-wide particles.
+
+Converting on the strength of the shared name produced avatars that shook, snapped back, or
+inflated. A value sitting in the report is worth more than a confident wrong setting, so anything
+whose meaning isn't genuinely shared is handed to you with instructions instead.
+
+The two solvers still differ even where the mapping is sound, so expect to nudge the feel. Tuning
+constants sit at the top of `Editor/Core/Physics/MagicaClothWriter.cs`, documented against
+MagicaCloth2's own defaults (gravity 5.0, damping 0.05, radius 0.02, angle restoration 0.2,
+velocity attenuation 0.8) as a reference point.
+
+`immobile` is applied via reflection, since MagicaCloth2 moves fields between versions; a mismatch
+is reported rather than silently dropped.
+
+### Adding an angle limit by hand
+
+Where you actually want one — a tail that shouldn't fold backwards, say — tick **Angle Limit** on
+that MagicaCloth component, enter the angle from the report, and lower **Stiffness** until it
+stops snapping. Stiffness defaults to `1`, a rigid snap-back, which is what makes an
+automatically-applied limit so destructive on a chain that is also being animated.
 
 ### Auto-assign nearby colliders (optional, off by default)
 
