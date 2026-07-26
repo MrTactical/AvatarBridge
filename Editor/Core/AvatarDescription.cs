@@ -123,19 +123,36 @@ namespace AvatarBridge
                 lines.Add($"Physics on {Plural(chains, "bone chain")} ({physicsName})");
             }
 
-            if (ctx.Settings.faceTrackingMode != FaceTrackingMode.None)
+            // Checked against the avatar, never against the setting that asked for it. A mode can
+            // be selected and produce nothing — no compatible blendshapes, a mesh it couldn't read
+            // — and a listing that claims face tracking on an avatar without the component is a
+            // false advertisement written by this tool, under someone else's name. The setting is
+            // a request; only the component is evidence.
+            if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null)
             {
-                lines.Add(ctx.Settings.faceTrackingMode == FaceTrackingMode.Native
-                    ? "Face tracking ready — ChilloutVR's native component"
-                    : "Face tracking ready — eye and face blendtrees");
+                lines.Add("Face tracking ready — ChilloutVR's native component");
+            }
+            else if (FindDeep(ctx.Target.transform, "EyeTracking.L") != null
+                     && FindDeep(ctx.Target.transform, "EyeTracking.R") != null)
+            {
+                lines.Add("Face tracking ready — eye and face blendtrees");
             }
 
-            if (ctx.CvrAvatar != null && ctx.CvrAvatar.useBlinkBlendshapes)
-            {
-                lines.Add("Blinks and lip syncs on its own");
-            }
+            // Blink and lip sync are separate features on separate fields, and were being claimed
+            // together off the blink flag alone. Each is now only stated if its own switch is on
+            // AND it names a shape to drive — the flag can be set with an empty array.
+            bool blinks = ctx.CvrAvatar != null && ctx.CvrAvatar.useBlinkBlendshapes
+                          && HasAny(ctx.CvrAvatar.blinkBlendshape);
+            bool lipSync = ctx.CvrAvatar != null && ctx.CvrAvatar.useVisemeLipsync
+                           && (ctx.CvrAvatar.visemeMode == CVRAvatar.CVRAvatarVisemeMode.JawBone
+                               || HasAny(ctx.CvrAvatar.visemeBlendshapes));
+            if (blinks && lipSync) lines.Add("Blinks and lip syncs on its own");
+            else if (blinks) lines.Add("Blinks on its own");
+            else if (lipSync) lines.Add("Lip syncs on its own");
 
-            if (ctx.Settings.addAvatarScaler)
+            // Same rule: the scaler is claimed only if its menu control actually reached the
+            // avatar. Injection is skipped on rigs it can't measure.
+            if (HasMenuEntry(ctx, "Height (M)"))
             {
                 lines.Add("Resizable in game — set your height in real metres");
             }
@@ -153,6 +170,39 @@ namespace AvatarBridge
             }
 
             return lines;
+        }
+
+        /// <summary>True when at least one entry in the array names a shape.</summary>
+        static bool HasAny(string[] shapes)
+        {
+            return shapes != null && shapes.Any(s => !string.IsNullOrEmpty(s));
+        }
+
+        /// <summary>Is a named control actually on the finished avatar's menu?</summary>
+        static bool HasMenuEntry(BridgeContext ctx, string name)
+        {
+            var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings
+                : null;
+            return settings != null && settings.Any(e => e != null && e.name == name);
+        }
+
+        /// <summary>Depth-first search by exact name, since these sit at a rig-dependent depth.</summary>
+        static Transform FindDeep(Transform root, string name)
+        {
+            if (root.name == name)
+            {
+                return root;
+            }
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var hit = FindDeep(root.GetChild(i), name);
+                if (hit != null)
+                {
+                    return hit;
+                }
+            }
+            return null;
         }
 
         static void CountMenu(BridgeContext ctx, out int toggles, out int sliders, out int puppets,
