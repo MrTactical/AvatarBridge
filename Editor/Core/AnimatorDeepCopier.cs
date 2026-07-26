@@ -139,10 +139,24 @@ namespace AvatarBridge
                     blendType = tree.blendType,
                     blendParameter = tree.blendParameter,
                     blendParameterY = tree.blendParameterY,
-                    minThreshold = tree.minThreshold,
-                    maxThreshold = tree.maxThreshold,
                     hideFlags = HideFlags.HideInHierarchy
                 };
+
+                // Order matters, and getting it wrong is silent.
+                //
+                // A new BlendTree starts with useAutomaticThresholds = true, and while that is set
+                // Unity redistributes every child's threshold evenly across minThreshold..max as
+                // the children are assigned. Assigning children first and clearing the flag
+                // afterwards therefore freezes Unity's computed values and throws the source's
+                // hand-set thresholds away.
+                //
+                // Trees whose author used automatic thresholds survived that, because recomputing
+                // reproduced what they already had — which is why this went unnoticed. A tree with
+                // manual thresholds and min/max left at their defaults collapsed instead: every
+                // child landed on threshold 0, so a 1D tree applied all of its clips at once. On
+                // "Kaides Expie" that turned the tail-scale tree into both extremes at full weight
+                // and the tail swallowed the avatar.
+                dst.useAutomaticThresholds = false;
                 dst.children = tree.children.Select(child => new ChildMotion
                 {
                     motion = CloneMotion(child.motion),
@@ -153,7 +167,14 @@ namespace AvatarBridge
                     directBlendParameter = child.directBlendParameter,
                     mirror = child.mirror
                 }).ToArray();
-                dst.useAutomaticThresholds = tree.useAutomaticThresholds;
+                dst.minThreshold = tree.minThreshold;
+                dst.maxThreshold = tree.maxThreshold;
+                // Restored last: if the author did use automatic thresholds, letting Unity
+                // recompute now reproduces their intent against the min/max just set.
+                if (tree.useAutomaticThresholds)
+                {
+                    dst.useAutomaticThresholds = true;
+                }
                 return dst;
             }
             // Animation clips are shared, not cloned.

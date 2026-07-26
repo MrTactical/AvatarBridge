@@ -2036,16 +2036,32 @@ namespace AvatarBridge
             }
 
             var parameters = master.parameters.ToList();
+            var mirrored = new List<string>();
             foreach (string name in missing)
             {
+                float value = MirroredDefault(name, master, ctx);
+                if (value != 0f)
+                {
+                    mirrored.Add($"{name} = {value:0.###}");
+                }
                 parameters.Add(new AnimatorControllerParameter
                 {
                     name = name,
                     type = AnimatorControllerParameterType.Float,
-                    defaultFloat = 0f
+                    defaultFloat = value
                 });
             }
             master.parameters = parameters.ToArray();
+
+            if (mirrored.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Took {mirrored.Count} missing parameter default(s) from the parameter each mirrors",
+                    $"{string.Join(", ", mirrored.Take(10))}{(mirrored.Count > 10 ? ", …" : "")} — " +
+                    "declaring these as 0 with the rest was actively wrong. A slider whose neutral " +
+                    "is 0.5 sits at one end of its own range at 0, which is why limb and body " +
+                    "sliders came out deformed rather than merely inert.");
+            }
 
             ctx.Report.Warning(Category, $"Declared {missing.Count} referenced parameter(s) that were missing",
                 $"{string.Join(", ", missing.Take(12))}{(missing.Count > 12 ? ", …" : "")} — transitions, blend " +
@@ -2053,6 +2069,55 @@ namespace AvatarBridge
                 "condition names an unknown parameter, so they were added as Float 0 to keep those transitions " +
                 "alive. Whatever drove them in VRChat still won't, so treat this as a repair, not a fix — if a " +
                 "feature on this avatar is dead, start here.");
+        }
+
+        /// <summary>
+        /// The default a dangling parameter should carry, taken from the parameter it mirrors.
+        ///
+        /// VRCFury copies a parameter it needs to read into its own namespace —
+        /// "VF87_AvatarLimbScaling_Arms" alongside the real "AvatarLimbScaling_Arms" — and those
+        /// copies are frequently the ones left undeclared. Declaring them 0 like any other
+        /// dangling name is not neutral: Avatar Limb Scaling's sliders are 0.5 at rest, where 0
+        /// means fully shrunk, and the body-shape sliders on the same avatar behave the same way.
+        /// The result is an avatar that arrives visibly deformed rather than merely missing a
+        /// feature — which is exactly how this was found.
+        ///
+        /// So: strip the "VF&lt;id&gt;_" tag, find whatever the copy shadows, and take its default.
+        /// Falls back to 0, which is right for a genuinely unknown parameter.
+        /// </summary>
+        static float MirroredDefault(string name, AnimatorController master, BridgeContext ctx)
+        {
+            string bare = name.StartsWith("#", StringComparison.Ordinal) ? name.Substring(1) : name;
+            var tag = System.Text.RegularExpressions.Regex.Match(bare, @"^VF\d+_(.+)$");
+            if (!tag.Success)
+            {
+                return 0f;
+            }
+            string source = tag.Groups[1].Value;
+
+            // The real parameter, however the rename pass ended up spelling it.
+            foreach (var p in master.parameters)
+            {
+                if ((p.name == source || p.name == "#" + source) &&
+                    p.type == AnimatorControllerParameterType.Float)
+                {
+                    return p.defaultFloat;
+                }
+            }
+
+            // Otherwise what the avatar itself declared, which is where the 0.5 actually lives.
+            var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+            if (expressions != null && expressions.parameters != null)
+            {
+                foreach (var p in expressions.parameters)
+                {
+                    if (p != null && p.name == source)
+                    {
+                        return p.defaultValue;
+                    }
+                }
+            }
+            return 0f;
         }
 
         /// <summary>
