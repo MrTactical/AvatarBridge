@@ -13,6 +13,8 @@ finish by hand.
   3200 sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, or the bundled CVR-VRCFT rig with eye
   tracking wired up. ARKit and Unified Expressions meshes both work.
+- **ChilloutVR's native contacts** — VRChat contacts convert one to one, with real proximity and
+  no sync cost, using a system the CCK doesn't expose. See [below](#native-contacts).
 - **Diagnostics that know ChilloutVR** — the report names components CVR will silently delete on
   load, and tracks its 3200-bit sync budget, rather than leaving you to find out in game.
 - **Avatar scaler** — a `Height (M)` menu control defaulting to the avatar's measured eye height,
@@ -161,8 +163,14 @@ record of each script's assembly, namespace and class, which the player resolves
 The declarations are generated into `AvatarBridge/Runtime` on import and removed automatically if a
 future CCK provides the real thing.
 
-**Off by default**, because it's new. Confirmed working in a live instance — CCK validation clean,
-uploaded, contacts triggered by other players — on one avatar so far.
+> ✅ **This works.** Confirmed in a live ChilloutVR instance: CCK validation clean, avatar
+> uploaded, contacts triggered by other players, and ChilloutVR's own runtime gizmos drawing the
+> components — which is the proof that counts, because it means the game's real implementation is
+> running against declarations generated here.
+>
+> **It is still off by default**, and stays that way until more than one avatar has confirmed it.
+> Turn it on deliberately, test in game, and keep the legacy path in mind as the fallback — the
+> conversion switches to it by itself if anything is wrong.
 
 > ⚠️ **If a conversion ever leaves broken `Contact_*` components behind, delete them and reopen the
 > scene before converting again.** Unity manufactures a placeholder script for a component whose
