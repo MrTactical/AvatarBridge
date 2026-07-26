@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
@@ -14,7 +15,7 @@ namespace AvatarBridge
     ///
     ///   which bone the chain hangs from     -> rootBones
     ///   which colliders it collides with    -> colliderList
-    ///   which transforms to leave out       -> bone attribute "Invalid"
+    ///   which transforms to leave out       -> expressed as root bones (see WriteRootsExcluding)
     ///   whether it started enabled          -> the holder's active state
     ///
     /// Every physics value is left at MagicaCloth2's own defaults. That is the whole idea.
@@ -87,23 +88,14 @@ namespace AvatarBridge
 
             // --- structure ----------------------------------------------------------------
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
-            sdata.rootBones.Add(data.Root);
 
-            if (data.Ignores.Count > 0)
+            if (data.Ignores.Count == 0)
             {
-                var sdata2 = cloth.GetSerializeData2();
-                foreach (var ignore in data.Ignores)
-                {
-                    foreach (var t in ignore.GetComponentsInChildren<Transform>(true))
-                    {
-                        if (!sdata2.boneAttributeDict.ContainsKey(t))
-                        {
-                            sdata2.boneAttributeDict.Add(t, VertexAttribute.Invalid);
-                        }
-                    }
-                }
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.Ignores.Count} ignored transform(s) marked Invalid (their children are excluded too).");
+                sdata.rootBones.Add(data.Root);
+            }
+            else
+            {
+                WriteRootsExcluding(ctx, sdata, data);
             }
 
             if (data.Colliders.Count > 0)
@@ -147,6 +139,94 @@ namespace AvatarBridge
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        /// <summary>
+        /// Expresses a PhysBone's Ignore Transforms as MagicaCloth2 root bones.
+        ///
+        /// MagicaCloth2 has no exclusion for BoneCloth. Its own comment where it builds the chain
+        /// reads "root以下をすべて登録する" — register everything under root — and it means it:
+        /// every root walks its whole subtree, unconditionally. There is a boneAttributeDict that
+        /// takes VertexAttribute.Invalid per transform, and AvatarBridge used to write the ignores
+        /// into it, but MagicaCloth2 declares that field [System.NonSerialized]. It looked right in
+        /// the editor and was gone the instant the avatar was serialized for upload, so in game the
+        /// eyes, jaw and hair of a head-rooted chain were all being simulated.
+        ///
+        /// What is serialized is the plain rootBones list, so the ignores are expressed by
+        /// decomposition instead: descend from the root and collect the largest subtrees that
+        /// contain no ignored transform. A branch that is entirely clean becomes one root; a branch
+        /// with an ignored bone somewhere inside is descended into further.
+        ///
+        /// The cost is honest and worth stating: MagicaCloth2 fixes each root bone in place, so a
+        /// branch promoted to a root loses motion at its own base joint — an ear rooted this way
+        /// swings from its second joint rather than its first. The alternative was writing
+        /// position-matched selection data, which reproduces the original exactly and fails
+        /// silently when the match is off. A slightly stiffer ear that is visible in the report
+        /// beats a chain that is subtly wrong for reasons nobody can see.
+        /// </summary>
+        static void WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data)
+        {
+            var ignored = new HashSet<Transform>(data.Ignores.Where(t => t != null));
+
+            bool SubtreeHasIgnored(Transform t)
+            {
+                if (ignored.Contains(t))
+                {
+                    return true;
+                }
+                for (int i = 0; i < t.childCount; i++)
+                {
+                    if (SubtreeHasIgnored(t.GetChild(i)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            void Collect(Transform t)
+            {
+                for (int i = 0; i < t.childCount; i++)
+                {
+                    var child = t.GetChild(i);
+                    if (ignored.Contains(child))
+                    {
+                        continue; // an ignored transform takes its whole subtree with it
+                    }
+                    if (SubtreeHasIgnored(child))
+                    {
+                        Collect(child); // something inside is ignored, so this can't be one root
+                    }
+                    else
+                    {
+                        sdata.rootBones.Add(child);
+                    }
+                }
+            }
+
+            Collect(data.Root);
+
+            if (sdata.rootBones.Count == 0)
+            {
+                // Everything under the root was ignored. Nothing to simulate, and a BoneCloth with
+                // no roots errors at runtime, so fall back to the root and say what happened.
+                sdata.rootBones.Add(data.Root);
+                ctx.Report.Warning(Category, data.Root.name,
+                    $"All {data.Ignores.Count} branch(es) under this PhysBone's root were in its Ignore " +
+                    "Transforms list, leaving nothing to simulate. The chain was left rooted as-is, which " +
+                    "means it now simulates bones VRChat excluded — delete this cloth if it misbehaves.");
+                return;
+            }
+
+            var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
+            ctx.Report.Approximated(Category, data.Root.name,
+                $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
+                $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
+                $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. MagicaCloth2 has no ignore list — " +
+                "every root simulates its whole subtree — so the excluded bones are left out by not " +
+                "rooting anything above them. MagicaCloth2 holds a root bone still, so each of these " +
+                "branches now bends from its second joint rather than its first; if one feels stiff at " +
+                "the base, that is why.");
         }
 
         /// <summary>
