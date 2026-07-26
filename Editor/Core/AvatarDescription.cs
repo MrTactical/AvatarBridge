@@ -30,12 +30,22 @@ namespace AvatarBridge
         const string Category = "Store description";
         public const string FileName = "Description.txt";
 
-        /// <summary>Builds the text and writes it next to the report. Returns it for the clipboard.</summary>
+        /// <summary>
+        /// Builds the text and writes it next to the report. Returns it for the clipboard.
+        ///
+        /// The whole thing is inside one try, <em>including</em> building the string. This runs at
+        /// the very end of a conversion, after every real piece of work has succeeded, and it
+        /// produces a nicety — so there is no failure here worth losing an avatar over. It walks
+        /// renderers, meshes and settings written by a dozen other passes; one unexpected null in
+        /// any of them would otherwise throw out of the last line of the conversion and lose the
+        /// lot. A missing description is a line in the report; a lost conversion is an evening.
+        /// </summary>
         public static string Write(BridgeContext ctx)
         {
-            string text = Build(ctx);
+            string text = null;
             try
             {
+                text = Build(ctx);
                 string relative = ctx.OutputDir.TrimEnd('/') + "/" + FileName;
                 File.WriteAllText(Path.GetFullPath(relative), text);
                 UnityEditor.AssetDatabase.ImportAsset(relative);
@@ -49,8 +59,9 @@ namespace AvatarBridge
             catch (System.Exception e)
             {
                 ctx.Report.Warning(Category, ctx.Target.name,
-                    $"Could not write {FileName} — {e.Message}. The description is still available " +
-                    "from the window's \"Copy description\" button.");
+                    $"Could not produce the store description — {e.Message}. Nothing else about the " +
+                    "conversion is affected; this only writes listing text you were free to write " +
+                    "yourself. Worth reporting, since it should not happen.");
             }
             return text;
         }
