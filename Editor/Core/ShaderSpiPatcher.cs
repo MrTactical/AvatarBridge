@@ -190,7 +190,18 @@ namespace AvatarBridge
             var sig = Regex.Match(text, $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)");
             if (!sig.Success)
             {
-                reason = "vertex function signature not recognised";
+                // Distinguish "written in a way this can't read" from "not in this file at all".
+                // The second is the common case for effect shaders — Cancerspace declares
+                // "#pragma vertex vert" and keeps vert in Cancercore.cginc — and it isn't a
+                // parsing shortfall: the include is shared with other shaders, so editing it
+                // would reach past this avatar. Saying which include it is saves the reader
+                // going to look.
+                var include = Regex.Match(text, @"#include\s+""([^""]+\.cginc)""",
+                    RegexOptions.RightToLeft);
+                reason = Regex.IsMatch(text, $@"\b{Regex.Escape(vertName)}\s*\(") || !include.Success
+                    ? "vertex function signature not recognised"
+                    : $"its vertex function lives in {include.Groups[1].Value}, a shared include this " +
+                      "can't safely edit";
                 return null;
             }
             string v2fType = sig.Groups[1].Value, inType = sig.Groups[2].Value, inArg = sig.Groups[3].Value;
