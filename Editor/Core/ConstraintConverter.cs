@@ -127,17 +127,31 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, component.name,
                     "'Freeze To World' has no Unity constraint equivalent and was dropped.");
             }
-            if (Get<Transform>(vrc, "TargetTransform", null) != null)
+            var target = Get<Transform>(vrc, "TargetTransform", null);
+            if (target != null && target != component.transform)
             {
-                ctx.Report.Approximated(Category, component.name,
-                    "VRC 'Target Transform' redirection is not supported; the constraint now affects its own transform.");
+                var host = HostFor(ctx, component);
+                if (host == target.gameObject)
+                {
+                    ctx.Report.Converted(Category, component.name,
+                        $"Drove another transform via VRC 'Target Transform'; the Unity constraint was " +
+                        $"placed on that target ({ctx.PathInTarget(target)}) instead, since Unity's " +
+                        "constraints only ever affect the object they sit on.");
+                }
+                else
+                {
+                    ctx.Report.Approximated(Category, component.name,
+                        $"'Target Transform' points at \"{target.name}\", which is outside this avatar, so the " +
+                        "redirection was dropped and the constraint now affects its own transform. " +
+                        "Whatever it was driving will not move.");
+                }
             }
             return true;
         }
 
         static bool ConvertParent(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<ParentConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<ParentConstraint>(ctx, vrc, out bool existed);
             var sources = ReadSources(vrc);
             foreach (var s in sources)
             {
@@ -162,7 +176,7 @@ namespace AvatarBridge
 
         static bool ConvertPosition(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<PositionConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<PositionConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
@@ -183,7 +197,7 @@ namespace AvatarBridge
 
         static bool ConvertRotation(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<RotationConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<RotationConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
@@ -204,7 +218,7 @@ namespace AvatarBridge
 
         static bool ConvertScale(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<ScaleConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<ScaleConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
@@ -225,7 +239,7 @@ namespace AvatarBridge
 
         static bool ConvertAim(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<AimConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<AimConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
@@ -248,7 +262,7 @@ namespace AvatarBridge
 
         static bool ConvertLookAt(BridgeContext ctx, Component vrc)
         {
-            var unity = GetOrAdd<LookAtConstraint>(vrc, out bool existed);
+            var unity = GetOrAdd<LookAtConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
                 unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
@@ -281,11 +295,42 @@ namespace AvatarBridge
         /// constraint (from converting the first of its kind) instead of letting
         /// AddComponent return null and NRE on the next use.
         /// </summary>
-        static T GetOrAdd<T>(Component vrc, out bool existed) where T : Component
+        /// <summary>
+        /// Which object the Unity constraint goes on.
+        ///
+        /// A VRC constraint can sit on one object and drive another through its Target Transform.
+        /// Unity's constraints have no such field — they always affect the transform they are
+        /// attached to — so the redirection is honoured by moving the component instead: put the
+        /// Unity constraint on the target, with the same sources.
+        ///
+        /// This is how Avatar Limb Scaling works, and it is not a niche trick. Its scale
+        /// constraints live on proxy objects inside its own prefab and point at the avatar's real
+        /// arm and leg bones. Dropping the redirection left each constraint scaling a hidden proxy,
+        /// so the menu sliders moved, synced, and changed nothing anyone could see.
+        ///
+        /// Only redirected inside the avatar. A target somewhere else in the scene is not ours to
+        /// add components to, and would not survive the upload anyway.
+        /// </summary>
+        static GameObject HostFor(BridgeContext ctx, Component vrc)
         {
-            var existing = vrc.gameObject.GetComponent<T>();
+            var target = Get<Transform>(vrc, "TargetTransform", null);
+            if (target == null || target == vrc.transform)
+            {
+                return vrc.gameObject;
+            }
+            if (ctx.Target != null && !target.IsChildOf(ctx.Target.transform))
+            {
+                return vrc.gameObject;
+            }
+            return target.gameObject;
+        }
+
+        static T GetOrAdd<T>(BridgeContext ctx, Component vrc, out bool existed) where T : Component
+        {
+            var host = HostFor(ctx, vrc);
+            var existing = host.GetComponent<T>();
             existed = existing != null;
-            return existed ? existing : vrc.gameObject.AddComponent<T>();
+            return existed ? existing : host.AddComponent<T>();
         }
 
         static void ReportMerged(BridgeContext ctx, Component vrc, string kind)
