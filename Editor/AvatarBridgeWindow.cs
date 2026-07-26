@@ -822,6 +822,19 @@ namespace AvatarBridge
                         EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
                         ShowNotification(new GUIContent("Description copied"));
                     }));
+
+                actions.Add(ReportButton("Fill CCK description",
+                    "Types it straight into the Content Manager's Description box. Open the CCK " +
+                    "Control Panel on the Builder tab with this avatar selected first. It won't " +
+                    "touch the box if you've already written something there.",
+                    () =>
+                    {
+                        var result = CckDescriptionFiller.Fill(lastReport.StoreDescription);
+                        ShowNotification(new GUIContent(
+                            result == CckDescriptionFiller.Result.Filled
+                                ? "Description filled" : "Couldn't fill it"));
+                        Debug.Log("[AvatarBridge] " + CckDescriptionFiller.Explain(result));
+                    }));
             }
 
             // Always offered once a report exists, rather than only when something went wrong:
