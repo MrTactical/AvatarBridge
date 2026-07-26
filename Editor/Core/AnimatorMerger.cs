@@ -61,7 +61,8 @@ namespace AvatarBridge
         // Parameters a CVRParameterStream feeds from the game (see CreateParameterStreams).
         static readonly HashSet<string> StreamFedParameters = new HashSet<string>
         {
-            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode"
+            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
+            "Upright", "TrackingType"
         };
 
         /// <summary>
@@ -96,10 +97,11 @@ namespace AvatarBridge
         };
 
         // VRC built-ins with no CVR equivalent; they stay as frozen local parameters.
-        // (MuteSelf/VRMode/GestureWeights are handled via CVRParameterStream instead.)
+        // (MuteSelf/VRMode/GestureWeights/Upright/TrackingType are fed by a CVRParameterStream
+        // instead, so they are live rather than frozen — see StreamFedParameters.)
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
-            "TrackingType", "Earmuffs", "Upright", "AngularY", "AFK",
+            "Earmuffs", "AngularY", "AFK",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
             "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
             "EyeHeightAsPercent", "IsAnimatorEnabled"
@@ -1887,10 +1889,10 @@ namespace AvatarBridge
             }
             master.parameters = parameters;
             ctx.Report.Converted(Category, $"{changed.Count} VRChat built-in(s) given a resting value",
-                $"{string.Join(", ", changed)} — ChilloutVR doesn't supply these, and 0 isn't neutral for " +
-                "them: TrackingType 0 means tracking never initialised and Upright 0 means lying flat. Left " +
-                "at 0 they can hold a whole rig in its rest pose. Nothing in the animator writes them, so " +
-                "these are the values VRChat would be reporting.");
+                $"{string.Join(", ", changed)} — 0 isn't a neutral starting value for these: TrackingType 0 " +
+                "means tracking never initialised and Upright 0 means lying flat, and either can hold a whole " +
+                "rig in its rest pose. These are the values VRChat would be reporting. Whatever a parameter " +
+                "stream or ChilloutVR itself drives takes over from here; this only decides the first frame.");
         }
 
         /// <summary>
@@ -2378,14 +2380,26 @@ namespace AvatarBridge
         /// </summary>
         static void CreateParameterStreams(AnimatorController master, BridgeContext ctx)
         {
+            // "app"/"lo"/"hi" describe how the raw stream value reaches the parameter. Override
+            // passes it through; Remap runs the CCK's Remap(value, 0, 1, lo, hi), which is how a
+            // ChilloutVR boolean becomes one of VRChat's numbered states.
             var streamables = new[]
             {
-                (bare: "GestureLeftWeight", streamType: "TriggerLeftValue"),
-                (bare: "GestureRightWeight", streamType: "TriggerRightValue"),
-                (bare: "MuteSelf", streamType: "LocalPlayerMuted"),
-                (bare: "VRMode", streamType: "DeviceMode")
+                (bare: "GestureLeftWeight", streamType: "TriggerLeftValue", app: "Override", lo: 0f, hi: 0f),
+                (bare: "GestureRightWeight", streamType: "TriggerRightValue", app: "Override", lo: 0f, hi: 0f),
+                (bare: "MuteSelf", streamType: "LocalPlayerMuted", app: "Override", lo: 0f, hi: 0f),
+                (bare: "VRMode", streamType: "DeviceMode", app: "Override", lo: 0f, hi: 0f),
+
+                // AvatarUpright is Clamp01(currentHeight / avatarHeight) and rests at 1, which is
+                // VRChat's Upright exactly — same range, same meaning, no conversion needed.
+                (bare: "Upright", streamType: "AvatarUpright", app: "Override", lo: 0f, hi: 0f),
+
+                // ChilloutVR only reports whether full-body tracking is on, so the six VRChat
+                // states collapse to the two that matter: 3 = head and hands, 6 = full body.
+                // Both are above zero, which is what most avatars actually test for.
+                (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f)
             };
-            var wanted = new List<(string paramName, string streamType, string bare)>();
+            var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
             foreach (var param in master.parameters)
             {
                 string bare = param.name.TrimStart('#');
@@ -2393,7 +2407,7 @@ namespace AvatarBridge
                 {
                     if (bare == s.bare)
                     {
-                        wanted.Add((param.name, s.streamType, s.bare));
+                        wanted.Add((param.name, s.streamType, s.bare, s.app, s.lo, s.hi));
                     }
                 }
             }
@@ -2459,8 +2473,22 @@ namespace AvatarBridge
                         $"Stream type not found on this CCK version; \"{w.paramName}\" keeps its default.");
                     continue;
                 }
+                var appValue = ParseEnum(appEnum, w.app);
+                if (appValue == null)
+                {
+                    // Without the arithmetic this entry would feed a raw 0/1 into a parameter
+                    // that means something else entirely. Leaving the default alone is safer.
+                    ctx.Report.Skipped(Category, $"Parameter stream {w.streamType}",
+                        $"This CCK version has no \"{w.app}\" application type; \"{w.paramName}\" keeps its default.");
+                    continue;
+                }
                 var entry = Activator.CreateInstance(entryType);
                 SetField(entry, "type", streamTypeValue);
+                if (w.app == "Remap")
+                {
+                    SetField(entry, "staticValue", w.lo);
+                    SetField(entry, "staticValue2", w.hi);
+                }
                 // TargetType.Animator is the CCK's "Sub Animator" — an Animator on some target
                 // GameObject you nominate. Left as that, every entry sat with an empty target and
                 // the inspector's "Target object does not have an Animator component!" warning, so
@@ -2468,11 +2496,13 @@ namespace AvatarBridge
                 // these parameters need; fall back to the old value if a CCK version lacks it.
                 SetField(entry, "targetType",
                     ParseEnum(targetEnum, "AvatarAnimator") ?? ParseEnum(targetEnum, "Animator"));
-                SetField(entry, "applicationType", ParseEnum(appEnum, "Override"));
+                SetField(entry, "applicationType", appValue);
                 SetField(entry, "parameterName", w.paramName);
                 entries.Add(entry);
                 ctx.Report.Converted(Category, $"\"{w.paramName}\" fed by CVR Parameter Stream ({w.streamType})",
-                    "Behaves like the VRChat built-in parameter.");
+                    w.app == "Remap"
+                        ? $"Behaves like the VRChat built-in parameter, remapped to {w.lo:0.##}–{w.hi:0.##}."
+                        : "Behaves like the VRChat built-in parameter.");
             }
             EditorUtility.SetDirty(stream);
         }
