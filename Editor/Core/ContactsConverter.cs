@@ -39,13 +39,14 @@ namespace AvatarBridge
                 }
             }
 
+            bool native = UseNativeContacts(ctx);
             foreach (var sender in senders)
             {
-                ConvertSender(ctx, sender);
+                if (native) { ConvertSenderNative(ctx, sender); } else { ConvertSender(ctx, sender); }
             }
             foreach (var receiver in receivers)
             {
-                ConvertReceiver(ctx, receiver);
+                if (native) { ConvertReceiverNative(ctx, receiver); } else { ConvertReceiver(ctx, receiver); }
             }
 
             if (ctx.Settings.createDefaultColliderPointers && listenedTags.Count > 0)
@@ -116,10 +117,15 @@ namespace AvatarBridge
                 trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
-                    settingName = receiver.parameter,
-                    // CVR measures distance outward, VRC proximity is 1 at the center: inverted range.
-                    minValue = 1f,
-                    maxValue = 0f
+                    settingName = receiver.parameter
+                    // No min/max. This used to set minValue = 1, maxValue = 0 to "invert" the
+                    // range, on the belief that ChilloutVR measures distance outward while VRChat
+                    // reads 1 at the centre. That belief was wrong: the client computes
+                    // 1 - saturate(distance / extent), which is 1 at the centre exactly like
+                    // VRChat. The inversion was only ever harmless because SetFromDistance writes
+                    // the proximity value raw — min/max are read solely by Add, Subtract and
+                    // SetFromPosition. Left in, it was a trap waiting for the day the CCK started
+                    // honouring them here.
                 });
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                     $"Proximity receiver -> distance-driven \"{receiver.parameter}\"");
@@ -140,6 +146,133 @@ namespace AvatarBridge
                 holdTime = 0f
             };
         }
+
+        // --- ChilloutVR's native contact system ---------------------------------------
+        //
+        // The components line up with VRChat's almost field for field, so this is a copy rather
+        // than an impersonation: same shapes, same collision tags, real proximity, and localOnly
+        // finally honoured. They also need no Unity collider — the shape lives on the component —
+        // and because they sit on the avatar whitelist rather than the local-only one, every
+        // client simulates them for every avatar. The value is reproduced on each machine instead
+        // of being synced, which is why nothing here costs sync bits.
+        //
+        // ContactStubPatcher supplies the declarations; the game holds the implementation.
+
+        static bool UseNativeContacts(BridgeContext ctx)
+        {
+            if (!ctx.Settings.useNativeContacts)
+            {
+                return false;
+            }
+#if AVATARBRIDGE_CONTACTS
+            return true;
+#else
+            ctx.Report.Warning(Category, "Native contacts unavailable; used the legacy path",
+                "\"Use native contacts\" is on, but ChilloutVR's contact components aren't declared in this " +
+                "project. That normally means the installed CCK is newer than the one AvatarBridge verified " +
+                "its declarations against, so it declined to generate them — see the console for the exact " +
+                "version. Contacts were converted to pointers and triggers instead.");
+            return false;
+#endif
+        }
+
+#if AVATARBRIDGE_CONTACTS
+        static void ConvertSenderNative(BridgeContext ctx, VRCContactSender sender)
+        {
+            if (sender.collisionTags.Count == 0)
+            {
+                Object.DestroyImmediate(sender);
+                return;
+            }
+
+            var host = NativeContactObject(sender.rootTransform, sender.transform, "Contact_Sender");
+            var contact = host.AddComponent<NAK.Contacts.ContactSender>();
+            ApplyShape(contact, sender.shapeType, sender.radius, sender.height, sender.position, sender.rotation);
+            contact.collisionTags = sender.collisionTags.Distinct().ToArray();
+
+            ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
+                $"Sender -> native ContactSender ({string.Join(", ", contact.collisionTags)})");
+            Object.DestroyImmediate(sender);
+        }
+
+        static void ConvertReceiverNative(BridgeContext ctx, VRCContactReceiver receiver)
+        {
+            if (receiver.collisionTags.Count == 0 || string.IsNullOrEmpty(receiver.parameter))
+            {
+                Object.DestroyImmediate(receiver);
+                return;
+            }
+
+            // One receiver per GameObject: ContactAnimator pairs with its receiver through
+            // TryGetComponent, which would hand every animator on a shared object the same first
+            // receiver.
+            var host = NativeContactObject(receiver.rootTransform, receiver.transform,
+                "Contact_" + receiver.parameter);
+
+            var contact = host.AddComponent<NAK.Contacts.ContactReceiver>();
+            ApplyShape(contact, receiver.shapeType, receiver.radius, receiver.height,
+                receiver.position, receiver.rotation);
+            contact.collisionTags = receiver.collisionTags.Distinct().ToArray();
+            contact.allowSelf = receiver.allowSelf;
+            contact.allowOthers = receiver.allowOthers;
+            contact.localOnly = receiver.localOnly;
+
+            string typeName = receiver.receiverType.ToString();
+            if (typeName.Contains("OnEnter"))
+            {
+                contact.receiverType = NAK.Contacts.ReceiverType.OnEnter;
+            }
+            else if (typeName.Contains("Proximity"))
+            {
+                // 1 at the centre falling to 0 at the edge, the same reading VRChat gives.
+                contact.receiverType = NAK.Contacts.ReceiverType.ProximitySenderToReceiver;
+            }
+            else
+            {
+                contact.receiverType = NAK.Contacts.ReceiverType.Constant;
+            }
+
+            var animator = host.AddComponent<NAK.Contacts.ContactAnimator>();
+            animator.animator = ctx.Target.GetComponent<Animator>();
+            animator.parameter = receiver.parameter;
+
+            ctx.ContactParameters.Add(receiver.parameter);
+            ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
+                $"{typeName} receiver -> native ContactReceiver driving \"{receiver.parameter}\"" +
+                (receiver.localOnly ? " (local only, now actually honoured)" : ""));
+            Object.DestroyImmediate(receiver);
+        }
+
+        static void ApplyShape(NAK.Contacts.ContactBase contact,
+            VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, float height,
+            Vector3 position, Quaternion rotation)
+        {
+            bool sphere = shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere;
+            contact.shapeType = sphere ? NAK.Contacts.ShapeType.Sphere : NAK.Contacts.ShapeType.Capsule;
+            contact.radius = radius;
+            contact.height = height;
+            contact.localPosition = position;
+            contact.localRotation = sphere ? Quaternion.identity : rotation;
+        }
+
+        /// <summary>
+        /// A child of whatever the VRChat contact was anchored to — its rootTransform when it set
+        /// one, otherwise its own transform — left at identity so the component's own
+        /// localPosition/localRotation carry the offset, as the native system expects.
+        /// </summary>
+        static GameObject NativeContactObject(Transform root, Transform fallback, string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(root != null ? root : fallback, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+            return go;
+        }
+#else
+        static void ConvertSenderNative(BridgeContext ctx, VRCContactSender sender) => ConvertSender(ctx, sender);
+        static void ConvertReceiverNative(BridgeContext ctx, VRCContactReceiver receiver) => ConvertReceiver(ctx, receiver);
+#endif
 
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)

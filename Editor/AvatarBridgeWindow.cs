@@ -393,6 +393,18 @@ namespace AvatarBridge
                     new GUIContent("Recreate built-in VRC colliders as pointers",
                         "Head/hands/fingers pointers so converted receivers keep reacting to other players."),
                     settings.createDefaultColliderPointers);
+                using (new EditorGUI.DisabledScope(!settings.convertContacts))
+                {
+                    settings.useNativeContacts = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Use ChilloutVR's native contacts (experimental)",
+                            "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
+                            "of approximating them with pointers and triggers: real proximity, collision " +
+                            "tags kept as-is, local-only receivers finally honoured, and no sync cost. " +
+                            "The components aren't in the CCK, so AvatarBridge declares them itself — " +
+                            "which can only be proven correct by putting an avatar in game. If it isn't, " +
+                            "the contact objects show a missing script and you turn this back off."),
+                        settings.useNativeContacts);
+                }
                 settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                 settings.convertHeadChop = EditorGUILayout.ToggleLeft(
                     new GUIContent("Convert VRC Head Chop", "First-person show/hide, including its toggle animations."),

@@ -43,8 +43,14 @@ namespace AvatarBridge
         const string FileName = "AvatarBridgeContactStub.cs";
 
         /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
-        const string StubVersion = "1";
+        const string StubVersion = "2";
         const string VersionTag = "// AvatarBridge generated contact stub, revision " + StubVersion;
+
+        /// <summary>
+        /// The newest CCK whose contact surface these declarations were checked field-for-field
+        /// against. Past this, the shape of the data is an assumption rather than a finding.
+        /// </summary>
+        const string VerifiedCckVersion = "4.0.1";
 
         static ContactStubPatcher()
         {
@@ -99,6 +105,27 @@ namespace AvatarBridge
                 return;
             }
 
+            // A newer CCK than the one these declarations were verified against may have changed
+            // the contact components without yet exposing them. Guessing at that would serialize
+            // avatars against a layout nobody has checked, and the failure would be silent — data
+            // quietly dropped on load. Refusing is the safer answer, and the conversion falls back
+            // to the legacy pointer/trigger path on its own.
+            string cck = InstalledCckVersion();
+            if (cck != null && CompareVersions(cck, VerifiedCckVersion) > 0)
+            {
+                if (File.Exists(path))
+                {
+                    AssetDatabase.DeleteAsset(path);
+                }
+                Debug.LogWarning("[AvatarBridge] CCK " + cck + " is newer than the " + VerifiedCckVersion +
+                                 " these contact declarations were verified against, and it still doesn't " +
+                                 "provide them itself. Not generating them — native contact conversion is " +
+                                 "unavailable and AvatarBridge will use the legacy pointer/trigger path. If " +
+                                 "the CCK's contacts are unchanged, raise VerifiedCckVersion in " +
+                                 nameof(ContactStubPatcher) + ".");
+                return;
+            }
+
             string existing = File.Exists(path) ? File.ReadAllText(path) : null;
             if (existing != null && existing.Contains(VersionTag))
             {
@@ -118,6 +145,44 @@ namespace AvatarBridge
         /// is the assembly the client's own NAK.Contacts types live in, and matching it is half of
         /// what makes the binding work.
         /// </summary>
+        /// <summary>
+        /// ABI.CCK.Scripts.CVRCommon.BaseVersion, read reflectively so this file keeps compiling
+        /// if the CCK moves or renames it. Null when it can't be found, which is treated as
+        /// "can't tell" rather than "too new".
+        /// </summary>
+        static string InstalledCckVersion()
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type type;
+                try { type = assembly.GetType("ABI.CCK.Scripts.CVRCommon", false); }
+                catch { continue; }
+                var field = type?.GetField("BaseVersion");
+                if (field != null && field.GetValue(null) is string version && version.Length > 0)
+                {
+                    return version;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Numeric dotted-version compare; unparsable parts count as 0.</summary>
+        static int CompareVersions(string a, string b)
+        {
+            var left = a.Split('.');
+            var right = b.Split('.');
+            for (int i = 0; i < Math.Max(left.Length, right.Length); i++)
+            {
+                int l = i < left.Length && int.TryParse(left[i], out var lv) ? lv : 0;
+                int r = i < right.Length && int.TryParse(right[i], out var rv) ? rv : 0;
+                if (l != r)
+                {
+                    return l.CompareTo(r);
+                }
+            }
+            return 0;
+        }
+
         static string GeneratedFolder()
         {
             var guids = AssetDatabase.FindAssets("t:MonoScript ContactStubPatcher");
@@ -205,6 +270,15 @@ namespace NAK.Contacts
     public class ContactReceiver : ContactBase
     {
         public ReceiverType receiverType;
+    }
+
+    // Bridges a ContactReceiver to an animator parameter. The client's version subscribes to the
+    // receiver's contact events and writes the collision's target value straight onto the
+    // animator, which is why a receiver alone drives nothing.
+    public class ContactAnimator : MonoBehaviour, AvatarBridge.IGeneratedContactStub
+    {
+        public Animator animator;
+        public string parameter;
     }
 }
 ";

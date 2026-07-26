@@ -118,6 +118,16 @@ namespace AvatarBridge
         // receivers keep reacting to other players' hands.
         public bool createDefaultColliderPointers = true;
 
+        // Use ChilloutVR's native contact components instead of the pointer/trigger
+        // approximation. They line up with VRChat's almost field for field — same shapes, same
+        // collision tags, real proximity, and localOnly actually honoured — and because every
+        // client simulates them for every avatar, they replicate without costing sync bits.
+        //
+        // Off by default because the components are not in the CCK: AvatarBridge declares them
+        // itself (see ContactStubPatcher) and the binding can only be proven by putting an avatar
+        // in game. If it were wrong, the result is contact objects with a missing script.
+        public bool useNativeContacts = false;
+
         [Header("Other components")]
         public bool convertConstraints = true;
         public bool convertHeadChop = true;
