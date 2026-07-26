@@ -203,11 +203,15 @@ That conversion is **Derive physics from the PhysBone**, off by default. With it
 MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where every chain
 starts.
 
-Either way, three PhysBone facts carry over separately, because they ask the same question on both
-sides rather than needing conversion: a chain with **no gravity** keeps none (presets ship their
+Either way, four PhysBone facts carry over separately, because they need no conversion at all —
+they're categorical statements about the source: a chain with **no gravity** keeps none (presets ship their
 own, and Long Hair's 5.0 would make it fall for the first time in ChilloutVR), **negative gravity**
 points up, and **immobile** becomes world influence, the same 0–1 question measured the other way
-round. Every adjustment is named in the report, as are the PhysBone's own numbers:
+round. And wind influence goes to zero, because VRChat has no wind at all — ChilloutVR worlds
+do, and MagicaCloth2 ships fully responsive to it, so a converted chain would pick up motion in
+game that it never had in VRChat and that a Unity scene with no wind zone cannot preview.
+
+Every adjustment is named in the report, as are the PhysBone's own numbers:
 
 > `tail — BoneCloth on the MagicaCloth2 "Tail" preset, 3 collider(s). Source PhysBone was pull`
 > `0.2, spring 0.4, gravity 0, immobile 0.75, radius 0.02.`

@@ -386,7 +386,8 @@ namespace AvatarBridge
         /// facts that mean the SAME THING in both systems, which is a very short list.
         ///
         /// Two kinds of statement need no conversion at all, so they apply whether or not the
-        /// derived mapping is on. **Categorical ones**: "this never falls", "this falls upward" — both systems
+        /// derived mapping is on. **Categorical ones**: "this never falls", "this falls upward",
+        /// "VRChat has no wind so this was tuned without any" — both systems
         /// express those the same way, as a gravity of zero or a flipped direction. And **a
         /// dimensionless ratio with the same meaning on both sides**: MagicaCloth2 documents
         /// `worldInertia` as "World Influence (0.0 ~ 1.0)" and PhysBone's `immobile` is how much
@@ -400,6 +401,29 @@ namespace AvatarBridge
         /// </summary>
         static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
         {
+            // VRChat has no wind. There is no PhysBone field for it, nothing in SolveChain reads
+            // one, and a VRChat world cannot blow a chain around — so every PhysBone ever authored
+            // was tuned with wind out of the picture.
+            //
+            // MagicaCloth2 ships `WindSettings.influence` at 1.0, and ChilloutVR worlds carry wind
+            // zones that drive it (the CCK's own wind component has a "Magica Cloth Specific
+            // Settings" section). Left alone, a converted chain picks up motion in game that it
+            // never had in VRChat, from a source the avatar's author never accounted for — and one
+            // that cannot be previewed in a Unity scene with no wind zone in it.
+            //
+            // This is the same kind of statement as "the author gave this chain no gravity": a
+            // categorical fact about the source, not a number being converted.
+            if (sdata.wind.influence > 0f)
+            {
+                sdata.wind.influence = 0f;
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Wind influence set to 0 — VRChat has no wind, so this chain was tuned without it. " +
+                    "ChilloutVR worlds can carry wind zones that drive MagicaCloth2, which would move " +
+                    "the chain in game in a way it never moved in VRChat (and in a way a Unity scene " +
+                    "with no wind zone can't preview). Raise it on the cloth if you want the world's " +
+                    "wind to reach this chain.");
+            }
+
             if (Mathf.Approximately(data.Gravity, 0f))
             {
                 // The author gave this chain no gravity, so it was never meant to hang. Presets

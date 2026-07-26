@@ -335,8 +335,10 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Bind("Fit the preset to the PhysBone",
                     "After the preset loads, apply the few PhysBone facts that mean the same " +
                     "thing in MagicaCloth2: a chain with no gravity keeps none, negative gravity " +
-                    "points up, and immobile becomes world influence (MagicaCloth2 measures the " +
-                    "same thing the other way round). Each adjustment is named in the report.",
+                    "points up, immobile becomes world influence (MagicaCloth2 measures the " +
+                    "same thing the other way round), and wind influence goes to zero because " +
+                    "VRChat has no wind — ChilloutVR worlds do, and it would move the chain in a " +
+                    "way it never moved before. Each adjustment is named in the report.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
                 b.Add(BridgeElements.Bind("Derive physics from the PhysBone",
                     "Convert each chain's pull, spring and stiffness into MagicaCloth2's damping and " +
