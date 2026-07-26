@@ -204,6 +204,12 @@ namespace AvatarBridge
                 // joystick arriving at other players is worse than none.
                 ctx.PreserveParameters.Add(candidate + "-x");
                 ctx.PreserveParameters.Add(candidate + "-y");
+                // And the base name, which is not a parameter at all but is what ChilloutVR
+                // derives the two axes from. Left out, the rename pass sees a name it doesn't
+                // recognise as synced and prefixes the entry to "#TailController" — which then
+                // derives "#TailController-x", matching nothing, and the dead-entry sweep removes
+                // the control as unused. The axes were preserved; the name they hang off wasn't.
+                ctx.PreserveParameters.Add(candidate);
 
                 result.Add(new CVRAdvancedSettingsEntry
                 {
