@@ -82,6 +82,7 @@ namespace AvatarBridge
             }
 
             CheckSyncBudget(ctx, master);
+            CheckComponentWhitelist(ctx);
 
             // A cloth with nothing to simulate.
             int emptyCloths = 0;
@@ -439,6 +440,92 @@ namespace AvatarBridge
         /// <see cref="AnimatorMerger.IsGameDrivenParameter"/>, which knows about the
         /// stream-fed ones too.
         /// </summary>
+        /// <summary>
+        /// Every component type ChilloutVR keeps on an avatar, transcribed from the client's
+        /// SharedFilter whitelists and the conditional branches in AssetFilter.FilterAvatar.
+        ///
+        /// The client walks GetComponentsInChildren over the whole avatar and calls
+        /// DestroyComponentWithRequirements on anything it doesn't recognise. There is no message,
+        /// no fallback, and nothing about the converted asset looks wrong beforehand — the
+        /// component is simply gone the moment the avatar loads. A quadruped arrived with ten
+        /// GrounderVRIK components driving its leg placement, none of which appear in any list.
+        ///
+        /// The union deliberately includes types allowed only conditionally, on a viewer setting
+        /// (audio, lights, cameras), and the local-only set that survives on the wearer's copy but
+        /// not on remote ones. Flagging those would fire constantly and teach people to ignore
+        /// this. Only components with no route through the filter at all are reported.
+        /// </summary>
+        static readonly HashSet<string> CvrAvatarComponentWhitelist = new HashSet<string>
+        {
+            // RootComponents — permitted anywhere, despite the name.
+            "Animator", "CVRAssetInfo", "CVRLuaClientBehaviour", "LookAtIK", "Transform",
+            "TwistRelaxer", "VRIK", "WasmRuntimeBehaviour", "WasmVMAnchor",
+            // AvatarWhitelist.
+            "AimConstraint", "AimIK", "BipedIK", "CCDIK", "CharacterJoint", "ConfigurableJoint",
+            "ConstantForce", "ContactAnimator", "ContactReceiver", "ContactSender",
+            "CVRAdvancedAvatarSettingsPointer", "CVRAnimatorDriver", "CVRAudioDriver",
+            "CVRCameraHelper", "CVRDataStore", "CVRDistanceConstrain", "CVRFaceTracking", "CVRLeg",
+            "CVRLineRendererHelper", "CVRMaterialDriver", "CVRMaterialUpdater", "CVRPointer",
+            "CVRSkyboxManipulator", "CVRToggleStatePointer", "FABRIK", "FABRIKRoot", "FixedJoint",
+            "FullBodyBipedIK", "GrounderBipedIK", "GrounderIK", "HingeJoint", "IKExecutionOrder",
+            "LightProbeProxyVolume", "LimbIK", "LineRenderer", "LookAtConstraint", "MeshFilter",
+            "MeshRenderer", "ParentConstraint", "PlayerMaterialParser", "PositionConstraint",
+            "Rigidbody", "RotationConstraint", "RotationLimitAngle", "RotationLimitHinge",
+            "RotationLimitPolygonal", "RotationLimitSpline", "ScaleConstraint", "Sensor",
+            "SkinnedMeshRenderer", "Skybox", "SpringJoint", "TrailRenderer",
+            // LocalComponentWhitelist — the wearer's copy only, but not destroyed outright.
+            "CVRAdvancedAvatarSettingsTrigger", "CVRHapticAreaChest", "CVRParameterStream",
+            "CVRSnappingPoint", "CVRToggleStateTrigger", "FPRExclusion",
+            // Colliders, dynamics and dynamics colliders.
+            "BoxCollider", "CapsuleCollider", "MeshCollider", "SphereCollider", "WheelCollider",
+            "BaseCloth", "DynamicBone", "DynamicBoneCollider", "DynamicBoneColliderBase",
+            "DynamicBonePlaneCollider", "MagicaBoneCloth", "MagicaBoneSpring", "MagicaMeshCloth",
+            "MagicaMeshSpring", "MagicaRenderDeformer", "MagicaVirtualDeformer",
+            // Renderers and particles.
+            "ParticleSystem", "ParticleSystemForceField", "ParticleSystemRenderer",
+            // Conditional on the viewer's own settings rather than on the avatar.
+            "AudioSource", "SteamAudioSource", "AudioLowPassFilter", "AudioHighPassFilter",
+            "AudioEchoFilter", "AudioDistortionFilter", "AudioReverbFilter", "AudioChorusFilter",
+            "CVRParticleSound", "Camera", "CVRBlitter", "CVRBlitterController",
+            "CVRRenderController", "CVRMaterialDataProvider", "Projector",
+            "CVRTexturePropertyParser", "CVRCustomRenderTextureUpdater", "Light",
+            "CVRMovementParent", "CVRAvatar",
+        };
+
+        /// <summary>
+        /// Names the components ChilloutVR will delete the moment this avatar loads.
+        /// </summary>
+        static void CheckComponentWhitelist(BridgeContext ctx)
+        {
+            var doomed = new Dictionary<string, int>();
+            foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    continue; // missing script; reported elsewhere
+                }
+                string name = component.GetType().Name;
+                if (CvrAvatarComponentWhitelist.Contains(name))
+                {
+                    continue;
+                }
+                doomed[name] = doomed.TryGetValue(name, out var n) ? n + 1 : 1;
+            }
+            if (doomed.Count == 0)
+            {
+                return;
+            }
+            var listed = doomed.OrderByDescending(p => p.Value).Select(p => $"{p.Key} ×{p.Value}");
+            ctx.Report.Error(Category, $"{doomed.Values.Sum()} component(s) ChilloutVR will delete on load",
+                $"{Join(listed)} — ChilloutVR filters every component on an avatar against a fixed list and " +
+                "destroys anything not on it. There is no warning in game and nothing looks wrong in the " +
+                "editor; the component is simply gone once the avatar loads, along with whatever it did. " +
+                "Rebuild that behaviour from something ChilloutVR does allow, or accept losing it. " +
+                "FinalIK is a common casualty: VRIK, LookAtIK, TwistRelaxer, GrounderIK, FABRIK, CCDIK, " +
+                "AimIK and LimbIK are all permitted, but their siblings — GrounderVRIK and GrounderQuadruped " +
+                "among them — are not.");
+        }
+
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
         const int AasBitBudget = 3200;
 
