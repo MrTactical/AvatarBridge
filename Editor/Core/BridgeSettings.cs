@@ -105,12 +105,15 @@ namespace AvatarBridge
         // with per-step coefficients at a fixed, known rate — PhysBone 60 Hz, MagicaCloth2 90 Hz
         // — so a real conversion exists and PhysBoneSolverMap derives it from both sources.
         //
-        // Off by default. The arithmetic is sound and the preset path is unchanged when this is
-        // off, but a preset is a baseline its own author tuned by eye, and derived values have
-        // been walked back before. This one is derived rather than guessed; it still wants
-        // watching in game before it becomes the default. Replaces the preset's damping and
-        // restoration only — structure, gravity, immobile and radius are untouched.
-        public bool derivePhysicsFromPhysBone = false;
+        // ON by default as of 2.38.0, after a full avatar's chains were checked in ChilloutVR and
+        // came back matching the source closely enough to call done. The three faults found on the
+        // way there are all fixed and all were structural rather than errors in the derivation:
+        // angle restoration compounding three times per step, MagicaCloth2's wind being live when
+        // VRChat has none, and immobile reaching only one of the two inertia values.
+        //
+        // Replaces the preset's damping and restoration only — structure, gravity, immobile and
+        // radius are untouched, and turning this off restores the preset's feel exactly.
+        public bool derivePhysicsFromPhysBone = true;
         public bool capParticleRadius = true;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided

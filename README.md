@@ -199,15 +199,18 @@ The check that the arithmetic is right: run MagicaCloth2's own default restorati
 in reverse and you get a PhysBone pull of **0.168**, against a default PhysBone's actual **0.160**.
 Two authors who never spoke, five percent apart.
 
-That conversion is **Derive physics from the PhysBone**, off by default. With it off, a stock
-MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where every chain
-starts.
+That conversion is **Derive physics from the PhysBone**, on by default since 2.38.0, after a full
+avatar's chains were checked in ChilloutVR. Turn it off and a stock MagicaCloth2 BoneCloth — a
+configuration tuned by the solver's own author — is where every chain starts instead.
 
 Either way, four PhysBone facts carry over separately, because they need no conversion at all —
 they're categorical statements about the source: a chain with **no gravity** keeps none (presets ship their
 own, and Long Hair's 5.0 would make it fall for the first time in ChilloutVR), **negative gravity**
-points up, and **immobile** becomes world influence, the same 0–1 question measured the other way
-round. And wind influence goes to zero, because VRChat has no wind at all — ChilloutVR worlds
+points up, and **immobile** becomes inertia influence — the same 0–1 question measured the other way
+round, applied to *both* of MagicaCloth2's inertia values and, when the PhysBone used the default
+*All Motion* type, to an **inertia anchor** on the chain's parent bone (that's what makes a chain
+stop swinging when your head turns, rather than only when you walk).
+And wind influence goes to zero, because VRChat has no wind at all — ChilloutVR worlds
 do, and MagicaCloth2 ships fully responsive to it, so a converted chain would pick up motion in
 game that it never had in VRChat and that a Unity scene with no wind zone cannot preview.
 
@@ -228,7 +231,7 @@ kind of simulation, so that path maps values across 1:1.
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The three facts above — no gravity, upward gravity, immobile → world influence. Turn it off to get the preset exactly as its author wrote it |
-| **Derive physics from the PhysBone** | off | Converts pull, spring and stiffness into MagicaCloth2's damping and angle restoration, replacing the preset's feel. Derived from both solvers' source rather than guessed — but new, so off until it has more avatars behind it. Turn it off to get the preset back |
+| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into MagicaCloth2's damping and angle restoration, replacing the preset's feel. Derived from both solvers' source rather than guessed, and confirmed against a full avatar in ChilloutVR. Turn it off to get the preset's feel back |
 | **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
 | **Transfer angle limits** | off | Copies each limit angle across. ⚠️ Genuinely avatar-dependent — this shakes some chains and is the best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Also gives each cloth the avatar's own colliders it could swing into, so a tail that passed through the leg in VRChat collides with it here. Improves on the original rather than copying it, so check before uploading |

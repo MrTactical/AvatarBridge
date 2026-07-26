@@ -475,28 +475,47 @@ namespace AvatarBridge
                         "granularities, not a local/networked split.");
                 }
 
-                // PhysBone's default immobile type is "All Motion", which cancels motion relative
-                // to the chain's ROOT PARENT — head turns and animation included. MagicaCloth2's
-                // inertia is measured at the cloth component's transform, which is the avatar
-                // root, so it cannot see a head turn at all: the two values above suppress the
-                // avatar moving through the world and nothing else.
+                // The other half of immobile. PhysBone's default type is "All Motion" ("World" is
+                // labelled Experimental), and All Motion cancels motion relative to the chain's
+                // ROOT PARENT — a head turn or an animation, not just walking. The solver picks
+                // that matrix directly:
                 //
-                // MagicaCloth2's own answer to this is `inertiaConstraint.anchor` ("Anchor that
-                // cancels inertia. Anchor translation and rotation are excluded from simulation").
-                // Pointing it at the chain's parent bone would express All Motion exactly. It is
-                // reported rather than applied: it changes the reference frame of the whole
-                // simulation, and this tool has shipped enough physics values that read correctly
-                // and behaved wrong. Anchor is also [NG] for preset import, so a preset can't
-                // clobber a hand-set one.
+                //   SolveChain(chain, rootParentMatrix,
+                //              immobileType == AllMotion ? rootParentMatrix : sceneRootState, ...)
+                //
+                // The two values above cannot express it, because MagicaCloth2 measures inertia at
+                // the cloth component's transform — which sits on the avatar root, and does not
+                // move when the head turns.
+                //
+                // `inertiaConstraint.anchor` is MagicaCloth2's own answer: "Anchor that cancels
+                // inertia. Anchor translation and rotation are excluded from simulation." Pointing
+                // it at the chain's parent bone reproduces All Motion's reference frame exactly,
+                // and its influence carries the same polarity as the other two:
+                //
+                //   anchorRatio = 1 - anchorInertia;                       // TeamManager
+                //   oldComponentWorldPosition += anchorDelta * anchorRatio;  // 打ち消す, "cancel out"
+                //
+                // so a low anchorInertia cancels MORE of the parent's motion, exactly as a low
+                // worldInertia absorbs more of the avatar's. All three therefore take 1 - immobile
+                // and stay consistent with each other.
+                //
+                // Only for All Motion: a "World" PhysBone deliberately keeps reacting to its
+                // parent, and anchoring it would take away motion its author wanted. Anchor is
+                // [NG] for preset import, so no preset can clobber this afterwards.
                 if (data.ImmobileTypeName == "AllMotion" && data.Root != null && data.Root.parent != null)
                 {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        $"Immobile Type was \"All Motion\", which in VRChat also cancels motion from the " +
-                        $"parent bone — a head turn or an animation, not just walking. MagicaCloth2 measures " +
-                        $"inertia at the cloth object instead, so that part does not carry: this chain will " +
-                        $"still swing when \"{data.Root.parent.name}\" moves. If that is too lively, set " +
-                        $"Inertia > Anchor on this cloth to \"{data.Root.parent.name}\" and raise Anchor " +
-                        $"Influence.");
+                    var anchor = data.Root.parent;
+                    if (TrySetReference(sdata.inertiaConstraint, "anchor", anchor))
+                    {
+                        TrySetMember(sdata.inertiaConstraint, "anchorInertia", influence);
+                        ctx.Report.Approximated(Category, data.Root.name,
+                            $"Inertia anchored to \"{anchor.name}\" at {influence:0.##} — Immobile Type was " +
+                            "\"All Motion\", which in VRChat cancels motion from the parent bone too, not " +
+                            "just the avatar walking. MagicaCloth2 measures inertia at the cloth object, " +
+                            "which never moves when the head turns, so the anchor is what carries that " +
+                            "half across. Clear Inertia > Anchor on this cloth if you would rather it " +
+                            "reacted to that bone.");
+                    }
                 }
             }
         }
@@ -601,6 +620,33 @@ namespace AvatarBridge
 
         // MagicaCloth2 constraint layouts differ slightly across versions; reflection keeps
         // this compiling everywhere and degrades to a report entry instead of an error.
+        /// <summary>
+        /// Assigns a reference-typed field. <see cref="TrySetMember"/> goes through
+        /// <c>Convert.ChangeType</c>, which throws on anything that isn't <c>IConvertible</c> —
+        /// a <c>Transform</c> included — so object references need their own path.
+        /// </summary>
+        static bool TrySetReference(object target, string fieldName, UnityEngine.Object value)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field == null || (value != null && !field.FieldType.IsInstanceOfType(value)))
+            {
+                return false;
+            }
+            try
+            {
+                field.SetValue(target, value);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         static bool TrySetMember(object target, string fieldName, object value)
         {
             if (target == null)

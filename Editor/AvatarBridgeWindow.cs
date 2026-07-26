@@ -344,8 +344,8 @@ namespace AvatarBridge
                     "Convert each chain's pull, spring and stiffness into MagicaCloth2's damping and " +
                     "angle restoration, replacing the preset's feel. Both systems turned out to move " +
                     "positions with per-step values at a fixed rate — 60 Hz against 90 Hz — so the " +
-                    "conversion is derived from both solvers rather than guessed. Off by default " +
-                    "because it's new: if a chain moves wrong, turn this off to get the preset back.",
+                    "conversion is derived from both solvers rather than guessed, and confirmed " +
+                    "against a full avatar in ChilloutVR. Turn it off to get the preset's feel back.",
                     settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "MagicaCloth2's radius is the particle size, not just a collision radius, so " +
