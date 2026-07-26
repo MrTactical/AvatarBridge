@@ -396,11 +396,22 @@ namespace AvatarBridge
                 File.WriteAllText(path, file.Text);
                 written.Add(path);
             }
-            foreach (string path in written)
+
+            // Includes first, shader last, and a refresh in between.
+            //
+            // Unity tracks .cginc files as ShaderInclude assets, and importing the shader is what
+            // compiles it. Import the shader before its includes exist in the AssetDatabase and
+            // the compile fails on an include it cannot open — reported under the name in the
+            // source, which reads as though the repointing never happened. It had; only the
+            // ordering was wrong.
+            foreach (string path in written.Skip(1))
             {
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             }
+            AssetDatabase.Refresh();
+
             string outPath = written[0];
+            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
 
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             if (result == null || ShaderUtil.ShaderHasError(result))
