@@ -178,8 +178,26 @@ namespace AvatarBridge
                     continue;
                 }
                 Directory.CreateDirectory(dir);
-                File.WriteAllText(path, file.Source);
+
+                // Order matters, and getting it wrong is subtle enough to be worth spelling out.
+                //
+                // Writing the .cs first lets Unity's file watcher import it and assign a GUID of
+                // its own before the pinned .meta lands. Overwriting the .meta then changes the
+                // identity of an asset Unity has already imported, and it ends up in a state where
+                // the script asset and the type both exist and look right — the asset resolves to
+                // the correct class with the correct source — while a live component gets a
+                // MonoScript with no asset path and no text. Which is exactly the state that
+                // produced broken script references in the CCK and in game, with every individual
+                // piece appearing correct in isolation.
+                //
+                // So an existing asset is removed outright rather than rewritten, and the .meta is
+                // written before the .cs, so the pair is complete the first time Unity sees it.
+                if (File.Exists(path))
+                {
+                    AssetDatabase.DeleteAsset(path);
+                }
                 WritePinnedMeta(path, file.Guid);
+                File.WriteAllText(path, file.Source);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
                 written++;
             }
@@ -205,14 +223,15 @@ namespace AvatarBridge
             return any;
         }
 
-        /// <summary>Writes the .meta by hand so the asset keeps its pinned GUID forever.</summary>
+        /// <summary>
+        /// Writes the .meta by hand so the asset keeps its pinned GUID forever.
+        ///
+        /// Always written, never skipped: this runs before the .cs exists, so Unity imports a
+        /// complete pair and never has to be told an already-imported asset changed identity.
+        /// </summary>
         static void WritePinnedMeta(string assetPath, string guid)
         {
             string metaPath = assetPath + ".meta";
-            if (File.Exists(metaPath) && File.ReadAllText(metaPath).Contains(guid))
-            {
-                return;
-            }
             File.WriteAllText(metaPath,
                 "fileFormatVersion: 2\n" +
                 "guid: " + guid + "\n" +
