@@ -46,6 +46,47 @@ namespace AvatarBridge
         };
         static readonly string[] SpsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS", "VRCF_" };
 
+        /// <summary>
+        /// The parameter prefixes this conversion is going to strip, given the settings.
+        /// </summary>
+        static IEnumerable<string> StrippedParameterPrefixes(BridgeContext ctx)
+        {
+            var prefixes = new List<string>();
+            if (ctx.Settings.stripGogoLoco)
+            {
+                prefixes.AddRange(GogoParamPrefixes);
+            }
+            if (ctx.Settings.stripSpsSystems)
+            {
+                prefixes.AddRange(SpsParamPrefixes);
+            }
+            if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
+            {
+                foreach (var raw in ctx.Settings.extraStripKeywords.Split(','))
+                {
+                    string keyword = raw.Trim();
+                    if (keyword.Length >= 2)
+                    {
+                        prefixes.Add(keyword);
+                    }
+                }
+            }
+            return prefixes;
+        }
+
+        /// <summary>
+        /// Whether a parameter belongs to a system this conversion is about to remove.
+        ///
+        /// Needed by passes that run *before* stripping and might otherwise rename the parameter
+        /// out of its own prefix — at which point the stripper no longer recognises it and the
+        /// system it belonged to survives under an unrecognisable name. GoGo Loco ships a
+        /// two-axis puppet on "Go/PuppetX"/"Go/PuppetY", and turning that into a joystick renamed
+        /// both out of the "Go/" family that marks them for removal.
+        /// </summary>
+        public static bool WillBeStripped(BridgeContext ctx, string name) =>
+            !string.IsNullOrEmpty(name) &&
+            StrippedParameterPrefixes(ctx).Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
             // First, and unconditionally: this one isn't a preference about which VRChat add-ons
@@ -54,16 +95,14 @@ namespace AvatarBridge
             // when the user has turned every other stripper off.
             StripParameterCompressor(ctx, master, vrcLayers);
 
-            var paramPrefixes = new List<string>();
+            var paramPrefixes = new List<string>(StrippedParameterPrefixes(ctx));
             var layerHints = new List<string>();
             if (ctx.Settings.stripGogoLoco)
             {
-                paramPrefixes.AddRange(GogoParamPrefixes);
                 layerHints.AddRange(GogoNameHints);
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                paramPrefixes.AddRange(SpsParamPrefixes);
                 layerHints.AddRange(SpsLayerHints);
             }
             // User-supplied keywords (comma separated) act as both parameter prefixes and

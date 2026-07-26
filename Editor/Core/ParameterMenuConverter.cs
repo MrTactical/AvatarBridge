@@ -170,9 +170,22 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // Leave anything the stripper is about to take. GoGo Loco ships a puppet on
+                // "Go/PuppetX"/"Go/PuppetY", and renaming those to a joystick's "-x"/"-y" moved
+                // them out of the "Go/" family the stripper recognises — so GoGo's puppet
+                // survived removal, wearing a joystick and a meaningless generated name.
+                if (SystemStripper.WillBeStripped(ctx, puppet.X) ||
+                    SystemStripper.WillBeStripped(ctx, puppet.Y))
+                {
+                    continue;
+                }
+
                 string label = ShortName(puppet.Display);
                 string machine = AnimatorMerger.SanitizeParameterName(label);
-                if (string.IsNullOrEmpty(machine))
+                // An unnamed control gives the sanitizer nothing to work with and it falls back to
+                // a generic name. A menu full of "Param" helps nobody; leave those as sliders.
+                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrEmpty(machine) ||
+                    machine == "Param")
                 {
                     continue;
                 }
