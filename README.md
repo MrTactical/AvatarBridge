@@ -13,7 +13,8 @@ finish by hand.
   3200 sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, or the bundled CVR-VRCFT rig with eye
   tracking wired up. ARKit and Unified Expressions meshes both work.
-- **Quad avatars convert** — FinalIK rigs carry through intact; CVR runs FinalIK natively.
+- **Diagnostics that know ChilloutVR** — the report names components CVR will silently delete on
+  load, and tracks its 3200-bit sync budget, rather than leaving you to find out in game.
 - **Avatar scaler** — a `Height (M)` menu control defaulting to the avatar's measured eye height,
   so it's the same size before and after and the number reads in real metres.
 
@@ -85,7 +86,9 @@ defines.
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | `CVRPointer` / `CVRAdvancedAvatarSettingsTrigger` | ⚠️ Constant receivers are approximate |
 | VRC Constraints | Unity constraints | ⚠️ several same-type on one object get merged |
-| FinalIK (VRIK, quadruped…) | kept as-is | CVR runs FinalIK natively |
+| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quads on ice](#quadruped--finalik-avatars--on-ice) |
+| VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
+| Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
@@ -185,13 +188,40 @@ exists to work around a paywall; the VRChat SDK is free and one click.
 
 ## Known limitations
 
+### Quadruped / FinalIK avatars — on ice
+
+**Don't expect a working quad right now.** The conversion completes and the report comes back
+clean, but the avatar holds its rest pose in game with only the IK-tracked parts following you.
+Several real bugs were found and fixed chasing this and none of them were the cause, so it is
+parked rather than solved.
+
+What is known, from reading ChilloutVR's own code:
+
+- **`GrounderVRIK` is deleted on load.** ChilloutVR whitelists components per-avatar and destroys
+  the rest silently. Worlds are allowed 57 FinalIK types, avatars 13. `VRIK`, `LookAtIK`,
+  `TwistRelaxer`, `GrounderIK`, `GrounderBipedIK`, `CCDIK`, `FABRIK`, `AimIK` and `LimbIK` survive;
+  `GrounderVRIK`, `GrounderQuadruped`, `GrounderFBBIK`, `ArmIK`, `LegIK` and `FingerRig` do not.
+  The report now names these.
+- **`GrounderIK` is not a substitute for `GrounderVRIK`.** The first drives separate per-leg IK
+  components; the second feeds position offsets into VRIK's own solver from inside its update
+  callbacks. Swapping them gives no grounding at all, and ChilloutVR has no native foot placement
+  to fall back on.
+- **ChilloutVR always installs its own `VRIK`.** It destroys whatever is on the avatar's animator
+  object, adds its own, and auto-detects references from the *humanoid* rig. On a quadruped rigged
+  as humanoid that means a biped solve running over a quad rig, and nothing a converter does can
+  prevent it. This is the current best guess at the root cause; it is not proven.
+
+Tracking control does convert correctly — `VRCAnimatorTrackingControl` becomes ChilloutVR's
+`BodyControl`, which is what hands a limb from IK over to animation — so the groundwork is there
+if this gets picked up again. Bipeds are unaffected by any of it.
+
 **Not converted:**
 
 - **Eye look / gaze** — only blink transfers; set gaze up under *Eye Look Settings* on the
   `CVRAvatar`. (Blendshape face tracking *is* handled.)
 - **PhysBone posing, stretch & squish** and their `_Stretch` / `_Squish` / `_IsPosed` parameters.
 - **VRC state behaviours** other than Parameter Driver — removed and counted.
-- **Synced animator layers**, **ONSP audio**, **jaw-flap lip sync**.
+- **Synced animator layers** and **ONSP audio**.
 - **Content tags** — set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading.
 
 **Converted with caveats:**
@@ -209,8 +239,10 @@ exists to work around a paywall; the VRChat SDK is free and one click.
   gaps need padding. These are normally removed by renumbering the parameter, but that's unsafe
   when the value is used as a quantity or passed to a driver — the report says which applied.
 - **Parameter-packing optimisers** (`MemOpt_*` and similar) leave odd-looking entries in your
-  menu. ⚠️ **Don't delete them** — CVR can't sync a parameter without a menu entry, and those
-  slots are what carries your toggles to other players.
+  menu. ⚠️ **Don't delete them.** They're what carries your toggles to other players. (An earlier
+  version of this note said CVR can't sync a parameter without a menu entry — that's wrong.
+  Syncing comes from the animator declaration; the menu entry decides whether the value is
+  remembered in your avatar profile between loads. Still worth keeping.)
 - **Shaders aren't translated.** Poiyomi etc. work as-is, and VRCFury-baked materials are rescued
   out of Fury's temp folder so they don't render pink — but VRChat-specific rendering (SPS/TPS
   especially) won't *function* in CVR.
