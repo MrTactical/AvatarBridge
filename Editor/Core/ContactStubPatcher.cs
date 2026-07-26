@@ -43,7 +43,7 @@ namespace AvatarBridge
         const string FileName = "AvatarBridgeContactStub.cs";
 
         /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
-        const string StubVersion = "2";
+        const string StubVersion = "3";
         const string VersionTag = "// AvatarBridge generated contact stub, revision " + StubVersion;
 
         /// <summary>
@@ -263,6 +263,40 @@ namespace NAK.Contacts
         public float contactValue = 1f;
         public bool drawGizmos = true;
         public Color gizmoColor = Color.green;
+
+#if UNITY_EDITOR
+        // Editor-only, and the one exception to this file having no behaviour. The client draws
+        // these in game from its own copy of the class; without something here as well, a contact
+        // is invisible in the scene view and there is no way to see or tune the volume you just
+        // authored. drawGizmos and gizmoColor are honoured so the fields mean what they say.
+        private void OnDrawGizmos()
+        {
+            if (!drawGizmos) return;
+            Gizmos.color = gizmoColor;
+            Gizmos.matrix = transform.localToWorldMatrix
+                            * Matrix4x4.TRS(localPosition, localRotation, Vector3.one);
+            switch (shapeType)
+            {
+                case ShapeType.Box:
+                    Gizmos.DrawWireCube(Vector3.zero, boxSize);
+                    break;
+                case ShapeType.Capsule:
+                    // Two caps and the lines between them; height is the full span.
+                    float half = Mathf.Max(0f, height * 0.5f - radius);
+                    Vector3 a = Vector3.up * half, b = Vector3.down * half;
+                    Gizmos.DrawWireSphere(a, radius);
+                    Gizmos.DrawWireSphere(b, radius);
+                    Gizmos.DrawLine(a + Vector3.right * radius, b + Vector3.right * radius);
+                    Gizmos.DrawLine(a + Vector3.left * radius, b + Vector3.left * radius);
+                    Gizmos.DrawLine(a + Vector3.forward * radius, b + Vector3.forward * radius);
+                    Gizmos.DrawLine(a + Vector3.back * radius, b + Vector3.back * radius);
+                    break;
+                default:
+                    Gizmos.DrawWireSphere(Vector3.zero, radius);
+                    break;
+            }
+        }
+#endif
     }
 
     public class ContactSender : ContactBase { }
