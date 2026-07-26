@@ -472,11 +472,21 @@ namespace AvatarBridge
             var slots = new System.Text.RegularExpressions.Regex(@"^VF\d+_Sync(Index|DataNum|Data)\d*$");
             var mirror = new System.Text.RegularExpressions.Regex(@"^VF\d+_(.+)$");
 
-            // A mirror is only a mirror if the thing it shadows actually exists. That test is what
-            // separates "VF87_AvatarLimbScaling_Arms" from VRCFury's own working values like
-            // "VF113_frameTime", which shadow nothing and must be left alone.
+            // Look at referenced names as well as declared ones. The compressor's mirrors are
+            // usually referenced without ever being declared — they arrive later, from the
+            // dangling-parameter repair — so scanning the declared list alone found none of them
+            // and quietly did nothing.
+            var known = new HashSet<string>(declared);
+            foreach (var layer in master.layers)
+            {
+                known.UnionWith(CollectParameterRefs(layer.stateMachine));
+            }
+
+            // A mirror is only a mirror if the thing it shadows is a real, declared parameter.
+            // That test is what separates "VF87_AvatarLimbScaling_Arms" from VRCFury's own working
+            // values like "VF113_frameTime", which shadow nothing and must be left alone.
             var mirrors = new Dictionary<string, string>();
-            foreach (string name in declared)
+            foreach (string name in known)
             {
                 var match = mirror.Match(name);
                 if (match.Success && declared.Contains(match.Groups[1].Value))
@@ -484,7 +494,7 @@ namespace AvatarBridge
                     mirrors[name] = match.Groups[1].Value;
                 }
             }
-            var slotNames = declared.Where(n => slots.IsMatch(n)).ToList();
+            var slotNames = known.Where(n => slots.IsMatch(n)).ToList();
             if (mirrors.Count == 0 && slotNames.Count == 0)
             {
                 return;
