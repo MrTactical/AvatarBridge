@@ -169,7 +169,7 @@ namespace AvatarBridge
                 HelpBoxMessageType.Info));
             BuildSetupFlow();
 #endif
-            body.Add(Footer());
+            body.Add(Footer(lastReport != null));
         }
 
         // ----------------------------------------------------------- convert flow ----
@@ -790,20 +790,22 @@ namespace AvatarBridge
                 }));
             }
 
-            if (errors > 0 || warnings > 0)
-            {
-                actions.Add(ReportButton("Report an issue",
-                    "Opens a pre-filled GitHub issue. Please attach the report — " +
-                    "most bugs are diagnosed straight from it.",
-                    () => BridgeLinks.OpenBugReport(lastReport)));
-                actions.Add(ReportButton("Copy diagnostics",
-                    "Copies versions and detected packages to the clipboard.",
-                    () =>
-                    {
-                        BridgeLinks.CopyDiagnostics(lastReport);
-                        ShowNotification(new GUIContent("Diagnostics copied"));
-                    }));
-            }
+            // Always offered once a report exists, rather than only when something went wrong:
+            // "it converted clean but the avatar is wrong in game" is a report worth having, and
+            // it's the case where the button used to be missing. The footer drops its copies.
+            actions.Add(ReportButton("Report an issue",
+                "Opens a pre-filled GitHub issue. Please attach the report — " +
+                "most bugs are diagnosed straight from it.",
+                () => BridgeLinks.OpenBugReport(lastReport)));
+            actions.Add(ReportButton("Copy diagnostics",
+                "Copies versions and detected packages to the clipboard.",
+                () =>
+                {
+                    BridgeLinks.CopyDiagnostics(lastReport);
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }));
+            actions.Add(ReportButton("Troubleshooting  ↗", "Setup and install help.",
+                () => Application.OpenURL(BridgeLinks.Troubleshooting)));
             if (actions.childCount > 0)
             {
                 parent.Add(actions);
@@ -841,26 +843,53 @@ namespace AvatarBridge
         static Button Link(string text, Action action)
         {
             var button = new Button(action) { text = text };
-            button.AddToClassList("ab-link");
+            button.AddToClassList("ab-btn");
             return button;
         }
 
-        VisualElement Footer()
+        Button DiscordButton()
+        {
+            string label = BridgeLinks.HasDiscordLink
+                ? $"Discord: {BridgeLinks.DiscordUser}"
+                : $"Copy Discord: {BridgeLinks.DiscordUser}";
+
+            var button = ReportButton(label,
+                BridgeLinks.HasDiscordLink
+                    ? "Opens Discord. Best for quick questions — please use GitHub issues for bugs " +
+                      "so they don't get lost."
+                    : "Copies the handle to your clipboard. Best for quick questions — please use " +
+                      "GitHub issues for bugs so they don't get lost.",
+                () =>
+                {
+                    BridgeLinks.OpenDiscord();
+                    if (!BridgeLinks.HasDiscordLink)
+                    {
+                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
+                    }
+                });
+            return button;
+        }
+
+        /// <summary>
+        /// The footer only carries what the report's own button row isn't already showing.
+        /// Two "Report an issue" buttons a few pixels apart, doing the same thing, is worse than
+        /// either one alone.
+        /// </summary>
+        VisualElement Footer(bool reportShown)
         {
             var footer = new VisualElement();
             footer.AddToClassList("ab-footer");
-            footer.Add(Link("Troubleshooting  ↗", () => Application.OpenURL(BridgeLinks.Troubleshooting)));
-            footer.Add(Link("Report an issue  ↗", () => BridgeLinks.OpenBugReport(lastReport)));
+            if (!reportShown)
+            {
+                footer.Add(ReportButton("Troubleshooting  ↗", "Setup and install help.",
+                    () => Application.OpenURL(BridgeLinks.Troubleshooting)));
+                footer.Add(ReportButton("Report an issue  ↗",
+                    "Opens a pre-filled GitHub issue with your versions and detected packages.",
+                    () => BridgeLinks.OpenBugReport(lastReport)));
+            }
             if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
             {
-                var discord = Link($"Discord: {BridgeLinks.DiscordUser}", () =>
-                {
-                    BridgeLinks.CopyDiscord();
-                    ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
-                });
-                discord.tooltip = "Click to copy the handle. Best for quick questions — please use " +
-                                  "GitHub issues for bugs so they don't get lost.";
-                footer.Add(discord);
+                footer.Add(DiscordButton());
             }
             return footer;
         }
@@ -897,9 +926,9 @@ namespace AvatarBridge
             var footer = new VisualElement();
             footer.AddToClassList("ab-footer");
             var guide = new Button(() => Application.OpenURL(BridgeLinks.Troubleshooting)) { text = "Setup guide  ↗" };
-            guide.AddToClassList("ab-link");
+            guide.AddToClassList("ab-btn");
             var issue = new Button(() => BridgeLinks.OpenBugReport()) { text = "Report an issue  ↗" };
-            issue.AddToClassList("ab-link");
+            issue.AddToClassList("ab-btn");
             footer.Add(guide);
             footer.Add(issue);
             body.Add(footer);

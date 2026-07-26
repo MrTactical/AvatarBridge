@@ -20,10 +20,49 @@ namespace AvatarBridge
         public const string Troubleshooting = Repo + "#install-troubleshooting";
 
         /// <summary>
-        /// Maintainer's Discord handle for quick questions. A username isn't a URL, so the
-        /// UI offers it as copy-to-clipboard rather than a link. Empty hides those buttons.
+        /// Maintainer's Discord handle for quick questions. Empty hides the button.
         /// </summary>
         public const string DiscordUser = "mrtactical";
+
+        /// <summary>
+        /// A server invite — "https://discord.gg/xxxx". The spam-resistant option, and the one
+        /// to prefer: people ask in a channel where anyone can answer and where a nuisance can be
+        /// removed, instead of arriving in the maintainer's DMs where they can't be.
+        /// </summary>
+        public const string DiscordInvite = "";
+
+        /// <summary>
+        /// Numeric Discord user id, which opens the profile card. Used only when there's no
+        /// invite. Note this is the *id*, not the handle — "mrtactical" won't work.
+        ///
+        /// Worth being straight about the limit: Discord has no link that sends a friend request
+        /// or opens a DM on someone's behalf, and won't, because that is exactly how you would
+        /// build a spam tool. The furthest a link can go is opening the profile with the Add
+        /// Friend button sitting there for the user to press themselves.
+        /// </summary>
+        public const string DiscordUserId = "";
+
+        public static bool HasDiscordLink =>
+            !string.IsNullOrEmpty(DiscordInvite) || !string.IsNullOrEmpty(DiscordUserId);
+
+        /// <summary>
+        /// Opens the invite, or the profile, or — with neither configured — falls back to putting
+        /// the handle on the clipboard, which is all a username can ever do.
+        /// </summary>
+        public static void OpenDiscord()
+        {
+            if (!string.IsNullOrEmpty(DiscordInvite))
+            {
+                Application.OpenURL(DiscordInvite);
+                return;
+            }
+            if (!string.IsNullOrEmpty(DiscordUserId))
+            {
+                Application.OpenURL("https://discord.com/users/" + DiscordUserId);
+                return;
+            }
+            CopyDiscord();
+        }
 
         public static void CopyDiscord()
         {
