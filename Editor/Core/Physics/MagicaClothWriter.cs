@@ -444,18 +444,59 @@ namespace AvatarBridge
                     "Gravity direction flipped to point up — the source PhysBone used negative gravity.");
             }
 
-            // immobile -> world influence. Same 0..1 question on both sides ("how much does the
-            // avatar moving shake this chain"), opposite polarity. Only applied when the author
-            // actually set it, so a chain they left alone keeps the preset's own tuning.
+            // immobile -> inertia influence. Same 0..1 question on both sides ("how much does
+            // motion shake this chain"), opposite polarity. Only applied when the author actually
+            // set it, so a chain they left alone keeps the preset's own tuning.
+            //
+            // BOTH of MagicaCloth2's inertia values, not just worldInertia. They are not "local
+            // player" and "networked" — MagicaCloth2 has no networking, every client simulates
+            // every avatar. They are the same motion (`cdata.stepVector`, the cloth component
+            // transform's world delta) answered at two granularities:
+            //
+            //   movementShift        = 1 - worldInertia   // per frame, shifts the reference frame
+            //   localMovementInertia = 1 - localInertia   // per step, shifts each particle
+            //
+            // Same polarity, same source. Setting one to 0.1 and leaving the other at 1.0 asks the
+            // chain to hold still and swing freely at once, which is what shipped until 2.37.0:
+            // a 0.9-immobile PhysBone still swung freely in game because localInertia was never
+            // touched. Every MagicaCloth2 preset keeps the pair equal (both 1.0); the split was
+            // this tool's invention, not the solver's design.
             if (data.Immobile > 0.01f)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
-                if (TrySetMember(sdata.inertiaConstraint, "worldInertia", influence))
+                bool world = TrySetMember(sdata.inertiaConstraint, "worldInertia", influence);
+                bool local = TrySetMember(sdata.inertiaConstraint, "localInertia", influence);
+                if (world || local)
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
-                        $"World influence set to {influence:0.##} — the source PhysBone was " +
+                        $"World and local influence both set to {influence:0.##} — the source PhysBone was " +
                         $"{data.Immobile:0.##} immobile, and MagicaCloth2 measures the same thing the " +
-                        "other way round.");
+                        "other way round. Both are set because they are the same question at two " +
+                        "granularities, not a local/networked split.");
+                }
+
+                // PhysBone's default immobile type is "All Motion", which cancels motion relative
+                // to the chain's ROOT PARENT — head turns and animation included. MagicaCloth2's
+                // inertia is measured at the cloth component's transform, which is the avatar
+                // root, so it cannot see a head turn at all: the two values above suppress the
+                // avatar moving through the world and nothing else.
+                //
+                // MagicaCloth2's own answer to this is `inertiaConstraint.anchor` ("Anchor that
+                // cancels inertia. Anchor translation and rotation are excluded from simulation").
+                // Pointing it at the chain's parent bone would express All Motion exactly. It is
+                // reported rather than applied: it changes the reference frame of the whole
+                // simulation, and this tool has shipped enough physics values that read correctly
+                // and behaved wrong. Anchor is also [NG] for preset import, so a preset can't
+                // clobber a hand-set one.
+                if (data.ImmobileTypeName == "AllMotion" && data.Root != null && data.Root.parent != null)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Immobile Type was \"All Motion\", which in VRChat also cancels motion from the " +
+                        $"parent bone — a head turn or an animation, not just walking. MagicaCloth2 measures " +
+                        $"inertia at the cloth object instead, so that part does not carry: this chain will " +
+                        $"still swing when \"{data.Root.parent.name}\" moves. If that is too lively, set " +
+                        $"Inertia > Anchor on this cloth to \"{data.Root.parent.name}\" and raise Anchor " +
+                        $"Influence.");
                 }
             }
         }
