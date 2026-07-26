@@ -48,7 +48,12 @@ namespace AvatarBridge
         // Set while a deferred conversion is in flight, so the button can't queue a second one.
         bool converting;
 
+#if VRC_SDK_VRCSDK3
+        // Physics is convert-mode only, so without the VRChat SDK nothing reads this — and an
+        // ungated field earns a CS0414 "assigned but never used" in every CCK-only project.
+        // A warning in a tester's console reads like something is wrong with the tool.
         bool showPhysics = true;
+#endif
         bool showFaceTracking = true;
         bool showAdvanced;
 
