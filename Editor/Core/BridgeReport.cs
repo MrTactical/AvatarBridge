@@ -33,6 +33,9 @@ namespace AvatarBridge
         /// <summary>Asset path of the saved ConversionReport.md (set once written).</summary>
         public string SavedReportPath;
 
+        /// <summary>Ready-made store listing text for the CCK's Description box (see AvatarDescription).</summary>
+        public string StoreDescription;
+
         /// <summary>
         /// Factual dump of the converted avatar, appended to the end of the report inside a
         /// collapsed &lt;details&gt; block. Every bug diagnosed on this project so far needed

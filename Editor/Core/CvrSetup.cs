@@ -54,6 +54,7 @@ namespace AvatarBridge
                 SaveController(ctx, controller);
 
                 BridgeDiagnostics.Run(ctx, ctx.MergedController);
+                ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();

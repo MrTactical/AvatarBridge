@@ -810,6 +810,20 @@ namespace AvatarBridge
                 }));
             }
 
+            if (!string.IsNullOrEmpty(lastReport.StoreDescription))
+            {
+                actions.Add(ReportButton("Copy description",
+                    "Puts a ready-made store listing on your clipboard for the CCK's Description " +
+                    "box — what the avatar has, counted from this conversion. Also saved beside " +
+                    "the report as Description.txt. Read it before you upload; it's a starting " +
+                    "point, not a fact sheet.",
+                    () =>
+                    {
+                        EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
+                        ShowNotification(new GUIContent("Description copied"));
+                    }));
+            }
+
             // Always offered once a report exists, rather than only when something went wrong:
             // "it converted clean but the avatar is wrong in game" is a report worth having, and
             // it's the case where the button used to be missing. The footer drops its copies.
