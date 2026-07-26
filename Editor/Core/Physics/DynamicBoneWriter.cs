@@ -14,9 +14,9 @@ namespace AvatarBridge
     ///   spring    -> m_Damping (inverted)
     ///   stiffness -> m_Stiffness
     ///   immobile  -> m_Inert
-    ///   gravity   -> m_Gravity/m_Force split by gravityFalloff using the relation
-    ///                gravity² = m_Gravity² + m_Force² (mirrors VRChat's own
-    ///                DynamicBone->PhysBone import math, inverted)
+    ///   gravity   -> m_Force only, at full magnitude; m_Gravity is forced to zero because
+    ///                ChilloutVR's rest-pose cancellation for it is scale-dependent (see the
+    ///                comment on the gravity block below)
     ///   curves    -> distribution curves (identical multiplier-along-chain semantics)
     /// </summary>
     public static class DynamicBoneWriter
@@ -67,15 +67,47 @@ namespace AvatarBridge
                 db.m_RadiusDistrib = new AnimationCurve(data.RadiusCurve.keys);
             }
 
-            // Split PB gravity into DB gravity (with falloff at rest) and force (constant),
-            // preserving overall magnitude.
+            // PhysBone gravity, applied entirely through m_Force.
+            //
+            // DynamicBone splits the idea across two fields: m_Gravity cancels out the part
+            // already baked into the character's rest pose ("partial force apply to character's
+            // initial pose is cancelled out"), while m_Force is a plain constant pull. This used
+            // to mirror that split, sending gravityFalloff to m_Gravity and the remainder to
+            // m_Force with gravity² = m_Gravity² + m_Force².
+            //
+            // ChilloutVR's m_Gravity is not safe to use. In Zettai/UpdateParticlesJob.GetForce
+            // the rest-pose cancellation is divided by the avatar's lossy scale while gravity
+            // itself is multiplied by it:
+            //
+            //     (gravity - dir * max(dot(x, dir), 0) / scale + m_Force + wind) * scale * dt
+            //
+            // The two only balance at scale 1. AvatarBridge injects a height scaler, so converted
+            // avatars sit off that point by construction, and below scale 1 the cancellation term
+            // can exceed gravity and push bones upward. m_Force is added after the cancellation
+            // and scales uniformly, so it behaves the same at any scale. A tester reported this as
+            // "CVR doesn't play nicely with them at all".
+            //
+            // The two halves were collinear parts of one magnitude, so collapsing them into one
+            // field means the full magnitude — summing the halves would overshoot it by up to 41%.
+            // Added rather than assigned so any force already on the component still composes.
             float g = Mathf.Abs(data.Gravity) * GravityScale;
             if (g > 0f)
             {
                 float sign = data.Gravity >= 0f ? -1f : 1f;
-                float falloff = Mathf.Clamp01(data.GravityFalloff);
-                db.m_Gravity = new Vector3(0f, sign * g * Mathf.Sqrt(falloff), 0f);
-                db.m_Force = new Vector3(0f, sign * g * Mathf.Sqrt(1f - falloff), 0f);
+                db.m_Gravity = Vector3.zero;
+                db.m_Force += new Vector3(0f, sign * g, 0f);
+
+                // Falloff is the one thing that cannot survive the move: it only existed as
+                // m_Gravity's rest-pose cancellation. A chain the author expected to hang almost
+                // weightlessly at rest now feels the full pull all the time.
+                if (Mathf.Clamp01(data.GravityFalloff) > 0.01f)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Gravity falloff {data.GravityFalloff:0.##} is not preserved. ChilloutVR's " +
+                        "rest-pose gravity cancellation is scale-dependent and misbehaves on scaled " +
+                        "avatars, so the whole pull is applied as a constant force instead. This chain " +
+                        "will hang lower at rest than it did in VRChat; lower its Gravity to compensate.");
+                }
             }
 
             db.m_EndOffset = data.EndpointPosition;
