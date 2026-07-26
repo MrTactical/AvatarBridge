@@ -700,6 +700,13 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- report ---
 
+        static Button ReportButton(string text, string tooltip, Action action)
+        {
+            var button = new Button(action) { text = text, tooltip = tooltip };
+            button.AddToClassList("ab-btn");
+            return button;
+        }
+
         void BuildReport(VisualElement parent)
         {
             if (lastReport == null)
@@ -730,43 +737,40 @@ namespace AvatarBridge
             chips.Add(BridgeElements.Chip($"{errors} errors", BridgeTheme.Bad, errors > 0));
             parent.Add(chips);
 
+            var actions = new VisualElement();
+            actions.AddToClassList("ab-report-row");
+
             if (!string.IsNullOrEmpty(lastReport.SavedReportPath))
             {
-                var row = new VisualElement();
-                row.AddToClassList("ab-row");
-                row.Add(new Button(() =>
+                actions.Add(ReportButton("Open full report", null, () =>
                 {
                     var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
                     if (asset != null) { AssetDatabase.OpenAsset(asset); }
-                }) { text = "Open full report" });
-                row.Add(new Button(() =>
+                }));
+                actions.Add(ReportButton("Show in Project", null, () =>
                 {
                     var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
                     if (asset != null) { EditorGUIUtility.PingObject(asset); }
-                }) { text = "Show in Project" });
-                parent.Add(row);
+                }));
             }
 
             if (errors > 0 || warnings > 0)
             {
-                var row = new VisualElement();
-                row.AddToClassList("ab-row");
-                row.Add(new Button(() => BridgeLinks.OpenBugReport(lastReport))
-                {
-                    text = "Report an issue",
-                    tooltip = "Opens a pre-filled GitHub issue. Please attach the report — " +
-                              "most bugs are diagnosed straight from it.",
-                });
-                row.Add(new Button(() =>
-                {
-                    BridgeLinks.CopyDiagnostics(lastReport);
-                    ShowNotification(new GUIContent("Diagnostics copied"));
-                })
-                {
-                    text = "Copy diagnostics",
-                    tooltip = "Copies versions and detected packages to the clipboard.",
-                });
-                parent.Add(row);
+                actions.Add(ReportButton("Report an issue",
+                    "Opens a pre-filled GitHub issue. Please attach the report — " +
+                    "most bugs are diagnosed straight from it.",
+                    () => BridgeLinks.OpenBugReport(lastReport)));
+                actions.Add(ReportButton("Copy diagnostics",
+                    "Copies versions and detected packages to the clipboard.",
+                    () =>
+                    {
+                        BridgeLinks.CopyDiagnostics(lastReport);
+                        ShowNotification(new GUIContent("Diagnostics copied"));
+                    }));
+            }
+            if (actions.childCount > 0)
+            {
+                parent.Add(actions);
             }
 
             // Only issues are listed here; the full list lives in the report file.

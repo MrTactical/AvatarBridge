@@ -298,8 +298,13 @@
     margin: 2px 0;
 }
 
+/* A fixed width, not a minimum: with min-width the longest label in a card ("Convert PhysBones
+ * to") pushed its own control right while every other field stayed put, so nothing lined up
+ * down the column. */
 .ab-field > .unity-label {
-    min-width: 118px;
+    width: 132px;
+    min-width: 132px;
+    flex-shrink: 0;
 }
 
 /* ----------------------------------------------------------- primary  ---- */
@@ -376,6 +381,23 @@
 
 .ab-link:hover > .unity-label {
     color: rgb(255, 255, 255);
+}
+
+/* The report's buttons, so they match the rest of the window rather than arriving as raw
+ * Unity buttons in the middle of it. */
+.ab-btn {
+    height: 24px;
+    border-radius: 4px;
+    padding: 0 12px;
+    margin: 4px 6px 0 0;
+    font-size: 11px;
+    transition-property: background-color;
+    transition-duration: 0.09s;
+}
+
+.ab-report-row {
+    flex-direction: row;
+    flex-wrap: wrap;
 }
 
 .ab-report-list {
