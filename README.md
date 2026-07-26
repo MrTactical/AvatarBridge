@@ -84,7 +84,7 @@ defines.
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
 | Gestures | `GestureLeftIdx` / `RightIdx` ints | analog fist curl stays native |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
-| Contacts | `CVRPointer` / `CVRAdvancedAvatarSettingsTrigger` | ⚠️ Constant receivers are approximate |
+| Contacts | ChilloutVR's native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | ⚠️ several same-type on one object get merged |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quads on ice](#quadruped--finalik-avatars--on-ice) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
@@ -137,6 +137,39 @@ verbatim.
 | **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
 | **Transfer angle limits** | off | Copies each limit angle across. ⚠️ Genuinely avatar-dependent — this shakes some chains and is the best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Also gives each cloth the avatar's own colliders it could swing into, so a tail that passed through the leg in VRChat collides with it here. Improves on the original rather than copying it, so check before uploading |
+
+## Native contacts
+
+ChilloutVR's own contact system is a near-exact superset of VRChat's — same shapes plus Box, the
+same `allowSelf` / `allowOthers` / `localOnly` / collision tags under the same names, and receiver
+types covering Constant, OnEnter and three kinds of Proximity. It lives inside the game client and
+the CCK ships no way to author it, so converters have always had to approximate it with pointers
+and triggers.
+
+**AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
+**Advanced**, and VRChat contacts convert one to one:
+
+- **Real proximity**, rather than a distance-driven stand-in
+- **Collision tags kept verbatim**, so contacts still meet other avatars' on the same names
+- **`localOnly` honoured** — the legacy path has nowhere to put it
+- **No sync cost at all.** Contacts sit on ChilloutVR's avatar whitelist rather than its local-only
+  one, so every client simulates them for every avatar and reproduces the value rather than
+  replicating it
+
+It works by declaring the components locally: an asset bundle carries no script assemblies, only a
+record of each script's assembly, namespace and class, which the player resolves against its own.
+The declarations are generated into `AvatarBridge/Runtime` on import and removed automatically if a
+future CCK provides the real thing.
+
+**Off by default**, because it's new. Confirmed working in a live instance — CCK validation clean,
+uploaded, contacts triggered by other players — on one avatar so far.
+
+> ⚠️ **If a conversion ever leaves broken `Contact_*` components behind, delete them and reopen the
+> scene before converting again.** Unity manufactures a placeholder script for a component whose
+> reference is dangling, and that placeholder then captures every *new* component of the same
+> class — so one bad conversion quietly poisons the next. AvatarBridge detects this and refuses
+> rather than producing another broken avatar, and *Tools → Avatar Bridge → Diagnose native
+> contacts* will tell you exactly what Unity is holding.
 
 ## Parameter types
 
