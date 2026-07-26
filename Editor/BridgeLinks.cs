@@ -40,7 +40,7 @@ namespace AvatarBridge
         /// build a spam tool. The furthest a link can go is opening the profile with the Add
         /// Friend button sitting there for the user to press themselves.
         /// </summary>
-        public const string DiscordUserId = "";
+        public const string DiscordUserId = "846491891805847572";
 
         public static bool HasDiscordLink =>
             !string.IsNullOrEmpty(DiscordInvite) || !string.IsNullOrEmpty(DiscordUserId);
