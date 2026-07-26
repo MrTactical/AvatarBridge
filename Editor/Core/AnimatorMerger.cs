@@ -3125,6 +3125,14 @@ namespace AvatarBridge
                     .ToArray();
             }
 
+            // Dropping the FT layers isn't enough on its own. VRCFury emits a "Defaults" layer as
+            // one big Direct blend tree that writes every parameter on the avatar, FT included —
+            // so every FT parameter stays "still referenced" by a layer that is only ~2% FT and is
+            // rightly kept. That left the whole FT/v2 parameter set in the converted avatar even
+            // though its rig was gone. Pruning the stripped parameters out of Direct blend trees
+            // first — the same treatment GoGo and SPS already get — releases them.
+            SystemStripper.PruneDirectBlendTrees(ctx, master, vrcLayers, IsFt);
+
             var stillReferenced = new HashSet<string>();
             foreach (var layer in master.layers)
             {

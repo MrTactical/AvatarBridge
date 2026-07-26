@@ -162,7 +162,7 @@ namespace AvatarBridge
         /// stripped, its branches must be pruned out of those shared trees or its
         /// leftover math keeps running (integrating garbage values forever).
         /// </summary>
-        static void PruneDirectBlendTrees(BridgeContext ctx, AnimatorController master,
+        internal static void PruneDirectBlendTrees(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers, Func<string, bool> isStripped)
         {
             int pruned = 0;
@@ -425,12 +425,74 @@ namespace AvatarBridge
         /// SPS's PhysBones became MagicaCloth components whose root bones were then deleted
         /// out from under them. One reported avatar came out with seventeen such orphans.
         /// </summary>
+        /// <summary>
+        /// The scene objects a third-party VRChat face-tracking rig installs. Matched on name
+        /// because these arrive already baked by VRCFury — by conversion time there is no
+        /// component left to identify them by.
+        ///
+        /// Deliberately narrow. "VRCFT" and "OSCmooth" belong to those systems and nothing else;
+        /// a bare "FaceTracking" would also match objects an avatar author made themselves, and
+        /// deleting somebody's own work is far worse than leaving a spare object behind.
+        /// </summary>
+        static readonly string[] FaceTrackingObjectHints =
+        {
+            "VRCFT", "VRCFaceTracking", "OSCmooth", "OSCm_",
+        };
+
         internal static void RemoveStrippedObjects(BridgeContext ctx)
         {
             if (ctx.Settings.stripSpsSystems)
             {
                 RemoveObjects(ctx);
             }
+            RemoveFaceTrackingObjects(ctx);
+        }
+
+        /// <summary>
+        /// Deletes a baked-in VRCFT rig's objects when ChilloutVR is going to provide face
+        /// tracking itself. In None mode the rig is left completely alone, which is the point of
+        /// None: the user has said they will handle it.
+        /// </summary>
+        static void RemoveFaceTrackingObjects(BridgeContext ctx)
+        {
+            if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
+            {
+                return;
+            }
+
+            var doomed = new List<Transform>();
+            foreach (var transform in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                if (transform == null || transform == ctx.Target.transform)
+                {
+                    continue;
+                }
+                if (FaceTrackingObjectHints.Any(hint =>
+                        transform.name.IndexOf(hint, StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    doomed.Add(transform);
+                }
+            }
+            if (doomed.Count == 0)
+            {
+                return;
+            }
+
+            var names = doomed.Select(t => t.name).Distinct().Take(6).ToList();
+            int removed = 0;
+            foreach (var transform in doomed.OrderBy(Depth))
+            {
+                if (transform == null)
+                {
+                    continue; // died with a parent
+                }
+                UnityEngine.Object.DestroyImmediate(transform.gameObject);
+                removed++;
+            }
+            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig — {removed} object(s)",
+                $"{string.Join(", ", names)}{(doomed.Count > names.Count ? ", …" : "")} — the chosen face " +
+                "tracking mode provides its own, and two rigs driving the same blendshapes fight each other. " +
+                "Choose \"None\" if you want the original rig left in place.");
         }
 
         static void RemoveObjects(BridgeContext ctx)
