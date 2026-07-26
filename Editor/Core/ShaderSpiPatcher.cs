@@ -343,17 +343,46 @@ namespace AvatarBridge
             // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc".
             Directory.CreateDirectory(dir);
             shaderFile.OutputName = Path.GetFileNameWithoutExtension(sourcePath) + "_SPI.shader";
+            // Flattened into one folder, so two includes with the same basename in different
+            // source folders would otherwise overwrite each other and silently give the shader
+            // the wrong file.
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { shaderFile.OutputName };
             foreach (var file in unit.Skip(1))
             {
-                file.OutputName = Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI" +
-                                  Path.GetExtension(file.OriginalPath);
+                string stem = Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI";
+                string extension = Path.GetExtension(file.OriginalPath);
+                string name = stem + extension;
+                for (int n = 2; !used.Add(name); n++)
+                {
+                    name = stem + "_" + n + extension;
+                }
+                file.OutputName = name;
+            }
+            // Repoint by resolving each #include against the file it appears in, rather than by
+            // string-matching the spelling it was first discovered under. The same file is often
+            // referred to two ways: Cancercore.cginc includes "CGInclude/CSEnums.cginc" while the
+            // files inside CGInclude include their siblings as plain "CSEnums.cginc". Matching one
+            // remembered spelling repointed the first and left the second dangling, and the copy
+            // failed to compile on an include it could no longer find.
+            var byPath = new Dictionary<string, SourceFile>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in unit)
+            {
+                byPath[Path.GetFullPath(file.OriginalPath)] = file;
             }
             foreach (var file in unit)
             {
-                foreach (var other in unit.Skip(1))
+                string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
+                file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    file.Text = file.Text.Replace($"\"{other.IncludedAs}\"", $"\"{other.OutputName}\"");
-                }
+                    string candidate = Path.Combine(folder, m.Groups[1].Value);
+                    if (File.Exists(candidate) &&
+                        byPath.TryGetValue(Path.GetFullPath(candidate), out var target) &&
+                        target != file)
+                    {
+                        return $"#include \"{target.OutputName}\"";
+                    }
+                    return m.Value; // Unity's own, or something we didn't clone: leave it
+                });
                 if (file.Crlf)
                 {
                     file.Text = file.Text.Replace("\r\n", "\n").Replace("\n", "\r\n");
