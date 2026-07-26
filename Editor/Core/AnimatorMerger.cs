@@ -565,18 +565,21 @@ namespace AvatarBridge
         static void BehaviourPass(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
             var skippedBehaviourCounts = new Dictionary<string, int>();
+            var bodyControlStats = new BodyControlStats();
 
             foreach (var layer in vrcLayers)
             {
                 WalkMachines(layer.stateMachine, machine =>
                 {
-                    machine.behaviours = ConvertBehaviours(master, machine.behaviours, null, ctx, skippedBehaviourCounts);
+                    machine.behaviours = ConvertBehaviours(master, machine.behaviours, null, ctx, skippedBehaviourCounts, bodyControlStats);
                     foreach (var child in machine.states)
                     {
-                        child.state.behaviours = ConvertBehaviours(master, child.state.behaviours, child.state, ctx, skippedBehaviourCounts);
+                        child.state.behaviours = ConvertBehaviours(master, child.state.behaviours, child.state, ctx, skippedBehaviourCounts, bodyControlStats);
                     }
                 });
             }
+
+            bodyControlStats.Report(ctx);
 
             foreach (var pair in skippedBehaviourCounts)
             {
@@ -585,7 +588,7 @@ namespace AvatarBridge
         }
 
         static StateMachineBehaviour[] ConvertBehaviours(AnimatorController master, StateMachineBehaviour[] behaviours,
-            AnimatorState state, BridgeContext ctx, Dictionary<string, int> skipped)
+            AnimatorState state, BridgeContext ctx, Dictionary<string, int> skipped, BodyControlStats bodyStats)
         {
             if (behaviours == null || behaviours.Length == 0)
             {
@@ -593,6 +596,11 @@ namespace AvatarBridge
             }
 
             var result = new List<StateMachineBehaviour>();
+            // One BodyControl per state, shared by every tracking/locomotion behaviour on it.
+            // Two components on one state would both run in an undefined order, and the CCK's
+            // own OnValidate would not be able to reconcile them.
+            BodyControl bodyControl = null;
+
             foreach (var behaviour in behaviours)
             {
                 if (behaviour == null)
@@ -608,6 +616,17 @@ namespace AvatarBridge
                     }
                     UnityEngine.Object.DestroyImmediate(behaviour, true);
                 }
+                else if (behaviour is VRCAnimatorTrackingControl tracking)
+                {
+                    ConvertTrackingControl(tracking, ref bodyControl, result, bodyStats);
+                    UnityEngine.Object.DestroyImmediate(behaviour, true);
+                }
+                else if (behaviour is VRCAnimatorLocomotionControl locomotion)
+                {
+                    AddBodyTask(ref bodyControl, result, BodyControlTask.BodyMask.Locomotion,
+                        locomotion.disableLocomotion ? 0f : 1f, bodyStats);
+                    UnityEngine.Object.DestroyImmediate(behaviour, true);
+                }
                 else if (behaviour.GetType().Name.StartsWith("VRC"))
                 {
                     skipped[behaviour.GetType().Name] = skipped.TryGetValue(behaviour.GetType().Name, out var n) ? n + 1 : 1;
@@ -619,6 +638,127 @@ namespace AvatarBridge
                 }
             }
             return result.ToArray();
+        }
+
+        /// <summary>
+        /// Running totals for the tracking/locomotion conversion, so the report gets one line
+        /// instead of one per behaviour. Avatars carry dozens of these.
+        /// </summary>
+        class BodyControlStats
+        {
+            public int Components;
+            public int Tasks;
+            public int DroppedEyes;
+            public int DroppedMouth;
+            public int DroppedFingers;
+
+            public void Report(BridgeContext ctx)
+            {
+                if (Components == 0)
+                {
+                    return;
+                }
+                ctx.Report.Converted(Category,
+                    $"{Components} tracking/locomotion behaviour(s) converted to ChilloutVR Body Control",
+                    $"{Tasks} body-mask task(s) written. \"Animation\" becomes weight 0, which switches that " +
+                    "limb's FinalIK solver off so the animation drives it; \"Tracking\" becomes weight 1, which " +
+                    "hands it back to IK. Dropping these left every limb at weight 1, so IK overrode the " +
+                    "avatar's own animation — the usual symptom is a body locked in its rest pose while the " +
+                    "head still tracks.");
+
+                int unmapped = DroppedEyes + DroppedMouth + DroppedFingers;
+                if (unmapped > 0)
+                {
+                    var parts = new List<string>();
+                    if (DroppedEyes > 0) parts.Add($"eyes/eyelids ({DroppedEyes})");
+                    if (DroppedMouth > 0) parts.Add($"mouth/jaw ({DroppedMouth})");
+                    if (DroppedFingers > 0) parts.Add($"fingers ({DroppedFingers})");
+                    ctx.Report.Approximated(Category, "Some tracking targets have no ChilloutVR body mask",
+                        $"{string.Join(", ", parts)} — ChilloutVR's Body Control covers head, pelvis, arms, legs " +
+                        "and locomotion only. These targets keep whatever the avatar's own animation and face " +
+                        "tracking do with them.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// VRChat's per-limb tracking toggle, expressed as ChilloutVR Body Control tasks.
+        ///
+        /// The two systems line up exactly, which is worth stating because it isn't documented —
+        /// ChilloutVR's own docs page for Body Control is an empty placeholder. In the client,
+        /// BodyControlTask.Execute writes BodySystem.BodyControl{Head,Pelvis,LeftArm,…}, and
+        /// IKHandler.UpdateWeights feeds those straight into the FinalIK VRIK solver as
+        /// positionWeight/rotationWeight. Weight 0 means the solver stops driving that limb and
+        /// the animation wins; weight 1 means IK overrides the animation. That is precisely
+        /// VRChat's TrackingType.Animation and TrackingType.Tracking.
+        ///
+        /// Eyes, mouth and fingers have no equivalent mask — the CCK carries a
+        /// "TODO: Add FingerTracking masks when GS is ready" — so they are counted and reported.
+        /// </summary>
+        static void ConvertTrackingControl(VRCAnimatorTrackingControl tracking, ref BodyControl bodyControl,
+            List<StateMachineBehaviour> result, BodyControlStats stats)
+        {
+            // Written out rather than looped: a local function may not capture a ref parameter.
+            MapTracking(tracking.trackingHead, BodyControlTask.BodyMask.Head, ref bodyControl, result, stats);
+            MapTracking(tracking.trackingHip, BodyControlTask.BodyMask.Pelvis, ref bodyControl, result, stats);
+            MapTracking(tracking.trackingLeftHand, BodyControlTask.BodyMask.LeftArm, ref bodyControl, result, stats);
+            MapTracking(tracking.trackingRightHand, BodyControlTask.BodyMask.RightArm, ref bodyControl, result, stats);
+            MapTracking(tracking.trackingLeftFoot, BodyControlTask.BodyMask.LeftLeg, ref bodyControl, result, stats);
+            MapTracking(tracking.trackingRightFoot, BodyControlTask.BodyMask.RightLeg, ref bodyControl, result, stats);
+
+            if (Changes(tracking.trackingEyes)) stats.DroppedEyes++;
+            if (Changes(tracking.trackingMouth)) stats.DroppedMouth++;
+            if (Changes(tracking.trackingLeftFingers) || Changes(tracking.trackingRightFingers))
+            {
+                stats.DroppedFingers++;
+            }
+        }
+
+        static bool Changes(VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType type) =>
+            type != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange;
+
+        static void MapTracking(VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType type,
+            BodyControlTask.BodyMask mask, ref BodyControl bodyControl,
+            List<StateMachineBehaviour> result, BodyControlStats stats)
+        {
+            if (!Changes(type))
+            {
+                return;
+            }
+            AddBodyTask(ref bodyControl, result, mask,
+                type == VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Tracking ? 1f : 0f, stats);
+        }
+
+        /// <summary>
+        /// Adds one body-mask task, creating the state's BodyControl on first use.
+        ///
+        /// Last write wins, matching both VRChat (behaviours run in list order, so a later one
+        /// overwrites an earlier one) and the CCK, whose OnValidate walks the list backwards
+        /// dropping earlier duplicates. Doing it here means the asset already looks the way the
+        /// CCK would rewrite it, so merely opening the inspector can't change behaviour.
+        ///
+        /// isBlend is left false deliberately: the client's ExecuteOverTime is an empty method,
+        /// so a blend task applies nothing at all.
+        /// </summary>
+        static void AddBodyTask(ref BodyControl bodyControl, List<StateMachineBehaviour> result,
+            BodyControlTask.BodyMask mask, float weight, BodyControlStats stats)
+        {
+            if (bodyControl == null)
+            {
+                bodyControl = ScriptableObject.CreateInstance<BodyControl>();
+                bodyControl.name = "BodyControl";
+                result.Add(bodyControl);
+                stats.Components++;
+            }
+            bodyControl.EnterTasks.RemoveAll(t => t.target == mask);
+            bodyControl.EnterTasks.Add(new BodyControlTask
+            {
+                target = mask,
+                targetWeight = weight,
+                transitionDuration = 0f,
+                isBlend = false,
+            });
+            stats.Tasks++;
         }
 
         static AnimatorDriver ConvertParameterDriver(AnimatorController master, VRCAvatarParameterDriver vrcDriver, BridgeContext ctx)
