@@ -59,6 +59,8 @@ namespace AvatarBridge
         };
 
         // Parameters a CVRParameterStream feeds from the game (see CreateParameterStreams).
+        // These are deliberately kept out of the "#" local prefix in RenamePass: the stream only
+        // runs on the wearer's copy, so replication is the sole way its value reaches anyone else.
         static readonly HashSet<string> StreamFedParameters = new HashSet<string>
         {
             "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
@@ -939,7 +941,18 @@ namespace AvatarBridge
                 }
                 string result = sanitizedNames.TryGetValue(name, out var sanitized) ? sanitized
                     : ParameterRenameMap.TryGetValue(name, out var mapped) ? mapped : name;
+                // Stream-fed parameters must stay synced, and this is the only place that decides
+                // it. A CVRParameterStream exists solely on the wearer's own copy of the avatar —
+                // it sits on ChilloutVR's local-component whitelist, so the filter strips it from
+                // everyone else's. The value it computes reaches other players only by being
+                // replicated, and a "#" name is never replicated. Prefixed, MuteSelf and VRMode and
+                // the gesture weights and Upright sat frozen at their defaults for every remote
+                // viewer: a mute indicator only its wearer could see. Left unprefixed, the wearer's
+                // stream writes through ChangeAnimatorParam, which both sets the parameter and
+                // broadcasts the change. Costs 32 bits each, and only for parameters the avatar
+                // actually declares — CreateParameterStreams builds an entry for nothing else.
                 bool preserved = CvrCoreParameters.Contains(result) ||
+                                 StreamFedParameters.Contains(result) ||
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
@@ -2511,9 +2524,11 @@ namespace AvatarBridge
                 SetField(entry, "parameterName", w.paramName);
                 entries.Add(entry);
                 ctx.Report.Converted(Category, $"\"{w.paramName}\" fed by CVR Parameter Stream ({w.streamType})",
-                    w.app == "Remap"
-                        ? $"Behaves like the VRChat built-in parameter, remapped to {w.lo:0.##}–{w.hi:0.##}."
-                        : "Behaves like the VRChat built-in parameter.");
+                    (w.app == "Remap"
+                        ? $"Behaves like the VRChat built-in parameter, remapped to {w.lo:0.##}–{w.hi:0.##}. "
+                        : "Behaves like the VRChat built-in parameter. ") +
+                    "Kept synced rather than local: the stream runs only on the wearer's copy of the avatar, " +
+                    "so anything this drives would otherwise sit frozen at its default for everyone else.");
             }
             EditorUtility.SetDirty(stream);
         }
