@@ -279,16 +279,27 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, "CCK AvatarAnimator.controller not found",
                     "Locomotion/hand layers are missing; the CCK usually regenerates them, but check the result.");
+                // Names, types and order taken from the CCK's own AvatarAnimator.controller.
+                // ChilloutVR's animator manager dispatches writes on the *declared* type, so
+                // these have to match the real thing rather than be approximated: this list
+                // previously had Grounded as a Float, Emote and Toggle as Ints, and omitted the
+                // five locomotion Bools entirely, which left anything conditioning on Sitting or
+                // Flying referencing a parameter nothing declared.
                 master.parameters = new[]
                 {
-                    new AnimatorControllerParameter { name = "GestureLeft", type = AnimatorControllerParameterType.Float },
-                    new AnimatorControllerParameter { name = "GestureRight", type = AnimatorControllerParameterType.Float },
                     new AnimatorControllerParameter { name = "MovementX", type = AnimatorControllerParameterType.Float },
                     new AnimatorControllerParameter { name = "MovementY", type = AnimatorControllerParameterType.Float },
-                    new AnimatorControllerParameter { name = "Grounded", type = AnimatorControllerParameterType.Float, defaultFloat = 1f },
-                    new AnimatorControllerParameter { name = "Emote", type = AnimatorControllerParameterType.Int },
+                    new AnimatorControllerParameter { name = "Grounded", type = AnimatorControllerParameterType.Bool, defaultBool = true },
+                    new AnimatorControllerParameter { name = "Emote", type = AnimatorControllerParameterType.Float },
                     new AnimatorControllerParameter { name = "CancelEmote", type = AnimatorControllerParameterType.Trigger },
-                    new AnimatorControllerParameter { name = "Toggle", type = AnimatorControllerParameterType.Int }
+                    new AnimatorControllerParameter { name = "GestureLeft", type = AnimatorControllerParameterType.Float },
+                    new AnimatorControllerParameter { name = "GestureRight", type = AnimatorControllerParameterType.Float },
+                    new AnimatorControllerParameter { name = "Toggle", type = AnimatorControllerParameterType.Float },
+                    new AnimatorControllerParameter { name = "Sitting", type = AnimatorControllerParameterType.Bool },
+                    new AnimatorControllerParameter { name = "Crouching", type = AnimatorControllerParameterType.Bool },
+                    new AnimatorControllerParameter { name = "Prone", type = AnimatorControllerParameterType.Bool },
+                    new AnimatorControllerParameter { name = "Flying", type = AnimatorControllerParameterType.Bool },
+                    new AnimatorControllerParameter { name = "Swimming", type = AnimatorControllerParameterType.Bool }
                 };
                 return master;
             }
