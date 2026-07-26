@@ -238,26 +238,53 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>Spaces out an enum identifier, the way IMGUI's EnumPopup did.</summary>
+        static string Nicify(Enum value) =>
+            value == null ? string.Empty : ObjectNames.NicifyVariableName(value.ToString());
+
+        /// <summary>
+        /// A dropdown over an enum showing spaced-out names. EnumField would be the obvious
+        /// choice but has no format hooks in 2022.3, so it shows the raw identifier —
+        /// "MagicaCloth2" where IMGUI gave "Magica Cloth 2".
+        /// </summary>
+        static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set)
+            where T : Enum
+        {
+            var values = (T[])Enum.GetValues(typeof(T));
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var value in values)
+            {
+                names.Add(Nicify(value));
+            }
+            int index = Math.Max(0, Array.IndexOf(values, current));
+
+            var popup = new PopupField<string>(label, names, index) { tooltip = tooltip };
+            popup.AddToClassList("ab-field");
+            popup.RegisterValueChangedCallback(e =>
+            {
+                int chosen = names.IndexOf(e.newValue);
+                if (chosen >= 0)
+                {
+                    set(values[chosen]);
+                }
+            });
+            return popup;
+        }
+
         void BuildPhysicsCard(VisualElement parent)
         {
-            string summary = settings.physicsTarget == PhysicsTarget.MagicaCloth2 ? "MagicaCloth 2"
-                           : settings.physicsTarget == PhysicsTarget.DynamicBone ? "DynamicBone"
-                           : "not converted";
+            // Same nicified text as the dropdown below, so the collapsed summary and the open
+            // control never disagree about what the setting is called.
+            string summary = settings.physicsTarget == PhysicsTarget.None
+                ? "not converted" : Nicify(settings.physicsTarget);
             var card = new BridgeElements.Card("Physics", summary, showPhysics, null, 0f,
                 open => showPhysics = open);
             var b = card.Body;
 
-            var target = new EnumField("Convert PhysBones to", settings.physicsTarget)
-            {
-                tooltip = "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback.",
-            };
-            target.AddToClassList("ab-field");
-            target.RegisterValueChangedCallback(e =>
-            {
-                settings.physicsTarget = (PhysicsTarget)e.newValue;
-                ScheduleRebuild();
-            });
-            b.Add(target);
+            b.Add(EnumPopup<PhysicsTarget>("Convert PhysBones to",
+                "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback.",
+                settings.physicsTarget,
+                v => { settings.physicsTarget = v; ScheduleRebuild(); }));
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2 && !BridgeDefines.HasMagicaCloth2)
             {
@@ -379,15 +406,12 @@ namespace AvatarBridge
                 "Pulls toggles out of VRCFury's merged blend tree so each one is a readable, " +
                 "working toggle instead of float math.",
                 settings.nativizeObjectToggles, v => { settings.nativizeObjectToggles = v; ScheduleRebuild(); }));
-            var style = new EnumField("Toggle style", settings.toggleStyle)
-            {
-                tooltip = "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
-                          "CVR Native Targets: object toggles are left to the CCK's own builder " +
-                          "(you must press \"Create Controller\" on the avatar).",
-            };
-            style.AddToClassList("ab-field");
+            var style = EnumPopup<ToggleStyle>("Toggle style",
+                "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
+                "CVR Native Targets: object toggles are left to the CCK's own builder " +
+                "(you must press \"Create Controller\" on the avatar).",
+                settings.toggleStyle, v => settings.toggleStyle = v);
             style.SetEnabled(settings.nativizeObjectToggles);
-            style.RegisterValueChangedCallback(e => settings.toggleStyle = (ToggleStyle)e.newValue);
             b.Add(style);
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
                 "Non-synced VRC parameters get CVR's '#' local-only prefix.",

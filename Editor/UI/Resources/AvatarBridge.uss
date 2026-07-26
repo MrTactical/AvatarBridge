@@ -240,12 +240,26 @@
     align-items: center;
 }
 
+/* Checkbox first, then the label — so a column of toggles has its boxes aligned instead of
+ * scattered at the end of each label. UI Toolkit's Toggle is a BaseField and puts the label
+ * first; the CCK hits the same problem and reverses the row, which is what this is. */
 .ab-toggle {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
     margin: 1px 0;
+}
+
+.ab-toggle > .unity-toggle__input {
+    flex-grow: 0;
+    flex-shrink: 0;
+    margin-right: 5px;
 }
 
 .ab-toggle > .unity-label {
     min-width: 0;
+    flex-grow: 0;
+    margin-left: 0;
+    padding-left: 0;
 }
 
 .ab-field {
