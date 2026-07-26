@@ -111,6 +111,9 @@ namespace AvatarBridge
 
             var scroll = new ScrollView();
             scroll.AddToClassList("ab-scroll");
+            // Nothing here wants to scroll sideways — long tooltips and labels wrap. Without this
+            // a narrow window grows a horizontal bar that only ever gets in the way.
+            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             root.Add(scroll);
 
             body = new VisualElement();

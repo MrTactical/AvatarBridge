@@ -81,6 +81,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 3px;
+    transition-property: background-color;
+    transition-duration: 0.09s;
 }
 
 .ab-tab-icon {
@@ -147,6 +149,11 @@
 
 .light .ab-card-header {
     background-color: rgb(203, 203, 203);
+}
+
+.ab-card-header {
+    transition-property: background-color;
+    transition-duration: 0.09s;
 }
 
 .dark .ab-card-collapsible:hover > .ab-card-header {
@@ -221,11 +228,22 @@
 
 /* ------------------------------------------------------------ controls ---- */
 
+/* Group headings carry a hairline, which is what stops the Advanced card reading as one
+ * undifferentiated wall of twenty checkboxes. */
 .ab-sub {
     font-size: 9px;
     -unity-font-style: bold;
-    margin: 8px 0 3px 0;
-    padding: 0;
+    margin: 11px 0 4px 0;
+    padding: 0 0 3px 0;
+    border-bottom-width: 1px;
+}
+
+.dark .ab-sub {
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+.light .ab-sub {
+    border-bottom-color: rgba(0, 0, 0, 0.08);
 }
 
 .ab-hint {
@@ -246,7 +264,21 @@
 .ab-toggle {
     flex-direction: row-reverse;
     justify-content: flex-end;
-    margin: 1px 0;
+    margin: 0 0 0 -4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition-property: background-color;
+    transition-duration: 0.09s;
+}
+
+/* The row lights up under the cursor, so it's obvious which of twenty toggles you're about
+ * to hit — the checkbox alone is a small target to aim at. */
+.dark .ab-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.light .ab-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.045);
 }
 
 .ab-toggle > .unity-toggle__input {
@@ -291,8 +323,14 @@
     padding: 0;
 }
 
+/* Dimmed, but the label stays readable — at 0.4 on the whole element the text washed out
+ * into the gradient and the button looked broken rather than waiting. */
 .ab-primary-off {
-    opacity: 0.4;
+    opacity: 0.55;
+}
+
+.ab-primary-off > .unity-label {
+    color: rgba(255, 255, 255, 0.85);
 }
 
 /* -------------------------------------------------------------- chips ---- */

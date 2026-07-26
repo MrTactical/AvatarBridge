@@ -38,8 +38,20 @@ namespace AvatarBridge
 
         public static Color Muted => Dark ? new Color(1f, 1f, 1f, 0.50f) : new Color(0f, 0f, 0f, 0.55f);
 
+        // Blue and orange are near-opposites, so interpolating straight between them drags the
+        // middle through desaturated grey-brown — the ramp sagged visibly in the banner. Passing
+        // through a plum keeps saturation up across the whole span, and it sits at the right
+        // luminance to look like one continuous crossing rather than two colours meeting.
+        static readonly Color BridgeMid = Hex(0x7A3B8C);
+
         /// <summary>Where along the bridge a step sits: 0 is VRChat, 1 is ChilloutVR.</summary>
-        public static Color At(float t) => Color.Lerp(BridgeFrom, BridgeTo, Mathf.Clamp01(t));
+        public static Color At(float t)
+        {
+            t = Mathf.Clamp01(t);
+            return t < 0.5f
+                ? Color.Lerp(BridgeFrom, BridgeMid, t * 2f)
+                : Color.Lerp(BridgeMid, BridgeTo, (t - 0.5f) * 2f);
+        }
 
         static Color Hex(int rgb) => new Color(
             ((rgb >> 16) & 0xFF) / 255f,
@@ -61,16 +73,17 @@ namespace AvatarBridge
             {
                 return _bridge;
             }
-            var tex = new Texture2D(128, 1, TextureFormat.RGBA32, false)
+            const int width = 256;
+            var tex = new Texture2D(width, 1, TextureFormat.RGBA32, false)
             {
                 hideFlags = HideFlags.HideAndDontSave,
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
                 name = "AvatarBridge Gradient",
             };
-            for (int x = 0; x < 128; x++)
+            for (int x = 0; x < width; x++)
             {
-                var c = Color.Lerp(BridgeFrom, BridgeTo, x / 127f);
+                var c = At(x / (float)(width - 1));
                 tex.SetPixel(x, 0, bright ? Color.Lerp(c, Color.white, 0.14f) : c);
             }
             tex.Apply();
