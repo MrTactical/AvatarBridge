@@ -41,9 +41,10 @@ namespace AvatarBridge
                 UnityEditor.AssetDatabase.ImportAsset(relative);
                 ctx.Report.Converted(Category, ctx.Target.name,
                     $"Wrote a ready-made store description to {FileName} — \"Copy description\" in the " +
-                    "AvatarBridge window puts it on your clipboard for the CCK's Description box. " +
-                    "Everything in it is counted from this avatar; edit it however you like before " +
-                    "uploading, it is a starting point rather than a fact sheet.");
+                    "AvatarBridge window puts it on your clipboard for the CCK's Description box. It " +
+                    "starts with a blank line or two for your own words, so it reads as the footer of " +
+                    "your description rather than all of it. Everything below that is counted from " +
+                    "this avatar; edit any of it before uploading.");
             }
             catch (System.Exception e)
             {
@@ -57,6 +58,16 @@ namespace AvatarBridge
         public static string Build(BridgeContext ctx)
         {
             var sb = new StringBuilder();
+
+            // Two blank lines first, deliberately. Whoever pastes this almost always has something
+            // of their own to say — who made the model, where it came from, what it costs — and a
+            // block of generated text starting hard against the top of the box invites them to
+            // either delete it or leave the listing sounding machine-written. Opening with room to
+            // type turns this into the footer of their description rather than the whole of it,
+            // and the cursor lands in the gap.
+            sb.AppendLine();
+            sb.AppendLine();
+
             sb.AppendLine(DisplayName(ctx.Target.name));
             sb.AppendLine();
 

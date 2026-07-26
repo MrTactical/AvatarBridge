@@ -814,9 +814,9 @@ namespace AvatarBridge
             {
                 actions.Add(ReportButton("Copy description",
                     "Puts a ready-made store listing on your clipboard for the CCK's Description " +
-                    "box — what the avatar has, counted from this conversion. Also saved beside " +
-                    "the report as Description.txt. Read it before you upload; it's a starting " +
-                    "point, not a fact sheet.",
+                    "box — what the avatar has, counted from this conversion. It opens with a gap " +
+                    "for your own words, so it reads as the footer of your description rather than " +
+                    "all of it. Also saved beside the report as Description.txt.",
                     () =>
                     {
                         EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
