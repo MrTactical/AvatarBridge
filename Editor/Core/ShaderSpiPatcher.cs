@@ -12,10 +12,17 @@ namespace AvatarBridge
     /// <summary>
     /// Patches shaders that don't support single-pass instanced stereo into copies that do.
     ///
-    /// Both ChilloutVR and VRChat render VR single-pass instanced: both eyes in one pass, with the
-    /// shader responsible for knowing which eye it is drawing. A shader that never opted in draws
-    /// into one eye only, or at the wrong offset. The CCK reports these; this fixes the ones that
-    /// can be fixed mechanically.
+    /// The two platforms do not render VR the same way, and this is one of the few places where
+    /// that difference reaches the avatar. ChilloutVR forces single-pass **instanced**
+    /// (`CCK_EnvConfig.cs`: `StereoRenderingPath.Instancing`); VRChat forces plain single-pass,
+    /// the double-wide one (`EnvConfig.cs`: `StereoRenderingPath.SinglePass`). Both are
+    /// unconditional.
+    ///
+    /// That matters because under double-wide a shader gets both eyes without having to ask —
+    /// so a shader that never opted into instancing looks perfectly fine in VRChat, and its
+    /// author had no reason to notice. Under instancing the same shader draws into one eye only.
+    /// It is a conversion problem rather than a broken shader, which is exactly the kind of thing
+    /// worth fixing here. The CCK reports them; this fixes the ones fixable mechanically.
     ///
     /// Three rules make that safe enough to do automatically:
     ///
@@ -111,10 +118,11 @@ namespace AvatarBridge
                     "instanced macros added, and this avatar's materials repointed at the copies. The originals " +
                     "are untouched. Each copy was checked for compile errors, though whether it *looks* right " +
                     "can only be judged in VR, so check the effect in both eyes. " +
-                    "The patched copy is a strict upgrade rather than a ChilloutVR-specific variant: these " +
-                    "macros compile to nothing outside stereo rendering, so it behaves identically on desktop " +
-                    "and works in VRChat too — worth copying back into the original project, since the shader " +
-                    "was drawing into one eye there as well.");
+                    "This is a ChilloutVR problem specifically: ChilloutVR renders single-pass instanced " +
+                    "while VRChat renders double-wide single-pass, and under double-wide a shader gets both " +
+                    "eyes without asking — which is why it looked fine before converting. Nothing here needs " +
+                    "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
+                    "correct under VRChat's mode and on desktop as well.");
             }
             if (refused.Count > 0)
             {

@@ -572,9 +572,14 @@ namespace AvatarBridge
         ///
         /// Single-pass instanced renders both eyes in one pass, and a shader has to opt in with
         /// four macros to know which eye it is drawing. Without them the effect typically appears
-        /// in one eye only, or at the wrong offset. This is not a ChilloutVR quirk — VRChat draws
-        /// the same way, so such a shader was already wrong there; ChilloutVR simply checks and
-        /// says so.
+        /// in one eye only, or at the wrong offset.
+        ///
+        /// This *is* a ChilloutVR-specific problem, and an earlier version of this comment had it
+        /// backwards. The two SDKs force different stereo modes, both unconditionally: the CCK
+        /// sets `StereoRenderingPath.Instancing` (`CCK_EnvConfig.cs`), while the VRChat SDK sets
+        /// `StereoRenderingPath.SinglePass` — the double-wide one (`EnvConfig.cs`). Under
+        /// double-wide a shader gets both eyes without opting in, so one of these shaders looks
+        /// correct in VRChat and its author had no reason to know. Converting is what exposes it.
         ///
         /// Worth catching before upload because of what happens if the avatar is ever treated as
         /// legacy content: NonSpiHelper replaces shaders by looking the name up in the game's own
@@ -631,8 +636,9 @@ namespace AvatarBridge
             ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
                 $"{Join(listed, 6)} — these never mention the macros a shader needs to draw both eyes under " +
                 "single-pass instanced stereo, so in VR they typically appear in one eye only or at the wrong " +
-                "offset. VRChat renders the same way, so the conversion didn't introduce this and the shader " +
-                "was already affected there; ChilloutVR's uploader is simply the thing that checks. " +
+                "offset. Expect this to be new: ChilloutVR renders single-pass instanced, VRChat renders " +
+                "double-wide single-pass, and under double-wide a shader gets both eyes without opting in — " +
+                "so it looked right before converting and the author had no reason to know. " +
                 "Each missing macro has one home: UNITY_VERTEX_INPUT_INSTANCE_ID in the vertex input struct, " +
                 "UNITY_VERTEX_OUTPUT_STEREO in the interpolator struct, UNITY_SETUP_INSTANCE_ID and " +
                 "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the vertex function. That edit is only " +

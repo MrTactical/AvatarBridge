@@ -413,10 +413,10 @@ namespace AvatarBridge
                         "VR. This copies them into RehomedAssets with the required macros added and points " +
                         "this avatar's materials at the copies — the originals are never modified, and a " +
                         "copy that fails to compile is thrown away. Only plainly written vertex/fragment " +
-                        "shaders can be patched; anything else is reported instead. The result is a strict " +
-                        "upgrade — the macros do nothing outside stereo rendering, so the copy also works on " +
-                        "desktop and in VRChat, where the shader was equally broken. Check it in both eyes: " +
-                        "compilation is verified, appearance isn't."),
+                        "shaders can be patched; anything else is reported instead. ChilloutVR renders " +
+                        "single-pass instanced where VRChat renders double-wide, so a shader can look fine " +
+                        "in VRChat and lose an eye here — the patched copy stays valid under both. Check it " +
+                        "in both eyes: compilation is verified, appearance isn't."),
                     settings.patchNonSpiShaders);
                 settings.maskMergedLayers = EditorGUILayout.ToggleLeft(
                     new GUIContent("Mask merged layers off the humanoid rig",

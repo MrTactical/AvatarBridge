@@ -141,9 +141,13 @@ namespace AvatarBridge
         // required macros added, and repoint this avatar's materials at the copies. Originals are
         // never modified, and a copy that fails to compile is discarded.
         //
+        // The need is ChilloutVR-specific: the CCK forces single-pass instanced stereo where the
+        // VRChat SDK forces double-wide, and only instancing requires the shader to opt in. The
+        // macros themselves are mode-agnostic, so a patched copy stays valid under either.
+        //
         // Off by default: compilation can be verified, appearance cannot. A patched shader is
-        // fixing something already broken in VR, so the downside is small, but it should be looked
-        // at in both eyes before trusting it.
+        // fixing something already broken in ChilloutVR, so the downside is small, but it should
+        // be looked at in both eyes before trusting it.
         public bool patchNonSpiShaders = false;
 
         [Header("Other components")]

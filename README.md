@@ -291,10 +291,17 @@ if this gets picked up again. Bipeds are unaffected by any of it.
 
 ### Shaders that only draw into one eye
 
-Both platforms render VR single-pass instanced: both eyes in one pass, with the shader itself
-responsible for knowing which eye it's drawing. A shader that never opted in draws into one eye
-only. The CCK flags these as *potentially non-SPI*; AvatarBridge reports them too, and can fix
-the ones that are fixable mechanically.
+The two platforms don't render VR the same way, and this is one of the few places that difference
+reaches your avatar. **ChilloutVR renders single-pass instanced; VRChat renders double-wide
+single-pass.** Both SDKs force their own mode, unconditionally.
+
+Under VRChat's double-wide mode a shader gets both eyes without having to ask for them. Under
+instancing it has to declare that it knows which eye it's drawing — so a shader that never opted
+in looked perfectly fine in VRChat and draws into one eye only in ChilloutVR. Nobody did anything
+wrong; it's a conversion problem, which makes it worth fixing here.
+
+The CCK flags these as *potentially non-SPI*; AvatarBridge reports them too, and can fix the ones
+that are fixable mechanically.
 
 Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a
 patched copy into `RehomedAssets` next to your converted avatar, adds the stereo macros, and
@@ -307,9 +314,9 @@ points this avatar's materials at the copy.
 - **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
   generated shaders can't be parsed, and structs living in a shared include can't be edited from
   one file. Those are listed in the report instead, for hand-fixing or replacing.
-- **There's nothing to undo.** The macros compile to nothing outside stereo rendering, so the
-  patched copy behaves identically on desktop — and it's equally valid in VRChat, where the
-  shader was half-blind too. Worth copying back into your VRChat project.
+- **There's nothing to undo.** The macros are the mode-agnostic ones — they expand to real
+  instancing code under ChilloutVR's mode and to nothing under VRChat's or on desktop. So the
+  patched copy is still a correct shader everywhere; it just also works here.
 
 It's off by default because compilation is the only thing that can be checked automatically.
 Whether the result *looks* right is a judgement no editor script can make, so **look at the
