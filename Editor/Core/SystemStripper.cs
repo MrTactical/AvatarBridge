@@ -48,6 +48,12 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
+            // First, and unconditionally: this one isn't a preference about which VRChat add-ons
+            // you want kept, it's a workaround for a VRChat limit that breaks sync when carried
+            // into ChilloutVR. It also has to run ahead of the early return below, which fires
+            // when the user has turned every other stripper off.
+            StripParameterCompressor(ctx, master, vrcLayers);
+
             var paramPrefixes = new List<string>();
             var layerHints = new List<string>();
             if (ctx.Settings.stripGogoLoco)
@@ -438,6 +444,93 @@ namespace AvatarBridge
         {
             "VRCFT", "VRCFaceTracking", "OSCmooth", "OSCm_",
         };
+
+        /// <summary>
+        /// Removes VRCFury's Parameter Compressor, which is not merely useless in ChilloutVR but
+        /// actively harmful.
+        ///
+        /// It exists to beat VRChat's 256-parameter ceiling: it sets the avatar's real parameters
+        /// to networkSynced = false, mirrors each into "VF&lt;id&gt;_&lt;name&gt;", and rotates those
+        /// mirrors through a couple of sync slots about twice a second, reassembling them on the
+        /// far side. Clever, and entirely a workaround for a limit ChilloutVR does not have —
+        /// 3200 bits, and parameters sync straight from the animator declaration.
+        ///
+        /// Carrying it across costs three ways. The rotation is a permanent Direct blend tree
+        /// evaluating every frame, which is most of what makes the "Internal Parameter Math" layer
+        /// expensive. The mirrors and slot counters are dead parameters. Worst, because the real
+        /// parameters were left marked not-synced, the conversion faithfully gives them the "#"
+        /// local-only prefix — so the compressed values reach nobody, which is the opposite of
+        /// what the compressor was installed to achieve.
+        ///
+        /// So: drop its layers, drop the mirrors and slots, and put the real names into
+        /// PreserveParameters so they sync natively — instantly, and at no cost worth counting.
+        /// </summary>
+        static void StripParameterCompressor(BridgeContext ctx, AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers)
+        {
+            var declared = new HashSet<string>(master.parameters.Select(p => p.name));
+            var slots = new System.Text.RegularExpressions.Regex(@"^VF\d+_Sync(Index|DataNum|Data)\d*$");
+            var mirror = new System.Text.RegularExpressions.Regex(@"^VF\d+_(.+)$");
+
+            // A mirror is only a mirror if the thing it shadows actually exists. That test is what
+            // separates "VF87_AvatarLimbScaling_Arms" from VRCFury's own working values like
+            // "VF113_frameTime", which shadow nothing and must be left alone.
+            var mirrors = new Dictionary<string, string>();
+            foreach (string name in declared)
+            {
+                var match = mirror.Match(name);
+                if (match.Success && declared.Contains(match.Groups[1].Value))
+                {
+                    mirrors[name] = match.Groups[1].Value;
+                }
+            }
+            var slotNames = declared.Where(n => slots.IsMatch(n)).ToList();
+            if (mirrors.Count == 0 && slotNames.Count == 0)
+            {
+                return;
+            }
+
+            bool IsCompressor(string name) =>
+                !string.IsNullOrEmpty(name) &&
+                (mirrors.ContainsKey(name) || slots.IsMatch(name));
+
+            var doomed = new HashSet<AnimatorStateMachine>();
+            foreach (var layer in vrcLayers.ToList())
+            {
+                if (layer.name != null &&
+                    layer.name.IndexOf("Parameter Compressor", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    doomed.Add(layer.stateMachine);
+                    vrcLayers.Remove(layer);
+                }
+            }
+            if (doomed.Count > 0)
+            {
+                master.layers = master.layers
+                    .Where(l => l.stateMachine == null || !doomed.Contains(l.stateMachine))
+                    .ToArray();
+            }
+            // The rotation also lives as children of the shared math tree, not only in its own
+            // layer, so the same Direct-blend pruning the other stripped systems get applies here.
+            PruneDirectBlendTrees(ctx, master, vrcLayers, IsCompressor);
+
+            // The real parameters sync natively from here on, so they must not be given the
+            // local-only prefix on the strength of a not-synced flag the compressor set.
+            foreach (string real in mirrors.Values.Distinct())
+            {
+                ctx.PreserveParameters.Add(real);
+            }
+
+            ctx.Report.Converted(Category,
+                $"Removed VRCFury's parameter compressor — {doomed.Count} layer(s), " +
+                $"{mirrors.Count} mirrored and {slotNames.Count} slot parameter(s)",
+                "It works around VRChat's 256-parameter limit by de-syncing your parameters and " +
+                "rotating copies of them through a couple of slots twice a second. ChilloutVR has " +
+                "3200 bits and syncs straight from the animator, so this cost a per-frame blend " +
+                "tree and — because the originals were left marked not-synced — stopped the values " +
+                $"reaching anyone at all. {mirrors.Values.Distinct().Count()} parameter(s) now sync " +
+                "natively and without the delay.");
+        }
 
         internal static void RemoveStrippedObjects(BridgeContext ctx)
         {
