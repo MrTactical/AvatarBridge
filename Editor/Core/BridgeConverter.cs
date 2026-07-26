@@ -52,6 +52,7 @@ namespace AvatarBridge
                 AnimatorMerger.Run(ctx);
                 MiscConverter.Run(ctx);
                 ConstraintConverter.Run(ctx);
+                ShaderSpiPatcher.Run(ctx);
 
                 if (settings.deleteVrcComponents)
                 {

@@ -286,7 +286,39 @@ if this gets picked up again. Bipeds are unaffected by any of it.
   remembered in your avatar profile between loads. Still worth keeping.)
 - **Shaders aren't translated.** Poiyomi etc. work as-is, and VRCFury-baked materials are rescued
   out of Fury's temp folder so they don't render pink — but VRChat-specific rendering (SPS/TPS
-  especially) won't *function* in CVR.
+  especially) won't *function* in CVR. Shaders that don't support VR stereo are a separate
+  problem, below.
+
+### Shaders that only draw into one eye
+
+Both platforms render VR single-pass instanced: both eyes in one pass, with the shader itself
+responsible for knowing which eye it's drawing. A shader that never opted in draws into one eye
+only. The CCK flags these as *potentially non-SPI*; AvatarBridge reports them too, and can fix
+the ones that are fixable mechanically.
+
+Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a
+patched copy into `RehomedAssets` next to your converted avatar, adds the stereo macros, and
+points this avatar's materials at the copy.
+
+- **Your original shader is never modified**, and neither is the original material — both are
+  copied. Other avatars sharing them are unaffected. (Those shaders usually aren't yours.)
+- **A copy that doesn't compile is thrown away** and the original left in place, so the worst
+  case is a line in the report rather than wrong pixels.
+- **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
+  generated shaders can't be parsed, and structs living in a shared include can't be edited from
+  one file. Those are listed in the report instead, for hand-fixing or replacing.
+- **There's nothing to undo.** The macros compile to nothing outside stereo rendering, so the
+  patched copy behaves identically on desktop — and it's equally valid in VRChat, where the
+  shader was half-blind too. Worth copying back into your VRChat project.
+
+It's off by default because compilation is the only thing that can be checked automatically.
+Whether the result *looks* right is a judgement no editor script can make, so **look at the
+effect in both eyes** before you trust it.
+
+> Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
+> have all four and still be broken — a soft-particle shader reading `_CameraDepthTexture` through
+> `sampler2D`/`tex2Dproj` is the common case, since that texture is an array under single-pass
+> instanced. AvatarBridge rewrites that pair as well.
 
 ## Reporting a bug
 

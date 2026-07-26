@@ -407,6 +407,17 @@ namespace AvatarBridge
                             "the contact objects show a missing script and you turn this back off."),
                         settings.useNativeContacts);
                 }
+                settings.patchNonSpiShaders = EditorGUILayout.ToggleLeft(
+                    new GUIContent("Patch non-SPI shaders for VR (experimental)",
+                        "Shaders that don't support single-pass instanced stereo draw into one eye only in " +
+                        "VR. This copies them into RehomedAssets with the required macros added and points " +
+                        "this avatar's materials at the copies — the originals are never modified, and a " +
+                        "copy that fails to compile is thrown away. Only plainly written vertex/fragment " +
+                        "shaders can be patched; anything else is reported instead. The result is a strict " +
+                        "upgrade — the macros do nothing outside stereo rendering, so the copy also works on " +
+                        "desktop and in VRChat, where the shader was equally broken. Check it in both eyes: " +
+                        "compilation is verified, appearance isn't."),
+                    settings.patchNonSpiShaders);
                 settings.maskMergedLayers = EditorGUILayout.ToggleLeft(
                     new GUIContent("Mask merged layers off the humanoid rig",
                         "Stops merged VRChat layers writing humanoid muscles, which VRChat prevents by " +

@@ -137,6 +137,15 @@ namespace AvatarBridge
         // been observed biting anything. Turn it on only if locomotion still fights an FX layer.
         public bool maskMergedLayers = false;
 
+        // Copy shaders that lack single-pass instanced stereo support into RehomedAssets with the
+        // required macros added, and repoint this avatar's materials at the copies. Originals are
+        // never modified, and a copy that fails to compile is discarded.
+        //
+        // Off by default: compilation can be verified, appearance cannot. A patched shader is
+        // fixing something already broken in VR, so the downside is small, but it should be looked
+        // at in both eyes before trusting it.
+        public bool patchNonSpiShaders = false;
+
         [Header("Other components")]
         public bool convertConstraints = true;
         public bool convertHeadChop = true;
