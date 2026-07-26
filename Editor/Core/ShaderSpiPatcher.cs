@@ -159,18 +159,103 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// One file of a shader's source: the .shader itself, or a .cginc it pulls in.
+        ///
+        /// A shader's vertex stage is often not in the .shader at all — Cancerspace declares
+        /// "#pragma vertex vert" and keeps vert, and the structs, in Cancercore.cginc. Editing
+        /// somebody's shared include in place would reach every other shader using it, so the
+        /// includes are cloned alongside the shader and the copies are what get edited. The
+        /// clone's #include lines are repointed at the clones, so the original files are never
+        /// touched and never read by the patched copy.
+        /// </summary>
+        class SourceFile
+        {
+            public string OriginalPath;   // as on disk
+            public string IncludedAs;     // exactly as written in the #include, or null for the shader
+            public string OutputName;     // file name inside RehomedAssets
+            public string Text;
+            public bool Crlf;
+        }
+
+        /// <summary>
+        /// The shader plus every local include it reaches, depth first. Includes that don't
+        /// resolve next to their includer are Unity's own (UnityCG.cginc and friends) and are
+        /// left alone — they already handle stereo, and they are not ours to copy.
+        /// </summary>
+        static List<SourceFile> ReadUnit(string shaderPath)
+        {
+            var unit = new List<SourceFile>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Walk(string path, string includedAs)
+            {
+                string full = Path.GetFullPath(path);
+                if (!seen.Add(full) || !File.Exists(path))
+                {
+                    return;
+                }
+                string text;
+                try { text = File.ReadAllText(path); }
+                catch { return; }
+
+                unit.Add(new SourceFile
+                {
+                    OriginalPath = path,
+                    IncludedAs = includedAs,
+                    Text = text,
+                    Crlf = text.Contains("\r\n"),
+                });
+
+                string folder = Path.GetDirectoryName(path) ?? ".";
+                foreach (Match m in Regex.Matches(text, @"#include\s+""([^""]+)"""))
+                {
+                    string rel = m.Groups[1].Value;
+                    string candidate = Path.Combine(folder, rel);
+                    if (File.Exists(candidate))
+                    {
+                        Walk(candidate.Replace('\\', '/'), rel);
+                    }
+                }
+            }
+
+            Walk(shaderPath, null);
+            return unit;
+        }
+
+        /// <summary>Finds the first file in the unit matching a pattern, or null.</summary>
+        static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
+        {
+            foreach (var file in unit)
+            {
+                var m = Regex.Match(file.Text, pattern);
+                if (m.Success)
+                {
+                    match = m;
+                    return file;
+                }
+            }
+            match = Match.Empty;
+            return null;
+        }
+
+        /// <summary>
         /// Writes a patched copy, or returns null with the reason it was refused.
         /// </summary>
         static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason)
         {
-            string text;
-            try { text = File.ReadAllText(sourcePath); }
-            catch { reason = "source unreadable"; return null; }
+            var unit = ReadUnit(sourcePath);
+            if (unit.Count == 0)
+            {
+                reason = "source unreadable";
+                return null;
+            }
+            var shaderFile = unit[0];
+            string text = shaderFile.Text;
 
-            // The inserted lines below are written with \n. If the shader is CRLF — most are —
-            // mixing them makes Unity warn about inconsistent line endings on import, and blame
-            // AvatarBridge for it. Remembered here, reapplied to the whole file before writing.
-            bool crlf = text.Contains("\r\n");
+            // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
+            // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
+            // inconsistent endings on import and blame AvatarBridge for it. An include can easily
+            // disagree with its shader, so this can't be decided once for the whole unit.
 
             if (Regex.IsMatch(text, @"#pragma\s+surface"))
             {
@@ -186,82 +271,107 @@ namespace AvatarBridge
             }
             string vertName = vertPragma.Groups[1].Value, fragName = fragPragma.Groups[1].Value;
 
-            // "v2fType vertName (appdataType v)" — the two struct names to patch.
-            var sig = Regex.Match(text, $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)");
-            if (!sig.Success)
+            // "v2fType vertName (appdataType v)". Searched across the whole unit, because the
+            // vertex function is as likely to be in an include as in the .shader.
+            var vertFile = FindIn(unit,
+                $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)", out var sig);
+            if (vertFile == null)
             {
-                // Distinguish "written in a way this can't read" from "not in this file at all".
-                // The second is the common case for effect shaders — Cancerspace declares
-                // "#pragma vertex vert" and keeps vert in Cancercore.cginc — and it isn't a
-                // parsing shortfall: the include is shared with other shaders, so editing it
-                // would reach past this avatar. Saying which include it is saves the reader
-                // going to look.
-                var include = Regex.Match(text, @"#include\s+""([^""]+\.cginc)""",
-                    RegexOptions.RightToLeft);
-                reason = Regex.IsMatch(text, $@"\b{Regex.Escape(vertName)}\s*\(") || !include.Success
-                    ? "vertex function signature not recognised"
-                    : $"its vertex function lives in {include.Groups[1].Value}, a shared include this " +
-                      "can't safely edit";
+                reason = "vertex function signature not recognised";
                 return null;
             }
             string v2fType = sig.Groups[1].Value, inType = sig.Groups[2].Value, inArg = sig.Groups[3].Value;
 
-            if (!Regex.IsMatch(text, $@"struct\s+{Regex.Escape(inType)}\s*\{{")
-                || !Regex.IsMatch(text, $@"struct\s+{Regex.Escape(v2fType)}\s*\{{"))
+            var inFile = FindIn(unit, $@"struct\s+{Regex.Escape(inType)}\s*\{{", out _);
+            var v2fFile = FindIn(unit, $@"struct\s+{Regex.Escape(v2fType)}\s*\{{", out _);
+            if (inFile == null || v2fFile == null)
             {
-                reason = "its structs aren't declared in this file (shared include)";
+                reason = "its vertex structs couldn't be found in the shader or its includes";
                 return null;
             }
 
-            // 1 & 2 — the struct members.
-            text = Regex.Replace(text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
-                "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
-            text = Regex.Replace(text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
-                "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
-
-            // 3 & 4 — after the output struct is declared inside the vertex function.
-            var vertBody = Regex.Match(text, $@"({Regex.Escape(v2fType)}\s+{Regex.Escape(vertName)}\s*\([^)]*\)\s*\{{\s*{Regex.Escape(v2fType)}\s+(\w+)\s*;)");
+            // 3 & 4 need the vertex body before anything is edited, so find it first.
+            var vertBody = Regex.Match(vertFile.Text,
+                $@"({Regex.Escape(v2fType)}\s+{Regex.Escape(vertName)}\s*\([^)]*\)\s*\{{\s*{Regex.Escape(v2fType)}\s+(\w+)\s*;)");
             if (!vertBody.Success)
             {
                 reason = "vertex function doesn't declare its output in a form this can patch";
                 return null;
             }
             string outVar = vertBody.Groups[2].Value;
-            text = text.Replace(vertBody.Groups[1].Value, vertBody.Groups[1].Value +
+
+            // 1 & 2 — the struct members, each in whichever file declares it.
+            inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
+                "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
+            v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
+                "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
+
+            // 3 & 4 — after the output struct is declared inside the vertex function.
+            vertFile.Text = vertFile.Text.Replace(vertBody.Groups[1].Value, vertBody.Groups[1].Value +
                 $"\n\t\t\t\tUNITY_SETUP_INSTANCE_ID({inArg});\n\t\t\t\tUNITY_INITIALIZE_VERTEX_OUTPUT_STEREO({outVar});");
 
-            // 5 — the eye index in the fragment stage.
-            var fragSig = Regex.Match(text, $@"\w+\s+{Regex.Escape(fragName)}\s*\(\s*{Regex.Escape(v2fType)}\s+(\w+)\s*\)[^{{]*\{{");
-            if (fragSig.Success)
+            // 5 — the eye index in the fragment stage, wherever frag lives.
+            var fragFile = FindIn(unit,
+                $@"\w+\s+{Regex.Escape(fragName)}\s*\(\s*{Regex.Escape(v2fType)}\s+(\w+)\s*\)[^{{]*\{{",
+                out var fragSig);
+            if (fragFile != null)
             {
                 string fragArg = fragSig.Groups[1].Value;
-                text = text.Replace(fragSig.Value, fragSig.Value +
+                fragFile.Text = fragFile.Text.Replace(fragSig.Value, fragSig.Value +
                     $"\n\t\t\t\tUNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX({fragArg});");
             }
 
             // 6 — screen-space depth, which the CCK's four-macro test does not cover. Under
             // single-pass instanced _CameraDepthTexture is an array, so a sampler2D read of it is
-            // wrong however many macros are present. Common in soft-particle shaders.
-            text = Regex.Replace(text, @"sampler2D\s+_CameraDepthTexture\s*;",
-                "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);");
-            text = Regex.Replace(text,
-                @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
-                "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
+            // wrong however many macros are present. Common in soft-particle and effect shaders,
+            // and it can be in any file of the unit.
+            foreach (var file in unit)
+            {
+                file.Text = Regex.Replace(file.Text, @"sampler2D\s+_CameraDepthTexture\s*;",
+                    "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);");
+                file.Text = Regex.Replace(file.Text,
+                    @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
+                    "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
+            }
 
             // Rename so it can't collide with the original in the shader list.
             string newName = shaderName + " (SPI)";
-            text = Regex.Replace(text, @"Shader\s+""[^""]+""", "Shader \"" + newName + "\"", RegexOptions.None);
+            shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
+                "Shader \"" + newName + "\"", RegexOptions.None);
 
-            if (crlf)
+            // Name every file, then repoint the #include lines at the copies. Flattened into one
+            // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc".
+            Directory.CreateDirectory(dir);
+            shaderFile.OutputName = Path.GetFileNameWithoutExtension(sourcePath) + "_SPI.shader";
+            foreach (var file in unit.Skip(1))
             {
-                text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                file.OutputName = Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI" +
+                                  Path.GetExtension(file.OriginalPath);
+            }
+            foreach (var file in unit)
+            {
+                foreach (var other in unit.Skip(1))
+                {
+                    file.Text = file.Text.Replace($"\"{other.IncludedAs}\"", $"\"{other.OutputName}\"");
+                }
+                if (file.Crlf)
+                {
+                    file.Text = file.Text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                }
             }
 
-            Directory.CreateDirectory(dir);
-            string outPath = AssetDatabase.GenerateUniqueAssetPath(
-                dir + "/" + Path.GetFileNameWithoutExtension(sourcePath) + "_SPI.shader");
-            File.WriteAllText(outPath, text);
-            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
+            var written = new List<string>();
+            foreach (var file in unit)
+            {
+                string path = dir + "/" + file.OutputName;
+                File.WriteAllText(path, file.Text);
+                written.Add(path);
+            }
+            foreach (string path in written)
+            {
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            }
+            string outPath = written[0];
 
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             if (result == null || ShaderUtil.ShaderHasError(result))
@@ -272,7 +382,12 @@ namespace AvatarBridge
                         .Where(m => m.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error)
                         .Take(2).Select(m => m.message))
                     : "copy failed to import";
-                AssetDatabase.DeleteAsset(outPath);
+                // Every file of the unit goes, not just the shader — a failed patch must not
+                // leave orphaned include copies sitting in the output folder.
+                foreach (string path in written)
+                {
+                    AssetDatabase.DeleteAsset(path);
+                }
                 reason = "patched copy did not compile: " + errors;
                 return null;
             }
