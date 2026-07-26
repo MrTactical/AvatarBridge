@@ -32,6 +32,18 @@ namespace AvatarBridge
 
             AnimatorMerger.ResetMaskCache();
 
+            // Format numbers the same way for everybody, for the length of the conversion.
+            //
+            // The report is the main thing a bug arrives with, and it is read by someone other
+            // than the person who generated it. On a comma-decimal locale it came out saying
+            // 'Height (M)' = 1,24 m and StepSize 0,05 — correct for that user, ambiguous to
+            // anyone else, and no good pasted into a field that wants a point. Set once here
+            // rather than at each of the fifteen places that format a number, so anything added
+            // later is covered without having to remember.
+            var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+            System.Threading.Thread.CurrentThread.CurrentCulture =
+                System.Globalization.CultureInfo.InvariantCulture;
+
             try
             {
                 PrepareOutputFolder(ctx);
@@ -86,6 +98,10 @@ namespace AvatarBridge
             {
                 report.Error("Conversion", "Unhandled exception", e.Message);
                 Debug.LogException(e);
+            }
+            finally
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
             }
             return report;
         }
