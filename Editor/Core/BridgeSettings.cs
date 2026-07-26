@@ -128,6 +128,15 @@ namespace AvatarBridge
         // in game. If it were wrong, the result is contact objects with a missing script.
         public bool useNativeContacts = false;
 
+        // Give merged VRChat layers an avatar mask that blocks humanoid muscles, restoring the
+        // separation VRChat gets from FX being its own playable layer. Guards against a
+        // Write-Defaults state re-asserting the rest pose over ChilloutVR's locomotion.
+        //
+        // Off by default. The symptom that prompted it turned out to be the muscle curves being
+        // renamed instead, so this addresses a real architectural difference that has not yet
+        // been observed biting anything. Turn it on only if locomotion still fights an FX layer.
+        public bool maskMergedLayers = false;
+
         [Header("Other components")]
         public bool convertConstraints = true;
         public bool convertHeadChop = true;

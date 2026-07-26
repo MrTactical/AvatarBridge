@@ -977,6 +977,18 @@ namespace AvatarBridge
                 return result;
             }
 
+            // The only property names a clip may have rewritten. Captured before the parameters
+            // are renamed, so these are the pre-rename spellings the clips still use.
+            //
+            // Humanoid muscle curves are indistinguishable from animated animator parameters by
+            // binding alone — both are type Animator with an empty path — so without this filter
+            // "Chest Front-Back", "Jaw Close" and "Right Hand.Little.3 Stretched" are treated as
+            // parameters, get the "#" local prefix, and bind to nothing. Every muscle curve in
+            // the clip dies silently and the avatar holds its rest pose while IK-tracked parts
+            // carry on, which is exactly how it looks in the animation window: rows of
+            // "Animator.#Chest Front-Back (Missing!)".
+            var animatableParameters = new HashSet<string>(master.parameters.Select(p => p.name));
+
             // Parameters (dedupe after rename; e.g. Viseme folds into VisemeIdx).
             var newParams = new List<AnimatorControllerParameter>();
             var seenNames = new HashSet<string>();
@@ -1018,7 +1030,7 @@ namespace AvatarBridge
                         state.speedParameter = Rename(state.speedParameter);
                         state.mirrorParameter = Rename(state.mirrorParameter);
                         state.cycleOffsetParameter = Rename(state.cycleOffsetParameter);
-                        state.motion = RenameInMotion(state.motion, Rename, clipMap, ctx);
+                        state.motion = RenameInMotion(state.motion, Rename, clipMap, ctx, animatableParameters);
 
                         foreach (var behaviour in state.behaviours)
                         {
@@ -1095,7 +1107,7 @@ namespace AvatarBridge
         }
 
         static Motion RenameInMotion(Motion motion, Func<string, string> rename,
-            Dictionary<AnimationClip, AnimationClip> clipMap, BridgeContext ctx)
+            Dictionary<AnimationClip, AnimationClip> clipMap, BridgeContext ctx, HashSet<string> animatable)
         {
             if (motion is BlendTree tree)
             {
@@ -1111,7 +1123,7 @@ namespace AvatarBridge
                     {
                         children[i].directBlendParameter = rename(children[i].directBlendParameter);
                     }
-                    children[i].motion = RenameInMotion(children[i].motion, rename, clipMap, ctx);
+                    children[i].motion = RenameInMotion(children[i].motion, rename, clipMap, ctx, animatable);
                 }
                 tree.children = children;
                 return tree;
@@ -1119,7 +1131,7 @@ namespace AvatarBridge
 
             if (motion is AnimationClip clip)
             {
-                return RenameInClip(clip, rename, clipMap);
+                return RenameInClip(clip, rename, clipMap, animatable);
             }
             return motion;
         }
@@ -1129,7 +1141,7 @@ namespace AvatarBridge
         /// the shared clip asset, so a renamed parameter forces a clone-on-write copy.
         /// </summary>
         static AnimationClip RenameInClip(AnimationClip clip, Func<string, string> rename,
-            Dictionary<AnimationClip, AnimationClip> clipMap)
+            Dictionary<AnimationClip, AnimationClip> clipMap, HashSet<string> animatable)
         {
             if (clip == null)
             {
@@ -1143,6 +1155,9 @@ namespace AvatarBridge
             var bindings = AnimationUtility.GetCurveBindings(clip);
             var renames = bindings
                 .Where(b => b.type == typeof(Animator) && string.IsNullOrEmpty(b.path) &&
+                            // Must actually be a parameter. Muscle and root curves share this
+                            // binding shape exactly, and renaming one destroys it.
+                            animatable.Contains(b.propertyName) &&
                             rename(b.propertyName) != b.propertyName)
                 .ToArray();
             if (renames.Length == 0)
@@ -2769,6 +2784,10 @@ namespace AvatarBridge
         /// </summary>
         static void MaskMergedLayers(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
+            if (!ctx.Settings.maskMergedLayers)
+            {
+                return;
+            }
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;

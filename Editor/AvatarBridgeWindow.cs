@@ -407,6 +407,12 @@ namespace AvatarBridge
                             "the contact objects show a missing script and you turn this back off."),
                         settings.useNativeContacts);
                 }
+                settings.maskMergedLayers = EditorGUILayout.ToggleLeft(
+                    new GUIContent("Mask merged layers off the humanoid rig",
+                        "Stops merged VRChat layers writing humanoid muscles, which VRChat prevents by " +
+                        "keeping FX on its own playable layer. Only affects layers that animate no muscles " +
+                        "themselves. Try it if ChilloutVR's locomotion is being fought by an FX layer."),
+                    settings.maskMergedLayers);
                 settings.convertConstraints = EditorGUILayout.ToggleLeft("Convert VRC constraints", settings.convertConstraints);
                 settings.convertHeadChop = EditorGUILayout.ToggleLeft(
                     new GUIContent("Convert VRC Head Chop", "First-person show/hide, including its toggle animations."),
