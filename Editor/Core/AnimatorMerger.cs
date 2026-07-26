@@ -2786,12 +2786,12 @@ namespace AvatarBridge
                 }
                 if (fingers)
                 {
-                    layer.avatarMask = GetHandsOnlyMask();
+                    layer.avatarMask = GetFingersOnlyMask(ctx);
                     handed++;
                 }
                 else
                 {
-                    layer.avatarMask = GetNoMuscleMask();
+                    layer.avatarMask = GetNoMuscleMask(ctx);
                     masked++;
                 }
             }
@@ -3089,18 +3089,52 @@ namespace AvatarBridge
             }
         }
 
-        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask;
+        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask, _fingersOnlyMask;
 
         static AvatarMask GetHandsOnlyMask() =>
             _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
                 : BuildMask("AvatarBridge_HandsOnly", AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
 
         /// <summary>
-        /// Every humanoid body part off and no transform entries: the layer can't write muscles,
-        /// but object toggles, blendshapes and material curves pass through untouched.
+        /// Blocks humanoid muscles while leaving everything else alone.
+        ///
+        /// Every transform in the avatar is listed and explicitly enabled rather than leaving the
+        /// list empty. An empty transform list is ambiguous — Unity can read it as "no transform
+        /// restriction" or as "no transforms at all", and the difference is the whole rig for an
+        /// avatar driven through IK target transforms rather than muscles, which is exactly what
+        /// a FinalIK quadruped is. Spelling every transform out removes the question.
+        ///
+        /// Blendshape, GameObject-active and material curves are unaffected either way; avatar
+        /// masks only ever govern transforms and muscles.
         /// </summary>
-        static AvatarMask GetNoMuscleMask() =>
-            _noMuscleMask = _noMuscleMask != null ? _noMuscleMask : BuildMask("AvatarBridge_NoMuscles");
+        static AvatarMask GetNoMuscleMask(BridgeContext ctx)
+        {
+            return _noMuscleMask != null ? _noMuscleMask
+                : _noMuscleMask = BuildRigMask("AvatarBridge_NoMuscles", ctx);
+        }
+
+        /// <summary>Fingers, for layers that pose hands and nothing else. Same reasoning.</summary>
+        static AvatarMask GetFingersOnlyMask(BridgeContext ctx)
+        {
+            return _fingersOnlyMask != null ? _fingersOnlyMask
+                : _fingersOnlyMask = BuildRigMask("AvatarBridge_FingersOnly", ctx,
+                    AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+        }
+
+        static AvatarMask BuildRigMask(string name, BridgeContext ctx, params AvatarMaskBodyPart[] activeParts)
+        {
+            var mask = BuildMask(name, activeParts);
+            var root = ctx.Target != null ? ctx.Target.transform : null;
+            if (root != null)
+            {
+                mask.AddTransformPath(root, true);
+                for (int i = 0; i < mask.transformCount; i++)
+                {
+                    mask.SetTransformActive(i, true);
+                }
+            }
+            return mask;
+        }
 
         static AvatarMask ReplaceVrcMask(AvatarMask mask, BridgeContext ctx)
         {
@@ -3147,7 +3181,8 @@ namespace AvatarBridge
 
         public static void ResetMaskCache()
         {
-            _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = _noMuscleMask = null;
+            _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
+            _noMuscleMask = _fingersOnlyMask = null;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
