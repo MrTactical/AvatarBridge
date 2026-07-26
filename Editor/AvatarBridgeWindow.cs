@@ -380,7 +380,9 @@ namespace AvatarBridge
                     settings.preserveParameterSyncState);
                 settings.exposeMenulessSyncedParameters = EditorGUILayout.ToggleLeft(
                     new GUIContent("Expose menu-less synced parameters",
-                        "Synced parameters without a menu control still get a CVR menu entry so they sync."),
+                        "Synced parameters without a menu control still get an Advanced Avatar Settings " +
+                        "entry. They would sync either way — CVR takes that from the animator — but " +
+                        "without an entry the value isn't saved to your avatar profile between loads."),
                     settings.exposeMenulessSyncedParameters);
                 settings.integerHandGestures = EditorGUILayout.ToggleLeft(
                     new GUIContent("Integer hand-pose gestures",

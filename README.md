@@ -14,11 +14,18 @@ finish by hand.
 - **Face tracking, your way** — native `CVRFaceTracking`, or the bundled CVR-VRCFT rig with eye
   tracking wired up. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts** — VRChat contacts convert one to one, with real proximity and
-  no sync cost, using a system the CCK doesn't expose. See [below](#native-contacts).
+  no sync cost, using a system the CCK doesn't expose. Confirmed working in game.
+  See [below](#native-contacts).
+- **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
+  double-wide, so shaders that never opted in draw into one eye only. AvatarBridge reports them
+  and can patch a working copy. See [below](#shaders-that-only-draw-into-one-eye).
 - **Diagnostics that know ChilloutVR** — the report names components CVR will silently delete on
-  load, and tracks its 3200-bit sync budget, rather than leaving you to find out in game.
+  load, tracks its 3200-bit sync budget, and flags shaders its uploader will reject, rather than
+  leaving you to find out in game.
 - **Avatar scaler** — a `Height (M)` menu control defaulting to the avatar's measured eye height,
   so it's the same size before and after and the number reads in real metres.
+- **VRChat tracking control converts** — `VRCAnimatorTrackingControl` becomes CVR's `BodyControl`,
+  so animations that take a limb away from IK still do.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
 humanoid for ChilloutVR.)*
@@ -96,15 +103,17 @@ defines.
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
 | Face-tracking blendshapes | native `CVRFaceTracking` or bundled rig | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
+| Shaders without stereo support | patched copy in `RehomedAssets` | optional, off by default — see [below](#shaders-that-only-draw-into-one-eye) |
+| VRCFury temp materials/shaders | rescued into `RehomedAssets` | Fury deletes its temp folder on its next build |
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
 
 ## PhysBones → MagicaCloth2
 
-**The conversion transfers structure and nothing else**: which bone the chain hangs from, which
-colliders it collides with, which transforms to leave out, whether it started enabled. Every
-physics value is left at MagicaCloth2's own defaults.
+**Structure transfers exactly; feel does not.** Which bone the chain hangs from, which colliders
+it collides with, which transforms to leave out, whether it started enabled — all verbatim. The
+physics values start from a MagicaCloth2 preset instead of being derived from the PhysBone's.
 
 That's deliberate. Earlier versions derived MagicaCloth2 settings from PhysBone settings — gravity
 scaled into m/s², spring inverted into damping, immobile into inertia. Every one of those looked
@@ -117,7 +126,13 @@ bone rotations back out of where they land. A value meaning "springiness" to one
 anything in particular to the other.
 
 So a stock MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where
-every chain starts, and the PhysBone's own numbers go into the report so you can tune from there:
+every chain starts. Three PhysBone facts *do* carry over, because they ask the same question on
+both sides rather than needing conversion: a chain with **no gravity** keeps none (presets ship
+their own, and Long Hair's 5.0 would make it fall for the first time in ChilloutVR), **negative
+gravity** points up, and **immobile** becomes world influence, which is the same 0–1 question
+measured the other way round. Pull, spring and stiffness are left alone — they have no
+counterpart. Each adjustment is named in the report, as are the PhysBone's own numbers, so you can
+tune from there:
 
 > `tail — BoneCloth on the MagicaCloth2 "Tail" preset, 3 collider(s). Source PhysBone was pull`
 > `0.2, spring 0.4, gravity 0, immobile 0.75, radius 0.02 — none of those transfer.`
@@ -136,6 +151,7 @@ verbatim.
 | setting | default | what it does |
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
+| **Fit the preset to the PhysBone** | on | The three facts above — no gravity, upward gravity, immobile → world influence. Turn it off to get the preset exactly as its author wrote it |
 | **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
 | **Transfer angle limits** | off | Copies each limit angle across. ⚠️ Genuinely avatar-dependent — this shakes some chains and is the best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Also gives each cloth the avatar's own colliders it could swing into, so a tail that passed through the leg in VRChat collides with it here. Improves on the original rather than copying it, so check before uploading |
@@ -178,6 +194,48 @@ future CCK provides the real thing.
 > class — so one bad conversion quietly poisons the next. AvatarBridge detects this and refuses
 > rather than producing another broken avatar, and *Tools → Avatar Bridge → Diagnose native
 > contacts* will tell you exactly what Unity is holding.
+
+## Shaders that only draw into one eye
+
+The two platforms don't render VR the same way, and this is one of the few places that difference
+reaches your avatar. **ChilloutVR renders single-pass instanced; VRChat renders double-wide
+single-pass.** Both SDKs force their own mode, unconditionally.
+
+Under VRChat's double-wide mode a shader gets both eyes without having to ask for them. Under
+instancing it has to declare that it knows which eye it's drawing — so a shader that never opted
+in looked perfectly fine in VRChat and draws into one eye only in ChilloutVR. Nobody did anything
+wrong; it's a conversion problem, which makes it worth fixing here.
+
+The CCK flags these as *potentially non-SPI*; AvatarBridge reports them too, and can fix the ones
+that are fixable mechanically.
+
+Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a
+patched copy into `RehomedAssets` next to your converted avatar, adds the stereo macros, and
+points this avatar's materials at the copy.
+
+- **Your original shader is never modified**, and neither is the original material — both are
+  copied. Other avatars sharing them are unaffected. (Those shaders usually aren't yours.)
+- **A copy that doesn't compile is thrown away** and the original left in place, so the worst
+  case is a line in the report rather than wrong pixels.
+- **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
+  generated shaders can't be parsed, and structs living in a shared include can't be edited from
+  one file. Those are listed in the report instead, for hand-fixing or replacing.
+- **There's nothing to undo.** The macros are the mode-agnostic ones — they expand to real
+  instancing code under ChilloutVR's mode and to nothing under VRChat's or on desktop. So the
+  patched copy is still a correct shader everywhere; it just also works here.
+
+> ✅ **This works.** Confirmed in a live ChilloutVR instance: a soft-particle effect that the CCK
+> flagged as non-SPI was patched, validated clean, uploaded, and renders correctly **in both eyes**
+> in game.
+>
+> **It is still off by default**, on one avatar's evidence. Compilation is the only thing that can
+> be checked automatically — whether the result *looks* right is a judgement no editor script can
+> make, so turn it on deliberately and **check the effect in both eyes**.
+
+> Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
+> have all four and still be broken — a soft-particle shader reading `_CameraDepthTexture` through
+> `sampler2D`/`tex2Dproj` is the common case, since that texture is an array under single-pass
+> instanced. AvatarBridge rewrites that pair as well.
 
 ## Parameter types
 
@@ -264,11 +322,15 @@ if this gets picked up again. Bipeds are unaffected by any of it.
 - **VRC state behaviours** other than Parameter Driver — removed and counted.
 - **Synced animator layers** and **ONSP audio**.
 - **Content tags** — set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading.
+- **VRChat-only rendering** — SPS/TPS deformation and anything else that needs VRChat's own shader
+  systems. The meshes and materials survive; the effect doesn't.
 
 **Converted with caveats:**
 
-- **Action-layer emotes** rely on VRChat's emote flow, so converted states may be unreachable. CVR
-  has its own emotes.
+- **Action-layer emotes.** Only **Gesture** and **FX** convert by default — Base, Additive and
+  Action are off, because CVR drives locomotion and emotes itself and merging VRChat's versions
+  fights it. You can tick Action on, but its states rely on VRChat's emote flow and may simply be
+  unreachable.
 - **Constant contact receivers** reset to 0 when *any* pointer exits — CVR triggers don't count
   occupants.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
@@ -285,47 +347,12 @@ if this gets picked up again. Bipeds are unaffected by any of it.
   Syncing comes from the animator declaration; the menu entry decides whether the value is
   remembered in your avatar profile between loads. Still worth keeping.)
 - **Shaders aren't translated.** Poiyomi etc. work as-is, and VRCFury-baked materials are rescued
-  out of Fury's temp folder so they don't render pink — but VRChat-specific rendering (SPS/TPS
-  especially) won't *function* in CVR. Shaders that don't support VR stereo are a separate
-  problem, below.
-
-### Shaders that only draw into one eye
-
-The two platforms don't render VR the same way, and this is one of the few places that difference
-reaches your avatar. **ChilloutVR renders single-pass instanced; VRChat renders double-wide
-single-pass.** Both SDKs force their own mode, unconditionally.
-
-Under VRChat's double-wide mode a shader gets both eyes without having to ask for them. Under
-instancing it has to declare that it knows which eye it's drawing — so a shader that never opted
-in looked perfectly fine in VRChat and draws into one eye only in ChilloutVR. Nobody did anything
-wrong; it's a conversion problem, which makes it worth fixing here.
-
-The CCK flags these as *potentially non-SPI*; AvatarBridge reports them too, and can fix the ones
-that are fixable mechanically.
-
-Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a
-patched copy into `RehomedAssets` next to your converted avatar, adds the stereo macros, and
-points this avatar's materials at the copy.
-
-- **Your original shader is never modified**, and neither is the original material — both are
-  copied. Other avatars sharing them are unaffected. (Those shaders usually aren't yours.)
-- **A copy that doesn't compile is thrown away** and the original left in place, so the worst
-  case is a line in the report rather than wrong pixels.
-- **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
-  generated shaders can't be parsed, and structs living in a shared include can't be edited from
-  one file. Those are listed in the report instead, for hand-fixing or replacing.
-- **There's nothing to undo.** The macros are the mode-agnostic ones — they expand to real
-  instancing code under ChilloutVR's mode and to nothing under VRChat's or on desktop. So the
-  patched copy is still a correct shader everywhere; it just also works here.
-
-It's off by default because compilation is the only thing that can be checked automatically.
-Whether the result *looks* right is a judgement no editor script can make, so **look at the
-effect in both eyes** before you trust it.
-
-> Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
-> have all four and still be broken — a soft-particle shader reading `_CameraDepthTexture` through
-> `sampler2D`/`tex2Dproj` is the common case, since that texture is an array under single-pass
-> instanced. AvatarBridge rewrites that pair as well.
+  out of Fury's temp folder so they don't render pink. Shaders that don't support VR stereo are a
+  separate problem, below.
+- **Merged layers can fight CVR's locomotion** on rare avatars, because VRChat keeps FX on its own
+  playable layer and CVR has no equivalent. If an FX layer is overriding your pose, *Mask merged
+  layers off the humanoid rig* under **Advanced** restores that separation. Off by default — the
+  one case that prompted it turned out to be a different bug.
 
 ## Reporting a bug
 

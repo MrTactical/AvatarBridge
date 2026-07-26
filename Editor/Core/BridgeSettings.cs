@@ -66,8 +66,14 @@ namespace AvatarBridge
         // When enabled, animator parameters that are not network-synced in VRChat get the
         // CVR "#" local-only prefix so network traffic matches the original avatar.
         public bool preserveParameterSyncState = true;
-        // Expose VRChat-synced parameters that have no menu control as CVR menu entries so
-        // they still sync (contacts/OSC-driven setups).
+        // Give VRChat-synced parameters that have no menu control an Advanced Avatar Settings
+        // entry anyway (contacts/OSC-driven setups).
+        //
+        // Not needed for syncing, despite what an earlier version of this comment said: CVR
+        // decides that from the animator declaration (IsSynced => !isLocal && !IsReadOnly), and
+        // an unmenued parameter syncs regardless. What the entry buys is profile persistence —
+        // isAas gates CanSaveToProfile, so without one the value resets between avatar loads —
+        // plus somewhere for the user to see and drive it by hand.
         public bool exposeMenulessSyncedParameters = true;
         // Convert the CCK's native hand-pose layers to select discrete gestures via the
         // integer GestureLeftIdx/RightIdx (analog fist stays on the float parameter).
