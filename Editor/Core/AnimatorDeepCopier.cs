@@ -142,21 +142,30 @@ namespace AvatarBridge
                     hideFlags = HideFlags.HideInHierarchy
                 };
 
-                // Order matters, and getting it wrong is silent.
+                // Order matters here, and getting it wrong is silent and destructive.
+                //
+                // Two separate hazards, both to do with min/max threshold:
                 //
                 // A new BlendTree starts with useAutomaticThresholds = true, and while that is set
-                // Unity redistributes every child's threshold evenly across minThreshold..max as
-                // the children are assigned. Assigning children first and clearing the flag
-                // afterwards therefore freezes Unity's computed values and throws the source's
-                // hand-set thresholds away.
+                // Unity redistributes every child's threshold across minThreshold..max as children
+                // are assigned. So the flag has to be cleared *before* the children land.
                 //
-                // Trees whose author used automatic thresholds survived that, because recomputing
-                // reproduced what they already had — which is why this went unnoticed. A tree with
-                // manual thresholds and min/max left at their defaults collapsed instead: every
-                // child landed on threshold 0, so a 1D tree applied all of its clips at once. On
-                // "Kaides Expie" that turned the tail-scale tree into both extremes at full weight
-                // and the tail swallowed the avatar.
+                // Worse, Unity clamps child thresholds into [minThreshold, maxThreshold] when
+                // those are assigned — and min/max are meaningless in manual mode, so authors
+                // leave them anywhere. VRCFury emits its manual trees with min = max = 0. Copying
+                // that faithfully crushed every child threshold to 0, which turned a 1D tree into
+                // one that plays all of its clips at once: on "Kaides Expie" the tail-scale tree
+                // held both extremes at full weight and the tail swallowed the avatar.
+                //
+                // So min/max are only copied when they actually mean something — that is, when
+                // the author used automatic thresholds. In manual mode the children's own
+                // thresholds are the whole truth, and writing min/max can only damage them.
                 dst.useAutomaticThresholds = false;
+                if (tree.useAutomaticThresholds)
+                {
+                    dst.minThreshold = tree.minThreshold;
+                    dst.maxThreshold = tree.maxThreshold;
+                }
                 dst.children = tree.children.Select(child => new ChildMotion
                 {
                     motion = CloneMotion(child.motion),
@@ -167,10 +176,6 @@ namespace AvatarBridge
                     directBlendParameter = child.directBlendParameter,
                     mirror = child.mirror
                 }).ToArray();
-                dst.minThreshold = tree.minThreshold;
-                dst.maxThreshold = tree.maxThreshold;
-                // Restored last: if the author did use automatic thresholds, letting Unity
-                // recompute now reproduces their intent against the min/max just set.
                 if (tree.useAutomaticThresholds)
                 {
                     dst.useAutomaticThresholds = true;
