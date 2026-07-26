@@ -23,7 +23,7 @@ namespace AvatarBridge
         {
             var window = GetWindow<AvatarBridgeWindow>();
             window.titleContent = new GUIContent("AvatarBridge");
-            window.minSize = new Vector2(400, 540);
+            window.minSize = new Vector2(430, 560);
         }
 
 #if CVR_CCK_EXISTS
@@ -72,48 +72,20 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ styling ----
 
-        static GUIStyle _title, _subtitle, _step, _rich;
-        static void EnsureStyles()
-        {
-            if (_title != null)
-            {
-                return;
-            }
-            _title = new GUIStyle(EditorStyles.boldLabel) { fontSize = 18 };
-            _subtitle = new GUIStyle(EditorStyles.miniLabel) { fontSize = 11 };
-            _step = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
-            _rich = new GUIStyle(EditorStyles.label) { richText = true, wordWrap = true };
-        }
 
-        static void Separator()
-        {
-            GUILayout.Space(8);
-            var rect = EditorGUILayout.GetControlRect(false, 1);
-            EditorGUI.DrawRect(rect, new Color(0.5f, 0.5f, 0.5f, 0.25f));
-            GUILayout.Space(8);
-        }
+        static void Separator() => BridgeUI.Divider();
 
-        static void StepHeader(string number, string title)
-        {
-            GUILayout.Space(2);
-            EditorGUILayout.LabelField($"{number}   {title}", _step);
-            GUILayout.Space(2);
-        }
+        static void StepHeader(int number, string title) => BridgeUI.Step(number, title);
 
         // --------------------------------------------------------------------- GUI ----
 
         void OnGUI()
         {
-            EnsureStyles();
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            GUILayout.Space(10);
-
             DrawHeader();
-            Separator();
 
 #if VRC_SDK_VRCSDK3
             DrawModeSelector();
-            Separator();
             if (mode == Mode.Convert)
             {
                 DrawConvertFlow();
@@ -141,21 +113,25 @@ namespace AvatarBridge
 
         void DrawHeader()
         {
-            EditorGUILayout.LabelField("AvatarBridge", _title);
-            EditorGUILayout.LabelField($"VRChat → ChilloutVR avatar converter   ·   v{BridgeDefines.Version}", _subtitle);
+            BridgeUI.Banner("AvatarBridge", "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version);
         }
 
 #if VRC_SDK_VRCSDK3
+        static readonly GUIContent[] ModeTabs =
+        {
+            new GUIContent("Convert a VRChat avatar"),
+            new GUIContent("Set up any avatar"),
+        };
+
         void DrawModeSelector()
         {
-            mode = (Mode)GUILayout.Toolbar((int)mode,
-                new[] { "Convert a VRChat avatar", "Set up any avatar" }, GUILayout.Height(24));
-            GUILayout.Space(6);
-            EditorGUILayout.LabelField(mode == Mode.Convert
-                ? "<i>The main event: translates a VRChat avatar to ChilloutVR — menu, toggles, physics, " +
-                  "contacts, constraints and more.</i>"
-                : "<i>Just the ChilloutVR-side setup — viewpoint, visemes, blink, face tracking and the height " +
-                  "scaler — on any humanoid. Handy for non-VRChat avatars; nothing here is converted.</i>", _rich);
+            mode = (Mode)BridgeUI.Tabs((int)mode, ModeTabs);
+            BridgeUI.Hint(mode == Mode.Convert
+                ? "Translates a VRChat avatar to ChilloutVR — menu, toggles, physics, contacts, "
+                  + "constraints and more."
+                : "Just the ChilloutVR-side setup — viewpoint, visemes, blink, face tracking and the "
+                  + "height scaler — on any humanoid. Nothing is converted.");
+            GUILayout.Space(4);
         }
 #endif
 
@@ -164,21 +140,18 @@ namespace AvatarBridge
 #if VRC_SDK_VRCSDK3
         void DrawConvertFlow()
         {
-            StepHeader("1", "Pick your VRChat avatar");
+            StepHeader(1, "Pick your VRChat avatar");
             DrawAvatarPicker();
-            Separator();
 
-            StepHeader("2", "Choose what gets set up");
-            EditorGUILayout.LabelField(
-                "<i>The defaults suit most avatars — you can convert without changing anything here.</i>", _rich);
+            StepHeader(2, "Choose what gets set up");
+            BridgeUI.Hint("The defaults suit most avatars — you can convert without changing anything here.");
             GUILayout.Space(4);
             DrawPhysicsSection();
             DrawFaceTrackingSection();
-            DrawScalerToggle();
+            DrawExtrasCard();
             DrawAdvancedSection();
-            Separator();
 
-            StepHeader("3", "Convert");
+            StepHeader(3, "Convert");
             DrawConvertButton();
             DrawReport();
         }
@@ -219,13 +192,13 @@ namespace AvatarBridge
 
         void DrawPhysicsSection()
         {
-            showPhysics = EditorGUILayout.Foldout(showPhysics, "Physics  (PhysBones)", true, EditorStyles.foldoutHeader);
-            if (!showPhysics)
+            string summary = settings.physicsTarget == PhysicsTarget.MagicaCloth2 ? "MagicaCloth 2"
+                           : settings.physicsTarget == PhysicsTarget.DynamicBone ? "DynamicBone"
+                           : "not converted";
+            showPhysics = BridgeUI.CardStart("Physics", showPhysics, summary);
+            if (showPhysics)
             {
-                return;
-            }
-            using (new EditorGUI.IndentLevelScope())
-            {
+                BridgeUI.BodyStart();
                 settings.physicsTarget = (PhysicsTarget)EditorGUILayout.EnumPopup(
                     new GUIContent("Convert PhysBones to",
                         "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback."),
@@ -254,14 +227,13 @@ namespace AvatarBridge
 
                 if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
                 {
-                    GUILayout.Space(6);
-                    EditorGUILayout.LabelField("MagicaCloth2 feel", EditorStyles.miniBoldLabel);
-                    EditorGUILayout.HelpBox(
-                        "Each chain gets its bones, colliders and ignored transforms from the PhysBone. " +
-                        "Everything else starts from MagicaCloth2's own tuned values — the two systems " +
-                        "simulate differently, so PhysBone numbers don't carry over. They're listed in the " +
-                        "report if you want to tune a chain by hand.",
-                        MessageType.None);
+                    BridgeUI.SubHeading("MagicaCloth2 feel");
+                    BridgeUI.Hint(
+                        "Bones, colliders and ignored transforms come from the PhysBone. Everything else " +
+                        "starts from MagicaCloth2's own tuned values — the two systems simulate differently, " +
+                        "so PhysBone numbers don't carry over. They're in the report if you want to tune a " +
+                        "chain by hand.");
+                    GUILayout.Space(2);
 
                     settings.useMagicaPresets = EditorGUILayout.ToggleLeft(
                         new GUIContent("Match a preset to each chain",
@@ -300,20 +272,32 @@ namespace AvatarBridge
                             "check the result before uploading. Every assignment is listed in the report."),
                         settings.autoAssignNearbyColliders);
                 }
+                BridgeUI.BodyEnd();
             }
-            GUILayout.Space(4);
+            BridgeUI.CardEnd();
+        }
+
+        /// <summary>
+        /// The two one-line options that used to float loose between the cards. Grouped so the
+        /// step-2 stack is cards all the way down rather than cards with strays between them.
+        /// </summary>
+        void DrawExtrasCard()
+        {
+            BridgeUI.CardStart("Extras", true, null, false);
+            BridgeUI.BodyStart();
+            DrawScalerToggle();
+            BridgeUI.BodyEnd();
+            BridgeUI.CardEnd();
         }
 
         void DrawAdvancedSection()
         {
-            showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced options", true, EditorStyles.foldoutHeader);
-            if (!showAdvanced)
+            showAdvanced = BridgeUI.CardStart("Advanced options", showAdvanced,
+                showAdvanced ? null : "baking, stripping, layers, components");
+            if (showAdvanced)
             {
-                return;
-            }
-            using (new EditorGUI.IndentLevelScope())
-            {
-                EditorGUILayout.LabelField("General", EditorStyles.boldLabel);
+                BridgeUI.BodyStart();
+                BridgeUI.SubHeading("General");
                 DrawCommonGeneralOptions();
                 settings.bakeVrcFury = EditorGUILayout.ToggleLeft(
                     new GUIContent("Bake VRCFury first (recommended)",
@@ -327,8 +311,7 @@ namespace AvatarBridge
                 settings.deleteVrcComponents = EditorGUILayout.ToggleLeft(
                     "Delete VRC components after conversion", settings.deleteVrcComponents);
 
-                GUILayout.Space(6);
-                EditorGUILayout.LabelField("Remove VRChat-only systems", EditorStyles.boldLabel);
+                BridgeUI.SubHeading("Remove VRChat-only systems");
                 settings.stripGogoLoco = EditorGUILayout.ToggleLeft(
                     new GUIContent("Remove GoGo Loco (recommended)",
                         "CVR has its own locomotion, flight and emotes. GoGo's layers fight them and " +
@@ -344,8 +327,7 @@ namespace AvatarBridge
                         "for additional VRC-only systems to remove."),
                     settings.extraStripKeywords);
 
-                GUILayout.Space(6);
-                EditorGUILayout.LabelField("Animator layers to convert", EditorStyles.boldLabel);
+                BridgeUI.SubHeading("Animator layers to convert");
                 settings.convertFxLayer = EditorGUILayout.ToggleLeft("FX (toggles, expressions)", settings.convertFxLayer);
                 settings.convertGestureLayer = EditorGUILayout.ToggleLeft("Gesture (hand poses)", settings.convertGestureLayer);
                 settings.convertBaseLayer = EditorGUILayout.ToggleLeft(
@@ -358,8 +340,7 @@ namespace AvatarBridge
                         "VRC emote triggers have no CVR equivalent; states may be unreachable."),
                     settings.convertActionLayer);
 
-                GUILayout.Space(6);
-                EditorGUILayout.LabelField("Parameters & toggles", EditorStyles.boldLabel);
+                BridgeUI.SubHeading("Parameters & toggles");
                 settings.nativizeObjectToggles = EditorGUILayout.ToggleLeft(
                     new GUIContent("Rebuild VRCFury toggles (recommended)",
                         "Pulls toggles out of VRCFury's merged blend tree so each one is a readable, " +
@@ -390,27 +371,31 @@ namespace AvatarBridge
                         "(trigger-pressure finger curl) stays on the float."),
                     settings.integerHandGestures);
 
-                GUILayout.Space(6);
-                EditorGUILayout.LabelField("Components", EditorStyles.boldLabel);
+                BridgeUI.SubHeading("Components");
                 settings.convertContacts = EditorGUILayout.ToggleLeft("Convert contact senders/receivers", settings.convertContacts);
                 settings.createDefaultColliderPointers = EditorGUILayout.ToggleLeft(
                     new GUIContent("Recreate built-in VRC colliders as pointers",
                         "Head/hands/fingers pointers so converted receivers keep reacting to other players."),
                     settings.createDefaultColliderPointers);
                 using (new EditorGUI.DisabledScope(!settings.convertContacts))
+                using (new EditorGUILayout.HorizontalScope())
                 {
                     settings.useNativeContacts = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Use ChilloutVR's native contacts (experimental)",
+                        new GUIContent("Use ChilloutVR's native contacts",
                             "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
                             "of approximating them with pointers and triggers: real proximity, collision " +
                             "tags kept as-is, local-only receivers finally honoured, and no sync cost. " +
                             "The components aren't in the CCK, so AvatarBridge declares them itself — " +
                             "which can only be proven correct by putting an avatar in game. If it isn't, " +
                             "the contact objects show a missing script and you turn this back off."),
-                        settings.useNativeContacts);
+                        settings.useNativeContacts, GUILayout.ExpandWidth(false));
+                    BridgeUI.BetaTag();
+                    GUILayout.FlexibleSpace();
                 }
-                settings.patchNonSpiShaders = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Patch non-SPI shaders for VR (experimental)",
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    settings.patchNonSpiShaders = EditorGUILayout.ToggleLeft(
+                        new GUIContent("Patch non-SPI shaders for VR",
                         "Shaders that don't support single-pass instanced stereo draw into one eye only in " +
                         "VR. This copies them into RehomedAssets with the required macros added and points " +
                         "this avatar's materials at the copies — the originals are never modified, and a " +
@@ -419,7 +404,10 @@ namespace AvatarBridge
                         "single-pass instanced where VRChat renders double-wide, so a shader can look fine " +
                         "in VRChat and lose an eye here — the patched copy stays valid under both. Check it " +
                         "in both eyes: compilation is verified, appearance isn't."),
-                    settings.patchNonSpiShaders);
+                        settings.patchNonSpiShaders, GUILayout.ExpandWidth(false));
+                    BridgeUI.BetaTag();
+                    GUILayout.FlexibleSpace();
+                }
                 settings.maskMergedLayers = EditorGUILayout.ToggleLeft(
                     new GUIContent("Mask merged layers off the humanoid rig",
                         "Stops merged VRChat layers writing humanoid muscles, which VRChat prevents by " +
@@ -432,22 +420,21 @@ namespace AvatarBridge
                     settings.convertHeadChop);
                 settings.convertSpatialAudio = EditorGUILayout.ToggleLeft("Convert spatial audio", settings.convertSpatialAudio);
                 DrawBlinkToggle();
+                BridgeUI.BodyEnd();
             }
-            GUILayout.Space(4);
+            BridgeUI.CardEnd();
         }
 
         void DrawConvertButton()
         {
             bool ftPackageMissing = settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner
                                     && !FaceTrackingPackages.IsInstalled();
-            using (new EditorGUI.DisabledScope(avatar == null || ftPackageMissing))
+            bool ready = avatar != null && !ftPackageMissing && !converting;
             {
-                var previous = GUI.backgroundColor;
-                GUI.backgroundColor = avatar != null && !ftPackageMissing
-                    ? new Color(0.55f, 0.85f, 0.55f)
-                    : previous;
-                string label = avatar == null ? "Convert avatar" : $"Convert \"{avatar.gameObject.name}\"";
-                if (GUILayout.Button(label, GUILayout.Height(36)) && !converting)
+                string label = converting ? "Converting…"
+                             : avatar == null ? "Convert avatar"
+                             : $"Convert \"{avatar.gameObject.name}\"";
+                if (BridgeUI.PrimaryButton(label, ready))
                 {
                     // Deferred out of OnGUI on purpose. Converting in place ran the whole
                     // pipeline — asset imports, prefab work, thousands of log calls — inside a
@@ -463,7 +450,6 @@ namespace AvatarBridge
                         finally { converting = false; Repaint(); }
                     };
                 }
-                GUI.backgroundColor = previous;
             }
 
             if (avatar == null)
@@ -483,7 +469,7 @@ namespace AvatarBridge
 
         void DrawSetupFlow()
         {
-            StepHeader("1", "Pick any avatar");
+            StepHeader(1, "Pick any avatar");
             setupAvatar = (GameObject)EditorGUILayout.ObjectField(
                 new GUIContent("Avatar", "Any avatar in the scene. A Humanoid rig gives the best result."),
                 setupAvatar, typeof(GameObject), true);
@@ -513,53 +499,40 @@ namespace AvatarBridge
                         MessageType.Warning);
                 }
             }
-            Separator();
-
-            StepHeader("2", "Choose what gets set up");
-            EditorGUILayout.LabelField(
-                "<i>Viewpoint, visemes and blink are always detected and wired.</i>", _rich);
+            StepHeader(2, "Choose what gets set up");
+            BridgeUI.Hint("Viewpoint, visemes and blink are always detected and wired.");
             GUILayout.Space(4);
             DrawFaceTrackingSection();
-            DrawScalerToggle();
+            DrawExtrasCard();
             DrawSetupAdvancedSection();
-            Separator();
 
-            StepHeader("3", "Set up");
+            StepHeader(3, "Set up");
             DrawSetupButton();
             DrawReport();
         }
 
         void DrawSetupAdvancedSection()
         {
-            showAdvanced = EditorGUILayout.Foldout(showAdvanced, "Advanced options", true, EditorStyles.foldoutHeader);
-            if (!showAdvanced)
+            showAdvanced = BridgeUI.CardStart("Advanced options", showAdvanced,
+                showAdvanced ? null : "output folder, blink");
+            if (showAdvanced)
             {
-                return;
-            }
-            using (new EditorGUI.IndentLevelScope())
-            {
+                BridgeUI.BodyStart();
                 DrawCommonGeneralOptions();
                 DrawBlinkToggle();
+                BridgeUI.BodyEnd();
             }
-            GUILayout.Space(4);
+            BridgeUI.CardEnd();
         }
 
         void DrawSetupButton()
         {
             bool ftPackageMissing = settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner
                                     && !FaceTrackingPackages.IsInstalled();
-            using (new EditorGUI.DisabledScope(setupAvatar == null || ftPackageMissing))
+            string label = setupAvatar == null ? "Set up avatar" : $"Set up \"{setupAvatar.name}\"";
+            if (BridgeUI.PrimaryButton(label, setupAvatar != null && !ftPackageMissing))
             {
-                var previous = GUI.backgroundColor;
-                GUI.backgroundColor = setupAvatar != null && !ftPackageMissing
-                    ? new Color(0.55f, 0.85f, 0.55f)
-                    : previous;
-                string label = setupAvatar == null ? "Set up avatar" : $"Set up \"{setupAvatar.name}\"";
-                if (GUILayout.Button(label, GUILayout.Height(36)))
-                {
-                    lastReport = CvrSetup.Run(setupAvatar, settings);
-                }
-                GUI.backgroundColor = previous;
+                lastReport = CvrSetup.Run(setupAvatar, settings);
             }
 
             if (setupAvatar == null)
@@ -601,13 +574,13 @@ namespace AvatarBridge
 
         void DrawFaceTrackingSection()
         {
-            showFaceTracking = EditorGUILayout.Foldout(showFaceTracking, "Face tracking", true, EditorStyles.foldoutHeader);
-            if (!showFaceTracking)
+            string summary = settings.faceTrackingMode == FaceTrackingMode.Native ? "native component"
+                           : settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner ? "CVR VRCFT rig"
+                           : "off";
+            showFaceTracking = BridgeUI.CardStart("Face tracking", showFaceTracking, summary);
+            if (showFaceTracking)
             {
-                return;
-            }
-            using (new EditorGUI.IndentLevelScope())
-            {
+                BridgeUI.BodyStart();
                 var labels = new[]
                 {
                     new GUIContent("Native CVR Component",
@@ -646,8 +619,9 @@ namespace AvatarBridge
                             MessageType.Warning);
                     }
                 }
+                BridgeUI.BodyEnd();
             }
-            GUILayout.Space(4);
+            BridgeUI.CardEnd();
         }
 
         void DrawScalerToggle()
@@ -686,12 +660,16 @@ namespace AvatarBridge
                 EditorGUILayout.HelpBox("Done! The avatar is ready for the CCK's upload checks.", MessageType.Info);
             }
 
-            EditorGUILayout.LabelField(
-                $"<b><color=#7bc97b>{lastReport.CountOf(ReportStatus.Converted)} done</color></b>   " +
-                $"<color=#c9b97b>{lastReport.CountOf(ReportStatus.Approximated)} approximated</color>   " +
-                $"<color=#999999>{lastReport.CountOf(ReportStatus.Skipped)} skipped</color>   " +
-                $"<color=#e0a96d>{warnings} warnings</color>   " +
-                $"<color=#e07b7b>{errors} errors</color>", _rich);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                BridgeUI.Chip($"{lastReport.CountOf(ReportStatus.Converted)} done", BridgeUI.Good, true);
+                BridgeUI.Chip($"{lastReport.CountOf(ReportStatus.Approximated)} approximated", BridgeUI.Warn);
+                BridgeUI.Chip($"{lastReport.CountOf(ReportStatus.Skipped)} skipped", BridgeUI.Muted);
+                BridgeUI.Chip($"{warnings} warnings", BridgeUI.Warn, warnings > 0);
+                BridgeUI.Chip($"{errors} errors", BridgeUI.Bad, errors > 0);
+                GUILayout.FlexibleSpace();
+            }
+            GUILayout.Space(4);
 
             if (!string.IsNullOrEmpty(lastReport.SavedReportPath))
             {
@@ -785,9 +763,7 @@ namespace AvatarBridge
 #else
         void OnGUI()
         {
-            GUILayout.Space(10);
-            EditorGUILayout.LabelField("AvatarBridge", new GUIStyle(EditorStyles.boldLabel) { fontSize = 18 });
-            GUILayout.Space(6);
+            BridgeUI.Banner("AvatarBridge", "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version);
             EditorGUILayout.HelpBox(
                 "AvatarBridge converts VRChat avatars to ChilloutVR. It needs both SDKs for that:",
                 MessageType.Warning);
