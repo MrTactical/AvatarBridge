@@ -1,0 +1,339 @@
+/* AvatarBridge — window stylesheet.
+ *
+ * Shape and spacing follow the two panels this window sits beside: the CCK's rounded 1px-bordered
+ * cards, and the VRChat SDK's header fills and 3/6/14/24 spacing scale. Colours that exist as
+ * Unity design tokens use the token, so both editor skins work without a second palette; the
+ * .dark / .light classes on the root cover the rest, which is how the VRChat SDK does it too.
+ *
+ * Gradients are absent on purpose — USS has no gradient support in any current Unity, so those
+ * are generated textures assigned from BridgeTheme.
+ */
+
+/* ---------------------------------------------------------------- root ---- */
+
+.ab-root {
+    flex-grow: 1;
+}
+
+.ab-scroll {
+    flex-grow: 1;
+    padding: 6px 8px 10px 8px;
+}
+
+/* -------------------------------------------------------------- banner ---- */
+
+.ab-banner {
+    height: 62px;
+    flex-shrink: 0;
+    -unity-background-scale-mode: stretch-to-fill;
+    justify-content: center;
+    padding-left: 14px;
+    padding-right: 12px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.ab-banner-text {
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.ab-banner-title {
+    font-size: 19px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    margin: 0;
+    padding: 0;
+}
+
+.ab-banner-sub {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.78);
+    margin: 2px 0 0 1px;
+    padding: 0;
+}
+
+.ab-version {
+    background-color: rgba(0, 0, 0, 0.26);
+    border-radius: 9px;
+    padding: 2px 9px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.95);
+    flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- tabs ---- */
+
+.ab-tabs {
+    flex-direction: row;
+    height: 28px;
+    margin: 6px 8px;
+    padding: 2px;
+    border-width: 1px;
+    border-radius: 5px;
+    border-color: var(--unity-colors-button-border);
+    flex-shrink: 0;
+}
+
+.ab-tab {
+    flex-grow: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+}
+
+.ab-tab-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
+    flex-shrink: 0;
+    -unity-background-scale-mode: scale-to-fit;
+    -unity-background-image-tint-color: var(--unity-colors-default-text);
+}
+
+.ab-tab > .unity-label {
+    font-size: 11px;
+    -unity-text-align: middle-center;
+    padding: 0;
+    margin: 0;
+}
+
+.dark .ab-tab:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.light .ab-tab:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.ab-tab-on > .unity-label {
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+}
+
+.ab-tab-on > .ab-tab-icon {
+    -unity-background-image-tint-color: rgb(255, 255, 255);
+}
+
+/* --------------------------------------------------------------- cards ---- */
+
+.ab-card {
+    border-width: 1px;
+    border-radius: 5px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.dark .ab-card {
+    border-color: rgba(0, 0, 0, 0.55);
+}
+
+.light .ab-card {
+    border-color: rgba(0, 0, 0, 0.22);
+}
+
+.ab-card-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 9px;
+    min-height: 24px;
+}
+
+.dark .ab-card-header {
+    background-color: rgb(60, 60, 60);
+}
+
+.light .ab-card-header {
+    background-color: rgb(203, 203, 203);
+}
+
+.dark .ab-card-collapsible:hover > .ab-card-header {
+    background-color: rgb(71, 71, 71);
+}
+
+.light .ab-card-collapsible:hover > .ab-card-header {
+    background-color: rgb(213, 213, 213);
+}
+
+.ab-card-arrow {
+    width: 13px;
+    height: 13px;
+    margin-right: 4px;
+    flex-shrink: 0;
+    background-image: resource('IN foldout');
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.ab-card-arrow-on {
+    background-image: resource('IN foldout on');
+}
+
+.ab-card-title {
+    -unity-font-style: bold;
+    font-size: 12px;
+    flex-grow: 1;
+    margin: 0;
+    padding: 0;
+}
+
+.ab-card-summary {
+    font-size: 10px;
+    -unity-text-align: middle-right;
+    flex-shrink: 1;
+    margin: 0;
+    padding: 0;
+}
+
+.ab-card-body {
+    padding: 8px 9px 9px 9px;
+}
+
+.dark .ab-card-body {
+    background-color: rgba(255, 255, 255, 0.028);
+}
+
+.light .ab-card-body {
+    background-color: rgba(0, 0, 0, 0.022);
+}
+
+/* --------------------------------------------------------------- steps ---- */
+
+.ab-step-badge {
+    width: 19px;
+    height: 19px;
+    border-radius: 10px;
+    margin-right: 8px;
+    flex-shrink: 0;
+    -unity-background-scale-mode: stretch-to-fill;
+    align-items: center;
+    justify-content: center;
+}
+
+.ab-step-badge > .unity-label {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    margin: 0;
+    padding: 0;
+}
+
+/* ------------------------------------------------------------ controls ---- */
+
+.ab-sub {
+    font-size: 9px;
+    -unity-font-style: bold;
+    margin: 8px 0 3px 0;
+    padding: 0;
+}
+
+.ab-hint {
+    font-size: 10px;
+    white-space: normal;
+    margin: 0 0 4px 1px;
+    padding: 0;
+}
+
+.ab-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.ab-toggle {
+    margin: 1px 0;
+}
+
+.ab-toggle > .unity-label {
+    min-width: 0;
+}
+
+.ab-field {
+    margin: 2px 0;
+}
+
+.ab-field > .unity-label {
+    min-width: 118px;
+}
+
+/* ----------------------------------------------------------- primary  ---- */
+
+.ab-primary {
+    height: 38px;
+    border-radius: 5px;
+    border-width: 0;
+    margin: 4px 0 2px 0;
+    -unity-background-scale-mode: stretch-to-fill;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ab-primary > .unity-label {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    margin: 0;
+    padding: 0;
+}
+
+.ab-primary-off {
+    opacity: 0.4;
+}
+
+/* -------------------------------------------------------------- chips ---- */
+
+.ab-chip {
+    border-radius: 3px;
+    padding: 2px 7px;
+    margin-right: 4px;
+    font-size: 10px;
+    -unity-text-align: middle-center;
+    flex-shrink: 0;
+}
+
+.ab-beta {
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    font-size: 9px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------- footer ---- */
+
+.ab-footer {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: var(--unity-colors-button-border);
+    flex-wrap: wrap;
+}
+
+.ab-link {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    margin: 0 12px 0 0;
+    padding: 0;
+    font-size: 11px;
+}
+
+.ab-link:hover > .unity-label {
+    color: rgb(255, 255, 255);
+}
+
+.ab-report-list {
+    max-height: 190px;
+    min-height: 60px;
+    margin-top: 4px;
+}
+
+.ab-report-line {
+    font-size: 10px;
+    white-space: normal;
+    margin: 1px 0;
+}
