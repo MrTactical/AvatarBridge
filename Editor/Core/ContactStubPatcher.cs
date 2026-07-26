@@ -52,6 +52,23 @@ namespace AvatarBridge
         /// </summary>
         const string VerifiedCckVersion = "4.0.1";
 
+        /// <summary>
+        /// Fixed asset GUID for the generated file, written into its .meta by hand.
+        ///
+        /// Unity identifies a script asset by the GUID in its .meta, and every component
+        /// referencing it stores that GUID. Letting Unity mint one per machine means the file is a
+        /// different asset every time it is regenerated or the package is reinstalled — and every
+        /// avatar converted beforehand is left pointing at a GUID that no longer exists. That is
+        /// not theoretical: it produced "The referenced script on this Behaviour is missing" both
+        /// in the CCK's validator and in ChilloutVR itself, on an avatar whose contacts had been
+        /// converted perfectly well.
+        ///
+        /// Pinning it makes the identity stable across regenerations, reinstalls and machines,
+        /// which is the same reason the VRLabs DynamicBone stub pins its GUIDs. Never change this
+        /// value: doing so breaks every avatar already converted against it.
+        /// </summary>
+        const string StubGuid = "a7f1c93e26b04d8fb0e5c1742a6d3f80";
+
         static ContactStubPatcher()
         {
             EditorApplication.delayCall += Sync;
@@ -134,9 +151,47 @@ namespace AvatarBridge
 
             Directory.CreateDirectory(dir);
             File.WriteAllText(path, StubSource);
-            AssetDatabase.ImportAsset(path);
+            WritePinnedMeta(path);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
             Debug.Log("[AvatarBridge] Wrote " + path + " so ChilloutVR's native contact components " +
                       "can be authored. Delete it if the CCK ever ships them itself.");
+        }
+
+        /// <summary>
+        /// Writes the .meta ourselves so the asset keeps <see cref="StubGuid"/> forever.
+        ///
+        /// Only rewritten when it is missing or carries a different GUID, so a normal regeneration
+        /// doesn't churn the file. If it did carry a different one, every component created before
+        /// now references a GUID that is about to stop existing, and the console says so — those
+        /// avatars need converting again.
+        /// </summary>
+        static void WritePinnedMeta(string assetPath)
+        {
+            string metaPath = assetPath + ".meta";
+            string existing = File.Exists(metaPath) ? File.ReadAllText(metaPath) : null;
+            if (existing != null && existing.Contains(StubGuid))
+            {
+                return;
+            }
+            if (existing != null)
+            {
+                Debug.LogWarning("[AvatarBridge] " + Path.GetFileName(assetPath) + " had a machine-generated " +
+                                 "GUID; pinning it. Any avatar whose native contacts were converted before now " +
+                                 "has components pointing at the old GUID and will show \"the referenced script " +
+                                 "is missing\" — convert those avatars again.");
+            }
+            File.WriteAllText(metaPath,
+                "fileFormatVersion: 2\n" +
+                "guid: " + StubGuid + "\n" +
+                "MonoImporter:\n" +
+                "  externalObjects: {}\n" +
+                "  serializedVersion: 2\n" +
+                "  defaultReferences: []\n" +
+                "  executionOrder: 0\n" +
+                "  icon: {instanceID: 0}\n" +
+                "  userData:\n" +
+                "  assetBundleName:\n" +
+                "  assetBundleVariant:\n");
         }
 
         /// <summary>

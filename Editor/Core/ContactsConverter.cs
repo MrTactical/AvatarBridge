@@ -225,9 +225,39 @@ namespace AvatarBridge
             {
                 return false;
             }
-            if (FindType(NakReceiver) != null && FindType(NakSender) != null && FindType(NakAnimator) != null)
+            var receiver = FindType(NakReceiver);
+            if (receiver != null && FindType(NakSender) != null && FindType(NakAnimator) != null)
             {
-                return true;
+                // The type resolving is not enough. A component only survives serialization if
+                // Unity can tie it back to a script asset, and it can't when the declarations
+                // exist solely in a stale compiled assembly — the .cs having been deleted, or not
+                // yet imported. AddComponent still succeeds there, and writes a script reference
+                // with no GUID at all, which fails in the CCK's validator and again in ChilloutVR
+                // as "the referenced script on this Behaviour is missing". The avatar looks
+                // perfectly converted right up until it doesn't work.
+                //
+                // So prove it on a throwaway object before committing the whole conversion to it.
+                var probe = new GameObject("AvatarBridge_ContactProbe") { hideFlags = HideFlags.HideAndDontSave };
+                try
+                {
+                    var added = probe.AddComponent(receiver) as MonoBehaviour;
+                    if (added != null && UnityEditor.MonoScript.FromMonoBehaviour(added) != null)
+                    {
+                        return true;
+                    }
+                    ctx.Report.Error(Category, "Native contacts unusable; used the legacy path",
+                        "ChilloutVR's contact components resolve as types but Unity can't tie them to a script " +
+                        "asset, so anything built on them would serialize with a broken script reference and " +
+                        "arrive in game as \"the referenced script on this Behaviour is missing\". Usually the " +
+                        "generated declarations under AvatarBridge/Runtime were deleted or haven't been " +
+                        "imported yet — let Unity finish compiling and convert again. Contacts were converted " +
+                        "to pointers and triggers instead.");
+                    return false;
+                }
+                finally
+                {
+                    Object.DestroyImmediate(probe);
+                }
             }
             ctx.Report.Warning(Category, "Native contacts unavailable; used the legacy path",
                 "\"Use native contacts\" is on, but ChilloutVR's contact components aren't declared in this " +
