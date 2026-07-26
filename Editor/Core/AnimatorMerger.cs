@@ -185,6 +185,7 @@ namespace AvatarBridge
             CreateParameterStreams(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
+            MaskMergedLayers(master, vrcLayers, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -224,12 +225,20 @@ namespace AvatarBridge
             overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
+            // The CCK's own "Override Controller" slot. Its Advanced Settings editor reads this
+            // when it regenerates a controller, so leaving it empty quietly loses the overrides
+            // the moment anyone uses the CCK's own controller-creation button.
+            ctx.CvrAvatar.avatarSettings.baseOverrideController = overrides;
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
             if (animator != null)
             {
-                animator.runtimeAnimatorController = master;
+                // The override, not the base. ChilloutVR does this itself on load — AssetFilter
+                // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
+                // left the editor showing something the game never runs, and play-mode preview
+                // disagreeing with the real thing.
+                animator.runtimeAnimatorController = overrides;
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
         }
@@ -2693,43 +2702,121 @@ namespace AvatarBridge
         /// FX-sourced layers that animate body muscles or transforms fight ChilloutVR's
         /// locomotion. Flag them so the user knows exactly which layer is responsible.
         /// </summary>
+        static readonly HashSet<string> MuscleCurveNames = new HashSet<string>(HumanTrait.MuscleName.Select(name =>
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(name, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (.*)$");
+            return match.Success ? $"{match.Groups[1].Value}Hand.{match.Groups[2].Value}.{match.Groups[3].Value}" : name;
+        }));
+
+        static bool IsFingerCurve(string property) => property.Contains("Hand.");
+
+        static bool IsRootCurve(string property) =>
+            property.StartsWith("RootT") || property.StartsWith("RootQ") ||
+            property.StartsWith("MotionT") || property.StartsWith("MotionQ");
+
+        /// <summary>What a layer's clips actually touch on the humanoid rig.</summary>
+        static void InspectLayerCurves(AnimatorControllerLayer layer, out bool body, out bool fingers)
+        {
+            bool foundBody = false, foundFingers = false;
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    foreach (var clip in CollectClips(child.state.motion))
+                    {
+                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (binding.type != typeof(Animator) || !string.IsNullOrEmpty(binding.path))
+                            {
+                                continue;
+                            }
+                            if (IsRootCurve(binding.propertyName))
+                            {
+                                foundBody = true;
+                            }
+                            else if (MuscleCurveNames.Contains(binding.propertyName))
+                            {
+                                if (IsFingerCurve(binding.propertyName)) { foundFingers = true; } else { foundBody = true; }
+                            }
+                        }
+                    }
+                }
+            });
+            body = foundBody;
+            fingers = foundFingers;
+        }
+
+        /// <summary>
+        /// Stops merged VRChat layers writing over ChilloutVR's locomotion.
+        ///
+        /// In VRChat, FX is its own playable layer and simply cannot drive humanoid muscles.
+        /// Everything here ends up in one controller instead, where that protection doesn't
+        /// exist — and a state with Write Defaults on writes default values for every property
+        /// animated anywhere in that controller, which now includes the muscles ChilloutVR's own
+        /// locomotion clips animate. An unmasked FX layer sitting above Locomotion at weight 1
+        /// therefore re-asserts the rest pose every frame and fights it. One avatar arrived with
+        /// 40 layers, 35 of them unmasked, 128 states and Write Defaults on in every one, its
+        /// legs cycling as though pedalling while it stood still.
+        ///
+        /// An avatar mask restores the separation: humanoid parts off means the layer cannot
+        /// touch muscles, while an empty transform list leaves object toggles, blendshapes and
+        /// material animation exactly as they were.
+        ///
+        /// Applied only to layers whose clips animate no muscles themselves, so it can never
+        /// remove animation the avatar intended. Layers that do animate fingers get a hands mask
+        /// instead of losing them, and layers that genuinely animate the body are left alone for
+        /// WarnLocomotionOverrides to report.
+        /// </summary>
+        static void MaskMergedLayers(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
+            var layers = master.layers;
+            int masked = 0, handed = 0;
+
+            foreach (var layer in layers)
+            {
+                if (!vrcNames.Contains(layer.name) || layer.avatarMask != null)
+                {
+                    continue;
+                }
+                InspectLayerCurves(layer, out bool body, out bool fingers);
+                if (body)
+                {
+                    continue; // deliberate body animation; reported separately
+                }
+                if (fingers)
+                {
+                    layer.avatarMask = GetHandsOnlyMask();
+                    handed++;
+                }
+                else
+                {
+                    layer.avatarMask = GetNoMuscleMask();
+                    masked++;
+                }
+            }
+
+            if (masked == 0 && handed == 0)
+            {
+                return;
+            }
+            master.layers = layers;
+            ctx.Report.Converted(Category, $"{masked + handed} merged layer(s) masked off the humanoid rig",
+                $"{masked} blocked from muscles entirely, {handed} narrowed to the hands. VRChat's FX layer " +
+                "cannot drive humanoid muscles; merged into one ChilloutVR controller it could, and any state " +
+                "with Write Defaults on would then re-assert the rest pose over locomotion every frame. " +
+                "Object toggles, blendshapes and material animation are unaffected.");
+        }
+
         static void WarnLocomotionOverrides(List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            var bodyMuscleNames = new HashSet<string>(HumanTrait.MuscleName.Select(name =>
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(name, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (.*)$");
-                return match.Success ? $"{match.Groups[1].Value}Hand.{match.Groups[2].Value}.{match.Groups[3].Value}" : name;
-            }));
-            bool IsFingerCurve(string property) => property.Contains("Hand.");
-            bool IsRootCurve(string property) =>
-                property.StartsWith("RootT") || property.StartsWith("RootQ") ||
-                property.StartsWith("MotionT") || property.StartsWith("MotionQ");
-
             foreach (var layer in vrcLayers)
             {
                 if (layer.name == "LeftHand" || layer.name == "RightHand")
                 {
                     continue; // hand pose layers are supposed to animate finger muscles
                 }
-                bool animatesBody = false;
-                WalkMachines(layer.stateMachine, machine =>
-                {
-                    foreach (var child in machine.states)
-                    {
-                        foreach (var clip in CollectClips(child.state.motion))
-                        {
-                            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                            {
-                                if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path) &&
-                                    (IsRootCurve(binding.propertyName) ||
-                                     (bodyMuscleNames.Contains(binding.propertyName) && !IsFingerCurve(binding.propertyName))))
-                                {
-                                    animatesBody = true;
-                                }
-                            }
-                        }
-                    }
-                });
+                InspectLayerCurves(layer, out bool animatesBody, out _);
                 if (animatesBody)
                 {
                     ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
@@ -3002,7 +3089,18 @@ namespace AvatarBridge
             }
         }
 
-        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask;
+        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask;
+
+        static AvatarMask GetHandsOnlyMask() =>
+            _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
+                : BuildMask("AvatarBridge_HandsOnly", AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+
+        /// <summary>
+        /// Every humanoid body part off and no transform entries: the layer can't write muscles,
+        /// but object toggles, blendshapes and material curves pass through untouched.
+        /// </summary>
+        static AvatarMask GetNoMuscleMask() =>
+            _noMuscleMask = _noMuscleMask != null ? _noMuscleMask : BuildMask("AvatarBridge_NoMuscles");
 
         static AvatarMask ReplaceVrcMask(AvatarMask mask, BridgeContext ctx)
         {
@@ -3019,8 +3117,7 @@ namespace AvatarBridge
                     return _handRightMask = _handRightMask != null ? _handRightMask
                         : BuildMask("AvatarBridge_HandRight", AvatarMaskBodyPart.RightFingers);
                 case "vrc_HandsOnly":
-                    return _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
-                        : BuildMask("AvatarBridge_HandsOnly", AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+                    return GetHandsOnlyMask();
                 case "vrc_MusclesOnly":
                     if (_musclesOnlyMask == null)
                     {
@@ -3050,7 +3147,7 @@ namespace AvatarBridge
 
         public static void ResetMaskCache()
         {
-            _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
+            _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = _noMuscleMask = null;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
