@@ -44,11 +44,14 @@ namespace AvatarBridge
     /// MagicaCloth2 is position-based Verlet with the velocity re-derived from the position delta
     /// (`velocity = (nextPos - velocityOldPos) / dt`), and applies its two coefficients as:
     ///
-    ///     velocity *= saturate(1 - damping * simulationPower.z)             // per step
-    ///     rotate toward rest by saturate(stiffness * 0.2 * simulationPower.w) // per step
+    ///     velocity *= saturate(1 - damping * simulationPower.z)               // once per step
+    ///     rotate toward rest by saturate(stiffness * 0.2 * simulationPower.w) // 3x per step
     ///
-    /// Note the `* 0.2f` in `AngleConstraint.Convert` — the inspector's restoration stiffness is
-    /// scaled to a fifth of its face value before it reaches the solver.
+    /// Two multipliers hide in that second line and both have to be undone. The `* 0.2f` is in
+    /// `AngleConstraint.Convert` — the inspector's restoration is scaled to a fifth of its face
+    /// value before the solver sees it. And the constraint runs inside
+    /// `for (k = 0; k < Define.System.AngleLimitIteration; k++)` with that constant equal to 3,
+    /// so the value compounds three times before the step ends.
     ///
     /// ## Rebasing 60 Hz onto 90 Hz
     ///
@@ -61,14 +64,22 @@ namespace AvatarBridge
     /// A retention `r` applied 60 times a second equals `r^(60/90)` applied 90 times a second,
     /// which is the whole conversion. Everything below is that one identity.
     ///
-    /// ## Why the shipped defaults look nothing alike
+    /// ## The check that catches a wrong coefficient
     ///
-    /// A PhysBone at its defaults (pull 0.2, spring 0.2) maps to damping 0.71 and restoration
-    /// 0.75, where MagicaCloth2 ships damping 0.05 and restoration 0.2. That gap is real and it
-    /// is not a bug in the arithmetic: VRChat's defaults describe a stiff chain that barely
-    /// leaves its pose, MagicaCloth2's describe flowing cloth. Two authors, two intents. Reading
-    /// the disagreement as evidence against the mapping is what stalled this for several
-    /// versions.
+    /// Run MagicaCloth2's own default restoration back through this in reverse — 0.2 inspector,
+    /// so 0.04 per iteration, compounded three times, rebased to 60 Hz — and it comes out as a
+    /// PhysBone pull of **0.168**. A default PhysBone (pull 0.2, spring 0.2) restores at
+    /// **0.160** per step. Two authors who never spoke, five percent apart.
+    ///
+    /// That agreement is the only cheap test there is for this file, and it is worth re-running
+    /// after touching any coefficient. 2.35.0 shipped without the iteration count and the same
+    /// check would have read 0.55 against 0.16 — the error was sitting in plain sight and got
+    /// waved through as "two authors, two intents". It was not; they agree.
+    ///
+    /// Damping is the exception and genuinely does differ: MagicaCloth2 ships 0.05 where a
+    /// default PhysBone works out near 0.66. That one is a real difference in intent — VRChat's
+    /// default chain is nearly dead and creators raise spring to 0.6+ for hair, which lands back
+    /// in MagicaCloth2's territory.
     /// </summary>
     public static class PhysBoneSolverMap
     {
@@ -90,6 +101,19 @@ namespace AvatarBridge
         /// quite reach total retention.
         /// </summary>
         const float SimplifiedSpringCeiling = 0.99f;
+
+        /// <summary>
+        /// `Define.System.AngleLimitIteration`. MagicaCloth2 runs the angle constraint this many
+        /// times per step — its author's comment on that loop says the iteration is mandatory
+        /// because the constraint nudges parent and child together — so the serialized stiffness
+        /// is a PER-ITERATION fraction and compounds three times before the step ends.
+        ///
+        /// Missing this shipped every chain roughly three times too stiff in 2.35.0, which
+        /// produced visible vibration in game: the same loop's comment warns that rotating about
+        /// a point near the parent is 酷い振動の温床 — a hotbed of severe vibration — and a
+        /// too-large stiffness is exactly what drives it there.
+        /// </summary>
+        const int RestorationIterations = 3;
 
         /// <summary>Re-expresses a per-step fraction measured at 60 Hz as one at 90 Hz.</summary>
         static float Rebase(float retentionAt60)
@@ -137,17 +161,23 @@ namespace AvatarBridge
         /// MagicaCloth2 `angleRestorationConstraint.stiffness`, as the inspector wants it —
         /// i.e. already divided back out by <see cref="RestorationScale"/>.
         ///
+        /// The value is per ITERATION, so the per-step figure has to be un-compounded across
+        /// <see cref="RestorationIterations"/> before dividing the scale back out.
+        ///
         /// <paramref name="saturated"/> reports that the PhysBone asked for a faster snap than
-        /// MagicaCloth2 can express. Its ceiling of 0.2 per step at 90 Hz is equivalent to a
-        /// PhysBone pull of about 0.3, and both of those already close the gap to within a
-        /// billionth inside one second — so the clamp costs nothing visible, but it does mean
-        /// every pull above ~0.3 lands on the same value and the report should say so.
+        /// MagicaCloth2 can express — its ceiling works out to a PhysBone pull somewhere above
+        /// 0.6, depending on spring. Both settle within a frame by then, so the clamp costs
+        /// nothing visible, but every pull past it lands on the same value and the report says so.
         /// </summary>
         public static float RestorationStiffness(float pull, float spring, float stiffness,
             bool advanced, out bool saturated)
         {
             float perStep90 = 1f - Rebase(1f - Restore60(pull, spring, stiffness, advanced));
-            float inspector = perStep90 / RestorationScale;
+
+            // Un-compound the three iterations: solving 1 - (1-s)^3 = perStep90 for s.
+            float perIteration = 1f - Mathf.Pow(1f - perStep90, 1f / RestorationIterations);
+
+            float inspector = perIteration / RestorationScale;
             saturated = inspector > 1f;
             return Mathf.Clamp01(inspector);
         }

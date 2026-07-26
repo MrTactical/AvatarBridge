@@ -367,9 +367,9 @@ namespace AvatarBridge
             if (satRoot || satTip)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"Pull {data.Pull:0.##} is stiffer than MagicaCloth2 can express — its restoration tops out " +
-                    "around a pull of 0.3. Both settle within a frame at that point, so this should not be " +
-                    "visible, but the chain will not get any stiffer than it now is.");
+                    $"Pull {data.Pull:0.##} is stiffer than MagicaCloth2 can express — its restoration tops " +
+                    "out above a pull of about 0.6. Both settle within a frame at that point, so this should " +
+                    "not be visible, but the chain will not get any stiffer than it now is.");
             }
 
             if (!advanced && data.Stiffness > 0.01f)

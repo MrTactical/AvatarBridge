@@ -189,10 +189,15 @@ no arithmetic between them could mean anything.
 `PhysBoneManager.PhysBoneJob.SolveChain` shows PhysBone integrating bone *endpoints* and reading
 rotations back out of where they land — the same thing MagicaCloth2 does. The real obstacle was
 calibration: both solvers apply per-step coefficients, PhysBone at a fixed 60 Hz and MagicaCloth2
-at 90 Hz, so a retention `r` on one side is `r^(60/90)` on the other. Two more facts fall out of
+at 90 Hz, so a retention `r` on one side is `r^(60/90)` on the other. Three more facts fall out of
 the same source — MagicaCloth2 scales its inspector's restoration stiffness by `0.2` before the
-solver sees it, and PhysBone's *stiffness* isn't an independent axis at all, since the algebra
-collapses it into a scale on the other two (and Simplified integration never reads it).
+solver sees it *and* applies it three times per step, and PhysBone's *stiffness* isn't an
+independent axis at all, since the algebra collapses it into a scale on the other two (and
+Simplified integration never reads it).
+
+The check that the arithmetic is right: run MagicaCloth2's own default restoration back through it
+in reverse and you get a PhysBone pull of **0.168**, against a default PhysBone's actual **0.160**.
+Two authors who never spoke, five percent apart.
 
 That conversion is **Derive physics from the PhysBone**, off by default. With it off, a stock
 MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where every chain
