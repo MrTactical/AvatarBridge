@@ -86,10 +86,10 @@ namespace AvatarBridge
         // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
         // Start each cloth from the MagicaCloth2 preset that fits the chain, rather than from
-        // values derived out of the PhysBone. PhysBones and MagicaCloth2 are different solvers
-        // (rotational spring vs particle positions), so derived numbers are analogies; a preset
-        // written by MagicaCloth2's own author is a better starting point. Structure — bones,
-        // colliders, ignores — still comes from the PhysBone either way.
+        // MagicaCloth2's global defaults. A preset written by the solver's own author is a better
+        // baseline than one set of numbers for everything. Structure — bones, colliders, ignores —
+        // comes from the PhysBone either way, and derivePhysicsFromPhysBone below overrides the
+        // preset's damping and restoration when it is on.
         public bool useMagicaPresets = true;
         // Both of these were unconditional in 1.1.2, which one tester reports as the best
         // MagicaCloth2 result they've had — while the angle limit wrecked the jiggle chains on
@@ -98,8 +98,19 @@ namespace AvatarBridge
         public bool transferAngleLimits = false;
         // After the preset loads, apply the handful of PhysBone facts that mean the same thing
         // in MagicaCloth2 — no gravity, upward gravity, and immobile (which is world influence
-        // inverted). Deliberately excludes pull/spring/stiffness, which have no counterpart.
+        // inverted).
         public bool fitToPhysBone = true;
+        // Derive damping and angle restoration from the PhysBone's own pull/spring/stiffness,
+        // instead of leaving the preset's. Both solvers turned out to be position integrators
+        // with per-step coefficients at a fixed, known rate — PhysBone 60 Hz, MagicaCloth2 90 Hz
+        // — so a real conversion exists and PhysBoneSolverMap derives it from both sources.
+        //
+        // Off by default. The arithmetic is sound and the preset path is unchanged when this is
+        // off, but a preset is a baseline its own author tuned by eye, and derived values have
+        // been walked back before. This one is derived rather than guessed; it still wants
+        // watching in game before it becomes the default. Replaces the preset's damping and
+        // restoration only — structure, gravity, immobile and radius are untouched.
+        public bool derivePhysicsFromPhysBone = false;
         public bool capParticleRadius = true;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided

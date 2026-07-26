@@ -322,9 +322,9 @@ namespace AvatarBridge
             {
                 b.Add(BridgeElements.SubHeading("MagicaCloth2 feel"));
                 b.Add(BridgeElements.Hint(
-                    "Bones, colliders and ignored transforms come from the PhysBone. Everything else starts " +
-                    "from MagicaCloth2's own tuned values — the two systems simulate differently, so PhysBone " +
-                    "numbers don't carry over. They're in the report if you want to tune a chain by hand."));
+                    "Bones, colliders and ignored transforms come from the PhysBone. The feel starts from " +
+                    "MagicaCloth2's own tuned values, and \"Derive physics\" below replaces it with a real " +
+                    "conversion of the PhysBone's numbers. Either way they're all in the report."));
 
                 b.Add(BridgeElements.Bind("Match a preset to each chain",
                     "Start each chain from the MagicaCloth2 preset that fits it — hair, tail, skirt, " +
@@ -336,9 +336,15 @@ namespace AvatarBridge
                     "After the preset loads, apply the few PhysBone facts that mean the same " +
                     "thing in MagicaCloth2: a chain with no gravity keeps none, negative gravity " +
                     "points up, and immobile becomes world influence (MagicaCloth2 measures the " +
-                    "same thing the other way round). Pull, spring and stiffness are left out — " +
-                    "they have no MagicaCloth2 counterpart. Each adjustment is named in the report.",
+                    "same thing the other way round). Each adjustment is named in the report.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
+                b.Add(BridgeElements.Bind("Derive physics from the PhysBone",
+                    "Convert each chain's pull, spring and stiffness into MagicaCloth2's damping and " +
+                    "angle restoration, replacing the preset's feel. Both systems turned out to move " +
+                    "positions with per-step values at a fixed rate — 60 Hz against 90 Hz — so the " +
+                    "conversion is derived from both solvers rather than guessed. Off by default " +
+                    "because it's new: if a chain moves wrong, turn this off to get the preset back.",
+                    settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "MagicaCloth2's radius is the particle size, not just a collision radius, so " +
                     "particles wider than the gap between bones shove each other apart. Leave on " +

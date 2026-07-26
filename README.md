@@ -173,31 +173,39 @@ only one per type per object, so the second's offsets are dropped (its sources a
 
 ## PhysBones → MagicaCloth2
 
-**Structure transfers exactly; feel does not.** Which bone the chain hangs from, which colliders
-it collides with, which transforms to leave out, whether it started enabled — all verbatim. The
-physics values start from a MagicaCloth2 preset instead of being derived from the PhysBone's.
+**Structure transfers exactly.** Which bone the chain hangs from, which colliders it collides with,
+which transforms to leave out, whether it started enabled — all verbatim.
 
-That's deliberate. Earlier versions derived MagicaCloth2 settings from PhysBone settings — gravity
-scaled into m/s², spring inverted into damping, immobile into inertia. Every one of those looked
-reasonable and every one had to be walked back after a real avatar misbehaved.
+**Feel** starts from a MagicaCloth2 preset, and can optionally be converted from the PhysBone's own
+numbers.
 
-The reason isn't that the numbers were wrong. **The two systems are different kinds of
-simulation.** PhysBones — like DynamicBone, which they replaced — are per-bone *rotational
-springs*. MagicaCloth2 is a *particle position* solver: it moves particles through space and reads
-bone rotations back out of where they land. A value meaning "springiness" to one doesn't mean
-anything in particular to the other.
+For a long time it couldn't be. Earlier versions derived MagicaCloth2 settings from PhysBone
+settings, each attempt looked reasonable, and each had to be walked back after a real avatar
+misbehaved. The explanation given at the time was that the two are different *kinds* of
+simulation — PhysBones per-bone rotational springs, MagicaCloth2 a particle position solver — so
+no arithmetic between them could mean anything.
 
-So a stock MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where
-every chain starts. Three PhysBone facts *do* carry over, because they ask the same question on
-both sides rather than needing conversion: a chain with **no gravity** keeps none (presets ship
-their own, and Long Hair's 5.0 would make it fall for the first time in ChilloutVR), **negative
-gravity** points up, and **immobile** becomes world influence, which is the same 0–1 question
-measured the other way round. Pull, spring and stiffness are left alone — they have no
-counterpart. Each adjustment is named in the report, as are the PhysBone's own numbers, so you can
-tune from there:
+**That explanation was wrong.** The VRChat SDK ships `VRC.Dynamics.dll` unobfuscated, and
+`PhysBoneManager.PhysBoneJob.SolveChain` shows PhysBone integrating bone *endpoints* and reading
+rotations back out of where they land — the same thing MagicaCloth2 does. The real obstacle was
+calibration: both solvers apply per-step coefficients, PhysBone at a fixed 60 Hz and MagicaCloth2
+at 90 Hz, so a retention `r` on one side is `r^(60/90)` on the other. Two more facts fall out of
+the same source — MagicaCloth2 scales its inspector's restoration stiffness by `0.2` before the
+solver sees it, and PhysBone's *stiffness* isn't an independent axis at all, since the algebra
+collapses it into a scale on the other two (and Simplified integration never reads it).
+
+That conversion is **Derive physics from the PhysBone**, off by default. With it off, a stock
+MagicaCloth2 BoneCloth — a configuration tuned by the solver's own author — is where every chain
+starts.
+
+Either way, three PhysBone facts carry over separately, because they ask the same question on both
+sides rather than needing conversion: a chain with **no gravity** keeps none (presets ship their
+own, and Long Hair's 5.0 would make it fall for the first time in ChilloutVR), **negative gravity**
+points up, and **immobile** becomes world influence, the same 0–1 question measured the other way
+round. Every adjustment is named in the report, as are the PhysBone's own numbers:
 
 > `tail — BoneCloth on the MagicaCloth2 "Tail" preset, 3 collider(s). Source PhysBone was pull`
-> `0.2, spring 0.4, gravity 0, immobile 0.75, radius 0.02 — none of those transfer.`
+> `0.2, spring 0.4, gravity 0, immobile 0.75, radius 0.02.`
 
 Stretch & squish, multi-child blending, `Is Animated` and angle limits are reported the same way,
 each naming the field to change if that chain wants it.
@@ -207,13 +215,11 @@ kind of simulation, so that path maps values across 1:1.
 
 ### Options
 
-None of these add arithmetic; they swap one author-tuned baseline for another, or copy a value
-verbatim.
-
 | setting | default | what it does |
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The three facts above — no gravity, upward gravity, immobile → world influence. Turn it off to get the preset exactly as its author wrote it |
+| **Derive physics from the PhysBone** | off | Converts pull, spring and stiffness into MagicaCloth2's damping and angle restoration, replacing the preset's feel. Derived from both solvers' source rather than guessed — but new, so off until it has more avatars behind it. Turn it off to get the preset back |
 | **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
 | **Transfer angle limits** | off | Copies each limit angle across. ⚠️ Genuinely avatar-dependent — this shakes some chains and is the best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Also gives each cloth the avatar's own colliders it could swing into, so a tail that passed through the leg in VRChat collides with it here. Improves on the original rather than copying it, so check before uploading |

@@ -18,21 +18,23 @@ namespace AvatarBridge
     ///   which transforms to leave out       -> expressed as root bones (see WriteRootsExcluding)
     ///   whether it started enabled          -> the holder's active state
     ///
-    /// Every physics value is left at MagicaCloth2's own defaults. That is the whole idea.
+    /// By default every physics value is left to MagicaCloth2 — either its own defaults or a
+    /// preset matched to the kind of chain.
     ///
-    /// Earlier versions derived MagicaCloth2 settings from PhysBone settings — gravity scaled
-    /// into m/s², spring inverted into damping, immobile inverted into inertia, pull folded
-    /// into angle restoration. Each mapping looked reasonable and each one had to be walked
-    /// back after a real avatar misbehaved, because the two systems are not the same kind of
-    /// simulation. PhysBones, like DynamicBone before them, are per-bone ROTATIONAL SPRINGS.
-    /// MagicaCloth2 is a PARTICLE POSITION solver: it moves particles through space and reads
-    /// bone rotations back out of where they land. A number that means "springiness" to one
-    /// does not mean anything in particular to the other, so arithmetic between them produces
-    /// confident nonsense.
+    /// Earlier versions derived those values from the PhysBone and had to walk each attempt back
+    /// after a real avatar misbehaved. The reason given at the time was that the two systems are
+    /// different kinds of simulation — PhysBones per-bone rotational springs, MagicaCloth2 a
+    /// particle position solver — so no arithmetic between them could mean anything.
     ///
-    /// So no arithmetic. A stock MagicaCloth2 BoneCloth is a known-good configuration tuned by
-    /// the solver's own author, every converted chain behaves the same predictable way, and the
-    /// PhysBone's own numbers go into the report for anyone who wants to tune from there.
+    /// That reason was wrong, and reading `PhysBoneManager.PhysBoneJob.SolveChain` out of the
+    /// SDK's own (unobfuscated) `VRC.Dynamics.dll` is what settled it: PhysBone integrates bone
+    /// ENDPOINTS and reads rotations back out of where they land, exactly as MagicaCloth2 does.
+    /// The real problem was calibration — per-step coefficients at two different fixed rates,
+    /// 60 Hz against 90 Hz — and <see cref="PhysBoneSolverMap"/> now derives that conversion from
+    /// both solvers' source. It is opt-in ("Derive physics from PhysBone") because derived
+    /// values have a history here, not because the derivation is in doubt.
+    ///
+    /// With it off, the PhysBone's numbers still go into the report for anyone tuning by hand.
     ///
     /// Optional extras that add no arithmetic of their own: "Start from MagicaCloth2 presets"
     /// swaps the global defaults for one matched to the kind of chain, and "Transfer angle
@@ -125,6 +127,11 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"Particle radius {was:0.###} reduced to {sdata.radius.value:0.###} — anything wider than " +
                     "the gap between bones makes neighbouring particles overlap and shove each other apart.");
+            }
+
+            if (ctx.Settings.derivePhysicsFromPhysBone)
+            {
+                DerivePhysics(ctx, data, sdata);
             }
 
             if (ctx.Settings.fitToPhysBone)
@@ -250,12 +257,17 @@ namespace AvatarBridge
                            $"\"{MagicaPresetLibrary.DisplayName(preset)}\" preset (read as a " +
                            $"\"{chainClass}\" chain)";
             }
+            string fate = ctx.Settings.derivePhysicsFromPhysBone
+                ? "Pull, spring and stiffness were converted into damping and angle restoration; gravity, " +
+                  "immobile and radius are handled separately. Tune the cloth directly if this chain wants " +
+                  "a different feel."
+                : "Those numbers were not transferred — the cloth uses the baseline above. Turn on \"Derive " +
+                  "physics from the PhysBone\" to convert pull, spring and stiffness, or tune the cloth by hand.";
+
             ctx.Report.Converted(Category, data.Root.name,
                 $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
-                $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###} — none of " +
-                "those transfer, because MagicaCloth2 solves particle positions where PhysBones rotate bones. " +
-                "Tune the cloth directly if this chain wants a different feel.");
+                $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
 
             if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName)
                 && !ctx.Settings.transferAngleLimits)
@@ -303,21 +315,88 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Replaces the preset's damping and angle restoration with values derived from this
+        /// PhysBone's own pull, spring and stiffness.
+        ///
+        /// The derivation and its evidence are in <see cref="PhysBoneSolverMap"/>. In short: both
+        /// solvers integrate positions with per-step coefficients at a fixed known rate, so a
+        /// retention at PhysBone's 60 Hz re-expresses at MagicaCloth2's 90 Hz as `r^(60/90)`.
+        /// PhysBone's stiffness is not an independent axis — the algebra collapses it into a
+        /// scale on both of the others — and Simplified integration ignores it outright.
+        ///
+        /// Falloff curves carry across because both systems mean the same thing by them: a base
+        /// value multiplied by a 0..1 curve over the chain's depth. Only the endpoints survive,
+        /// since MagicaCloth2 builds its curve with <c>AnimationCurve.Linear</c>.
+        /// </summary>
+        static void DerivePhysics(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            bool advanced = data.IsAdvancedIntegration;
+
+            // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
+            // at the bone's depth, so root and tip can want quite different things.
+            float pullRoot = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0f);
+            float pullTip = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 1f);
+            float springRoot = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 0f);
+            float springTip = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 1f);
+            float stiffRoot = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 0f);
+            float stiffTip = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 1f);
+
+            float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
+            float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
+            PhysBoneSolverMap.MapCurve(dampRoot, dampTip,
+                out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
+            sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
+
+            float restRoot = PhysBoneSolverMap.RestorationStiffness(
+                pullRoot, springRoot, stiffRoot, advanced, out bool satRoot);
+            float restTip = PhysBoneSolverMap.RestorationStiffness(
+                pullTip, springTip, stiffTip, advanced, out bool satTip);
+            PhysBoneSolverMap.MapCurve(restRoot, restTip,
+                out float restValue, out float restStart, out float restEnd, out bool restCurve);
+
+            sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
+            sdata.angleRestorationConstraint.stiffness.SetValue(restValue, restStart, restEnd, restCurve);
+
+            ctx.Report.Approximated(Category, data.Root.name,
+                $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
+                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}. Both solvers integrate " +
+                "positions per step at a fixed rate, so PhysBone's 60 Hz coefficients were re-expressed at " +
+                "MagicaCloth2's 90 Hz. This replaces the preset's feel — if the chain moves wrong, turning " +
+                "\"Derive physics from PhysBone\" off restores it.");
+
+            if (satRoot || satTip)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"Pull {data.Pull:0.##} is stiffer than MagicaCloth2 can express — its restoration tops out " +
+                    "around a pull of 0.3. Both settle within a frame at that point, so this should not be " +
+                    "visible, but the chain will not get any stiffer than it now is.");
+            }
+
+            if (!advanced && data.Stiffness > 0.01f)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"Stiffness {data.Stiffness:0.##} was ignored, because VRChat ignores it too — " +
+                    "PhysBone's Simplified integration never reads stiffness. Switching the source PhysBone " +
+                    "to Advanced would make it mean something in both.");
+            }
+        }
+
+        /// <summary>
         /// Nudges the preset toward what the PhysBone actually asked for — but only for the
         /// facts that mean the SAME THING in both systems, which is a very short list.
         ///
-        /// Two kinds of statement survive the gap between a rotational spring and a particle
-        /// solver. **Categorical ones**: "this never falls", "this falls upward" — both systems
+        /// Two kinds of statement need no conversion at all, so they apply whether or not the
+        /// derived mapping is on. **Categorical ones**: "this never falls", "this falls upward" — both systems
         /// express those the same way, as a gravity of zero or a flipped direction. And **a
         /// dimensionless ratio with the same meaning on both sides**: MagicaCloth2 documents
         /// `worldInertia` as "World Influence (0.0 ~ 1.0)" and PhysBone's `immobile` is how much
         /// the chain IGNORES that same movement — the same question in the same units, just
         /// inverted. Neither involves converting one system's numbers into the other's.
         ///
-        /// Everything else stays with the preset. Pull and stiffness are NOT here: MagicaCloth2's
-        /// angle restoration pushes on particle positions where PhysBone's pull rotates a bone
-        /// toward its parent, so there is no exchange rate between them — that assumption is what
-        /// produced every physics regression this tool has shipped.
+        /// Pull, spring and stiffness are not here. They do have an exchange rate — see
+        /// <see cref="PhysBoneSolverMap"/>, which derives it — but converting them is a bigger
+        /// claim than this method makes, so it lives behind its own setting in
+        /// <see cref="DerivePhysics"/>. Everything else stays with the preset.
         /// </summary>
         static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
         {
