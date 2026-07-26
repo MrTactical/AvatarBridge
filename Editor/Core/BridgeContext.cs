@@ -43,6 +43,16 @@ namespace AvatarBridge
         public HashSet<string> ContactParameters = new HashSet<string>();
         public List<string> ParameterOrder = new List<string>();
 
+        /// <summary>
+        /// Renames the animator merge must apply verbatim, decided before it runs.
+        ///
+        /// ChilloutVR's Joystick2D control doesn't take two parameter names — it derives them,
+        /// driving "&lt;machineName&gt;-x" and "&lt;machineName&gt;-y". So a VRChat two-axis puppet can only
+        /// become one if the avatar's two axis parameters are renamed to match, and that has to be
+        /// settled while the menu is being built and obeyed later by the rename pass.
+        /// </summary>
+        public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
+
         public Animator TargetAnimator => Target != null ? Target.GetComponent<Animator>() : null;
 
         public string PathInTarget(Transform child) => RelativePath(Target.transform, child);

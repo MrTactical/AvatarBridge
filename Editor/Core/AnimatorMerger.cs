@@ -919,6 +919,15 @@ namespace AvatarBridge
             // clean names derived from their menu label, consistently everywhere.
             var sanitizedNames = new Dictionary<string, string>();
             var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
+
+            // Renames decided while the menu was built, which are not negotiable: a Joystick2D
+            // addresses its axes as "<machineName>-x" and "-y", so the avatar's own axis
+            // parameters have to arrive under exactly those names or the control drives nothing.
+            foreach (var forced in ctx.ForcedRenames)
+            {
+                sanitizedNames[forced.Key] = forced.Value;
+                takenNames.Add(forced.Value);
+            }
             foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
             {
                 string machineName = entry.machineName;
@@ -2622,7 +2631,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(stream);
         }
 
-        static string SanitizeParameterName(string source)
+        internal static string SanitizeParameterName(string source)
         {
             var parts = System.Text.RegularExpressions.Regex
                 .Split(source ?? "", "[^A-Za-z0-9]+")

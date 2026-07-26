@@ -40,6 +40,14 @@ namespace AvatarBridge
             public VRCExpressionsMenu.Control.ControlType Type;
         }
 
+        /// <summary>A VRChat two-axis puppet: one control, two -1..1 parameters.</summary>
+        class PuppetPair
+        {
+            public string Display;
+            public string X;
+            public string Y;
+        }
+
         public static void Run(BridgeContext ctx)
         {
             var vrc = ctx.SourceDescriptor;
@@ -63,10 +71,19 @@ namespace AvatarBridge
 
             var uses = new Dictionary<string, List<MenuUse>>();
             var visited = new HashSet<VRCExpressionsMenu>();
-            WalkMenu(vrc.expressionsMenu, "", uses, visited, ctx);
+            var puppets = new List<PuppetPair>();
+            WalkMenu(vrc.expressionsMenu, "", uses, visited, ctx, puppets);
 
             var entries = new List<CVRAdvancedSettingsEntry>();
             var usedNames = new HashSet<string>();
+
+            // Two-axis puppets become one ChilloutVR Joystick2D rather than two sliders, so the
+            // parameters they own must not also be built as sliders below.
+            var joystickParams = new HashSet<string>();
+            foreach (var entry in BuildJoysticks(ctx, puppets, usedNames, joystickParams))
+            {
+                entries.Add(entry);
+            }
 
             // Menu entries show the leaf name ("Cloak"), qualified by their parent menu
             // only when several controls share the same leaf ("Hoodie (Tops)").
@@ -92,6 +109,10 @@ namespace AvatarBridge
                     {
                         ftSkipped++;
                         continue;
+                    }
+                    if (joystickParams.Contains(p.name))
+                    {
+                        continue; // already covered by its Joystick2D entry
                     }
                     var entry = BuildEntry(ctx, p, uses.TryGetValue(p.name, out var paramUses) ? paramUses : null, usedNames, leafCounts);
                     if (entry != null)
@@ -122,6 +143,78 @@ namespace AvatarBridge
             UnityEditor.EditorUtility.SetDirty(ctx.CvrAvatar);
             ctx.Report.Converted(Category, $"{entries.Count} Advanced Avatar Settings entries created");
             NoteParameterPackers(ctx, entries);
+        }
+
+        /// <summary>
+        /// Turns each VRChat two-axis puppet into one ChilloutVR Joystick2D.
+        ///
+        /// These used to become two separate sliders, and a slider could only offer 0..1 while a
+        /// puppet axis runs -1..1 — so half of every axis was unreachable and a controller worked
+        /// in one quadrant. ChilloutVR has the matching control; it simply wasn't being used.
+        ///
+        /// The catch is that Joystick2D takes no parameter names. It derives them, driving
+        /// "&lt;machineName&gt;-x" and "&lt;machineName&gt;-y". So the avatar's own two axis parameters have
+        /// to be renamed to match, which is recorded in ForcedRenames for the animator merge to
+        /// apply everywhere they are referenced.
+        /// </summary>
+        static List<CVRAdvancedSettingsEntry> BuildJoysticks(BridgeContext ctx, List<PuppetPair> puppets,
+            HashSet<string> usedNames, HashSet<string> claimed)
+        {
+            var result = new List<CVRAdvancedSettingsEntry>();
+            foreach (var puppet in puppets)
+            {
+                // A parameter can only belong to one control; if two puppets share an axis the
+                // avatar is already ambiguous and the sliders are the safer reading.
+                if (claimed.Contains(puppet.X) || claimed.Contains(puppet.Y))
+                {
+                    continue;
+                }
+
+                string label = ShortName(puppet.Display);
+                string machine = AnimatorMerger.SanitizeParameterName(label);
+                if (string.IsNullOrEmpty(machine))
+                {
+                    continue;
+                }
+                string candidate = machine;
+                for (int n = 2; !usedNames.Add(candidate); n++)
+                {
+                    candidate = machine + n;
+                }
+
+                ctx.ForcedRenames[puppet.X] = candidate + "-x";
+                ctx.ForcedRenames[puppet.Y] = candidate + "-y";
+                claimed.Add(puppet.X);
+                claimed.Add(puppet.Y);
+
+                // Both axes keep syncing: the pair is one control to the wearer, and half a
+                // joystick arriving at other players is worse than none.
+                ctx.PreserveParameters.Add(candidate + "-x");
+                ctx.PreserveParameters.Add(candidate + "-y");
+
+                result.Add(new CVRAdvancedSettingsEntry
+                {
+                    name = label,
+                    machineName = candidate,
+                    unlinkNameFromMachineName = true,
+                    type = CVRAdvancedSettingsEntry.SettingsType.Joystick2D,
+                    setting = new CVRAdvancesAvatarSettingJoystick2D
+                    {
+                        // A VRChat puppet rests centred and reaches a full unit in each
+                        // direction; ChilloutVR's default 0..1 range would clip half of it away.
+                        defaultValue = Vector2.zero,
+                        rangeMin = new Vector2(-1f, -1f),
+                        rangeMax = new Vector2(1f, 1f),
+                        usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float,
+                    }
+                });
+
+                ctx.Report.Converted(Category, label,
+                    $"Two-axis puppet -> Joystick2D \"{candidate}\", full -1..1 on both axes. " +
+                    $"\"{puppet.X}\" and \"{puppet.Y}\" are renamed to \"{candidate}-x\" and " +
+                    $"\"{candidate}-y\", which is how ChilloutVR addresses a joystick's axes.");
+            }
+            return result;
         }
 
         /// <summary>Prefixes used by the parameter-packing optimisers, whose synced slots look like junk.</summary>
@@ -368,7 +461,8 @@ namespace AvatarBridge
         }
 
         static void WalkMenu(VRCExpressionsMenu menu, string prefix,
-            Dictionary<string, List<MenuUse>> uses, HashSet<VRCExpressionsMenu> visited, BridgeContext ctx)
+            Dictionary<string, List<MenuUse>> uses, HashSet<VRCExpressionsMenu> visited, BridgeContext ctx,
+            List<PuppetPair> puppets)
         {
             if (menu == null || visited.Contains(menu))
             {
@@ -393,6 +487,11 @@ namespace AvatarBridge
                     case VRCExpressionsMenu.Control.ControlType.TwoAxisPuppet:
                         RecordSubParameter(uses, ctx, control, 0, display + " (Horizontal)", control.type);
                         RecordSubParameter(uses, ctx, control, 1, display + " (Vertical)", control.type);
+                        string px = SubParameterName(control, 0), py = SubParameterName(control, 1);
+                        if (!string.IsNullOrEmpty(px) && !string.IsNullOrEmpty(py) && px != py)
+                        {
+                            puppets.Add(new PuppetPair { Display = display, X = px, Y = py });
+                        }
                         break;
 
                     case VRCExpressionsMenu.Control.ControlType.FourAxisPuppet:
@@ -403,11 +502,16 @@ namespace AvatarBridge
                         break;
 
                     case VRCExpressionsMenu.Control.ControlType.SubMenu:
-                        WalkMenu(control.subMenu, display + "/", uses, visited, ctx);
+                        WalkMenu(control.subMenu, display + "/", uses, visited, ctx, puppets);
                         break;
                 }
             }
         }
+
+        static string SubParameterName(VRCExpressionsMenu.Control control, int index) =>
+            control.subParameters != null && control.subParameters.Length > index
+                ? control.subParameters[index]?.name
+                : null;
 
         static void RecordSubParameter(Dictionary<string, List<MenuUse>> uses, BridgeContext ctx,
             VRCExpressionsMenu.Control control, int index, string display,
