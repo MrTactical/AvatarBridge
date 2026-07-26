@@ -240,8 +240,17 @@ namespace AvatarBridge
                 var probe = new GameObject("AvatarBridge_ContactProbe") { hideFlags = HideFlags.HideAndDontSave };
                 try
                 {
+                    // Exactly the CCK's own test, from its BrokenMonoBehaviourStep validator:
+                    // MonoScript.FromMonoBehaviour(...).text must be non-empty. Checking only for
+                    // a non-null MonoScript is not enough and let this through once already — when
+                    // Assembly-CSharp has failed to compile, Unity keeps the last good assembly
+                    // loaded, so the type still resolves and AddComponent still succeeds, but it
+                    // binds to something with no script asset behind it. The reference serializes
+                    // without a GUID, the CCK rejects the avatar, and ChilloutVR reports the script
+                    // as missing. Empty source text is what distinguishes that from a real binding.
                     var added = probe.AddComponent(receiver) as MonoBehaviour;
-                    if (added != null && UnityEditor.MonoScript.FromMonoBehaviour(added) != null)
+                    var script = added != null ? UnityEditor.MonoScript.FromMonoBehaviour(added) : null;
+                    if (script != null && !string.IsNullOrEmpty(script.text))
                     {
                         return true;
                     }
