@@ -56,6 +56,9 @@ namespace AvatarBridge
 
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
             var patched = new Dictionary<Shader, Shader>();
+            // One clone per material, not per material slot: a material used by four slots is
+            // still one material, and cloning it per slot would break batching between them.
+            var clones = new Dictionary<Material, Material>();
             var repointed = new List<string>();
             var refused = new List<string>();
 
@@ -73,7 +76,7 @@ namespace AvatarBridge
                     }
                     if (patched.TryGetValue(shader, out var already))
                     {
-                        if (already != null) { materials[i] = Repoint(material, already, dir); changed = true; }
+                        if (already != null) { materials[i] = Repoint(material, already, dir, clones); changed = true; }
                         continue;
                     }
 
@@ -91,7 +94,7 @@ namespace AvatarBridge
                         refused.Add($"{shader.name} ({reason})");
                         continue;
                     }
-                    materials[i] = Repoint(material, fixedShader, dir);
+                    materials[i] = Repoint(material, fixedShader, dir, clones);
                     repointed.Add(shader.name);
                     changed = true;
                 }
@@ -155,6 +158,11 @@ namespace AvatarBridge
             string text;
             try { text = File.ReadAllText(sourcePath); }
             catch { reason = "source unreadable"; return null; }
+
+            // The inserted lines below are written with \n. If the shader is CRLF — most are —
+            // mixing them makes Unity warn about inconsistent line endings on import, and blame
+            // AvatarBridge for it. Remembered here, reapplied to the whole file before writing.
+            bool crlf = text.Contains("\r\n");
 
             if (Regex.IsMatch(text, @"#pragma\s+surface"))
             {
@@ -225,6 +233,11 @@ namespace AvatarBridge
             string newName = shaderName + " (SPI)";
             text = Regex.Replace(text, @"Shader\s+""[^""]+""", "Shader \"" + newName + "\"", RegexOptions.None);
 
+            if (crlf)
+            {
+                text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            }
+
             Directory.CreateDirectory(dir);
             string outPath = AssetDatabase.GenerateUniqueAssetPath(
                 dir + "/" + Path.GetFileNameWithoutExtension(sourcePath) + "_SPI.shader");
@@ -250,16 +263,24 @@ namespace AvatarBridge
 
         /// <summary>
         /// A copy of the material pointing at the patched shader, so other avatars sharing the
-        /// original material are unaffected.
+        /// original material are unaffected. Cloned once and reused for every slot that had the
+        /// same material, which is what keeps those slots batching together.
         /// </summary>
-        static Material Repoint(Material original, Shader patchedShader, string dir)
+        static Material Repoint(Material original, Shader patchedShader, string dir,
+            Dictionary<Material, Material> clones)
         {
+            if (clones.TryGetValue(original, out var existing))
+            {
+                return existing;
+            }
+
             var copy = UnityEngine.Object.Instantiate(original);
-            copy.name = original.name;
             copy.shader = patchedShader;
             Directory.CreateDirectory(dir);
+            // CreateAsset renames the object after the file, so the path decides the final name.
             string path = AssetDatabase.GenerateUniqueAssetPath(dir + "/" + original.name + "_SPI.mat");
             AssetDatabase.CreateAsset(copy, path);
+            clones[original] = copy;
             return copy;
         }
     }
