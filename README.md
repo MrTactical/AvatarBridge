@@ -4,6 +4,26 @@ A Unity Editor tool that converts a **VRChat SDK3 avatar** into a **ChilloutVR C
 animator, menus, physics, contacts and face tracking — and hands you a clean starting point to
 finish by hand.
 
+> ## ✅ It actually works
+>
+> **30+ avatars converted, uploaded and worn in ChilloutVR** — by the author and by independent
+> testers, on other people's models, not just tidy test cases. Heavy ones too: 400k-triangle
+> avatars with 56 material slots, full VRCFury rigs, face tracking, the lot.
+>
+> **And tested *in game*, which is the only test that counts.** An avatar that converts cleanly and
+> validates green can still be wrong — a shader drawing into one eye, a chain moving unlike its
+> original, a parameter reaching nobody. None of that shows in the editor. So each of these was
+> confirmed in a live instance, by wearing it:
+>
+> - contacts triggered by other players, with real proximity and zero sync cost
+> - stereo shaders rendering correctly **in both eyes**
+> - prefab constraints driving real bones — Avatar Limb Scaling working end to end
+> - PhysBone chains moving like their originals, derived from both solvers' source
+> - the "bicycle pose" fixed, confirmed on a tester's avatar
+>
+> Bugs still turn up — every one above was found this way, by somebody putting an avatar on and
+> looking. That's why the report exists and why [reporting a bug](#reporting-a-bug) gets a fix.
+
 <p align="center">
   <img src="docs/images/window.png" alt="The AvatarBridge window: a blue-to-orange banner, three numbered steps, and collapsible option cards" width="480">
 </p>
