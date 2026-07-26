@@ -2678,9 +2678,15 @@ namespace AvatarBridge
         /// Copies an asset a clip points at out of Fury's temp and into the output, returning the
         /// copy — or the original when it was never volatile.
         ///
-        /// Uses CopyAsset rather than Instantiate so it works whatever the type is: a material
-        /// swap is the common case, but clips also assign meshes, textures and sprites, and a
-        /// type-specific clone would quietly miss those.
+        /// Two cases, and getting them confused copies the wrong thing entirely.
+        ///
+        /// A standalone file is copied with CopyAsset, which preserves import settings and works
+        /// for any type. But VRCFury also embeds generated materials *inside* its controllers as
+        /// sub-assets, and GetAssetPath on a sub-asset returns the containing file — so CopyAsset
+        /// duplicates a whole animator controller into the output, and loading a Material back out
+        /// of that path returns null because the main asset is a controller. The reference is then
+        /// left pointing at the doomed original: exactly the failure this was written to fix,
+        /// wearing a disguise. Sub-assets are therefore cloned as objects instead.
         /// </summary>
         static UnityEngine.Object RehomeReferencedAsset(UnityEngine.Object value, BridgeContext ctx,
             Dictionary<UnityEngine.Object, UnityEngine.Object> done)
@@ -2707,22 +2713,38 @@ namespace AvatarBridge
             {
                 AssetDatabase.CreateFolder(ctx.OutputDir.TrimEnd('/'), "RehomedAssets");
             }
-            string target = AssetDatabase.GenerateUniqueAssetPath(
-                dir + "/" + System.IO.Path.GetFileName(source));
-
             UnityEngine.Object copy = value;
-            if (AssetDatabase.CopyAsset(source, target))
+            if (AssetDatabase.IsMainAsset(value))
             {
-                AssetDatabase.ImportAsset(target, ImportAssetOptions.ForceSynchronousImport);
-                var loaded = AssetDatabase.LoadAssetAtPath(target, value.GetType());
-                if (loaded != null)
+                string target = AssetDatabase.GenerateUniqueAssetPath(
+                    dir + "/" + System.IO.Path.GetFileName(source));
+                if (AssetDatabase.CopyAsset(source, target))
                 {
-                    copy = loaded;
-                    ctx.Report.Converted("Assets", $"Re-homed \"{value.name}\" out of temp",
-                        "An animation clip assigns this, which is a reference the clip copy alone " +
-                        "doesn't rescue — VRCFury's next build would delete it and the clip would " +
-                        "assign nothing.");
+                    AssetDatabase.ImportAsset(target, ImportAssetOptions.ForceSynchronousImport);
+                    copy = AssetDatabase.LoadAssetAtPath(target, value.GetType()) ?? value;
                 }
+            }
+            else
+            {
+                // Embedded in something else — clone the object itself, or we'd drag its whole
+                // container along and still not rescue the thing that was actually referenced.
+                var clone = UnityEngine.Object.Instantiate(value);
+                clone.name = value.name;
+                string extension = value is Material ? ".mat"
+                                 : value is AnimationClip ? ".anim"
+                                 : ".asset";
+                string target = AssetDatabase.GenerateUniqueAssetPath(
+                    dir + "/" + SanitizeFileName(value.name) + extension);
+                AssetDatabase.CreateAsset(clone, target);
+                copy = clone;
+            }
+
+            if (copy != value)
+            {
+                ctx.Report.Converted("Assets", $"Re-homed \"{value.name}\" out of temp",
+                    "An animation clip assigns this, which is a reference the clip copy alone " +
+                    "doesn't rescue — VRCFury's next build would delete it and the clip would " +
+                    "assign nothing.");
             }
             done[value] = copy;
             return copy;
@@ -3447,11 +3469,16 @@ namespace AvatarBridge
 
         static string SanitizeFileName(string name)
         {
+            // An asset's name is free text and can be empty; a file name can be neither.
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return "Asset";
+            }
             foreach (char c in System.IO.Path.GetInvalidFileNameChars())
             {
                 name = name.Replace(c, '_');
             }
-            return name;
+            return name.Trim();
         }
     }
 }
