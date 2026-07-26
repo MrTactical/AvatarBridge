@@ -64,6 +64,8 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
+- **Your avatar writes its own store listing** — counted from what was actually built, sized to
+  ChilloutVR's 256-character box, and typed straight into the upload page.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
 humanoid for ChilloutVR.)*
@@ -339,6 +341,40 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
 **Either mode needs a tracking source at runtime** — true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480) and set CVR's *Eye Tracking* and
 *Mouth Tracking* modules to **OSC**.
+
+## Store description
+
+ChilloutVR's upload page wants a description, and most listings never get one. AvatarBridge writes
+a starting point out of what the conversion actually produced:
+
+```
+
+                        ← your own words go here
+
+Vap
+8 toggles · 9 sliders · 9 physics chains (MagicaCloth 2) · blink and lip sync
+
+Converted from VRChat with AvatarBridge
+github.com/MrTactical/AvatarBridge
+```
+
+Two buttons on the report:
+
+- **Fill CCK description** — types it into the Content Manager's Description box. Open the CCK
+  Control Panel on the **Builder** tab with your avatar selected first. It won't touch the box if
+  you've already written something there.
+- **Copy description** — puts it on the clipboard to place yourself.
+
+Either way it's saved as `Description.txt` beside the report.
+
+**Every line is counted from the finished avatar**, so no two are alike — and each claim is checked
+against what was *built*, not what you asked for. Face tracking is only mentioned if the component
+is really there; the height slider only if its control reached the menu. This text goes into a
+public listing under your name, so a line it can't verify is a line it doesn't print.
+
+It's also built to fit: ChilloutVR's box holds **256 characters**, and ~90 of those are left free
+for your own words. The generated part is meant to be the footer of your description, not the whole
+of it.
 
 ## Setup mode
 
