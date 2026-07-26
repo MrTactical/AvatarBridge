@@ -174,20 +174,23 @@
     -unity-background-scale-mode: scale-to-fit;
 }
 
+/* Underscores, not spaces. "d_IN foldout" doesn't resolve and Unity substitutes a warning
+ * triangle, which looked like the card was reporting a problem. The CCK gets this right and
+ * this is its spelling. */
 .dark .ab-card-arrow {
-    background-image: resource('d_IN foldout');
+    background-image: resource('d_IN_foldout@2x');
 }
 
 .light .ab-card-arrow {
-    background-image: resource('IN foldout');
+    background-image: resource('IN_foldout@2x');
 }
 
 .dark .ab-card-arrow-on {
-    background-image: resource('d_IN foldout on');
+    background-image: resource('d_IN_foldout_on@2x');
 }
 
 .light .ab-card-arrow-on {
-    background-image: resource('IN foldout on');
+    background-image: resource('IN_foldout_on@2x');
 }
 
 .ab-card-title {
@@ -410,11 +413,12 @@
     color: rgb(255, 255, 255);
 }
 
-/* The report's buttons, so they match the rest of the window rather than arriving as raw
- * Unity buttons in the middle of it. */
+/* The report's buttons. Setting only size left them with Unity's stock fill and border, which
+ * is what made them read as bolted on; these carry their own surface. */
 .ab-btn {
     height: 24px;
     border-radius: 4px;
+    border-width: 1px;
     padding: 0 12px;
     margin: 4px 6px 0 0;
     font-size: 11px;
@@ -422,19 +426,94 @@
     transition-duration: 0.09s;
 }
 
+.dark .ab-btn {
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.light .ab-btn {
+    background-color: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.22);
+    color: rgba(0, 0, 0, 0.85);
+}
+
+.dark .ab-btn:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.light .ab-btn:hover {
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
 .ab-report-row {
     flex-direction: row;
     flex-wrap: wrap;
 }
 
-.ab-report-list {
-    max-height: 190px;
-    min-height: 60px;
-    margin-top: 4px;
+/* Clickable chips need to look clickable, and the selected one fills solid. */
+.ab-chip-click {
+    border-radius: 3px;
+    transition-property: background-color;
+    transition-duration: 0.09s;
 }
 
-.ab-report-line {
+.ab-report-list {
+    max-height: 260px;
+    margin-top: 5px;
+    border-width: 1px;
+    border-radius: 4px;
+}
+
+.dark .ab-report-list {
+    border-color: rgba(0, 0, 0, 0.45);
+}
+
+.light .ab-report-list {
+    border-color: rgba(0, 0, 0, 0.18);
+}
+
+/* An entry is a status stripe plus two lines of text, not one long sentence. Wrapping the
+ * detail under its own heading is what makes a page of these skimmable. */
+.ab-report-item {
+    flex-direction: row;
+    padding: 5px 7px 5px 0;
+}
+
+.dark .ab-report-item-alt {
+    background-color: rgba(255, 255, 255, 0.030);
+}
+
+.light .ab-report-item-alt {
+    background-color: rgba(0, 0, 0, 0.028);
+}
+
+.ab-report-stripe {
+    width: 3px;
+    border-radius: 2px;
+    margin: 1px 7px 1px 5px;
+    flex-shrink: 0;
+}
+
+.ab-report-head {
+    font-size: 11px;
+    -unity-font-style: bold;
+    white-space: normal;
+    margin: 0;
+    padding: 0;
+}
+
+.ab-report-detail {
     font-size: 10px;
     white-space: normal;
-    margin: 1px 0;
+    margin: 2px 0 0 0;
+    padding: 0;
+}
+
+.dark .ab-report-detail {
+    color: rgba(255, 255, 255, 0.58);
+}
+
+.light .ab-report-detail {
+    color: rgba(0, 0, 0, 0.62);
 }

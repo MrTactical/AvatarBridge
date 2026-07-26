@@ -197,14 +197,73 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>A tally chip. Only non-zero counts are emphasised, so a clean run reads clean.</summary>
-        public static Label Chip(string text, Color colour, bool emphasise)
+        /// <summary>
+        /// A tally chip. Only non-zero counts are emphasised, so a clean run reads clean.
+        ///
+        /// With <paramref name="onClick"/> it becomes a filter: selected chips fill solid, and a
+        /// count of zero is left unclickable, since filtering to nothing helps nobody.
+        /// </summary>
+        public static Label Chip(string text, Color colour, bool emphasise,
+            Action onClick = null, bool selected = false, bool clickable = true)
         {
             var chip = new Label(text);
             chip.AddToClassList("ab-chip");
-            chip.style.backgroundColor = new Color(colour.r, colour.g, colour.b, emphasise ? 0.22f : 0.10f);
-            chip.style.color = emphasise ? colour : BridgeTheme.Muted;
+
+            if (selected)
+            {
+                chip.style.backgroundColor = colour;
+                chip.style.color = Color.white;
+            }
+            else
+            {
+                chip.style.backgroundColor = new Color(colour.r, colour.g, colour.b, emphasise ? 0.22f : 0.10f);
+                chip.style.color = emphasise ? colour : BridgeTheme.Muted;
+            }
+
+            if (onClick != null && clickable)
+            {
+                chip.AddToClassList("ab-chip-click");
+                chip.RegisterCallback<MouseDownEvent>(_ => onClick());
+            }
             return chip;
+        }
+
+        /// <summary>
+        /// One report entry, laid out rather than concatenated into a sentence: a status stripe,
+        /// the category and subject on one line, and the detail wrapped underneath it. The old
+        /// single-line form buried the useful half of every entry off the right edge.
+        /// </summary>
+        public static VisualElement ReportRow(string category, string subject, string detail,
+            Color colour, bool alternate)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("ab-report-item");
+            if (alternate)
+            {
+                row.AddToClassList("ab-report-item-alt");
+            }
+
+            var stripe = new VisualElement();
+            stripe.AddToClassList("ab-report-stripe");
+            stripe.style.backgroundColor = colour;
+            row.Add(stripe);
+
+            var text = new VisualElement();
+            text.style.flexGrow = 1;
+            text.style.flexShrink = 1;
+
+            var head = new Label(string.IsNullOrEmpty(subject) ? category : category + " — " + subject);
+            head.AddToClassList("ab-report-head");
+            text.Add(head);
+
+            if (!string.IsNullOrEmpty(detail))
+            {
+                var body = new Label(detail);
+                body.AddToClassList("ab-report-detail");
+                text.Add(body);
+            }
+            row.Add(text);
+            return row;
         }
 
         /// <summary>Marks a toggle as opt-in rather than broken.</summary>

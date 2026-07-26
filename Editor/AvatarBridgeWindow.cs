@@ -519,7 +519,9 @@ namespace AvatarBridge
             EditorApplication.delayCall += () =>
             {
                 try { lastReport = BridgeConverter.Convert(target, chosen); }
-                finally { converting = false; Rebuild(); }
+                // A filter left from the previous run can select a status the new report has none of,
+                // which shows an empty list and an unclickable chip to clear it with.
+                finally { converting = false; reportFilter = null; Rebuild(); }
             };
         }
 #endif // VRC_SDK_VRCSDK3
@@ -589,6 +591,7 @@ namespace AvatarBridge
                 () =>
                 {
                     lastReport = CvrSetup.Run(setupAvatar, settings);
+                    reportFilter = null;
                     ScheduleRebuild();
                 });
             button.SetActive(setupAvatar != null && !ftPackageMissing);
@@ -700,6 +703,38 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- report ---
 
+        /// <summary>
+        /// Which status the report list is filtered to, or null for the default view — everything
+        /// that isn't a plain success. Clicking the selected chip again clears it.
+        /// </summary>
+        ReportStatus? reportFilter;
+
+        void AddFilterChip(VisualElement parent, ReportStatus status, string noun, Color colour, bool emphasise)
+        {
+            int count = lastReport.CountOf(status);
+            bool selected = reportFilter == status;
+            parent.Add(BridgeElements.Chip($"{count} {noun}", colour, emphasise,
+                () =>
+                {
+                    reportFilter = selected ? (ReportStatus?)null : status;
+                    ScheduleRebuild();
+                },
+                selected,
+                count > 0));
+        }
+
+        static Color StatusColour(ReportStatus status)
+        {
+            switch (status)
+            {
+                case ReportStatus.Error: return BridgeTheme.Bad;
+                case ReportStatus.Warning: return BridgeTheme.Warn;
+                case ReportStatus.Approximated: return BridgeTheme.Warn;
+                case ReportStatus.Converted: return BridgeTheme.Good;
+                default: return BridgeTheme.Muted;
+            }
+        }
+
         static Button ReportButton(string text, string tooltip, Action action)
         {
             var button = new Button(action) { text = text, tooltip = tooltip };
@@ -727,15 +762,16 @@ namespace AvatarBridge
             var chips = new VisualElement();
             chips.AddToClassList("ab-row");
             chips.style.flexWrap = Wrap.Wrap;
-            chips.Add(BridgeElements.Chip($"{lastReport.CountOf(ReportStatus.Converted)} done",
-                BridgeTheme.Good, true));
-            chips.Add(BridgeElements.Chip($"{lastReport.CountOf(ReportStatus.Approximated)} approximated",
-                BridgeTheme.Warn, false));
-            chips.Add(BridgeElements.Chip($"{lastReport.CountOf(ReportStatus.Skipped)} skipped",
-                BridgeTheme.Muted, false));
-            chips.Add(BridgeElements.Chip($"{warnings} warnings", BridgeTheme.Warn, warnings > 0));
-            chips.Add(BridgeElements.Chip($"{errors} errors", BridgeTheme.Bad, errors > 0));
+            AddFilterChip(chips, ReportStatus.Converted, "done", BridgeTheme.Good, true);
+            AddFilterChip(chips, ReportStatus.Approximated, "approximated", BridgeTheme.Warn, false);
+            AddFilterChip(chips, ReportStatus.Skipped, "skipped", BridgeTheme.Muted, false);
+            AddFilterChip(chips, ReportStatus.Warning, "warnings", BridgeTheme.Warn, warnings > 0);
+            AddFilterChip(chips, ReportStatus.Error, "errors", BridgeTheme.Bad, errors > 0);
             parent.Add(chips);
+
+            parent.Add(BridgeElements.Hint(reportFilter.HasValue
+                ? $"Showing {reportFilter.Value.ToString().ToLowerInvariant()} only — click the chip again to go back."
+                : "Everything that needs a look. Click a chip to see just those."));
 
             var actions = new VisualElement();
             actions.AddToClassList("ab-report-row");
@@ -773,27 +809,28 @@ namespace AvatarBridge
                 parent.Add(actions);
             }
 
-            // Only issues are listed here; the full list lives in the report file. A clean run has
-            // none, and an empty bordered box reads as something failing to load — so on a clean
-            // run the list simply isn't drawn.
+            // The full list lives in the report file; this shows whatever the chips select. By
+            // default that's everything needing a look — an unfiltered dump would be hundreds of
+            // "converted fine" lines with the useful entries lost in them.
             var list = new ScrollView();
             list.AddToClassList("ab-report-list");
+            int shown = 0;
             foreach (var entry in lastReport.Entries)
             {
-                if (entry.Status == ReportStatus.Converted || entry.Status == ReportStatus.Approximated)
+                bool include = reportFilter.HasValue
+                    ? entry.Status == reportFilter.Value
+                    : entry.Status != ReportStatus.Converted && entry.Status != ReportStatus.Approximated;
+                if (!include)
                 {
                     continue;
                 }
-                var line = new Label($"[{entry.Status}] {entry.Category}: {entry.Subject}" +
-                                     (string.IsNullOrEmpty(entry.Detail) ? "" : $" — {entry.Detail}"));
-                line.AddToClassList("ab-report-line");
-                if (entry.Status == ReportStatus.Error)
-                {
-                    line.style.color = BridgeTheme.Bad;
-                }
-                list.Add(line);
+                list.Add(BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
+                    StatusColour(entry.Status), shown % 2 == 1));
+                shown++;
             }
-            if (list.childCount > 0)
+            // A clean run has nothing to list, and an empty bordered box reads as something that
+            // failed to load rather than as good news.
+            if (shown > 0)
             {
                 parent.Add(list);
             }
