@@ -2675,13 +2675,71 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Copies an asset a clip points at out of Fury's temp and into the output, returning the
+        /// copy — or the original when it was never volatile.
+        ///
+        /// Uses CopyAsset rather than Instantiate so it works whatever the type is: a material
+        /// swap is the common case, but clips also assign meshes, textures and sprites, and a
+        /// type-specific clone would quietly miss those.
+        /// </summary>
+        static UnityEngine.Object RehomeReferencedAsset(UnityEngine.Object value, BridgeContext ctx,
+            Dictionary<UnityEngine.Object, UnityEngine.Object> done)
+        {
+            if (value == null)
+            {
+                return value;
+            }
+            if (done.TryGetValue(value, out var already))
+            {
+                return already;
+            }
+
+            string source = AssetDatabase.GetAssetPath(value);
+            if (string.IsNullOrEmpty(source) ||
+                !source.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase))
+            {
+                done[value] = value;
+                return value; // a permanent project asset — leave it where it is
+            }
+
+            string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                AssetDatabase.CreateFolder(ctx.OutputDir.TrimEnd('/'), "RehomedAssets");
+            }
+            string target = AssetDatabase.GenerateUniqueAssetPath(
+                dir + "/" + System.IO.Path.GetFileName(source));
+
+            UnityEngine.Object copy = value;
+            if (AssetDatabase.CopyAsset(source, target))
+            {
+                AssetDatabase.ImportAsset(target, ImportAssetOptions.ForceSynchronousImport);
+                var loaded = AssetDatabase.LoadAssetAtPath(target, value.GetType());
+                if (loaded != null)
+                {
+                    copy = loaded;
+                    ctx.Report.Converted("Assets", $"Re-homed \"{value.name}\" out of temp",
+                        "An animation clip assigns this, which is a reference the clip copy alone " +
+                        "doesn't rescue — VRCFury's next build would delete it and the clip would " +
+                        "assign nothing.");
+                }
+            }
+            done[value] = copy;
+            return copy;
+        }
+
+        /// <summary>
         /// VRCFury bakes its generated clips and masks into Packages/com.vrcfury.temp,
         /// which Fury DELETES on the next build — leaving every reference as "None".
         /// Copy anything volatile into our own controller so the output is self-contained.
+        ///
+        /// That covers the clips themselves and, since a clip's object-reference curves point at
+        /// assets living in the same doomed folder, whatever those curves assign.
         /// </summary>
         static void RehomeVolatileAssets(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
             var clipMap = new Dictionary<AnimationClip, AnimationClip>();
+            var volatileAssets = new Dictionary<UnityEngine.Object, UnityEngine.Object>();
 
             bool IsVolatile(UnityEngine.Object obj)
             {
@@ -2701,8 +2759,41 @@ namespace AvatarBridge
                     clone = UnityEngine.Object.Instantiate(clip);
                     clone.name = clip.name;
                     clipMap[clip] = clone;
+                    RehomeClipReferences(clone);
                 }
                 return clone;
+            }
+
+            // Copying the clip is only half of it. A clip that swaps a material carries that
+            // material as an object-reference curve, and cloning the clip copies the *reference*,
+            // which still points into Fury's temp. The clip then survives the next Fury build and
+            // the material it assigns does not — so the toggle works right up until it is used,
+            // and the mesh turns magenta. Found on "Kaides Expie": a "Milky" toggle that had
+            // converted cleanly weeks running, then broke with nothing about it having changed.
+            void RehomeClipReferences(AnimationClip clone)
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clone))
+                {
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clone, binding);
+                    if (keys == null)
+                    {
+                        continue;
+                    }
+                    bool changed = false;
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        var rescued = RehomeReferencedAsset(keys[i].value, ctx, volatileAssets);
+                        if (rescued != keys[i].value)
+                        {
+                            keys[i].value = rescued;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        AnimationUtility.SetObjectReferenceCurve(clone, binding, keys);
+                    }
+                }
             }
 
             Motion RehomeMotion(Motion motion)
