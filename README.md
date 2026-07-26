@@ -418,6 +418,66 @@ if this gets picked up again. Bipeds are unaffected by any of it.
   layers off the humanoid rig* under **Advanced** restores that separation. Off by default — the
   one case that prompted it turned out to be a different bug.
 
+## Troubleshooting
+
+Symptoms that have actually come up, and what each one means. **Read `ConversionReport.md` first** —
+most of these name themselves in it.
+
+### The avatar stands in a bent rest pose, only the head and hands follow me
+
+The "bicycle pose". Turn on **Mask merged layers off the humanoid rig** in *Advanced* and convert
+again.
+
+VRChat keeps FX on its own playable layer, so an FX layer there physically can't write humanoid
+muscles. ChilloutVR runs one controller, so nothing stops a merged layer doing exactly that and
+fighting locomotion for the body. The report names the layers that could — look for *"merged
+layer(s) can write humanoid muscles with no mask"*. Layers that animate the body deliberately are
+left alone by that option, so it's safe to try.
+
+### Something is bright magenta
+
+A material or shader the avatar points at no longer exists. Almost always VRCFury's temp folder,
+which Fury deletes on its next build — so this typically appears *after* a later bake, on an avatar
+that converted fine.
+
+Convert again on the current version. If it persists, say so in an issue: it means something is
+being referenced by a route the conversion doesn't follow yet.
+
+### A mesh renders white, washed out, or loses its eyes
+
+Different from magenta, and worth reporting separately. The material survived but its **textures**
+didn't — the same VRCFury temp problem one level deeper. Convert again on the current version.
+
+### A menu control appears, moves, syncs — and does nothing
+
+Check the report for that control's name. Two known causes, both fixed, both worth naming if you
+still hit them:
+
+- a prefab whose constraints drive your bones from proxy objects (see
+  [above](#constraints-that-drive-another-object))
+- a slider whose neutral is 0.5 being declared 0, which parks it at one end of its own range
+
+### There's no "Convert a VRChat avatar" tab
+
+The VRChat Avatars SDK isn't installed. Without it a VRChat avatar's components can't be read at
+all, so only [Setup mode](#setup-mode) is offered. Install the SDK and the tab appears.
+
+### An effect draws in one eye only in VR
+
+Expected, and not caused by converting — see
+[shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Turn on
+**Patch non-SPI shaders for VR** in *Advanced*.
+
+### Uploading fails with "Failed to generate new object ID"
+
+Not AvatarBridge — that's the CCK. ChilloutVR's API refused to allocate a content slot, and the
+usual reason is the account's private upload limit. The real message is in `Player.log` or the
+Unity console just above the exception, and it says so plainly.
+
+### One extra recompile after importing
+
+Normal. That's AvatarBridge registering its scripting defines.
+
 ## Reporting a bug
 
 Hit **Report an issue** in the AvatarBridge window — it opens a pre-filled GitHub issue with your

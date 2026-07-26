@@ -17,7 +17,10 @@ namespace AvatarBridge
     {
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
         public const string Releases = Repo + "/releases/latest";
-        public const string Troubleshooting = Repo + "#install-troubleshooting";
+        // Anchor must match a real heading in README.md, or the button silently drops the user at
+        // the top of the repo page — which is what it did for a long time, pointing at an
+        // "#install-troubleshooting" section that never existed.
+        public const string Troubleshooting = Repo + "#troubleshooting";
 
         /// <summary>
         /// Maintainer's Discord handle for quick questions. Empty hides the button.
