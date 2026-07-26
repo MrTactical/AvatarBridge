@@ -254,30 +254,30 @@ namespace AvatarBridge
                     {
                         return true;
                     }
-                    // Say exactly what was found rather than guessing at the cause. Three separate
-                    // explanations for this failure have been wrong, each plausible and each
-                    // costing a round trip, so the report now carries the facts needed to tell
-                    // them apart: which assembly the type came from, whether Unity produced a
-                    // MonoScript at all or produced one with no source behind it, and where it
-                    // thinks that script lives.
-                    var asm = receiver.Assembly;
-                    string asmName = asm.GetName().Name;
-                    string asmPath;
-                    try { asmPath = string.IsNullOrEmpty(asm.Location) ? "(no file)" : asm.Location; }
-                    catch { asmPath = "(unavailable)"; }
+                    // Almost always the same cause, so name it rather than describe symptoms.
+                    //
+                    // A scene holding a MonoBehaviour whose script reference is dangling makes
+                    // Unity manufacture a placeholder MonoScript for that class — no asset, no
+                    // source text, a negative instance id. That placeholder then wins when
+                    // AddComponent looks the class up, so every NEW component is bound to it and
+                    // is born broken too. One bad conversion left in the scene therefore poisons
+                    // every conversion after it, including ones that would otherwise be correct,
+                    // and no amount of fixing the generated declarations helps while it is there.
+                    bool phantom = HasPhantomContactScript(out string phantomClass);
+                    string cause = phantom
+                        ? $"There is already a broken \"{phantomClass}\" component in a loaded scene — most " +
+                          "likely a contact object from an earlier conversion. Unity creates a placeholder " +
+                          "script for it, and that placeholder takes precedence when new components are " +
+                          "created, so this cannot succeed until it is gone. Delete the leftover Contact_* " +
+                          "objects (or the whole previously converted avatar), reopen the scene so the " +
+                          "placeholder is dropped, then convert again."
+                        : "Unity produced no script asset for the component. Check that " +
+                          "AvatarBridge/Runtime contains the generated declarations and that the project " +
+                          "compiled cleanly, then convert again.";
 
-                    string scriptState = script == null
-                        ? "no MonoScript at all"
-                        : "a MonoScript with empty source text, asset path \"" +
-                          (UnityEditor.AssetDatabase.GetAssetPath(script) is string p && p.Length > 0 ? p : "(none)") + "\"";
-
-                    ctx.Report.Error(Category, "Native contacts unusable; used the legacy path",
-                        $"Unity resolved NAK.Contacts.ContactReceiver from assembly \"{asmName}\" ({asmPath}) but " +
-                        $"gave {scriptState}. A component needs a script asset behind it to serialize a usable " +
-                        "reference; without one the CCK reports broken Mono Script references and ChilloutVR " +
-                        "reports the script as missing. Contacts were converted to pointers and triggers " +
-                        "instead, which work. Please include this line if you report it — the assembly name and " +
-                        "asset path are the parts that identify the cause.");
+                    ctx.Report.Error(Category, "Native contacts unusable; used the legacy path", cause +
+                        " Contacts were converted to pointers and triggers instead, which work. " +
+                        "Tools > Avatar Bridge > Diagnose native contacts prints the full picture.");
                     return false;
                 }
                 finally
@@ -290,6 +290,35 @@ namespace AvatarBridge
                 "project. That normally means the installed CCK is newer than the one AvatarBridge verified " +
                 "its declarations against, so ContactStubPatcher declined to generate them — see the console " +
                 "for the exact version. Contacts were converted to pointers and triggers instead.");
+            return false;
+        }
+
+        /// <summary>
+        /// True when Unity holds a MonoScript for one of the contact classes that has no asset
+        /// behind it — the placeholder it manufactures for a component whose script reference is
+        /// dangling. Its presence is what stops any new component binding correctly.
+        /// </summary>
+        static bool HasPhantomContactScript(out string className)
+        {
+            className = null;
+            UnityEditor.MonoScript[] all;
+            try { all = UnityEditor.MonoImporter.GetAllRuntimeMonoScripts(); }
+            catch { return false; }
+
+            foreach (var ms in all)
+            {
+                System.Type type;
+                try { type = ms.GetClass(); } catch { continue; }
+                if (type == null || type.Namespace != "NAK.Contacts")
+                {
+                    continue;
+                }
+                if (string.IsNullOrEmpty(ms.text) && string.IsNullOrEmpty(UnityEditor.AssetDatabase.GetAssetPath(ms)))
+                {
+                    className = type.FullName;
+                    return true;
+                }
+            }
             return false;
         }
 
