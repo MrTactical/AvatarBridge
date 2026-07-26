@@ -2739,6 +2739,18 @@ namespace AvatarBridge
                 copy = clone;
             }
 
+            done[value] = copy;
+
+            // A material is not a leaf. VRCFury repacks textures into its own container assets in
+            // temp, so a rescued material can still point every texture slot at something about to
+            // be deleted — which doesn't render magenta like a missing material, it renders as an
+            // untextured wash. On "Kaides Expie" that was a white face with no eyes, from a
+            // material that had copied across perfectly.
+            if (copy is Material material)
+            {
+                RehomeMaterialContents(material, ctx, done);
+            }
+
             if (copy != value)
             {
                 ctx.Report.Converted("Assets", $"Re-homed \"{value.name}\" out of temp",
@@ -2746,8 +2758,54 @@ namespace AvatarBridge
                     "doesn't rescue — VRCFury's next build would delete it and the clip would " +
                     "assign nothing.");
             }
-            done[value] = copy;
             return copy;
+        }
+
+        /// <summary>
+        /// Rescues the shader and textures a re-homed material depends on, so the material is
+        /// still whole once VRCFury clears its temp folder.
+        /// </summary>
+        static void RehomeMaterialContents(Material material, BridgeContext ctx,
+            Dictionary<UnityEngine.Object, UnityEngine.Object> done)
+        {
+            var shader = material.shader;
+            if (shader == null)
+            {
+                return;
+            }
+            // Shader first: assigning one can drop properties the new shader lacks, and doing it
+            // after the textures would undo them.
+            if (RehomeReferencedAsset(shader, ctx, done) is Shader rescuedShader && rescuedShader != shader)
+            {
+                material.shader = rescuedShader;
+                shader = rescuedShader;
+            }
+
+            bool changed = false;
+            int count = UnityEditor.ShaderUtil.GetPropertyCount(shader);
+            for (int i = 0; i < count; i++)
+            {
+                if (UnityEditor.ShaderUtil.GetPropertyType(shader, i)
+                    != UnityEditor.ShaderUtil.ShaderPropertyType.TexEnv)
+                {
+                    continue;
+                }
+                string property = UnityEditor.ShaderUtil.GetPropertyName(shader, i);
+                var texture = material.GetTexture(property);
+                if (texture == null)
+                {
+                    continue;
+                }
+                if (RehomeReferencedAsset(texture, ctx, done) is Texture rescued && rescued != texture)
+                {
+                    material.SetTexture(property, rescued);
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                EditorUtility.SetDirty(material);
+            }
         }
 
         /// <summary>
