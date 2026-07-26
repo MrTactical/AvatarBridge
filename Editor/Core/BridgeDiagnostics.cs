@@ -1,5 +1,7 @@
 #if CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using UnityEditor;
@@ -83,6 +85,7 @@ namespace AvatarBridge
 
             CheckSyncBudget(ctx, master);
             CheckComponentWhitelist(ctx);
+            CheckStereoShaders(ctx);
 
             // A cloth with nothing to simulate.
             int emptyCloths = 0;
@@ -544,6 +547,147 @@ namespace AvatarBridge
                     "produces no grounding at all rather than different grounding. ChilloutVR has no native " +
                     "foot placement to fall back on either — its IK system only tracks whether the character " +
                     "controller is grounded. Feet will not adapt to terrain; VRIK's own locomotion still runs.");
+            }
+        }
+
+        /// <summary>
+        /// The four macros a shader needs to render correctly under single-pass instanced stereo,
+        /// which is how both ChilloutVR and VRChat draw in VR. Taken from the CCK's own
+        /// ShaderStereoSupportStep so this reports the same shaders its uploader will.
+        /// </summary>
+        static readonly string[] StereoMacros =
+        {
+            "UNITY_VERTEX_INPUT_INSTANCE_ID",
+            "UNITY_VERTEX_OUTPUT_STEREO",
+            "UNITY_SETUP_INSTANCE_ID",
+            "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
+        };
+
+        /// <summary>Shaders the CCK treats as known-good without scanning.</summary>
+        static bool IsKnownStereoShader(string name) =>
+            name == "Standard" || name.StartsWith("Hidden/PostProcessing/", StringComparison.Ordinal);
+
+        /// <summary>
+        /// Names shaders that will not draw correctly in VR.
+        ///
+        /// Single-pass instanced renders both eyes in one pass, and a shader has to opt in with
+        /// four macros to know which eye it is drawing. Without them the effect typically appears
+        /// in one eye only, or at the wrong offset. This is not a ChilloutVR quirk — VRChat draws
+        /// the same way, so such a shader was already wrong there; ChilloutVR simply checks and
+        /// says so.
+        ///
+        /// Worth catching before upload because of what happens if the avatar is ever treated as
+        /// legacy content: NonSpiHelper replaces shaders by looking the name up in the game's own
+        /// build, and CVRTools.ReplaceShaders falls back to "Standard" when the name isn't found.
+        /// A particle shader nobody else ships would not merely render oddly, it would become an
+        /// opaque surface.
+        ///
+        /// Same detection the CCK uses — a text scan of the shader source, following includes —
+        /// so nothing is reported here that its uploader would pass, and vice versa. Shaders with
+        /// no readable source (built-in, or inside a package) are skipped rather than guessed at.
+        /// </summary>
+        static void CheckStereoShaders(BridgeContext ctx)
+        {
+            var missingCache = new Dictionary<string, List<string>>();
+            var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    var shader = material != null ? material.shader : null;
+                    if (shader == null || IsKnownStereoShader(shader.name))
+                    {
+                        continue;
+                    }
+                    string path = AssetDatabase.GetAssetPath(shader);
+                    if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)
+                        || !File.Exists(path))
+                    {
+                        continue; // no source to read; the CCK can't judge it either
+                    }
+                    if (!missingCache.TryGetValue(path, out var missing))
+                    {
+                        missingCache[path] = missing = MissingStereoMacros(path);
+                    }
+                    if (missing.Count == 0)
+                    {
+                        continue;
+                    }
+                    string key = $"{shader.name} [missing {string.Join(", ", missing)}]";
+                    if (!offenders.TryGetValue(key, out var users))
+                    {
+                        offenders[key] = users = new SortedSet<string>(StringComparer.Ordinal);
+                    }
+                    users.Add(material.name);
+                }
+            }
+
+            if (offenders.Count == 0)
+            {
+                return;
+            }
+            var listed = offenders.Select(kv => $"{kv.Key} ({Join(kv.Value, 4)})");
+            ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
+                $"{Join(listed, 6)} — these never mention the macros a shader needs to draw both eyes under " +
+                "single-pass instanced stereo, so in VR they typically appear in one eye only or at the wrong " +
+                "offset. VRChat renders the same way, so the conversion didn't introduce this and the shader " +
+                "was already affected there; ChilloutVR's uploader is simply the thing that checks. " +
+                "Each missing macro has one home: UNITY_VERTEX_INPUT_INSTANCE_ID in the vertex input struct, " +
+                "UNITY_VERTEX_OUTPUT_STEREO in the interpolator struct, UNITY_SETUP_INSTANCE_ID and " +
+                "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the vertex function. That edit is only " +
+                "realistic on a plainly written shader — surface shaders, locked shaders and anything sharing " +
+                "structs across includes are not worth attempting. Otherwise use a different shader, or accept " +
+                "how it looks. Copy the shader before editing it: these are usually someone else's asset.");
+        }
+
+        /// <summary>
+        /// Which of the four macros the shader never mentions, following includes.
+        ///
+        /// Naming them turns "review this for compatibility" into something actionable: each one
+        /// belongs in a specific place, so the list doubles as the edit needed —
+        /// UNITY_VERTEX_INPUT_INSTANCE_ID in the vertex input struct,
+        /// UNITY_VERTEX_OUTPUT_STEREO in the interpolator struct, and
+        /// UNITY_SETUP_INSTANCE_ID plus UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the
+        /// vertex function.
+        /// </summary>
+        static List<string> MissingStereoMacros(string path)
+        {
+            var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
+            Scan(path, remaining, new HashSet<string>(StringComparer.OrdinalIgnoreCase), 0);
+            return StereoMacros.Where(remaining.Contains).ToList();
+        }
+
+        static void Scan(string path, HashSet<string> remaining, HashSet<string> seen, int depth)
+        {
+            if (depth > 8 || remaining.Count == 0 || !seen.Add(path) || !File.Exists(path))
+            {
+                return;
+            }
+            var includes = new List<string>();
+            string dir = Path.GetDirectoryName(path) ?? "";
+            foreach (var line in File.ReadLines(path))
+            {
+                remaining.RemoveWhere(m => line.Contains(m, StringComparison.Ordinal));
+                if (remaining.Count == 0)
+                {
+                    return;
+                }
+                int hash = line.IndexOf("#include", StringComparison.Ordinal);
+                if (hash < 0)
+                {
+                    continue;
+                }
+                int open = line.IndexOf('"', hash);
+                int close = open >= 0 ? line.IndexOf('"', open + 1) : -1;
+                if (close > open)
+                {
+                    includes.Add(Path.GetFullPath(Path.Combine(dir, line.Substring(open + 1, close - open - 1))));
+                }
+            }
+            foreach (var include in includes)
+            {
+                Scan(include, remaining, seen, depth + 1);
             }
         }
 
