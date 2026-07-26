@@ -138,9 +138,16 @@ namespace AvatarBridge
         // separation VRChat gets from FX being its own playable layer. Guards against a
         // Write-Defaults state re-asserting the rest pose over ChilloutVR's locomotion.
         //
-        // Off by default. The symptom that prompted it turned out to be the muscle curves being
-        // renamed instead, so this addresses a real architectural difference that has not yet
-        // been observed biting anything. Turn it on only if locomotion still fights an FX layer.
+        // CONFIRMED to fix the "bicycle pose" — an avatar standing in a bent rest pose in game
+        // while only the head and hands follow tracking. Tested in ChilloutVR on a tester's
+        // avatar: 20 merged layers masked, 18 blocked from muscles and 2 narrowed to the hands,
+        // and the pose came right. An earlier note here said this had never been observed helping
+        // anyone; that is no longer true.
+        //
+        // Still off by default, because it touches every merged layer on the avatar and the
+        // exposure is universal while the confirmed cases are not. Layers that animate the body
+        // on purpose are skipped, so it is safe to try on anything — and the report names the
+        // suspect layers whether it is on or off.
         public bool maskMergedLayers = false;
 
         // Copy shaders that lack single-pass instanced stereo support into RehomedAssets with the

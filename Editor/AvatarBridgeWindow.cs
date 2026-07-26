@@ -469,9 +469,13 @@ namespace AvatarBridge
                 BridgeElements.BetaTag()));
 
             b.Add(BridgeElements.Bind("Mask merged layers off the humanoid rig",
-                "Stops merged VRChat layers writing humanoid muscles, which VRChat prevents by " +
-                "keeping FX on its own playable layer. Only affects layers that animate no muscles " +
-                "themselves. Try it if ChilloutVR's locomotion is being fought by an FX layer.",
+                "Fixes the \"bicycle pose\" — an avatar stuck in a bent rest pose in game while " +
+                "only the head and hands follow you. VRChat keeps FX on its own playable layer so " +
+                "it can never write humanoid muscles; ChilloutVR runs one controller, where a " +
+                "merged layer can, and then fights locomotion for the body every frame. This puts " +
+                "that separation back. Confirmed in game. Layers that animate the body on purpose " +
+                "are left alone, so it is safe to try on any avatar — object toggles, blendshapes " +
+                "and material animation are unaffected.",
                 settings.maskMergedLayers, v => settings.maskMergedLayers = v));
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,
                 settings.convertConstraints, v => settings.convertConstraints = v));

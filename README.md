@@ -413,10 +413,12 @@ if this gets picked up again. Bipeds are unaffected by any of it.
 - **Shaders aren't translated.** Poiyomi etc. work as-is, and VRCFury-baked materials are rescued
   out of Fury's temp folder so they don't render pink. Shaders that don't support VR stereo are a
   separate problem, below.
-- **Merged layers can fight CVR's locomotion** on rare avatars, because VRChat keeps FX on its own
-  playable layer and CVR has no equivalent. If an FX layer is overriding your pose, *Mask merged
-  layers off the humanoid rig* under **Advanced** restores that separation. Off by default — the
-  one case that prompted it turned out to be a different bug.
+- **Merged layers can fight CVR's locomotion**, because VRChat keeps FX on its own playable layer
+  and ChilloutVR has no equivalent — so an FX layer that could never touch your pose in VRChat can
+  hold it in a bent rest position here. *Mask merged layers off the humanoid rig* under
+  **Advanced** restores that separation, and is **confirmed to fix it**. Off by default only
+  because it changes every merged layer on the avatar; if your pose looks wrong in game, this is
+  the first thing to try. See [the bicycle pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me).
 
 ## Troubleshooting
 
@@ -425,14 +427,20 @@ most of these name themselves in it.
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
-The "bicycle pose". Turn on **Mask merged layers off the humanoid rig** in *Advanced* and convert
-again.
+The "bicycle pose". **Turn on *Mask merged layers off the humanoid rig* in Advanced and convert
+again** — this is confirmed to fix it, tested in game.
 
 VRChat keeps FX on its own playable layer, so an FX layer there physically can't write humanoid
 muscles. ChilloutVR runs one controller, so nothing stops a merged layer doing exactly that and
-fighting locomotion for the body. The report names the layers that could — look for *"merged
-layer(s) can write humanoid muscles with no mask"*. Layers that animate the body deliberately are
-left alone by that option, so it's safe to try.
+fighting locomotion for the body — every frame, against whatever your tracking is asking for.
+
+The report names the layers that could, both before and after: look for *"merged layer(s) can write
+humanoid muscles with no mask"* if the option is off, or *"masked off the humanoid rig"* if it's
+on. Layers that animate the body on purpose are left alone either way, which is why it's safe to
+try on any avatar.
+
+Nothing else about the avatar changes — object toggles, blendshapes and material animation are
+untouched by the mask.
 
 ### Something is bright magenta
 
