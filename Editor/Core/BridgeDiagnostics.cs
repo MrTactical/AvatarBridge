@@ -526,10 +526,25 @@ namespace AvatarBridge
                 $"{Join(listed)} — ChilloutVR filters every component on an avatar against a fixed list and " +
                 "destroys anything not on it. There is no warning in game and nothing looks wrong in the " +
                 "editor; the component is simply gone once the avatar loads, along with whatever it did. " +
-                "Rebuild that behaviour from something ChilloutVR does allow, or accept losing it. " +
-                "FinalIK is a common casualty: VRIK, LookAtIK, TwistRelaxer, GrounderIK, FABRIK, CCDIK, " +
-                "AimIK and LimbIK are all permitted, but their siblings — GrounderVRIK and GrounderQuadruped " +
-                "among them — are not.");
+                "Worlds are allowed far more than avatars, so a component working in a ChilloutVR world says " +
+                "nothing about whether it survives on one.");
+
+            // The grounders deserve their own note. They are the FinalIK components most likely to
+            // be on a converted avatar, the split between allowed and forbidden looks arbitrary,
+            // and the obvious substitution does not work.
+            var grounders = doomed.Keys.Where(n => n.StartsWith("Grounder")).ToList();
+            if (grounders.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"FinalIK grounding is lost ({Join(grounders)})",
+                    "ChilloutVR permits VRIK, LookAtIK and TwistRelaxer on an avatar, and GrounderIK and " +
+                    "GrounderBipedIK, but not GrounderVRIK, GrounderQuadruped, GrounderFBBIK or the Grounder " +
+                    "base class. GrounderIK is NOT a drop-in replacement: GrounderVRIK works by adding " +
+                    "position offsets into VRIK's own solver from inside its update callbacks, while " +
+                    "GrounderIK drives separate per-leg IK components and never touches VRIK. Swapping them " +
+                    "produces no grounding at all rather than different grounding. ChilloutVR has no native " +
+                    "foot placement to fall back on either — its IK system only tracks whether the character " +
+                    "controller is grounded. Feet will not adapt to terrain; VRIK's own locomotion still runs.");
+            }
         }
 
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
