@@ -481,6 +481,12 @@ namespace AvatarBridge
             "BaseCloth", "DynamicBone", "DynamicBoneCollider", "DynamicBoneColliderBase",
             "DynamicBonePlaneCollider", "MagicaBoneCloth", "MagicaBoneSpring", "MagicaMeshCloth",
             "MagicaMeshSpring", "MagicaRenderDeformer", "MagicaVirtualDeformer",
+            // MagicaCloth 2, which the client spells out as MagicaCloth2.MagicaCloth and friends.
+            // Matched here on the short name, like everything else in this set. Leaving these out
+            // put a false "ChilloutVR will delete this" on every avatar converted down
+            // AvatarBridge's primary physics path.
+            "MagicaCloth", "ColliderComponent", "MagicaCapsuleCollider", "MagicaPlaneCollider",
+            "MagicaSphereCollider", "RectTransform",
             // Renderers and particles.
             "ParticleSystem", "ParticleSystemForceField", "ParticleSystemRenderer",
             // Conditional on the viewer's own settings rather than on the avatar.
