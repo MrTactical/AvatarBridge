@@ -46,20 +46,28 @@ namespace AvatarBridge
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });
 
+            // Only what the user has to act on reaches the console. Everything is in the report
+            // file regardless, which is the thing worth reading.
+            //
+            // Every entry used to be logged. The editor captures a full managed stack trace for
+            // each Debug call, so a large conversion — which routinely produces thousands of
+            // entries, one per cloth chain, parameter and menu control — wrote tens of thousands
+            // of stack frames into the editor log and pushed it past 38 MB. Skipped in particular
+            // was a warning, and a conversion legitimately skips a great deal.
+            if (status != ReportStatus.Error && status != ReportStatus.Warning)
+            {
+                return;
+            }
+
             string message = $"[AvatarBridge] {status}: [{category}] {subject}" +
                              (string.IsNullOrEmpty(detail) ? "" : " - " + detail);
-            switch (status)
+            if (status == ReportStatus.Error)
             {
-                case ReportStatus.Error:
-                    Debug.LogError(message);
-                    break;
-                case ReportStatus.Warning:
-                case ReportStatus.Skipped:
-                    Debug.LogWarning(message);
-                    break;
-                default:
-                    Debug.Log(message);
-                    break;
+                Debug.LogError(message);
+            }
+            else
+            {
+                Debug.LogWarning(message);
             }
         }
 

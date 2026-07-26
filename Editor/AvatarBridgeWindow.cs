@@ -38,6 +38,8 @@ namespace AvatarBridge
 
         [SerializeField] BridgeSettings settings = new BridgeSettings();
         BridgeReport lastReport;
+        // Set while a deferred conversion is in flight, so the button can't queue a second one.
+        bool converting;
         Vector2 scroll;
         Vector2 reportScroll;
 #if VRC_SDK_VRCSDK3
@@ -426,9 +428,21 @@ namespace AvatarBridge
                     ? new Color(0.55f, 0.85f, 0.55f)
                     : previous;
                 string label = avatar == null ? "Convert avatar" : $"Convert \"{avatar.gameObject.name}\"";
-                if (GUILayout.Button(label, GUILayout.Height(36)))
+                if (GUILayout.Button(label, GUILayout.Height(36)) && !converting)
                 {
-                    lastReport = BridgeConverter.Convert(avatar, settings);
+                    // Deferred out of OnGUI on purpose. Converting in place ran the whole
+                    // pipeline — asset imports, prefab work, thousands of log calls — inside a
+                    // layout pass, which invalidates IMGUI's state object; every access after
+                    // that logs "the GUIStateObj is deleted, but is accessed". One conversion
+                    // put 217,000 of those in a 38 MB editor log.
+                    converting = true;
+                    var target = avatar;
+                    var chosen = settings;
+                    EditorApplication.delayCall += () =>
+                    {
+                        try { lastReport = BridgeConverter.Convert(target, chosen); }
+                        finally { converting = false; Repaint(); }
+                    };
                 }
                 GUI.backgroundColor = previous;
             }
