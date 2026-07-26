@@ -81,6 +81,8 @@ namespace AvatarBridge
                     "these. Usually a leftover from a layer that wasn't converted or was stripped.");
             }
 
+            CheckSyncBudget(ctx, master);
+
             // A cloth with nothing to simulate.
             int emptyCloths = 0;
             foreach (var mono in ctx.Target.GetComponentsInChildren<MonoBehaviour>(true))
@@ -437,6 +439,87 @@ namespace AvatarBridge
         /// <see cref="AnimatorMerger.IsGameDrivenParameter"/>, which knows about the
         /// stream-fed ones too.
         /// </summary>
+        // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
+        const int AasBitBudget = 3200;
+
+        /// <summary>
+        /// AvatarDefinitions.CoreParameters, exactly as the client spells it.
+        ///
+        /// Deliberately not reusing CckBaseParameters or AnimatorMerger.CvrCoreParameters: both
+        /// carry Swimming and AFK, which the client writes but does NOT mark core. That makes
+        /// them writable and — the part that matters here — they DO consume sync bits. Counting
+        /// with the wrong set silently under-reports the budget.
+        /// </summary>
+        static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
+        {
+            "MovementX", "MovementY", "Grounded", "Crouching", "Prone", "Flying", "Sitting",
+            "GestureRight", "GestureLeft", "Toggle", "Emote", "CancelEmote", "IsLocal",
+            "GestureLeftIdx", "GestureRightIdx", "DistanceTo", "VisemeIdx", "VisemeLoudness",
+            "IsFriend", "VelocityX", "VelocityY", "VelocityZ"
+        };
+
+        /// <summary>
+        /// Reproduces ChilloutVR's sync-slot allocation so the report can say when parameters
+        /// fall off the end of it.
+        ///
+        /// A parameter syncs when it is not "#"-prefixed, not a Trigger, and not one of the
+        /// client's core parameters — a menu entry has nothing to do with it. Slots are handed
+        /// out walking the animator's parameter list in declaration order, and the budget is
+        /// tested BEFORE each one is admitted, so the parameter that crosses the line still gets
+        /// in and everything after it is dropped. Nothing warns about this in game: the
+        /// parameters simply never replicate.
+        ///
+        /// Costs are the client's: Float and Int 32 bits each, Bool 1.
+        ///
+        /// The client also exempts parameters an animation curve drives. That is a runtime test
+        /// with no static equivalent, and skipping it can only make this estimate too high, which
+        /// is the safe direction for a budget warning.
+        /// </summary>
+        static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
+        {
+            int used = 0;
+            int floats = 0, ints = 0, bools = 0;
+            var dropped = new List<string>();
+
+            foreach (var param in master.parameters)
+            {
+                if (param.name.StartsWith("#")
+                    || param.type == AnimatorControllerParameterType.Trigger
+                    || ClientCoreParameters.Contains(param.name))
+                {
+                    continue;
+                }
+                if (used >= AasBitBudget)
+                {
+                    dropped.Add(param.name);
+                    continue;
+                }
+                switch (param.type)
+                {
+                    case AnimatorControllerParameterType.Float: floats++; used += 32; break;
+                    case AnimatorControllerParameterType.Int: ints++; used += 32; break;
+                    case AnimatorControllerParameterType.Bool: bools++; used += 1; break;
+                }
+            }
+
+            if (dropped.Count > 0)
+            {
+                ctx.Report.Error(Category, $"{dropped.Count} parameter(s) past ChilloutVR's sync limit",
+                    $"{Join(dropped)} — the avatar needs more than ChilloutVR's {AasBitBudget} sync bits " +
+                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). Slots are handed " +
+                    "out in the order the animator declares its parameters, and these came too late to get " +
+                    "one. They will work for the wearer and never replicate to anyone else, with no warning " +
+                    "in game. Make the ones that don't need to replicate local by prefixing them with \"#\", " +
+                    "or convert floats you only use as on/off into bools — a bool costs 1 bit instead of 32.");
+            }
+            else if (used > AasBitBudget * 3 / 4)
+            {
+                ctx.Report.Warning(Category, $"Sync budget {used}/{AasBitBudget} bits used",
+                    $"{floats} floats and {ints} ints at 32 bits each, {bools} bools at 1. Parameters added " +
+                    "beyond the limit stop replicating silently, so there is not much headroom left.");
+            }
+        }
+
         static readonly HashSet<string> CckBaseParameters = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",

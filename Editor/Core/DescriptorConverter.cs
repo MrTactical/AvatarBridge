@@ -89,10 +89,27 @@ namespace AvatarBridge
                     "on — visemes, blink and face tracking have nothing to bind to.");
             }
 
-            if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape &&
+            // ChilloutVR has all three of VRChat's lip-sync styles, not just visemes:
+            // CVRAvatarVisemeMode is { Visemes, SingleBlendshape, JawBone }. The field was never
+            // written before, so every avatar relied on Visemes happening to be the zero value —
+            // and a jaw-flap avatar was told, wrongly, that ChilloutVR couldn't do it.
+            //
+            // An explicit jaw-flap choice is honoured ahead of viseme auto-detection. The author
+            // saying "this avatar flaps its jaw" outranks a name match on the face mesh.
+            if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone)
+            {
+                WireJawBoneLipSync(ctx, cvrAvatar);
+            }
+            else if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBlendShape
+                     && !string.IsNullOrEmpty(vrc.MouthOpenBlendShapeName))
+            {
+                WireSingleBlendshapeLipSync(ctx, cvrAvatar, vrc.MouthOpenBlendShapeName);
+            }
+            else if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape &&
                 vrc.VisemeBlendShapes != null && vrc.VisemeBlendShapes.Length > 0)
             {
                 cvrAvatar.useVisemeLipsync = true;
+                cvrAvatar.visemeMode = CVRAvatar.CVRAvatarVisemeMode.Visemes;
                 if (cvrAvatar.visemeBlendshapes == null || cvrAvatar.visemeBlendshapes.Length < vrc.VisemeBlendShapes.Length)
                 {
                     cvrAvatar.visemeBlendshapes = new string[Mathf.Max(15, vrc.VisemeBlendShapes.Length)];
@@ -106,10 +123,6 @@ namespace AvatarBridge
             else if (TryDetectVisemes(ctx, cvrAvatar, targetFace))
             {
                 // Reported inside.
-            }
-            else if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone)
-            {
-                ctx.Report.Skipped(Category, "Jaw-flap lip sync", "CVR conversion only supports viseme blendshapes.");
             }
             else
             {
@@ -149,6 +162,65 @@ namespace AvatarBridge
         /// blendshapes on the face mesh by their conventional names. Avatars that shipped
         /// without lip sync configured get it for free in ChilloutVR.
         /// </summary>
+        /// <summary>
+        /// VRChat's "Jaw Flap Bone" lip sync, which ChilloutVR supports with no wiring at all.
+        ///
+        /// CVRLipSyncJawBone takes the jaw straight off the humanoid rig — GetBoneTransform(Jaw)
+        /// — and drives the "Jaw Close" muscle through a HumanPoseHandler from voice loudness.
+        /// VRChat's own lipSyncJawBone reference isn't needed and isn't transferable; setting the
+        /// mode is the entire conversion. It does require a humanoid rig with a mapped Jaw bone,
+        /// which is the one thing worth checking, because without it the module silently does
+        /// nothing.
+        /// </summary>
+        static void WireJawBoneLipSync(BridgeContext ctx, CVRAvatar cvrAvatar)
+        {
+            cvrAvatar.useVisemeLipsync = true;
+            cvrAvatar.visemeMode = CVRAvatar.CVRAvatarVisemeMode.JawBone;
+
+            var animator = ctx.Target.GetComponent<Animator>();
+            bool hasJaw = animator != null && animator.isHuman && animator.avatar != null
+                          && animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
+            if (hasJaw)
+            {
+                ctx.Report.Converted(Category, "Jaw-flap lip sync",
+                    "ChilloutVR drives the rig's Jaw bone from voice loudness. It reads the jaw off the " +
+                    "humanoid rig itself, so nothing else needed transferring.");
+            }
+            else
+            {
+                ctx.Report.Warning(Category, "Jaw-flap lip sync has no Jaw bone to drive",
+                    "The avatar's descriptor asks for jaw-flap lip sync, but the rig is not humanoid or has " +
+                    "no bone mapped to Jaw. ChilloutVR reads the jaw from the humanoid rig, so lip sync will " +
+                    "do nothing until Jaw is mapped in the rig's Avatar configuration.");
+            }
+        }
+
+        /// <summary>
+        /// VRChat's "Jaw Flap Blend Shape" lip sync.
+        ///
+        /// CVRLipSyncSingleBlendshape scans visemeBlendshapes for the first entry that is neither
+        /// empty nor "-none-" and resolves it against bodyMesh, so the single shape goes in slot
+        /// 0 and the rest stay clear.
+        /// </summary>
+        static void WireSingleBlendshapeLipSync(BridgeContext ctx, CVRAvatar cvrAvatar, string shapeName)
+        {
+            cvrAvatar.useVisemeLipsync = true;
+            cvrAvatar.visemeMode = CVRAvatar.CVRAvatarVisemeMode.SingleBlendshape;
+            cvrAvatar.visemeBlendshapes = new string[15];
+            cvrAvatar.visemeBlendshapes[0] = shapeName;
+
+            var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
+            if (mesh != null && mesh.GetBlendShapeIndex(shapeName) < 0)
+            {
+                ctx.Report.Warning(Category, $"Jaw-flap blendshape \"{shapeName}\" is not on the face mesh",
+                    $"ChilloutVR resolves it against \"{cvrAvatar.bodyMesh.name}\", which has no shape by that " +
+                    "name, so lip sync will do nothing. Check the face mesh on the CVRAvatar.");
+                return;
+            }
+            ctx.Report.Converted(Category, "Jaw-flap blendshape lip sync",
+                $"\"{shapeName}\" driven from voice loudness.");
+        }
+
         static bool TryDetectVisemes(BridgeContext ctx, CVRAvatar cvrAvatar, SkinnedMeshRenderer face)
         {
             var visemes = AvatarFeatureDetect.DetectVisemes(face != null ? face.sharedMesh : null);
@@ -157,6 +229,7 @@ namespace AvatarBridge
                 return false;
             }
             cvrAvatar.useVisemeLipsync = true;
+            cvrAvatar.visemeMode = CVRAvatar.CVRAvatarVisemeMode.Visemes;
             cvrAvatar.visemeBlendshapes = visemes;
             int found = visemes.Count(v => !string.IsNullOrEmpty(v));
             ctx.Report.Approximated(Category, "Visemes auto-detected",
