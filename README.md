@@ -30,6 +30,13 @@ finish by hand.
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
 humanoid for ChilloutVR.)*
 
+<p align="center">
+  <img src="docs/images/window.png" alt="The AvatarBridge window: a blue-to-orange banner, three numbered steps, and collapsible option cards" width="480">
+</p>
+
+<p align="center"><em>The banner runs VRChat's blue into ChilloutVR's orange, and the step markers
+sit along it — because that's the trip your avatar is making.</em></p>
+
 ## It's a head start, not a magic button
 
 AvatarBridge does the tedious ~90%. It does **not** make avatar setup brainless, and can't —
