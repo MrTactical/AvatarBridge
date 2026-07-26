@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Reflection;
 using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -158,25 +159,84 @@ namespace AvatarBridge
         //
         // ContactStubPatcher supplies the declarations; the game holds the implementation.
 
+        // ChilloutVR's native contact components, reached entirely through reflection.
+        //
+        // Deliberately NOT behind a scripting define. An earlier version gated this on
+        // AVATARBRIDGE_CONTACTS and named NAK.Contacts directly, which deadlocks: the define is
+        // set from a generated file in Assembly-CSharp while this file lives in the editor
+        // assembly, and the moment those two disagree the editor assembly stops compiling — which
+        // takes BridgeDefines with it, so the one piece of code that could clear the define can no
+        // longer run. The only way out was editing Player Settings by hand. Reflection removes the
+        // possibility entirely: nothing here needs those types at compile time, so a missing or
+        // half-written stub degrades to the legacy path instead of bricking the project.
+        //
+        // Same approach CreateParameterStreams already takes with the CCK.
+
+        const string NakSender = "NAK.Contacts.ContactSender";
+        const string NakReceiver = "NAK.Contacts.ContactReceiver";
+        const string NakAnimator = "NAK.Contacts.ContactAnimator";
+
+        static System.Type FindType(string fullName)
+        {
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var type = assembly.GetType(fullName, false);
+                    if (type != null)
+                    {
+                        return type;
+                    }
+                }
+                catch
+                {
+                    // Reflection-only or broken assemblies can throw; ignore them.
+                }
+            }
+            return null;
+        }
+
+        static void SetMember(object target, string field, object value)
+        {
+            if (target == null || value == null)
+            {
+                return;
+            }
+            var f = target.GetType().GetField(field, BindingFlags.Public | BindingFlags.Instance);
+            if (f != null)
+            {
+                try { f.SetValue(target, value); } catch { }
+            }
+        }
+
+        static object EnumValue(System.Type sibling, string enumName, string member)
+        {
+            var enumType = sibling.Assembly.GetType("NAK.Contacts." + enumName, false);
+            if (enumType == null)
+            {
+                return null;
+            }
+            try { return System.Enum.Parse(enumType, member, true); } catch { return null; }
+        }
+
         static bool UseNativeContacts(BridgeContext ctx)
         {
             if (!ctx.Settings.useNativeContacts)
             {
                 return false;
             }
-#if AVATARBRIDGE_CONTACTS
-            return true;
-#else
+            if (FindType(NakReceiver) != null && FindType(NakSender) != null && FindType(NakAnimator) != null)
+            {
+                return true;
+            }
             ctx.Report.Warning(Category, "Native contacts unavailable; used the legacy path",
                 "\"Use native contacts\" is on, but ChilloutVR's contact components aren't declared in this " +
                 "project. That normally means the installed CCK is newer than the one AvatarBridge verified " +
-                "its declarations against, so it declined to generate them — see the console for the exact " +
-                "version. Contacts were converted to pointers and triggers instead.");
+                "its declarations against, so ContactStubPatcher declined to generate them — see the console " +
+                "for the exact version. Contacts were converted to pointers and triggers instead.");
             return false;
-#endif
         }
 
-#if AVATARBRIDGE_CONTACTS
         static void ConvertSenderNative(BridgeContext ctx, VRCContactSender sender)
         {
             if (sender.collisionTags.Count == 0)
@@ -186,12 +246,13 @@ namespace AvatarBridge
             }
 
             var host = NativeContactObject(sender.rootTransform, sender.transform, "Contact_Sender");
-            var contact = host.AddComponent<NAK.Contacts.ContactSender>();
+            var contact = host.AddComponent(FindType(NakSender));
             ApplyShape(contact, sender.shapeType, sender.radius, sender.height, sender.position, sender.rotation);
-            contact.collisionTags = sender.collisionTags.Distinct().ToArray();
+            var tags = sender.collisionTags.Distinct().ToArray();
+            SetMember(contact, "collisionTags", tags);
 
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
-                $"Sender -> native ContactSender ({string.Join(", ", contact.collisionTags)})");
+                $"Sender -> native ContactSender ({string.Join(", ", tags)})");
             Object.DestroyImmediate(sender);
         }
 
@@ -209,32 +270,25 @@ namespace AvatarBridge
             var host = NativeContactObject(receiver.rootTransform, receiver.transform,
                 "Contact_" + receiver.parameter);
 
-            var contact = host.AddComponent<NAK.Contacts.ContactReceiver>();
+            var receiverType = FindType(NakReceiver);
+            var contact = host.AddComponent(receiverType);
             ApplyShape(contact, receiver.shapeType, receiver.radius, receiver.height,
                 receiver.position, receiver.rotation);
-            contact.collisionTags = receiver.collisionTags.Distinct().ToArray();
-            contact.allowSelf = receiver.allowSelf;
-            contact.allowOthers = receiver.allowOthers;
-            contact.localOnly = receiver.localOnly;
+            SetMember(contact, "collisionTags", receiver.collisionTags.Distinct().ToArray());
+            SetMember(contact, "allowSelf", receiver.allowSelf);
+            SetMember(contact, "allowOthers", receiver.allowOthers);
+            SetMember(contact, "localOnly", receiver.localOnly);
 
             string typeName = receiver.receiverType.ToString();
-            if (typeName.Contains("OnEnter"))
-            {
-                contact.receiverType = NAK.Contacts.ReceiverType.OnEnter;
-            }
-            else if (typeName.Contains("Proximity"))
-            {
+            string nativeType = typeName.Contains("OnEnter") ? "OnEnter"
                 // 1 at the centre falling to 0 at the edge, the same reading VRChat gives.
-                contact.receiverType = NAK.Contacts.ReceiverType.ProximitySenderToReceiver;
-            }
-            else
-            {
-                contact.receiverType = NAK.Contacts.ReceiverType.Constant;
-            }
+                : typeName.Contains("Proximity") ? "ProximitySenderToReceiver"
+                : "Constant";
+            SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
-            var animator = host.AddComponent<NAK.Contacts.ContactAnimator>();
-            animator.animator = ctx.Target.GetComponent<Animator>();
-            animator.parameter = receiver.parameter;
+            var animator = host.AddComponent(FindType(NakAnimator));
+            SetMember(animator, "animator", ctx.Target.GetComponent<Animator>());
+            SetMember(animator, "parameter", receiver.parameter);
 
             ctx.ContactParameters.Add(receiver.parameter);
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
@@ -243,16 +297,15 @@ namespace AvatarBridge
             Object.DestroyImmediate(receiver);
         }
 
-        static void ApplyShape(NAK.Contacts.ContactBase contact,
-            VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, float height,
-            Vector3 position, Quaternion rotation)
+        static void ApplyShape(Component contact, VRC.Dynamics.ContactBase.ShapeType shapeType,
+            float radius, float height, Vector3 position, Quaternion rotation)
         {
             bool sphere = shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere;
-            contact.shapeType = sphere ? NAK.Contacts.ShapeType.Sphere : NAK.Contacts.ShapeType.Capsule;
-            contact.radius = radius;
-            contact.height = height;
-            contact.localPosition = position;
-            contact.localRotation = sphere ? Quaternion.identity : rotation;
+            SetMember(contact, "shapeType", EnumValue(contact.GetType(), "ShapeType", sphere ? "Sphere" : "Capsule"));
+            SetMember(contact, "radius", radius);
+            SetMember(contact, "height", height);
+            SetMember(contact, "localPosition", position);
+            SetMember(contact, "localRotation", sphere ? Quaternion.identity : rotation);
         }
 
         /// <summary>
@@ -269,10 +322,7 @@ namespace AvatarBridge
             go.transform.localScale = Vector3.one;
             return go;
         }
-#else
-        static void ConvertSenderNative(BridgeContext ctx, VRCContactSender sender) => ConvertSender(ctx, sender);
-        static void ConvertReceiverNative(BridgeContext ctx, VRCContactReceiver receiver) => ConvertReceiver(ctx, receiver);
-#endif
+
 
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)

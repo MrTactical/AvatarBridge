@@ -25,15 +25,24 @@ namespace AvatarBridge
     public static class BridgeDefines
     {
         /// <summary>Tool version, shown in the converter window title.</summary>
-        public const string Version = "2.16.1";
+        public const string Version = "2.16.2";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
 
         /// <summary>
-        /// ChilloutVR's native contact components are declared in this project — either because a
-        /// future CCK ships them, or because ContactStubPatcher generated the declarations. Either
-        /// way they can be authored onto an avatar from here.
+        /// Retired, and actively removed from any project still carrying it.
+        ///
+        /// This used to be set when ChilloutVR's native contact components were declared, and
+        /// ContactsConverter compiled against them behind it. That deadlocks. The define is
+        /// decided by a generated file in Assembly-CSharp, the code reading it lives in the
+        /// editor assembly, and if the two ever disagree — a stub not yet written, or deleted —
+        /// the editor assembly fails to compile. That takes this class with it, so the only thing
+        /// able to clear the define can no longer run, and the project can only be recovered by
+        /// editing Player Settings by hand.
+        ///
+        /// ContactsConverter reaches those components through reflection now and needs no define,
+        /// so the safest thing this can do is make sure the old one is gone.
         /// </summary>
         public const string ContactsDefine = "AVATARBRIDGE_CONTACTS";
 
@@ -71,7 +80,9 @@ namespace AvatarBridge
             bool changed = false;
             changed |= SetDefine(defines, MagicaDefine, HasMagicaCloth2);
             changed |= SetDefine(defines, DynamicBoneDefine, HasDynamicBone);
-            changed |= SetDefine(defines, ContactsDefine, HasNativeContacts);
+            // Always false: see ContactsDefine. Passing it through SetDefine rather than simply
+            // dropping the line is what clears it out of projects that still have it.
+            changed |= SetDefine(defines, ContactsDefine, false);
 
             if (changed)
             {
