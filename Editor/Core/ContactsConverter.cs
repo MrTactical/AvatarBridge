@@ -254,13 +254,30 @@ namespace AvatarBridge
                     {
                         return true;
                     }
+                    // Say exactly what was found rather than guessing at the cause. Three separate
+                    // explanations for this failure have been wrong, each plausible and each
+                    // costing a round trip, so the report now carries the facts needed to tell
+                    // them apart: which assembly the type came from, whether Unity produced a
+                    // MonoScript at all or produced one with no source behind it, and where it
+                    // thinks that script lives.
+                    var asm = receiver.Assembly;
+                    string asmName = asm.GetName().Name;
+                    string asmPath;
+                    try { asmPath = string.IsNullOrEmpty(asm.Location) ? "(no file)" : asm.Location; }
+                    catch { asmPath = "(unavailable)"; }
+
+                    string scriptState = script == null
+                        ? "no MonoScript at all"
+                        : "a MonoScript with empty source text, asset path \"" +
+                          (UnityEditor.AssetDatabase.GetAssetPath(script) is string p && p.Length > 0 ? p : "(none)") + "\"";
+
                     ctx.Report.Error(Category, "Native contacts unusable; used the legacy path",
-                        "ChilloutVR's contact components resolve as types but Unity can't tie them to a script " +
-                        "asset, so anything built on them would serialize with a broken script reference and " +
-                        "arrive in game as \"the referenced script on this Behaviour is missing\". Usually the " +
-                        "generated declarations under AvatarBridge/Runtime were deleted or haven't been " +
-                        "imported yet — let Unity finish compiling and convert again. Contacts were converted " +
-                        "to pointers and triggers instead.");
+                        $"Unity resolved NAK.Contacts.ContactReceiver from assembly \"{asmName}\" ({asmPath}) but " +
+                        $"gave {scriptState}. A component needs a script asset behind it to serialize a usable " +
+                        "reference; without one the CCK reports broken Mono Script references and ChilloutVR " +
+                        "reports the script as missing. Contacts were converted to pointers and triggers " +
+                        "instead, which work. Please include this line if you report it — the assembly name and " +
+                        "asset path are the parts that identify the cause.");
                     return false;
                 }
                 finally
