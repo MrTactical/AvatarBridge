@@ -5,7 +5,11 @@ animator, menus, physics, contacts and face tracking — and hands you a clean s
 finish by hand.
 
 - **VRCFury & Modular Avatar avatars work.** It runs Fury's own builder (or NDMF's manual bake)
-  first, then converts the baked result, so toggles, linked clothing and merged armatures survive.
+  first, then converts the baked result, so toggles, linked clothing and merged armatures survive —
+  and Fury's VRChat-only sync workarounds are removed rather than carried across.
+- **Prefabs that drive your bones keep working** — constraints that target a different transform,
+  the way [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) and many
+  others are built, are rehosted onto the bone they actually drive.
 - **PhysBones become real physics** — **MagicaCloth2** or **DynamicBone**, no external tool.
 - **Readable output** — clothing toggles come out as one `Toggle <name>` layer each, driven by
   real `bool` parameters.
@@ -101,7 +105,8 @@ defines.
 | Gestures | `GestureLeftIdx` / `RightIdx` ints | analog fist curl stays native |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | ChilloutVR's native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
-| VRC Constraints | Unity constraints | ⚠️ several same-type on one object get merged |
+| VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
+| VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here — see [below](#vrcfury-systems) |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quads on ice](#quadruped--finalik-avatars--on-ice) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
@@ -115,6 +120,56 @@ defines.
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
+
+### VRCFury systems
+
+VRCFury avatars are baked with Fury's own builder before conversion, so anything it installs
+arrives as ordinary layers and parameters. Two of its systems get special handling because they
+exist to solve VRChat problems ChilloutVR doesn't have:
+
+- **Parameter Compressor — removed.** It beats VRChat's 256-parameter ceiling by marking your real
+  parameters as *not synced*, mirroring each into `VF<id>_<name>`, and rotating the mirrors through
+  a couple of sync slots twice a second. ChilloutVR has 3200 bits and syncs straight from the
+  animator, so carried across it costs a blend tree running every frame — and because the originals
+  were left marked not-synced, **the values reach nobody**. An avatar whose author installed it to
+  make more things sync ends up with those things not syncing at all. Removing it puts every
+  affected parameter back to syncing natively and instantly.
+- **Armature Link, Full Controller, toggles, menus** — nothing special needed; they're baked before
+  AvatarBridge sees them.
+
+### Third-party prefabs
+
+Anything VRCFury or Modular Avatar installs is baked first, so most prefabs convert without needing
+to be known about. These have been tested end to end and work in game:
+
+| Prefab | Notes |
+|---|---|
+| [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) | Arms/Legs sliders scale the real bones. Needs the *Target Transform* handling below |
+| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default — CVR has its own locomotion |
+| VRCFaceTracking / ARKit rigs | replaced by the chosen face-tracking mode, or kept under **None** |
+
+If a prefab's feature comes through inert — the menu control appears, moves, and does nothing —
+that's worth reporting. Every case of it so far has been a fixable gap in AvatarBridge rather than
+anything wrong with the prefab.
+
+## Constraints that drive another object
+
+A VRC constraint can sit on one object and drive a **different** one, through its `Target
+Transform` field. Unity's constraints have no equivalent — they always affect the transform they're
+attached to.
+
+AvatarBridge honours it by putting the Unity constraint **on the target** instead, carrying the
+same sources. That's exact rather than approximate, and it matters more than it sounds: prefabs
+routinely put their constraints on proxy objects inside their own hierarchy and point them at your
+real bones. Avatar Limb Scaling is built entirely that way. Dropping the redirection doesn't
+weaken such a prefab, it silently stops it working while everything still *looks* wired up.
+
+The one case that can't be honoured is a Target Transform pointing outside the avatar — not
+AvatarBridge's to modify, and it wouldn't survive an upload. The report says so plainly when it
+happens.
+
+⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
+only one per type per object, so the second's offsets are dropped (its sources are kept).
 
 ## PhysBones → MagicaCloth2
 
@@ -259,8 +314,10 @@ rather than missed it.
 
 ## Face tracking
 
-Pick one in the **Face tracking** dropdown. Both options first strip whatever FT rig the avatar
-shipped with, so nothing fights over the same blendshapes.
+Pick one in the **Face tracking** dropdown. Both set-up modes remove whatever FT rig the avatar
+shipped with — its animator layers, its parameters *and* its objects — so nothing is left fighting
+over the same blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred
+parameters. **None** leaves the original rig completely alone.
 
 - **Native CVR Component** — sets up `CVRFaceTracking` and maps the shapes. Self-contained, but
   the built-in solver is a bit stiff.
@@ -269,7 +326,7 @@ shipped with, so nothing fights over the same blendshapes.
   reconciles its shape vocabulary against whatever your mesh has — matching by name, casing,
   **ARKit ↔ Unified Expressions** aliases, and combined/split rules. So an **ARKit avatar** works
   without renaming anything. Smoother and more expressive.
-- **None.**
+- **None** — the avatar's own rig is left exactly as it is, on the assumption you'll handle it.
 
 **Either mode needs a tracking source at runtime** — true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480), and set CVR's *Eye Tracking* and
