@@ -66,36 +66,68 @@ namespace AvatarBridge
             return text;
         }
 
+        /// <summary>
+        /// ChilloutVR's description box holds 256 characters — `max-length="256"` on the
+        /// `input-description` field in the CCK's own `ContentBuilder2.uxml`. Nothing in the
+        /// upload path enforces it, but that is the box people paste into, so anything longer is
+        /// silently cut off mid-sentence.
+        /// </summary>
+        public const int MaxLength = 256;
+
+        /// <summary>
+        /// How much of the box to leave for the user's own words. The generated text is a footer,
+        /// not the listing — taking the whole budget would make it one.
+        /// </summary>
+        const int ReservedForUser = 90;
+
         public static string Build(BridgeContext ctx)
         {
-            var sb = new StringBuilder();
+            // The credit is the fixed cost and gets measured first; features fill what is left.
+            string credit = "Converted from VRChat with AvatarBridge\n" + ShortLink(BridgeLinks.Repo);
+            string name = DisplayName(ctx.Target.name);
 
             // Two blank lines first, deliberately. Whoever pastes this almost always has something
             // of their own to say — who made the model, where it came from, what it costs — and a
             // block of generated text starting hard against the top of the box invites them to
-            // either delete it or leave the listing sounding machine-written. Opening with room to
-            // type turns this into the footer of their description rather than the whole of it,
-            // and the cursor lands in the gap.
-            sb.AppendLine();
-            sb.AppendLine();
+            // either delete it or leave the listing sounding machine-written. The cursor lands in
+            // the gap, and ReservedForUser keeps room for what they type there.
+            const string gap = "\n\n";
 
-            sb.AppendLine(DisplayName(ctx.Target.name));
-            sb.AppendLine();
+            int budget = MaxLength - ReservedForUser - gap.Length - name.Length - credit.Length - 4;
 
-            var features = Features(ctx);
-            if (features.Count > 0)
+            var kept = new List<string>();
+            foreach (string feature in Features(ctx))
             {
-                foreach (string line in features)
+                // " · " between entries, so each costs itself plus the separator.
+                int cost = feature.Length + (kept.Count > 0 ? 3 : 0);
+                if (cost > budget)
                 {
-                    sb.AppendLine("• " + line);
+                    continue;   // skip, don't stop — a later entry may still fit
                 }
-                sb.AppendLine();
+                budget -= cost;
+                kept.Add(feature);
             }
 
-            sb.AppendLine("Converted from VRChat with AvatarBridge, a free and open-source");
-            sb.AppendLine("VRChat to ChilloutVR avatar converter.");
-            sb.Append(BridgeLinks.Repo);
-            return sb.ToString();
+            var sb = new StringBuilder();
+            sb.Append(gap);
+            sb.AppendLine(name);
+            if (kept.Count > 0)
+            {
+                sb.AppendLine(string.Join(" · ", kept));
+            }
+            sb.AppendLine();
+            sb.Append(credit);
+
+            string text = sb.ToString();
+            // Belt and braces: never hand back something the box would truncate, whatever the
+            // arithmetic above did.
+            return text.Length <= MaxLength ? text : text.Substring(0, MaxLength).TrimEnd();
+        }
+
+        /// <summary>The box is 256 characters; "https://" is eight of them for no information.</summary>
+        static string ShortLink(string url)
+        {
+            return url.StartsWith("https://") ? url.Substring("https://".Length) : url;
         }
 
         /// <summary>
@@ -106,21 +138,18 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
 
+            // Ordered by what someone browsing avatars cares about most, because the budget in
+            // Build() fills from the top and drops what will not fit.
             CountMenu(ctx, out int toggles, out int sliders, out int puppets, out int colours);
-            var parts = new List<string>();
-            if (toggles > 0) parts.Add(Plural(toggles, "toggle"));
-            if (sliders > 0) parts.Add(Plural(sliders, "slider"));
-            if (puppets > 0) parts.Add(Plural(puppets, "joystick"));
-            if (colours > 0) parts.Add(Plural(colours, "colour picker"));
-            if (parts.Count > 0)
-            {
-                lines.Add("Customisable — " + Join(parts) + " on the avatar menu");
-            }
+            if (toggles > 0) lines.Add(Plural(toggles, "toggle"));
+            if (sliders > 0) lines.Add(Plural(sliders, "slider"));
+            if (puppets > 0) lines.Add(Plural(puppets, "joystick"));
+            if (colours > 0) lines.Add(Plural(colours, "colour picker"));
 
             int chains = CountPhysics(ctx, out string physicsName);
             if (chains > 0)
             {
-                lines.Add($"Physics on {Plural(chains, "bone chain")} ({physicsName})");
+                lines.Add($"{Plural(chains, "physics chain")} ({physicsName})");
             }
 
             // Checked against the avatar, never against the setting that asked for it. A mode can
@@ -128,14 +157,11 @@ namespace AvatarBridge
             // — and a listing that claims face tracking on an avatar without the component is a
             // false advertisement written by this tool, under someone else's name. The setting is
             // a request; only the component is evidence.
-            if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null)
+            if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null
+                || (FindDeep(ctx.Target.transform, "EyeTracking.L") != null
+                    && FindDeep(ctx.Target.transform, "EyeTracking.R") != null))
             {
-                lines.Add("Face tracking ready — ChilloutVR's native component");
-            }
-            else if (FindDeep(ctx.Target.transform, "EyeTracking.L") != null
-                     && FindDeep(ctx.Target.transform, "EyeTracking.R") != null)
-            {
-                lines.Add("Face tracking ready — eye and face blendtrees");
+                lines.Add("face tracking");
             }
 
             // Blink and lip sync are separate features on separate fields, and were being claimed
@@ -146,27 +172,29 @@ namespace AvatarBridge
             bool lipSync = ctx.CvrAvatar != null && ctx.CvrAvatar.useVisemeLipsync
                            && (ctx.CvrAvatar.visemeMode == CVRAvatar.CVRAvatarVisemeMode.JawBone
                                || HasAny(ctx.CvrAvatar.visemeBlendshapes));
-            if (blinks && lipSync) lines.Add("Blinks and lip syncs on its own");
-            else if (blinks) lines.Add("Blinks on its own");
-            else if (lipSync) lines.Add("Lip syncs on its own");
+            if (blinks && lipSync) lines.Add("blink and lip sync");
+            else if (blinks) lines.Add("auto blink");
+            else if (lipSync) lines.Add("lip sync");
 
             // Same rule: the scaler is claimed only if its menu control actually reached the
             // avatar. Injection is skipped on rigs it can't measure.
             if (HasMenuEntry(ctx, "Height (M)"))
             {
-                lines.Add("Resizable in game — set your height in real metres");
+                lines.Add("height slider");
             }
 
             CountGeometry(ctx, out int triangles, out int materials, out int shapes);
             if (triangles > 0)
             {
-                string geo = $"{triangles:N0} triangles";
-                if (materials > 0) geo += $", {Plural(materials, "material")}";
-                lines.Add(geo);
+                lines.Add(Triangles(triangles));
+            }
+            if (materials > 0)
+            {
+                lines.Add(Plural(materials, "material"));
             }
             if (shapes > 0)
             {
-                lines.Add($"{Plural(shapes, "blendshape")} for expressions");
+                lines.Add(Plural(shapes, "blendshape"));
             }
 
             return lines;
@@ -365,12 +393,10 @@ namespace AvatarBridge
             return count == 1 ? $"1 {noun}" : $"{count:N0} {noun}s";
         }
 
-        /// <summary>"a, b and c" — an Oxford-comma-free list, because this is prose.</summary>
-        static string Join(List<string> parts)
+        /// <summary>"107k tris" rather than "107,050 triangles" — this is a 256-character box.</summary>
+        static string Triangles(int count)
         {
-            if (parts.Count == 1) return parts[0];
-            if (parts.Count == 2) return parts[0] + " and " + parts[1];
-            return string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts.Last();
+            return count >= 10000 ? $"{count / 1000}k tris" : $"{count:N0} tris";
         }
     }
 }
