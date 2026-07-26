@@ -3052,10 +3052,55 @@ namespace AvatarBridge
         /// instead of losing them, and layers that genuinely animate the body are left alone for
         /// WarnLocomotionOverrides to report.
         /// </summary>
+        /// <summary>
+        /// Names merged layers that can write humanoid muscles while carrying no mask to stop them.
+        ///
+        /// Reported rather than fixed, because masking is not always right: a layer may animate the
+        /// body on purpose, and the pass that does the masking skips exactly those. This only says
+        /// what it found and which switch addresses it.
+        /// </summary>
+        static void ReportUnmaskedMuscleLayers(AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
+            var suspects = new List<string>();
+            foreach (var layer in master.layers)
+            {
+                if (!vrcNames.Contains(layer.name) || layer.avatarMask != null)
+                {
+                    continue;
+                }
+                InspectLayerCurves(layer, out bool body, out bool fingers);
+                if (!body && fingers)
+                {
+                    suspects.Add(layer.name);
+                }
+            }
+            if (suspects.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Approximated(Category,
+                $"{suspects.Count} merged layer(s) can write humanoid muscles with no mask",
+                $"{string.Join(", ", suspects.Take(6))}{(suspects.Count > 6 ? ", …" : "")} — VRChat keeps " +
+                "FX on its own playable layer, which stops this happening there; ChilloutVR runs one " +
+                "controller, so nothing stops it here. If the avatar stands in a bent rest pose in game " +
+                "with only the head and hands following you, turn on \"Mask merged layers off the " +
+                "humanoid rig\" in Advanced and convert again. Layers that animate the body deliberately " +
+                "are left alone by that option, so it is safe to try.");
+        }
+
         static void MaskMergedLayers(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
             if (!ctx.Settings.maskMergedLayers)
             {
+                // Still look, even when not allowed to act. A merged layer that can write humanoid
+                // muscles is the known cause of an avatar standing in a bent rest pose in game
+                // while only the IK-tracked parts follow you — the "bicycle pose". VRChat prevents
+                // it architecturally by keeping FX on its own playable layer; ChilloutVR has one
+                // controller, so nothing prevents it here. Naming the layers turns an alarming
+                // in-game symptom into a setting to switch on.
+                ReportUnmaskedMuscleLayers(master, vrcLayers, ctx);
                 return;
             }
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));

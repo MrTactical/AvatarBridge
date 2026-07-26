@@ -80,12 +80,17 @@ namespace AvatarBridge
                     // Runs last: every collider the avatar defines has to exist before a chain can
                     // be offered one it didn't originally reference.
                     MagicaColliderAutoAssign.Run(ctx, writtenCloths, magicaColliderCache);
+                    break;
 #else
+                    // The break belongs inside this #if rather than after the #endif: without
+                    // MagicaCloth2 the branch above ends in a return, which leaves a trailing
+                    // break unreachable and earns CS0162 in every project that picked DynamicBone.
+                    // A warning naming AvatarBridge is the first thing someone checks when they
+                    // suspect the tool.
                     ctx.Report.Error(Category, "MagicaCloth2 is not installed",
                         "Import MagicaCloth2 (or choose the DynamicBone target) and convert again.");
                     return;
 #endif
-                    break;
 
                 case PhysicsTarget.DynamicBone:
 #if AVATARBRIDGE_DYNBONE
@@ -94,12 +99,13 @@ namespace AvatarBridge
                     {
                         DynamicBoneWriter.Write(ctx, PhysBoneChainData.Read(pb), dbColliderCache);
                     }
+                    break;
 #else
+                    // Same shape as the MagicaCloth2 branch above, and the same reason.
                     ctx.Report.Error(Category, "DynamicBone is not installed",
                         "Import DynamicBone or the VRLabs Dynamic-Bones-Stub, or choose MagicaCloth2.");
                     return;
 #endif
-                    break;
 
                 default:
                     ctx.Report.Skipped(Category, $"{physBones.Length} PhysBone(s)",

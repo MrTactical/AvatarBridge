@@ -45,8 +45,11 @@ namespace AvatarBridge
 
         [SerializeField] BridgeSettings settings = new BridgeSettings();
         BridgeReport lastReport;
+#if VRC_SDK_VRCSDK3
         // Set while a deferred conversion is in flight, so the button can't queue a second one.
+        // Convert-mode only, like the two below: ungated it warns in every CCK-only project.
         bool converting;
+#endif
 
 #if VRC_SDK_VRCSDK3
         // Physics is convert-mode only, so without the VRChat SDK nothing reads this — and an
@@ -60,8 +63,8 @@ namespace AvatarBridge
         VisualElement body;
 #if VRC_SDK_VRCSDK3
         VisualElement tabs;
-#endif
         BridgeElements.PrimaryButton primary;
+#endif
 
         // ------------------------------------------------------------------ lifecycle --
 
