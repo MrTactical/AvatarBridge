@@ -13,8 +13,10 @@ namespace AvatarBridge
     /// reference any SDK, CCK, MagicaCloth2 or DynamicBone types directly.
     ///
     /// Defines managed here:
-    ///   AVATARBRIDGE_MAGICA  - MagicaCloth2 is present
-    ///   AVATARBRIDGE_DYNBONE - DynamicBone (or the VRLabs stub) is present
+    ///   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
+    ///   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
+    ///   AVATARBRIDGE_CONTACTS - ChilloutVR's native NAK.Contacts components can be authored,
+    ///                           whether from a future CCK or from ContactStubPatcher's output
     ///
     /// The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
     /// CVR_CCK_EXISTS) which the rest of this package is gated behind.
@@ -23,10 +25,17 @@ namespace AvatarBridge
     public static class BridgeDefines
     {
         /// <summary>Tool version, shown in the converter window title.</summary>
-        public const string Version = "2.12.1";
+        public const string Version = "2.13.0";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
+
+        /// <summary>
+        /// ChilloutVR's native contact components are declared in this project — either because a
+        /// future CCK ships them, or because ContactStubPatcher generated the declarations. Either
+        /// way they can be authored onto an avatar from here.
+        /// </summary>
+        public const string ContactsDefine = "AVATARBRIDGE_CONTACTS";
 
         static BridgeDefines()
         {
@@ -36,6 +45,7 @@ namespace AvatarBridge
 
         public static bool HasMagicaCloth2 => TypeExists("MagicaCloth2.MagicaCloth");
         public static bool HasDynamicBone => TypeExists("DynamicBone");
+        public static bool HasNativeContacts => TypeExists("NAK.Contacts.ContactReceiver");
         public static bool HasVrcAvatarSdk => TypeExists("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
         public static bool HasCck => TypeExists("ABI.CCK.Components.CVRAvatar");
 
@@ -61,6 +71,7 @@ namespace AvatarBridge
             bool changed = false;
             changed |= SetDefine(defines, MagicaDefine, HasMagicaCloth2);
             changed |= SetDefine(defines, DynamicBoneDefine, HasDynamicBone);
+            changed |= SetDefine(defines, ContactsDefine, HasNativeContacts);
 
             if (changed)
             {

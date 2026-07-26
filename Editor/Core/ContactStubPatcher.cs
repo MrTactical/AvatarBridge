@@ -1,0 +1,213 @@
+#if CVR_CCK_EXISTS
+using System;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEngine;
+
+namespace AvatarBridge
+{
+    /// <summary>
+    /// Generates a minimal declaration of ChilloutVR's native contact components so avatars can
+    /// be authored with them.
+    ///
+    /// ChilloutVR replaced its pointer/trigger contacts with a system in the NAK.Contacts
+    /// namespace that is a near-exact superset of VRChat's: the same shapes plus Box, the same
+    /// allowSelf/allowOthers/localOnly/collisionTags fields under the same names, and receiver
+    /// types covering Constant, OnEnter, three flavours of Proximity, and velocity. The catch is
+    /// that it lives in the game client only — CCK 4.0.x ships no such types, so nothing can be
+    /// authored against them and every conversion has to go through the legacy
+    /// CVRPointer/CVRAdvancedAvatarSettingsTrigger approximation instead.
+    ///
+    /// It doesn't have to. Unity binds a MonoBehaviour inside an asset bundle by class name,
+    /// namespace and assembly name rather than by GUID, so a declaration that matches on those
+    /// three points and carries the same serialized fields is enough: the avatar serializes
+    /// against this, and the client deserializes it straight onto its own real implementation,
+    /// which is the code that then runs. This is the same trick the VRLabs DynamicBone stub uses.
+    ///
+    /// Only the serialized surface is reproduced. There is deliberately no behaviour, no editor
+    /// UI and no gizmos — anything this file did at runtime would be dead code the moment the
+    /// avatar is in game, because the client's implementation is what actually executes.
+    ///
+    /// Generated into the project rather than shipped as part of the package. If ChilloutVR ever
+    /// ships these types in the CCK, two definitions of the same class would break compilation of
+    /// the whole project — including this patcher, leaving nothing able to undo it. Writing the
+    /// file only after confirming the real thing is absent, and deleting it again the moment the
+    /// real thing appears, keeps that failure from being self-sealing.
+    /// </summary>
+    [InitializeOnLoad]
+    public static class ContactStubPatcher
+    {
+        const string StubTypeName = "NAK.Contacts.ContactBase";
+        const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
+        const string FileName = "AvatarBridgeContactStub.cs";
+
+        /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
+        const string StubVersion = "1";
+        const string VersionTag = "// AvatarBridge generated contact stub, revision " + StubVersion;
+
+        static ContactStubPatcher()
+        {
+            EditorApplication.delayCall += Sync;
+        }
+
+        /// <summary>
+        /// True when NAK.Contacts exists and is not the file this class generates — i.e. the
+        /// real thing has arrived and the stub must get out of its way.
+        /// </summary>
+        static bool RealTypesPresent(out Type found)
+        {
+            found = null;
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type type;
+                try { type = assembly.GetType(StubTypeName, false); }
+                catch { continue; }
+                if (type == null)
+                {
+                    continue;
+                }
+                found = type;
+                // Matched by interface name rather than by a typeof() reference: this class must
+                // stay compilable in the moments when the generated file does not exist.
+                bool isOurs = type.GetInterfaces().Any(i => i.FullName == MarkerInterface);
+                if (!isOurs)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static void Sync()
+        {
+            string dir = GeneratedFolder();
+            if (dir == null)
+            {
+                return;
+            }
+            string path = dir + "/" + FileName;
+
+            if (RealTypesPresent(out var real))
+            {
+                if (File.Exists(path))
+                {
+                    AssetDatabase.DeleteAsset(path);
+                    Debug.Log("[AvatarBridge] ChilloutVR now provides " + StubTypeName + " itself (" +
+                              real.Assembly.GetName().Name + "); removed the generated stub.");
+                }
+                return;
+            }
+
+            string existing = File.Exists(path) ? File.ReadAllText(path) : null;
+            if (existing != null && existing.Contains(VersionTag))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(path, StubSource);
+            AssetDatabase.ImportAsset(path);
+            Debug.Log("[AvatarBridge] Wrote " + path + " so ChilloutVR's native contact components " +
+                      "can be authored. Delete it if the CCK ever ships them itself.");
+        }
+
+        /// <summary>
+        /// A "Runtime" folder beside AvatarBridge's Editor folder. The location matters: with no
+        /// assembly definition, anything outside an Editor folder lands in Assembly-CSharp, which
+        /// is the assembly the client's own NAK.Contacts types live in, and matching it is half of
+        /// what makes the binding work.
+        /// </summary>
+        static string GeneratedFolder()
+        {
+            var guids = AssetDatabase.FindAssets("t:MonoScript ContactStubPatcher");
+            foreach (var guid in guids)
+            {
+                string scriptPath = AssetDatabase.GUIDToAssetPath(guid);
+                if (!scriptPath.EndsWith("/ContactStubPatcher.cs", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                // .../AvatarBridge/Editor/Core/ContactStubPatcher.cs -> .../AvatarBridge
+                var dir = Path.GetDirectoryName(scriptPath)?.Replace('\\', '/');
+                int editor = dir?.LastIndexOf("/Editor", StringComparison.Ordinal) ?? -1;
+                if (editor > 0)
+                {
+                    return dir.Substring(0, editor) + "/Runtime";
+                }
+            }
+            return null;
+        }
+
+        const string StubSource = VersionTag + @"
+//
+// DO NOT EDIT. Written by AvatarBridge's ContactStubPatcher, and rewritten whenever it changes.
+// Safe to delete: it is regenerated on the next domain reload, and is removed automatically if a
+// future CCK provides these types itself.
+//
+// This declares ChilloutVR's native contact components so avatars can be authored against them.
+// The game client holds the real implementation; Unity binds serialized components in an asset
+// bundle by class name, namespace and assembly name, so only those three things and the
+// serialized field layout have to match. There is intentionally no behaviour here.
+//
+// Field names, types, defaults and order are copied from the client's own NAK.Contacts.
+using System;
+using UnityEngine;
+
+namespace AvatarBridge
+{
+    /// <summary>Marks these declarations as AvatarBridge's, so the patcher can recognise its own
+    /// work and stand down if ChilloutVR ever ships the real types.</summary>
+    public interface IGeneratedContactStub { }
+}
+
+namespace NAK.Contacts
+{
+    public enum ShapeType : byte { Sphere, Capsule, Box }
+
+    public enum ReceiverType : byte
+    {
+        Constant,
+        OnEnter,
+        ProximitySenderToReceiver,
+        ProximityReceiverToSender,
+        ProximityCenterToCenter,
+        CopyValueFromSender,
+        VelocityReceiver,
+        VelocitySender,
+        VelocityMagnitude
+    }
+
+    [Flags]
+    public enum ContentType : byte { World = 1, Avatar = 2, Prop = 4, Player = 8 }
+
+    [DefaultExecutionOrder(18200)]
+    public abstract class ContactBase : MonoBehaviour, AvatarBridge.IGeneratedContactStub
+    {
+        public ShapeType shapeType;
+        public Vector3 localPosition = Vector3.zero;
+        public Quaternion localRotation = Quaternion.identity;
+        public float radius = 0.5f;
+        public float height = 1f;
+        public Vector3 boxSize = Vector3.one;
+        public bool allowSelf = true;
+        public bool allowOthers = true;
+        public bool localOnly;
+        public ContentType contentTypes = ContentType.World | ContentType.Avatar | ContentType.Prop | ContentType.Player;
+        public string[] collisionTags = Array.Empty<string>();
+        public float contactValue = 1f;
+        public bool drawGizmos = true;
+        public Color gizmoColor = Color.green;
+    }
+
+    public class ContactSender : ContactBase { }
+
+    public class ContactReceiver : ContactBase
+    {
+        public ReceiverType receiverType;
+    }
+}
+";
+    }
+}
+#endif
