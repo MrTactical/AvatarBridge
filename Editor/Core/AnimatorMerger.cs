@@ -1531,9 +1531,34 @@ namespace AvatarBridge
             // layers that used it didn't, so the entry looked alive while doing nothing.
             var referenced = CollectReferencedParameters(master);
 
+            // A joystick's machineName is not itself a parameter — ChilloutVR derives one per
+            // axis, "<machineName>-x" and "-y" (and "-z" for the 3D one). Judging those entries
+            // by their bare name condemns every one of them: the name never appears in the
+            // animator, so a working Joystick2D looked exactly like a dead entry and was removed,
+            // taking the only control for those axes with it.
+            string[] AxesOf(ABI.CCK.Scripts.CVRAdvancedSettingsEntry entry)
+            {
+                switch (entry.type)
+                {
+                    case ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
+                    case ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.InputVector2:
+                        return new[] { entry.machineName + "-x", entry.machineName + "-y" };
+                    case ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.Joystick3D:
+                    case ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.InputVector3:
+                        return new[]
+                        {
+                            entry.machineName + "-x", entry.machineName + "-y", entry.machineName + "-z"
+                        };
+                    default:
+                        return new[] { entry.machineName };
+                }
+            }
+
+            // Alive if any axis is declared and actually read. Any, not all: a puppet whose
+            // avatar only animates one axis is still a control worth keeping.
             var dead = settings
                 .Where(e => e != null && !string.IsNullOrEmpty(e.machineName)
-                            && (!known.Contains(e.machineName) || !referenced.Contains(e.machineName)))
+                            && !AxesOf(e).Any(n => known.Contains(n) && referenced.Contains(n)))
                 .ToList();
             if (dead.Count == 0)
             {
