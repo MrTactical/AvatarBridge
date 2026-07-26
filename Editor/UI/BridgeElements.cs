@@ -128,7 +128,6 @@ namespace AvatarBridge
 
                 _summary = new Label(summary ?? string.Empty);
                 _summary.AddToClassList("ab-card-summary");
-                _summary.style.color = BridgeTheme.Muted;
                 _summary.style.display = string.IsNullOrEmpty(summary)
                     ? DisplayStyle.None : DisplayStyle.Flex;
                 header.Add(_summary);
@@ -249,7 +248,6 @@ namespace AvatarBridge
         {
             var label = new Label(text.ToUpperInvariant());
             label.AddToClassList("ab-sub");
-            label.style.color = BridgeTheme.Muted;
             return label;
         }
 
@@ -257,7 +255,6 @@ namespace AvatarBridge
         {
             var label = new Label(text);
             label.AddToClassList("ab-hint");
-            label.style.color = BridgeTheme.Muted;
             return label;
         }
     }

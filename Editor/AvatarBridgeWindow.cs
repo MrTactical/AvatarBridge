@@ -773,7 +773,9 @@ namespace AvatarBridge
                 parent.Add(actions);
             }
 
-            // Only issues are listed here; the full list lives in the report file.
+            // Only issues are listed here; the full list lives in the report file. A clean run has
+            // none, and an empty bordered box reads as something failing to load — so on a clean
+            // run the list simply isn't drawn.
             var list = new ScrollView();
             list.AddToClassList("ab-report-list");
             foreach (var entry in lastReport.Entries)
@@ -791,7 +793,10 @@ namespace AvatarBridge
                 }
                 list.Add(line);
             }
-            parent.Add(list);
+            if (list.childCount > 0)
+            {
+                parent.Add(list);
+            }
         }
 
         // ------------------------------------------------------------------- footer ---

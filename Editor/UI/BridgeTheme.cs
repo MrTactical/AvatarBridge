@@ -32,9 +32,13 @@ namespace AvatarBridge
         public static readonly Color CvrOrange = Hex(0xEE4408);
 
         // VRChat's own status colours, reused so a warning here looks like a warning there.
-        public static readonly Color Good = Hex(0x2BCF5C);
-        public static readonly Color Warn = Hex(0xE3BE0C);
-        public static readonly Color Bad = Hex(0xF04747);
+        //
+        // Darkened on the light skin. These are used as text on a pale chip, and #E3BE0C yellow
+        // on a light grey background is close to unreadable — the dark-skin values are chosen to
+        // glow against near-black, which is the opposite problem.
+        public static Color Good => Dark ? Hex(0x2BCF5C) : Hex(0x1E7A34);
+        public static Color Warn => Dark ? Hex(0xE3BE0C) : Hex(0x8A6D00);
+        public static Color Bad => Dark ? Hex(0xF04747) : Hex(0xB02020);
 
         public static Color Muted => Dark ? new Color(1f, 1f, 1f, 0.50f) : new Color(0f, 0f, 0f, 0.55f);
 

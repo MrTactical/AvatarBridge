@@ -164,16 +164,29 @@
     background-color: rgb(213, 213, 213);
 }
 
+/* Unity ships a pale arrow and a dark one; picking the wrong one loses it entirely against
+ * the header. Selected per skin rather than hardcoded, so both themes keep an arrow. */
 .ab-card-arrow {
     width: 13px;
     height: 13px;
     margin-right: 4px;
     flex-shrink: 0;
-    background-image: resource('IN foldout');
     -unity-background-scale-mode: scale-to-fit;
 }
 
-.ab-card-arrow-on {
+.dark .ab-card-arrow {
+    background-image: resource('d_IN foldout');
+}
+
+.light .ab-card-arrow {
+    background-image: resource('IN foldout');
+}
+
+.dark .ab-card-arrow-on {
+    background-image: resource('d_IN foldout on');
+}
+
+.light .ab-card-arrow-on {
     background-image: resource('IN foldout on');
 }
 
@@ -224,6 +237,20 @@
     color: rgb(255, 255, 255);
     margin: 0;
     padding: 0;
+}
+
+/* Secondary text, set here rather than inline in C# so switching editor theme is handled by
+ * the cascade instead of by a colour sampled once when the element was built. */
+.dark .ab-card-summary,
+.dark .ab-sub,
+.dark .ab-hint {
+    color: rgba(255, 255, 255, 0.50);
+}
+
+.light .ab-card-summary,
+.light .ab-sub,
+.light .ab-hint {
+    color: rgba(0, 0, 0, 0.55);
 }
 
 /* ------------------------------------------------------------ controls ---- */
