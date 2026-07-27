@@ -82,8 +82,8 @@ actually running.
   `bool` parameters.
 - **Bloat removed** — GoGo Loco and SPS/OGB/PCS stripped (one avatar went from 3088 to 240 of 3200
   sync bits).
-- **Face tracking, your way** — native `CVRFaceTracking`, or a bundled rig with eye tracking wired
-  up. ARKit and Unified Expressions meshes both work.
+- **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
+  up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts** — one-to-one, with real proximity and no sync cost, using a
   system the CCK doesn't expose.
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
@@ -157,13 +157,16 @@ defines.
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
-| Face-tracking blendshapes | native `CVRFaceTracking` or bundled rig | see [below](#face-tracking) |
+| Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
 | Shaders without stereo support | patched copy in `RehomedAssets` | optional — see [below](#shaders-that-only-draw-into-one-eye) |
 | VRCFury temp materials/shaders | rescued into `RehomedAssets` | Fury deletes its temp folder on its next build |
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
+Want to *keep* GoGo's poses and dances? Untick *Remove GoGo Loco* and merge the **Base** and
+**Action** layers — the window shows a live hint until both halves are set, because half-keeping
+it produces a pose wheel that drives nothing.
 
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
@@ -179,8 +182,8 @@ to be known about. Tested end to end and working in game:
 | Prefab | Notes |
 |---|---|
 | [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) | sliders scale the real bones; needs the *Target Transform* handling below |
-| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default — CVR has its own locomotion |
-| VRCFaceTracking / ARKit rigs | replaced by the chosen face-tracking mode, or kept under **None** |
+| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default (CVR has its own locomotion) — or kept whole: untick the strip and merge Base/Action, the window guides it |
+| VRCFaceTracking / ARKit rigs (Jerry's, Pawlygon…) | replaced by the chosen face-tracking mode — or converted whole with *Keep the avatar's own rig* (smoothing proxies go `#`-local, zero sync cost) |
 
 If a prefab's feature comes through inert — the menu control appears, moves, and does nothing —
 that's worth reporting. Every case so far has been a fixable gap in AvatarBridge.
@@ -351,7 +354,7 @@ missed it.
 
 ## Face tracking
 
-Pick one in the **Face tracking** dropdown. Both set-up modes remove whatever FT rig the avatar
+Pick one in the **Face tracking** dropdown. The two set-up modes remove whatever FT rig the avatar
 shipped with — animator layers, parameters *and* objects — so nothing is left fighting over the same
 blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
 
@@ -362,9 +365,14 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   vocabulary against whatever your mesh has — by name, casing, **ARKit ↔ Unified Expressions**
   aliases, and combined/split rules. An **ARKit avatar** works without renaming anything. Smoother
   and more expressive.
-- **None** — the avatar's own rig is left exactly as it is.
+- **Keep the avatar's own rig** — nothing is stripped, and this is *not* a do-it-yourself option:
+  the existing rig (Jerry's Templates, Pawlygon, OSCmooth setups…) **converts** with the rest of
+  the animator. Smoothing proxies VRChat never synced automatically become `#`-local — which costs
+  **zero** sync bits, so a full smoothed rig fits ChilloutVR's 3200-bit budget comfortably — and
+  the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
+  point. *(Labelled "None" before v2.48.1, which undersold it.)*
 
-**Either mode needs a tracking source at runtime** — true of any CVR face-tracking avatar. Run
+**Every mode needs a tracking source at runtime** — true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480) and set CVR's *Eye Tracking* and
 *Mouth Tracking* modules to **OSC**.
 
