@@ -3328,7 +3328,12 @@ namespace AvatarBridge
                 return false;
             }
             path = path.Replace('\\', '/');
-            return path.StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase)
+            // Only the TEMP roots. The broad "Packages/com.vrcfury" prefix also matched the
+            // installed package (com.vrcfury.vrcfury) — and clips that animate Fury component
+            // properties legitimately reference its script GUIDs, so the audit flagged a stable
+            // reference as doomed on every SPS avatar. The wiped folders, verified against both
+            // frameworks' own code, are exactly these two:
+            return path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("Packages/nadena.dev.ndmf/__Generated", StringComparison.OrdinalIgnoreCase);
         }
 
