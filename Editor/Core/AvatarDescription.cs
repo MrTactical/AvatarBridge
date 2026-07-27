@@ -173,7 +173,7 @@ namespace AvatarBridge
 
             // Same rule: the scaler is claimed only if its menu control actually reached the
             // avatar. Injection is skipped on rigs it can't measure.
-            if (HasMenuEntry(ctx, "Height (M)"))
+            if (HasMenuEntry(ctx, "Height"))
             {
                 lines.Add("height slider");
             }

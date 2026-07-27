@@ -660,7 +660,7 @@ namespace AvatarBridge
         void BuildExtrasCard(VisualElement parent)
         {
             var card = new BridgeElements.Card("Extras");
-            card.Body.Add(BridgeElements.Bind("Add height scaler  (\"Height (M)\" menu)",
+            card.Body.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
                 "A smooth avatar scaler. Auto-calibrated: the menu value is real metres and defaults to this " +
                 "avatar's measured height, so it spawns at exactly its original size.",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));

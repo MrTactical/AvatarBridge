@@ -185,8 +185,8 @@ namespace AvatarBridge
         // shapes on the face mesh (e.g. "Blink L"/"Blink R") and wire CVR's Eye Blink Settings.
         public bool wireBlinkBlendshapes = true;
         // Inject the bundled avatar scaler (Linear Smoothing + generated Size layer + a
-        // "Height (M)" menu input). Auto-calibrated: the menu defaults to the avatar's
-        // measured eye height, so it spawns at its original size and the value is true metres.
+        // "Height" slider, 0.25×–4× geometric). Auto-calibrated: the centre of the slider is the avatar's
+        // measured eye height, so it spawns at its original size; every doubling gets equal travel.
         public bool addAvatarScaler = true;
         // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
         // based); DragonSkyRunner = inject that package's animator layers/params; None =
