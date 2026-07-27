@@ -138,13 +138,12 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
 
-            // Ordered by what someone browsing avatars cares about most, because the budget in
-            // Build() fills from the top and drops what will not fit.
+            // Order matters: Build() fills its budget from the top and drops whatever will not
+            // fit, so this is the marquee features first and the exhaustive counts after. A
+            // heavily-toggled avatar was spending the whole box on "3 sliders · 1 joystick" and
+            // never getting as far as saying it had face tracking at all.
             CountMenu(ctx, out int toggles, out int sliders, out int puppets, out int colours);
             if (toggles > 0) lines.Add(Plural(toggles, "toggle"));
-            if (sliders > 0) lines.Add(Plural(sliders, "slider"));
-            if (puppets > 0) lines.Add(Plural(puppets, "joystick"));
-            if (colours > 0) lines.Add(Plural(colours, "colour picker"));
 
             int chains = CountPhysics(ctx, out string physicsName);
             if (chains > 0)
@@ -164,6 +163,21 @@ namespace AvatarBridge
                 lines.Add("face tracking");
             }
 
+            // Triangle count above the softer features: it is the one number that decides whether
+            // someone can wear the avatar at all.
+            CountGeometry(ctx, out int triangles, out int materials, out int shapes);
+            if (triangles > 0)
+            {
+                lines.Add(Triangles(triangles));
+            }
+
+            // Same rule: the scaler is claimed only if its menu control actually reached the
+            // avatar. Injection is skipped on rigs it can't measure.
+            if (HasMenuEntry(ctx, "Height (M)"))
+            {
+                lines.Add("height slider");
+            }
+
             // Blink and lip sync are separate features on separate fields, and were being claimed
             // together off the blink flag alone. Each is now only stated if its own switch is on
             // AND it names a shape to drive — the flag can be set with an empty array.
@@ -176,26 +190,12 @@ namespace AvatarBridge
             else if (blinks) lines.Add("auto blink");
             else if (lipSync) lines.Add("lip sync");
 
-            // Same rule: the scaler is claimed only if its menu control actually reached the
-            // avatar. Injection is skipped on rigs it can't measure.
-            if (HasMenuEntry(ctx, "Height (M)"))
-            {
-                lines.Add("height slider");
-            }
-
-            CountGeometry(ctx, out int triangles, out int materials, out int shapes);
-            if (triangles > 0)
-            {
-                lines.Add(Triangles(triangles));
-            }
-            if (materials > 0)
-            {
-                lines.Add(Plural(materials, "material"));
-            }
-            if (shapes > 0)
-            {
-                lines.Add(Plural(shapes, "blendshape"));
-            }
+            // The long tail: true, but nobody picks an avatar for its joystick count.
+            if (sliders > 0) lines.Add(Plural(sliders, "slider"));
+            if (puppets > 0) lines.Add(Plural(puppets, "joystick"));
+            if (colours > 0) lines.Add(Plural(colours, "colour picker"));
+            if (materials > 0) lines.Add(Plural(materials, "material"));
+            if (shapes > 0) lines.Add(Plural(shapes, "blendshape"));
 
             return lines;
         }
