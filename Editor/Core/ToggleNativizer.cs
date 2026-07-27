@@ -302,11 +302,16 @@ namespace AvatarBridge
                     !LayerNameExists(master, expandedLayers, "Toggle " + entriesByParam[child.directBlendParameter].name))
                 {
                     var entry = entriesByParam[child.directBlendParameter];
-                    expandedLayers.Add(BuildToggleLayer(master, entry, child.directBlendParameter, clip));
+                    var restore = BuildRestoreClip(ctx, clip, entry.name + " Off");
+                    expandedLayers.Add(BuildToggleLayer(master, entry, child.directBlendParameter, clip, restore));
                     expandedParams.Add(child.directBlendParameter);
                     changed = true;
                     ctx.Report.Converted(Category, entry.name,
-                        "Expanded into a classic On/Off toggle layer (it animates more than object on/off).");
+                        restore == null
+                            ? "Expanded into a classic On/Off toggle layer (it animates more than object on/off)."
+                            : "Expanded into a classic On/Off toggle layer, with an explicit Off clip restoring " +
+                              "the original material(s) — Write Defaults puts numbers back but never object " +
+                              "references, so a material swap would otherwise stick at its On value forever.");
                     continue;
                 }
                 var keptChild = child;
@@ -328,14 +333,60 @@ namespace AvatarBridge
             return master.layers.Any(l => l.name == name) || pending.Any(l => l.name == name);
         }
 
+        /// <summary>
+        /// Builds the clip the Off state needs when the On clip swaps materials.
+        ///
+        /// Write Defaults restores every NUMERIC property when a state stops animating it —
+        /// floats, blendshapes, GameObject active — but never object-reference curves, so a
+        /// material assignment sticks at whatever was last written. In VRChat these toggles
+        /// lived in a Fury direct blend tree, where weight zero simply stops the curve applying;
+        /// expanded into states, the restore has to be explicit. The original material for each
+        /// animated slot is read off the converted avatar itself, whose edit-time state is the
+        /// resting state.
+        /// </summary>
+        static AnimationClip BuildRestoreClip(BridgeContext ctx, AnimationClip onClip, string name)
+        {
+            AnimationClip restore = null;
+            foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(onClip))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    binding.propertyName, @"^m_Materials\.Array\.data\[(\d+)\]$");
+                if (!match.Success)
+                {
+                    continue; // not a material slot — no known safe restore value
+                }
+                Transform target = string.IsNullOrEmpty(binding.path)
+                    ? ctx.Target.transform
+                    : ctx.Target.transform.Find(binding.path);
+                var renderer = target != null ? target.GetComponent<Renderer>() : null;
+                if (renderer == null)
+                {
+                    continue;
+                }
+                int slot = int.Parse(match.Groups[1].Value);
+                var materials = renderer.sharedMaterials;
+                if (slot >= materials.Length || materials[slot] == null)
+                {
+                    continue;
+                }
+                restore = restore != null ? restore : new AnimationClip { name = name };
+                AnimationUtility.SetObjectReferenceCurve(restore, binding, new[]
+                {
+                    new ObjectReferenceKeyframe { time = 0f, value = materials[slot] },
+                    new ObjectReferenceKeyframe { time = 1f / 60f, value = materials[slot] }
+                });
+            }
+            return restore;
+        }
+
         /// <summary>A per-toggle layer exactly like a hand-authored Unity toggle.</summary>
         static AnimatorControllerLayer BuildToggleLayer(AnimatorController master,
-            CVRAdvancedSettingsEntry entry, string parameter, AnimationClip clip)
+            CVRAdvancedSettingsEntry entry, string parameter, AnimationClip clip, AnimationClip restoreClip)
         {
             bool isBoolParam = master.parameters
                 .Any(p => p.name == parameter && p.type == AnimatorControllerParameterType.Bool);
 
-            var off = new AnimatorState { name = "Off", writeDefaultValues = true, hideFlags = HideFlags.HideInHierarchy };
+            var off = new AnimatorState { name = "Off", motion = restoreClip, writeDefaultValues = true, hideFlags = HideFlags.HideInHierarchy };
             var on = new AnimatorState { name = "On", motion = clip, writeDefaultValues = true, hideFlags = HideFlags.HideInHierarchy };
 
             var toOn = new AnimatorStateTransition
