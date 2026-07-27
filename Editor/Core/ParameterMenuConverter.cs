@@ -114,6 +114,20 @@ namespace AvatarBridge
                     {
                         continue; // already covered by its Joystick2D entry
                     }
+                    // Never build a control for a parameter the stripper is about to take. The
+                    // joystick path has refused these since 2.32.3; the slider/toggle/dropdown
+                    // path did not, so a stripped system's menu — GoGo's decoratively-labelled
+                    // "- (-)" controls and its 256-value emote dropdown — was faithfully rebuilt
+                    // as Advanced Avatar Settings and then left dangling once the layers reading
+                    // it were removed.
+                    if (SystemStripper.WillBeStripped(ctx, p.name))
+                    {
+                        ctx.Report.Skipped(Category, $"Menu control for \"{p.name}\" not created",
+                            "The parameter belongs to a system being stripped (GoGo Loco / SPS / " +
+                            "extra keywords), so a control for it would sit in the menu driving " +
+                            "removed layers.");
+                        continue;
+                    }
                     var entry = BuildEntry(ctx, p, uses.TryGetValue(p.name, out var paramUses) ? paramUses : null, usedNames, leafCounts);
                     if (entry != null)
                     {

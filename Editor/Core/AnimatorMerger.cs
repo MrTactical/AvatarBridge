@@ -101,9 +101,17 @@ namespace AvatarBridge
         // VRC built-ins with no CVR equivalent; they stay as frozen local parameters.
         // (MuteSelf/VRMode/GestureWeights/Upright/TrackingType are fed by a CVRParameterStream
         // instead, so they are live rather than frozen — see StreamFedParameters.)
+        //
+        // "AFK" used to be in this list, and that was wrong on both counts: the client writes
+        // `AnimatorManager.AFK` from real AFK detection — headset taken off, or the AFK toggle
+        // (`PlayerSetup`, decompiled) — and because AFK is NOT in the client's own core-parameter
+        // set, an unprefixed declaration syncs through the ordinary AAS bits, so the wearer's
+        // value reaches everyone else exactly as it does in VRChat. An avatar's AFK sign or
+        // sleeping pose works in ChilloutVR with no conversion at all, and the report was telling
+        // its owner the feature was dead.
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
-            "Earmuffs", "AngularY", "AFK",
+            "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
             "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
             "EyeHeightAsPercent", "IsAnimatorEnabled"

@@ -47,6 +47,30 @@ namespace AvatarBridge
         static readonly string[] SpsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS", "VRCF_" };
 
         /// <summary>
+        /// GoGo Loco's own parameter list (GoAllParameters.asset) is sixteen "Go/" names plus one
+        /// that carries no prefix at all: "VRCEmote", the community emote parameter GoGo declares
+        /// and drives its whole emote/dance system through. Missing it unravels the entire strip —
+        /// on a real avatar the 102-state action layer conditioned on VRCEmote survived, which
+        /// kept every "Go/" parameter it referenced alive, which kept their garbage-labelled menu
+        /// entries ("- (-)", "- (GoGo Loco By Franada)") in the converted menu.
+        ///
+        /// Claimed only when the avatar actually carries GoGo ("Go/" parameters declared), because
+        /// VRCEmote itself is a VRChat community convention, not GoGo property — on a non-GoGo
+        /// avatar it belongs to whatever emote system the author built, and that is not ours to
+        /// condemn under a GoGo switch.
+        /// </summary>
+        static bool AvatarUsesGogo(BridgeContext ctx)
+        {
+            var vrcParams = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+            if (vrcParams == null || vrcParams.parameters == null)
+            {
+                return false;
+            }
+            return vrcParams.parameters.Any(p => p != null && !string.IsNullOrEmpty(p.name)
+                && GogoParamPrefixes.Any(g => p.name.StartsWith(g, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <summary>
         /// The parameter prefixes this conversion is going to strip, given the settings.
         /// </summary>
         static IEnumerable<string> StrippedParameterPrefixes(BridgeContext ctx)
@@ -55,6 +79,10 @@ namespace AvatarBridge
             if (ctx.Settings.stripGogoLoco)
             {
                 prefixes.AddRange(GogoParamPrefixes);
+                if (AvatarUsesGogo(ctx))
+                {
+                    prefixes.Add("VRCEmote");
+                }
             }
             if (ctx.Settings.stripSpsSystems)
             {
