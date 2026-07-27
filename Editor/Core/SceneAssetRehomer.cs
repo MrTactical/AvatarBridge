@@ -29,9 +29,11 @@ namespace AvatarBridge
             {
                 return false;
             }
-            string path = AssetDatabase.GetAssetPath(obj);
-            return !string.IsNullOrEmpty(path)
-                   && path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase);
+            // Shared with the animator rescue: covers Fury's own temp AND NDMF's __Generated,
+            // where Fury bakes the moment Modular Avatar is installed. A mesh referenced from
+            // either dies on the next play mode's bake — the avatar goes invisible rather than
+            // frozen, but by the same mechanism.
+            return AnimatorMerger.IsDoomedGeneratedPath(AssetDatabase.GetAssetPath(obj));
         }
 
         public static void Run(BridgeContext ctx)

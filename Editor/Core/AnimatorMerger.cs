@@ -2773,8 +2773,7 @@ namespace AvatarBridge
             }
 
             string source = AssetDatabase.GetAssetPath(value);
-            if (string.IsNullOrEmpty(source) ||
-                !source.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(source) || !IsDoomedGeneratedPath(source))
             {
                 done[value] = value;
                 return value; // a permanent project asset — leave it where it is
@@ -2914,7 +2913,7 @@ namespace AvatarBridge
                 {
                     return true;
                 }
-                return path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase);
+                return IsDoomedGeneratedPath(path);
             }
 
             AnimationClip RehomeClip(AnimationClip clip)
@@ -3308,6 +3307,32 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// True for asset paths that some bake framework will DELETE on its next run — which
+        /// entering play mode triggers, because both frameworks process the original avatar still
+        /// sitting in the scene. Anything referenced from these folders must be cloned or it dies
+        /// between the first play and the second.
+        ///
+        ///   * Packages/com.vrcfury — Fury's own temp, used when Fury runs standalone.
+        ///   * Packages/nadena.dev.ndmf/__Generated — NDMF's `TemporaryAssetRoot`
+        ///     (`AvatarProcessor.CleanTemporaryAssets` deletes the whole folder, and
+        ///     `ApplyOnPlay` calls it). The moment Modular Avatar/NDMF is installed, VRCFury
+        ///     runs as an NDMF plugin and bakes HERE instead of its own temp — which is how a
+        ///     project that converted fine for weeks broke on the first avatar converted after
+        ///     installing MA: every defence was watching com.vrcfury while the assets lived and
+        ///     died in __Generated.
+        /// </summary>
+        internal static bool IsDoomedGeneratedPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+            path = path.Replace('\\', '/');
+            return path.StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("Packages/nadena.dev.ndmf/__Generated", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Reads the SAVED controller off disk and resolves every external GUID it references.
         /// Two kinds of reference have destroyed avatars silently and both are named here:
         /// anything under Packages/com.vrcfury (Fury deletes that folder on its next build — and
@@ -3349,7 +3374,7 @@ namespace AvatarBridge
                     unresolved++;
                     sample = sample ?? guid;
                 }
-                else if (path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase))
+                else if (IsDoomedGeneratedPath(path))
                 {
                     intoTemp++;
                     sample = sample ?? path;
@@ -3359,7 +3384,7 @@ namespace AvatarBridge
             if (intoTemp > 0 || unresolved > 0)
             {
                 ctx.Report.Error(Category,
-                    $"The saved controller references {intoTemp} VRCFury-temp and {unresolved} unresolvable asset(s)",
+                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {unresolved} unresolvable asset(s)",
                     $"e.g. {sample}. VRCFury deletes its temp folder on its next build — which entering " +
                     "play mode triggers if the original avatar is still in the scene — and an " +
                     "unresolvable reference is already dead. Either way those animations will stop " +
