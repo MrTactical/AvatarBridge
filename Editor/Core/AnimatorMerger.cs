@@ -1909,7 +1909,12 @@ namespace AvatarBridge
         {
             if (motion is BlendTree tree)
             {
-                if (tree.blendParameter == param || tree.blendParameterY == param)
+                // Same vestigial-field rule as CollectReferencedParameters: Direct trees read
+                // neither axis field, 1D trees only X. A leftover "Blend" on a Fury Direct tree
+                // must not make a parameter of that name look like a live quantity.
+                bool usesX = tree.blendType != BlendTreeType.Direct;
+                bool usesY = usesX && tree.blendType != BlendTreeType.Simple1D;
+                if ((usesX && tree.blendParameter == param) || (usesY && tree.blendParameterY == param))
                 {
                     return true;
                 }
@@ -2362,8 +2367,23 @@ namespace AvatarBridge
             {
                 if (motion is BlendTree tree)
                 {
-                    referenced.Add(tree.blendParameter);
-                    referenced.Add(tree.blendParameterY);
+                    // Only the fields this blend type actually reads. blendParameter defaults to
+                    // "Blend" on every tree Unity creates and survives as a leftover on Direct
+                    // trees (VRCFury's are full of them), and blendParameterY is ignored by 1D
+                    // trees. Counting the vestigial fields invented phantom references: every
+                    // avatar with a Fury Direct tree "referenced" a parameter called Blend, and
+                    // the scaler template "referenced" Smooth Amount and Value off a Direct
+                    // tree's dead XY fields — which DeclareDanglingParameters then declared as
+                    // Float 0 with a warning telling the user to investigate their avatar. The
+                    // warning was AvatarBridge reporting its own reflection.
+                    if (tree.blendType != BlendTreeType.Direct)
+                    {
+                        referenced.Add(tree.blendParameter);
+                        if (tree.blendType != BlendTreeType.Simple1D)
+                        {
+                            referenced.Add(tree.blendParameterY);
+                        }
+                    }
                     foreach (var child in tree.children)
                     {
                         if (tree.blendType == BlendTreeType.Direct)

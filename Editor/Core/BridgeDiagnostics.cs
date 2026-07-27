@@ -328,8 +328,18 @@ namespace AvatarBridge
             {
                 if (motion is BlendTree tree)
                 {
-                    For(tree.blendParameter).BlendTrees++;
-                    For(tree.blendParameterY).BlendTrees++;
+                    // Count only the axis fields this blend type reads — Direct trees read
+                    // neither, 1D trees only X. The leftover "Blend"/"Smooth Amount"/"Value"
+                    // names on Direct trees otherwise show up in this table as live references
+                    // on every avatar, which is how they ended up in every bug report.
+                    if (tree.blendType != BlendTreeType.Direct)
+                    {
+                        For(tree.blendParameter).BlendTrees++;
+                        if (tree.blendType != BlendTreeType.Simple1D)
+                        {
+                            For(tree.blendParameterY).BlendTrees++;
+                        }
+                    }
                     foreach (var child in tree.children)
                     {
                         if (tree.blendType == BlendTreeType.Direct)
