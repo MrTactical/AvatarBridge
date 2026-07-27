@@ -106,10 +106,12 @@ namespace AvatarBridge
                     "Set the rig to Humanoid in the model's import settings for a proper result.");
             }
 
-            // --- viewpoint & voice ---------------------------------------------------
+            // --- viewpoint -----------------------------------------------------------
+            // Voice comes after the visemes below, since the best source for it is the mouth
+            // measured off an open-mouth viseme shape.
             cvrAvatar.viewPosition = AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
-            cvrAvatar.voicePosition = AvatarFeatureDetect.EstimateVoicePosition(ctx.Target, animator);
-            ctx.Report.Converted(Category, "Viewpoint and voice position",
+            cvrAvatar.voicePosition = cvrAvatar.viewPosition;
+            ctx.Report.Converted(Category, "Viewpoint",
                 $"Viewpoint estimated at {cvrAvatar.viewPosition.y:0.00} m " +
                 (humanoid ? "from the eye/head bones" : "from the mesh bounds") +
                 " — check it in the scene view and nudge if the first-person camera sits wrong.");
@@ -143,6 +145,11 @@ namespace AvatarBridge
                     "No standard viseme blendshapes (vrc.v_aa / v_aa / aa …) on the face mesh. " +
                     "Assign them by hand on the CVRAvatar if the avatar has them under other names.");
             }
+
+            // --- voice position ------------------------------------------------------
+            cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, face, visemes, animator,
+                cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
+            MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
 
             // --- blink ---------------------------------------------------------------
             WireBlink(ctx, cvrAvatar, mesh);

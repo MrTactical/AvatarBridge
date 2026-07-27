@@ -116,7 +116,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | viewpoint, voice, visemes, blink |
+| Avatar descriptor | `CVRAvatar` | viewpoint, visemes, blink; voice placed at the mouth (measured from a viseme shape, not the head bone) |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |

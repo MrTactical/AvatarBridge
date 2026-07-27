@@ -30,22 +30,10 @@ namespace AvatarBridge
             }
             ctx.CvrAvatar = cvrAvatar;
 
-            // --- Viewpoint & voice ---------------------------------------------------
+            // --- Viewpoint -----------------------------------------------------------
             cvrAvatar.viewPosition = vrc.ViewPosition;
-            cvrAvatar.voicePosition = vrc.ViewPosition;
-
+            cvrAvatar.voicePosition = vrc.ViewPosition;   // replaced below, once the face is known
             var animator = ctx.TargetAnimator;
-            Transform head = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Head)
-                : null;
-            if (head != null)
-            {
-                // VRChat emits voice from the head bone; approximate that.
-                Vector3 voice = ctx.Target.transform.InverseTransformPoint(head.position);
-                voice.Scale(ctx.Target.transform.localScale);
-                cvrAvatar.voicePosition = voice;
-            }
-            ctx.Report.Converted(Category, "Viewpoint and voice position");
 
             // --- Face mesh, visemes --------------------------------------------------
             SkinnedMeshRenderer sourceFace = vrc.VisemeSkinnedMesh;
@@ -88,6 +76,12 @@ namespace AvatarBridge
                     "No viseme mesh on the VRC descriptor, and no skinned mesh with blendshapes to fall back " +
                     "on — visemes, blink and face tracking have nothing to bind to.");
             }
+
+            // --- Voice position ------------------------------------------------------
+            // After the face mesh, because the best answer is measured from its viseme shapes.
+            cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, targetFace, vrc.VisemeBlendShapes,
+                animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
+            MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
 
             // ChilloutVR has all three of VRChat's lip-sync styles, not just visemes:
             // CVRAvatarVisemeMode is { Visemes, SingleBlendshape, JawBone }. The field was never
