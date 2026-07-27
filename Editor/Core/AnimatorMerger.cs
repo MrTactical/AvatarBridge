@@ -923,8 +923,33 @@ namespace AvatarBridge
             // Renames decided while the menu was built, which are not negotiable: a Joystick2D
             // addresses its axes as "<machineName>-x" and "-y", so the avatar's own axis
             // parameters have to arrive under exactly those names or the control drives nothing.
+            //
+            // Not negotiable — but not unconditional either. This map is consulted BEFORE
+            // ParameterRenameMap in Rename(), so an entry here shadows the VRChat→ChilloutVR core
+            // translations, and it renames whatever it names on the whole controller. Two things
+            // must therefore never get in: a key the game itself drives or this tool translates
+            // (renaming "Viseme" away means no viseme ever reaches the avatar), and a value that
+            // collides with a parameter the controller already declares (the "rename" would merge
+            // two unrelated parameters into one). Either would trade a working core system for a
+            // joystick, silently. Skip and say so instead.
             foreach (var forced in ctx.ForcedRenames)
             {
+                if (CvrCoreParameters.Contains(forced.Key) || StreamFedParameters.Contains(forced.Key)
+                    || ParameterRenameMap.ContainsKey(forced.Key))
+                {
+                    ctx.Report.Warning(Category, $"Refused to rename \"{forced.Key}\"",
+                        $"A menu control asked for it to become \"{forced.Value}\", but the game drives " +
+                        "this parameter itself — renaming it would disconnect that system. The control " +
+                        "keeps its original parameters instead.");
+                    continue;
+                }
+                if (takenNames.Contains(forced.Value))
+                {
+                    ctx.Report.Warning(Category, $"Refused to rename \"{forced.Key}\" to \"{forced.Value}\"",
+                        "A parameter with the target name already exists, so the rename would have merged " +
+                        "two unrelated parameters. The control keeps its original parameters instead.");
+                    continue;
+                }
                 sanitizedNames[forced.Key] = forced.Value;
                 takenNames.Add(forced.Value);
             }
@@ -3071,7 +3096,14 @@ namespace AvatarBridge
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
-                if (!body && fingers)
+                // Everything the masking pass would act on — which is every merged layer that
+                // does not deliberately animate the body. This used to read `!body && fingers`,
+                // which named only the finger-animating layers: on the avatar that confirmed the
+                // bicycle-pose fix, 18 of the 20 layers masking repaired were finger-free, so the
+                // report was silent about the bulk of the problem and would have said nothing at
+                // all on an avatar with no finger layers — precisely the avatars that need the
+                // switch pointed out.
+                if (!body)
                 {
                     suspects.Add(layer.name);
                 }
