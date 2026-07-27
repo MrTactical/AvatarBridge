@@ -684,13 +684,13 @@ namespace AvatarBridge
             { FaceTrackingMode.Native, FaceTrackingMode.DragonSkyRunner, FaceTrackingMode.None };
 
         static readonly string[] FtLabels =
-            { "Native CVR Component", "Unity Animator Blendtrees (DSR)", "None" };
+            { "Native CVR Component", "Unity Animator Blendtrees (DSR)", "Keep the avatar's own rig" };
 
         void BuildFaceTrackingCard(VisualElement parent)
         {
             string summary = settings.faceTrackingMode == FaceTrackingMode.Native ? "native component"
                            : settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner ? "CVR VRCFT rig"
-                           : "off";
+                           : "avatar's own rig";
             var card = new BridgeElements.Card("Face tracking", summary, showFaceTracking, null, 0f,
                 open => showFaceTracking = open);
 
@@ -698,12 +698,17 @@ namespace AvatarBridge
             var popup = new PopupField<string>("Face tracking",
                 new System.Collections.Generic.List<string>(FtLabels), index)
             {
-                tooltip = "Both set-up modes replace any face-tracking rig already on the avatar.\n\n" +
+                tooltip = "The two set-up modes replace any face-tracking rig already on the avatar.\n\n" +
                           "Native CVR Component: ChilloutVR's built-in CVRFaceTracking drives the " +
                           "blendshapes directly. Self-contained, but a bit stiff.\n\n" +
                           "Unity Animator Blendtrees (DSR): DragonSkyRunner's bundled rig — face shapes " +
                           "driven by animator blend trees, eye tracking via generated empties and rotation " +
-                          "constraints, rebuilt onto this avatar automatically. Smoother and more expressive.",
+                          "constraints, rebuilt onto this avatar automatically. Smoother and more expressive.\n\n" +
+                          "Keep the avatar's own rig: nothing is stripped — the existing FT rig " +
+                          "(Jerry's, Pawlygon, OSCmooth setups…) converts with the rest of the animator. " +
+                          "Smoothing proxies VRChat never synced automatically become '#' local (zero " +
+                          "sync cost), synced FT parameters keep syncing. This used to be labelled " +
+                          "\"None\", which undersold it.",
             };
             popup.AddToClassList("ab-field");
             popup.RegisterValueChangedCallback(e =>
