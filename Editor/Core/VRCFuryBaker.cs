@@ -71,6 +71,32 @@ namespace AvatarBridge
 
             var rootsBefore = GetSceneRoots();
             GameObject directResult = null;
+
+            // Fury wraps each feature in an ErrorDialogBoundary that catches the exception, shows
+            // a dialog, logs, and CARRIES ON — so a bake can fail ten times and still return
+            // normally. One real avatar did exactly that: ten feature failures, a half-built
+            // result, and a conversion report reading "Errors: 0" while every toggle was dead.
+            // Listen to the log during the bake and count what Fury swallowed.
+            int furyErrors = 0;
+            string firstFuryError = null;
+            void OnLog(string condition, string stackTrace, LogType type)
+            {
+                if (type != LogType.Exception && type != LogType.Error)
+                {
+                    return;
+                }
+                if ((stackTrace != null && (stackTrace.Contains("VF.") || stackTrace.Contains("VRCF")))
+                    || (condition != null && condition.Contains("VRCFury")))
+                {
+                    furyErrors++;
+                    if (firstFuryError == null)
+                    {
+                        firstFuryError = condition;
+                    }
+                }
+            }
+
+            Application.logMessageReceived += OnLog;
             try
             {
                 if (bakeMethod.GetParameters().Length == 0)
@@ -90,6 +116,20 @@ namespace AvatarBridge
                 var inner = e.InnerException ?? e;
                 report.Error(Category, "VRCFury bake failed", inner.Message + " — " + ManualInstruction);
                 return null;
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+
+            if (furyErrors > 0)
+            {
+                report.Error(Category, $"VRCFury reported {furyErrors} error(s) during its own build",
+                    $"First: \"{Truncate(firstFuryError, 200)}\". Fury catches each failing feature, shows a " +
+                    "dialog and continues, so the bake \"completed\" — but the features that failed are " +
+                    "missing or half-built, and everything derived from them will misbehave. Run VRCFury > " +
+                    "Build a Test Copy on the original avatar, fix or remove what errors there, then " +
+                    "convert again. This conversion continued so you can inspect it, but do not upload it.");
             }
 
             GameObject baked = directResult;
@@ -124,6 +164,16 @@ namespace AvatarBridge
                 }
             }
             return roots;
+        }
+
+        static string Truncate(string text, int max)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return "(no message captured)";
+            }
+            text = text.Replace('\n', ' ').Replace('\r', ' ');
+            return text.Length <= max ? text : text.Substring(0, max) + "…";
         }
 
         static MethodInfo FindBakeMethod(out string description)

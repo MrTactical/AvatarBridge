@@ -222,7 +222,25 @@ namespace AvatarBridge
             // earlier run's controller was overwritten in place to keep its GUID — so
             // everything below must reference that one, not the object we built.
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
+            // Counted before and after saving, because Unity's persistence layer can silently
+            // amputate: an object flagged DontSave is refused at save time (an assertion in the
+            // editor log nobody reads) and its reference goes dangling — "Missing (Motion)" in
+            // the animator window, dead toggles in game, and a conversion report with no errors.
+            // If anything the controller referenced in memory failed to arrive on disk, that is
+            // an Error, in the report, with numbers.
+            int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
+            int motionsAfterSave = CountMotionReferences(master);
+            if (motionsAfterSave < motionsBeforeSave)
+            {
+                ctx.Report.Error(Category,
+                    $"{motionsBeforeSave - motionsAfterSave} animation reference(s) failed to persist",
+                    $"The controller referenced {motionsBeforeSave} motions in memory but only " +
+                    $"{motionsAfterSave} survived saving to disk. The usual cause is a VRCFury bake " +
+                    "that errored partway, leaving generated clips unsaveable — check this report for " +
+                    "a VRCFury error above, fix the source avatar's Fury setup, and convert again. " +
+                    "Do not upload this conversion: every missing motion is a dead toggle or animation.");
+            }
             ctx.MergedController = master;
 
             // Generate the override controller wrapping the base. ChilloutVR uses this as
@@ -2876,9 +2894,26 @@ namespace AvatarBridge
 
             bool IsVolatile(UnityEngine.Object obj)
             {
+                if (obj == null)
+                {
+                    return false;
+                }
                 string path = AssetDatabase.GetAssetPath(obj);
-                return !string.IsNullOrEmpty(path) &&
-                       path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase);
+                // No asset path = an in-memory object. A Fury bake that errors partway (its
+                // ErrorDialogBoundary swallows the exception and carries on) leaves its generated
+                // clips unsaved and flagged DontSave — Unity's persistence then REFUSES them at
+                // save time ("kDontSaveInEditor" assertions) and the controller keeps dangling
+                // references: "Missing (Motion)" in every affected tree, 61 gutted states on the
+                // avatar that found this. Anything not an asset must be cloned to survive saving.
+                if (string.IsNullOrEmpty(path))
+                {
+                    return true;
+                }
+                if ((obj.hideFlags & HideFlags.DontSave) != 0)
+                {
+                    return true;
+                }
+                return path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase);
             }
 
             AnimationClip RehomeClip(AnimationClip clip)
@@ -2891,6 +2926,9 @@ namespace AvatarBridge
                 {
                     clone = UnityEngine.Object.Instantiate(clip);
                     clone.name = clip.name;
+                    // The whole point of the clone is that it CAN persist; a copied DontSave flag
+                    // would recreate exactly the amputation this exists to prevent.
+                    clone.hideFlags = HideFlags.None;
                     clipMap[clip] = clone;
                     RehomeClipReferences(clone);
                 }
@@ -3217,6 +3255,43 @@ namespace AvatarBridge
                         "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Counts every non-null motion reference reachable from the controller's layers — state
+        /// motions and blend-tree children, recursively. Cheap, and comparing the count across a
+        /// save is the only reliable detector for Unity's silent DontSave amputation: a dangling
+        /// reference reloads as null, so the delta IS the number of motions that died in transit.
+        /// </summary>
+        static int CountMotionReferences(AnimatorController controller)
+        {
+            int count = 0;
+            void CountMotion(Motion motion)
+            {
+                if (motion == null)
+                {
+                    return;
+                }
+                count++;
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        CountMotion(child.motion);
+                    }
+                }
+            }
+            foreach (var layer in controller.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        CountMotion(child.state.motion);
+                    }
+                });
+            }
+            return count;
         }
 
         static IEnumerable<AnimationClip> CollectClips(Motion motion)
