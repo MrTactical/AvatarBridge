@@ -230,6 +230,7 @@ namespace AvatarBridge
             // an Error, in the report, with numbers.
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
+            AuditSerializedReferences(ctx, controllerPath);
             int motionsAfterSave = CountMotionReferences(master);
             if (motionsAfterSave < motionsBeforeSave)
             {
@@ -2967,6 +2968,8 @@ namespace AvatarBridge
                 }
             }
 
+            var treeMap = new Dictionary<BlendTree, BlendTree>();
+
             Motion RehomeMotion(Motion motion)
             {
                 if (motion is AnimationClip clip)
@@ -2975,6 +2978,50 @@ namespace AvatarBridge
                 }
                 if (motion is BlendTree tree)
                 {
+                    // A volatile tree must be CLONED, not repaired in place. The old code rescued
+                    // the children and then handed back the SAME temp tree object — so the
+                    // controller kept referencing an asset inside Packages/com.vrcfury.temp, and
+                    // Fury's next build (which play mode triggers on the original avatar still in
+                    // the scene) wiped it. One avatar lost 283 motion references exactly this way:
+                    // worked on the first play, gutted on the second.
+                    if (IsVolatile(tree))
+                    {
+                        if (!treeMap.TryGetValue(tree, out var cloneTree))
+                        {
+                            cloneTree = new BlendTree
+                            {
+                                name = tree.name,
+                                blendType = tree.blendType,
+                                blendParameter = tree.blendParameter,
+                                blendParameterY = tree.blendParameterY,
+                                hideFlags = HideFlags.HideInHierarchy
+                            };
+                            treeMap[tree] = cloneTree;
+                            // Same threshold discipline as AnimatorDeepCopier: Unity clamps child
+                            // thresholds into [min,max] the moment those are assigned, and manual
+                            // trees ship min = max = 0 — assigning them first crushes every
+                            // threshold. Only automatic trees get min/max, and automatic is
+                            // restored after the children are in.
+                            cloneTree.useAutomaticThresholds = false;
+                            if (tree.useAutomaticThresholds)
+                            {
+                                cloneTree.minThreshold = tree.minThreshold;
+                                cloneTree.maxThreshold = tree.maxThreshold;
+                            }
+                            var kids = tree.children;
+                            for (int i = 0; i < kids.Length; i++)
+                            {
+                                kids[i].motion = RehomeMotion(kids[i].motion);
+                            }
+                            cloneTree.children = kids;
+                            if (tree.useAutomaticThresholds)
+                            {
+                                cloneTree.useAutomaticThresholds = true;
+                            }
+                        }
+                        return cloneTree;
+                    }
+
                     var children = tree.children;
                     for (int i = 0; i < children.Length; i++)
                     {
@@ -2985,7 +3032,10 @@ namespace AvatarBridge
                 return motion;
             }
 
-            foreach (var layer in vrcLayers)
+            // Every layer, not just the merged VRChat ones: any layer the pipeline has created by
+            // this point can reference a Fury temp motion, and a reference this walk doesn't see
+            // is a reference the temp wipe kills.
+            foreach (var layer in master.layers)
             {
                 WalkMachines(layer.stateMachine, machine =>
                 {
@@ -3254,6 +3304,67 @@ namespace AvatarBridge
                     ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
                         "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Reads the SAVED controller off disk and resolves every external GUID it references.
+        /// Two kinds of reference have destroyed avatars silently and both are named here:
+        /// anything under Packages/com.vrcfury (Fury deletes that folder on its next build — and
+        /// entering play mode with the original avatar still in the scene triggers exactly that
+        /// build, which is how a conversion works on the first play and dies on the second), and
+        /// anything that resolves to nothing at all. The serialized file is the ground truth the
+        /// in-memory object graph can lie about, so this reads the text, not the objects.
+        /// </summary>
+        static void AuditSerializedReferences(BridgeContext ctx, string controllerPath)
+        {
+            string fullPath;
+            try
+            {
+                fullPath = System.IO.Path.GetFullPath(controllerPath);
+                if (!System.IO.File.Exists(fullPath))
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            var guids = new HashSet<string>();
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
+                .Matches(System.IO.File.ReadAllText(fullPath), @"guid: ([0-9a-f]{32})"))
+            {
+                guids.Add(match.Groups[1].Value);
+            }
+
+            int intoTemp = 0, unresolved = 0;
+            string sample = null;
+            foreach (var guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path))
+                {
+                    unresolved++;
+                    sample = sample ?? guid;
+                }
+                else if (path.Replace('\\', '/').StartsWith("Packages/com.vrcfury", StringComparison.OrdinalIgnoreCase))
+                {
+                    intoTemp++;
+                    sample = sample ?? path;
+                }
+            }
+
+            if (intoTemp > 0 || unresolved > 0)
+            {
+                ctx.Report.Error(Category,
+                    $"The saved controller references {intoTemp} VRCFury-temp and {unresolved} unresolvable asset(s)",
+                    $"e.g. {sample}. VRCFury deletes its temp folder on its next build — which entering " +
+                    "play mode triggers if the original avatar is still in the scene — and an " +
+                    "unresolvable reference is already dead. Either way those animations will stop " +
+                    "working after the next play or Fury build. This is a conversion bug: please report " +
+                    "it with this file attached. Do not upload this conversion.");
             }
         }
 
