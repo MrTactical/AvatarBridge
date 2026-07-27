@@ -55,7 +55,15 @@ namespace AvatarBridge
 
         public List<VRCPhysBoneCollider> Colliders = new List<VRCPhysBoneCollider>();
 
-        public static PhysBoneChainData Read(VRCPhysBone pb)
+        /// <summary>
+        /// Transforms excluded because they are humanoid-mapped, not because the PhysBone author
+        /// listed them — kept separate so the report can say which rule fired.
+        /// </summary>
+        public List<Transform> HumanoidExclusions = new List<Transform>();
+
+        public static PhysBoneChainData Read(VRCPhysBone pb) => Read(pb, null);
+
+        public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator)
         {
             var data = new PhysBoneChainData
             {
@@ -108,6 +116,31 @@ namespace AvatarBridge
                     {
                         data.Colliders.Add(pbCollider);
                     }
+                }
+            }
+
+            // Humanoid-mapped bones must never SIMULATE. The animator and IK write them every
+            // frame — locomotion curls the toes, IK plants the feet — and a physics solver
+            // writing the same transform fights them for it. VRChat semi-tolerates a PhysBone
+            // there; MagicaCloth2 and DynamicBone stomp the animated pose outright. Anchoring is
+            // different and stays allowed: a chain ROOTED at a humanoid bone (hair on Head, tail
+            // on Hips) is correct, because the root is kinematic and only its descendants
+            // simulate. So the rule is: any humanoid bone strictly BELOW the root joins the
+            // ignore list, exactly as if the author had excluded it — the MagicaCloth2 writer
+            // roots around it (its non-humanoid children still simulate, re-anchored) and the
+            // DynamicBone writer turns it into an exclusion.
+            if (animator != null && animator.isHuman)
+            {
+                for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                {
+                    var mapped = animator.GetBoneTransform(bone);
+                    if (mapped == null || mapped == data.Root || !mapped.IsChildOf(data.Root)
+                        || data.Ignores.Contains(mapped))
+                    {
+                        continue;
+                    }
+                    data.Ignores.Add(mapped);
+                    data.HumanoidExclusions.Add(mapped);
                 }
             }
 

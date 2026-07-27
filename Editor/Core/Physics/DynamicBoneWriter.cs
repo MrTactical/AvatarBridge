@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_DYNBONE
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
 
@@ -112,6 +113,14 @@ namespace AvatarBridge
 
             db.m_EndOffset = data.EndpointPosition;
             db.m_Exclusions = new List<Transform>(data.Ignores);
+            if (data.HumanoidExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) added to the exclusions — " +
+                    $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK drive " +
+                    "humanoid bones every frame, so simulating one fights them for the transform.");
+            }
 
             if (data.Colliders.Count > 0)
             {

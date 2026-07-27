@@ -74,7 +74,7 @@ namespace AvatarBridge
                     var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
                     foreach (var pb in physBones)
                     {
-                        var chain = PhysBoneChainData.Read(pb);
+                        var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator);
                         writtenCloths.Add((chain, MagicaClothWriter.Write(ctx, chain, magicaColliderCache)));
                     }
                     // Runs last: every collider the avatar defines has to exist before a chain can
@@ -97,7 +97,7 @@ namespace AvatarBridge
                     var dbColliderCache = new Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase>();
                     foreach (var pb in physBones)
                     {
-                        DynamicBoneWriter.Write(ctx, PhysBoneChainData.Read(pb), dbColliderCache);
+                        DynamicBoneWriter.Write(ctx, PhysBoneChainData.Read(pb, ctx.TargetAnimator), dbColliderCache);
                     }
                     break;
 #else

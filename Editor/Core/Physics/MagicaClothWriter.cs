@@ -91,6 +91,17 @@ namespace AvatarBridge
             // --- structure ----------------------------------------------------------------
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
 
+            if (data.HumanoidExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) excluded from simulation — " +
+                    $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK drive " +
+                    "humanoid bones every frame (locomotion curls toes, IK plants feet), so simulating " +
+                    "one fights them for the transform. The cloth roots around these; their non-humanoid " +
+                    "children still simulate.");
+            }
+
             if (data.Ignores.Count == 0)
             {
                 sdata.rootBones.Add(data.Root);
