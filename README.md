@@ -116,7 +116,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | viewpoint, visemes, blink; voice placed at the mouth (measured from a viseme shape, not the head bone) |
+| Avatar descriptor | `CVRAvatar` | viewpoint, visemes, blink, eye look (gaze limits measured from the poses); voice placed at the mouth, measured from a viseme shape |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
@@ -423,8 +423,9 @@ Bipeds are unaffected by any of it.
 
 ### Not converted
 
-- **Eye look / gaze** — only blink transfers; set gaze up under *Eye Look Settings* on the
-  `CVRAvatar`. (Blendshape face tracking *is* handled.)
+- **Blendshape-based gaze** — bone-based eye look converts (gaze limits measured from the VRChat
+  poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
+  blendshape face tracking *are* handled.)
 - **PhysBone posing, stretch & squish** and their `_Stretch` / `_Squish` / `_IsPosed` parameters
 - **VRC state behaviours** other than Parameter Driver — removed and counted
 - **Synced animator layers** and **ONSP audio**

@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -140,6 +141,9 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, "Blink blendshape", "None found (eye look eyelid blendshapes not set).");
             }
 
+            // --- Eye look ------------------------------------------------------------
+            ConvertEyeLook(ctx, cvrAvatar, vrc);
+
             // --- Advanced settings container ----------------------------------------
             cvrAvatar.avatarUsesAdvancedSettings = true;
             cvrAvatar.avatarSettings = new CVRAdvancedAvatarSettings
@@ -149,6 +153,115 @@ namespace AvatarBridge
             };
 
             EditorUtility.SetDirty(cvrAvatar);
+        }
+
+        /// <summary>
+        /// Converts VRChat's eye look into ChilloutVR's eye movement — the gaze itself, not
+        /// blinking, which is wired separately.
+        ///
+        /// The two describe the same thing in different encodings. VRChat stores five POSES:
+        /// quaternions for straight/up/down/left/right per eye. ChilloutVR stores four LIMITS:
+        /// degrees of travel up/down/in/out per eye, applied to an eye transform. A pose is a
+        /// limit in disguise — the angle between looking-straight and looking-up IS the up
+        /// limit — so each limit is measured with Quaternion.Angle rather than assumed.
+        ///
+        /// In/out need the side taken into account: an eye looking toward the nose is looking
+        /// "in", so the LEFT eye's "in" comes from VRChat's looking-RIGHT pose and its "out"
+        /// from looking-LEFT — mirrored for the right eye. ChilloutVR's own `isLeft` flag
+        /// exists exactly to apply that asymmetry at runtime.
+        ///
+        /// Also honoured in the negative: a VRChat avatar with eye look DISABLED gets
+        /// `useEyeMovement = false`, where the CCK's default is true — without this, every such
+        /// avatar gained idle eye darting its author had turned off.
+        /// </summary>
+        static void ConvertEyeLook(BridgeContext ctx, CVRAvatar cvrAvatar, VRCAvatarDescriptor vrc)
+        {
+            if (!vrc.enableEyeLook)
+            {
+                cvrAvatar.useEyeMovement = false;
+                ctx.Report.Converted(Category, "Eye movement disabled",
+                    "The VRChat avatar has eye look turned off, so ChilloutVR's idle eye movement " +
+                    "is turned off too — the CCK's default would have added eye darting the author " +
+                    "never gave this avatar.");
+                return;
+            }
+
+            var settings = vrc.customEyeLookSettings;
+            if (settings.leftEye == null && settings.rightEye == null)
+            {
+                ctx.Report.Skipped(Category, "Eye look",
+                    "VRChat eye look is enabled but names no eye bones (blendshape-only or " +
+                    "unconfigured), so there is nothing to measure gaze limits from. Set up Eye " +
+                    "Look Settings on the CVRAvatar by hand if this avatar's eyes should wander.");
+                return;
+            }
+
+            // The rest pose the four directional poses are measured against. VRChat treats an
+            // unset straight pose as identity, and so does this.
+            var eyes = new List<CVRAvatar.EyeMovementInfoEye>();
+            void Add(Transform sourceEye, bool isLeft)
+            {
+                if (sourceEye == null)
+                {
+                    return;
+                }
+                Transform target = ctx.FindInTarget(sourceEye);
+                if (target == null)
+                {
+                    return;
+                }
+
+                Quaternion Straight(VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations r) =>
+                    r == null ? Quaternion.identity : (isLeft ? r.left : r.right);
+                float Travel(VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations pose)
+                {
+                    if (pose == null)
+                    {
+                        return 0f;
+                    }
+                    return Quaternion.Angle(Straight(settings.eyesLookingStraight),
+                        isLeft ? pose.left : pose.right);
+                }
+
+                // Toward the nose is "in": the left eye's in-limit is its looking-RIGHT pose.
+                var inward = isLeft ? settings.eyesLookingRight : settings.eyesLookingLeft;
+                var outward = isLeft ? settings.eyesLookingLeft : settings.eyesLookingRight;
+
+                eyes.Add(new CVRAvatar.EyeMovementInfoEye
+                {
+                    isLeft = isLeft,
+                    eyeTransform = target,
+                    eyeAngleLimitUp = Travel(settings.eyesLookingUp),
+                    eyeAngleLimitDown = Travel(settings.eyesLookingDown),
+                    eyeAngleLimitIn = Travel(inward),
+                    eyeAngleLimitOut = Travel(outward)
+                });
+            }
+            Add(settings.leftEye, isLeft: true);
+            Add(settings.rightEye, isLeft: false);
+
+            if (eyes.Count == 0)
+            {
+                ctx.Report.Warning(Category, "Eye look",
+                    "The VRChat descriptor names eye bones, but they could not be found on the " +
+                    "converted copy — gaze was not set up.");
+                return;
+            }
+
+            cvrAvatar.useEyeMovement = true;
+            cvrAvatar.eyeMovementInfo = new CVRAvatar.EyeMovementInfo
+            {
+                type = CVRAvatar.CVRAvatarEyeLookMode.Transform,
+                eyes = eyes.ToArray()
+            };
+
+            var sample = eyes[0];
+            ctx.Report.Converted(Category, "Eye movement",
+                $"{eyes.Count} eye(s) set up in Transform mode, gaze limits measured from the " +
+                $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {sample.eyeAngleLimitDown:0.#}°, " +
+                $"in {sample.eyeAngleLimitIn:0.#}°, out {sample.eyeAngleLimitOut:0.#}°) — the angle " +
+                "between looking-straight and each directional pose IS that direction's limit, so " +
+                "these are measured off your avatar rather than defaulted.");
         }
 
         /// <summary>
