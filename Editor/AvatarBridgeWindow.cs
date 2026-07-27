@@ -352,6 +352,12 @@ namespace AvatarBridge
                     "particles wider than the gap between bones shove each other apart. Leave on " +
                     "unless chains come out feeling too thin.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
+                b.Add(BridgeElements.Bind("Convert toe PhysBones",
+                    "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
+                    "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
+                    "bones (or named like toes) are skipped and listed in the report. Turn on if " +
+                    "this avatar's toe physics are deliberate.",
+                    settings.convertToePhysBones, v => settings.convertToePhysBones = v));
                 b.Add(BridgeElements.Bind("Transfer angle limits",
                     "Copy each PhysBone's limit angle onto the cloth. MagicaCloth2's limit pushes on " +
                     "particle positions rather than bone rotation, at a stiffness that snaps back " +
@@ -674,8 +680,9 @@ namespace AvatarBridge
         {
             var card = new BridgeElements.Card("Extras");
             card.Body.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
-                "A smooth avatar scaler. Auto-calibrated: the menu value is real metres and defaults to this " +
-                "avatar's measured height, so it spawns at exactly its original size.",
+                "A smooth avatar scaler: a quick-menu slider covering 0.25×–4× of this avatar's " +
+                "measured height geometrically, with dead centre = exactly its original size (the default, so " +
+                "it spawns unchanged).",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));
             parent.Add(card);
         }

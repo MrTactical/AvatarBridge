@@ -35,7 +35,16 @@ namespace AvatarBridge
         const string Category = "Avatar scaler";
         const string ControllerGuid = "6d4ab2eb671c40f69f40f9d3f7e70cf2";
         const string HeightMenu = "Height";
-        const string HeightParam = "Input";
+
+        /// <summary>
+        /// The menu-driven parameter. This was "Input" (the smoothing template's own name) until a
+        /// re-uploaded avatar came back with its height slider reading 250%: ChilloutVR saves AAS
+        /// values to a per-avatar profile BY PARAMETER NAME, and the old metres-based scaler had
+        /// also called its parameter "Input" — so the profile resurrected 2.5 (metres) into the
+        /// new 0..1 slider. A version-distinct name means old profiles simply don't match.
+        /// </summary>
+        const string HeightParam = "Height";
+        const string TemplateParam = "Input";
         const string SmoothingLayer = "Linear Smoothing Layer";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;
@@ -77,6 +86,9 @@ namespace AvatarBridge
                 var clone = copier.CloneLayer(srcLayer);
                 clone.name = UniqueName(srcLayer.name, existing);
                 clone.defaultWeight = srcLayer.defaultWeight <= 0f ? 1f : srcLayer.defaultWeight;
+                // The bundled template still says "Input" internally; our parameter is renamed
+                // (see HeightParam), so every reference in the clone has to follow.
+                RenameParameterReferences(clone.stateMachine, TemplateParam, HeightParam);
                 layers.Add(clone);
                 added++;
             }
@@ -92,19 +104,23 @@ namespace AvatarBridge
             var collisions = new List<string>();
             foreach (var p in source.parameters)
             {
-                if (have.Add(p.name))
+                // The template's menu parameter is called "Input"; ours is renamed — see the
+                // HeightParam comment for the 250%-slider story that forced it.
+                string targetName = p.name == TemplateParam ? HeightParam : p.name;
+                if (have.Add(targetName))
                 {
                     var clone = AnimatorDeepCopier.CloneParameter(p);
-                    if (clone.name == HeightParam || clone.name == "Output")
+                    clone.name = targetName;
+                    if (targetName == HeightParam || targetName == "Output")
                     {
                         clone.defaultFloat = DefaultSlider; // mid-slider = exactly 1× by construction
                     }
                     parameters.Add(clone);
                 }
-                else if (p.name == HeightParam || p.name == "Output")
+                else if (targetName == HeightParam || targetName == "Output")
                 {
                     // Already present — retarget its default too.
-                    var existingParam = parameters.First(x => x.name == p.name);
+                    var existingParam = parameters.First(x => x.name == targetName);
                     existingParam.defaultFloat = DefaultSlider;
                 }
                 else
@@ -123,7 +139,10 @@ namespace AvatarBridge
                           "Geometric so every doubling gets the same slider travel. Constant-speed smoothing " +
                           "(JustSleightly's ControllerTemplates) so size glides instead of snapping. This " +
                           "replaces the old \"Height (M)\" typed input, which ChilloutVR's quick menu renders " +
-                          "as an unclamped keypad nobody could use.";
+                          "as an unclamped keypad nobody could use. The parameter is named \"Height\" (not the " +
+                          "template's \"Input\") because ChilloutVR restores saved profile values by parameter " +
+                          "name — a re-upload keeping the old name inherited the metres-era value and spawned " +
+                          "at 250%.";
             if (collisions.Count > 0)
             {
                 note += $" NOTE: parameter name(s) already existed and were reused: {string.Join(", ", collisions)}.";
@@ -202,6 +221,92 @@ namespace AvatarBridge
                 candidate = $"{name} {suffix++}";
             }
             return candidate;
+        }
+
+        /// <summary>
+        /// Rewrites every reference to an animator parameter inside a (cloned) state machine:
+        /// blend tree parameters (1D/2D/direct), transition conditions, and the per-state
+        /// time/speed/mirror/cycle-offset bindings. Only ever called on clones, never on the
+        /// bundled template asset.
+        /// </summary>
+        static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            foreach (var child in machine.states)
+            {
+                var state = child.state;
+                if (state == null)
+                {
+                    continue;
+                }
+                if (state.timeParameter == from) state.timeParameter = to;
+                if (state.speedParameter == from) state.speedParameter = to;
+                if (state.mirrorParameter == from) state.mirrorParameter = to;
+                if (state.cycleOffsetParameter == from) state.cycleOffsetParameter = to;
+                RenameInMotion(state.motion, from, to);
+                foreach (var transition in state.transitions)
+                {
+                    RenameInConditions(transition, from, to);
+                }
+            }
+            foreach (var transition in machine.anyStateTransitions)
+            {
+                RenameInConditions(transition, from, to);
+            }
+            foreach (var transition in machine.entryTransitions)
+            {
+                RenameInConditions(transition, from, to);
+            }
+            foreach (var child in machine.stateMachines)
+            {
+                RenameParameterReferences(child.stateMachine, from, to);
+            }
+        }
+
+        static void RenameInMotion(Motion motion, string from, string to)
+        {
+            if (!(motion is BlendTree tree))
+            {
+                return;
+            }
+            if (tree.blendParameter == from) tree.blendParameter = to;
+            if (tree.blendParameterY == from) tree.blendParameterY = to;
+            // children is a value-type array copy: mutate it, recurse, write it back.
+            var children = tree.children;
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i].directBlendParameter == from)
+                {
+                    children[i].directBlendParameter = to;
+                }
+                RenameInMotion(children[i].motion, from, to);
+            }
+            tree.children = children;
+        }
+
+        static void RenameInConditions(AnimatorTransitionBase transition, string from, string to)
+        {
+            if (transition == null)
+            {
+                return;
+            }
+            var conditions = transition.conditions;
+            bool changed = false;
+            for (int i = 0; i < conditions.Length; i++)
+            {
+                if (conditions[i].parameter == from)
+                {
+                    conditions[i].parameter = to;
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                transition.conditions = conditions;
+            }
         }
 
         static void AddHeightMenu(BridgeContext ctx)

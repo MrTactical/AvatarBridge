@@ -115,6 +115,11 @@ namespace AvatarBridge
         // radius are untouched, and turning this off restores the preset's feel exactly.
         public bool derivePhysicsFromPhysBone = true;
         public bool capParticleRadius = true;
+        // Off by default: VRChat avatars routinely carry per-toe PhysBones, and simulated toes
+        // in ChilloutVR wiggle with every step — read as broken, not expressive. Chains rooted
+        // at (or under) a humanoid Toes bone, or whose root is named like a toe, are skipped
+        // with a report entry unless this is on.
+        public bool convertToePhysBones = false;
         // Off by default: this deliberately departs from the source avatar. Both systems keep
         // explicit per-chain collider lists, so a chain the author never wired stays uncollided
         // in CVR exactly as it was in VRChat — turning this on improves on that rather than

@@ -75,6 +75,10 @@ namespace AvatarBridge
                     foreach (var pb in physBones)
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator);
+                        if (SkipToeChain(ctx, chain))
+                        {
+                            continue;
+                        }
                         writtenCloths.Add((chain, MagicaClothWriter.Write(ctx, chain, magicaColliderCache)));
                     }
                     // Runs last: every collider the avatar defines has to exist before a chain can
@@ -97,7 +101,12 @@ namespace AvatarBridge
                     var dbColliderCache = new Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase>();
                     foreach (var pb in physBones)
                     {
-                        DynamicBoneWriter.Write(ctx, PhysBoneChainData.Read(pb, ctx.TargetAnimator), dbColliderCache);
+                        var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator);
+                        if (SkipToeChain(ctx, dbChain))
+                        {
+                            continue;
+                        }
+                        DynamicBoneWriter.Write(ctx, dbChain, dbColliderCache);
                     }
                     break;
 #else
@@ -124,6 +133,46 @@ namespace AvatarBridge
                     Object.DestroyImmediate(collider);
                 }
             }
+        }
+
+        /// <summary>
+        /// Toe chains are skipped by default. VRChat avatars routinely put PhysBones on
+        /// individual toe bones, and in ChilloutVR the result is toes that wiggle with every
+        /// step — universally read as broken rather than expressive. A chain counts as a toe
+        /// chain when its root is (or sits under) a humanoid Toes bone, or when its root's name
+        /// says so. "Convert toe PhysBones" in the physics options brings them back.
+        /// </summary>
+        static bool SkipToeChain(BridgeContext ctx, PhysBoneChainData chain)
+        {
+            if (ctx.Settings.convertToePhysBones || chain.Root == null)
+            {
+                return false;
+            }
+            bool isToe = chain.Root.name.IndexOf("toe", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!isToe)
+            {
+                var animator = ctx.TargetAnimator;
+                if (animator != null && animator.isHuman)
+                {
+                    foreach (var bone in new[] { HumanBodyBones.LeftToes, HumanBodyBones.RightToes })
+                    {
+                        var toes = animator.GetBoneTransform(bone);
+                        if (toes != null && (chain.Root == toes || chain.Root.IsChildOf(toes)))
+                        {
+                            isToe = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (isToe)
+            {
+                ctx.Report.Skipped(Category, chain.Root.name,
+                    "Toe chain not converted — simulated toes wiggle with every step in ChilloutVR, " +
+                    "which reads as broken rather than expressive. Turn on \"Convert toe PhysBones\" " +
+                    "in the physics options if this avatar's toe physics are deliberate.");
+            }
+            return isToe;
         }
 
         /// <summary>
