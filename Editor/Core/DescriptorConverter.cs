@@ -227,13 +227,19 @@ namespace AvatarBridge
                 var inward = isLeft ? settings.eyesLookingRight : settings.eyesLookingLeft;
                 var outward = isLeft ? settings.eyesLookingLeft : settings.eyesLookingRight;
 
+                // ChilloutVR's limits are SIGNED euler bounds, not magnitudes. The client clamps
+                // pitch to [-Up, -Down] and yaw to [In, Out] (mirrored for the left eye) — read
+                // straight out of EyeMovementEye.UpdateEyeRotation. Down and In must therefore be
+                // NEGATIVE for the range to be a range: four positive values collapse both clamps
+                // to a point, and Clamp(x, -30, -30) pins the eyes 30° upward permanently — which
+                // is exactly how the first in-game test of this conversion looked.
                 eyes.Add(new CVRAvatar.EyeMovementInfoEye
                 {
                     isLeft = isLeft,
                     eyeTransform = target,
                     eyeAngleLimitUp = Travel(settings.eyesLookingUp),
-                    eyeAngleLimitDown = Travel(settings.eyesLookingDown),
-                    eyeAngleLimitIn = Travel(inward),
+                    eyeAngleLimitDown = -Travel(settings.eyesLookingDown),
+                    eyeAngleLimitIn = -Travel(inward),
                     eyeAngleLimitOut = Travel(outward)
                 });
             }
@@ -258,10 +264,11 @@ namespace AvatarBridge
             var sample = eyes[0];
             ctx.Report.Converted(Category, "Eye movement",
                 $"{eyes.Count} eye(s) set up in Transform mode, gaze limits measured from the " +
-                $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {sample.eyeAngleLimitDown:0.#}°, " +
-                $"in {sample.eyeAngleLimitIn:0.#}°, out {sample.eyeAngleLimitOut:0.#}°) — the angle " +
+                $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {Mathf.Abs(sample.eyeAngleLimitDown):0.#}°, " +
+                $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°) — the angle " +
                 "between looking-straight and each directional pose IS that direction's limit, so " +
-                "these are measured off your avatar rather than defaulted.");
+                "these are measured off your avatar rather than defaulted. (Stored signed: ChilloutVR " +
+                "wants Down and In negative.)");
         }
 
         /// <summary>
