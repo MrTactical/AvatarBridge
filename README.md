@@ -1,4 +1,7 @@
-# AvatarBridge — VRChat → ChilloutVR avatar converter
+# AvatarBridge — convert your VRChat avatar to ChilloutVR
+
+[![Latest release](https://img.shields.io/github/v/release/MrTactical/AvatarBridge?label=release&color=1778FF)](https://github.com/MrTactical/AvatarBridge/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-EE4408.svg)](LICENSE.md)
 
 A Unity Editor tool that converts a **VRChat SDK3 avatar** into a **ChilloutVR CCK 4 avatar** —
 animator, menus, physics, contacts and face tracking — and hands you a clean starting point to
@@ -30,6 +33,29 @@ finish by hand.
 
 <p align="center"><em>The banner runs VRChat's blue into ChilloutVR's orange, and the step markers
 sit along it — because that's the trip your avatar is making.</em></p>
+
+## Already using vrc3cvr?
+
+[vrc3cvr](https://github.com/imagitama/vrc3cvr) is a fine tool and the reason this one exists —
+AvatarBridge started by studying it (see [Credits](#credits)). But the two are generations apart
+now. What actually differs, as of mid-2026:
+
+| | AvatarBridge | vrc3cvr |
+|---|---|---|
+| Menus, parameters, gestures | ✅ | ✅ |
+| PhysBones → DynamicBone | ✅ 1:1 | ✅ |
+| PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
+| **VRCFury / Modular Avatar baked automatically** (toggles, linked clothing, merged armatures survive) | ✅ | manual |
+| VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
+| **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost | ✅ | — |
+| Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
+| Voice at the mouth and gaze limits, *measured off your avatar's own mesh and poses* | ✅ | — |
+| Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
+| A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
+| Store description generated and typed into the upload page | ✅ | — |
+
+Every ✅ above is documented on this page, and most are confirmed in game — see the banner above
+for what that means here.
 
 ## It's a head start, not a magic button
 
