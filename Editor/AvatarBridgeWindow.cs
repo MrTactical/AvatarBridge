@@ -391,8 +391,21 @@ namespace AvatarBridge
             b.Add(BridgeElements.SubHeading("Remove VRChat-only systems"));
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
                 "CVR has its own locomotion, flight and emotes. GoGo's layers fight them and " +
-                "waste ~15 synced parameters.",
-                settings.stripGogoLoco, v => settings.stripGogoLoco = v));
+                "waste ~15 synced parameters. Untick to KEEP GoGo's poses and dances — they " +
+                "live in the Base and Action layers, which must then be merged too (the hint " +
+                "below appears until they are).",
+                settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
+            if (!settings.stripGogoLoco && (!settings.convertBaseLayer || !settings.convertActionLayer))
+            {
+                // Keeping GoGo with its home layers unmerged converts the menus but not the
+                // states they drive — a dance wheel full of dead entries, indistinguishable
+                // from a bug. Say so where the decision is being made.
+                b.Add(BridgeElements.Hint(
+                    "⚠ Keeping GoGo Loco: its poses and dances live in the BASE and ACTION layers, " +
+                    "which are currently not merged — the pose wheel would convert but drive " +
+                    "nothing. Tick \"Base\" and \"Action\" under \"Animator layers to merge\" in " +
+                    "Advanced, or GoGo comes through as menus without motion."));
+            }
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
                 settings.stripSpsSystems, v => settings.stripSpsSystems = v));
@@ -413,12 +426,12 @@ namespace AvatarBridge
                 settings.convertGestureLayer, v => settings.convertGestureLayer = v));
             b.Add(BridgeElements.Bind("Base / locomotion",
                 "Usually better left to CVR's own locomotion; enable only for custom locomotion avatars.",
-                settings.convertBaseLayer, v => settings.convertBaseLayer = v));
+                settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));
             b.Add(BridgeElements.Bind("Action (emotes, AFK)",
                 "VRC emote triggers have no CVR equivalent; states may be unreachable.",
-                settings.convertActionLayer, v => settings.convertActionLayer = v));
+                settings.convertActionLayer, v => { settings.convertActionLayer = v; ScheduleRebuild(); }));
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
             b.Add(BridgeElements.Bind("Rebuild VRCFury toggles (recommended)",

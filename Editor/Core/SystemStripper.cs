@@ -117,6 +117,20 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
+            // Keeping GoGo is a supported choice, but only whole: its poses and dances are STATES
+            // in the Base and Action layers, and with those layers unmerged the menus convert
+            // while the motion they drive does not — a dance wheel full of dead entries that
+            // reads as a converter bug. Warn at the decision, not after the confusion.
+            if (!ctx.Settings.stripGogoLoco && AvatarUsesGogo(ctx)
+                && (!ctx.Settings.convertBaseLayer || !ctx.Settings.convertActionLayer))
+            {
+                ctx.Report.Warning("System stripping", "GoGo Loco kept, but its home layers aren't merged",
+                    "Stripping is off and this avatar carries GoGo Loco, but the Base/Action layers " +
+                    "— where GoGo's poses and dances actually live — aren't ticked under \"Animator " +
+                    "layers to merge\". The pose wheel will convert and drive nothing. Tick Base and " +
+                    "Action and convert again to bring GoGo across whole.");
+            }
+
             // First, and unconditionally: this one isn't a preference about which VRChat add-ons
             // you want kept, it's a workaround for a VRChat limit that breaks sync when carried
             // into ChilloutVR. It also has to run ahead of the early return below, which fires
