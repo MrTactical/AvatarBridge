@@ -111,6 +111,28 @@ namespace AvatarBridge
                 WriteRootsExcluding(ctx, sdata, data);
             }
 
+            // VRChat's Endpoint Position appends a VIRTUAL bone to every leaf of the chain —
+            // that is the tip PhysBone actually simulates. MagicaCloth2 has no such concept: a
+            // BoneCloth simulates the transforms that exist, and a root with no children is one
+            // FIXED particle, i.e. a chain that converts cleanly and never moves. Single-bone
+            // PhysBones with an endpoint offset (ears, antennae, accessory bones) are exactly
+            // that shape. So the virtual bone is made real: every leaf of the simulated tree
+            // gets a "<leaf>_End" child at the endpoint offset, which is the same trick
+            // DynamicBone's own m_EndOffset performs internally.
+            if (data.EndpointPosition.sqrMagnitude > 1e-8f)
+            {
+                int tips = SynthesizeEndpointBones(sdata, data);
+                if (tips > 0)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"Endpoint Position ({data.EndpointPosition.x:0.###}, {data.EndpointPosition.y:0.###}, " +
+                        $"{data.EndpointPosition.z:0.###}) realised as {tips} \"_End\" bone(s) — VRChat " +
+                        "simulates a virtual tip at that offset; MagicaCloth2 only simulates transforms " +
+                        "that exist, so without these a single-bone chain would be one fixed particle " +
+                        "that never moves.");
+                }
+            }
+
             if (data.Colliders.Count > 0)
             {
                 sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
@@ -157,6 +179,48 @@ namespace AvatarBridge
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        /// <summary>
+        /// Creates the "_End" tip bone VRChat's Endpoint Position implies, on every leaf of the
+        /// simulated tree. Walks each cloth root, skipping ignored branches (they are not part of
+        /// this cloth), and gives childless transforms a real child at the endpoint offset.
+        /// </summary>
+        static int SynthesizeEndpointBones(ClothSerializeData sdata, PhysBoneChainData data)
+        {
+            var ignored = new HashSet<Transform>(data.Ignores);
+            int added = 0;
+
+            void Walk(Transform node)
+            {
+                bool leaf = true;
+                for (int i = 0; i < node.childCount; i++)
+                {
+                    var child = node.GetChild(i);
+                    if (ignored.Contains(child))
+                    {
+                        continue;
+                    }
+                    leaf = false;
+                    Walk(child);
+                }
+                if (leaf)
+                {
+                    var tip = new GameObject(node.name + "_End");
+                    tip.transform.SetParent(node, false);
+                    tip.transform.localPosition = data.EndpointPosition;
+                    added++;
+                }
+            }
+
+            foreach (var root in sdata.rootBones)
+            {
+                if (root != null)
+                {
+                    Walk(root);
+                }
+            }
+            return added;
         }
 
         /// <summary>
