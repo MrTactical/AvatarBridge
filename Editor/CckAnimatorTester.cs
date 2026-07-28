@@ -46,11 +46,18 @@ namespace AvatarBridge
 
         CVRAvatar _override;
         float _loudness = 1f;
+        int _fingerprint;
+        double _nextPoll;
 
         void OnEnable()
         {
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += Rebuild;
+            // The menu card mirrors whatever controller sits on the avatar's Animator RIGHT
+            // NOW. The CCK regenerates that controller when Advanced Avatar Settings change,
+            // and a conversion swaps it wholesale — polling a cheap fingerprint keeps the card
+            // true without the user having to know a refresh is a thing.
+            EditorApplication.update += PollForChanges;
             Rebuild();
         }
 
@@ -58,9 +65,87 @@ namespace AvatarBridge
         {
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             Selection.selectionChanged -= Rebuild;
+            EditorApplication.update -= PollForChanges;
         }
 
         void OnPlayModeChanged(PlayModeStateChange _) => Rebuild();
+
+        void PollForChanges()
+        {
+            if (EditorApplication.timeSinceStartup < _nextPoll)
+            {
+                return;
+            }
+            _nextPoll = EditorApplication.timeSinceStartup + 0.5;
+            if (ComputeFingerprint() != _fingerprint)
+            {
+                Rebuild();
+            }
+        }
+
+        /// <summary>
+        /// Cheap identity of "what the window is showing": which avatar, which controller its
+        /// Animator carries, which parameters that controller declares, and which AAS entries
+        /// exist. Any of those changing means the built controls are stale. Rebuilding ONLY on
+        /// a changed fingerprint matters as much as rebuilding at all — a rebuild mid-drag
+        /// would yank the slider out from under the cursor.
+        /// </summary>
+        int ComputeFingerprint()
+        {
+            var avatar = ResolveAvatar();
+            unchecked
+            {
+                int hash = avatar != null ? avatar.GetInstanceID() : 0;
+                var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+                var controller = animator != null ? animator.runtimeAnimatorController : null;
+                hash = hash * 31 + (controller != null ? controller.GetInstanceID() : 0);
+                foreach (var name in ControllerParameterList(avatar))
+                {
+                    hash = hash * 31 + name.GetHashCode();
+                }
+                var settings = avatar != null && avatar.avatarSettings != null
+                    ? avatar.avatarSettings.settings
+                    : null;
+                if (settings != null)
+                {
+                    foreach (var entry in settings)
+                    {
+                        if (entry == null)
+                        {
+                            continue;
+                        }
+                        hash = hash * 31 + (entry.machineName ?? "").GetHashCode();
+                        hash = hash * 31 + (int)entry.type;
+                    }
+                }
+                return hash;
+            }
+        }
+
+        /// <summary>
+        /// The parameters the avatar's CURRENT controller declares, in declaration order.
+        /// Read from the controller asset rather than Animator.parameters so it works outside
+        /// play mode too; an override controller answers with its base's list, which is the
+        /// list the animator actually runs with.
+        /// </summary>
+        static List<string> ControllerParameterList(CVRAvatar avatar)
+        {
+            var names = new List<string>();
+            var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+            var runtime = animator != null ? animator.runtimeAnimatorController : null;
+            while (runtime is AnimatorOverrideController over)
+            {
+                runtime = over.runtimeAnimatorController;
+            }
+            if (runtime is UnityEditor.Animations.AnimatorController editable)
+            {
+                foreach (var parameter in editable.parameters)
+                {
+                    names.Add(parameter.name);
+                }
+            }
+            return names;
+        }
 
         CVRAvatar ResolveAvatar()
         {
@@ -169,6 +254,8 @@ namespace AvatarBridge
 
         void Rebuild()
         {
+            // Stored up front so the poll doesn't immediately rebuild what was just built.
+            _fingerprint = ComputeFingerprint();
             rootVisualElement.Clear();
             Build();
         }
@@ -587,6 +674,18 @@ namespace AvatarBridge
                 ? avatar.GetComponentInChildren<Animator>(true)
                 : null;
 
+            // The card follows the controller actually on the Animator: entries whose
+            // parameter it doesn't declare are greyed with the reason — driving them would do
+            // nothing, in game or here — and the fingerprint poll rebuilds this card the
+            // moment the controller (or its parameter list) changes.
+            var declared = new HashSet<string>(ControllerParameterList(avatar));
+            var watched = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+            var watchedController = watched != null ? watched.runtimeAnimatorController : null;
+            parent.Add(BridgeElements.Hint(watchedController != null
+                ? $"Reading \"{watchedController.name}\" — this card refreshes itself when the " +
+                  "controller or its parameters change."
+                : "No animator controller assigned — every entry stays greyed until one is."));
+
             // Menus routinely run past thirty entries; a filter beats scrolling. Rows register
             // themselves with their searchable text and the filter just flips display.
             var rows = new List<(VisualElement element, string key)>();
@@ -610,9 +709,22 @@ namespace AvatarBridge
             }
             // Every entry hover-reveals the parameter it drives — the menu shows the avatar
             // author's labels, but bug reports talk in machine names.
-            void Register(VisualElement element, string entryLabel, string parameterName)
+            int missingCount = 0;
+            void Register(VisualElement element, string entryLabel, string parameterName,
+                bool missing = false)
             {
-                element.tooltip = $"drives \"{parameterName}\"";
+                if (missing)
+                {
+                    element.SetEnabled(false);
+                    element.tooltip = $"\"{parameterName}\" is not declared in the current " +
+                        "animator controller — driving it would do nothing, in game or here. " +
+                        "It lights up the moment the controller declares it.";
+                    missingCount++;
+                }
+                else
+                {
+                    element.tooltip = $"drives \"{parameterName}\"";
+                }
                 rows.Add((element, entryLabel + "\n" + parameterName));
                 parent.Add(element);
             }
@@ -635,14 +747,14 @@ namespace AvatarBridge
                         toggle.AddToClassList("ab-toggle");
                         toggle.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
-                        Register(toggle, label, parameter);
+                        Register(toggle, label, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Slider:
                         var slider = DrivenSlider(label, 0f, 1f, ReadParam(live, parameter) ?? 0f,
                             v => Drive(LiveAnimator(), parameter, v));
                         slider.AddToClassList("ab-field");
                         slider.AddToClassList("ab-field-wide");
-                        Register(slider, label, parameter);
+                        Register(slider, label, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Dropdown:
                         var dropdown = entry.setting as CVRAdvancesAvatarSettingGameObjectDropdown;
@@ -666,19 +778,19 @@ namespace AvatarBridge
                         choice.AddToClassList("ab-field-wide");
                         choice.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, names.IndexOf(e.newValue)));
-                        Register(choice, label, parameter);
+                        Register(choice, label, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
                         var joyX = DrivenSlider($"{label} X", -1f, 1f, ReadParam(live, parameter + "-x") ?? 0f,
                             v => Drive(LiveAnimator(), parameter + "-x", v));
                         joyX.AddToClassList("ab-field");
                         joyX.AddToClassList("ab-field-wide");
-                        Register(joyX, label, parameter + "-x");
+                        Register(joyX, label, parameter + "-x", !declared.Contains(parameter + "-x"));
                         var joyY = DrivenSlider($"{label} Y", -1f, 1f, ReadParam(live, parameter + "-y") ?? 0f,
                             v => Drive(LiveAnimator(), parameter + "-y", v));
                         joyY.AddToClassList("ab-field");
                         joyY.AddToClassList("ab-field-wide");
-                        Register(joyY, label, parameter + "-y");
+                        Register(joyY, label, parameter + "-y", !declared.Contains(parameter + "-y"));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.InputSingle:
                         var input = new FloatField(label) { value = ReadParam(live, parameter) ?? 0f };
@@ -686,7 +798,7 @@ namespace AvatarBridge
                         input.AddToClassList("ab-field-wide");
                         input.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue));
-                        Register(input, label, parameter);
+                        Register(input, label, parameter, !declared.Contains(parameter));
                         break;
                     default:
                         var hint = BridgeElements.Hint(

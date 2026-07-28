@@ -94,7 +94,10 @@ actually running.
   CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
   produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
   coupled to stance the way VR height is), visemes, emotes and the avatar's whole Advanced
-  Settings menu, coerced by declared type exactly like the client. (VRChat's Gesture Manager
+  Settings menu, coerced by declared type exactly like the client. The menu card follows the
+  controller on the avatar's Animator: it refreshes itself when the controller or its parameter
+  list changes, and greys any entry whose parameter the controller doesn't declare — driving
+  those would do nothing in game either. (VRChat's Gesture Manager
   cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
   ChilloutVR speaks int.)
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
