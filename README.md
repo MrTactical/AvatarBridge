@@ -47,7 +47,7 @@ now. What actually differs, as of mid-2026:
 | PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
 | **VRCFury / Modular Avatar baked automatically** (toggles, linked clothing, merged armatures survive) | ✅ | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost | ✅ | — |
+| **ChilloutVR's native contacts** — real proximity, tags verbatim (⚠️ beta, [see warnings](#native-contacts)) | ✅ | — |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Voice at the mouth and gaze limits, *measured off your avatar's own mesh and poses* | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
@@ -84,8 +84,8 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts** — one-to-one, with real proximity and no sync cost, using a
-  system the CCK doesn't expose.
+- **ChilloutVR's native contacts** — one-to-one, with real proximity, using a system the CCK
+  doesn't expose (beta — [two warnings apply](#native-contacts)).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -278,9 +278,19 @@ game client and the CCK ships no way to author it, so converters have always had
 with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim, `localOnly` honoured,
-and **no sync cost** — contacts sit on CVR's avatar whitelist, so every client simulates them for
-every avatar rather than replicating values.
+**Advanced** and contacts convert one to one: real proximity, tags verbatim, `localOnly` honoured.
+
+> ⚠️ **Two warnings, from the ChilloutVR developer behind the contact system** (the window repeats
+> them while the option is on):
+>
+> 1. **Contact reactions are not synced.** Each client simulates its own view of the contacts, so
+>    other players may not see what a contact does unless the parameter it drives syncs on its own.
+>    An earlier version of this section sold that local simulation as "no sync cost" — simulated
+>    everywhere is not the same thing as agreeing everywhere.
+> 2. **The system is unstable and may break in any ChilloutVR update** — which would leave the
+>    avatar's contacts dead until it is converted and uploaded again.
+>
+> Test with a second player before relying on it.
 
 <details>
 <summary>How it works without CCK support</summary>
@@ -295,8 +305,9 @@ thing.
 > triggered by other players, and CVR's own runtime gizmos drawing the components — proof the
 > game's real implementation is running against declarations generated here.
 >
-> **Still off by default** until more than one avatar has confirmed it. Turn it on deliberately and
-> test in game; the conversion falls back to the legacy path by itself if anything is wrong.
+> **Still off by default** — chiefly because of the two warnings above, beyond just breadth of
+> testing. Turn it on deliberately and test in game; the conversion falls back to the legacy path
+> by itself if anything is wrong.
 
 > ⚠️ **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene
 > before converting again.** Unity manufactures a placeholder script for a dangling component

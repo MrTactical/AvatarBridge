@@ -145,12 +145,19 @@ namespace AvatarBridge
 
         // Use ChilloutVR's native contact components instead of the pointer/trigger
         // approximation. They line up with VRChat's almost field for field — same shapes, same
-        // collision tags, real proximity, and localOnly actually honoured — and because every
-        // client simulates them for every avatar, they replicate without costing sync bits.
+        // collision tags, real proximity, and localOnly actually honoured.
         //
-        // Off by default because the components are not in the CCK: AvatarBridge declares them
-        // itself (see ContactStubPatcher) and the binding can only be proven by putting an avatar
-        // in game. If it were wrong, the result is contact objects with a missing script.
+        // Off by default, and the window shows a warning while it is on, on word from the CVR
+        // developer behind the system (2026-07): contact reactions are NOT synced — each client
+        // simulates its own view, so other players may not see contact-driven effects unless the
+        // driven parameter syncs on its own — and the system is unstable and may break in any
+        // ChilloutVR update. An earlier version of this comment sold the local simulation as
+        // "replicates without costing sync bits"; simulated-everywhere is not the same thing as
+        // agreeing-everywhere.
+        //
+        // The components are also not in the CCK: AvatarBridge declares them itself (see
+        // ContactStubPatcher) and the binding can only be proven by putting an avatar in game.
+        // If it were wrong, the result is contact objects with a missing script.
         public bool useNativeContacts = false;
 
         // Give merged VRChat layers an avatar mask that blocks humanoid muscles, restoring the
