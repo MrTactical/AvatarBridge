@@ -233,6 +233,8 @@ namespace AvatarBridge
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
             // conditions behind). ChilloutVR silently drops such transitions.
             ReconcileConditionModes(master, ctx);
+            SyncDriverParameterTypes(master, ctx);
+            RepairUnconditionalDriverStates(master, ctx);
             VerifyMenuParameterNames(master, ctx);
             PruneDeadMenuEntries(master, ctx);
             CompactIntDropdowns(master, ctx);
@@ -1526,6 +1528,207 @@ namespace AvatarBridge
         /// state silently never switches. Rewrite every condition's mode to match its
         /// parameter's final type. Only invalid mode/type pairings are touched.
         /// </summary>
+        /// <summary>
+        /// Brings every generated AnimatorDriver task's targetType into line with the
+        /// parameter's FINAL declared type.
+        ///
+        /// ConvertParameterDriver reads the type while the driver is built, in BehaviourPass —
+        /// which runs BEFORE ParameterTypeInference turns VRCFury's all-float parameters into
+        /// real bools and ints. Every driver written before that retyping kept "Float" for what
+        /// is now a Bool, and the decompiled client shows why that is invisible until it isn't
+        /// (AnimatorDriverTask.ApplyResult):
+        ///
+        ///   * in game on the LOCAL avatar the type is ignored — the value goes through
+        ///     PlayerSetup.ChangeAnimatorParam and the animator manager coerces it to the
+        ///     declared type, so the driver fires;
+        ///   * everywhere else — including Unity play mode, where the driver resolves to
+        ///     MiscAnimator — it calls Animator.SetFloat on a Bool parameter, which Unity
+        ///     SILENTLY IGNORES.
+        ///
+        /// A mistyped driver therefore does nothing in the editor and everything in game: the
+        /// exact "works in Unity, breaks in game" shape, and it hid driver faults from the CCK
+        /// Animator Tester as well.
+        /// </summary>
+        static void SyncDriverParameterTypes(AnimatorController master, BridgeContext ctx)
+        {
+            var types = new Dictionary<string, AnimatorControllerParameterType>();
+            foreach (var p in master.parameters)
+            {
+                types[p.name] = p.type;
+            }
+
+            int corrected = 0;
+            var names = new List<string>();
+            void FixTasks(List<AnimatorDriverTask> tasks)
+            {
+                if (tasks == null)
+                {
+                    return;
+                }
+                foreach (var task in tasks)
+                {
+                    if (task == null || string.IsNullOrEmpty(task.targetName) ||
+                        !types.TryGetValue(task.targetName, out var type))
+                    {
+                        continue;
+                    }
+                    AnimatorDriverTask.ParameterType want;
+                    switch (type)
+                    {
+                        case AnimatorControllerParameterType.Int: want = AnimatorDriverTask.ParameterType.Int; break;
+                        case AnimatorControllerParameterType.Bool: want = AnimatorDriverTask.ParameterType.Bool; break;
+                        case AnimatorControllerParameterType.Trigger: want = AnimatorDriverTask.ParameterType.Trigger; break;
+                        default: want = AnimatorDriverTask.ParameterType.Float; break;
+                    }
+                    if (task.targetType != want)
+                    {
+                        task.targetType = want;
+                        corrected++;
+                        if (names.Count < 6 && !names.Contains(task.targetName))
+                        {
+                            names.Add(task.targetName);
+                        }
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var behaviour in machine.behaviours)
+                    {
+                        if (behaviour is AnimatorDriver machineDriver)
+                        {
+                            FixTasks(machineDriver.EnterTasks);
+                            FixTasks(machineDriver.ExitTasks);
+                        }
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        foreach (var behaviour in child.state.behaviours)
+                        {
+                            if (behaviour is AnimatorDriver driver)
+                            {
+                                FixTasks(driver.EnterTasks);
+                                FixTasks(driver.ExitTasks);
+                            }
+                        }
+                    }
+                });
+            }
+
+            if (corrected > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{corrected} parameter-driver task(s) retyped to match their parameter",
+                    $"{string.Join(", ", names)}{(corrected > names.Count ? ", …" : "")} — the drivers were " +
+                    "built before the parameters were retyped from VRCFury's floats into real bools and ints, " +
+                    "so they carried the old type. ChilloutVR ignores the type on your own avatar (it coerces " +
+                    "to the declared type) but obeys it everywhere else, and Unity ignores a float write to a " +
+                    "bool parameter entirely — which is why a mistyped driver could look dead in the editor " +
+                    "while firing in game.");
+            }
+        }
+
+        /// <summary>
+        /// Removes AnyState transitions that make a driver-bearing state unconditional.
+        ///
+        /// Found on a tester's avatar: VRCFury's "exclusive tag" layer had, for each toggle, TWO
+        /// AnyState transitions to the same state — one "parameter is true" and one "parameter is
+        /// false" — which together fire no matter what. Unity evaluates AnyState transitions in
+        /// order and skips one whose destination is the current state (canTransitionToSelf off),
+        /// so the layer walked to the NEXT toggle's state instead, ran that state's driver, and
+        /// that driver switches the other toggles OFF. The result is a permanent ping-pong: every
+        /// frame a different exclusive state is entered and zeroes its siblings, so a toggle
+        /// pressed in the quick menu turns itself back off instantly — a visible flicker with the
+        /// parameter genuinely flipping, which is exactly what the CCK Debugger showed.
+        ///
+        /// The pair is only repaired where it is provably harmful — the destination runs a
+        /// parameter driver — and only the "is false" half is dropped, which leaves the reading
+        /// every exclusive-tag layer intends: enter this toggle's state when this toggle is on.
+        /// </summary>
+        static void RepairUnconditionalDriverStates(AnimatorController master, BridgeContext ctx)
+        {
+            int removed = 0;
+            var notes = new List<string>();
+
+            bool RunsDriver(AnimatorState state) =>
+                state != null && state.behaviours != null &&
+                state.behaviours.Any(b => b is AnimatorDriver driver &&
+                    ((driver.EnterTasks != null && driver.EnterTasks.Count > 0) ||
+                     (driver.ExitTasks != null && driver.ExitTasks.Count > 0)));
+
+            // The single condition a transition rests on, or null when it has none or several.
+            AnimatorCondition? SoleCondition(AnimatorStateTransition transition) =>
+                transition.conditions != null && transition.conditions.Length == 1
+                    ? transition.conditions[0]
+                    : (AnimatorCondition?)null;
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    var transitions = machine.anyStateTransitions;
+                    if (transitions == null || transitions.Length < 2)
+                    {
+                        return;
+                    }
+                    var doomed = new HashSet<AnimatorStateTransition>();
+                    foreach (var negative in transitions)
+                    {
+                        var negativeCondition = SoleCondition(negative);
+                        if (negativeCondition == null ||
+                            negativeCondition.Value.mode != AnimatorConditionMode.IfNot ||
+                            !RunsDriver(negative.destinationState))
+                        {
+                            continue;
+                        }
+                        // Is the same destination also entered when the parameter IS true?
+                        bool complemented = transitions.Any(other =>
+                        {
+                            if (ReferenceEquals(other, negative) ||
+                                other.destinationState != negative.destinationState)
+                            {
+                                return false;
+                            }
+                            var condition = SoleCondition(other);
+                            return condition != null &&
+                                   condition.Value.mode == AnimatorConditionMode.If &&
+                                   condition.Value.parameter == negativeCondition.Value.parameter;
+                        });
+                        if (complemented)
+                        {
+                            doomed.Add(negative);
+                            if (notes.Count < 5)
+                            {
+                                notes.Add($"\"{negative.destinationState.name}\" on {negativeCondition.Value.parameter}");
+                            }
+                        }
+                    }
+                    if (doomed.Count > 0)
+                    {
+                        machine.anyStateTransitions = transitions.Where(t => !doomed.Contains(t)).ToArray();
+                        removed += doomed.Count;
+                    }
+                });
+            }
+
+            if (removed > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{removed} always-true transition(s) into parameter-driving state(s) removed",
+                    $"{string.Join("; ", notes)}{(removed > notes.Count ? "; …" : "")} — each of these states " +
+                    "was entered both when its parameter was true AND when it was false, which together means " +
+                    "\"always\". Because Unity skips an AnyState transition that points at the state it is " +
+                    "already in, the layer stepped to the NEXT such state every frame and ran ITS driver, and " +
+                    "those drivers switch the sibling toggles off — so a toggle pressed in the menu flipped " +
+                    "straight back off (a flicker, with the parameter really changing). The \"is false\" half " +
+                    "is dropped, leaving what an exclusive-clothing layer means: enter this toggle's state " +
+                    "when this toggle is on. Check that switching between these options behaves.");
+            }
+        }
+
         static void ReconcileConditionModes(AnimatorController master, BridgeContext ctx)
         {
             var types = new Dictionary<string, AnimatorControllerParameterType>();
