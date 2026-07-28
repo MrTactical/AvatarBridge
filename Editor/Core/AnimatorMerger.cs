@@ -2877,6 +2877,20 @@ namespace AvatarBridge
                 return;
             }
 
+            // The serialized field is an int; the CLIENT is what reads it back. When the
+            // installed CCK's enum predates a name, writing the client's numeric value still
+            // round-trips perfectly — the decompiled client's numbers are the contract
+            // (ApplicationType: Override=0, Remap=201, ClampRemap=202; Type: DeviceMode=20,
+            // LocalPlayerMuted=210, LocalPlayerFullBodyEnabled=260, TriggerLeftValue=270,
+            // TriggerRightValue=280, AvatarUpright=401). Before this, a CCK without "Remap"
+            // silently cost the TrackingType stream.
+            var clientEnumValues = new Dictionary<string, int>
+            {
+                { "Override", 0 }, { "Remap", 201 }, { "ClampRemap", 202 },
+                { "DeviceMode", 20 }, { "LocalPlayerMuted", 210 },
+                { "LocalPlayerFullBodyEnabled", 260 }, { "TriggerLeftValue", 270 },
+                { "TriggerRightValue", 280 }, { "AvatarUpright", 401 },
+            };
             object ParseEnum(Type enumType, string name)
             {
                 if (enumType == null)
@@ -2884,7 +2898,14 @@ namespace AvatarBridge
                     return null;
                 }
                 try { return Enum.Parse(enumType, name, true); }
-                catch { return null; }
+                catch
+                {
+                    if (clientEnumValues.TryGetValue(name, out int clientValue))
+                    {
+                        try { return Enum.ToObject(enumType, clientValue); } catch { }
+                    }
+                    return null;
+                }
             }
             void SetField(object target, string fieldName, object value)
             {
