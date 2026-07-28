@@ -477,9 +477,9 @@ namespace AvatarBridge
                 "tags kept as-is. Contacts are per-client by design — every client simulates " +
                 "every avatar's contacts itself, so reactions work over the network without " +
                 "costing sync bits (confirmed in game). The components aren't in the CCK, so " +
-                "AvatarBridge declares them itself, matched against the system author's own " +
-                "published source; importing that source (NotAKidoS's NAK.Contacts) replaces " +
-                "the declarations automatically.",
+                "AvatarBridge declares them itself, verified field-for-field against the " +
+                "decompiled game client — the only layout that matters, since the client is " +
+                "what reads the uploaded avatar.",
                 settings.useNativeContacts, v => { settings.useNativeContacts = v; ScheduleRebuild(); });
             native.SetEnabled(settings.convertContacts);
             b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));

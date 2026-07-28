@@ -20,15 +20,23 @@ namespace AvatarBridge
     /// conversion has to go through the legacy CVRPointer/CVRAdvancedAvatarSettingsTrigger
     /// approximation.
     ///
-    /// The canonical reference for the serialized surface is the system author's own repository:
-    /// https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts — NotAKidoS is the
-    /// ChilloutVR developer behind the system, and these declarations are checked against that
-    /// source (revision 5 = repo state of 2026-07-28; earlier revisions predated the removal of
-    /// Box, boxSize, localOnly and the ContentType.Player flag). If the user imports that
-    /// repository's real sources into the project, RealTypesPresent() below detects them and
-    /// these generated declarations remove themselves — his sources bring the full in-editor
-    /// simulation (ContactManager + Burst collision system), which is strictly better for
-    /// authoring, and the converter binds to whichever definition exists by name.
+    /// THE ONLY AUTHORITY FOR THE SERIALIZED SURFACE IS THE SHIPPED CLIENT, DECOMPILED.
+    /// Revision 5 learned this the expensive way: it was aligned to the system author's public
+    /// repository (github.com/NotAKidoS/Misc-Unity-Stuffs, NAK.Contacts — NotAKidoS is the
+    /// ChilloutVR developer behind the system), which had dropped Box, boxSize, localOnly and
+    /// the ContentType.Player flag. The shipped client kept all of them — the repo is a diverged
+    /// work-in-progress, not the game — and the missing Player flag alone killed every converted
+    /// receiver: the client's built-in hand/finger senders are SourceContentType.Player
+    /// (ContactsTools), and a receiver whose contentTypes mask lacks that bit can never be
+    /// triggered by another player's hands. Revision 6 is read field-for-field off the
+    /// decompiled Assembly-CSharp of the 2026-07-28 build (Hotfix 3 RC).
+    ///
+    /// The repository still contributes one thing: its MIT-licensed custom inspector, adapted
+    /// below (NakContactStubEditor) so contacts get foldouts and per-receiver-type help instead
+    /// of a raw field list. If real NAK.Contacts sources ever appear in the project,
+    /// RealTypesPresent() detects them and everything generated here removes itself — but do NOT
+    /// import the public repo into a conversion project while it disagrees with the game:
+    /// avatars authored against its layout lose the Player bit and go dead in game.
     ///
     /// An asset bundle carries no script assemblies. It records, per MonoBehaviour, a MonoScript
     /// naming the assembly, namespace and class, and the player resolves that against its own
@@ -62,7 +70,7 @@ namespace AvatarBridge
         const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
 
         /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
-        const string StubVersion = "5";
+        const string StubVersion = "6";
         const string VersionTag = "// AvatarBridge generated contact declaration, revision " + StubVersion;
 
         /// <summary>
@@ -99,6 +107,7 @@ namespace AvatarBridge
             yield return new StubFile("ContactSender.cs", "c9026b3fd7184e51a8f4d2306e5b19ac", ContactSenderSource);
             yield return new StubFile("ContactReceiver.cs", "d5837ae1c06b4f2eb91c48d7350fa6e2", ContactReceiverSource);
             yield return new StubFile("ContactAnimator.cs", "e6194cf28b3d47a0ac52e7169b840d3f", ContactAnimatorSource);
+            yield return new StubFile("NakContactStubEditor.cs", "f7a2b5d861c94e33a90d5f8e12c47ab6", ContactEditorSource);
         }
 
         static ContactStubPatcher()
@@ -352,7 +361,7 @@ namespace AvatarBridge
 
 namespace NAK.Contacts
 {
-    public enum ShapeType : byte { Sphere = 0, Capsule = 1 }
+    public enum ShapeType : byte { Sphere = 0, Capsule = 1, Box = 2 }
 
     public enum ReceiverType : byte
     {
@@ -368,7 +377,7 @@ namespace NAK.Contacts
     }
 
     [Flags]
-    public enum ContentType : byte { World = 1, Avatar = 2, Prop = 4 }
+    public enum ContentType : byte { World = 1, Avatar = 2, Prop = 4, Player = 8 }
 }
 ";
 
@@ -381,14 +390,19 @@ namespace NAK.Contacts
     [DefaultExecutionOrder(18200)]
     public abstract class ContactBase : MonoBehaviour, AvatarBridge.IGeneratedContactStub
     {
-        public ShapeType shapeType = ShapeType.Sphere;
+        // Field list read off the decompiled shipped client (2026-07-28 build) — every field,
+        // in order, defaults included. boxSize, localOnly and the Player flag exist there even
+        // though the author's public repo dropped them; the client wins.
+        public ShapeType shapeType;
         public Vector3 localPosition = Vector3.zero;
         public Quaternion localRotation = Quaternion.identity;
         public float radius = 0.5f;
         public float height = 1f;
+        public Vector3 boxSize = Vector3.one;
         public bool allowSelf = true;
         public bool allowOthers = true;
-        public ContentType contentTypes = ContentType.World | ContentType.Avatar | ContentType.Prop;
+        public bool localOnly;
+        public ContentType contentTypes = ContentType.World | ContentType.Avatar | ContentType.Prop | ContentType.Player;
         public string[] collisionTags = Array.Empty<string>();
         public float contactValue = 1f;
         public bool drawGizmos = true;
@@ -406,6 +420,9 @@ namespace NAK.Contacts
                             * Matrix4x4.TRS(localPosition, localRotation, Vector3.one);
             switch (shapeType)
             {
+                case ShapeType.Box:
+                    Gizmos.DrawWireCube(Vector3.zero, boxSize);
+                    break;
                 case ShapeType.Capsule:
                     float half = Mathf.Max(0f, height * 0.5f - radius);
                     Vector3 a = Vector3.up * half, b = Vector3.down * half;
@@ -457,6 +474,149 @@ namespace NAK.Contacts
         public string parameter;
     }
 }
+";
+
+        const string ContactEditorSource = Header + @"
+// Inspector adapted from the system author's own MIT-licensed editor:
+// https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts (c) 2026 NotAKidoS.
+// Lives inside the generated set, in Assembly-CSharp behind UNITY_EDITOR, so it can only ever
+// compile when the stub types it draws exist — the same lifecycle, no cross-assembly window.
+// Deliberately NOT in the NAK.Contacts namespace: if the real sources (and their own editor)
+// ever land in this project, class names must not collide while both briefly exist.
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEngine;
+using NAK.Contacts;
+
+namespace AvatarBridge
+{
+    [CustomEditor(typeof(ContactBase), true)]
+    public class NakContactStubEditor : Editor
+    {
+        static bool foldShape = true;
+        static bool foldFiltering = true;
+        static bool foldRole = true;
+        static bool foldGizmos;
+
+        SerializedProperty Prop(string name) => serializedObject.FindProperty(name);
+
+        public override void OnInspectorGUI()
+        {
+            if (target == null) return;
+            serializedObject.Update();
+            var contact = (ContactBase)target;
+            bool isReceiver = contact is ContactReceiver;
+
+            foldShape = EditorGUILayout.Foldout(foldShape, ""Shape"", true, EditorStyles.foldoutHeader);
+            if (foldShape)
+            {
+                EditorGUI.indentLevel++;
+                var shape = Prop(""shapeType"");
+                EditorGUILayout.PropertyField(shape);
+                EditorGUILayout.PropertyField(Prop(""localPosition""));
+                EditorGUILayout.PropertyField(Prop(""localRotation""));
+                var shapeValue = (ShapeType)shape.enumValueIndex;
+                if (shapeValue == ShapeType.Box)
+                {
+                    EditorGUILayout.PropertyField(Prop(""boxSize""));
+                }
+                else
+                {
+                    EditorGUILayout.PropertyField(Prop(""radius""));
+                    if (shapeValue == ShapeType.Capsule)
+                        EditorGUILayout.PropertyField(Prop(""height""));
+                }
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.Space(4);
+            foldFiltering = EditorGUILayout.Foldout(foldFiltering, ""Filtering"", true, EditorStyles.foldoutHeader);
+            if (foldFiltering)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(Prop(""allowSelf""));
+                EditorGUILayout.PropertyField(Prop(""allowOthers""));
+                EditorGUILayout.PropertyField(Prop(""localOnly""));
+                if (isReceiver)
+                {
+                    EditorGUILayout.PropertyField(Prop(""contentTypes""));
+                    if ((Prop(""contentTypes"").intValue & (int)ContentType.Player) == 0)
+                        EditorGUILayout.HelpBox(
+                            ""Player is not in Content Types — other players' hands and fingers "" +
+                            ""are Player-type senders, so they will NOT trigger this receiver."",
+                            MessageType.Warning);
+                }
+                EditorGUILayout.PropertyField(Prop(""collisionTags""), true);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.Space(4);
+            foldRole = EditorGUILayout.Foldout(foldRole, isReceiver ? ""Receiver"" : ""Sender"", true, EditorStyles.foldoutHeader);
+            if (foldRole)
+            {
+                EditorGUI.indentLevel++;
+                var value = Prop(""contactValue"");
+                if (isReceiver)
+                {
+                    var typeProp = Prop(""receiverType"");
+                    EditorGUILayout.PropertyField(typeProp);
+                    switch ((ReceiverType)typeProp.enumValueIndex)
+                    {
+                        case ReceiverType.Constant:
+                            EditorGUILayout.PropertyField(value, new GUIContent(""Value""));
+                            EditorGUILayout.HelpBox(""Returns this value while there is any contact."", MessageType.Info);
+                            break;
+                        case ReceiverType.OnEnter:
+                            EditorGUILayout.PropertyField(value, new GUIContent(""Min Velocity""));
+                            EditorGUILayout.HelpBox(""Returns 1 for one frame if the initial contact velocity is above the set min velocity."", MessageType.Info);
+                            break;
+                        case ReceiverType.CopyValueFromSender:
+                            EditorGUILayout.PropertyField(value, new GUIContent(""Min Velocity""));
+                            EditorGUILayout.HelpBox(""Returns the Sender value if the contact velocity is above the set min velocity."", MessageType.Info);
+                            break;
+                        case ReceiverType.ProximitySenderToReceiver:
+                            EditorGUILayout.HelpBox(""Returns 0 to 1 measured from the Receiver's center to the Sender's surface."", MessageType.Info);
+                            break;
+                        case ReceiverType.ProximityReceiverToSender:
+                            EditorGUILayout.HelpBox(""Returns 0 to 1 measured from the Receiver's surface to the Sender's center."", MessageType.Info);
+                            break;
+                        case ReceiverType.ProximityCenterToCenter:
+                            EditorGUILayout.HelpBox(""Returns 0 to 1 measured from the Receiver's center to the Sender's center."", MessageType.Info);
+                            break;
+                        case ReceiverType.VelocityReceiver:
+                            EditorGUILayout.HelpBox(""Returns the velocity of the Receiver while there is any contact."", MessageType.Info);
+                            break;
+                        case ReceiverType.VelocitySender:
+                            EditorGUILayout.HelpBox(""Returns the velocity of the fastest Sender making contact."", MessageType.Info);
+                            break;
+                        case ReceiverType.VelocityMagnitude:
+                            EditorGUILayout.HelpBox(""Returns the combined velocity of the Receiver and fastest Sender making contact."", MessageType.Info);
+                            break;
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.PropertyField(value);
+                    EditorGUILayout.HelpBox(""The value for a Receiver to copy if configured as CopyValueFromSender. If unsure, leave as 1."", MessageType.Info);
+                }
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.Space(4);
+            foldGizmos = EditorGUILayout.Foldout(foldGizmos, ""Gizmos"", true, EditorStyles.foldoutHeader);
+            if (foldGizmos)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(Prop(""drawGizmos""));
+                EditorGUILayout.PropertyField(Prop(""gizmoColor""));
+                EditorGUI.indentLevel--;
+            }
+
+            serializedObject.ApplyModifiedProperties();
+        }
+    }
+}
+#endif
 ";
     }
 }

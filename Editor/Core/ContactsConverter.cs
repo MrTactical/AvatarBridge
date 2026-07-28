@@ -151,13 +151,14 @@ namespace AvatarBridge
         // --- ChilloutVR's native contact system ---------------------------------------
         //
         // The components line up with VRChat's almost field for field, so this is a copy rather
-        // than an impersonation: same Sphere/Capsule shapes, same collision tags, real proximity.
-        // They also need no Unity collider — the shape lives on the component — and contacts are
-        // per-client by design (settled with the system's author and confirmed in game): every
-        // client simulates every avatar's contacts itself, so reactions cross the network with
-        // no sync involved and nothing here costs sync bits. There is no localOnly field — that
-        // distinction is meaningless when everything is computed locally; whether a driven
-        // parameter's VALUE replicates is its own AAS declaration's business.
+        // than an impersonation: same shapes, same collision tags, same allowSelf/allowOthers/
+        // localOnly, real proximity. They also need no Unity collider — the shape lives on the
+        // component — and contacts are per-client by design (confirmed in game): every client
+        // simulates every avatar's contacts itself, so reactions cross the network with no sync
+        // involved and nothing here costs sync bits; whether a driven parameter's VALUE
+        // replicates is its own AAS declaration's business. The field layout comes from the
+        // DECOMPILED SHIPPED CLIENT, never from the author's public repo — see ContactStubPatcher
+        // for the revision-5 incident where trusting the repo made every receiver deaf.
         //
         // ContactStubPatcher supplies the declarations; the game holds the implementation.
 
@@ -219,6 +220,29 @@ namespace AvatarBridge
                 return null;
             }
             try { return System.Enum.Parse(enumType, member, true); } catch { return null; }
+        }
+
+        /// <summary>
+        /// Every flag ContentType defines, OR'd together — computed from the live enum rather
+        /// than a literal, so a client build adding a flag is included automatically.
+        /// </summary>
+        static object AllContentTypes(System.Type sibling)
+        {
+            var enumType = sibling.Assembly.GetType("NAK.Contacts.ContentType", false);
+            if (enumType == null)
+            {
+                return null;
+            }
+            try
+            {
+                int all = 0;
+                foreach (var v in System.Enum.GetValues(enumType))
+                {
+                    all |= System.Convert.ToInt32(v);
+                }
+                return System.Enum.ToObject(enumType, all);
+            }
+            catch { return null; }
         }
 
         static bool UseNativeContacts(BridgeContext ctx)
@@ -337,6 +361,7 @@ namespace AvatarBridge
             ApplyShape(contact, sender.shapeType, sender.radius, sender.height, sender.position, sender.rotation);
             var tags = sender.collisionTags.Distinct().ToArray();
             SetMember(contact, "collisionTags", tags);
+            SetMember(contact, "contentTypes", AllContentTypes(contact.GetType()));
 
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
                 $"Sender -> native ContactSender ({string.Join(", ", tags)})");
@@ -364,12 +389,15 @@ namespace AvatarBridge
             SetMember(contact, "collisionTags", receiver.collisionTags.Distinct().ToArray());
             SetMember(contact, "allowSelf", receiver.allowSelf);
             SetMember(contact, "allowOthers", receiver.allowOthers);
-            // No localOnly on the native components, and none is needed: ChilloutVR's contacts
-            // are per-client by design — every client simulates every avatar's contacts itself,
-            // so a receiver's reaction happens on each viewer's machine rather than being synced.
-            // VRChat's localOnly flag distinguished "only my client drives this parameter" from
-            // "the driven value replicates"; here the first is always true and the second is the
-            // parameter's own business (its AAS sync declaration).
+            SetMember(contact, "localOnly", receiver.localOnly);
+            // contentTypes is written EXPLICITLY, always, to every flag the client defines. It
+            // is a mask over the SENDER's source type, and the client's built-in hand/finger
+            // senders are SourceContentType.Player (ContactsTools, decompiled) — a receiver
+            // whose mask lacks the Player bit can never be touched by another player's hands.
+            // 2.50.3 relied on the stub's field default for this, the stub's default briefly
+            // lost the Player flag, and every converted receiver went silently deaf: a default
+            // is a hidden dependency, an explicit write is a fact.
+            SetMember(contact, "contentTypes", AllContentTypes(receiverType));
 
             string typeName = receiver.receiverType.ToString();
             string nativeType = typeName.Contains("OnEnter") ? "OnEnter"
@@ -385,10 +413,7 @@ namespace AvatarBridge
             ctx.ContactParameters.Add(receiver.parameter);
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                 $"{typeName} receiver -> native ContactReceiver driving \"{receiver.parameter}\"" +
-                (receiver.localOnly
-                    ? " (was local-only in VRChat; ChilloutVR contacts are per-client by design, " +
-                      "so every viewer's client computes this reaction itself — same result)"
-                    : ""));
+                (receiver.localOnly ? " (localOnly preserved)" : ""));
             Object.DestroyImmediate(receiver);
         }
 

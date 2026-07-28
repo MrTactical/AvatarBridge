@@ -281,24 +281,25 @@ with pointers and triggers.
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
 **Advanced** and contacts convert one to one: real proximity, tags verbatim.
 
-**Contacts are per-client by design** — settled with the system's author
-([NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), the
-ChilloutVR developer behind it) and confirmed in game: every client simulates every avatar's
-contacts itself, so reactions work over the network with **no sync involved and no sync bits
-spent**. Whether the parameter a receiver drives also replicates its *value* is that parameter's
-own sync declaration, exactly as everywhere else. There is no `localOnly` field — the distinction
-is meaningless when everything is computed locally.
+**Contacts are per-client by design** — the system is by
+[NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
+developer, and this is confirmed in game: every client simulates every avatar's contacts itself,
+so reactions work over the network with **no sync involved and no sync bits spent**. Whether the
+parameter a receiver drives also replicates its *value* is that parameter's own sync declaration,
+exactly as everywhere else.
 
 > ⚠️ **One warning, from the same developer** (the window repeats it while the option is on): the
 > system is **unstable and still moving** — any ChilloutVR update may change it, which would leave
 > the avatar's contacts dead until it is converted and uploaded again. Test in game before relying
 > on it.
 
-AvatarBridge's generated declarations are verified against [the author's published
-source](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts). If you import that
-`NAK.Contacts` folder into your project you get his full in-editor simulation, and AvatarBridge
-detects it and removes its own declarations automatically — conversion binds to whichever
-definition is present.
+AvatarBridge's generated declarations are verified **field-for-field against the decompiled game
+client** — the only layout that matters, since the client is what reads the uploaded avatar. The
+author's public repository is a diverged work-in-progress: **don't import it into a conversion
+project** while it disagrees with the game (its current layout drops fields the shipped client
+still reads, including the content-type flag that lets other players' hands trigger receivers).
+Its MIT-licensed custom inspector is adapted into the generated declarations, so contact
+components get proper foldouts and per-receiver-type help text in the editor.
 
 <details>
 <summary>How it works without CCK support</summary>
