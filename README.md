@@ -102,7 +102,7 @@ humanoid for ChilloutVR.)*
 |---|---|---|
 | Unity | **2022.3.22f1** | the version VRChat and CCK 4 both use |
 | ChilloutVR CCK | **4.0.x** | always required — it's what the tool builds for |
-| VRChat Avatars SDK | SDK3 | required to convert; without it you get [Setup mode](#setup-mode) |
+| VRChat Avatars SDK | SDK3, **via Creator Companion / VPM** | required to convert; without it you get [Setup mode](#setup-mode). The legacy `.unitypackage` SDK cannot coexist with the CCK — see [Troubleshooting](#troubleshooting) |
 | [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use them |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended physics target |
 | [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
@@ -519,6 +519,19 @@ Bipeds are unaffected by any of it.
 
 Symptoms that have actually come up. **Read `ConversionReport.md` first** — most of these name
 themselves in it.
+
+### Nothing compiles — `'ImageDownloader' does not contain a definition for 'GetImage'`
+
+The project has the **legacy `.unitypackage` VRChat SDK** installed (an `Assets/VRCSDK` folder)
+instead of the Creator Companion / VPM one. The old SDK ships an `ImageDownloader` class in the
+global namespace; C# resolves names through enclosing namespaces — global included — *before*
+`using` directives, so it shadows the CCK's own `ImageDownloader` and the CCK stops compiling.
+That takes the whole editor assembly down, AvatarBridge included, before any of it runs.
+
+**Install the SDK through the [Creator Companion](https://vcc.docs.vrchat.com/) (or ALCOM)
+instead** — the VPM packages keep VRChat's types in their own assemblies, where they can't shadow
+anything. This collision exists between the CCK and the legacy SDK with no AvatarBridge in the
+project at all, and the legacy SDK is deprecated by VRChat anyway.
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
