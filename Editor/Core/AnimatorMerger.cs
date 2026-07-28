@@ -126,6 +126,15 @@ namespace AvatarBridge
             var vrcControllers = GetSelectedVrcControllers(ctx);
             bool convertingGestureLayer = vrcControllers.Any(c => c.id == VRCAvatarDescriptor.AnimLayerType.Gesture);
 
+            // Captured before any merging: the saved-controller audit uses these to tell a
+            // dead reference INHERITED from the source avatar (already dead in VRChat) from
+            // one the conversion introduced (our bug).
+            _sourceControllerGuids.Clear();
+            foreach (var (_, sourceController) in vrcControllers)
+            {
+                CollectSerializedGuids(AssetDatabase.GetAssetPath(sourceController), _sourceControllerGuids);
+            }
+
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
             var vrcLayers = new List<AnimatorControllerLayer>();
@@ -260,7 +269,9 @@ namespace AvatarBridge
             // an Error, in the report, with numbers.
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
-            AuditSerializedReferences(ctx, controllerPath);
+            // The serialized-guid audit runs from BridgeConverter AFTER AnimationSelfContainer,
+            // so it judges the FINAL file — auditing here flagged references the self-container
+            // was about to repoint, and told a user "do not upload" a fine conversion.
             int motionsAfterSave = CountMotionReferences(master);
             if (motionsAfterSave < motionsBeforeSave)
             {
@@ -4504,55 +4515,99 @@ namespace AvatarBridge
                 "stripped system removed also land here, and those are fine.");
         }
 
-        static void AuditSerializedReferences(BridgeContext ctx, string controllerPath)
+        // Serialized guid sets of the source controllers, captured before any merging.
+        static readonly HashSet<string> _sourceControllerGuids = new HashSet<string>();
+
+        static void CollectSerializedGuids(string assetPath, HashSet<string> into)
         {
-            string fullPath;
             try
             {
-                fullPath = System.IO.Path.GetFullPath(controllerPath);
-                if (!System.IO.File.Exists(fullPath))
+                if (string.IsNullOrEmpty(assetPath))
                 {
                     return;
+                }
+                string full = System.IO.Path.GetFullPath(assetPath);
+                if (!System.IO.File.Exists(full))
+                {
+                    return;
+                }
+                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
+                    .Matches(System.IO.File.ReadAllText(full), @"guid: ([0-9a-f]{32})"))
+                {
+                    into.Add(match.Groups[1].Value);
                 }
             }
             catch
             {
+                // Unreadable source: the audit just loses inherited/introduced attribution.
+            }
+        }
+
+        /// <summary>
+        /// Reads the FINAL saved controller file and judges every serialized guid. Runs from
+        /// BridgeConverter after AnimationSelfContainer, so it sees the file the user will
+        /// actually upload. Three verdicts: a reference into bake-temp or one the conversion
+        /// introduced is OUR bug (Error, don't upload); a reference that was already dead in
+        /// the source controllers is inherited (Warning — the same motion was None in VRChat
+        /// too, nothing broke here).
+        /// </summary>
+        internal static void AuditSerializedReferences(BridgeContext ctx)
+        {
+            string controllerPath = ctx.MergedController != null
+                ? AssetDatabase.GetAssetPath(ctx.MergedController)
+                : null;
+            var guids = new HashSet<string>();
+            CollectSerializedGuids(controllerPath, guids);
+            if (guids.Count == 0)
+            {
                 return;
             }
 
-            var guids = new HashSet<string>();
-            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
-                .Matches(System.IO.File.ReadAllText(fullPath), @"guid: ([0-9a-f]{32})"))
-            {
-                guids.Add(match.Groups[1].Value);
-            }
-
-            int intoTemp = 0, unresolved = 0;
-            string sample = null;
+            int intoTemp = 0, introduced = 0, inherited = 0;
+            string badSample = null, inheritedSample = null;
             foreach (var guid in guids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (string.IsNullOrEmpty(path))
                 {
-                    unresolved++;
-                    sample = sample ?? guid;
+                    if (_sourceControllerGuids.Contains(guid))
+                    {
+                        inherited++;
+                        inheritedSample = inheritedSample ?? guid;
+                    }
+                    else
+                    {
+                        introduced++;
+                        badSample = badSample ?? guid;
+                    }
                 }
                 else if (IsDoomedGeneratedPath(path))
                 {
                     intoTemp++;
-                    sample = sample ?? path;
+                    badSample = badSample ?? path;
                 }
             }
 
-            if (intoTemp > 0 || unresolved > 0)
+            if (intoTemp > 0 || introduced > 0)
             {
                 ctx.Report.Error(Category,
-                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {unresolved} unresolvable asset(s)",
-                    $"e.g. {sample}. VRCFury deletes its temp folder on its next build — which entering " +
+                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s) the conversion introduced",
+                    $"e.g. {badSample}. VRCFury deletes its temp folder on its next build — which entering " +
                     "play mode triggers if the original avatar is still in the scene — and an " +
                     "unresolvable reference is already dead. Either way those animations will stop " +
                     "working after the next play or Fury build. This is a conversion bug: please report " +
                     "it with this file attached. Do not upload this conversion.");
+            }
+            if (inherited > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{inherited} dead asset reference(s) inherited from the source avatar",
+                    $"e.g. {inheritedSample}. The source controllers already reference an asset that " +
+                    "doesn't exist in this project, so the same motion was None in VRChat too — usually " +
+                    "a package or animation the avatar shipped with that was never imported here. " +
+                    "Nothing broke in conversion and uploading is safe; those animations play as " +
+                    "stillness on both platforms. To revive them, import the missing package and " +
+                    "convert again.");
             }
         }
 
