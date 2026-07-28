@@ -151,6 +151,19 @@ namespace AvatarBridge
                     string cvrHandName = GetCvrHandLayerName(id, srcLayer);
                     clone.name = MakeUniqueLayerName(masterLayers,
                         cvrHandName ?? $"[{id}] {clone.name}");
+                    if (cvrHandName != null)
+                    {
+                        // Silent until a tester spent a round believing these were the CCK's
+                        // layers. Saying which layer poses the fingers is what makes an
+                        // in-game "fingers don't move" report diagnosable.
+                        ctx.Report.Converted(Category,
+                            $"Gesture hand layer \"{srcLayer.name}\" -> \"{clone.name}\"",
+                            "Takes over ChilloutVR's hand-pose slot: the CCK's own layer was " +
+                            "dropped and this one — the avatar's actual finger animations — " +
+                            "drives the fingers. Its VRChat hand mask is replaced with an " +
+                            "equivalent generated copy (same humanoid bits, verified against " +
+                            "VRChat's own vrc_Hand masks).");
+                    }
                     if (firstLayerOfController)
                     {
                         // Unity forces a controller's first layer to weight 1; once merged it
@@ -185,7 +198,12 @@ namespace AvatarBridge
                     "different — nothing drives these there, so set the GestureLeftIdx/RightIdx INT on " +
                     "the Animator directly (-1 open, 1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, " +
                     "6 rock'n'roll); driving the old GestureLeft float does nothing outside the game, " +
-                    "and \"fingers don't pose in play mode\" is exactly how that looks.");
+                    "and \"fingers don't pose in play mode\" is exactly how that looks. IN GAME, if " +
+                    "fingers still don't pose: try a STOCK ChilloutVR avatar first with the same " +
+                    "controllers — skeletal finger tracking (Index and similar) drives fingers from " +
+                    "your real hand on EVERY avatar, overriding gesture poses, and the client's " +
+                    "gesture-lock setting changes when poses apply. If stock avatars pose and this " +
+                    "one doesn't, report that — it isolates the avatar from the input path.");
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
@@ -360,9 +378,34 @@ namespace AvatarBridge
 
             // When the VRC Gesture layer takes over hand animation, CVR's own hand layers
             // must go or they fight for the finger muscles.
-            string[] allowedLayers = convertingGestureLayer
-                ? new[] { "Locomotion/Emotes" }
-                : new[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
+            var allowed = new List<string> { "Locomotion/Emotes" };
+            if (!convertingGestureLayer)
+            {
+                allowed.Add("LeftHand");
+                allowed.Add("RightHand");
+            }
+
+            // Keeping GoGo Loco (strip off) means GoGo IS the locomotion: its Base/Poses/Action
+            // layers replace ChilloutVR's own the same way they replace VRChat's. Leaving the
+            // CCK's Locomotion/Emotes underneath had the two fighting for the body every frame
+            // — the tester-visible result was CVR animations with GoGo flickering over them.
+            // Known, accepted losses in this mode (no CVR equivalents exist): movement is not
+            // locked during poses (walking mid-pose slides), the viewpoint does not follow
+            // pose height, and CVR's own quick-menu emotes no longer animate — GoGo's wheel
+            // replaces them.
+            if (!ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx))
+            {
+                allowed.Remove("Locomotion/Emotes");
+                ctx.Report.Warning(Category,
+                    "GoGo Loco kept: ChilloutVR's own Locomotion/Emotes layer removed",
+                    "GoGo's Base/Poses/Action layers replace it, driven by the game-fed velocity " +
+                    "and upright parameters. EXPERIMENTAL, with known limits ChilloutVR cannot " +
+                    "express: poses don't lock movement (walking mid-pose slides), the viewpoint " +
+                    "stays at standing height in floor poses, and CVR's quick-menu emotes won't " +
+                    "animate — use GoGo's own wheel. Merge the Base, Additive and Action layers " +
+                    "or this avatar has NO locomotion at all.");
+            }
+            string[] allowedLayers = allowed.ToArray();
 
             var copier = new AnimatorDeepCopier();
             master.parameters = source.parameters.Select(AnimatorDeepCopier.CloneParameter).ToArray();

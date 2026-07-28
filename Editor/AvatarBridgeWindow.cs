@@ -420,11 +420,13 @@ namespace AvatarBridge
                 // no tracking-control existed to convert. CVR ships locomotion, emotes, AFK and
                 // flight natively. Say all of this where the decision is made.
                 b.Add(BridgeElements.Hint(
-                    "⚠ Keeping GoGo Loco is NOT supported: parts of it are built on VRChat-only " +
-                    "animator primitives (locomotion locking, pose-space shifts) that do not " +
-                    "exist in ChilloutVR, so poses slide, heights don't shift, and its layers " +
-                    "fight CVR's own locomotion. ChilloutVR provides locomotion, emotes, AFK " +
-                    "and flight natively — removing GoGo is the working path."));
+                    "⚠ Keeping GoGo Loco is EXPERIMENTAL: GoGo fully replaces ChilloutVR's own " +
+                    "locomotion (that layer is removed), so Base, Additive and Action must be " +
+                    "ticked under \"Animator layers to merge\" or the avatar has no locomotion " +
+                    "at all. Known limits ChilloutVR cannot express: poses don't lock movement " +
+                    "(walking mid-pose slides), the viewpoint stays at standing height in floor " +
+                    "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
+                    "them. Removing GoGo remains the recommended path."));
             }
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",

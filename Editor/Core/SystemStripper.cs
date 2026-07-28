@@ -59,7 +59,7 @@ namespace AvatarBridge
         /// avatar it belongs to whatever emote system the author built, and that is not ours to
         /// condemn under a GoGo switch.
         /// </summary>
-        static bool AvatarUsesGogo(BridgeContext ctx)
+        internal static bool AvatarUsesGogo(BridgeContext ctx)
         {
             var vrcParams = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
             if (vrcParams == null || vrcParams.parameters == null)

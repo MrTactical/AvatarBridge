@@ -165,15 +165,19 @@ defines.
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
 
-**Keeping GoGo is not supported.** It was offered as a guided option and field-tested; the
-verdict is architectural, not a bug queue: parts of GoGo are built on VRChat-only animator
-primitives with no ChilloutVR equivalent — locomotion locking (`VRCAnimatorLocomotionControl`,
-so poses slide with the capsule), pose-space viewpoint shifts (`VRCAnimatorTemporaryPoseSpace`,
-removed at conversion), playable-layer control — and ChilloutVR's own IK overrides limbs
-wherever no tracking control existed to convert. ChilloutVR provides locomotion, emotes, AFK
-and flight natively. The strip also removes GoGo's Base/Additive/Action layers *whole* — a
-locomotion replacement left half-alive overrides CVR's locomotion with dead animation, which is
-worse than either extreme.
+**Keeping GoGo is experimental, with hard limits.** With *Remove GoGo Loco* unticked, GoGo fully
+replaces ChilloutVR's locomotion the way it replaces VRChat's: the CCK's own Locomotion/Emotes
+layer is removed and GoGo's Base/Poses/Action take over, driven by the game-fed velocity and
+upright parameters — so **Base, Additive and Action must be ticked** under layer merging or the
+avatar has no locomotion at all. The limits are architectural, not bugs to file: GoGo leans on
+VRChat-only animator primitives with no ChilloutVR equivalent — locomotion locking
+(`VRCAnimatorLocomotionControl`, so poses slide if you walk mid-pose) and pose-space viewpoint
+shifts (`VRCAnimatorTemporaryPoseSpace`, so the camera stays at standing height in floor poses) —
+and CVR's quick-menu emotes won't animate, since GoGo's own wheel replaces them. ChilloutVR
+provides locomotion, emotes, AFK and flight natively; removing GoGo remains the recommended
+path. The strip removes GoGo's Base/Additive/Action layers *whole* — a locomotion replacement
+left half-alive overrides CVR's locomotion with dead animation, which is worse than either
+extreme.
 
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
