@@ -67,10 +67,12 @@ namespace AvatarBridge
             if (!data.InitiallyActive)
             {
                 holder.SetActive(false);
-                ctx.Report.Approximated(Category, data.Root.name,
-                    "Source PhysBone was disabled; cloth created disabled. Animator toggles that " +
-                    "activated the original object (hair swaps, outfit toggles) are re-wired to " +
-                    "activate this cloth too — see the Animator section of this report.");
+                ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
+                    ? "Style was inactive at conversion; cloth created disabled. Its toggle is " +
+                      "re-wired to activate this cloth — see the Animator section of this report."
+                    : "Source PhysBone was disabled; cloth created disabled. Animator toggles that " +
+                      "activated the original object (hair swaps, outfit toggles) are re-wired to " +
+                      "activate this cloth too — see the Animator section of this report.");
             }
 
             var cloth = holder.AddComponent<MagicaCloth>();
@@ -175,6 +177,19 @@ namespace AvatarBridge
                     "the gap between bones makes neighbouring particles overlap and shove each other apart.");
             }
 
+            if (data.Synthesized)
+            {
+                // No source PhysBone exists, so there is nothing to derive, fit or limit from —
+                // the preset stands exactly as its author wrote it.
+                ctx.Report.Converted(Category, data.Root.name,
+                    $"SYNTHESIZED BoneCloth{(preset != null ? $" on the \"{chainClass}\" preset" : "")} — " +
+                    "this toggled rig had NO physics in the source (no PhysBone; rigid in VRChat too). " +
+                    "Created because \"Add physics to toggled rigs that have none\" is on. There was " +
+                    "no source feel to derive from, so the preset stands as authored — tune the cloth " +
+                    "directly if it moves wrong, or delete it if this rig was rigid on purpose.");
+                return cloth;
+            }
+
             if (ctx.Settings.derivePhysicsFromPhysBone)
             {
                 DerivePhysics(ctx, data, sdata);
@@ -192,6 +207,25 @@ namespace AvatarBridge
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        /// <summary>
+        /// Creates a cloth for a rig that never had a PhysBone — the "Add physics to toggled
+        /// rigs that have none" option. The chain is a plain BoneCloth rooted at the rig's own
+        /// root, preset by classification (which reads ancestor names, so a nondescript rig
+        /// under a container called "Vampy Hair" still lands on a hair preset), with every
+        /// PhysBone-derivation step skipped — there is no source to derive from.
+        /// </summary>
+        public static MagicaCloth WriteSynthesized(BridgeContext ctx, Transform rigRoot)
+        {
+            var data = new PhysBoneChainData
+            {
+                SourceGameObject = rigRoot.gameObject,
+                Root = rigRoot,
+                InitiallyActive = rigRoot.gameObject.activeInHierarchy,
+                Synthesized = true
+            };
+            return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
         }
 
         static string UniqueChildName(Transform parent, string name)

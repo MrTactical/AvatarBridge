@@ -358,6 +358,15 @@ namespace AvatarBridge
                     "bones (or named like toes) are skipped and listed in the report. Turn on if " +
                     "this avatar's toe physics are deliberate.",
                     settings.convertToePhysBones, v => settings.convertToePhysBones = v));
+                b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
+                    "Some avatars ship a toggled style (usually an add-on hairstyle) whose " +
+                    "container carries its own bone rig and mesh but NO PhysBone — rigid in " +
+                    "VRChat, whether by intent or oversight. This synthesizes a MagicaCloth for " +
+                    "such rigs, preset chosen by the chain classifier, wired to the style's " +
+                    "toggle. Off by default because it invents physics the author never made, " +
+                    "and some rigged props are rigid on purpose. The report names every rig " +
+                    "this would apply to either way.",
+                    settings.addPhysicsToRiggedStyles, v => settings.addPhysicsToRiggedStyles = v));
                 b.Add(BridgeElements.Bind("Transfer angle limits",
                     "Copy each PhysBone's limit angle onto the cloth. MagicaCloth2's limit pushes on " +
                     "particle positions rather than bone rotation, at a stiffness that snaps back " +

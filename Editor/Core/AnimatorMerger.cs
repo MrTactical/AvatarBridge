@@ -3374,7 +3374,9 @@ namespace AvatarBridge
         static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
-            if (chains == null || chains.Count == 0)
+            // Zero chains still matters when style synthesis is on: an avatar whose ONLY
+            // physics would be a synthesized rig must reach phase 1 below.
+            if (chains == null || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
             {
                 return;
             }
@@ -3394,44 +3396,88 @@ namespace AvatarBridge
             int curvesAdded = 0, clipsTouched = 0;
             var physicslessStyles = new HashSet<Transform>();
 
-            // A toggled container carrying its own self-contained rig (bones AND mesh inside)
-            // with no converted chain never had physics in the source either — VRChat had
-            // nothing simulating those bones. Saying so in the report turns "this hairstyle is
-            // broken" into "this hairstyle was always rigid" without three rounds of testing:
-            // a tester's "Vampy" hair is exactly this, 31 bare transforms and a mesh. Clothing
-            // skinned to body bones doesn't trip it — its bones live outside the container.
-            void NotePhysicslessStyle(Transform container)
+            bool ChainInSubtree(Transform container)
             {
-                if (!physicslessStyles.Add(container))
-                {
-                    return;
-                }
                 foreach (var chain in chains)
                 {
                     if (chain.Source != null &&
                         (chain.Source.transform == container || chain.Source.transform.IsChildOf(container)))
                     {
-                        return; // the container owns a converted chain; nothing to say
+                        return true;
                     }
                 }
-                int inside = 0, total = 0;
+                return false;
+            }
+
+            // A "self-contained rig": the majority of the container's skinned-mesh bones live
+            // inside the container itself (an add-on hairstyle with its own little armature).
+            // Clothing skinned to body bones doesn't qualify — its bones live outside. The rig
+            // root reported back is the deepest common ancestor of the inside bones, which is
+            // where a synthesized cloth would anchor.
+            bool IsSelfContainedRig(Transform container, out Transform rigRoot)
+            {
+                rigRoot = null;
+                var inside = new List<Transform>();
+                int total = 0;
                 foreach (var smr in container.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 {
                     foreach (var bone in smr.bones)
                     {
                         if (bone == null) continue;
                         total++;
-                        if (bone == container || bone.IsChildOf(container)) inside++;
+                        if (bone == container || bone.IsChildOf(container)) inside.Add(bone);
                     }
                 }
-                if (total >= 5 && inside * 2 >= total)
+                if (total < 5 || inside.Count * 2 < total)
                 {
-                    ctx.Report.Skipped(Category, container.name,
-                        "This toggled object carries its own bone rig and skinned mesh, but NOTHING " +
-                        "simulated those bones in the source — no PhysBone, so no physics existed in " +
-                        "VRChat either, and none was converted. If it is meant to move, that is work " +
-                        "for the source avatar (or a hand-added MagicaCloth), not a conversion loss.");
+                    return false;
                 }
+                rigRoot = inside[0];
+                while (rigRoot != null && rigRoot != container.parent)
+                {
+                    bool coversAll = true;
+                    foreach (var bone in inside)
+                    {
+                        if (bone != rigRoot && !bone.IsChildOf(rigRoot))
+                        {
+                            coversAll = false;
+                            break;
+                        }
+                    }
+                    if (coversAll) break;
+                    rigRoot = rigRoot.parent;
+                }
+                if (rigRoot == null || rigRoot == container.parent)
+                {
+                    rigRoot = container;
+                }
+                return true;
+            }
+
+            // A toggled container carrying its own self-contained rig with no converted chain
+            // never had physics in the source either — VRChat had nothing simulating those
+            // bones. Saying so in the report turns "this hairstyle is broken" into "this
+            // hairstyle was always rigid" without three rounds of testing: a tester's "Vampy"
+            // hair is exactly this, 31 bare transforms and a mesh.
+            void NotePhysicslessStyle(Transform container)
+            {
+                if (!physicslessStyles.Add(container) || ChainInSubtree(container))
+                {
+                    return;
+                }
+                if (!IsSelfContainedRig(container, out _))
+                {
+                    return;
+                }
+                string hint = ctx.Settings.addPhysicsToRiggedStyles
+                    ? " (\"Add physics to toggled rigs that have none\" is on, but it needs the " +
+                      "MagicaCloth2 physics target and MagicaCloth2 installed.)"
+                    : " Turn on \"Add physics to toggled rigs that have none\" (Physics options) " +
+                      "to synthesize a MagicaCloth here.";
+                ctx.Report.Skipped(Category, container.name,
+                    "This toggled object carries its own bone rig and skinned mesh, but NOTHING " +
+                    "simulated those bones in the source — no PhysBone, so no physics existed in " +
+                    "VRChat either, and none was converted." + hint);
             }
 
             AnimationClip Rewire(AnimationClip clip)
@@ -3613,6 +3659,69 @@ namespace AvatarBridge
                 }
                 return motion;
             }
+
+#if AVATARBRIDGE_MAGICA
+            // Phase 1, before any curve is copied: "Add physics to toggled rigs that have
+            // none". Every container an animation ACTIVATES is a style; a style that is a
+            // self-contained rig with no converted chain gets a synthesized MagicaCloth. Done
+            // here rather than in the physics pass because "toggled" is the narrowing fact —
+            // it is what separates an add-on hairstyle from every rigged prop on the avatar —
+            // and only the animator knows it. The new chain registers itself, so phase 2 below
+            // wires its holder to the style's activation curves like any other chain.
+            if (ctx.Settings.addPhysicsToRiggedStyles
+                && ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                var activated = new HashSet<Transform>();
+                void CollectActivations(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
+                            {
+                                continue;
+                            }
+                            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                            if (curve == null || !CurveActivates(curve))
+                            {
+                                continue;
+                            }
+                            var target = Resolve(binding.path);
+                            if (target != null)
+                            {
+                                activated.Add(target);
+                            }
+                        }
+                    }
+                    else if (motion is BlendTree tree)
+                    {
+                        foreach (var child in tree.children)
+                        {
+                            CollectActivations(child.motion);
+                        }
+                    }
+                }
+                foreach (var layer in master.layers)
+                {
+                    WalkMachines(layer.stateMachine, machine =>
+                    {
+                        foreach (var child in machine.states)
+                        {
+                            CollectActivations(child.state.motion);
+                        }
+                    });
+                }
+                foreach (var container in activated)
+                {
+                    if (ChainInSubtree(container) || !IsSelfContainedRig(container, out var rigRoot))
+                    {
+                        continue;
+                    }
+                    MagicaClothWriter.WriteSynthesized(ctx, rigRoot);
+                }
+            }
+#endif
 
             foreach (var layer in master.layers)
             {

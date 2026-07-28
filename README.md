@@ -269,6 +269,7 @@ of simulation, so that path maps values 1:1.
 | **Convert toe PhysBones** | off | Chains on or under the humanoid Toes bones (or named like toes) are skipped — simulated toes wiggle with every step in ChilloutVR, which reads as broken. Turn on if the toe physics are deliberate |
 | **Transfer angle limits** | off | ⚠️ Genuinely avatar-dependent — shakes some chains, best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
+| **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
 ## Native contacts
 

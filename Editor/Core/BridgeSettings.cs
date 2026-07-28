@@ -125,6 +125,15 @@ namespace AvatarBridge
         // in CVR exactly as it was in VRChat — turning this on improves on that rather than
         // reproducing it, and is worth eyeballing before you upload.
         public bool autoAssignNearbyColliders = false;
+        // Off by default, same reason as above: it invents physics the author never made. Some
+        // avatars ship a toggled style (an add-on hairstyle, usually) whose container carries
+        // its own bone rig and skinned mesh but NO PhysBone — rigid in VRChat, whether by
+        // intent or by the author forgetting. With this on, such rigs get a synthesized
+        // MagicaCloth: preset chosen by the chain classifier (which also reads ancestor names,
+        // so a nondescript rig under "Vampy Hair" still classifies as hair), no derived feel
+        // because there is nothing to derive from. Off because some rigged props are rigid on
+        // purpose. MagicaCloth2 target only.
+        public bool addPhysicsToRiggedStyles = false;
 
         [Header("VRChat-only system stripping")]
         // GoGo Loco is replaced by CVR's own locomotion/emotes; keeping it wastes ~15
