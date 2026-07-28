@@ -415,7 +415,10 @@ namespace AvatarBridge
                 .ToArray();
 
             ctx.Report.Converted(Category, "CCK base animator",
-                $"Kept layers: {string.Join(", ", master.layers.Select(l => l.name))}");
+                master.layers.Length > 0
+                    ? $"Kept layers: {string.Join(", ", master.layers.Select(l => l.name))}"
+                    : "Kept layers: none — GoGo replaces ChilloutVR's locomotion, and the " +
+                      "avatar's own gesture layers replace the CCK's hand-pose layers.");
             return master;
         }
 
@@ -3492,8 +3495,18 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool animatesBody, out _);
                 if (animatesBody)
                 {
-                    ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
-                        "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                    // In keep-GoGo mode the Base/Additive/Action layers are SUPPOSED to drive
+                    // the body — ChilloutVR's own locomotion layer was removed for them — so
+                    // warning "this can override CVR's locomotion" about the layers doing the
+                    // replacing is pure noise.
+                    bool gogoReplacement = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx)
+                        && (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
+                            || layer.name.StartsWith("[Action]"));
+                    if (!gogoReplacement)
+                    {
+                        ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
+                            "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                    }
                 }
             }
         }
