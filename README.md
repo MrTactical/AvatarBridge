@@ -91,7 +91,9 @@ actually running.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
 - **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
-  CCK Animator Tester*: gestures, locomotion, visemes, emotes and the avatar's whole Advanced
+  CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
+  produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
+  coupled to stance the way VR height is), visemes, emotes and the avatar's whole Advanced
   Settings menu, coerced by declared type exactly like the client. (VRChat's Gesture Manager
   cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
   ChilloutVR speaks int.)

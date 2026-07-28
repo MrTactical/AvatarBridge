@@ -260,25 +260,135 @@ namespace AvatarBridge
                 Drive(a, "MovementY", v);
                 Drive(a, "VelocityZ", v * 4f);
             }));
-            locomotion.Body.Add(DrivenSlider("Upright  (1 = standing)", 0f, 1f, 1f,
-                v => Drive(LiveAnimator(), "Upright", v)));
-            var states = new VisualElement();
-            states.style.flexDirection = FlexDirection.Row;
-            states.style.flexWrap = Wrap.Wrap;
-            states.style.marginTop = 4;
-            foreach (var stateName in new[] { "Grounded", "Crouching", "Prone", "Flying", "Swimming", "Sitting", "AFK" })
+            // The state flags are NOT independent — the game computes them together every
+            // frame (decompiled BetterBetterCharacterController.Animate):
+            //   Grounded = swimming || grounded || sitting || paused — chairs and water KEEP
+            //   Grounded true; only jumping, falling and flying clear it. Crouch/prone are
+            //   refused while flying, swimming or sitting, and in VR are DERIVED from
+            //   Upright (<= 0.4 prone, <= 0.75 crouch — fixed client limits). The CCK layer
+            //   agrees: Sitting/Swimming/Crouching/Prone/airborne all branch off Standard
+            //   Locomotion one at a time, each held only by its own flag, and Flying is an
+            //   AnyState override that interrupts everything, emotes included.
+            // So: one exclusive stance writing the exact flag set the game would feed,
+            // instead of checkboxes that compose flag soups no client ever produces.
+            var quiet = Application.isPlaying && avatar != null
+                ? avatar.GetComponentInChildren<Animator>(true)
+                : null;
+            float Flag(string flagName) => ReadParam(quiet, flagName) ?? 0f;
+            Slider upright = null;
+            var stanceButtons = new Dictionary<string, Button>();
+            // Recover the current stance from the live flags, in the layer's own precedence.
+            string stance =
+                Flag("Flying") > 0.5f ? "Flying" :
+                Flag("Sitting") > 0.5f ? "Sitting" :
+                Flag("Swimming") > 0.5f ? "Swimming" :
+                Flag("Prone") > 0.5f ? "Prone" :
+                Flag("Crouching") > 0.5f ? "Crouching" :
+                (ReadParam(quiet, "Grounded") ?? 1f) < 0.5f ? "Airborne" : "Standing";
+
+            void DriveStance(string name, bool moveUpright)
             {
-                string parameter = stateName;
-                // Toggle text (not the constructor label): the name renders attached to its
-                // own checkbox. With label-left toggles in a wrapping row, every checkbox sat
-                // closer to the NEXT toggle's name than its own — unreadable.
-                var toggle = new Toggle { text = stateName, value = parameter == "Grounded" };
-                toggle.style.marginRight = 14;
-                toggle.style.marginBottom = 2;
-                toggle.RegisterValueChangedCallback(e => Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
-                states.Add(toggle);
+                var a = LiveAnimator();
+                Drive(a, "Grounded", name == "Airborne" || name == "Flying" ? 0f : 1f);
+                Drive(a, "Crouching", name == "Crouching" ? 1f : 0f);
+                Drive(a, "Prone", name == "Prone" ? 1f : 0f);
+                Drive(a, "Flying", name == "Flying" ? 1f : 0f);
+                Drive(a, "Sitting", name == "Sitting" ? 1f : 0f);
+                Drive(a, "Swimming", name == "Swimming" ? 1f : 0f);
+                // Ground stances drag Upright along, mirroring the VR height derivation.
+                float height = name == "Standing" ? 1f
+                    : name == "Crouching" ? 0.6f
+                    : name == "Prone" ? 0.25f : -1f;
+                if (moveUpright && height >= 0f && upright != null)
+                {
+                    upright.SetValueWithoutNotify(height);
+                    Drive(a, "Upright", height);
+                }
+                stance = name;
+                foreach (var pair in stanceButtons)
+                {
+                    pair.Value.style.unityFontStyleAndWeight =
+                        pair.Key == name ? FontStyle.Bold : FontStyle.Normal;
+                }
             }
-            locomotion.Body.Add(states);
+
+            var stanceRow = new VisualElement();
+            stanceRow.style.flexDirection = FlexDirection.Row;
+            stanceRow.style.flexWrap = Wrap.Wrap;
+            stanceRow.style.alignItems = Align.Center;
+            stanceRow.style.marginTop = 4;
+            var stanceCaption = new Label("Stance");
+            stanceCaption.style.width = 44;
+            stanceCaption.style.unityTextAlign = TextAnchor.MiddleLeft;
+            stanceRow.Add(stanceCaption);
+            foreach (var (name, tip) in new[]
+            {
+                ("Standing", "Grounded, nothing else — Standard Locomotion."),
+                ("Crouching", "Crouching + Grounded, Upright into the crouch band (0.40–0.75). " +
+                              "In VR the game derives this from your real height."),
+                ("Prone", "Prone + Grounded, Upright below 0.40 — the game's prone threshold."),
+                ("Airborne", "Grounded off, nothing else — the jump/fall chain " +
+                             "(JumpStart, JumpAir, then JumpLand when Grounded returns)."),
+                ("Flying", "Flying on, Grounded off. An AnyState override in the CCK layer — " +
+                           "it interrupts every state, emotes included."),
+                ("Sitting", "Sitting + Grounded — the game KEEPS Grounded true in chairs."),
+                ("Swimming", "Swimming + Grounded — the game keeps Grounded true in water too."),
+            })
+            {
+                string captured = name;
+                var stanceButton = new Button(() => DriveStance(captured, moveUpright: true))
+                {
+                    text = name,
+                    tooltip = tip,
+                };
+                stanceButton.style.marginBottom = 2;
+                if (captured == stance)
+                {
+                    stanceButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+                }
+                stanceButtons[captured] = stanceButton;
+                stanceRow.Add(stanceButton);
+            }
+            locomotion.Body.Add(stanceRow);
+
+            upright = new Slider("Upright  (1 = standing)", 0f, 1f)
+            {
+                value = ReadParam(quiet, "Upright") ?? 1f,
+                showInputField = true,
+                tooltip = "Viewpoint height over avatar height, clamped 0..1. In VR the game " +
+                          "derives stance from it — dragging below 0.75 crouches, below 0.40 " +
+                          "goes prone, exactly like the client.",
+            };
+            upright.RegisterValueChangedCallback(e =>
+            {
+                Drive(LiveAnimator(), "Upright", e.newValue);
+                // Mirror the client's VR derivation — but only from a ground stance;
+                // CanCrouch/CanProne refuse while flying, swimming or sitting.
+                if (stance == "Standing" || stance == "Crouching" || stance == "Prone")
+                {
+                    string derived = e.newValue <= 0.4f ? "Prone"
+                        : e.newValue <= 0.75f ? "Crouching" : "Standing";
+                    if (derived != stance)
+                    {
+                        DriveStance(derived, moveUpright: false);
+                    }
+                }
+            });
+            locomotion.Body.Add(upright);
+
+            // AFK is the odd one out: fed from the headset proximity sensor, not the movement
+            // system, and nothing in the CCK's locomotion layer reads it — it only reaches
+            // avatars that declare an AFK parameter themselves.
+            var afk = new Toggle
+            {
+                text = "AFK",
+                value = Flag("AFK") > 0.5f,
+                tooltip = "The headset proximity sensor in game. Independent of stance; only " +
+                          "does anything if the avatar declares an AFK parameter.",
+            };
+            afk.style.marginTop = 4;
+            afk.RegisterValueChangedCallback(e => Drive(LiveAnimator(), "AFK", e.newValue ? 1f : 0f));
+            locomotion.Body.Add(afk);
             locomotion.SetEnabled(live);
             scroll.Add(locomotion);
 
@@ -331,9 +441,12 @@ namespace AvatarBridge
                     return;
                 }
                 // The values the game itself rests at — see the conversion's resting-value pass.
+                // Standing writes the whole stance flag set (Grounded 1, everything else 0)
+                // and returns Upright to 1, keeping the stance row's highlight honest.
+                DriveStance("Standing", moveUpright: true);
+                Drive(a, "AFK", 0f);
+                afk.SetValueWithoutNotify(false);
                 Drive(a, "IsLocal", 1f);
-                Drive(a, "Grounded", 1f);
-                Drive(a, "Upright", 1f);
                 Drive(a, "TrackingType", 3f);
                 Drive(a, "VRMode", 0f);
                 Drive(a, "MovementX", 0f);
