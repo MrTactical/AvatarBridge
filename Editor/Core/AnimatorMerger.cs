@@ -224,6 +224,7 @@ namespace AvatarBridge
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
             RewirePhysicsToggles(master, ctx);
+            AuditClipBindings(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -3885,6 +3886,104 @@ namespace AvatarBridge
                     "have that chain switched off with the base style's mesh, so a hidden style's " +
                     "cloth may keep simulating — invisible, and harmless.");
             }
+        }
+
+        /// <summary>
+        /// Names every clip whose curves target paths that don't exist on this avatar.
+        ///
+        /// Unity plays such curves as silence: no error, no log line, the feature just doesn't
+        /// happen — and crucially it didn't happen in VRChat either, UNLESS a build-time tool
+        /// was rewriting the paths at upload. A tester's tail-wag clip bound "Tail.001/…"
+        /// against a tail living at "Armature/Hips/Tail/…": authored for a different root,
+        /// only ever functional through VRCFury-style path rewriting, and the conversion —
+        /// which faithfully preserved both the clip and the hierarchy — inherited the mismatch
+        /// invisibly. This audit can't fix a path (guessing would move the wrong bones); it
+        /// makes the mismatch loud and says what to check.
+        /// </summary>
+        static void AuditClipBindings(AnimatorController master, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+            var resolveCache = new Dictionary<string, bool>();
+            bool Resolves(string path)
+            {
+                if (string.IsNullOrEmpty(path))
+                {
+                    return true;
+                }
+                if (!resolveCache.TryGetValue(path, out var ok))
+                {
+                    resolveCache[path] = ok = root.Find(path) != null;
+                }
+                return ok;
+            }
+
+            var seen = new HashSet<AnimationClip>();
+            var broken = new List<(string clip, int dead, int total, string example)>();
+
+            void Audit(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Audit(child.motion);
+                    }
+                    return;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    return;
+                }
+                int dead = 0, total = 0;
+                string example = null;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip)
+                             .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
+                {
+                    // Animator-type bindings with an empty path are animated animator
+                    // parameters, not scene objects; they have no path to resolve.
+                    if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                    {
+                        continue;
+                    }
+                    total++;
+                    if (!Resolves(binding.path))
+                    {
+                        dead++;
+                        example = example ?? binding.path;
+                    }
+                }
+                if (dead > 0)
+                {
+                    broken.Add((clip.name, dead, total, example));
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Audit(child.state.motion);
+                    }
+                });
+            }
+
+            if (broken.Count == 0)
+            {
+                return;
+            }
+            broken.Sort((a, b) => b.dead.CompareTo(a.dead));
+            var lines = broken.Take(8)
+                .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
+            ctx.Report.Warning(Category,
+                $"{broken.Count} clip(s) animate paths that don't exist on this avatar",
+                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Unity plays these " +
+                "curves as silence — and did in VRChat too, unless a build-time tool (VRCFury path " +
+                "rewriting, Modular Avatar) fixed the paths at upload. If one of these features " +
+                "worked in VRChat, make sure the package it was built with is INSTALLED in this " +
+                "project and convert again, so its bake runs first. Clips animating objects a " +
+                "stripped system removed also land here, and those are fine.");
         }
 
         static void AuditSerializedReferences(BridgeContext ctx, string controllerPath)

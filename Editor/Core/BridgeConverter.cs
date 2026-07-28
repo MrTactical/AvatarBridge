@@ -48,6 +48,7 @@ namespace AvatarBridge
             {
                 PrepareOutputFolder(ctx);
                 PrepareTarget(ctx);
+                WarnMissingScripts(ctx);
                 // Delete the VRChat-only systems first, so nothing downstream wastes effort
                 // converting content that's about to be thrown away — or worse, leaves parts of
                 // it behind (rescued SPS shaders that render pink, cloth whose bones then vanish).
@@ -159,6 +160,46 @@ namespace AvatarBridge
                 Application.dataPath, "..", ctx.OutputDir));
             Directory.CreateDirectory(absolute);
             AssetDatabase.Refresh();
+        }
+
+        /// <summary>
+        /// An avatar carrying missing scripts was built with a package this project doesn't
+        /// have — VRCFury and Modular Avatar are the usual suspects, and both do their real
+        /// work at BUILD time (baking toggles, merging armatures, REWRITING ANIMATION PATHS).
+        /// Converted without them, everything they would have baked is silently absent or
+        /// broken while the report reads clean: a tester's tail-wag clip bound paths that only
+        /// a build-time path rewrite could fix, and nothing said so. This cannot repair
+        /// anything; it can only make the cause loud.
+        /// </summary>
+        static void WarnMissingScripts(BridgeContext ctx)
+        {
+            int missing = 0;
+            var examples = new System.Collections.Generic.List<string>();
+            foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                foreach (var component in t.GetComponents<Component>())
+                {
+                    if (component == null)
+                    {
+                        missing++;
+                        if (examples.Count < 4 && !examples.Contains(t.name))
+                        {
+                            examples.Add(t.name);
+                        }
+                    }
+                }
+            }
+            if (missing == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning("Avatar",
+                $"{missing} missing script(s) on the avatar — a package it was built with is not installed",
+                $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
+                "avatar uses VRCFury or Modular Avatar, INSTALL THEM BEFORE CONVERTING: both do their " +
+                "real work at build time (toggles, armature merges, animation path rewriting), and " +
+                "without them everything they would have baked is silently missing from the conversion " +
+                "— features can look converted and still do nothing in game.");
         }
 
         static void PrepareTarget(BridgeContext ctx)
