@@ -3363,11 +3363,12 @@ namespace AvatarBridge
         ///
         /// So, for every clip the final controller references: a GameObject active-state curve
         /// whose target is a converted PhysBone's object (or any ancestor of it) is copied onto
-        /// the holder's own path, and a VRCPhysBone m_Enabled curve is retargeted at the
-        /// generated component's type. The added curves are byte-for-byte the original curve,
-        /// so the physics follows its chain's visibility exactly — including Write Defaults
-        /// fall-back behaviour, since scene defaults mirror too (an inactive style's holder is
-        /// created inactive). Clips are cloned before modification; they may be the source
+        /// the holder's own path — but ONLY when it activates (see the comment at the skip for
+        /// why deactivations must not be mirrored) — and a VRCPhysBone m_Enabled curve is
+        /// retargeted at the generated component's type, both directions. Added curves are
+        /// byte-for-byte the original, so with Write Defaults the holder falls back to its
+        /// scene default exactly like the hair objects themselves (an inactive style's holder
+        /// is created inactive). Clips are cloned before modification; they may be the source
         /// avatar's own assets.
         /// </summary>
         static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
@@ -3477,6 +3478,21 @@ namespace AvatarBridge
                         {
                             continue;
                         }
+                        if (objectToggle && !CurveActivates(curve))
+                        {
+                            // Mirror ACTIVATIONS only, never deactivations. Turning a holder
+                            // off with the style that owned it strangles any OTHER style whose
+                            // bones ride the same chain: a tester's "Vampy" hair has no
+                            // PhysBone of its own — its rig is grafted onto the base hair's
+                            // simulated bones at bake time — and the base cloth being switched
+                            // off with the base style's mesh left it rigid. A hidden style's
+                            // cloth staying alive costs a little simulation of bones nobody
+                            // sees; a shared chain being killed is a dead hairstyle. Where the
+                            // avatar uses Write Defaults, holders still switch off for free —
+                            // the added ON curve stops being written and the holder falls back
+                            // to its scene default, exactly like the hair objects themselves.
+                            continue;
+                        }
                         if (additions == null)
                         {
                             additions = new Dictionary<EditorCurveBinding, AnimationCurve>();
@@ -3501,6 +3517,18 @@ namespace AvatarBridge
                 clipsTouched++;
                 rewired[clip] = clone;
                 return clone;
+            }
+
+            static bool CurveActivates(AnimationCurve curve)
+            {
+                foreach (var key in curve.keys)
+                {
+                    if (key.value > 0.5f)
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             Motion RewireMotion(Motion motion)
@@ -3550,11 +3578,14 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
-                    "Animations that switched a converted PhysBone's object or component (hair swaps, " +
-                    "outfit toggles) now switch the generated physics too. Without this, a chain " +
+                    "Animations that activated a converted PhysBone's object or component (hair swaps, " +
+                    "outfit toggles) now activate the generated physics too. Without this, a chain " +
                     "belonging to a style that was inactive at conversion time could never wake up — " +
                     "its cloth lives on its own object at the avatar root, on a path the original " +
-                    "animations never animated.");
+                    "animations never animated. Only activations are mirrored: styles that share " +
+                    "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
+                    "have that chain switched off with the base style's mesh, so a hidden style's " +
+                    "cloth may keep simulating — invisible, and harmless.");
             }
         }
 
