@@ -142,11 +142,24 @@ namespace AvatarBridge
         void Build()
         {
             var root = rootVisualElement;
+            // Same dress code as the main window: without the stylesheet the cards and banner
+            // render as bare labels, which looked exactly as rough as that sounds.
+            root.AddToClassList("ab-root");
+            root.AddToClassList(EditorGUIUtility.isProSkin ? "dark" : "light");
+            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
+            if (sheet != null && !root.styleSheets.Contains(sheet))
+            {
+                root.styleSheets.Add(sheet);
+            }
+
             root.Add(BridgeElements.Banner("CCK Animator Tester",
-                "drive a ChilloutVR avatar the way the game does", BridgeDefines.Version));
+                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version));
 
             var scroll = new ScrollView();
             scroll.style.flexGrow = 1;
+            scroll.style.paddingLeft = 8;
+            scroll.style.paddingRight = 8;
+            scroll.style.paddingTop = 6;
             root.Add(scroll);
 
             var avatar = ResolveAvatar();
@@ -279,8 +292,10 @@ namespace AvatarBridge
             var row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
             row.style.flexWrap = Wrap.Wrap;
+            row.style.marginBottom = 4;
+            row.style.alignItems = Align.Center;
             var caption = new Label(label);
-            caption.style.width = 40;
+            caption.style.width = 44;
             caption.style.unityTextAlign = TextAnchor.MiddleLeft;
             row.Add(caption);
             foreach (var pose in Poses)
