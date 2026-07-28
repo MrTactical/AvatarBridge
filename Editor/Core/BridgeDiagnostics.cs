@@ -654,7 +654,19 @@ namespace AvatarBridge
                 "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the vertex function. That edit is only " +
                 "realistic on a plainly written shader — surface shaders, locked shaders and anything sharing " +
                 "structs across includes are not worth attempting. Otherwise use a different shader, or accept " +
-                "how it looks. Copy the shader before editing it: these are usually someone else's asset.");
+                "how it looks. Copy the shader before editing it: these are usually someone else's asset." +
+                (ctx.Settings.patchNonSpiShaders
+                    // The option is on, so the patcher already had its go and said why it
+                    // couldn't — telling someone to do it by hand as if nothing tried would be
+                    // wrong, and would hide a report line they should read instead.
+                    ? " AvatarBridge tried to patch these automatically and said why it couldn't in its own " +
+                      "entry above — read that first; hand-editing is only the fallback."
+                    // Off is the default, so the commonest reason a shader arrives here unpatched
+                    // is simply that nobody turned the option on.
+                    : " AvatarBridge can attempt this for you: turn on \"Patch non-SPI shaders for VR\" under " +
+                      "Advanced and convert again. It patches a COPY in the output folder and leaves the " +
+                      "original alone, checks that the copy compiles before using it, and carries hand-written " +
+                      "fixes for a few shaders that need more than the four macros."));
         }
 
         /// <summary>
