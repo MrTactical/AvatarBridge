@@ -28,7 +28,7 @@ finish by hand.
 > looking. That's why the report exists and why [reporting a bug](#reporting-a-bug) gets a fix.
 
 <p align="center">
-  <img src="docs/images/window.png" alt="The AvatarBridge window: a blue-to-orange banner, three numbered steps, and collapsible option cards" width="480">
+  <img src="docs/images/window-262.png" alt="The AvatarBridge window: a blue-to-orange banner, three numbered steps, and collapsible option cards" width="480">
 </p>
 
 <p align="center"><em>The banner runs VRChat's blue into ChilloutVR's orange, and the step markers
