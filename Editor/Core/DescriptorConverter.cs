@@ -32,9 +32,13 @@ namespace AvatarBridge
             ctx.CvrAvatar = cvrAvatar;
 
             // --- Viewpoint -----------------------------------------------------------
-            cvrAvatar.viewPosition = vrc.ViewPosition;
-            cvrAvatar.voicePosition = vrc.ViewPosition;   // replaced below, once the face is known
+            // The CCK's own Auto placement (between the eye bones) — maintainer's call: one
+            // convention for every avatar beats per-source derivation. The author's VRChat
+            // viewpoint stays as the fallback for rigs the Auto chain can't read.
             var animator = ctx.TargetAnimator;
+            bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
+            cvrAvatar.viewPosition = autoView ? viewAuto : vrc.ViewPosition;
+            cvrAvatar.voicePosition = cvrAvatar.viewPosition;   // replaced below, once the face is known
 
             // --- Face mesh, visemes --------------------------------------------------
             SkinnedMeshRenderer sourceFace = vrc.VisemeSkinnedMesh;
@@ -79,10 +83,33 @@ namespace AvatarBridge
             }
 
             // --- Voice position ------------------------------------------------------
-            // After the face mesh, because the best answer is measured from its viseme shapes.
-            cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, targetFace, vrc.VisemeBlendShapes,
-                animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
-            MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+            // The CCK's Auto placement again (jaw bone, else a head-bone offset); the
+            // viseme-measured mouth stays as the fallback for rigs without either bone.
+            bool autoVoice = AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto);
+            if (autoVoice)
+            {
+                cvrAvatar.voicePosition = voiceAuto;
+            }
+            else
+            {
+                cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, targetFace, vrc.VisemeBlendShapes,
+                    animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
+                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+            }
+            if (autoView || autoVoice)
+            {
+                bool hasJaw = animator != null && animator.isHuman &&
+                              animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
+                ctx.Report.Converted(Category, "View & voice placed the CCK's own way",
+                    (autoView
+                        ? "View between the eye bones"
+                        : "View kept from the VRChat descriptor (no usable eye or head bones)") + "; " +
+                    (autoVoice
+                        ? (hasJaw ? "voice at the jaw bone" : "voice just ahead of the head bone (no jaw bone)")
+                        : "voice measured from the viseme mesh") +
+                    " — the same positions the Auto buttons on the CVRAvatar inspector produce, so every " +
+                    "avatar lands on one convention.");
+            }
 
             // ChilloutVR has all three of VRChat's lip-sync styles, not just visemes:
             // CVRAvatarVisemeMode is { Visemes, SingleBlendshape, JawBone }. The field was never

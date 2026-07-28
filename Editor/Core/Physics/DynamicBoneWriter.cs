@@ -142,6 +142,17 @@ namespace AvatarBridge
                     "humanoid bones every frame, so simulating one fights them for the transform.");
             }
 
+            if (data.ToeExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.ToeExclusions.Count} toe branch(es) added to the exclusions — " +
+                    $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} (with everything under them). " +
+                    "Simulated toes splay and swing while the foot itself is planted by IK, which " +
+                    "reads as broken feet rather than as physics. Turn on \"Convert toe PhysBones\" " +
+                    "in the physics options if this avatar's toe physics are deliberate.");
+            }
+
             if (data.Colliders.Count > 0)
             {
                 db.m_Colliders = new List<DynamicBoneColliderBase>();

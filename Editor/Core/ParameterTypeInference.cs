@@ -86,7 +86,7 @@ namespace AvatarBridge
                 return;
             }
             master.parameters = parameters;
-            RewriteConditions(master, changed);
+            RewriteConditions(master, changed, ctx);
 
             int bools = changed.Count(c => c.Value == AnimatorControllerParameterType.Bool);
             int ints = changed.Count - bools;
@@ -258,39 +258,65 @@ namespace AvatarBridge
         /// comparing a bool numerically or an int fractionally.
         /// </summary>
         static void RewriteConditions(AnimatorController master,
-            Dictionary<string, AnimatorControllerParameterType> changed)
+            Dictionary<string, AnimatorControllerParameterType> changed, BridgeContext ctx)
         {
-            void Rewrite(AnimatorTransitionBase[] transitions)
+            int unreachableDropped = 0;
+            var unreachableNotes = new List<string>();
+
+            T[] Rewrite<T>(T[] transitions) where T : AnimatorTransitionBase
             {
+                var kept = new List<T>(transitions.Length);
                 foreach (var transition in transitions)
                 {
                     var conditions = transition.conditions;
                     bool touched = false;
+                    // A condition the parameter's new domain can NEVER satisfy was already dead
+                    // in VRChat, and mapping its operator anyway would resurrect it — a "< 0"
+                    // guard that never fired becomes "is false", which fires half the time. That
+                    // is how a working avatar arrives with an animator layer that fights itself.
+                    bool unreachable = false;
+                    var surviving = new List<AnimatorCondition>(conditions.Length);
                     for (int i = 0; i < conditions.Length; i++)
                     {
                         if (!changed.TryGetValue(conditions[i].parameter, out var type))
                         {
+                            surviving.Add(conditions[i]);
                             continue;
                         }
                         var condition = conditions[i];
                         if (type == AnimatorControllerParameterType.Bool)
                         {
+                            // A bool only ever reads 0 or 1.
                             switch (condition.mode)
                             {
                                 case AnimatorConditionMode.Greater:
-                                    condition.mode = AnimatorConditionMode.If;
+                                    if (condition.threshold >= 1f) { unreachable = true; }
+                                    else { condition.mode = AnimatorConditionMode.If; }
                                     break;
                                 case AnimatorConditionMode.Less:
-                                    condition.mode = AnimatorConditionMode.IfNot;
+                                    if (condition.threshold <= 0f) { unreachable = true; }
+                                    else { condition.mode = AnimatorConditionMode.IfNot; }
                                     break;
                                 case AnimatorConditionMode.Equals:
-                                    condition.mode = condition.threshold != 0f
-                                        ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
+                                    if (Mathf.Approximately(condition.threshold, 0f)) { condition.mode = AnimatorConditionMode.IfNot; }
+                                    else if (Mathf.Approximately(condition.threshold, 1f)) { condition.mode = AnimatorConditionMode.If; }
+                                    else { unreachable = true; }
                                     break;
                                 case AnimatorConditionMode.NotEqual:
-                                    condition.mode = condition.threshold != 0f
-                                        ? AnimatorConditionMode.IfNot : AnimatorConditionMode.If;
+                                    if (Mathf.Approximately(condition.threshold, 0f)) { condition.mode = AnimatorConditionMode.If; }
+                                    else if (Mathf.Approximately(condition.threshold, 1f)) { condition.mode = AnimatorConditionMode.IfNot; }
+                                    else
+                                    {
+                                        // "not a value it can ever hold" is always true: the
+                                        // condition goes, the transition stays.
+                                        touched = true;
+                                        continue;
+                                    }
                                     break;
+                            }
+                            if (unreachable)
+                            {
+                                break;
                             }
                             condition.threshold = 0f;
                         }
@@ -313,27 +339,54 @@ namespace AvatarBridge
                                     break;
                             }
                         }
-                        conditions[i] = condition;
+                        surviving.Add(condition);
                         touched = true;
+                    }
+                    if (unreachable)
+                    {
+                        unreachableDropped++;
+                        if (unreachableNotes.Count < 5)
+                        {
+                            string to = transition.destinationState != null
+                                ? transition.destinationState.name
+                                : (transition.destinationStateMachine != null
+                                    ? transition.destinationStateMachine.name : "Exit");
+                            unreachableNotes.Add($"-> \"{to}\"");
+                        }
+                        continue;
                     }
                     if (touched)
                     {
-                        transition.conditions = conditions;
+                        transition.conditions = surviving.ToArray();
                     }
+                    kept.Add(transition);
                 }
+                return kept.ToArray();
             }
 
             foreach (var layer in master.layers)
             {
                 Walk(layer.stateMachine, machine =>
                 {
-                    Rewrite(machine.anyStateTransitions);
-                    Rewrite(machine.entryTransitions);
+                    machine.anyStateTransitions = Rewrite(machine.anyStateTransitions);
+                    machine.entryTransitions = Rewrite(machine.entryTransitions);
                     foreach (var child in machine.states)
                     {
-                        Rewrite(child.state.transitions);
+                        child.state.transitions = Rewrite(child.state.transitions);
                     }
                 });
+            }
+
+            if (unreachableDropped > 0)
+            {
+                ctx.Report.Approximated("Animator",
+                    $"{unreachableDropped} transition(s) dropped that could never fire",
+                    $"{string.Join(", ", unreachableNotes)}{(unreachableDropped > unreachableNotes.Count ? ", …" : "")} " +
+                    "— each rested on a numeric comparison the parameter's real range cannot satisfy (a " +
+                    "\"less than zero\" guard on a value that is only ever 0 or 1, and similar), so it never " +
+                    "fired in VRChat either. They are removed rather than translated because translating the " +
+                    "operator alone would turn a transition that never fired into one that fires half the " +
+                    "time — which makes a layer fight itself.");
             }
         }
 

@@ -27,6 +27,115 @@ namespace AvatarBridge
             {
                 ConvertSpatialAudio(ctx);
             }
+            NormalizeSkinnedBounds(ctx);
+            SanitizeAudioSources(ctx);
+        }
+
+        /// <summary>
+        /// VRChat-parity clamps for avatar AudioSources. VRChat force-limits avatar audio
+        /// (doppler zeroed, distance floors/caps), so avatars are AUTHORED against those
+        /// clamps and never feel them. ChilloutVR instead routes every fully-3D avatar
+        /// source straight into Steam Audio with its authored settings (decompiled
+        /// SharedFilter.ProcessAudioSource: spatialize = spatialBlend >= 1) — and an
+        /// unclamped source can take the whole mix down: minDistance 0 puts a divide-by-
+        /// distance in the spatializer's attenuation for a source mounted on the wearer's
+        /// own body, where the listener can reach distance ~0; one inf/NaN gain poisons the
+        /// master bus and EVERY sound in the game goes silent until the avatar unloads.
+        /// Observed in the wild: wearing one converted avatar muted voice, video players
+        /// and prop music game-wide, recovering on avatar switch. Doppler goes to zero for
+        /// the same reason VRChat zeroes it — sources ride animated and simulated bones,
+        /// whose frame-to-frame velocity is pitch chaos.
+        /// </summary>
+        static void SanitizeAudioSources(BridgeContext ctx)
+        {
+            int clamped = 0;
+            var notes = new List<string>();
+            foreach (var source in ctx.Target.GetComponentsInChildren<AudioSource>(true))
+            {
+                bool changed = false;
+                if (source.dopplerLevel != 0f)
+                {
+                    source.dopplerLevel = 0f;
+                    changed = true;
+                }
+                if (source.minDistance < 0.3f)
+                {
+                    source.minDistance = 0.3f;
+                    changed = true;
+                }
+                if (source.maxDistance > 40f)
+                {
+                    source.maxDistance = 40f;
+                    changed = true;
+                }
+                if (source.maxDistance < source.minDistance)
+                {
+                    source.maxDistance = source.minDistance;
+                    changed = true;
+                }
+                if (changed)
+                {
+                    clamped++;
+                    if (notes.Count < 6)
+                    {
+                        notes.Add(source.gameObject.name);
+                    }
+                    EditorUtility.SetDirty(source);
+                }
+            }
+            if (clamped > 0)
+            {
+                ctx.Report.Approximated("Audio",
+                    $"{clamped} audio source(s) clamped to VRChat's avatar audio limits",
+                    $"On: {string.Join(", ", notes)}{(clamped > notes.Count ? ", …" : "")} — doppler 0, " +
+                    "min distance at least 0.3 m, max distance at most 40 m. VRChat silently enforces " +
+                    "these on every avatar, so this is how the avatar actually sounded there. ChilloutVR " +
+                    "feeds avatar sources to its spatializer unclamped, and a source with min distance 0 " +
+                    "mounted on the wearer's own body can silence the ENTIRE game's audio (voice, video, " +
+                    "props) while the avatar is worn — the mix recovers when it unloads.");
+            }
+        }
+
+        /// <summary>
+        /// Unity culls a skinned mesh by its AUTHORED bounding box, not by where animation,
+        /// physics or cloth actually put the vertices — the box is baked from the bind pose
+        /// and never follows. The moment the stale box leaves the camera frustum the whole
+        /// mesh blinks out: classically at screen edges, or for another player looking from
+        /// the side. Centre zero puts the box on each mesh's root bone; the extent floor is
+        /// the avatar's own measured height (at least 1.5 m), so a chibi doesn't drag a
+        /// stadium-sized box around and a giant isn't clipped by a human-sized one. Authored
+        /// extents larger than the floor are kept — shrinking a deliberately large box could
+        /// CAUSE the very culling this prevents.
+        /// </summary>
+        static void NormalizeSkinnedBounds(BridgeContext ctx)
+        {
+            float floor = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
+            int changed = 0;
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var bounds = renderer.localBounds;
+                var extents = new Vector3(
+                    Mathf.Max(bounds.extents.x, floor),
+                    Mathf.Max(bounds.extents.y, floor),
+                    Mathf.Max(bounds.extents.z, floor));
+                if (bounds.center == Vector3.zero && bounds.extents == extents)
+                {
+                    continue;
+                }
+                renderer.localBounds = new Bounds(Vector3.zero, extents * 2f);
+                EditorUtility.SetDirty(renderer);
+                changed++;
+            }
+            if (changed > 0)
+            {
+                ctx.Report.Converted("Meshes",
+                    $"{changed} skinned mesh bounding box(es) normalized — centre 0, extents at least {floor:0.##} m",
+                    "Unity culls a skinned mesh by its authored bind-pose box, not by where animation, physics " +
+                    "or cloth actually put the vertices — so a mesh can vanish at screen edges while plainly on " +
+                    "camera. Each box now sits centred on its mesh's root bone and reaches at least the avatar's " +
+                    "own measured height in every direction, scaled with the avatar if it resizes; authored boxes " +
+                    "larger than that are kept, since shrinking one could cause the very culling this prevents.");
+            }
         }
 
         static void ConvertHeadChops(BridgeContext ctx)

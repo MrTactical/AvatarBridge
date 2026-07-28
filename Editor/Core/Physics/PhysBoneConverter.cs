@@ -74,7 +74,7 @@ namespace AvatarBridge
                     var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
                     foreach (var pb in physBones)
                     {
-                        var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator);
+                        var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
                         if (SkipToeChain(ctx, chain))
                         {
                             continue;
@@ -101,7 +101,7 @@ namespace AvatarBridge
                     var dbColliderCache = new Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase>();
                     foreach (var pb in physBones)
                     {
-                        var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator);
+                        var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
                         if (SkipToeChain(ctx, dbChain))
                         {
                             continue;

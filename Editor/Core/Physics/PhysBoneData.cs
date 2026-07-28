@@ -1,4 +1,5 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
@@ -67,9 +68,18 @@ namespace AvatarBridge
         /// </summary>
         public List<Transform> HumanoidExclusions = new List<Transform>();
 
+        /// <summary>
+        /// Toe bones excluded because simulated toes read as broken in ChilloutVR — kept apart
+        /// from the humanoid list because most of them are NOT humanoid-mapped (a rig maps
+        /// "Toes", not the individual digits).
+        /// </summary>
+        public List<Transform> ToeExclusions = new List<Transform>();
+
         public static PhysBoneChainData Read(VRCPhysBone pb) => Read(pb, null);
 
-        public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator)
+        public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator) => Read(pb, animator, false);
+
+        public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator, bool excludeToes)
         {
             var data = new PhysBoneChainData
             {
@@ -147,6 +157,51 @@ namespace AvatarBridge
                     }
                     data.Ignores.Add(mapped);
                     data.HumanoidExclusions.Add(mapped);
+                }
+            }
+
+            // Toes, wherever they sit in the chain. The humanoid rule above only catches MAPPED
+            // bones, and a rig maps "Toes" — not Toe1_1, Toe2_1, or the digits under it — so a
+            // chain rooted higher up (a leg, a skirt, a whole-body wobble) still ran the solver
+            // through every toe joint. That is what busted feet look like after a DynamicBone
+            // conversion: the digits splay and swing while the foot itself is planted by IK.
+            // Skipping a chain whose ROOT is a toe was never enough on its own; this excludes
+            // toe bones found anywhere below the root, for both physics targets, and "Convert
+            // toe PhysBones" turns the whole rule off.
+            if (excludeToes && data.Root != null)
+            {
+                var toeRoots = new List<Transform>();
+                if (animator != null && animator.isHuman)
+                {
+                    foreach (var bone in new[] { HumanBodyBones.LeftToes, HumanBodyBones.RightToes })
+                    {
+                        var toes = animator.GetBoneTransform(bone);
+                        if (toes != null)
+                        {
+                            toeRoots.Add(toes);
+                        }
+                    }
+                }
+                foreach (var descendant in data.Root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (descendant == data.Root || data.Ignores.Contains(descendant))
+                    {
+                        continue;
+                    }
+                    bool isToe = descendant.name.IndexOf("toe", System.StringComparison.OrdinalIgnoreCase) >= 0
+                                 || toeRoots.Any(t => descendant == t || descendant.IsChildOf(t));
+                    if (!isToe)
+                    {
+                        continue;
+                    }
+                    // Only the TOP of each toe branch needs listing: both writers drop the
+                    // subtree with it, and a list of every joint would bury the report.
+                    if (data.Ignores.Any(existing => descendant.IsChildOf(existing)))
+                    {
+                        continue;
+                    }
+                    data.Ignores.Add(descendant);
+                    data.ToeExclusions.Add(descendant);
                 }
             }
 

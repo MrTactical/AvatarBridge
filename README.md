@@ -49,7 +49,7 @@ now. What actually differs, as of mid-2026:
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
 | **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost by design ([beta](#native-contacts)) | ✅ | — |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
-| Voice at the mouth and gaze limits, *measured off your avatar's own mesh and poses* | ✅ | — |
+| Gaze limits *measured off your avatar's own poses*; view & voice placed the CCK's own Auto way | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
@@ -158,12 +158,13 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | viewpoint, visemes, blink, eye look (gaze limits measured from the poses); voice placed at the mouth, measured from a viseme shape |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); view & voice placed exactly as the CCK's own **Auto** buttons place them — eye-bone midpoint and jaw bone — with the VRChat viewpoint and viseme-measured mouth as fallbacks |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
+| Skinned mesh bounds | normalized — centre 0, extents ≥ the avatar's height | stops meshes vanishing at screen edges; larger authored boxes are kept |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
@@ -173,6 +174,7 @@ defines.
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
+| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
@@ -294,7 +296,7 @@ of simulation, so that path maps values 1:1.
 | **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
 | **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration, replacing the preset's feel. Turn it off to get the preset's feel back |
 | **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
-| **Convert toe PhysBones** | off | Chains on or under the humanoid Toes bones (or named like toes) are skipped — simulated toes wiggle with every step in ChilloutVR, which reads as broken. Turn on if the toe physics are deliberate |
+| **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
 | **Transfer angle limits** | off | ⚠️ Genuinely avatar-dependent — shakes some chains, best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
@@ -362,6 +364,24 @@ knows which eye it's drawing — so a shader that never opted in looked perfectl
 draws into one eye only here. Nobody did anything wrong; it's a conversion problem, which makes it
 worth fixing here.
 
+<details>
+<summary>Fixing one by hand</summary>
+
+Four macros, each with one home — copy the shader first, it's usually someone else's asset:
+
+| macro | goes in |
+|---|---|
+| `UNITY_VERTEX_INPUT_INSTANCE_ID` | the vertex **input** struct (`appdata`) |
+| `UNITY_VERTEX_OUTPUT_STEREO` | the **interpolator** struct (`v2f`) |
+| `UNITY_SETUP_INSTANCE_ID(v);` | top of the vertex function, after the output struct is declared |
+| `UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);` | same place, right after it |
+
+Add `UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);` at the top of the fragment function too if it
+samples anything screen-space. Only realistic on a plainly written shader: surface shaders have no
+vertex stage to edit, and locked or generated shaders aren't worth attempting.
+
+</details>
+
 Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a patched
 copy into `RehomedAssets`, adds the stereo macros, and points this avatar's materials at the copy.
 
@@ -369,6 +389,18 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   sharing them are unaffected. (Those shaders usually aren't yours.)
 - **A copy that doesn't compile is thrown away**, so the worst case is a line in the report rather
   than wrong pixels.
+- **Screen-grab effects are fixed too.** A `GrabPass` texture is a texture *array* under
+  instancing — one slice per eye — so lens, refraction and heat-haze shaders that read it with
+  `tex2D` show one eye the other eye's view. Those reads are rewritten to the screen-space
+  macros, same as `_CameraDepthTexture`.
+- **Shaders needing more than the macros get a recipe.** Some fixes can't be derived — a
+  `GrabPass` is a per-eye texture *array* under instancing, so a lens or refraction shader reading
+  it with `tex2D` shows one eye the other eye's view no matter how many macros it has. Those are
+  written by hand once and kept in AvatarBridge's recipe list, then applied to *your* copy on
+  every later conversion. Each recipe is pinned to a fingerprint of the exact shader version it
+  was written for: an updated or edited shader doesn't match and is refused rather than guessed
+  at. Nothing is redistributed — the recipe is the edit, not the shader, and your original file is
+  never touched. Hit one that has no recipe yet? Open an issue and it can be added for everyone.
 - **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
   a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
 - **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
@@ -387,9 +419,10 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
 > deliberately and **check the effect in both eyes**.
 
 > Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
-> have all four and still be broken — a soft-particle shader reading `_CameraDepthTexture` through
-> `sampler2D`/`tex2Dproj` is the common case, since that texture is an array under instancing.
-> AvatarBridge rewrites that pair too.
+> have all four and still be broken, because both the depth texture and any `GrabPass` are texture
+> *arrays* under instancing — a soft-particle shader reading `_CameraDepthTexture` through
+> `sampler2D`/`tex2Dproj`, or a glass/refraction shader reading its grab texture through `tex2D`,
+> takes the wrong slice however many macros are present. AvatarBridge rewrites both.
 
 ## Parameter types
 

@@ -117,6 +117,17 @@ namespace AvatarBridge
                     "children still simulate.");
             }
 
+            if (data.ToeExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.ToeExclusions.Count} toe branch(es) excluded from simulation — " +
+                    $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} (with everything under them). " +
+                    "A rig maps \"Toes\" but not the individual digits, so the humanoid rule alone " +
+                    "left them simulating whenever the chain started higher up the leg. Turn on " +
+                    "\"Convert toe PhysBones\" in the physics options if the toe physics are deliberate.");
+            }
+
             if (data.Ignores.Count == 0)
             {
                 sdata.rootBones.Add(data.Root);

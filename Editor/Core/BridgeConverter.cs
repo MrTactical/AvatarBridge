@@ -70,6 +70,9 @@ namespace AvatarBridge
                 // referencing gets pulled into the output folder — a conversion that works on
                 // this PC must also work on one without the source avatar's folders.
                 AnimationSelfContainer.Run(ctx);
+                // And only then judge the saved file's references — auditing any earlier
+                // flags things the self-container is about to fix.
+                AnimatorMerger.AuditSerializedReferences(ctx);
 
                 // Always: ChilloutVR deletes them on load anyway, the CCK upload complains
                 // about them, and an avatar still wearing its VRC descriptor reads as "not
@@ -213,8 +216,17 @@ namespace AvatarBridge
         {
             int missing = 0;
             var examples = new System.Collections.Generic.List<string>();
+            var missingPrefabs = new System.Collections.Generic.List<string>();
             foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
+                // Unity renames a broken prefab instance to "<name> (Missing Prefab with
+                // guid: …)" — an empty shell where a whole sub-hierarchy used to be. Worth
+                // its own warning: the shell's name also carries guid-looking text that used
+                // to fool the serialized-reference audit.
+                if (missingPrefabs.Count < 4 && t.name.Contains("(Missing Prefab"))
+                {
+                    missingPrefabs.Add(t.name);
+                }
                 foreach (var component in t.GetComponents<Component>())
                 {
                     if (component == null)
@@ -226,6 +238,15 @@ namespace AvatarBridge
                         }
                     }
                 }
+            }
+            if (missingPrefabs.Count > 0)
+            {
+                ctx.Report.Warning("Avatar",
+                    $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
+                    $"{string.Join("; ", missingPrefabs)} — the prefab asset these were instances of " +
+                    "isn't in this project, so each is an empty shell where a feature used to be. The " +
+                    "avatar converts fine without them; if the feature matters, import the package it " +
+                    "came from and convert again.");
             }
             if (missing == 0)
             {

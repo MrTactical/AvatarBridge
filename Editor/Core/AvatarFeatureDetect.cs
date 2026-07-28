@@ -278,6 +278,149 @@ namespace AvatarBridge
             return root.transform.InverseTransformPoint(world);
         }
 
+        // ---------------------------------------------- the CCK's own Auto placement ----
+
+        static readonly string[] LeftEyeNameVariants = { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left" };
+        static readonly string[] RightEyeNameVariants = { "RightEye", "Right_Eye", "EyeRight", "Eye_Right" };
+
+        /// <summary>
+        /// The CVRAvatar inspector's "Auto" button for View Position, replicated from the
+        /// CCK's own editor (CCK_CVRAvatarEditor.AutoSetViewPosition is private, so it is
+        /// mirrored here): the midpoint between the humanoid eye bones; a single eye is
+        /// projected back onto the avatar's centreline; with no eye bones, name-matched eye
+        /// children under Head; failing that, a head-bone offset scaled by the hips-to-head
+        /// distance. Returned avatar-local like everything else here; false when the rig
+        /// gives the CCK's chain nothing to work with.
+        /// </summary>
+        public static bool CckAutoViewPosition(GameObject root, Animator animator, out Vector3 localPosition)
+        {
+            localPosition = default;
+            if (animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+            var leftEye = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var rightEye = animator.GetBoneTransform(HumanBodyBones.RightEye);
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+
+            Vector3 world;
+            if (leftEye != null && rightEye != null)
+            {
+                world = (leftEye.position + rightEye.position) / 2f;
+            }
+            else if (leftEye != null || rightEye != null)
+            {
+                world = ProjectSingleEye(animator, leftEye != null ? leftEye : rightEye);
+            }
+            else if (head != null)
+            {
+                var namedLeft = FindChildByNameVariants(head, LeftEyeNameVariants);
+                var namedRight = FindChildByNameVariants(head, RightEyeNameVariants);
+                if (namedLeft != null && namedRight != null)
+                {
+                    world = (namedLeft.position + namedRight.position) / 2f;
+                }
+                else if (namedLeft != null || namedRight != null)
+                {
+                    world = ProjectSingleEye(animator, namedLeft != null ? namedLeft : namedRight);
+                }
+                else
+                {
+                    var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+                    if (hips == null)
+                    {
+                        return false;
+                    }
+                    float headBoneHeight = Vector3.Distance(hips.position, head.position);
+                    world = head.TransformPoint(new Vector3(0f, -0.1f * headBoneHeight, 0.1f * headBoneHeight));
+                }
+            }
+            else
+            {
+                return false;
+            }
+            localPosition = RoundNearZero(root.transform.InverseTransformPoint(world));
+            return true;
+        }
+
+        /// <summary>The Auto button for Voice Position: the jaw bone, else a small fixed
+        /// offset in front of the head bone (CCK_CVRAvatarEditor.AutoSetVoicePosition,
+        /// mirrored). Avatar-local; false without a humanoid jaw or head.</summary>
+        public static bool CckAutoVoicePosition(GameObject root, Animator animator, out Vector3 localPosition)
+        {
+            localPosition = default;
+            if (animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+            var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            Vector3 world;
+            if (jaw != null)
+            {
+                world = jaw.position;
+            }
+            else if (head != null)
+            {
+                world = head.TransformPoint(new Vector3(0f, 0.005f, 0.06f));
+            }
+            else
+            {
+                return false;
+            }
+            localPosition = root.transform.InverseTransformPoint(world);
+            return true;
+        }
+
+        /// <summary>One eye only (cyclops rigs, asymmetric heads): the CCK removes the eye's
+        /// offset along whichever root axis it sits furthest out on, landing the viewpoint
+        /// back on the centreline.</summary>
+        static Vector3 ProjectSingleEye(Animator animator, Transform singleEye)
+        {
+            var avatarRoot = animator.transform;
+            Vector3 eyePosition = singleEye.position;
+            Vector3 toEye = (eyePosition - avatarRoot.position).normalized;
+            float dotForward = Vector3.Dot(toEye, avatarRoot.forward);
+            float dotUp = Vector3.Dot(toEye, avatarRoot.up);
+            float dotRight = Vector3.Dot(toEye, avatarRoot.right);
+            if (Mathf.Abs(dotForward) > Mathf.Abs(dotUp) && Mathf.Abs(dotForward) > Mathf.Abs(dotRight))
+            {
+                return eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.forward);
+            }
+            return Mathf.Abs(dotUp) > Mathf.Abs(dotRight)
+                ? eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.up)
+                : eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.right);
+        }
+
+        static Transform FindChildByNameVariants(Transform parent, string[] nameVariants)
+        {
+            foreach (string potentialName in nameVariants)
+            {
+                var child = parent.Find(potentialName);
+                if (child != null)
+                {
+                    return child;
+                }
+                foreach (Transform candidate in parent)
+                {
+                    if (string.Equals(candidate.name, potentialName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+            return null;
+        }
+
+        static Vector3 RoundNearZero(Vector3 position)
+        {
+            const float tolerance = 0.01f;
+            return new Vector3(
+                Mathf.Abs(position.x) < tolerance ? 0f : position.x,
+                Mathf.Abs(position.y) < tolerance ? 0f : position.y,
+                Mathf.Abs(position.z) < tolerance ? 0f : position.z);
+        }
+
         /// <summary>Voice emitted from the head, like VRChat does. Avatar-local, unscaled.</summary>
         public static Vector3 EstimateVoicePosition(GameObject root, Animator animator)
         {

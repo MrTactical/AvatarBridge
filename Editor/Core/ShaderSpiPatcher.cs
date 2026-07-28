@@ -67,6 +67,7 @@ namespace AvatarBridge
             // still one material, and cloning it per slot would break batching between them.
             var clones = new Dictionary<Material, Material>();
             var repointed = new List<string>();
+            var recipesUsed = new List<string>();
             var refused = new List<string>();
             var alreadyCorrect = new List<string>();
 
@@ -107,7 +108,8 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    var fixedShader = TryPatch(source, shader.name, dir, out string reason);
+                    var fixedShader = TryPatch(source, shader.name, dir, out string reason,
+                        out var appliedRecipe, out bool recipeWasExact);
                     patched[shader] = fixedShader;
                     if (fixedShader == null)
                     {
@@ -116,6 +118,11 @@ namespace AvatarBridge
                     }
                     materials[i] = Repoint(material, fixedShader, dir, clones);
                     repointed.Add(shader.name);
+                    if (appliedRecipe != null)
+                    {
+                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
+                            (recipeWasExact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
+                    }
                     changed = true;
                 }
                 if (changed)
@@ -136,6 +143,16 @@ namespace AvatarBridge
                     "eyes without asking — which is why it looked fine before converting. Nothing here needs " +
                     "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
                     "correct under VRChat's mode and on desktop as well.");
+            }
+            if (recipesUsed.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
+                    string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
+                    "edit was written by hand once and pinned to that exact version of the file — a shader " +
+                    "that has been updated or edited will not match, and is refused rather than guessed at. " +
+                    "Only your copy in RehomedAssets is changed; the original shader is untouched. Worth a " +
+                    "look in VR with both eyes open.");
             }
             if (refused.Count > 0)
             {
@@ -264,8 +281,11 @@ namespace AvatarBridge
         /// <summary>
         /// Writes a patched copy, or returns null with the reason it was refused.
         /// </summary>
-        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason)
+        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
+            out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact)
         {
+            appliedRecipe = null;
+            recipeWasExact = false;
             var unit = ReadUnit(sourcePath);
             if (unit.Count == 0)
             {
@@ -275,6 +295,10 @@ namespace AvatarBridge
             var shaderFile = unit[0];
             string text = shaderFile.Text;
 
+            // Taken before a single edit, so the fingerprint identifies the file as the user has
+            // it — not as we are about to leave it.
+            var recipe = ShaderFixRecipes.Find(shaderName, text, out bool exactRecipeRevision);
+
             // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
             // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
             // inconsistent endings on import and blame AvatarBridge for it. An include can easily
@@ -283,6 +307,22 @@ namespace AvatarBridge
             if (Regex.IsMatch(text, @"#pragma\s+surface"))
             {
                 reason = "surface shader — Unity generates the vertex stage, nothing to patch";
+                return null;
+            }
+            // A GrabPass is refused on purpose, and early. Under single-pass instanced the
+            // grabbed screen is a texture ARRAY with one slice per eye, so every sampler2D /
+            // tex2D read of it takes the wrong slice — adding the four macros would produce a
+            // shader that compiles, passes the CCK's check, and still shows one eye the other
+            // eye's view. The correct rewrite (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE) has to
+            // be verified against a real HLSL compile, and an unverified guess here is worse
+            // than an honest refusal: it was tried, and produced a copy Unity rejected.
+            if (Regex.IsMatch(text, @"GrabPass\s*\{") && recipe == null)
+            {
+                reason = "it uses a GrabPass — the grabbed screen is a per-eye texture array under " +
+                         "single-pass instanced, so it needs the screen-space sampling macros by hand; " +
+                         "the stereo macros alone would leave it sampling the wrong eye. If you know " +
+                         "this shader's fix, it can be added to AvatarBridge's recipe list and every " +
+                         "later conversion gets it — please open an issue";
                 return null;
             }
             var vertPragma = Regex.Match(text, @"#pragma\s+vertex\s+(\w+)");
@@ -313,24 +353,57 @@ namespace AvatarBridge
                 return null;
             }
 
-            // 3 & 4 need the vertex body before anything is edited, so find it first.
-            var vertBody = Regex.Match(vertFile.Text,
-                $@"({Regex.Escape(v2fType)}\s+{Regex.Escape(vertName)}\s*\([^)]*\)\s*\{{\s*{Regex.Escape(v2fType)}\s+(\w+)\s*;)");
-            if (!vertBody.Success)
-            {
-                reason = "vertex function doesn't declare its output in a form this can patch";
-                return null;
-            }
-            string outVar = vertBody.Groups[2].Value;
-
             // 1 & 2 — the struct members, each in whichever file declares it.
             inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
                 "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
             v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
                 "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
 
-            // 3 & 4 — after the output struct is declared inside the vertex function.
-            vertFile.Text = vertFile.Text.Replace(vertBody.Groups[1].Value, vertBody.Groups[1].Value +
+            // 3 & 4 — located AFTER the struct edits, and that order is load-bearing.
+            //
+            // These are inserted by INDEX, and in a self-contained shader the structs live in
+            // this same file — so the two edits above push everything below them along by their
+            // own length. An index taken before them lands ~68 characters early, which put the
+            // macros INSIDE the identifier "vdir" and produced a shader whose only complaint was
+            // "undeclared identifier 'r'". (The old code replaced a matched substring, which is
+            // position-independent; switching to an index made the ordering matter and nothing
+            // said so.) Everything below therefore reads the text as it now stands.
+            //
+            // The output struct is found ANYWHERE in the function body, not just as its first
+            // statement: authors routinely compute normals, tangents and view directions before
+            // declaring the output ("Burning Glasses" declares four float3s first), and an
+            // initialiser is just as common ("v2f o = (v2f)0;"). The body is delimited by brace
+            // matching rather than a regex so a declaration in the NEXT function can't be
+            // mistaken for this one's.
+            int vertStart = vertFile.Text.IndexOf(sig.Value, StringComparison.Ordinal);
+            int bodyOpen = vertStart < 0 ? -1 : vertFile.Text.IndexOf('{', vertStart);
+            int bodyEnd = -1;
+            if (bodyOpen >= 0)
+            {
+                int depth = 0;
+                for (int i = bodyOpen; i < vertFile.Text.Length; i++)
+                {
+                    if (vertFile.Text[i] == '{') depth++;
+                    else if (vertFile.Text[i] == '}' && --depth == 0) { bodyEnd = i; break; }
+                }
+            }
+            if (bodyEnd < 0)
+            {
+                reason = "the vertex function's body couldn't be delimited";
+                return null;
+            }
+            string body = vertFile.Text.Substring(bodyOpen, bodyEnd - bodyOpen);
+            var declaration = Regex.Match(body,
+                $@"\b{Regex.Escape(v2fType)}\s+(\w+)\s*(?:=[^;]*)?;");
+            if (!declaration.Success)
+            {
+                reason = "the vertex function never declares a variable of its output type";
+                return null;
+            }
+            string outVar = declaration.Groups[1].Value;
+            int insertAt = bodyOpen + declaration.Index + declaration.Length;
+
+            vertFile.Text = vertFile.Text.Insert(insertAt,
                 $"\n\t\t\t\tUNITY_SETUP_INSTANCE_ID({inArg});\n\t\t\t\tUNITY_INITIALIZE_VERTEX_OUTPUT_STEREO({outVar});");
 
             // 5 — the eye index in the fragment stage, wherever frag lives.
@@ -355,6 +428,24 @@ namespace AvatarBridge
                 file.Text = Regex.Replace(file.Text,
                     @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
                     "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
+            }
+
+            // 7 — the hand-written recipe for this exact file, if one exists. Applied last, so it
+            // edits a shader that already carries the generic macros and only has to describe
+            // what the generic pass cannot derive.
+            if (recipe != null)
+            {
+                if (!ShaderFixRecipes.TryApply(recipe, shaderFile.Text, out string patched, out string failure))
+                {
+                    // Every anchor was present in the ORIGINAL file, so this means our own
+                    // generic edits moved one. Refusing keeps the promise that a recipe applies
+                    // whole or not at all.
+                    reason = $"its stereo recipe no longer fits after the generic patch ({failure})";
+                    return null;
+                }
+                shaderFile.Text = patched;
+                appliedRecipe = recipe;
+                recipeWasExact = exactRecipeRevision;
             }
 
             // Rename so it can't collide with the original in the shader list.
@@ -439,19 +530,44 @@ namespace AvatarBridge
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             if (result == null || ShaderUtil.ShaderHasError(result))
             {
-                // Never leave a broken shader behind; the original still works as well as it did.
+                // The message ALONE is not enough to fix anything — "undeclared identifier 'r'"
+                // sent three rounds of guesswork chasing the wrong edit. The line number says
+                // which edit, and the platform says which #if branch of the macros was taken.
                 string errors = result != null
                     ? string.Join("; ", ShaderUtil.GetShaderMessages(result)
                         .Where(m => m.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error)
-                        .Take(2).Select(m => m.message))
+                        .Take(3).Select(m =>
+                        {
+                            string where = m.line > 0 ? $" at line {m.line}" : "";
+                            string platform = m.platform != UnityEditor.Rendering.ShaderCompilerPlatform.None
+                                ? $" on {m.platform}" : "";
+                            string detail = string.IsNullOrEmpty(m.messageDetails)
+                                ? "" : $" — {m.messageDetails.Trim()}";
+                            return $"{m.message}{where}{platform}{detail}";
+                        }))
                     : "copy failed to import";
+
+                // Keep the failed source, as .txt so Unity never tries to compile it. Without
+                // this the evidence is deleted at the exact moment it becomes interesting, and
+                // the only way to see the offending line is another round trip through a tester.
+                string kept = null;
+                try
+                {
+                    kept = outPath + ".failed.txt";
+                    File.WriteAllText(kept, unit[0].Text);
+                }
+                catch { kept = null; }
                 // Every file of the unit goes, not just the shader — a failed patch must not
                 // leave orphaned include copies sitting in the output folder.
                 foreach (string path in written)
                 {
                     AssetDatabase.DeleteAsset(path);
                 }
-                reason = "patched copy did not compile: " + errors;
+                reason = "patched copy did not compile: " + errors +
+                         (kept != null
+                             ? $". The attempted source was kept at {kept} — attach that to a bug report, " +
+                               "the failing line is in it"
+                             : "");
                 return null;
             }
             reason = null;
