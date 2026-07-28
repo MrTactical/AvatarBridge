@@ -265,11 +265,16 @@ namespace AvatarBridge
             var states = new VisualElement();
             states.style.flexDirection = FlexDirection.Row;
             states.style.flexWrap = Wrap.Wrap;
+            states.style.marginTop = 4;
             foreach (var stateName in new[] { "Grounded", "Crouching", "Prone", "Flying", "Swimming", "Sitting", "AFK" })
             {
                 string parameter = stateName;
-                var toggle = new Toggle(stateName) { value = parameter == "Grounded" };
-                toggle.style.marginRight = 8;
+                // Toggle text (not the constructor label): the name renders attached to its
+                // own checkbox. With label-left toggles in a wrapping row, every checkbox sat
+                // closer to the NEXT toggle's name than its own — unreadable.
+                var toggle = new Toggle { text = stateName, value = parameter == "Grounded" };
+                toggle.style.marginRight = 14;
+                toggle.style.marginBottom = 2;
                 toggle.RegisterValueChangedCallback(e => Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
                 states.Add(toggle);
             }
