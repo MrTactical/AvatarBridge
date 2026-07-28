@@ -38,32 +38,23 @@ namespace AvatarBridge
             public (string Find, string Replace)[] Edits;
         }
 
-        static readonly Recipe[] All =
-        {
-            new Recipe
-            {
-                ShaderName = "Doppels shaders/Models shaders/Burning Glasses 1.11",
-                Fingerprint = "dc6008e4134f5aa3",
-                Note = "its GrabPass is read through a helper that samples the correct eye — the " +
-                       "flame refraction showed one eye the other eye's view under ChilloutVR's " +
-                       "rendering mode",
-                Edits = new[]
-                {
-                    // The screen-space macros are used through a one-line helper rather than
-                    // inline. Inline, the macro has to expand inside a fixed3(...) argument list
-                    // with a swizzle attached to its result — which Unity's shader preprocessor
-                    // rejected. Called through a helper it expands once, in a plain return
-                    // statement, and the swizzles land on an ordinary function result.
-                    ("uniform sampler2D _LensesGrabPass;",
-                     "UNITY_DECLARE_SCREENSPACE_TEXTURE(_LensesGrabPass);\n" +
-                     "            float4 SampleLensesGrabPass(float2 uv)\n" +
-                     "            {\n" +
-                     "                return UNITY_SAMPLE_SCREENSPACE_TEXTURE(_LensesGrabPass, uv);\n" +
-                     "            }"),
-                    ("tex2D(_LensesGrabPass, ", "SampleLensesGrabPass("),
-                },
-            },
-        };
+        // Empty, deliberately, and the reason is worth keeping.
+        //
+        // The first entry here rewrote a GrabPass shader's screen reads to the screen-space
+        // macros (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE). It compiled, it shipped, and in VR
+        // the glasses came back GREY while desktop was fine — because those macros declare the
+        // texture as a per-eye Texture2DArray, and a GrabPass under single-pass instanced does
+        // not produce one. Sampling a slice that isn't there gives grey. Desktop took the
+        // non-stereo branch (a plain sampler2D) and looked correct, which is exactly how the
+        // mistake survived a compile check and a Unity eyeball.
+        //
+        // So: a GrabPass cannot be made eye-correct by editing the shader's sampling. The
+        // effect can still be made to DRAW in both eyes with the ordinary four macros, which is
+        // what the patcher now does, and the report says the grabbed background comes from one
+        // eye. Anything better needs the effect rebuilt without a screen grab.
+        //
+        // The machinery stays for the next shader that genuinely needs a hand-written edit.
+        static readonly Recipe[] All = new Recipe[0];
 
         /// <summary>
         /// Identity of a shader source, insensitive to line endings so a file that has been

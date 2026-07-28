@@ -70,6 +70,7 @@ namespace AvatarBridge
             var recipesUsed = new List<string>();
             var refused = new List<string>();
             var alreadyCorrect = new List<string>();
+            var grabLimited = new List<string>();
 
             foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
             {
@@ -109,7 +110,7 @@ namespace AvatarBridge
                     }
 
                     var fixedShader = TryPatch(source, shader.name, dir, out string reason,
-                        out var appliedRecipe, out bool recipeWasExact);
+                        out var appliedRecipe, out bool recipeWasExact, out bool grabPassLimited);
                     patched[shader] = fixedShader;
                     if (fixedShader == null)
                     {
@@ -118,6 +119,10 @@ namespace AvatarBridge
                     }
                     materials[i] = Repoint(material, fixedShader, dir, clones);
                     repointed.Add(shader.name);
+                    if (grabPassLimited)
+                    {
+                        grabLimited.Add(shader.name);
+                    }
                     if (appliedRecipe != null)
                     {
                         recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
@@ -143,6 +148,18 @@ namespace AvatarBridge
                     "eyes without asking — which is why it looked fine before converting. Nothing here needs " +
                     "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
                     "correct under VRChat's mode and on desktop as well.");
+            }
+            if (grabLimited.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen — the background they " +
+                    "refract comes from one eye",
+                    $"{string.Join(", ", grabLimited.Distinct())} — these now DRAW in both eyes, but they read " +
+                    "the screen through a GrabPass, and ChilloutVR's rendering mode doesn't give a GrabPass " +
+                    "per-eye content. So the glass, refraction or heat-haze shows one eye's view to both. " +
+                    "Nothing here can fix that: rewriting the reads to the per-eye macros renders GREY in VR " +
+                    "(tried, twice, once by hand). If it looks wrong in VR, use a shader that doesn't grab the " +
+                    "screen. On desktop it is unaffected.");
             }
             if (recipesUsed.Count > 0)
             {
@@ -282,10 +299,11 @@ namespace AvatarBridge
         /// Writes a patched copy, or returns null with the reason it was refused.
         /// </summary>
         static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
-            out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact)
+            out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact, out bool grabPassLimited)
         {
             appliedRecipe = null;
             recipeWasExact = false;
+            grabPassLimited = false;
             var unit = ReadUnit(sourcePath);
             if (unit.Count == 0)
             {
@@ -316,15 +334,17 @@ namespace AvatarBridge
             // eye's view. The correct rewrite (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE) has to
             // be verified against a real HLSL compile, and an unverified guess here is worse
             // than an honest refusal: it was tried, and produced a copy Unity rejected.
-            if (Regex.IsMatch(text, @"GrabPass\s*\{") && recipe == null)
-            {
-                reason = "it uses a GrabPass — the grabbed screen is a per-eye texture array under " +
-                         "single-pass instanced, so it needs the screen-space sampling macros by hand; " +
-                         "the stereo macros alone would leave it sampling the wrong eye. If you know " +
-                         "this shader's fix, it can be added to AvatarBridge's recipe list and every " +
-                         "later conversion gets it — please open an issue";
-                return null;
-            }
+            // A GrabPass is patched like anything else — the four macros make the effect DRAW in
+            // both eyes, which is the bigger half of the problem — but its screen grab cannot be
+            // made eye-correct here, and the report has to say so.
+            //
+            // Learned the hard way: rewriting the grab reads to the screen-space macros compiles
+            // and renders GREY in VR, because those declare a per-eye Texture2DArray and a
+            // GrabPass under single-pass instanced does not produce one. Desktop looked perfect
+            // throughout, since it takes the plain-sampler branch. Left alone, the grab returns
+            // one eye's view shown to both — imperfect parallax on the refraction, but visible
+            // and stable, which beats grey.
+            grabPassLimited = Regex.IsMatch(text, @"GrabPass\s*\{");
             var vertPragma = Regex.Match(text, @"#pragma\s+vertex\s+(\w+)");
             var fragPragma = Regex.Match(text, @"#pragma\s+fragment\s+(\w+)");
             if (!vertPragma.Success || !fragPragma.Success)
