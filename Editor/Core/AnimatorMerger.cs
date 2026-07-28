@@ -200,10 +200,13 @@ namespace AvatarBridge
                     "6 rock'n'roll); driving the old GestureLeft float does nothing outside the game, " +
                     "and \"fingers don't pose in play mode\" is exactly how that looks. IN GAME, if " +
                     "fingers still don't pose: try a STOCK ChilloutVR avatar first with the same " +
-                    "controllers — skeletal finger tracking (Index and similar) drives fingers from " +
-                    "your real hand on EVERY avatar, overriding gesture poses, and the client's " +
-                    "gesture-lock setting changes when poses apply. If stock avatars pose and this " +
-                    "one doesn't, report that — it isolates the avatar from the input path.");
+                    "controllers. On Index-type controllers the client only registers gestures at " +
+                    "all while \"Skeletal Input\" or \"Infer Gestures from Finger Tracking\" is " +
+                    "enabled in ChilloutVR's settings (decompiled: Update_Gestures_Index commits " +
+                    "nothing otherwise) — with both off, NO avatar gestures, stock or converted. " +
+                    "If stock avatars pose and this one doesn't, report that — it isolates the " +
+                    "avatar from the input path. Mods that touch input are also suspects; test " +
+                    "vanilla once.");
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
