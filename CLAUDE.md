@@ -28,6 +28,23 @@ grep -o "](#[a-z0-9-]*)" README.md | sed 's/](#//;s/)//' | sort -u > /tmp/L.txt;
 
 Empty output = all anchors resolve.
 
+## Release notes are the changelog — keep them short
+
+There is no `CHANGELOG.md`; the GitHub release notes are it. Review and trim them on every
+release. The format, set by v2.68.4:
+
+- **A one-line lead**, telling people whether they need to reconvert.
+- **`### Fixed` and `### Improved`**, one line each, in the user's words: what they'd have
+  noticed, not what was edited. "Clothing toggles that switched themselves back off in game" —
+  not "complementary AnyState transition pair into a driver-bearing state".
+- **Everything technical inside `<details><summary>Technical detail</summary>`**, so the page
+  stays scannable and the curious can still dig.
+- **Title**: the two or three headline fixes in plain words.
+
+Nobody reads a wall of text, and a changelog that isn't read may as well not exist. The same
+applies to report entries — say what broke and what to do, and put the mechanism somewhere
+optional.
+
 ## Standing project rules (summary — details in auto-memory)
 
 - **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead. The build
