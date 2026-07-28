@@ -90,6 +90,12 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
+- **The output folder is the whole conversion** — every clip and mask the controller references
+  is copied into `RehomedAssets` and the controller repointed, so a conversion survives being
+  moved to a project without the source avatar's folders. (One tester's controller referenced 71
+  clips — every hand pose included — that lived only next to the source avatar; anywhere else
+  they'd play as stillness with no error.) The CCK's own clips stay referenced: uploading
+  requires the CCK, so they're always present.
 - **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
   CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
   produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
@@ -632,6 +638,16 @@ that converted fine. Convert again on the current version; if it persists, that'
 
 Different from magenta and worth reporting separately. The material survived but its **textures**
 didn't — the same VRCFury temp problem one level deeper. Convert again on the current version.
+
+### Gestures or emotes freeze — but only on another PC, or in game
+
+Before 2.61.0, the converted controller referenced its clips wherever the source avatar kept
+them. In a project without those folders, every missing clip resolves to None and plays as
+stillness — the state machine runs, transitions fire, fingers don't move, and nothing errors.
+The controller working on the author's PC while fingers freeze for someone else is the
+signature. Since 2.61.0 every referenced clip and mask is copied into the output folder's
+`RehomedAssets` and the controller repointed, so the output folder alone is the whole
+conversion. Reconvert on a current version if you hit this.
 
 ### A menu control appears, moves, syncs — and does nothing
 

@@ -66,6 +66,10 @@ namespace AvatarBridge
                 MiscConverter.Run(ctx);
                 ConstraintConverter.Run(ctx);
                 ShaderSpiPatcher.Run(ctx);
+                // Last content pass: the controller is final here, so every clip it ends up
+                // referencing gets pulled into the output folder — a conversion that works on
+                // this PC must also work on one without the source avatar's folders.
+                AnimationSelfContainer.Run(ctx);
 
                 if (settings.deleteVrcComponents)
                 {
