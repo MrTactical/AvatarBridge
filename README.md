@@ -140,8 +140,9 @@ defines.
 1. **Pick the avatar** in your scene.
 2. **Check the options** — physics target, face tracking mode, height scaler. Defaults suit most
    avatars.
-3. **Convert.** Output lands in `Assets/AvatarBridge/Output/<avatar>/`. Read the report, then test
-   in game.
+3. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
+   folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
+   the report, then test in game.
 
 ## What gets converted
 
@@ -583,6 +584,25 @@ the avatar is standing still while in game it walks, turns and head-tracks const
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
 
+### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
+
+Before 2.59.0, conversions were written **inside the tool's own folder**
+(`Assets/AvatarBridge/Output`). The natural way to update a `.unitypackage` — delete the old
+folder, import the new one — erased every conversion with it: Missing (Runtime Animator
+Controller) on converted avatars, override controllers gone, particles rendering as pink squares.
+
+Two recoveries, in order:
+
+1. **Check the Windows Recycle Bin.** Unity moves deleted assets to the trash rather than
+   destroying them. Restore the `Output` folder (files *and* their `.meta` companions come back
+   together), move it into the project, and every reference relinks — the `.meta` files carry the
+   GUIDs the scene points at.
+2. **Reconvert.** The source avatars were never touched; conversions are reproducible.
+
+Since 2.59.0 output lands in `Assets/AvatarBridgeOutput`, a sibling folder the tool's
+delete-and-reimport update flow can't reach. Anything still in the old location is moved there
+automatically on load, with GUIDs preserved so existing references keep working.
+
 ### Something is bright magenta
 
 A material or shader the avatar points at no longer exists. Almost always VRCFury's temp folder,
@@ -627,7 +647,7 @@ versions and detected packages already in it.
 
 Two things make a report solvable immediately:
 
-1. **Attach `ConversionReport.md`** from `Assets/AvatarBridge/Output/<avatar>/`. Nearly every bug
+1. **Attach `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/`. Nearly every bug
    fixed so far was diagnosed from this file.
 2. **Attach the right log:**
 

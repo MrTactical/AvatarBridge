@@ -190,8 +190,8 @@ namespace AvatarBridge
             if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
             {
                 ctx.Report.Warning("Conversion", $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
-                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
-                folder = "Assets/AvatarBridge/Output";
+                    "Using the default \"Assets/AvatarBridgeOutput\" instead.");
+                folder = "Assets/AvatarBridgeOutput";
             }
             ctx.OutputDir = folder + "/" + safeName;
 

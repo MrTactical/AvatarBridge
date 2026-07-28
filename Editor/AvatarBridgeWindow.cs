@@ -81,6 +81,14 @@ namespace AvatarBridge
                     settings = new BridgeSettings();
                 }
             }
+            // Saved settings from before 2.59.0 carry the old default, which pointed INSIDE
+            // the tool's folder — where a delete-and-reimport update erases every conversion.
+            // Only the old DEFAULT is rewritten; a deliberately customised path is the user's.
+            if (settings.outputFolder == "Assets/AvatarBridge/Output")
+            {
+                settings.outputFolder = "Assets/AvatarBridgeOutput";
+            }
+            OutputFolderMigration.MigrateIfNeeded();
         }
 
         void OnDisable()
@@ -687,7 +695,9 @@ namespace AvatarBridge
             var output = new TextField("Output folder")
             {
                 value = settings.outputFolder,
-                tooltip = "Where generated assets and the report go. Must be inside Assets.",
+                tooltip = "Where generated assets and the report go. Must be inside Assets. " +
+                          "The default is deliberately OUTSIDE the tool's folder, so deleting " +
+                          "Assets/AvatarBridge to update it can never erase conversions.",
             };
             output.AddToClassList("ab-field");
             output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);

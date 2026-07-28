@@ -47,7 +47,13 @@ namespace AvatarBridge
         // NDMF's manual bake before converting — for MA avatars that don't also use VRCFury
         // (a VRCFury bake already runs NDMF, so MA+Fury avatars are covered by the Fury bake).
         public bool bakeModularAvatar = true;
-        public string outputFolder = "Assets/AvatarBridge/Output";
+        // OUTSIDE the tool's own folder, deliberately: conversions used to default into
+        // Assets/AvatarBridge/Output, and the delete-and-reimport update flow everyone uses
+        // for .unitypackage tools erased every converted controller, override, prefab and
+        // rehomed material along with the old version — Missing references and pink particles
+        // across every converted avatar in the project. User data lives where the tool's
+        // uninstall can't reach it.
+        public string outputFolder = "Assets/AvatarBridgeOutput";
 
         [Header("Animator layers to merge")]
         public bool convertBaseLayer = false;
