@@ -375,6 +375,14 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   instancing — one slice per eye — so lens, refraction and heat-haze shaders that read it with
   `tex2D` show one eye the other eye's view. Those reads are rewritten to the screen-space
   macros, same as `_CameraDepthTexture`.
+- **Shaders needing more than the macros get a recipe.** Some fixes can't be derived — a
+  `GrabPass` is a per-eye texture *array* under instancing, so a lens or refraction shader reading
+  it with `tex2D` shows one eye the other eye's view no matter how many macros it has. Those are
+  written by hand once and kept in AvatarBridge's recipe list, then applied to *your* copy on
+  every later conversion. Each recipe is pinned to a fingerprint of the exact shader version it
+  was written for: an updated or edited shader doesn't match and is refused rather than guessed
+  at. Nothing is redistributed — the recipe is the edit, not the shader, and your original file is
+  never touched. Hit one that has no recipe yet? Open an issue and it can be added for everyone.
 - **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
   a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
 - **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already

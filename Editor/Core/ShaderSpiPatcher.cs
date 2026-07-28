@@ -67,6 +67,7 @@ namespace AvatarBridge
             // still one material, and cloning it per slot would break batching between them.
             var clones = new Dictionary<Material, Material>();
             var repointed = new List<string>();
+            var recipesUsed = new List<string>();
             var refused = new List<string>();
             var alreadyCorrect = new List<string>();
 
@@ -107,7 +108,8 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    var fixedShader = TryPatch(source, shader.name, dir, out string reason);
+                    var fixedShader = TryPatch(source, shader.name, dir, out string reason,
+                        out var appliedRecipe);
                     patched[shader] = fixedShader;
                     if (fixedShader == null)
                     {
@@ -116,6 +118,10 @@ namespace AvatarBridge
                     }
                     materials[i] = Repoint(material, fixedShader, dir, clones);
                     repointed.Add(shader.name);
+                    if (appliedRecipe != null)
+                    {
+                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}");
+                    }
                     changed = true;
                 }
                 if (changed)
@@ -136,6 +142,16 @@ namespace AvatarBridge
                     "eyes without asking — which is why it looked fine before converting. Nothing here needs " +
                     "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
                     "correct under VRChat's mode and on desktop as well.");
+            }
+            if (recipesUsed.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
+                    string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
+                    "edit was written by hand once and pinned to that exact version of the file — a shader " +
+                    "that has been updated or edited will not match, and is refused rather than guessed at. " +
+                    "Only your copy in RehomedAssets is changed; the original shader is untouched. Worth a " +
+                    "look in VR with both eyes open.");
             }
             if (refused.Count > 0)
             {
@@ -264,8 +280,10 @@ namespace AvatarBridge
         /// <summary>
         /// Writes a patched copy, or returns null with the reason it was refused.
         /// </summary>
-        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason)
+        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
+            out ShaderFixRecipes.Recipe appliedRecipe)
         {
+            appliedRecipe = null;
             var unit = ReadUnit(sourcePath);
             if (unit.Count == 0)
             {
@@ -274,6 +292,10 @@ namespace AvatarBridge
             }
             var shaderFile = unit[0];
             string text = shaderFile.Text;
+
+            // Taken before a single edit, so the fingerprint identifies the file as the user has
+            // it — not as we are about to leave it.
+            var recipe = ShaderFixRecipes.Find(text);
 
             // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
             // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
@@ -292,11 +314,13 @@ namespace AvatarBridge
             // eye's view. The correct rewrite (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE) has to
             // be verified against a real HLSL compile, and an unverified guess here is worse
             // than an honest refusal: it was tried, and produced a copy Unity rejected.
-            if (Regex.IsMatch(text, @"GrabPass\s*\{"))
+            if (Regex.IsMatch(text, @"GrabPass\s*\{") && recipe == null)
             {
                 reason = "it uses a GrabPass — the grabbed screen is a per-eye texture array under " +
                          "single-pass instanced, so it needs the screen-space sampling macros by hand; " +
-                         "the stereo macros alone would leave it sampling the wrong eye";
+                         "the stereo macros alone would leave it sampling the wrong eye. If you know " +
+                         "this shader's fix, it can be added to AvatarBridge's recipe list and every " +
+                         "later conversion gets it — please open an issue";
                 return null;
             }
             var vertPragma = Regex.Match(text, @"#pragma\s+vertex\s+(\w+)");
@@ -397,6 +421,22 @@ namespace AvatarBridge
                 file.Text = Regex.Replace(file.Text,
                     @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
                     "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
+            }
+
+            // 7 — the hand-written recipe for this exact file, if one exists. Applied last, so it
+            // edits a shader that already carries the generic macros and only has to describe
+            // what the generic pass cannot derive.
+            if (recipe != null)
+            {
+                if (!ShaderFixRecipes.TryApply(recipe, shaderFile.Text, out string patched, out string failure))
+                {
+                    // The fingerprint matched the ORIGINAL file, so this means our own generic
+                    // edits moved something the recipe anchors on. Refusing keeps the promise
+                    // that a recipe applies whole or not at all.
+                    reason = $"its stereo recipe no longer fits after the generic patch ({failure})";
+                    return null;
+                }
+                shaderFile.Text = patched;
             }
 
             // Rename so it can't collide with the original in the shader list.
