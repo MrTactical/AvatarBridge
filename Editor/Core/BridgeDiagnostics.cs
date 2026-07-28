@@ -644,29 +644,18 @@ namespace AvatarBridge
             }
             var listed = offenders.Select(kv => $"{kv.Key} ({Join(kv.Value, 4)})");
             ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
-                $"{Join(listed, 6)} — these never mention the macros a shader needs to draw both eyes under " +
-                "single-pass instanced stereo, so in VR they typically appear in one eye only or at the wrong " +
-                "offset. Expect this to be new: ChilloutVR renders single-pass instanced, VRChat renders " +
-                "double-wide single-pass, and under double-wide a shader gets both eyes without opting in — " +
-                "so it looked right before converting and the author had no reason to know. " +
-                "Each missing macro has one home: UNITY_VERTEX_INPUT_INSTANCE_ID in the vertex input struct, " +
-                "UNITY_VERTEX_OUTPUT_STEREO in the interpolator struct, UNITY_SETUP_INSTANCE_ID and " +
-                "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the vertex function. That edit is only " +
-                "realistic on a plainly written shader — surface shaders, locked shaders and anything sharing " +
-                "structs across includes are not worth attempting. Otherwise use a different shader, or accept " +
-                "how it looks. Copy the shader before editing it: these are usually someone else's asset." +
+                // Short on purpose. This used to carry a paragraph of hand-editing instructions
+                // that only an HLSL author could use, in front of everyone who just wanted to
+                // know what to do — so nobody read any of it. The edit itself lives in the
+                // README now; the report says what breaks and what to press.
+                $"{Join(listed, 6)} — these draw into ONE EYE ONLY under ChilloutVR's rendering mode. " +
+                "It looked fine in VRChat because VRChat's mode hands a shader both eyes without it asking, " +
+                "so expect this to be new. " +
                 (ctx.Settings.patchNonSpiShaders
-                    // The option is on, so the patcher already had its go and said why it
-                    // couldn't — telling someone to do it by hand as if nothing tried would be
-                    // wrong, and would hide a report line they should read instead.
-                    ? " AvatarBridge tried to patch these automatically and said why it couldn't in its own " +
-                      "entry above — read that first; hand-editing is only the fallback."
-                    // Off is the default, so the commonest reason a shader arrives here unpatched
-                    // is simply that nobody turned the option on.
-                    : " AvatarBridge can attempt this for you: turn on \"Patch non-SPI shaders for VR\" under " +
-                      "Advanced and convert again. It patches a COPY in the output folder and leaves the " +
-                      "original alone, checks that the copy compiles before using it, and carries hand-written " +
-                      "fixes for a few shaders that need more than the four macros."));
+                    ? "AvatarBridge tried to fix them and the entry above says why it couldn't."
+                    : "Turn on \"Patch non-SPI shaders for VR\" in Advanced and convert again — it patches a " +
+                      "copy and checks it compiles.") +
+                " Otherwise swap the shader, or accept how it looks; the README has the hand-edit.");
         }
 
         /// <summary>

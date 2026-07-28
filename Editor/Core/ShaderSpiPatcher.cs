@@ -525,19 +525,44 @@ namespace AvatarBridge
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             if (result == null || ShaderUtil.ShaderHasError(result))
             {
-                // Never leave a broken shader behind; the original still works as well as it did.
+                // The message ALONE is not enough to fix anything — "undeclared identifier 'r'"
+                // sent three rounds of guesswork chasing the wrong edit. The line number says
+                // which edit, and the platform says which #if branch of the macros was taken.
                 string errors = result != null
                     ? string.Join("; ", ShaderUtil.GetShaderMessages(result)
                         .Where(m => m.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error)
-                        .Take(2).Select(m => m.message))
+                        .Take(3).Select(m =>
+                        {
+                            string where = m.line > 0 ? $" at line {m.line}" : "";
+                            string platform = m.platform != UnityEditor.Rendering.ShaderCompilerPlatform.None
+                                ? $" on {m.platform}" : "";
+                            string detail = string.IsNullOrEmpty(m.messageDetails)
+                                ? "" : $" — {m.messageDetails.Trim()}";
+                            return $"{m.message}{where}{platform}{detail}";
+                        }))
                     : "copy failed to import";
+
+                // Keep the failed source, as .txt so Unity never tries to compile it. Without
+                // this the evidence is deleted at the exact moment it becomes interesting, and
+                // the only way to see the offending line is another round trip through a tester.
+                string kept = null;
+                try
+                {
+                    kept = outPath + ".failed.txt";
+                    File.WriteAllText(kept, unit[0].Text);
+                }
+                catch { kept = null; }
                 // Every file of the unit goes, not just the shader — a failed patch must not
                 // leave orphaned include copies sitting in the output folder.
                 foreach (string path in written)
                 {
                     AssetDatabase.DeleteAsset(path);
                 }
-                reason = "patched copy did not compile: " + errors;
+                reason = "patched copy did not compile: " + errors +
+                         (kept != null
+                             ? $". The attempted source was kept at {kept} — attach that to a bug report, " +
+                               "the failing line is in it"
+                             : "");
                 return null;
             }
             reason = null;

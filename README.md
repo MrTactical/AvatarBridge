@@ -364,6 +364,24 @@ knows which eye it's drawing — so a shader that never opted in looked perfectl
 draws into one eye only here. Nobody did anything wrong; it's a conversion problem, which makes it
 worth fixing here.
 
+<details>
+<summary>Fixing one by hand</summary>
+
+Four macros, each with one home — copy the shader first, it's usually someone else's asset:
+
+| macro | goes in |
+|---|---|
+| `UNITY_VERTEX_INPUT_INSTANCE_ID` | the vertex **input** struct (`appdata`) |
+| `UNITY_VERTEX_OUTPUT_STEREO` | the **interpolator** struct (`v2f`) |
+| `UNITY_SETUP_INSTANCE_ID(v);` | top of the vertex function, after the output struct is declared |
+| `UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);` | same place, right after it |
+
+Add `UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);` at the top of the fragment function too if it
+samples anything screen-space. Only realistic on a plainly written shader: surface shaders have no
+vertex stage to edit, and locked or generated shaders aren't worth attempting.
+
+</details>
+
 Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a patched
 copy into `RehomedAssets`, adds the stereo macros, and points this avatar's materials at the copy.
 
