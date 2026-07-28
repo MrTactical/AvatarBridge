@@ -174,6 +174,7 @@ defines.
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
+| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
