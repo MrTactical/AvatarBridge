@@ -410,16 +410,21 @@ namespace AvatarBridge
                 "live in the Base and Action layers, which must then be merged too (the hint " +
                 "below appears until they are).",
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
-            if (!settings.stripGogoLoco && (!settings.convertBaseLayer || !settings.convertActionLayer))
+            if (!settings.stripGogoLoco)
             {
-                // Keeping GoGo with its home layers unmerged converts the menus but not the
-                // states they drive — a dance wheel full of dead entries, indistinguishable
-                // from a bug. Say so where the decision is being made.
+                // The verdict after several tester rounds and a client decompile: GoGo cannot
+                // fully function in ChilloutVR. Its pose/flight machinery leans on VRChat-only
+                // primitives with no CVR equivalent — VRCAnimatorLocomotionControl (poses would
+                // slide with the capsule), TemporaryPoseSpace (viewpoint shifts, removed at
+                // conversion), PlayableLayerControl — and CVR's own IK overrides limbs wherever
+                // no tracking-control existed to convert. CVR ships locomotion, emotes, AFK and
+                // flight natively. Say all of this where the decision is made.
                 b.Add(BridgeElements.Hint(
-                    "⚠ Keeping GoGo Loco: its poses and dances live in the BASE and ACTION layers, " +
-                    "which are currently not merged — the pose wheel would convert but drive " +
-                    "nothing. Tick \"Base\" and \"Action\" under \"Animator layers to merge\" in " +
-                    "Advanced, or GoGo comes through as menus without motion."));
+                    "⚠ Keeping GoGo Loco is NOT supported: parts of it are built on VRChat-only " +
+                    "animator primitives (locomotion locking, pose-space shifts) that do not " +
+                    "exist in ChilloutVR, so poses slide, heights don't shift, and its layers " +
+                    "fight CVR's own locomotion. ChilloutVR provides locomotion, emotes, AFK " +
+                    "and flight natively — removing GoGo is the working path."));
             }
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",

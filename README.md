@@ -164,9 +164,16 @@ defines.
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
-Want to *keep* GoGo's poses and dances? Untick *Remove GoGo Loco* and merge the **Base** and
-**Action** layers — the window shows a live hint until both halves are set, because half-keeping
-it produces a pose wheel that drives nothing.
+
+**Keeping GoGo is not supported.** It was offered as a guided option and field-tested; the
+verdict is architectural, not a bug queue: parts of GoGo are built on VRChat-only animator
+primitives with no ChilloutVR equivalent — locomotion locking (`VRCAnimatorLocomotionControl`,
+so poses slide with the capsule), pose-space viewpoint shifts (`VRCAnimatorTemporaryPoseSpace`,
+removed at conversion), playable-layer control — and ChilloutVR's own IK overrides limbs
+wherever no tracking control existed to convert. ChilloutVR provides locomotion, emotes, AFK
+and flight natively. The strip also removes GoGo's Base/Additive/Action layers *whole* — a
+locomotion replacement left half-alive overrides CVR's locomotion with dead animation, which is
+worse than either extreme.
 
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
@@ -182,7 +189,7 @@ to be known about. Tested end to end and working in game:
 | Prefab | Notes |
 |---|---|
 | [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) | sliders scale the real bones; needs the *Target Transform* handling below |
-| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default (CVR has its own locomotion) — or kept whole: untick the strip and merge Base/Action, the window guides it |
+| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped (CVR has its own locomotion, emotes, AFK and flight; GoGo relies on VRChat-only animator primitives and cannot function in CVR — see [What gets converted](#what-gets-converted)) |
 | VRCFaceTracking / ARKit rigs (Jerry's, Pawlygon…) | replaced by the chosen face-tracking mode — or converted whole with *Keep the avatar's own rig* (smoothing proxies go `#`-local, zero sync cost) |
 
 If a prefab's feature comes through inert — the menu control appears, moves, and does nothing —

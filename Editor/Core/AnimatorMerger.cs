@@ -179,9 +179,13 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{_gestureConditionsRedirected} gesture condition(s) redirected to integer GestureLeftIdx/RightIdx",
-                    "Your gesture logic now uses exact int values. The CCK's own LeftHand/RightHand " +
-                    "hand-pose layers intentionally keep the native float GestureLeft/GestureRight — that " +
-                    "is how ChilloutVR poses fingers, so seeing float there is correct, not unconverted.");
+                    "Your gesture logic now uses exact int values. In GAME this just works: the client " +
+                    "writes GestureLeftIdx/RightIdx itself (decompiled: Idx = round(GestureLeft), fed " +
+                    "whenever the parameter is declared, desktop and VR alike). TESTING IN THE EDITOR is " +
+                    "different — nothing drives these there, so set the GestureLeftIdx/RightIdx INT on " +
+                    "the Animator directly (-1 open, 1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, " +
+                    "6 rock'n'roll); driving the old GestureLeft float does nothing outside the game, " +
+                    "and \"fingers don't pose in play mode\" is exactly how that looks.");
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
