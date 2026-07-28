@@ -48,6 +48,7 @@ namespace AvatarBridge
             {
                 PrepareOutputFolder(ctx);
                 PrepareTarget(ctx);
+                WarnMissingScripts(ctx);
                 // Delete the VRChat-only systems first, so nothing downstream wastes effort
                 // converting content that's about to be thrown away — or worse, leaves parts of
                 // it behind (rescued SPS shaders that render pink, cloth whose bones then vanish).
@@ -84,6 +85,7 @@ namespace AvatarBridge
                 }
 
                 ReportSyncUsage(ctx);
+                SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
@@ -105,6 +107,44 @@ namespace AvatarBridge
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
             }
             return report;
+        }
+
+        /// <summary>
+        /// Persists the converted avatar as a prefab in the output folder.
+        ///
+        /// The converted avatar otherwise lives only in the scene, and scenes are the one
+        /// thing nobody saves right after converting: a tester's Unity died mid-shader-
+        /// compilation during the CCK's bundle build (a native crash, no managed stack — the
+        /// log just stops), the scene reloaded from its last save, and the entire conversion
+        /// was gone. The generated ASSETS all survive on disk; the GameObject wiring them
+        /// together was the only casualty, and it is exactly what this preserves. After any
+        /// crash, drag the prefab back into the scene and continue.
+        /// </summary>
+        static void SaveConvertedPrefab(BridgeContext ctx)
+        {
+            try
+            {
+                string safe = string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()));
+                string path = $"{ctx.OutputDir}/{safe}.prefab";
+                var prefab = PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out bool success);
+                if (success && prefab != null)
+                {
+                    ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
+                        $"{path} — a crash or an unsaved scene can no longer lose the conversion; " +
+                        "drag the prefab back into the scene to continue where you left off.");
+                }
+                else
+                {
+                    ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
+                        "The scene object is still fine — save the scene to keep it. The usual cause " +
+                        "is a component Unity refuses to persist; the console names it.");
+                }
+            }
+            catch (Exception e)
+            {
+                ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
+                    $"{e.Message} — the scene object is still fine; save the scene to keep it.");
+            }
         }
 
         /// <summary>
@@ -150,8 +190,8 @@ namespace AvatarBridge
             if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
             {
                 ctx.Report.Warning("Conversion", $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
-                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
-                folder = "Assets/AvatarBridge/Output";
+                    "Using the default \"Assets/AvatarBridgeOutput\" instead.");
+                folder = "Assets/AvatarBridgeOutput";
             }
             ctx.OutputDir = folder + "/" + safeName;
 
@@ -159,6 +199,46 @@ namespace AvatarBridge
                 Application.dataPath, "..", ctx.OutputDir));
             Directory.CreateDirectory(absolute);
             AssetDatabase.Refresh();
+        }
+
+        /// <summary>
+        /// An avatar carrying missing scripts was built with a package this project doesn't
+        /// have — VRCFury and Modular Avatar are the usual suspects, and both do their real
+        /// work at BUILD time (baking toggles, merging armatures, REWRITING ANIMATION PATHS).
+        /// Converted without them, everything they would have baked is silently absent or
+        /// broken while the report reads clean: a tester's tail-wag clip bound paths that only
+        /// a build-time path rewrite could fix, and nothing said so. This cannot repair
+        /// anything; it can only make the cause loud.
+        /// </summary>
+        static void WarnMissingScripts(BridgeContext ctx)
+        {
+            int missing = 0;
+            var examples = new System.Collections.Generic.List<string>();
+            foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                foreach (var component in t.GetComponents<Component>())
+                {
+                    if (component == null)
+                    {
+                        missing++;
+                        if (examples.Count < 4 && !examples.Contains(t.name))
+                        {
+                            examples.Add(t.name);
+                        }
+                    }
+                }
+            }
+            if (missing == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning("Avatar",
+                $"{missing} missing script(s) on the avatar — a package it was built with is not installed",
+                $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
+                "avatar uses VRCFury or Modular Avatar, INSTALL THEM BEFORE CONVERTING: both do their " +
+                "real work at build time (toggles, armature merges, animation path rewriting), and " +
+                "without them everything they would have baked is silently missing from the conversion " +
+                "— features can look converted and still do nothing in game.");
         }
 
         static void PrepareTarget(BridgeContext ctx)

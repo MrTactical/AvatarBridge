@@ -109,6 +109,10 @@ namespace AvatarBridge
         // value reaches everyone else exactly as it does in VRChat. An avatar's AFK sign or
         // sleeping pose works in ChilloutVR with no conversion at all, and the report was telling
         // its owner the feature was dead.
+        // "VelocityMagnitude" stays in this list for the "#" prefix it confers — the value is
+        // computed per-client, so syncing it would be waste — but it is NOT frozen anymore:
+        // FeedVelocityMagnitude derives it from the native VelocityX/Y/Z every frame, and the
+        // "nothing writes them in game" note below explicitly skips it.
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
@@ -147,6 +151,19 @@ namespace AvatarBridge
                     string cvrHandName = GetCvrHandLayerName(id, srcLayer);
                     clone.name = MakeUniqueLayerName(masterLayers,
                         cvrHandName ?? $"[{id}] {clone.name}");
+                    if (cvrHandName != null)
+                    {
+                        // Silent until a tester spent a round believing these were the CCK's
+                        // layers. Saying which layer poses the fingers is what makes an
+                        // in-game "fingers don't move" report diagnosable.
+                        ctx.Report.Converted(Category,
+                            $"Gesture hand layer \"{srcLayer.name}\" -> \"{clone.name}\"",
+                            "Takes over ChilloutVR's hand-pose slot: the CCK's own layer was " +
+                            "dropped and this one — the avatar's actual finger animations — " +
+                            "drives the fingers. Its VRChat hand mask is replaced with an " +
+                            "equivalent generated copy (same humanoid bits, verified against " +
+                            "VRChat's own vrc_Hand masks).");
+                    }
                     if (firstLayerOfController)
                     {
                         // Unity forces a controller's first layer to weight 1; once merged it
@@ -175,9 +192,21 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{_gestureConditionsRedirected} gesture condition(s) redirected to integer GestureLeftIdx/RightIdx",
-                    "Your gesture logic now uses exact int values. The CCK's own LeftHand/RightHand " +
-                    "hand-pose layers intentionally keep the native float GestureLeft/GestureRight — that " +
-                    "is how ChilloutVR poses fingers, so seeing float there is correct, not unconverted.");
+                    "Your gesture logic now uses exact int values. In GAME this just works: the client " +
+                    "writes GestureLeftIdx/RightIdx itself (decompiled: Idx = round(GestureLeft), fed " +
+                    "whenever the parameter is declared, desktop and VR alike). TESTING IN THE EDITOR is " +
+                    "different — nothing drives these there, so set the GestureLeftIdx/RightIdx INT on " +
+                    "the Animator directly (-1 open, 1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, " +
+                    "6 rock'n'roll); driving the old GestureLeft float does nothing outside the game, " +
+                    "and \"fingers don't pose in play mode\" is exactly how that looks. IN GAME, if " +
+                    "fingers still don't pose: try a STOCK ChilloutVR avatar first with the same " +
+                    "controllers. On Index-type controllers the client only registers gestures at " +
+                    "all while \"Skeletal Input\" or \"Infer Gestures from Finger Tracking\" is " +
+                    "enabled in ChilloutVR's settings (decompiled: Update_Gestures_Index commits " +
+                    "nothing otherwise) — with both off, NO avatar gestures, stock or converted. " +
+                    "If stock avatars pose and this one doesn't, report that — it isolates the " +
+                    "avatar from the input path. Mods that touch input are also suspects; test " +
+                    "vanilla once.");
             }
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
@@ -191,6 +220,7 @@ namespace AvatarBridge
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
             CreateParameterStreams(master, ctx);
+            FeedVelocityMagnitude(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
@@ -214,6 +244,14 @@ namespace AvatarBridge
             DeclareDanglingParameters(master, ctx);
             DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
+
+            // After every merge, injection and clip clone, right before saving: animations that
+            // toggled a converted PhysBone's GameObject or component are taught to reach the
+            // generated physics as well.
+            RewirePhysicsToggles(master, ctx);
+            RepairClipPaths(master, ctx);
+            AuditClipBindings(master, ctx);
+            AuditCurveControlledGameParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -344,9 +382,34 @@ namespace AvatarBridge
 
             // When the VRC Gesture layer takes over hand animation, CVR's own hand layers
             // must go or they fight for the finger muscles.
-            string[] allowedLayers = convertingGestureLayer
-                ? new[] { "Locomotion/Emotes" }
-                : new[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
+            var allowed = new List<string> { "Locomotion/Emotes" };
+            if (!convertingGestureLayer)
+            {
+                allowed.Add("LeftHand");
+                allowed.Add("RightHand");
+            }
+
+            // Keeping GoGo Loco (strip off) means GoGo IS the locomotion: its Base/Poses/Action
+            // layers replace ChilloutVR's own the same way they replace VRChat's. Leaving the
+            // CCK's Locomotion/Emotes underneath had the two fighting for the body every frame
+            // — the tester-visible result was CVR animations with GoGo flickering over them.
+            // Known, accepted losses in this mode (no CVR equivalents exist): movement is not
+            // locked during poses (walking mid-pose slides), the viewpoint does not follow
+            // pose height, and CVR's own quick-menu emotes no longer animate — GoGo's wheel
+            // replaces them.
+            if (!ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx))
+            {
+                allowed.Remove("Locomotion/Emotes");
+                ctx.Report.Warning(Category,
+                    "GoGo Loco kept: ChilloutVR's own Locomotion/Emotes layer removed",
+                    "GoGo's Base/Poses/Action layers replace it, driven by the game-fed velocity " +
+                    "and upright parameters. EXPERIMENTAL, with known limits ChilloutVR cannot " +
+                    "express: poses don't lock movement (walking mid-pose slides), the viewpoint " +
+                    "stays at standing height in floor poses, and CVR's quick-menu emotes won't " +
+                    "animate — use GoGo's own wheel. Merge the Base, Additive and Action layers " +
+                    "or this avatar has NO locomotion at all.");
+            }
+            string[] allowedLayers = allowed.ToArray();
 
             var copier = new AnimatorDeepCopier();
             master.parameters = source.parameters.Select(AnimatorDeepCopier.CloneParameter).ToArray();
@@ -356,7 +419,10 @@ namespace AvatarBridge
                 .ToArray();
 
             ctx.Report.Converted(Category, "CCK base animator",
-                $"Kept layers: {string.Join(", ", master.layers.Select(l => l.name))}");
+                master.layers.Length > 0
+                    ? $"Kept layers: {string.Join(", ", master.layers.Select(l => l.name))}"
+                    : "Kept layers: none — GoGo replaces ChilloutVR's locomotion, and the " +
+                      "avatar's own gesture layers replace the CCK's hand-pose layers.");
             return master;
         }
 
@@ -1276,7 +1342,7 @@ namespace AvatarBridge
                 {
                     param.defaultFloat = coreDefault;
                 }
-                if (KnownUnsupportedVrcParameters.Contains(bareName))
+                if (KnownUnsupportedVrcParameters.Contains(bareName) && bareName != "VelocityMagnitude")
                 {
                     unsupportedPresent.Add(bareName);
                 }
@@ -2616,6 +2682,13 @@ namespace AvatarBridge
                 // ChilloutVR only reports whether full-body tracking is on, so the six VRChat
                 // states collapse to the two that matter: 3 = head and hands, 6 = full body.
                 // Both are above zero, which is what most avatars actually test for.
+                //
+                // (VelocityX/Y/Z need no stream and must never get one: they are CLIENT CORE
+                // parameters — BetterBetterCharacterController feeds the local player, and
+                // PuppetMaster feeds every remote copy from its root velocity — and core
+                // parameters are read-only to streams anyway. VelocityMagnitude is different:
+                // the client does not compute it, so FeedVelocityMagnitude derives it in the
+                // animator from the native three.)
                 (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f)
             };
             var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
@@ -2726,6 +2799,132 @@ namespace AvatarBridge
                     "so anything this drives would otherwise sit frozen at its default for everyone else.");
             }
             EditorUtility.SetDirty(stream);
+        }
+
+        /// <summary>
+        /// VRChat's VelocityMagnitude has no ChilloutVR source, but its three components do:
+        /// VelocityX/Y/Z are CLIENT CORE parameters, fed for the local player by
+        /// BetterBetterCharacterController and for every remote copy by PuppetMaster (both
+        /// decompiled). So the magnitude is derived inside the animator: a minimal
+        /// self-looping state whose AnimatorDriver recomputes sqrt(x² + y² + z²) every cycle.
+        ///
+        /// The parameter keeps its "#" local prefix deliberately: every client runs the
+        /// animator, so every client computes the value for every copy — exactly how the
+        /// VRChat built-in behaved, at zero sync cost. GoGo Loco gates much of its locomotion
+        /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
+        /// sat half-dead.
+        /// </summary>
+        static void FeedVelocityMagnitude(AnimatorController master, BridgeContext ctx)
+        {
+            AnimatorControllerParameter target = null;
+            foreach (var p in master.parameters)
+            {
+                if (p.name.TrimStart('#') == "VelocityMagnitude")
+                {
+                    target = p;
+                    break;
+                }
+            }
+            if (target == null)
+            {
+                return;
+            }
+
+            // The driver reads the native components and one scratch cell; declare what the
+            // avatar didn't. The natives are Floats the client feeds by exact name.
+            var parameters = master.parameters.ToList();
+            void Ensure(string name)
+            {
+                if (parameters.All(p => p.name != name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Float,
+                        defaultFloat = 0f
+                    });
+                }
+            }
+            const string Scratch = "#VelocityMagnitudeCalc";
+            Ensure("VelocityX");
+            Ensure("VelocityY");
+            Ensure("VelocityZ");
+            Ensure(Scratch);
+            master.parameters = parameters.ToArray();
+
+            AnimatorDriverTask Task(string targetName, AnimatorDriverTask.Operator op,
+                string aParam, string bParam, float bStatic = 0f)
+            {
+                var task = new AnimatorDriverTask
+                {
+                    targetType = AnimatorDriverTask.ParameterType.Float,
+                    targetName = targetName,
+                    op = op,
+                    aType = AnimatorDriverTask.SourceType.Parameter,
+                    aParamType = AnimatorDriverTask.ParameterType.Float,
+                    aName = aParam
+                };
+                if (bParam != null)
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Parameter;
+                    task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.bName = bParam;
+                }
+                else
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Static;
+                    task.bValue = bStatic;
+                }
+                return task;
+            }
+
+            // A 1/60 s clip whose only curve targets an undeclared animator parameter — it
+            // exists to give the state a length, so the exit-time self-transition below cycles
+            // and the enter tasks re-run every cycle.
+            var tick = new AnimationClip { name = "VelocityMagnitude Tick" };
+            tick.SetCurve("", typeof(Animator), Scratch + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "VelocityMagnitude Feed",
+                hideFlags = HideFlags.HideInHierarchy
+            };
+            var state = machine.AddState("Recompute");
+            state.writeDefaultValues = false;
+            state.motion = tick;
+            machine.defaultState = state;
+
+            var loop = state.AddTransition(state);
+            loop.hasExitTime = true;
+            loop.exitTime = 1f;
+            loop.hasFixedDuration = true;
+            loop.duration = 0f;
+
+            var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+            driver.localOnly = false; // remote copies must compute too — their VelocityX/Y/Z are fed
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Multiplication, "VelocityX", "VelocityX"));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Multiplication, "VelocityY", "VelocityY"));
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Addition, Scratch, target.name));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Multiplication, "VelocityZ", "VelocityZ"));
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Addition, Scratch, target.name));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Power, Scratch, null, 0.5f));
+
+            var layers = master.layers.ToList();
+            layers.Add(new AnimatorControllerLayer
+            {
+                name = "VelocityMagnitude Feed",
+                defaultWeight = 1f,
+                stateMachine = machine
+            });
+            master.layers = layers.ToArray();
+
+            ctx.Report.Converted(Category, $"\"{target.name}\" computed from the native velocity",
+                "VRChat's VelocityMagnitude has no ChilloutVR source, but VelocityX/Y/Z are client " +
+                "core parameters — fed for the local player and for every remote copy alike — so a " +
+                "generated driver layer recomputes sqrt(x²+y²+z²) each cycle. Kept local (\"#\"): " +
+                "every client computes it for every copy, which is how the VRChat built-in behaved, " +
+                "at zero sync cost. Locomotion systems like GoGo Loco gate on this; frozen at 0 it " +
+                "read as never-moving.");
         }
 
         internal static string SanitizeParameterName(string source)
@@ -3300,8 +3499,18 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool animatesBody, out _);
                 if (animatesBody)
                 {
-                    ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
-                        "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                    // In keep-GoGo mode the Base/Additive/Action layers are SUPPOSED to drive
+                    // the body — ChilloutVR's own locomotion layer was removed for them — so
+                    // warning "this can override CVR's locomotion" about the layers doing the
+                    // replacing is pure noise.
+                    bool gogoReplacement = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx)
+                        && (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
+                            || layer.name.StartsWith("[Action]"));
+                    if (!gogoReplacement)
+                    {
+                        ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
+                            "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                    }
                 }
             }
         }
@@ -3346,6 +3555,819 @@ namespace AvatarBridge
         /// anything that resolves to nothing at all. The serialized file is the ground truth the
         /// in-memory object graph can lie about, so this reads the text, not the objects.
         /// </summary>
+        /// <summary>
+        /// Teaches toggle animations to reach the generated physics.
+        ///
+        /// A MagicaCloth conversion hosts each chain on its own holder object at the avatar
+        /// root, because MagicaCloth2 measures inertia at the cloth object (see
+        /// MagicaClothWriter). The cost surfaced on an avatar with four hairstyles: the
+        /// hair-swap animations activate each hairstyle's own objects, the PhysBone used to
+        /// ride along with them, but the holder — on a path no animation had ever heard of —
+        /// stayed disabled forever. Three of four hairstyles wore stiff hair in game.
+        ///
+        /// So, for every clip the final controller references: a GameObject active-state curve
+        /// whose target is a converted PhysBone's object (or any ancestor of it) is copied onto
+        /// the holder's own path — but ONLY when it activates (see the comment at the skip for
+        /// why deactivations must not be mirrored) — and a VRCPhysBone m_Enabled curve is
+        /// retargeted at the generated component's type, both directions. Added curves are
+        /// byte-for-byte the original, so with Write Defaults the holder falls back to its
+        /// scene default exactly like the hair objects themselves (an inactive style's holder
+        /// is created inactive). Clips are cloned before modification; they may be the source
+        /// avatar's own assets.
+        /// </summary>
+        static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
+        {
+            var chains = ctx.ConvertedPhysicsChains;
+            // Zero chains still matters when style synthesis is on: an avatar whose ONLY
+            // physics would be a synthesized rig must reach phase 1 below.
+            if (chains == null || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
+            {
+                return;
+            }
+
+            var root = ctx.Target.transform;
+            var pathCache = new Dictionary<string, Transform>();
+            Transform Resolve(string path)
+            {
+                if (!pathCache.TryGetValue(path, out var t))
+                {
+                    pathCache[path] = t = string.IsNullOrEmpty(path) ? root : root.Find(path);
+                }
+                return t;
+            }
+
+            var rewired = new Dictionary<AnimationClip, AnimationClip>();
+            int curvesAdded = 0, clipsTouched = 0;
+            var physicslessStyles = new HashSet<Transform>();
+
+            bool ChainInSubtree(Transform container)
+            {
+                foreach (var chain in chains)
+                {
+                    if (chain.Source != null &&
+                        (chain.Source.transform == container || chain.Source.transform.IsChildOf(container)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // A "self-contained rig": the majority of the container's skinned-mesh bones live
+            // inside the container itself (an add-on hairstyle with its own little armature).
+            // Clothing skinned to body bones doesn't qualify — its bones live outside. The rig
+            // root reported back is the deepest common ancestor of the inside bones, which is
+            // where a synthesized cloth would anchor.
+            bool IsSelfContainedRig(Transform container, out Transform rigRoot)
+            {
+                rigRoot = null;
+                var inside = new List<Transform>();
+                int total = 0;
+                foreach (var smr in container.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    foreach (var bone in smr.bones)
+                    {
+                        if (bone == null) continue;
+                        total++;
+                        if (bone == container || bone.IsChildOf(container)) inside.Add(bone);
+                    }
+                }
+                if (total < 5 || inside.Count * 2 < total)
+                {
+                    return false;
+                }
+                rigRoot = inside[0];
+                while (rigRoot != null && rigRoot != container.parent)
+                {
+                    bool coversAll = true;
+                    foreach (var bone in inside)
+                    {
+                        if (bone != rigRoot && !bone.IsChildOf(rigRoot))
+                        {
+                            coversAll = false;
+                            break;
+                        }
+                    }
+                    if (coversAll) break;
+                    rigRoot = rigRoot.parent;
+                }
+                if (rigRoot == null || rigRoot == container.parent)
+                {
+                    rigRoot = container;
+                }
+                return true;
+            }
+
+            // A toggled container carrying its own self-contained rig with no converted chain
+            // never had physics in the source either — VRChat had nothing simulating those
+            // bones. Saying so in the report turns "this hairstyle is broken" into "this
+            // hairstyle was always rigid" without three rounds of testing: a tester's "Vampy"
+            // hair is exactly this, 31 bare transforms and a mesh.
+            void NotePhysicslessStyle(Transform container)
+            {
+                if (!physicslessStyles.Add(container) || ChainInSubtree(container))
+                {
+                    return;
+                }
+                if (!IsSelfContainedRig(container, out _))
+                {
+                    return;
+                }
+                string hint = ctx.Settings.addPhysicsToRiggedStyles
+                    ? " (\"Add physics to toggled rigs that have none\" is on, but it needs the " +
+                      "MagicaCloth2 physics target and MagicaCloth2 installed.)"
+                    : " Turn on \"Add physics to toggled rigs that have none\" (Physics options) " +
+                      "to synthesize a MagicaCloth here.";
+                ctx.Report.Skipped(Category, container.name,
+                    "This toggled object carries its own bone rig and skinned mesh, but NOTHING " +
+                    "simulated those bones in the source — no PhysBone, so no physics existed in " +
+                    "VRChat either, and none was converted." + hint);
+            }
+
+            AnimationClip Rewire(AnimationClip clip)
+            {
+                if (clip == null)
+                {
+                    return null;
+                }
+                if (rewired.TryGetValue(clip, out var known))
+                {
+                    return known;
+                }
+
+                Dictionary<EditorCurveBinding, AnimationCurve> additions = null;
+                var existing = AnimationUtility.GetCurveBindings(clip);
+                foreach (var binding in existing)
+                {
+                    bool objectToggle = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                    bool physBoneToggle = !objectToggle && binding.propertyName == "m_Enabled"
+                        && binding.type != null && binding.type.Name == "VRCPhysBone";
+                    if (!objectToggle && !physBoneToggle)
+                    {
+                        continue;
+                    }
+                    var animated = Resolve(binding.path);
+                    if (animated == null)
+                    {
+                        continue;
+                    }
+
+                    bool anyChainInSubtree = false;
+                    foreach (var chain in chains)
+                    {
+                        if (chain.Source == null || chain.Host == null)
+                        {
+                            continue;
+                        }
+                        var source = chain.Source.transform;
+                        var host = chain.Host.transform;
+                        EditorCurveBinding target;
+                        if (objectToggle)
+                        {
+                            if (source != animated && !source.IsChildOf(animated))
+                            {
+                                continue;
+                            }
+                            anyChainInSubtree = true;
+                            // Hosts INSIDE the toggled subtree already ride along (DynamicBone
+                            // lives on the source object; and toggling the avatar root covers
+                            // everything). Only an outside host needs the extra curve.
+                            if (host == animated || host.IsChildOf(animated))
+                            {
+                                continue;
+                            }
+                            target = EditorCurveBinding.FloatCurve(
+                                AnimationUtility.CalculateTransformPath(host, root),
+                                typeof(GameObject), "m_IsActive");
+                        }
+                        else
+                        {
+                            // The PhysBone component itself was animated on/off; the component
+                            // type died with the conversion, so retarget at what replaced it.
+                            if (source != animated || chain.Physics == null)
+                            {
+                                continue;
+                            }
+                            target = EditorCurveBinding.FloatCurve(
+                                AnimationUtility.CalculateTransformPath(host, root),
+                                chain.Physics.GetType(), "m_Enabled");
+                        }
+                        bool alreadyDriven = false;
+                        foreach (var have in existing)
+                        {
+                            if (have.path == target.path && have.type == target.type
+                                && have.propertyName == target.propertyName)
+                            {
+                                alreadyDriven = true;
+                                break;
+                            }
+                        }
+                        if (alreadyDriven)
+                        {
+                            continue; // the clip already drives it deliberately
+                        }
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null)
+                        {
+                            continue;
+                        }
+                        if (objectToggle && !CurveActivates(curve))
+                        {
+                            // Mirror ACTIVATIONS only, never deactivations. Turning a holder
+                            // off with the style that owned it strangles any OTHER style whose
+                            // bones ride the same chain: a tester's "Vampy" hair has no
+                            // PhysBone of its own — its rig is grafted onto the base hair's
+                            // simulated bones at bake time — and the base cloth being switched
+                            // off with the base style's mesh left it rigid. A hidden style's
+                            // cloth staying alive costs a little simulation of bones nobody
+                            // sees; a shared chain being killed is a dead hairstyle. Where the
+                            // avatar uses Write Defaults, holders still switch off for free —
+                            // the added ON curve stops being written and the holder falls back
+                            // to its scene default, exactly like the hair objects themselves.
+                            continue;
+                        }
+                        if (additions == null)
+                        {
+                            additions = new Dictionary<EditorCurveBinding, AnimationCurve>();
+                        }
+                        additions[target] = curve;
+                    }
+                    if (objectToggle && !anyChainInSubtree)
+                    {
+                        var activation = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (activation != null && CurveActivates(activation))
+                        {
+                            NotePhysicslessStyle(animated);
+                        }
+                    }
+                }
+
+                if (additions == null)
+                {
+                    rewired[clip] = clip;
+                    return clip;
+                }
+                var clone = UnityEngine.Object.Instantiate(clip);
+                clone.name = clip.name;
+                clone.hideFlags = HideFlags.None;
+                foreach (var pair in additions)
+                {
+                    AnimationUtility.SetEditorCurve(clone, pair.Key, pair.Value);
+                }
+                curvesAdded += additions.Count;
+                clipsTouched++;
+                rewired[clip] = clone;
+                return clone;
+            }
+
+            static bool CurveActivates(AnimationCurve curve)
+            {
+                foreach (var key in curve.keys)
+                {
+                    if (key.value > 0.5f)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            Motion RewireMotion(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    return Rewire(clip);
+                }
+                if (motion is BlendTree tree)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        var replaced = RewireMotion(children[i].motion);
+                        if (!ReferenceEquals(replaced, children[i].motion))
+                        {
+                            children[i].motion = replaced;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        // Assigning children re-derives thresholds under automatic mode; pin
+                        // manual mode for the write, exactly like the deep copier does.
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+                return motion;
+            }
+
+#if AVATARBRIDGE_MAGICA
+            // Phase 1, before any curve is copied: "Add physics to toggled rigs that have
+            // none". Every container an animation ACTIVATES is a style; a style that is a
+            // self-contained rig with no converted chain gets a synthesized MagicaCloth. Done
+            // here rather than in the physics pass because "toggled" is the narrowing fact —
+            // it is what separates an add-on hairstyle from every rigged prop on the avatar —
+            // and only the animator knows it. The new chain registers itself, so phase 2 below
+            // wires its holder to the style's activation curves like any other chain.
+            if (ctx.Settings.addPhysicsToRiggedStyles
+                && ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                var activated = new HashSet<Transform>();
+                void CollectActivations(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
+                            {
+                                continue;
+                            }
+                            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                            if (curve == null || !CurveActivates(curve))
+                            {
+                                continue;
+                            }
+                            var target = Resolve(binding.path);
+                            if (target != null)
+                            {
+                                activated.Add(target);
+                            }
+                        }
+                    }
+                    else if (motion is BlendTree tree)
+                    {
+                        foreach (var child in tree.children)
+                        {
+                            CollectActivations(child.motion);
+                        }
+                    }
+                }
+                foreach (var layer in master.layers)
+                {
+                    WalkMachines(layer.stateMachine, machine =>
+                    {
+                        foreach (var child in machine.states)
+                        {
+                            CollectActivations(child.state.motion);
+                        }
+                    });
+                }
+                foreach (var container in activated)
+                {
+                    if (ChainInSubtree(container) || !IsSelfContainedRig(container, out var rigRoot))
+                    {
+                        continue;
+                    }
+                    MagicaClothWriter.WriteSynthesized(ctx, rigRoot);
+                }
+            }
+#endif
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = RewireMotion(child.state.motion);
+                    }
+                });
+            }
+
+            if (clipsTouched > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
+                    "Animations that activated a converted PhysBone's object or component (hair swaps, " +
+                    "outfit toggles) now activate the generated physics too. Without this, a chain " +
+                    "belonging to a style that was inactive at conversion time could never wake up — " +
+                    "its cloth lives on its own object at the avatar root, on a path the original " +
+                    "animations never animated. Only activations are mirrored: styles that share " +
+                    "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
+                    "have that chain switched off with the base style's mesh, so a hidden style's " +
+                    "cloth may keep simulating — invisible, and harmless.");
+            }
+        }
+
+        /// <summary>True when every segment of the path is purely digits — a pre-hashed path.
+        /// ChilloutVR's own locomotion clips ship this way (the client binds them by hash), so
+        /// they can neither be audited nor repaired by string comparison.</summary>
+        static bool IsHashedPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+            foreach (var segment in path.Split('/'))
+            {
+                if (segment.Length == 0)
+                {
+                    return false;
+                }
+                foreach (var c in segment)
+                {
+                    if (c < '0' || c > '9')
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Repairs curve paths broken by a renamed bone, when the repair is provable.
+        ///
+        /// The motivating case: a tail-wag clip binding "Armature/Hips/Tail_Root/Tail.001"
+        /// against an avatar whose bone is "Armature/Hips/Tail" — someone renamed the bone
+        /// after the animation was authored, every tail curve went silent, and it played as
+        /// silence in VRChat too. The repair rule is deliberately strict: a dead path is
+        /// rewritten only when the avatar contains EXACTLY ONE transform at the same depth
+        /// whose path matches every segment but one. One candidate is a proof; two is a guess,
+        /// and a guess would wag the wrong bones — ambiguous paths are left for the audit to
+        /// report. Clips are cloned before modification, as everywhere else.
+        /// </summary>
+        static void RepairClipPaths(AnimatorController master, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+
+            var byDepth = new Dictionary<int, List<string[]>>();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == root)
+                {
+                    continue;
+                }
+                var segs = AnimationUtility.CalculateTransformPath(t, root).Split('/');
+                if (!byDepth.TryGetValue(segs.Length, out var list))
+                {
+                    byDepth[segs.Length] = list = new List<string[]>();
+                }
+                list.Add(segs);
+            }
+
+            var pathFix = new Dictionary<string, string>();
+            string Repair(string path)
+            {
+                if (pathFix.TryGetValue(path, out var known))
+                {
+                    return known;
+                }
+                string result = null;
+                var segs = path.Split('/');
+                if (byDepth.TryGetValue(segs.Length, out var candidates))
+                {
+                    bool ambiguous = false;
+                    foreach (var cs in candidates)
+                    {
+                        int mismatch = 0;
+                        for (int i = 0; i < segs.Length && mismatch <= 1; i++)
+                        {
+                            if (!string.Equals(segs[i], cs[i], StringComparison.Ordinal))
+                            {
+                                mismatch++;
+                            }
+                        }
+                        if (mismatch <= 1)
+                        {
+                            if (result != null)
+                            {
+                                ambiguous = true;
+                                break;
+                            }
+                            result = string.Join("/", cs);
+                        }
+                    }
+                    if (ambiguous)
+                    {
+                        result = null;
+                    }
+                }
+                pathFix[path] = result;
+                return result;
+            }
+
+            var repaired = new Dictionary<AnimationClip, AnimationClip>();
+            var rows = new List<string>();
+
+            AnimationClip Fix(AnimationClip clip)
+            {
+                if (clip == null)
+                {
+                    return null;
+                }
+                if (repaired.TryGetValue(clip, out var done))
+                {
+                    return done;
+                }
+                List<(EditorCurveBinding oldB, EditorCurveBinding newB, bool objRef)> moves = null;
+                string exampleOld = null, exampleNew = null;
+                void Consider(EditorCurveBinding binding, bool objRef)
+                {
+                    if (string.IsNullOrEmpty(binding.path) || IsHashedPath(binding.path))
+                    {
+                        return;
+                    }
+                    if (root.Find(binding.path) != null)
+                    {
+                        return;
+                    }
+                    var fixedPath = Repair(binding.path);
+                    if (fixedPath == null)
+                    {
+                        return;
+                    }
+                    var moved = binding;
+                    moved.path = fixedPath;
+                    if (moves == null)
+                    {
+                        moves = new List<(EditorCurveBinding, EditorCurveBinding, bool)>();
+                    }
+                    moves.Add((binding, moved, objRef));
+                    if (exampleOld == null)
+                    {
+                        exampleOld = binding.path;
+                        exampleNew = fixedPath;
+                    }
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    Consider(binding, false);
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    Consider(binding, true);
+                }
+                if (moves == null)
+                {
+                    repaired[clip] = clip;
+                    return clip;
+                }
+                var clone = UnityEngine.Object.Instantiate(clip);
+                clone.name = clip.name;
+                clone.hideFlags = HideFlags.None;
+                foreach (var (oldB, newB, objRef) in moves)
+                {
+                    if (objRef)
+                    {
+                        var keys = AnimationUtility.GetObjectReferenceCurve(clip, oldB);
+                        AnimationUtility.SetObjectReferenceCurve(clone, oldB, null);
+                        AnimationUtility.SetObjectReferenceCurve(clone, newB, keys);
+                    }
+                    else
+                    {
+                        var curve = AnimationUtility.GetEditorCurve(clip, oldB);
+                        AnimationUtility.SetEditorCurve(clone, oldB, null);
+                        AnimationUtility.SetEditorCurve(clone, newB, curve);
+                    }
+                }
+                repaired[clip] = clone;
+                rows.Add($"\"{clip.name}\" ({moves.Count} curve(s), e.g. \"{exampleOld}\" -> \"{exampleNew}\")");
+                return clone;
+            }
+
+            Motion FixMotion(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    return Fix(clip);
+                }
+                if (motion is BlendTree tree)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        var replacedChild = FixMotion(children[i].motion);
+                        if (!ReferenceEquals(replacedChild, children[i].motion))
+                        {
+                            children[i].motion = replacedChild;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+                return motion;
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = FixMotion(child.state.motion);
+                    }
+                });
+            }
+
+            if (rows.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{rows.Count} clip(s) had broken curve paths repaired",
+                    string.Join("; ", rows.Take(8)) + (rows.Count > 8 ? "; …" : "") + ". These " +
+                    "bindings pointed at object names that don't exist on the avatar — usually a " +
+                    "bone renamed after the animation was authored — and played as silence in " +
+                    "VRChat too. Each was rewritten only because exactly ONE transform at the same " +
+                    "depth matches every other segment of the path; anything ambiguous was left " +
+                    "alone and appears in the broken-paths warning instead.");
+            }
+        }
+
+        /// <summary>
+        /// Warns when a game-fed parameter is animated by a clip as an animated animator
+        /// parameter. The client builds each parameter's definition with
+        /// Animator.IsParameterControlledByCurve (decompiled: AvatarParam → IsReadOnly), and it
+        /// REFUSES to write read-only parameters — so a single AAP curve on GestureLeftIdx or
+        /// MovementX freezes that parameter in game forever, on this avatar only, while the
+        /// editor (where the tester tool writes directly) behaves perfectly. That exact
+        /// asymmetry burned days of tester rounds; whether or not it is any given avatar's
+        /// fault, the report must name it.
+        /// </summary>
+        static void AuditCurveControlledGameParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var gameFed = new HashSet<string>(CvrCoreParameters);
+            gameFed.UnionWith(StreamFedParameters);
+            gameFed.Add("VisemeLoudness");
+            gameFed.Add("Upright");
+
+            var offenders = new Dictionary<string, List<string>>();
+            var seen = new HashSet<AnimationClip>();
+
+            void Audit(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Audit(child.motion);
+                    }
+                    return;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    return;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(Animator) || !string.IsNullOrEmpty(binding.path))
+                    {
+                        continue;
+                    }
+                    string bare = binding.propertyName.TrimStart('#');
+                    if (!gameFed.Contains(bare))
+                    {
+                        continue;
+                    }
+                    if (!offenders.TryGetValue(binding.propertyName, out var clips))
+                    {
+                        offenders[binding.propertyName] = clips = new List<string>();
+                    }
+                    if (!clips.Contains(clip.name))
+                    {
+                        clips.Add(clip.name);
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Audit(child.state.motion);
+                    }
+                });
+            }
+
+            foreach (var offender in offenders)
+            {
+                ctx.Report.Warning(Category,
+                    $"Game-fed parameter \"{offender.Key}\" is animated by a clip — the game will NEVER write it",
+                    $"Clip(s): {string.Join(", ", offender.Value.Take(5))}" +
+                    (offender.Value.Count > 5 ? ", …" : "") + ". ChilloutVR marks curve-controlled " +
+                    "parameters read-only and refuses to feed them (decompiled: " +
+                    "IsParameterControlledByCurve → IsReadOnly), so this parameter sits frozen in " +
+                    "game while editor testing works perfectly. Remove the curve from those clips, " +
+                    "or rename the animated parameter apart from the game-fed one.");
+            }
+        }
+
+        /// <summary>
+        /// Names every clip whose curves target paths that don't exist on this avatar.
+        ///
+        /// Unity plays such curves as silence: no error, no log line, the feature just doesn't
+        /// happen — and crucially it didn't happen in VRChat either, UNLESS a build-time tool
+        /// was rewriting the paths at upload. A tester's tail-wag clip bound "Tail.001/…"
+        /// against a tail living at "Armature/Hips/Tail/…": authored for a different root,
+        /// only ever functional through VRCFury-style path rewriting, and the conversion —
+        /// which faithfully preserved both the clip and the hierarchy — inherited the mismatch
+        /// invisibly. This audit can't fix a path (guessing would move the wrong bones); it
+        /// makes the mismatch loud and says what to check.
+        /// </summary>
+        static void AuditClipBindings(AnimatorController master, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+            var resolveCache = new Dictionary<string, bool>();
+            bool Resolves(string path)
+            {
+                if (string.IsNullOrEmpty(path))
+                {
+                    return true;
+                }
+                if (!resolveCache.TryGetValue(path, out var ok))
+                {
+                    resolveCache[path] = ok = root.Find(path) != null;
+                }
+                return ok;
+            }
+
+            var seen = new HashSet<AnimationClip>();
+            var broken = new List<(string clip, int dead, int total, string example)>();
+
+            void Audit(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Audit(child.motion);
+                    }
+                    return;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    return;
+                }
+                int dead = 0, total = 0;
+                string example = null;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip)
+                             .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
+                {
+                    // Animator-type bindings with an empty path are animated animator
+                    // parameters, not scene objects; they have no path to resolve. Pre-hashed
+                    // numeric paths (the CCK's own locomotion clips ship this way, bound by
+                    // hash at runtime) cannot be audited by string lookup and are healthy.
+                    if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                    {
+                        continue;
+                    }
+                    if (IsHashedPath(binding.path))
+                    {
+                        continue;
+                    }
+                    total++;
+                    if (!Resolves(binding.path))
+                    {
+                        dead++;
+                        example = example ?? binding.path;
+                    }
+                }
+                if (dead > 0)
+                {
+                    broken.Add((clip.name, dead, total, example));
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Audit(child.state.motion);
+                    }
+                });
+            }
+
+            if (broken.Count == 0)
+            {
+                return;
+            }
+            broken.Sort((a, b) => b.dead.CompareTo(a.dead));
+            var lines = broken.Take(8)
+                .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
+            ctx.Report.Warning(Category,
+                $"{broken.Count} clip(s) animate paths that don't exist on this avatar",
+                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Unity plays these " +
+                "curves as silence — and did in VRChat too, unless a build-time tool (VRCFury path " +
+                "rewriting, Modular Avatar) fixed the paths at upload. If one of these features " +
+                "worked in VRChat, make sure the package it was built with is INSTALLED in this " +
+                "project and convert again, so its bake runs first. Clips animating objects a " +
+                "stripped system removed also land here, and those are fine.");
+        }
+
         static void AuditSerializedReferences(BridgeContext ctx, string controllerPath)
         {
             string fullPath;

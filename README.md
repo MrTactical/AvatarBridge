@@ -90,6 +90,13 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
+- **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
+  CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
+  produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
+  coupled to stance the way VR height is), visemes, emotes and the avatar's whole Advanced
+  Settings menu, coerced by declared type exactly like the client. (VRChat's Gesture Manager
+  cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
+  ChilloutVR speaks int.)
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -102,7 +109,7 @@ humanoid for ChilloutVR.)*
 |---|---|---|
 | Unity | **2022.3.22f1** | the version VRChat and CCK 4 both use |
 | ChilloutVR CCK | **4.0.x** | always required — it's what the tool builds for |
-| VRChat Avatars SDK | SDK3 | required to convert; without it you get [Setup mode](#setup-mode) |
+| VRChat Avatars SDK | SDK3, **via Creator Companion / VPM** | required to convert; without it you get [Setup mode](#setup-mode). The legacy `.unitypackage` SDK cannot coexist with the CCK — see [Troubleshooting](#troubleshooting) |
 | [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use them |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended physics target |
 | [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
@@ -135,8 +142,9 @@ defines.
 1. **Pick the avatar** in your scene.
 2. **Check the options** — physics target, face tracking mode, height scaler. Defaults suit most
    avatars.
-3. **Convert.** Output lands in `Assets/AvatarBridge/Output/<avatar>/`. Read the report, then test
-   in game.
+3. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
+   folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
+   the report, then test in game.
 
 ## What gets converted
 
@@ -164,9 +172,20 @@ defines.
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
-Want to *keep* GoGo's poses and dances? Untick *Remove GoGo Loco* and merge the **Base** and
-**Action** layers — the window shows a live hint until both halves are set, because half-keeping
-it produces a pose wheel that drives nothing.
+
+**Keeping GoGo is experimental, with hard limits.** With *Remove GoGo Loco* unticked, GoGo fully
+replaces ChilloutVR's locomotion the way it replaces VRChat's: the CCK's own Locomotion/Emotes
+layer is removed and GoGo's Base/Poses/Action take over, driven by the game-fed velocity and
+upright parameters — so **Base, Additive and Action must be ticked** under layer merging or the
+avatar has no locomotion at all. The limits are architectural, not bugs to file: GoGo leans on
+VRChat-only animator primitives with no ChilloutVR equivalent — locomotion locking
+(`VRCAnimatorLocomotionControl`, so poses slide if you walk mid-pose) and pose-space viewpoint
+shifts (`VRCAnimatorTemporaryPoseSpace`, so the camera stays at standing height in floor poses) —
+and CVR's quick-menu emotes won't animate, since GoGo's own wheel replaces them. ChilloutVR
+provides locomotion, emotes, AFK and flight natively; removing GoGo remains the recommended
+path. The strip removes GoGo's Base/Additive/Action layers *whole* — a locomotion replacement
+left half-alive overrides CVR's locomotion with dead animation, which is worse than either
+extreme.
 
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
@@ -182,7 +201,7 @@ to be known about. Tested end to end and working in game:
 | Prefab | Notes |
 |---|---|
 | [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) | sliders scale the real bones; needs the *Target Transform* handling below |
-| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default (CVR has its own locomotion) — or kept whole: untick the strip and merge Base/Action, the window guides it |
+| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped (CVR has its own locomotion, emotes, AFK and flight; GoGo relies on VRChat-only animator primitives and cannot function in CVR — see [What gets converted](#what-gets-converted)) |
 | VRCFaceTracking / ARKit rigs (Jerry's, Pawlygon…) | replaced by the chosen face-tracking mode — or converted whole with *Keep the avatar's own rig* (smoothing proxies go `#`-local, zero sync cost) |
 
 If a prefab's feature comes through inert — the menu control appears, moves, and does nothing —
@@ -269,6 +288,7 @@ of simulation, so that path maps values 1:1.
 | **Convert toe PhysBones** | off | Chains on or under the humanoid Toes bones (or named like toes) are skipped — simulated toes wiggle with every step in ChilloutVR, which reads as broken. Turn on if the toe physics are deliberate |
 | **Transfer angle limits** | off | ⚠️ Genuinely avatar-dependent — shakes some chains, best result the tool gives on others. Worth trying if physics feels loose |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
+| **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
 ## Native contacts
 
@@ -340,9 +360,13 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   sharing them are unaffected. (Those shaders usually aren't yours.)
 - **A copy that doesn't compile is thrown away**, so the worst case is a line in the report rather
   than wrong pixels.
-- **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
-  generated shaders can't be parsed, and structs in a shared include can't be edited from one file.
-  Those are listed for hand-fixing instead.
+- **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
+  a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
+- **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
+  speaks single-pass instanced and was left untouched*. Locked and generated shaders (Poiyomi
+  lock-in and SPS live at `Hidden/Locked/…`) are read and checked like any other; modern Poiyomi
+  declares the full macro set, so these normally land in the already-correct list rather than
+  needing anything.
 - **There's nothing to undo.** The macros are mode-agnostic — real instancing code under CVR,
   nothing under VRChat or on desktop. The patched copy stays correct everywhere.
 
@@ -496,6 +520,13 @@ Bipeds are unaffected by any of it.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
   only one is left driving the chain — two solvers on the same bones jitter rather than blend.
   Nothing is deleted, so switching variant is one checkbox; the report names the one kept.
+- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the
+  original PhysBone's object (or animated the component on/off) are re-wired to switch the
+  generated MagicaCloth/DynamicBone too — a chain belonging to a style that was inactive at
+  conversion time wakes up when its style does. Only *activations* are mirrored: an add-on style
+  grafted onto another style's simulated bones must not have that chain switched off with the
+  base style's mesh, so a hidden style's cloth may keep simulating (invisible, harmless). The
+  report counts the re-wired curves.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.
@@ -511,6 +542,33 @@ Bipeds are unaffected by any of it.
 
 Symptoms that have actually come up. **Read `ConversionReport.md` first** — most of these name
 themselves in it.
+
+### Nothing compiles — `'ImageDownloader' does not contain a definition for 'GetImage'`
+
+The project has the **legacy `.unitypackage` VRChat SDK** installed (an `Assets/VRCSDK` folder)
+instead of the Creator Companion / VPM one. The old SDK ships an `ImageDownloader` class in the
+global namespace; C# resolves names through enclosing namespaces — global included — *before*
+`using` directives, so it shadows the CCK's own `ImageDownloader` and the CCK stops compiling.
+That takes the whole editor assembly down, AvatarBridge included, before any of it runs.
+
+**Install the SDK through the [Creator Companion](https://vcc.docs.vrchat.com/) (or ALCOM)
+instead** — the VPM packages keep VRChat's types in their own assemblies, where they can't shadow
+anything. This collision exists between the CCK and the legacy SDK with no AvatarBridge in the
+project at all, and the legacy SDK is deprecated by VRChat anyway.
+
+### Nothing compiles — Poiyomi's `AbiAutoAnchor.cs` / `AbiAutoLock.cs`: `'ABI' could not be found`
+
+Some Poiyomi versions ship ChilloutVR helper scripts that reference the CCK **directly**, inside
+Poiyomi's own `ThryExternal` assembly. The CCK sets `CVR_CCK_EXISTS` project-wide, which
+activates those scripts — but an assembly-definition assembly can never reference
+`Assembly-CSharp`, where the Assets-installed CCK's types live, so they cannot compile no matter
+what you do. (Other Poiyomi versions use reflection there and are fine.)
+
+**Fix: delete the two files** — `…/ThryEditor/External/Editor/AbiAutoAnchor.cs` and
+`AbiAutoLock.cs`. They are optional CCK upload conveniences (auto-anchor override, auto-lock on
+upload); nothing in conversion or the CCK's own upload needs them. A Poiyomi update may bring
+them back — delete again, or update to a version whose ABI scripts start with `using System;`
+(reflection-based) instead of `using ABI…`.
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
@@ -531,6 +589,35 @@ Expected — **Unity can't preview cloth.** Nothing steps the solver in edit mod
 the avatar is standing still while in game it walks, turns and head-tracks constantly. Shaking the
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
+
+### Console floods with "Broken text PPtr … Face Tracking Layers.controller" on import
+
+Versions before 2.59.2 shipped the face-tracking layer template with orphaned leftovers from how
+it was authored — transitions pointing at states that no longer exist. Unity validates every
+object in the file on import, reachable or not, so a fresh import printed one error per orphan.
+Alarming, but harmless: the actual face-tracking layers were always intact, and converted
+avatars never contained the debris (the converter copies only the layers, which is exactly the
+reachable part). Update to 2.59.2 — the template is cleaned and the errors stop. No
+reconversion needed.
+
+### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
+
+Before 2.59.0, conversions were written **inside the tool's own folder**
+(`Assets/AvatarBridge/Output`). The natural way to update a `.unitypackage` — delete the old
+folder, import the new one — erased every conversion with it: Missing (Runtime Animator
+Controller) on converted avatars, override controllers gone, particles rendering as pink squares.
+
+Two recoveries, in order:
+
+1. **Check the Windows Recycle Bin.** Unity moves deleted assets to the trash rather than
+   destroying them. Restore the `Output` folder (files *and* their `.meta` companions come back
+   together), move it into the project, and every reference relinks — the `.meta` files carry the
+   GUIDs the scene points at.
+2. **Reconvert.** The source avatars were never touched; conversions are reproducible.
+
+Since 2.59.0 output lands in `Assets/AvatarBridgeOutput`, a sibling folder the tool's
+delete-and-reimport update flow can't reach. Anything still in the old location is moved there
+automatically on load, with GUIDs preserved so existing references keep working.
 
 ### Something is bright magenta
 
@@ -576,7 +663,7 @@ versions and detected packages already in it.
 
 Two things make a report solvable immediately:
 
-1. **Attach `ConversionReport.md`** from `Assets/AvatarBridge/Output/<avatar>/`. Nearly every bug
+1. **Attach `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/`. Nearly every bug
    fixed so far was diagnosed from this file.
 2. **Attach the right log:**
 

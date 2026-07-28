@@ -68,6 +68,7 @@ namespace AvatarBridge
             var clones = new Dictionary<Material, Material>();
             var repointed = new List<string>();
             var refused = new List<string>();
+            var alreadyCorrect = new List<string>();
 
             foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
             {
@@ -77,7 +78,7 @@ namespace AvatarBridge
                 {
                     var material = materials[i];
                     var shader = material != null ? material.shader : null;
-                    if (shader == null || IsKnownStereo(shader.name))
+                    if (shader == null)
                     {
                         continue;
                     }
@@ -88,9 +89,21 @@ namespace AvatarBridge
                     }
 
                     string source = SourcePathOf(shader);
-                    if (source == null || DeclaresStereo(source))
+                    if (source == null)
+                    {
+                        // Engine shaders (Standard, Hidden/Internal-…) have no source file on
+                        // disk to read or patch, and Unity's own ship stereo-correct. Generated
+                        // avatar shaders — Poiyomi lock-in and SPS live at Hidden/Locked/… —
+                        // DO have source, so they fall through to the honest check below. A
+                        // name-based "Hidden/ belongs to the engine" skip used to silently
+                        // ignore exactly the shaders people then asked about.
+                        patched[shader] = null;
+                        continue;
+                    }
+                    if (DeclaresStereo(source))
                     {
                         patched[shader] = null;
+                        alreadyCorrect.Add(shader.name);
                         continue;
                     }
 
@@ -131,10 +144,20 @@ namespace AvatarBridge
                     "only attempted on plainly written vertex/fragment shaders; anything else needs doing by " +
                     "hand or replacing with a different shader.");
             }
+            // The verdict that used to be silence. "Why wasn't my shader patched" has one of
+            // three answers — patched, refused, or didn't need it — and the report should give
+            // whichever applies rather than leaving the third to be mistaken for a miss.
+            if (alreadyCorrect.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced — left untouched",
+                    $"{string.Join(", ", alreadyCorrect.Distinct())} — the source declares the full " +
+                    "stereo-instancing macro set, so ChilloutVR's rendering mode is already handled and " +
+                    "patching would change nothing. Locked and generated shaders (Hidden/Locked/…) are " +
+                    "checked like any other. If one of these looks wrong in game, the cause is something " +
+                    "other than the macros this option adds.");
+            }
         }
-
-        static bool IsKnownStereo(string name) =>
-            name == "Standard" || name.StartsWith("Hidden/", StringComparison.Ordinal);
 
         static string SourcePathOf(Shader shader)
         {

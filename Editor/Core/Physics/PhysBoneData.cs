@@ -15,6 +15,12 @@ namespace AvatarBridge
         public VRCPhysBone Source;
         public GameObject SourceGameObject;
         public Transform Root;
+        /// <summary>
+        /// True when this chain was invented by "Add physics to toggled rigs that have none" —
+        /// there is no source PhysBone, so every value-derivation step must be skipped and the
+        /// preset stands as authored.
+        /// </summary>
+        public bool Synthesized;
         // VRChat avatars often stack several PhysBones on the same chain and toggle
         // between them via the animator; converted physics must start in the same state.
         public bool InitiallyActive;

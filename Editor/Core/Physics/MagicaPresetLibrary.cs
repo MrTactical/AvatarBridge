@@ -120,9 +120,48 @@ namespace AvatarBridge
         /// </summary>
         public static ChainClass Classify(PhysBoneChainData data)
         {
-            string n = data.Root.name.ToLowerInvariant();
-            var t = Tokenize(data.Root.name);
             int bones = CountBones(data.Root);
+
+            var byName = ClassifyByName(data.Root.name, bones);
+            if (byName != null)
+            {
+                return byName;
+            }
+
+            // The bone's own name said nothing — ask its ancestors. Add-on hair and clothing
+            // prefabs routinely carry meaningless bone names inside a container that says
+            // exactly what they are: a tester's "Ty ROOT Nessy!" classified as a generic loose
+            // chain (Soft Spring preset — stretchy, and the hair came out floaty) while sitting
+            // under a container literally named "Ty hair". Nearest ancestor first, stopping at
+            // the Animator so the avatar's own name never matches.
+            for (var p = data.Root.parent; p != null && p.GetComponent<Animator>() == null; p = p.parent)
+            {
+                var byAncestor = ClassifyByName(p.name, bones);
+                if (byAncestor != null)
+                {
+                    return byAncestor;
+                }
+            }
+
+            // --- nothing anywhere in the names: fall back to the PhysBone's character ------
+            // A chain the author gave no gravity was never meant to fall, whatever it is.
+            if (Mathf.Approximately(data.Gravity, 0f) && data.Immobile > 0.5f)
+            {
+                return ClsFloaty;
+            }
+            float restore = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
+            if (restore >= 0.6f)
+            {
+                return ClsStiff;
+            }
+            return restore >= 0.3f ? ClsSpringy : ClsLoose;
+        }
+
+        /// <summary>Name-based classification alone; null when the name says nothing.</summary>
+        static ChainClass ClassifyByName(string rawName, int bones)
+        {
+            string n = rawName.ToLowerInvariant();
+            var t = Tokenize(rawName);
 
             // --- hair, before anything containing "tail" ---------------------------------
             if (Has(n, "ahoge") || HasToken(t, "antenna"))
@@ -226,18 +265,7 @@ namespace AvatarBridge
                 return ClsCharm;
             }
 
-            // --- nothing in the name: fall back to the PhysBone's character --------------------
-            // A chain the author gave no gravity was never meant to fall, whatever it is.
-            if (Mathf.Approximately(data.Gravity, 0f) && data.Immobile > 0.5f)
-            {
-                return ClsFloaty;
-            }
-            float restore = Mathf.Clamp01(Mathf.Max(data.Pull, data.Stiffness));
-            if (restore >= 0.6f)
-            {
-                return ClsStiff;
-            }
-            return restore >= 0.3f ? ClsSpringy : ClsLoose;
+            return null;
         }
 
         /// <summary>

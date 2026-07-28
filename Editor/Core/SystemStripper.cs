@@ -59,7 +59,7 @@ namespace AvatarBridge
         /// avatar it belongs to whatever emote system the author built, and that is not ours to
         /// condemn under a GoGo switch.
         /// </summary>
-        static bool AvatarUsesGogo(BridgeContext ctx)
+        internal static bool AvatarUsesGogo(BridgeContext ctx)
         {
             var vrcParams = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
             if (vrcParams == null || vrcParams.parameters == null)
@@ -226,12 +226,39 @@ namespace AvatarBridge
                 int strippedRefs = refs.Count(isStripped);
                 bool referenceHit = strippedRefs > 0 && strippedRefs >= refs.Count * 0.6f;
 
-                if (nameHit || referenceHit)
+                // Locomotion replacements are all-or-nothing. GoGo's Base/Poses/Action layers
+                // condition mostly on Velocity/Upright/Grounded/AFK — the game-fed built-ins —
+                // so the 60% majority above never fires for them, and with "Remove GoGo Loco"
+                // on they survived as zombies: hundreds of states overriding ChilloutVR's own
+                // locomotion, driven by parameters that had just been stripped. A tester
+                // toggling GoGo on and off saw "no difference" because these layers were on
+                // top either way. Any GoGo reference at all in a layer merged from the Base,
+                // Additive or Action playable layers is disqualifying — those layers exist to
+                // replace locomotion wholesale, and only GoGo puts Go/ parameters there.
+                bool locomotionHit = false;
+                if (strippedRefs > 0 &&
+                    (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
+                     || layer.name.StartsWith("[Action]")))
+                {
+                    locomotionHit = refs.Any(r =>
+                    {
+                        string bare = r.TrimStart('#');
+                        return isStripped(r) &&
+                               (bare.StartsWith("Go/") || bare == "VRCEmote");
+                    });
+                }
+
+                if (nameHit || referenceHit || locomotionHit)
                 {
                     removedMachines.Add(layer.stateMachine);
                     vrcLayers.Remove(layer);
                     ctx.Report.Converted(Category, $"Removed animator layer \"{layer.name}\"",
-                        nameHit ? "Matched a stripped system by name." : $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system.");
+                        nameHit ? "Matched a stripped system by name."
+                        : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
+                        : "A Base/Additive/Action layer referencing GoGo parameters — locomotion " +
+                          "replacements are all-or-nothing, and left in place with its parameters " +
+                          "stripped this layer overrides ChilloutVR's own locomotion with half-dead " +
+                          "animation.");
                 }
             }
 

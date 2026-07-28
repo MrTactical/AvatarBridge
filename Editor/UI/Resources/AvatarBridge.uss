@@ -337,6 +337,14 @@
     flex-shrink: 0;
 }
 
+/* AAS menu entries carry longer names than the options cards ("Tail Electric Effect
+ * Toggle", "Storage Upgrade: Upper"); the standard 132px column clips them. */
+.ab-field-wide > .unity-label {
+    width: 176px;
+    min-width: 176px;
+    flex-shrink: 0;
+}
+
 /* ----------------------------------------------------------- primary  ---- */
 
 .ab-primary {

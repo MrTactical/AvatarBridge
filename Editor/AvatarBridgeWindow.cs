@@ -81,6 +81,14 @@ namespace AvatarBridge
                     settings = new BridgeSettings();
                 }
             }
+            // Saved settings from before 2.59.0 carry the old default, which pointed INSIDE
+            // the tool's folder — where a delete-and-reimport update erases every conversion.
+            // Only the old DEFAULT is rewritten; a deliberately customised path is the user's.
+            if (settings.outputFolder == "Assets/AvatarBridge/Output")
+            {
+                settings.outputFolder = "Assets/AvatarBridgeOutput";
+            }
+            OutputFolderMigration.MigrateIfNeeded();
         }
 
         void OnDisable()
@@ -358,6 +366,15 @@ namespace AvatarBridge
                     "bones (or named like toes) are skipped and listed in the report. Turn on if " +
                     "this avatar's toe physics are deliberate.",
                     settings.convertToePhysBones, v => settings.convertToePhysBones = v));
+                b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
+                    "Some avatars ship a toggled style (usually an add-on hairstyle) whose " +
+                    "container carries its own bone rig and mesh but NO PhysBone — rigid in " +
+                    "VRChat, whether by intent or oversight. This synthesizes a MagicaCloth for " +
+                    "such rigs, preset chosen by the chain classifier, wired to the style's " +
+                    "toggle. Off by default because it invents physics the author never made, " +
+                    "and some rigged props are rigid on purpose. The report names every rig " +
+                    "this would apply to either way.",
+                    settings.addPhysicsToRiggedStyles, v => settings.addPhysicsToRiggedStyles = v));
                 b.Add(BridgeElements.Bind("Transfer angle limits",
                     "Copy each PhysBone's limit angle onto the cloth. MagicaCloth2's limit pushes on " +
                     "particle positions rather than bone rotation, at a stiffness that snaps back " +
@@ -401,16 +418,23 @@ namespace AvatarBridge
                 "live in the Base and Action layers, which must then be merged too (the hint " +
                 "below appears until they are).",
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
-            if (!settings.stripGogoLoco && (!settings.convertBaseLayer || !settings.convertActionLayer))
+            if (!settings.stripGogoLoco)
             {
-                // Keeping GoGo with its home layers unmerged converts the menus but not the
-                // states they drive — a dance wheel full of dead entries, indistinguishable
-                // from a bug. Say so where the decision is being made.
+                // The verdict after several tester rounds and a client decompile: GoGo cannot
+                // fully function in ChilloutVR. Its pose/flight machinery leans on VRChat-only
+                // primitives with no CVR equivalent — VRCAnimatorLocomotionControl (poses would
+                // slide with the capsule), TemporaryPoseSpace (viewpoint shifts, removed at
+                // conversion), PlayableLayerControl — and CVR's own IK overrides limbs wherever
+                // no tracking-control existed to convert. CVR ships locomotion, emotes, AFK and
+                // flight natively. Say all of this where the decision is made.
                 b.Add(BridgeElements.Hint(
-                    "⚠ Keeping GoGo Loco: its poses and dances live in the BASE and ACTION layers, " +
-                    "which are currently not merged — the pose wheel would convert but drive " +
-                    "nothing. Tick \"Base\" and \"Action\" under \"Animator layers to merge\" in " +
-                    "Advanced, or GoGo comes through as menus without motion."));
+                    "⚠ Keeping GoGo Loco is EXPERIMENTAL: GoGo fully replaces ChilloutVR's own " +
+                    "locomotion (that layer is removed), so Base, Additive and Action must be " +
+                    "ticked under \"Animator layers to merge\" or the avatar has no locomotion " +
+                    "at all. Known limits ChilloutVR cannot express: poses don't lock movement " +
+                    "(walking mid-pose slides), the viewpoint stays at standing height in floor " +
+                    "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
+                    "them. Removing GoGo remains the recommended path."));
             }
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
@@ -671,7 +695,9 @@ namespace AvatarBridge
             var output = new TextField("Output folder")
             {
                 value = settings.outputFolder,
-                tooltip = "Where generated assets and the report go. Must be inside Assets.",
+                tooltip = "Where generated assets and the report go. Must be inside Assets. " +
+                          "The default is deliberately OUTSIDE the tool's folder, so deleting " +
+                          "Assets/AvatarBridge to update it can never erase conversions.",
             };
             output.AddToClassList("ab-field");
             output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);
@@ -685,6 +711,7 @@ namespace AvatarBridge
                 "CVR's Eye Blink Settings.",
                 settings.wireBlinkBlendshapes, v => settings.wireBlinkBlendshapes = v));
         }
+
 
         void BuildExtrasCard(VisualElement parent)
         {

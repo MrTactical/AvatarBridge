@@ -22,6 +22,23 @@ namespace AvatarBridge
         public BridgeSettings Settings;
         public BridgeReport Report;
 
+        /// <summary>
+        /// One entry per converted physics chain: the GameObject the source PhysBone lived on,
+        /// the object now hosting the generated physics, and the generated component itself.
+        /// AnimatorMerger uses this to re-wire toggle animations — a hair-swap that activated
+        /// the original PhysBone's object must also activate the MagicaCloth holder, which
+        /// lives at the avatar root on its own path and would otherwise stay off forever.
+        /// </summary>
+        public class ConvertedPhysicsChain
+        {
+            public UnityEngine.GameObject Source;
+            public UnityEngine.GameObject Host;
+            public UnityEngine.Behaviour Physics;
+        }
+
+        public System.Collections.Generic.List<ConvertedPhysicsChain> ConvertedPhysicsChains =
+            new System.Collections.Generic.List<ConvertedPhysicsChain>();
+
 #if VRC_SDK_VRCSDK3
         /// <summary>The original, untouched VRChat avatar. Null in Setup mode.</summary>
         public VRCAvatarDescriptor SourceDescriptor;
