@@ -314,14 +314,41 @@ namespace AvatarBridge
             }
 
             // 3 & 4 need the vertex body before anything is edited, so find it first.
-            var vertBody = Regex.Match(vertFile.Text,
-                $@"({Regex.Escape(v2fType)}\s+{Regex.Escape(vertName)}\s*\([^)]*\)\s*\{{\s*{Regex.Escape(v2fType)}\s+(\w+)\s*;)");
-            if (!vertBody.Success)
+            //
+            // The output struct is found ANYWHERE in the function body, not just as its first
+            // statement: authors routinely compute normals, tangents and view directions before
+            // declaring the output ("Burning Glasses" declares four float3s first), and an
+            // initialiser is just as common ("v2f o = (v2f)0;"). Requiring the declaration to
+            // come first refused perfectly ordinary shaders. The body is delimited by brace
+            // matching rather than a regex so a declaration in the NEXT function can't be
+            // mistaken for this one's.
+            int vertStart = vertFile.Text.IndexOf(sig.Value, StringComparison.Ordinal);
+            int bodyOpen = vertStart < 0 ? -1 : vertFile.Text.IndexOf('{', vertStart);
+            int bodyEnd = -1;
+            if (bodyOpen >= 0)
             {
-                reason = "vertex function doesn't declare its output in a form this can patch";
+                int depth = 0;
+                for (int i = bodyOpen; i < vertFile.Text.Length; i++)
+                {
+                    if (vertFile.Text[i] == '{') depth++;
+                    else if (vertFile.Text[i] == '}' && --depth == 0) { bodyEnd = i; break; }
+                }
+            }
+            if (bodyEnd < 0)
+            {
+                reason = "the vertex function's body couldn't be delimited";
                 return null;
             }
-            string outVar = vertBody.Groups[2].Value;
+            string body = vertFile.Text.Substring(bodyOpen, bodyEnd - bodyOpen);
+            var declaration = Regex.Match(body,
+                $@"\b{Regex.Escape(v2fType)}\s+(\w+)\s*(?:=[^;]*)?;");
+            if (!declaration.Success)
+            {
+                reason = "the vertex function never declares a variable of its output type";
+                return null;
+            }
+            string outVar = declaration.Groups[1].Value;
+            int insertAt = bodyOpen + declaration.Index + declaration.Length;
 
             // 1 & 2 — the struct members, each in whichever file declares it.
             inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
@@ -329,8 +356,9 @@ namespace AvatarBridge
             v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
                 "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
 
-            // 3 & 4 — after the output struct is declared inside the vertex function.
-            vertFile.Text = vertFile.Text.Replace(vertBody.Groups[1].Value, vertBody.Groups[1].Value +
+            // 3 & 4 — immediately after the output struct is declared. Inserted by index, since
+            // the surrounding text is no longer guaranteed to be unique.
+            vertFile.Text = vertFile.Text.Insert(insertAt,
                 $"\n\t\t\t\tUNITY_SETUP_INSTANCE_ID({inArg});\n\t\t\t\tUNITY_INITIALIZE_VERTEX_OUTPUT_STEREO({outVar});");
 
             // 5 — the eye index in the fragment stage, wherever frag lives.
@@ -355,6 +383,45 @@ namespace AvatarBridge
                 file.Text = Regex.Replace(file.Text,
                     @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
                     "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
+            }
+
+            // 7 — GrabPass textures, the same trap as the depth texture and just as invisible to
+            // the CCK's four-macro test. Under single-pass instanced a grabbed screen is a
+            // texture ARRAY with one slice per eye, so a sampler2D/tex2D read of it takes the
+            // wrong slice however many macros are present — the classic "the lens/refraction
+            // effect shows the other eye's view" bug. UNITY_SAMPLE_SCREENSPACE_TEXTURE picks the
+            // slice from the eye index macro 5 established, and compiles to a plain sample in
+            // every other rendering mode.
+            var grabNames = new List<string>();
+            foreach (Match grab in Regex.Matches(shaderFile.Text, @"GrabPass\s*\{\s*""([^""]+)""\s*\}"))
+            {
+                grabNames.Add(grab.Groups[1].Value);
+            }
+            if (Regex.IsMatch(shaderFile.Text, @"GrabPass\s*\{\s*\}"))
+            {
+                grabNames.Add("_GrabTexture");
+            }
+            foreach (string grabName in grabNames.Distinct())
+            {
+                string escaped = Regex.Escape(grabName);
+                // tex2Dproj on a grab texture has no screen-space equivalent that also does the
+                // perspective divide, and guessing would ship something that compiles and looks
+                // wrong — which is worse than saying so.
+                if (unit.Any(f => Regex.IsMatch(f.Text, $@"tex2Dproj\s*\(\s*{escaped}\s*,")))
+                {
+                    reason = $"its GrabPass texture \"{grabName}\" is read with tex2Dproj, which has no " +
+                             "single-pass-instanced equivalent that can be substituted safely";
+                    return null;
+                }
+                foreach (var file in unit)
+                {
+                    file.Text = Regex.Replace(file.Text,
+                        $@"(?:uniform\s+)?sampler2D\s+{escaped}\s*;",
+                        $"UNITY_DECLARE_SCREENSPACE_TEXTURE({grabName});");
+                    file.Text = Regex.Replace(file.Text,
+                        $@"tex2D\s*\(\s*{escaped}\s*,",
+                        $"UNITY_SAMPLE_SCREENSPACE_TEXTURE({grabName},");
+                }
             }
 
             // Rename so it can't collide with the original in the shader list.

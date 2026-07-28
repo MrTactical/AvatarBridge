@@ -371,6 +371,10 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   sharing them are unaffected. (Those shaders usually aren't yours.)
 - **A copy that doesn't compile is thrown away**, so the worst case is a line in the report rather
   than wrong pixels.
+- **Screen-grab effects are fixed too.** A `GrabPass` texture is a texture *array* under
+  instancing — one slice per eye — so lens, refraction and heat-haze shaders that read it with
+  `tex2D` show one eye the other eye's view. Those reads are rewritten to the screen-space
+  macros, same as `_CameraDepthTexture`.
 - **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
   a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
 - **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
@@ -389,9 +393,10 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
 > deliberately and **check the effect in both eyes**.
 
 > Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
-> have all four and still be broken — a soft-particle shader reading `_CameraDepthTexture` through
-> `sampler2D`/`tex2Dproj` is the common case, since that texture is an array under instancing.
-> AvatarBridge rewrites that pair too.
+> have all four and still be broken, because both the depth texture and any `GrabPass` are texture
+> *arrays* under instancing — a soft-particle shader reading `_CameraDepthTexture` through
+> `sampler2D`/`tex2Dproj`, or a glass/refraction shader reading its grab texture through `tex2D`,
+> takes the wrong slice however many macros are present. AvatarBridge rewrites both.
 
 ## Parameter types
 
