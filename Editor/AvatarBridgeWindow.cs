@@ -486,13 +486,10 @@ namespace AvatarBridge
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
-                    "⚠ WARNING from the ChilloutVR developer behind the contact system: it is " +
-                    "UNSTABLE and still moving — any ChilloutVR update may change it, which would " +
-                    "leave this avatar's contacts dead until it is converted and uploaded again.\n" +
-                    "Reactions crossing the network is by design and confirmed: every client " +
-                    "simulates every avatar's contacts itself, no sync involved. Still, test in " +
-                    "game with a second player before relying on it.",
-                    HelpBoxMessageType.Warning));
+                    "This talks to a component internal to the game rather than the CCK, so a " +
+                    "ChilloutVR update may break it — if contacts stop working in game, reconvert " +
+                    "and re-upload.",
+                    HelpBoxMessageType.Info));
             }
 
             b.Add(BridgeElements.Row(

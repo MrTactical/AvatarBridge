@@ -47,7 +47,7 @@ now. What actually differs, as of mid-2026:
 | PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
 | **VRCFury / Modular Avatar baked automatically** (toggles, linked clothing, merged armatures survive) | ✅ | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost by design (⚠️ beta, [see warning](#native-contacts)) | ✅ | — |
+| **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost by design ([beta](#native-contacts)) | ✅ | — |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Voice at the mouth and gaze limits, *measured off your avatar's own mesh and poses* | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
@@ -85,8 +85,7 @@ actually running.
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts** — one-to-one, with real proximity and zero sync cost (contacts
-  are per-client by design), using a system the CCK doesn't expose (beta —
-  [one warning applies](#native-contacts)).
+  are per-client by design), using a system the CCK doesn't expose ([beta](#native-contacts)).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -288,10 +287,9 @@ so reactions work over the network with **no sync involved and no sync bits spen
 parameter a receiver drives also replicates its *value* is that parameter's own sync declaration,
 exactly as everywhere else.
 
-> ⚠️ **One warning, from the same developer** (the window repeats it while the option is on): the
-> system is **unstable and still moving** — any ChilloutVR update may change it, which would leave
-> the avatar's contacts dead until it is converted and uploaded again. Test in game before relying
-> on it.
+> ⚠️ This talks to a component internal to the game rather than the CCK, so a ChilloutVR update
+> may break it — if contacts stop working in game, reconvert and re-upload. (The window shows the
+> same note while the option is on.)
 
 AvatarBridge's generated declarations are verified **field-for-field against the decompiled game
 client** — the only layout that matters, since the client is what reads the uploaded avatar. The
@@ -314,9 +312,9 @@ thing.
 > triggered by other players, and CVR's own runtime gizmos drawing the components — proof the
 > game's real implementation is running against declarations generated here.
 >
-> **Still off by default** — chiefly because of the stability warning above, beyond just breadth
-> of testing. Turn it on deliberately and test in game; the conversion falls back to the legacy
-> path by itself if anything is wrong.
+> **Still off by default** — chiefly because of the note above, beyond just breadth of testing.
+> Turn it on deliberately and test in game; the conversion falls back to the legacy path by
+> itself if anything is wrong.
 
 > ⚠️ **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene
 > before converting again.** Unity manufactures a placeholder script for a dangling component
