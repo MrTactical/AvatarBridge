@@ -473,24 +473,25 @@ namespace AvatarBridge
 
             var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
                 "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
-                "of approximating them with pointers and triggers: real proximity, collision " +
-                "tags kept as-is, local-only receivers finally honoured. " +
-                "The components aren't in the CCK, so AvatarBridge declares them itself — " +
-                "which can only be proven correct by putting an avatar in game. If it isn't, " +
-                "the contact objects show a missing script and you turn this back off.",
+                "of approximating them with pointers and triggers: real proximity and collision " +
+                "tags kept as-is. Contacts are per-client by design — every client simulates " +
+                "every avatar's contacts itself, so reactions work over the network without " +
+                "costing sync bits (confirmed in game). The components aren't in the CCK, so " +
+                "AvatarBridge declares them itself, matched against the system author's own " +
+                "published source; importing that source (NotAKidoS's NAK.Contacts) replaces " +
+                "the declarations automatically.",
                 settings.useNativeContacts, v => { settings.useNativeContacts = v; ScheduleRebuild(); });
             native.SetEnabled(settings.convertContacts);
             b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
-                    "⚠ TWO WARNINGS from the ChilloutVR developer behind the contact system:\n" +
-                    "1. Contact reactions are NOT synced — each client simulates its own view, so " +
-                    "other players may not see what a contact does unless the parameter it drives " +
-                    "syncs on its own.\n" +
-                    "2. The system is UNSTABLE and may break in any ChilloutVR update — which would " +
+                    "⚠ WARNING from the ChilloutVR developer behind the contact system: it is " +
+                    "UNSTABLE and still moving — any ChilloutVR update may change it, which would " +
                     "leave this avatar's contacts dead until it is converted and uploaded again.\n" +
-                    "Test with a second player before relying on it.",
+                    "Reactions crossing the network is by design and confirmed: every client " +
+                    "simulates every avatar's contacts itself, no sync involved. Still, test in " +
+                    "game with a second player before relying on it.",
                     HelpBoxMessageType.Warning));
             }
 

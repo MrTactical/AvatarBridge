@@ -13,12 +13,22 @@ namespace AvatarBridge
     /// authored with them.
     ///
     /// ChilloutVR replaced its pointer/trigger contacts with a system in the NAK.Contacts
-    /// namespace that is a near-exact superset of VRChat's: the same shapes plus Box, the same
-    /// allowSelf/allowOthers/localOnly/collisionTags fields under the same names, and receiver
-    /// types covering Constant, OnEnter, three flavours of Proximity, and velocity. It lives in
-    /// the game client only — CCK 4.0.x ships no such types — so without something like this every
+    /// namespace that is a near-exact match for VRChat's: the same Sphere/Capsule shapes, the
+    /// same allowSelf/allowOthers/collisionTags fields under the same names, and receiver types
+    /// covering Constant, OnEnter, three flavours of Proximity, and velocity. It lives in the
+    /// game client only — CCK 4.0.x ships no such types — so without something like this every
     /// conversion has to go through the legacy CVRPointer/CVRAdvancedAvatarSettingsTrigger
     /// approximation.
+    ///
+    /// The canonical reference for the serialized surface is the system author's own repository:
+    /// https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts — NotAKidoS is the
+    /// ChilloutVR developer behind the system, and these declarations are checked against that
+    /// source (revision 5 = repo state of 2026-07-28; earlier revisions predated the removal of
+    /// Box, boxSize, localOnly and the ContentType.Player flag). If the user imports that
+    /// repository's real sources into the project, RealTypesPresent() below detects them and
+    /// these generated declarations remove themselves — his sources bring the full in-editor
+    /// simulation (ContactManager + Burst collision system), which is strictly better for
+    /// authoring, and the converter binds to whichever definition exists by name.
     ///
     /// An asset bundle carries no script assemblies. It records, per MonoBehaviour, a MonoScript
     /// naming the assembly, namespace and class, and the player resolves that against its own
@@ -52,14 +62,16 @@ namespace AvatarBridge
         const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
 
         /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
-        const string StubVersion = "4";
+        const string StubVersion = "5";
         const string VersionTag = "// AvatarBridge generated contact declaration, revision " + StubVersion;
 
         /// <summary>
         /// The newest CCK whose contact surface these declarations were checked field-for-field
         /// against. Past this, the shape of the data is an assumption rather than a finding.
+        /// 4.0.2: its changelog touches no contact type, and the system author's repository
+        /// (see the class comment) is what revision 5 was verified against.
         /// </summary>
-        const string VerifiedCckVersion = "4.0.1";
+        const string VerifiedCckVersion = "4.0.2";
 
         /// <summary>Left behind by revisions 1–3, which put every class in one file.</summary>
         const string LegacySingleFile = "AvatarBridgeContactStub.cs";
@@ -323,7 +335,9 @@ namespace AvatarBridge
 // MonoBehaviour with a script asset on that basis, and without it the component has no usable
 // script reference at all.
 //
-// Field names, types, defaults and order are copied from the client's own NAK.Contacts.
+// Field names, types, defaults and order are copied from the system author's own source:
+// https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts
+// Importing that repository's real NAK.Contacts folder replaces these automatically.
 ";
 
         const string SharedTypesSource = Header + @"
@@ -338,23 +352,23 @@ namespace AvatarBridge
 
 namespace NAK.Contacts
 {
-    public enum ShapeType : byte { Sphere, Capsule, Box }
+    public enum ShapeType : byte { Sphere = 0, Capsule = 1 }
 
     public enum ReceiverType : byte
     {
-        Constant,
-        OnEnter,
-        ProximitySenderToReceiver,
-        ProximityReceiverToSender,
-        ProximityCenterToCenter,
-        CopyValueFromSender,
-        VelocityReceiver,
-        VelocitySender,
-        VelocityMagnitude
+        Constant = 0,
+        OnEnter = 1,
+        ProximitySenderToReceiver = 2,
+        ProximityReceiverToSender = 3,
+        ProximityCenterToCenter = 4,
+        CopyValueFromSender = 5,
+        VelocityReceiver = 6,
+        VelocitySender = 7,
+        VelocityMagnitude = 8
     }
 
     [Flags]
-    public enum ContentType : byte { World = 1, Avatar = 2, Prop = 4, Player = 8 }
+    public enum ContentType : byte { World = 1, Avatar = 2, Prop = 4 }
 }
 ";
 
@@ -367,16 +381,14 @@ namespace NAK.Contacts
     [DefaultExecutionOrder(18200)]
     public abstract class ContactBase : MonoBehaviour, AvatarBridge.IGeneratedContactStub
     {
-        public ShapeType shapeType;
+        public ShapeType shapeType = ShapeType.Sphere;
         public Vector3 localPosition = Vector3.zero;
         public Quaternion localRotation = Quaternion.identity;
         public float radius = 0.5f;
         public float height = 1f;
-        public Vector3 boxSize = Vector3.one;
         public bool allowSelf = true;
         public bool allowOthers = true;
-        public bool localOnly;
-        public ContentType contentTypes = ContentType.World | ContentType.Avatar | ContentType.Prop | ContentType.Player;
+        public ContentType contentTypes = ContentType.World | ContentType.Avatar | ContentType.Prop;
         public string[] collisionTags = Array.Empty<string>();
         public float contactValue = 1f;
         public bool drawGizmos = true;
@@ -394,9 +406,6 @@ namespace NAK.Contacts
                             * Matrix4x4.TRS(localPosition, localRotation, Vector3.one);
             switch (shapeType)
             {
-                case ShapeType.Box:
-                    Gizmos.DrawWireCube(Vector3.zero, boxSize);
-                    break;
                 case ShapeType.Capsule:
                     float half = Mathf.Max(0f, height * 0.5f - radius);
                     Vector3 a = Vector3.up * half, b = Vector3.down * half;

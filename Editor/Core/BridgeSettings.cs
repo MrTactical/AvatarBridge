@@ -144,20 +144,23 @@ namespace AvatarBridge
         public bool createDefaultColliderPointers = true;
 
         // Use ChilloutVR's native contact components instead of the pointer/trigger
-        // approximation. They line up with VRChat's almost field for field — same shapes, same
-        // collision tags, real proximity, and localOnly actually honoured.
+        // approximation. They line up with VRChat's almost field for field — same Sphere/Capsule
+        // shapes, same collision tags, real proximity.
         //
-        // Off by default, and the window shows a warning while it is on, on word from the CVR
-        // developer behind the system (2026-07): contact reactions are NOT synced — each client
-        // simulates its own view, so other players may not see contact-driven effects unless the
-        // driven parameter syncs on its own — and the system is unstable and may break in any
-        // ChilloutVR update. An earlier version of this comment sold the local simulation as
-        // "replicates without costing sync bits"; simulated-everywhere is not the same thing as
-        // agreeing-everywhere.
+        // The network story, settled with the system's author (NotAKidoS, 2026-07-28) and
+        // confirmed in game: contacts are per-client BY DESIGN. Every client simulates every
+        // avatar's contacts itself, so reactions work over the network with no sync involved
+        // and no sync bits spent; a driven parameter's own AAS declaration decides whether its
+        // VALUE also replicates. (This comment has flip-flopped: "replicates without costing
+        // sync bits" → "not synced, others may not see it" → this. The middle take
+        // over-corrected from a second-hand report; the test that settled it was a second
+        // player seeing the reaction with no synced parameter in the loop.)
         //
-        // The components are also not in the CCK: AvatarBridge declares them itself (see
-        // ContactStubPatcher) and the binding can only be proven by putting an avatar in game.
-        // If it were wrong, the result is contact objects with a missing script.
+        // Off by default, and the window warns while it is on, because the author calls the
+        // system UNSTABLE: any ChilloutVR update may change it, killing converted contacts
+        // until reconverted. The components are also not in the CCK: AvatarBridge declares them
+        // itself (see ContactStubPatcher), verified against the author's published source —
+        // importing that source replaces the declarations automatically.
         public bool useNativeContacts = false;
 
         // Give merged VRChat layers an avatar mask that blocks humanoid muscles, restoring the

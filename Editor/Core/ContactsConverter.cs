@@ -151,11 +151,13 @@ namespace AvatarBridge
         // --- ChilloutVR's native contact system ---------------------------------------
         //
         // The components line up with VRChat's almost field for field, so this is a copy rather
-        // than an impersonation: same shapes, same collision tags, real proximity, and localOnly
-        // finally honoured. They also need no Unity collider — the shape lives on the component —
-        // and because they sit on the avatar whitelist rather than the local-only one, every
-        // client simulates them for every avatar. The value is reproduced on each machine instead
-        // of being synced, which is why nothing here costs sync bits.
+        // than an impersonation: same Sphere/Capsule shapes, same collision tags, real proximity.
+        // They also need no Unity collider — the shape lives on the component — and contacts are
+        // per-client by design (settled with the system's author and confirmed in game): every
+        // client simulates every avatar's contacts itself, so reactions cross the network with
+        // no sync involved and nothing here costs sync bits. There is no localOnly field — that
+        // distinction is meaningless when everything is computed locally; whether a driven
+        // parameter's VALUE replicates is its own AAS declaration's business.
         //
         // ContactStubPatcher supplies the declarations; the game holds the implementation.
 
@@ -362,7 +364,12 @@ namespace AvatarBridge
             SetMember(contact, "collisionTags", receiver.collisionTags.Distinct().ToArray());
             SetMember(contact, "allowSelf", receiver.allowSelf);
             SetMember(contact, "allowOthers", receiver.allowOthers);
-            SetMember(contact, "localOnly", receiver.localOnly);
+            // No localOnly on the native components, and none is needed: ChilloutVR's contacts
+            // are per-client by design — every client simulates every avatar's contacts itself,
+            // so a receiver's reaction happens on each viewer's machine rather than being synced.
+            // VRChat's localOnly flag distinguished "only my client drives this parameter" from
+            // "the driven value replicates"; here the first is always true and the second is the
+            // parameter's own business (its AAS sync declaration).
 
             string typeName = receiver.receiverType.ToString();
             string nativeType = typeName.Contains("OnEnter") ? "OnEnter"
@@ -378,7 +385,10 @@ namespace AvatarBridge
             ctx.ContactParameters.Add(receiver.parameter);
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                 $"{typeName} receiver -> native ContactReceiver driving \"{receiver.parameter}\"" +
-                (receiver.localOnly ? " (local only, now actually honoured)" : ""));
+                (receiver.localOnly
+                    ? " (was local-only in VRChat; ChilloutVR contacts are per-client by design, " +
+                      "so every viewer's client computes this reaction itself — same result)"
+                    : ""));
             Object.DestroyImmediate(receiver);
         }
 
