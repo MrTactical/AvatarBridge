@@ -549,6 +549,20 @@ instead** — the VPM packages keep VRChat's types in their own assemblies, wher
 anything. This collision exists between the CCK and the legacy SDK with no AvatarBridge in the
 project at all, and the legacy SDK is deprecated by VRChat anyway.
 
+### Nothing compiles — Poiyomi's `AbiAutoAnchor.cs` / `AbiAutoLock.cs`: `'ABI' could not be found`
+
+Some Poiyomi versions ship ChilloutVR helper scripts that reference the CCK **directly**, inside
+Poiyomi's own `ThryExternal` assembly. The CCK sets `CVR_CCK_EXISTS` project-wide, which
+activates those scripts — but an assembly-definition assembly can never reference
+`Assembly-CSharp`, where the Assets-installed CCK's types live, so they cannot compile no matter
+what you do. (Other Poiyomi versions use reflection there and are fine.)
+
+**Fix: delete the two files** — `…/ThryEditor/External/Editor/AbiAutoAnchor.cs` and
+`AbiAutoLock.cs`. They are optional CCK upload conveniences (auto-anchor override, auto-lock on
+upload); nothing in conversion or the CCK's own upload needs them. A Poiyomi update may bring
+them back — delete again, or update to a version whose ABI scripts start with `using System;`
+(reflection-based) instead of `using ABI…`.
+
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
 The "bicycle pose". **Turn on *Mask merged layers off the humanoid rig* in Advanced and convert
