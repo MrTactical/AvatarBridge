@@ -4531,8 +4531,14 @@ namespace AvatarBridge
                 {
                     return;
                 }
+                // Full PPtr syntax only — {fileID: N, guid: X, type: N}. A bare "guid:" grep
+                // matched guid-LOOKING text inside string fields: an avatar with a missing
+                // prefab gets Unity's literal "(Missing Prefab with guid: …)" object name,
+                // that name lands in generated mask transform paths, and the audit read its
+                // own mask's path string as a dead asset reference.
                 foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
-                    .Matches(System.IO.File.ReadAllText(full), @"guid: ([0-9a-f]{32})"))
+                    .Matches(System.IO.File.ReadAllText(full),
+                        @"\{fileID: -?\d+, guid: ([0-9a-f]{32}), type: \d+\}"))
                 {
                     into.Add(match.Groups[1].Value);
                 }
