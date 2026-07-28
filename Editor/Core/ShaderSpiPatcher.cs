@@ -285,6 +285,20 @@ namespace AvatarBridge
                 reason = "surface shader — Unity generates the vertex stage, nothing to patch";
                 return null;
             }
+            // A GrabPass is refused on purpose, and early. Under single-pass instanced the
+            // grabbed screen is a texture ARRAY with one slice per eye, so every sampler2D /
+            // tex2D read of it takes the wrong slice — adding the four macros would produce a
+            // shader that compiles, passes the CCK's check, and still shows one eye the other
+            // eye's view. The correct rewrite (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE) has to
+            // be verified against a real HLSL compile, and an unverified guess here is worse
+            // than an honest refusal: it was tried, and produced a copy Unity rejected.
+            if (Regex.IsMatch(text, @"GrabPass\s*\{"))
+            {
+                reason = "it uses a GrabPass — the grabbed screen is a per-eye texture array under " +
+                         "single-pass instanced, so it needs the screen-space sampling macros by hand; " +
+                         "the stereo macros alone would leave it sampling the wrong eye";
+                return null;
+            }
             var vertPragma = Regex.Match(text, @"#pragma\s+vertex\s+(\w+)");
             var fragPragma = Regex.Match(text, @"#pragma\s+fragment\s+(\w+)");
             if (!vertPragma.Success || !fragPragma.Success)
@@ -383,45 +397,6 @@ namespace AvatarBridge
                 file.Text = Regex.Replace(file.Text,
                     @"tex2Dproj\s*\(\s*_CameraDepthTexture\s*,\s*(UNITY_PROJ_COORD\([^)]*\))\s*\)\s*\.\s*r",
                     "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
-            }
-
-            // 7 — GrabPass textures, the same trap as the depth texture and just as invisible to
-            // the CCK's four-macro test. Under single-pass instanced a grabbed screen is a
-            // texture ARRAY with one slice per eye, so a sampler2D/tex2D read of it takes the
-            // wrong slice however many macros are present — the classic "the lens/refraction
-            // effect shows the other eye's view" bug. UNITY_SAMPLE_SCREENSPACE_TEXTURE picks the
-            // slice from the eye index macro 5 established, and compiles to a plain sample in
-            // every other rendering mode.
-            var grabNames = new List<string>();
-            foreach (Match grab in Regex.Matches(shaderFile.Text, @"GrabPass\s*\{\s*""([^""]+)""\s*\}"))
-            {
-                grabNames.Add(grab.Groups[1].Value);
-            }
-            if (Regex.IsMatch(shaderFile.Text, @"GrabPass\s*\{\s*\}"))
-            {
-                grabNames.Add("_GrabTexture");
-            }
-            foreach (string grabName in grabNames.Distinct())
-            {
-                string escaped = Regex.Escape(grabName);
-                // tex2Dproj on a grab texture has no screen-space equivalent that also does the
-                // perspective divide, and guessing would ship something that compiles and looks
-                // wrong — which is worse than saying so.
-                if (unit.Any(f => Regex.IsMatch(f.Text, $@"tex2Dproj\s*\(\s*{escaped}\s*,")))
-                {
-                    reason = $"its GrabPass texture \"{grabName}\" is read with tex2Dproj, which has no " +
-                             "single-pass-instanced equivalent that can be substituted safely";
-                    return null;
-                }
-                foreach (var file in unit)
-                {
-                    file.Text = Regex.Replace(file.Text,
-                        $@"(?:uniform\s+)?sampler2D\s+{escaped}\s*;",
-                        $"UNITY_DECLARE_SCREENSPACE_TEXTURE({grabName});");
-                    file.Text = Regex.Replace(file.Text,
-                        $@"tex2D\s*\(\s*{escaped}\s*,",
-                        $"UNITY_SAMPLE_SCREENSPACE_TEXTURE({grabName},");
-                }
             }
 
             // Rename so it can't collide with the original in the shader list.
