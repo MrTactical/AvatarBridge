@@ -180,34 +180,26 @@ namespace AvatarBridge
 
             master.layers = masterLayers.ToArray();
 
-            _neededGestureIdxParameters.Clear();
             _gestureConditionsRedirected = 0;
             GesturePass(master, vrcLayers, ctx);
-            if (ctx.Settings.integerHandGestures)
-            {
-                ConvertHandLayerGesturesToIdx(master, ctx);
-            }
-            EnsureIntParameters(master, _neededGestureIdxParameters, ctx);
+            // The CCK's kept hand layers are deliberately NOT touched: they already condition
+            // on the gesture floats, which is the stock idiom the client actually runs.
             if (_gestureConditionsRedirected > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{_gestureConditionsRedirected} gesture condition(s) redirected to integer GestureLeftIdx/RightIdx",
-                    "Your gesture logic now uses exact int values. In GAME this just works: the client " +
-                    "writes GestureLeftIdx/RightIdx itself (decompiled: Idx = round(GestureLeft), fed " +
-                    "whenever the parameter is declared, desktop and VR alike). TESTING IN THE EDITOR is " +
-                    "different — nothing drives these there, so set the GestureLeftIdx/RightIdx INT on " +
-                    "the Animator directly (-1 open, 1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, " +
-                    "6 rock'n'roll); driving the old GestureLeft float does nothing outside the game, " +
-                    "and \"fingers don't pose in play mode\" is exactly how that looks. IN GAME, if " +
-                    "fingers still don't pose: try a STOCK ChilloutVR avatar first with the same " +
-                    "controllers. On Index-type controllers the client only registers gestures at " +
-                    "all while \"Skeletal Input\" or \"Infer Gestures from Finger Tracking\" is " +
-                    "enabled in ChilloutVR's settings (decompiled: Update_Gestures_Index commits " +
-                    "nothing otherwise) — with both off, NO avatar gestures, stock or converted. " +
-                    "If stock avatars pose and this one doesn't, report that — it isolates the " +
-                    "avatar from the input path. Mods that touch input are also suspects; test " +
-                    "vanilla once.");
+                    $"{_gestureConditionsRedirected} gesture condition(s) rebuilt as ChilloutVR float threshold bands",
+                    "Discrete VRChat gesture checks (GestureLeft == 4) become the CCK's own float windows " +
+                    "(GestureLeft > 3.9 and < 4.1) — the exact idiom the stock avatar animator uses, so the " +
+                    "conversion rides the same client path as every avatar that ships with the game. The " +
+                    "fist band starts at 0.1: the float carries the analog grip there, and a light squeeze " +
+                    "counts as fist, like VRChat. EDITOR TESTING: drive the GestureLeft/GestureRight FLOAT " +
+                    "(-1 open, 0.1..1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, 6 rock'n'roll) — the CCK " +
+                    "Animator Tester's pose buttons do exactly that. IN GAME on Index-type controllers, " +
+                    "gestures only register while \"Skeletal Input\" or \"Infer Gestures from Finger " +
+                    "Tracking\" is enabled in ChilloutVR's settings — with both off, NO avatar gestures, " +
+                    "stock or converted.");
             }
+            RebuildAnalogFist(master, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             StripExistingFaceTracking(master, vrcLayers, ctx);
@@ -593,33 +585,30 @@ namespace AvatarBridge
 
         static List<List<AnimatorCondition>> RewriteGestureCondition(AnimatorCondition condition, BridgeContext ctx)
         {
-            // Redirect discrete gesture checks onto CVR's integer index parameter, which
-            // maps 1:1 with VRChat's gesture ints (after value remapping).
-            string idxParam = GestureMap.IdxParameterFor(condition.parameter);
-            _neededGestureIdxParameters.Add(idxParam);
+            // Rebuild discrete gesture checks as threshold bands on the GestureLeft/GestureRight
+            // FLOATS — the exact idiom the CCK's own AvatarAnimator uses, and the only one the
+            // client is demonstrably exercised against. The integer GestureLeftIdx route looked
+            // equivalent in the decompile (Idx = round(GestureLeft) in the parameter setter),
+            // but a tester's split verdict — stock avatar poses fingers, converted avatar with
+            // identical clips, masks and wiring doesn't — isolated the difference to exactly
+            // this: the stock controller never references Idx. Condition like the CCK does.
+            string param = condition.parameter;
             _gestureConditionsRedirected++;
 
-            AnimatorCondition Idx(AnimatorConditionMode mode, int value) =>
-                new AnimatorCondition { parameter = idxParam, mode = mode, threshold = value };
-
-            // Exact comparisons stay single conditions.
             if (condition.mode == AnimatorConditionMode.Equals)
             {
                 return new List<List<AnimatorCondition>>
                 {
-                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, GestureMap.VrcToCvrIdx((int)condition.threshold)) }
+                    FloatBand(param, GestureMap.VrcToCvrIdx((int)condition.threshold))
                 };
             }
             if (condition.mode == AnimatorConditionMode.NotEqual)
             {
-                return new List<List<AnimatorCondition>>
-                {
-                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.NotEqual, GestureMap.VrcToCvrIdx((int)condition.threshold)) }
-                };
+                return FloatBandInverse(param, GestureMap.VrcToCvrIdx((int)condition.threshold));
             }
 
             // Greater/Less compare VRChat's numeric ordering, which differs from CVR's, so
-            // enumerate the matching gestures and OR discrete equals checks on the index.
+            // enumerate the matching gestures and OR their bands.
             var matched = new List<int>();
             for (int g = 0; g <= 7; g++)
             {
@@ -639,16 +628,174 @@ namespace AvatarBridge
             }
             if (matched.Count == 0)
             {
-                // Never true; an index value that can't occur ([-1..6]).
+                // Never true; a value the gesture float can't reach ([-1..6]).
                 return new List<List<AnimatorCondition>>
                 {
-                    new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, 99) }
+                    new List<AnimatorCondition>
+                    {
+                        new AnimatorCondition
+                        {
+                            parameter = param,
+                            mode = AnimatorConditionMode.Greater,
+                            threshold = 98f
+                        }
+                    }
                 };
             }
 
             return matched
-                .Select(g => new List<AnimatorCondition> { Idx(AnimatorConditionMode.Equals, GestureMap.VrcToCvrIdx(g)) })
+                .Select(g => FloatBand(param, GestureMap.VrcToCvrIdx(g)))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Analog fist parity for taken-over hand layers. In VRChat a fist isn't a snap: the
+        /// gesture playable blends the fist pose in by grip strength. The CCK does the same
+        /// with its Relaxed/Fist blend tree on the gesture float — the float IS the grip in
+        /// the fist band. A converted hand layer whose Fist state plays a bare clip would
+        /// snap to full fist at a light squeeze instead, so the clip is wrapped in the CCK's
+        /// own idiom: a 1D tree on the gesture float, idle pose at 0.1, fist pose at 1.
+        /// Skipped when the fist state already uses a tree or motion-time weight — that
+        /// author built their own analog handling and it converts as-is.
+        /// </summary>
+        static void RebuildAnalogFist(AnimatorController master, BridgeContext ctx)
+        {
+            foreach (var layer in master.layers)
+            {
+                string param = layer.name == "LeftHand" ? "GestureLeft"
+                    : layer.name == "RightHand" ? "GestureRight" : null;
+                if (param == null || layer.stateMachine == null)
+                {
+                    continue;
+                }
+                AnimatorState fist = null, idle = null;
+                void Classify(AnimatorCondition[] conditions, AnimatorState dst)
+                {
+                    if (dst == null)
+                    {
+                        return;
+                    }
+                    bool fistLo = false, fistHi = false, idleLo = false, idleHi = false;
+                    foreach (var c in conditions)
+                    {
+                        if (c.parameter != param)
+                        {
+                            continue;
+                        }
+                        if (c.mode == AnimatorConditionMode.Greater && Mathf.Abs(c.threshold - 0.1f) < 0.01f) fistLo = true;
+                        if (c.mode == AnimatorConditionMode.Less && Mathf.Abs(c.threshold - 1.1f) < 0.01f) fistHi = true;
+                        if (c.mode == AnimatorConditionMode.Greater && Mathf.Abs(c.threshold + 0.9f) < 0.01f) idleLo = true;
+                        if (c.mode == AnimatorConditionMode.Less && Mathf.Abs(c.threshold - 0.1f) < 0.01f) idleHi = true;
+                    }
+                    if (fistLo && fistHi && fist == null)
+                    {
+                        fist = dst;
+                    }
+                    if (idleLo && idleHi && idle == null)
+                    {
+                        idle = dst;
+                    }
+                }
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var t in machine.anyStateTransitions)
+                    {
+                        Classify(t.conditions, t.destinationState);
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        foreach (var t in child.state.transitions)
+                        {
+                            Classify(t.conditions, t.destinationState);
+                        }
+                    }
+                });
+                if (fist == null || idle == null || fist == idle || fist.timeParameterActive)
+                {
+                    continue;
+                }
+                if (!(fist.motion is AnimationClip fistClip) || !(idle.motion is AnimationClip idleClip))
+                {
+                    continue;
+                }
+                var tree = new BlendTree
+                {
+                    name = "AnalogFist",
+                    blendType = BlendTreeType.Simple1D,
+                    blendParameter = param,
+                    useAutomaticThresholds = false,
+                    hideFlags = HideFlags.HideInHierarchy,
+                };
+                tree.children = new[]
+                {
+                    new ChildMotion { motion = idleClip, threshold = 0.1f, timeScale = 1f },
+                    new ChildMotion { motion = fistClip, threshold = 1f, timeScale = 1f },
+                };
+                fist.motion = tree;
+                ctx.Report.Converted(Category, $"{layer.name}: analog fist curl rebuilt",
+                    $"\"{fist.name}\" now blends from \"{idleClip.name}\" (grip 0.1) to \"{fistClip.name}\" " +
+                    "(full grip) on the gesture float — the CCK's own Relaxed/Fist idiom, matching how " +
+                    "VRChat eases the fist in by trigger pressure instead of snapping to the full pose.");
+            }
+        }
+
+        /// <summary>
+        /// The CCK's own detection window for one gesture value, as serialized in its
+        /// AvatarAnimator: open (-1) is "&lt; -0.9", rock'n'roll (6) is "&gt; 5.9"
+        /// (open-ended), the discrete poses sit in (V-0.1, V+0.1). The CCK folds neutral and
+        /// fist into one (-0.9, 1.1) band because the float IS the analog grip there; VRChat
+        /// logic has separate neutral/fist states, so those split at 0.1 — grip past a light
+        /// squeeze counts as fist, mirroring VRChat's own low trigger threshold.
+        /// </summary>
+        static List<AnimatorCondition> FloatBand(string param, int cvrValue)
+        {
+            var band = new List<AnimatorCondition>();
+            void Add(AnimatorConditionMode mode, float threshold) => band.Add(
+                new AnimatorCondition { parameter = param, mode = mode, threshold = threshold });
+            switch (cvrValue)
+            {
+                case -1: Add(AnimatorConditionMode.Less, -0.9f); break;
+                case 0: Add(AnimatorConditionMode.Greater, -0.9f); Add(AnimatorConditionMode.Less, 0.1f); break;
+                case 1: Add(AnimatorConditionMode.Greater, 0.1f); Add(AnimatorConditionMode.Less, 1.1f); break;
+                case 6: Add(AnimatorConditionMode.Greater, 5.9f); break;
+                default:
+                    Add(AnimatorConditionMode.Greater, cvrValue - 0.1f);
+                    Add(AnimatorConditionMode.Less, cvrValue + 0.1f);
+                    break;
+            }
+            return band;
+        }
+
+        /// <summary>
+        /// Everything OUTSIDE one gesture's band, as OR-branches — Unity evaluates only
+        /// Greater/Less on float parameters, so a NotEqual has to become two transitions.
+        /// </summary>
+        static List<List<AnimatorCondition>> FloatBandInverse(string param, int cvrValue)
+        {
+            List<AnimatorCondition> One(AnimatorConditionMode mode, float threshold) =>
+                new List<AnimatorCondition>
+                {
+                    new AnimatorCondition { parameter = param, mode = mode, threshold = threshold }
+                };
+            switch (cvrValue)
+            {
+                case -1:
+                    return new List<List<AnimatorCondition>> { One(AnimatorConditionMode.Greater, -0.9f) };
+                case 0:
+                    return new List<List<AnimatorCondition>>
+                        { One(AnimatorConditionMode.Less, -0.9f), One(AnimatorConditionMode.Greater, 0.1f) };
+                case 1:
+                    return new List<List<AnimatorCondition>>
+                        { One(AnimatorConditionMode.Less, 0.1f), One(AnimatorConditionMode.Greater, 1.1f) };
+                case 6:
+                    return new List<List<AnimatorCondition>> { One(AnimatorConditionMode.Less, 5.9f) };
+                default:
+                    return new List<List<AnimatorCondition>>
+                    {
+                        One(AnimatorConditionMode.Less, cvrValue - 0.1f),
+                        One(AnimatorConditionMode.Greater, cvrValue + 0.1f)
+                    };
+            }
         }
 
         static T CloneForBranch<T>(T src) where T : AnimatorTransitionBase, new()
@@ -3438,17 +3585,6 @@ namespace AvatarBridge
 
         static void MaskMergedLayers(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            if (!ctx.Settings.maskMergedLayers)
-            {
-                // Still look, even when not allowed to act. A merged layer that can write humanoid
-                // muscles is the known cause of an avatar standing in a bent rest pose in game
-                // while only the IK-tracked parts follow you — the "bicycle pose". VRChat prevents
-                // it architecturally by keeping FX on its own playable layer; ChilloutVR has one
-                // controller, so nothing prevents it here. Naming the layers turns an alarming
-                // in-game symptom into a setting to switch on.
-                ReportUnmaskedMuscleLayers(master, vrcLayers, ctx);
-                return;
-            }
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;
@@ -4502,140 +4638,7 @@ namespace AvatarBridge
             }
         }
 
-        // Gesture-index parameters (GestureLeftIdx/RightIdx) that the rewritten gesture
-        // conditions now reference and that must exist on the controller as ints.
-        static readonly HashSet<string> _neededGestureIdxParameters = new HashSet<string>();
         static int _gestureConditionsRedirected;
-
-        /// <summary>
-        /// Converts the CCK's native LeftHand/RightHand hand-pose layers to use the integer
-        /// GestureLeftIdx/RightIdx for discrete gesture selection, while leaving the analog
-        /// fist untouched. The CCK detects each discrete gesture with a tight float window
-        /// (e.g. GestureRight in (3.9, 4.1) = Point); a window that contains exactly one
-        /// integer gesture value is replaced with a single "Idx Equals value". Windows that
-        /// span the fist/neutral region (0..1) and every blend tree stay on the float
-        /// parameter, so trigger-pressure finger curl is preserved.
-        /// </summary>
-        static void ConvertHandLayerGesturesToIdx(AnimatorController master, BridgeContext ctx)
-        {
-            int converted = 0;
-            foreach (var layer in master.layers)
-            {
-                if (layer.name != "LeftHand" && layer.name != "RightHand")
-                {
-                    continue;
-                }
-                WalkMachines(layer.stateMachine, machine =>
-                {
-                    machine.anyStateTransitions = RewriteHandTransitions(machine.anyStateTransitions, ref converted);
-                    machine.entryTransitions = RewriteHandTransitions(machine.entryTransitions, ref converted);
-                    foreach (var child in machine.states)
-                    {
-                        child.state.transitions = RewriteHandTransitions(child.state.transitions, ref converted);
-                    }
-                });
-            }
-            if (converted > 0)
-            {
-                ctx.Report.Converted(Category, $"{converted} hand-pose transition(s) switched to integer gestures",
-                    "The CCK hand layers now select every discrete gesture via GestureLeftIdx/RightIdx (no float " +
-                    "conditions left to conflict); the analog fist finger-curl stays in the fist state's blend tree.");
-            }
-        }
-
-        static T[] RewriteHandTransitions<T>(T[] transitions, ref int converted) where T : AnimatorTransitionBase, new()
-        {
-            var result = new List<T>(transitions.Length);
-            foreach (var transition in transitions)
-            {
-                var conditions = transition.conditions;
-                var gestureParams = conditions
-                    .Where(c => GestureMap.GestureParameters.Contains(c.parameter))
-                    .Select(c => c.parameter)
-                    .Distinct()
-                    .ToList();
-
-                // No gesture condition, or an unsafe multi-gesture-param transition: keep as-is.
-                if (gestureParams.Count != 1)
-                {
-                    result.Add(transition);
-                    continue;
-                }
-                string param = gestureParams[0];
-
-                float lo = float.NegativeInfinity, hi = float.PositiveInfinity;
-                var equalsValues = new List<int>();
-                var notEqualsValues = new List<int>();
-                foreach (var c in conditions.Where(c => c.parameter == param))
-                {
-                    switch (c.mode)
-                    {
-                        case AnimatorConditionMode.Greater: lo = Mathf.Max(lo, c.threshold); break;
-                        case AnimatorConditionMode.Less: hi = Mathf.Min(hi, c.threshold); break;
-                        case AnimatorConditionMode.Equals: equalsValues.Add(Mathf.RoundToInt(c.threshold)); break;
-                        case AnimatorConditionMode.NotEqual: notEqualsValues.Add(Mathf.RoundToInt(c.threshold)); break;
-                        default: break;
-                    }
-                }
-
-                // Which discrete gesture indices (-1..6) satisfy the original condition set?
-                var matched = new List<int>();
-                for (int k = -1; k <= 6; k++)
-                {
-                    if (k > lo && k < hi &&
-                        (equalsValues.Count == 0 || equalsValues.Contains(k)) &&
-                        !notEqualsValues.Contains(k))
-                    {
-                        matched.Add(k);
-                    }
-                }
-
-                var nonGesture = conditions.Where(c => !GestureMap.GestureParameters.Contains(c.parameter)).ToList();
-                string idxParam = GestureMap.IdxParameterFor(param);
-
-                if (matched.Count == 0)
-                {
-                    result.Add(transition); // never happens for real hand layers; leave untouched
-                    continue;
-                }
-                _neededGestureIdxParameters.Add(idxParam);
-
-                if (matched.Count == 8)
-                {
-                    // Always true on the gesture: drop the gesture conditions entirely.
-                    transition.conditions = nonGesture.ToArray();
-                    result.Add(transition);
-                    converted++;
-                    continue;
-                }
-
-                // One transition per matched index, all selecting on the integer parameter.
-                // Consistent Idx-only conditions across the layer means no float/int mix,
-                // so the state can't flicker when the two parameters momentarily disagree.
-                bool first = true;
-                foreach (int k in matched)
-                {
-                    T target;
-                    if (first)
-                    {
-                        target = transition;
-                        first = false;
-                    }
-                    else
-                    {
-                        target = CloneForBranch(transition);
-                    }
-                    var branch = new List<AnimatorCondition>(nonGesture)
-                    {
-                        new AnimatorCondition { parameter = idxParam, mode = AnimatorConditionMode.Equals, threshold = k }
-                    };
-                    target.conditions = branch.ToArray();
-                    result.Add(target);
-                }
-                converted++;
-            }
-            return result.ToArray();
-        }
 
         /// <summary>
         /// Both Native and DragonSkyRunner modes replace the avatar's face tracking, so the
@@ -4697,35 +4700,6 @@ namespace AvatarBridge
                     $"Removed the avatar's existing FT rig — {removedMachines.Count} layer(s), {removedParams} parameter(s)",
                     "This mode provides its own face tracking, so the baked-in FT animator was removed " +
                     "to avoid fighting it for the same blendshapes.");
-            }
-        }
-
-        static void EnsureIntParameters(AnimatorController master, HashSet<string> names, BridgeContext ctx)
-        {
-            if (names.Count == 0)
-            {
-                return;
-            }
-            var parameters = master.parameters.ToList();
-            var existing = new HashSet<string>(parameters.Select(p => p.name));
-            int added = 0;
-            foreach (var name in names)
-            {
-                if (existing.Add(name))
-                {
-                    parameters.Add(new AnimatorControllerParameter
-                    {
-                        name = name,
-                        type = AnimatorControllerParameterType.Int
-                    });
-                    added++;
-                }
-            }
-            if (added > 0)
-            {
-                master.parameters = parameters.ToArray();
-                ctx.Report.Converted(Category, $"Added {added} gesture index parameter(s)",
-                    "GestureLeftIdx/RightIdx drive the discrete gesture conditions.");
             }
         }
 

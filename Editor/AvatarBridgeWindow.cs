@@ -239,21 +239,17 @@ namespace AvatarBridge
 
             if (VRCFuryBaker.HasFuryComponents(avatar.gameObject))
             {
-                parent.Add(new HelpBox(settings.bakeVrcFury
-                        ? "VRCFury detected — it will be baked with VRCFury's own builder first, so all Fury " +
-                          "features (toggles, clothing, menus) carry over."
-                        : "VRCFury detected, but baking is disabled (Advanced options)! Every Fury-driven " +
-                          "feature will be MISSING from the result.",
-                    settings.bakeVrcFury ? HelpBoxMessageType.Info : HelpBoxMessageType.Warning));
+                parent.Add(new HelpBox(
+                    "VRCFury detected — it will be baked with VRCFury's own builder first, so all Fury " +
+                    "features (toggles, clothing, menus) carry over.",
+                    HelpBoxMessageType.Info));
             }
             if (ModularAvatarBaker.HasModularAvatarComponents(avatar.gameObject))
             {
-                parent.Add(new HelpBox(settings.bakeModularAvatar
-                        ? "Modular Avatar detected — it will be baked via NDMF first, so MA features " +
-                          "(merged armature, menus, outfits) carry over."
-                        : "Modular Avatar detected, but baking is disabled (Advanced options)! MA-driven " +
-                          "features will be MISSING from the result.",
-                    settings.bakeModularAvatar ? HelpBoxMessageType.Info : HelpBoxMessageType.Warning));
+                parent.Add(new HelpBox(
+                    "Modular Avatar detected — it will be baked via NDMF first, so MA features " +
+                    "(merged armature, menus, outfits) carry over.",
+                    HelpBoxMessageType.Info));
             }
         }
 
@@ -401,15 +397,11 @@ namespace AvatarBridge
 
             b.Add(BridgeElements.SubHeading("General"));
             AddCommonGeneralOptions(b);
-            b.Add(BridgeElements.Bind("Bake VRCFury first (recommended)",
-                "Runs VRCFury's own 'Build a Test Copy' pipeline before converting.",
-                settings.bakeVrcFury, v => { settings.bakeVrcFury = v; ScheduleRebuild(); }));
-            b.Add(BridgeElements.Bind("Bake Modular Avatar first (recommended)",
-                "For MA avatars without VRCFury: runs NDMF's manual bake before converting. " +
-                "MA+VRCFury avatars are already covered by the VRCFury bake.",
-                settings.bakeModularAvatar, v => { settings.bakeModularAvatar = v; ScheduleRebuild(); }));
-            b.Add(BridgeElements.Bind("Delete VRC components after conversion", null,
-                settings.deleteVrcComponents, v => settings.deleteVrcComponents = v));
+            // VRCFury/Modular Avatar baking, VRC-component cleanup, Fury toggle rebuilding and
+            // humanoid masking used to be toggles here. Every off-state produced a conversion
+            // that was broken or read as broken — an avatar still wearing its VRC descriptor
+            // convinced even the maintainer that "it just didn't convert". Necessary steps
+            // aren't options; they always run now.
 
             b.Add(BridgeElements.SubHeading("Remove VRChat-only systems"));
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
@@ -464,16 +456,11 @@ namespace AvatarBridge
                 settings.convertActionLayer, v => { settings.convertActionLayer = v; ScheduleRebuild(); }));
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
-            b.Add(BridgeElements.Bind("Rebuild VRCFury toggles (recommended)",
-                "Pulls toggles out of VRCFury's merged blend tree so each one is a readable, " +
-                "working toggle instead of float math.",
-                settings.nativizeObjectToggles, v => { settings.nativizeObjectToggles = v; ScheduleRebuild(); }));
             var style = EnumPopup<ToggleStyle>("Toggle style",
                 "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
                 "CVR Native Targets: object toggles are left to the CCK's own builder " +
                 "(you must press \"Create Controller\" on the avatar).",
                 settings.toggleStyle, v => settings.toggleStyle = v);
-            style.SetEnabled(settings.nativizeObjectToggles);
             b.Add(style);
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
                 "Non-synced VRC parameters get CVR's '#' local-only prefix.",
@@ -483,10 +470,6 @@ namespace AvatarBridge
                 "entry. They would sync either way — CVR takes that from the animator — but " +
                 "without an entry the value isn't saved to your avatar profile between loads.",
                 settings.exposeMenulessSyncedParameters, v => settings.exposeMenulessSyncedParameters = v));
-            b.Add(BridgeElements.Bind("Integer hand-pose gestures",
-                "Selects discrete gestures via GestureLeftIdx/RightIdx; the analog fist " +
-                "(trigger-pressure finger curl) stays on the float.",
-                settings.integerHandGestures, v => settings.integerHandGestures = v));
 
             b.Add(BridgeElements.SubHeading("Components"));
             b.Add(BridgeElements.Bind("Convert contact senders/receivers", null,
@@ -529,15 +512,6 @@ namespace AvatarBridge
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
 
-            b.Add(BridgeElements.Bind("Mask merged layers off the humanoid rig",
-                "Fixes the \"bicycle pose\" — an avatar stuck in a bent rest pose in game while " +
-                "only the head and hands follow you. VRChat keeps FX on its own playable layer so " +
-                "it can never write humanoid muscles; ChilloutVR runs one controller, where a " +
-                "merged layer can, and then fights locomotion for the body every frame. This puts " +
-                "that separation back. Confirmed in game. Layers that animate the body on purpose " +
-                "are left alone, so it is safe to try on any avatar — object toggles, blendshapes " +
-                "and material animation are unaffected.",
-                settings.maskMergedLayers, v => settings.maskMergedLayers = v));
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,
                 settings.convertConstraints, v => settings.convertConstraints = v));
             b.Add(BridgeElements.Bind("Convert VRC Head Chop",

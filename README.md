@@ -163,7 +163,7 @@ defines.
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
-| Gestures | `GestureLeftIdx` / `RightIdx` ints | analog fist curl stays native |
+| Gestures | float threshold bands, the CCK's own idiom | analog fist curl stays native |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
@@ -581,16 +581,16 @@ them back — delete again, or update to a version whose ABI scripts start with 
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
-The "bicycle pose". **Turn on *Mask merged layers off the humanoid rig* in Advanced and convert
-again** — confirmed to fix it, tested in game.
+The "bicycle pose". **Reconvert on a current version** — since 2.62.0 merged layers are always
+masked off the humanoid rig (it used to be an Advanced option, confirmed in game and now
+mandatory).
 
 VRChat keeps FX on its own playable layer, so an FX layer there physically can't write humanoid
 muscles. ChilloutVR runs one controller, so nothing stops a merged layer doing exactly that and
-fighting locomotion for the body every frame.
-
-The report names the layers that could, both before and after. Layers that animate the body on
-purpose are left alone either way, which is why it's safe to try on any avatar — and nothing else
-changes: object toggles, blendshapes and material animation are untouched by the mask.
+fighting locomotion for the body every frame. The masking restores VRChat's separation; layers
+that animate the body on purpose are left alone, and object toggles, blendshapes and material
+animation are untouched. If you see this pose on a 2.62.0+ conversion, report it — the report
+names every layer that could write muscles.
 
 ### A chain moves differently in game than in Unity
 
