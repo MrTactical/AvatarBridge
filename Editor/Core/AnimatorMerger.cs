@@ -251,6 +251,7 @@ namespace AvatarBridge
             RewirePhysicsToggles(master, ctx);
             RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
+            AuditCurveControlledGameParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -4180,6 +4181,86 @@ namespace AvatarBridge
                     "VRChat too. Each was rewritten only because exactly ONE transform at the same " +
                     "depth matches every other segment of the path; anything ambiguous was left " +
                     "alone and appears in the broken-paths warning instead.");
+            }
+        }
+
+        /// <summary>
+        /// Warns when a game-fed parameter is animated by a clip as an animated animator
+        /// parameter. The client builds each parameter's definition with
+        /// Animator.IsParameterControlledByCurve (decompiled: AvatarParam → IsReadOnly), and it
+        /// REFUSES to write read-only parameters — so a single AAP curve on GestureLeftIdx or
+        /// MovementX freezes that parameter in game forever, on this avatar only, while the
+        /// editor (where the tester tool writes directly) behaves perfectly. That exact
+        /// asymmetry burned days of tester rounds; whether or not it is any given avatar's
+        /// fault, the report must name it.
+        /// </summary>
+        static void AuditCurveControlledGameParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var gameFed = new HashSet<string>(CvrCoreParameters);
+            gameFed.UnionWith(StreamFedParameters);
+            gameFed.Add("VisemeLoudness");
+            gameFed.Add("Upright");
+
+            var offenders = new Dictionary<string, List<string>>();
+            var seen = new HashSet<AnimationClip>();
+
+            void Audit(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Audit(child.motion);
+                    }
+                    return;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    return;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(Animator) || !string.IsNullOrEmpty(binding.path))
+                    {
+                        continue;
+                    }
+                    string bare = binding.propertyName.TrimStart('#');
+                    if (!gameFed.Contains(bare))
+                    {
+                        continue;
+                    }
+                    if (!offenders.TryGetValue(binding.propertyName, out var clips))
+                    {
+                        offenders[binding.propertyName] = clips = new List<string>();
+                    }
+                    if (!clips.Contains(clip.name))
+                    {
+                        clips.Add(clip.name);
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Audit(child.state.motion);
+                    }
+                });
+            }
+
+            foreach (var offender in offenders)
+            {
+                ctx.Report.Warning(Category,
+                    $"Game-fed parameter \"{offender.Key}\" is animated by a clip — the game will NEVER write it",
+                    $"Clip(s): {string.Join(", ", offender.Value.Take(5))}" +
+                    (offender.Value.Count > 5 ? ", …" : "") + ". ChilloutVR marks curve-controlled " +
+                    "parameters read-only and refuses to feed them (decompiled: " +
+                    "IsParameterControlledByCurve → IsReadOnly), so this parameter sits frozen in " +
+                    "game while editor testing works perfectly. Remove the curve from those clips, " +
+                    "or rename the animated parameter apart from the game-fed one.");
             }
         }
 
