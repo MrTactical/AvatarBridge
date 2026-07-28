@@ -90,6 +90,11 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
+- **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
+  CCK Animator Tester*: gestures, locomotion, visemes, emotes and the avatar's whole Advanced
+  Settings menu, coerced by declared type exactly like the client. (VRChat's Gesture Manager
+  cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
+  ChilloutVR speaks int.)
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
