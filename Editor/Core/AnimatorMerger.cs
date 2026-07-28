@@ -224,6 +224,7 @@ namespace AvatarBridge
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
             RewirePhysicsToggles(master, ctx);
+            RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -3888,6 +3889,237 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>True when every segment of the path is purely digits — a pre-hashed path.
+        /// ChilloutVR's own locomotion clips ship this way (the client binds them by hash), so
+        /// they can neither be audited nor repaired by string comparison.</summary>
+        static bool IsHashedPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+            foreach (var segment in path.Split('/'))
+            {
+                if (segment.Length == 0)
+                {
+                    return false;
+                }
+                foreach (var c in segment)
+                {
+                    if (c < '0' || c > '9')
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Repairs curve paths broken by a renamed bone, when the repair is provable.
+        ///
+        /// The motivating case: a tail-wag clip binding "Armature/Hips/Tail_Root/Tail.001"
+        /// against an avatar whose bone is "Armature/Hips/Tail" — someone renamed the bone
+        /// after the animation was authored, every tail curve went silent, and it played as
+        /// silence in VRChat too. The repair rule is deliberately strict: a dead path is
+        /// rewritten only when the avatar contains EXACTLY ONE transform at the same depth
+        /// whose path matches every segment but one. One candidate is a proof; two is a guess,
+        /// and a guess would wag the wrong bones — ambiguous paths are left for the audit to
+        /// report. Clips are cloned before modification, as everywhere else.
+        /// </summary>
+        static void RepairClipPaths(AnimatorController master, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+
+            var byDepth = new Dictionary<int, List<string[]>>();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == root)
+                {
+                    continue;
+                }
+                var segs = AnimationUtility.CalculateTransformPath(t, root).Split('/');
+                if (!byDepth.TryGetValue(segs.Length, out var list))
+                {
+                    byDepth[segs.Length] = list = new List<string[]>();
+                }
+                list.Add(segs);
+            }
+
+            var pathFix = new Dictionary<string, string>();
+            string Repair(string path)
+            {
+                if (pathFix.TryGetValue(path, out var known))
+                {
+                    return known;
+                }
+                string result = null;
+                var segs = path.Split('/');
+                if (byDepth.TryGetValue(segs.Length, out var candidates))
+                {
+                    bool ambiguous = false;
+                    foreach (var cs in candidates)
+                    {
+                        int mismatch = 0;
+                        for (int i = 0; i < segs.Length && mismatch <= 1; i++)
+                        {
+                            if (!string.Equals(segs[i], cs[i], StringComparison.Ordinal))
+                            {
+                                mismatch++;
+                            }
+                        }
+                        if (mismatch <= 1)
+                        {
+                            if (result != null)
+                            {
+                                ambiguous = true;
+                                break;
+                            }
+                            result = string.Join("/", cs);
+                        }
+                    }
+                    if (ambiguous)
+                    {
+                        result = null;
+                    }
+                }
+                pathFix[path] = result;
+                return result;
+            }
+
+            var repaired = new Dictionary<AnimationClip, AnimationClip>();
+            var rows = new List<string>();
+
+            AnimationClip Fix(AnimationClip clip)
+            {
+                if (clip == null)
+                {
+                    return null;
+                }
+                if (repaired.TryGetValue(clip, out var done))
+                {
+                    return done;
+                }
+                List<(EditorCurveBinding oldB, EditorCurveBinding newB, bool objRef)> moves = null;
+                string exampleOld = null, exampleNew = null;
+                void Consider(EditorCurveBinding binding, bool objRef)
+                {
+                    if (string.IsNullOrEmpty(binding.path) || IsHashedPath(binding.path))
+                    {
+                        return;
+                    }
+                    if (root.Find(binding.path) != null)
+                    {
+                        return;
+                    }
+                    var fixedPath = Repair(binding.path);
+                    if (fixedPath == null)
+                    {
+                        return;
+                    }
+                    var moved = binding;
+                    moved.path = fixedPath;
+                    if (moves == null)
+                    {
+                        moves = new List<(EditorCurveBinding, EditorCurveBinding, bool)>();
+                    }
+                    moves.Add((binding, moved, objRef));
+                    if (exampleOld == null)
+                    {
+                        exampleOld = binding.path;
+                        exampleNew = fixedPath;
+                    }
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    Consider(binding, false);
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    Consider(binding, true);
+                }
+                if (moves == null)
+                {
+                    repaired[clip] = clip;
+                    return clip;
+                }
+                var clone = UnityEngine.Object.Instantiate(clip);
+                clone.name = clip.name;
+                clone.hideFlags = HideFlags.None;
+                foreach (var (oldB, newB, objRef) in moves)
+                {
+                    if (objRef)
+                    {
+                        var keys = AnimationUtility.GetObjectReferenceCurve(clip, oldB);
+                        AnimationUtility.SetObjectReferenceCurve(clone, oldB, null);
+                        AnimationUtility.SetObjectReferenceCurve(clone, newB, keys);
+                    }
+                    else
+                    {
+                        var curve = AnimationUtility.GetEditorCurve(clip, oldB);
+                        AnimationUtility.SetEditorCurve(clone, oldB, null);
+                        AnimationUtility.SetEditorCurve(clone, newB, curve);
+                    }
+                }
+                repaired[clip] = clone;
+                rows.Add($"\"{clip.name}\" ({moves.Count} curve(s), e.g. \"{exampleOld}\" -> \"{exampleNew}\")");
+                return clone;
+            }
+
+            Motion FixMotion(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    return Fix(clip);
+                }
+                if (motion is BlendTree tree)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        var replacedChild = FixMotion(children[i].motion);
+                        if (!ReferenceEquals(replacedChild, children[i].motion))
+                        {
+                            children[i].motion = replacedChild;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+                return motion;
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = FixMotion(child.state.motion);
+                    }
+                });
+            }
+
+            if (rows.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{rows.Count} clip(s) had broken curve paths repaired",
+                    string.Join("; ", rows.Take(8)) + (rows.Count > 8 ? "; …" : "") + ". These " +
+                    "bindings pointed at object names that don't exist on the avatar — usually a " +
+                    "bone renamed after the animation was authored — and played as silence in " +
+                    "VRChat too. Each was rewritten only because exactly ONE transform at the same " +
+                    "depth matches every other segment of the path; anything ambiguous was left " +
+                    "alone and appears in the broken-paths warning instead.");
+            }
+        }
+
         /// <summary>
         /// Names every clip whose curves target paths that don't exist on this avatar.
         ///
@@ -3940,8 +4172,14 @@ namespace AvatarBridge
                              .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
                 {
                     // Animator-type bindings with an empty path are animated animator
-                    // parameters, not scene objects; they have no path to resolve.
+                    // parameters, not scene objects; they have no path to resolve. Pre-hashed
+                    // numeric paths (the CCK's own locomotion clips ship this way, bound by
+                    // hash at runtime) cannot be audited by string lookup and are healthy.
                     if (binding.type == typeof(Animator) && string.IsNullOrEmpty(binding.path))
+                    {
+                        continue;
+                    }
+                    if (IsHashedPath(binding.path))
                     {
                         continue;
                     }
