@@ -156,13 +156,14 @@ namespace AvatarBridge
         // over-corrected from a second-hand report; the test that settled it was a second
         // player seeing the reaction with no synced parameter in the loop.)
         //
-        // Off by default, and the window warns while it is on, because the author calls the
-        // system UNSTABLE: any ChilloutVR update may change it, killing converted contacts
-        // until reconverted — and that has already happened once in reverse (2.50.3 trusted the
-        // author's public repo over the shipped game and every receiver went deaf; see
-        // ContactStubPatcher). The components are not in the CCK: AvatarBridge declares them
-        // itself, verified field-for-field against the DECOMPILED CLIENT, which is the only
-        // authority — do not import the public repo into a conversion project while it
+        // Off by default, and the window notes while it is on that this is EXPERIMENTAL: it
+        // talks to a component internal to the game, so any ChilloutVR update can break it —
+        // possibly for good, since nothing on this side can resurrect a component the game
+        // stops shipping. A same-shaped breakage already happened once in reverse (2.50.3
+        // trusted the author's public repo over the shipped game and every receiver went deaf;
+        // see ContactStubPatcher). The components are not in the CCK: AvatarBridge declares
+        // them itself, verified field-for-field against the DECOMPILED CLIENT, which is the
+        // only authority — do not import the public repo into a conversion project while it
         // disagrees with the game.
         public bool useNativeContacts = false;
 

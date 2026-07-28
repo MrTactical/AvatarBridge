@@ -287,9 +287,9 @@ so reactions work over the network with **no sync involved and no sync bits spen
 parameter a receiver drives also replicates its *value* is that parameter's own sync declaration,
 exactly as everywhere else.
 
-> ⚠️ This talks to a component internal to the game rather than the CCK, so a ChilloutVR update
-> may break it — if contacts stop working in game, reconvert and re-upload. (The window shows the
-> same note while the option is on.)
+> ⚠️ Experimental — this talks to a component internal to the game, not the CCK, so any ChilloutVR
+> update can break it, possibly for good. Treat it as a bonus, not something the avatar depends
+> on. (The window shows the same note while the option is on.)
 
 AvatarBridge's generated declarations are verified **field-for-field against the decompiled game
 client** — the only layout that matters, since the client is what reads the uploaded avatar. The

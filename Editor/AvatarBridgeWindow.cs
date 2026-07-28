@@ -486,9 +486,9 @@ namespace AvatarBridge
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
-                    "This talks to a component internal to the game rather than the CCK, so a " +
-                    "ChilloutVR update may break it — if contacts stop working in game, reconvert " +
-                    "and re-upload.",
+                    "Experimental — this talks to a component internal to the game, not the CCK, " +
+                    "so any ChilloutVR update can break it, possibly for good. Treat it as a " +
+                    "bonus, not something the avatar depends on.",
                     HelpBoxMessageType.Info));
             }
 
