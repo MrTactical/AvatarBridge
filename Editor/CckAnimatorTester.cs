@@ -16,11 +16,11 @@ namespace AvatarBridge
     ///
     /// It exists because of how testers naturally test: VRChat's Gesture Manager on the
     /// ORIGINAL avatar as the "before". That comparison is unwinnable — Gesture Manager needs
-    /// the VRC descriptor (removed by conversion) and drives the float GestureLeft, while the
-    /// converted gesture logic reads the integer GestureLeftIdx that only the game writes. A
-    /// full tester round was spent "proving" correct conversions broken that way. This window
-    /// is the apples-to-apples counterpart: every control writes the parameters ChilloutVR's
-    /// client writes, coerced by the declared type exactly as the client does.
+    /// the VRC descriptor, which conversion removes. A full tester round was spent "proving"
+    /// correct conversions broken that way. This window is the apples-to-apples counterpart:
+    /// every control writes the parameters ChilloutVR's client writes (gesture poses via the
+    /// GestureLeft/GestureRight floats the CCK's own layers condition on), coerced by the
+    /// declared type exactly as the client does.
     /// </summary>
     public class CckAnimatorTester : EditorWindow
     {
@@ -303,9 +303,9 @@ namespace AvatarBridge
                         ? $"Driving \"{avatar.name}\". Every control writes what ChilloutVR itself writes."
                         : $"Found \"{avatar.name}\" — enter PLAY MODE to drive it; animators only evaluate there.")));
             pick.Body.Add(BridgeElements.Hint(
-                "VRChat's Gesture Manager cannot drive a converted avatar: it needs the removed " +
-                "VRC descriptor, and converted gesture logic reads the integer parameters only " +
-                "the game feeds. This window is the ChilloutVR-side equivalent."));
+                "VRChat's Gesture Manager cannot drive a converted avatar: it needs the VRC " +
+                "descriptor, which conversion removes. This window is the ChilloutVR-side " +
+                "equivalent — every control writes exactly what the game writes."));
             scroll.Add(pick);
 
             // ---- gestures ----------------------------------------------------------------

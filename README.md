@@ -103,9 +103,8 @@ actually running.
   Settings menu, coerced by declared type exactly like the client. The menu card follows the
   controller on the avatar's Animator: it refreshes itself when the controller or its parameter
   list changes, and greys any entry whose parameter the controller doesn't declare — driving
-  those would do nothing in game either. (VRChat's Gesture Manager
-  cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
-  ChilloutVR speaks int.)
+  those would do nothing in game either. (VRChat's Gesture Manager cannot drive a converted
+  avatar — it needs the VRC descriptor, which conversion removes.)
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -163,7 +162,8 @@ defines.
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
-| Gestures | float threshold bands, the CCK's own idiom | analog fist curl stays native |
+| Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
+| Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
@@ -513,7 +513,8 @@ Bipeds are unaffected by any of it.
   poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
   blendshape face tracking *are* handled.)
 - **PhysBone posing, stretch & squish** and their `_Stretch` / `_Squish` / `_IsPosed` parameters
-- **VRC state behaviours** other than Parameter Driver — removed and counted
+- **VRC state behaviours** other than Parameter Driver and Tracking Control (which becomes
+  `BodyControl`) — removed and counted
 - **Synced animator layers** and **ONSP audio**
 - **Content tags** — set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading
 - **VRChat-only rendering** — SPS/TPS deformation and anything needing VRChat's own shader systems.
@@ -639,15 +640,23 @@ that converted fine. Convert again on the current version; if it persists, that'
 Different from magenta and worth reporting separately. The material survived but its **textures**
 didn't — the same VRCFury temp problem one level deeper. Convert again on the current version.
 
-### Gestures or emotes freeze — but only on another PC, or in game
+### Gestures freeze in game, or on another PC
 
-Before 2.61.0, the converted controller referenced its clips wherever the source avatar kept
-them. In a project without those folders, every missing clip resolves to None and plays as
-stillness — the state machine runs, transitions fire, fingers don't move, and nothing errors.
-The controller working on the author's PC while fingers freeze for someone else is the
-signature. Since 2.61.0 every referenced clip and mask is copied into the output folder's
-`RehomedAssets` and the controller repointed, so the output folder alone is the whole
-conversion. Reconvert on a current version if you hit this.
+**Reconvert on 2.62.0 or later.** Two historical causes, both fixed:
+
+1. *Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
+   parameters — which ChilloutVR's own stock avatar animator never uses, and which the game
+   doesn't reliably feed. Fingers worked in the editor tester (which drives them directly) and
+   froze in game. Conversions now condition on the `GestureLeft`/`GestureRight` floats with the
+   CCK's own threshold bands — the same client path every stock avatar runs.
+2. *Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in
+   a project without those folders every missing clip resolves to None and plays as stillness,
+   with no error anywhere. "Works on the author's PC, frozen on someone else's" is this one's
+   signature. Every referenced clip and mask is now copied into the output's `RehomedAssets`.
+
+Also worth knowing: on Index-type controllers ChilloutVR only registers gestures at all while
+*Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its settings — with both
+off, no avatar gestures work, stock or converted.
 
 ### A menu control appears, moves, syncs — and does nothing
 
