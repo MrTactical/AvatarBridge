@@ -586,6 +586,37 @@ namespace AvatarBridge
             var live = Application.isPlaying && avatar != null
                 ? avatar.GetComponentInChildren<Animator>(true)
                 : null;
+
+            // Menus routinely run past thirty entries; a filter beats scrolling. Rows register
+            // themselves with their searchable text and the filter just flips display.
+            var rows = new List<(VisualElement element, string key)>();
+            if (settings.Count > 8)
+            {
+                var search = new ToolbarSearchField();
+                search.style.width = Length.Percent(100);
+                search.style.marginBottom = 5;
+                search.RegisterValueChangedCallback(e =>
+                {
+                    string query = e.newValue ?? "";
+                    foreach (var (element, key) in rows)
+                    {
+                        element.style.display =
+                            key.IndexOf(query, System.StringComparison.OrdinalIgnoreCase) >= 0
+                                ? DisplayStyle.Flex
+                                : DisplayStyle.None;
+                    }
+                });
+                parent.Add(search);
+            }
+            // Every entry hover-reveals the parameter it drives — the menu shows the avatar
+            // author's labels, but bug reports talk in machine names.
+            void Register(VisualElement element, string entryLabel, string parameterName)
+            {
+                element.tooltip = $"drives \"{parameterName}\"";
+                rows.Add((element, entryLabel + "\n" + parameterName));
+                parent.Add(element);
+            }
+
             foreach (var entry in settings)
             {
                 if (entry == null || string.IsNullOrEmpty(entry.machineName))
@@ -598,13 +629,20 @@ namespace AvatarBridge
                 {
                     case CVRAdvancedSettingsEntry.SettingsType.Toggle:
                         var toggle = new Toggle(label) { value = (ReadParam(live, parameter) ?? 0f) != 0f };
+                        // The main window's checkbox-first row: boxes align in a column and the
+                        // whole row highlights under the cursor, instead of each checkbox
+                        // trailing its own label at a different x.
+                        toggle.AddToClassList("ab-toggle");
                         toggle.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
-                        parent.Add(toggle);
+                        Register(toggle, label, parameter);
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Slider:
-                        parent.Add(DrivenSlider(label, 0f, 1f, ReadParam(live, parameter) ?? 0f,
-                            v => Drive(LiveAnimator(), parameter, v)));
+                        var slider = DrivenSlider(label, 0f, 1f, ReadParam(live, parameter) ?? 0f,
+                            v => Drive(LiveAnimator(), parameter, v));
+                        slider.AddToClassList("ab-field");
+                        slider.AddToClassList("ab-field-wide");
+                        Register(slider, label, parameter);
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Dropdown:
                         var dropdown = entry.setting as CVRAdvancesAvatarSettingGameObjectDropdown;
@@ -624,25 +662,36 @@ namespace AvatarBridge
                         int current = Mathf.Clamp(
                             Mathf.RoundToInt(ReadParam(live, parameter) ?? 0f), 0, names.Count - 1);
                         var choice = new DropdownField(label, names, current);
+                        choice.AddToClassList("ab-field");
+                        choice.AddToClassList("ab-field-wide");
                         choice.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, names.IndexOf(e.newValue)));
-                        parent.Add(choice);
+                        Register(choice, label, parameter);
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
-                        parent.Add(DrivenSlider($"{label}  X", -1f, 1f, ReadParam(live, parameter + "-x") ?? 0f,
-                            v => Drive(LiveAnimator(), parameter + "-x", v)));
-                        parent.Add(DrivenSlider($"{label}  Y", -1f, 1f, ReadParam(live, parameter + "-y") ?? 0f,
-                            v => Drive(LiveAnimator(), parameter + "-y", v)));
+                        var joyX = DrivenSlider($"{label} X", -1f, 1f, ReadParam(live, parameter + "-x") ?? 0f,
+                            v => Drive(LiveAnimator(), parameter + "-x", v));
+                        joyX.AddToClassList("ab-field");
+                        joyX.AddToClassList("ab-field-wide");
+                        Register(joyX, label, parameter + "-x");
+                        var joyY = DrivenSlider($"{label} Y", -1f, 1f, ReadParam(live, parameter + "-y") ?? 0f,
+                            v => Drive(LiveAnimator(), parameter + "-y", v));
+                        joyY.AddToClassList("ab-field");
+                        joyY.AddToClassList("ab-field-wide");
+                        Register(joyY, label, parameter + "-y");
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.InputSingle:
                         var input = new FloatField(label) { value = ReadParam(live, parameter) ?? 0f };
+                        input.AddToClassList("ab-field");
+                        input.AddToClassList("ab-field-wide");
                         input.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue));
-                        parent.Add(input);
+                        Register(input, label, parameter);
                         break;
                     default:
-                        parent.Add(BridgeElements.Hint(
-                            $"{label}: {entry.type} isn't driveable from here yet."));
+                        var hint = BridgeElements.Hint(
+                            $"{label}: {entry.type} isn't driveable from here yet.");
+                        Register(hint, label, parameter);
                         break;
                 }
             }
