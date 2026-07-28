@@ -34,7 +34,10 @@ Empty output = all anchors resolve.
   script refuses to overwrite an existing `.unitypackage`, and old packages are never deleted.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
   `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC.
-- **Pushes, tags and releases only on explicit instruction**, per instance.
+- **All work lands on the `dev` branch** (created 2026-07-28 from v2.50.6). Commit there and
+  push `dev` freely — it is the visible work-in-progress. **`main` only moves when the
+  maintainer explicitly says to batch it**: merges to main, tags and releases each require
+  explicit instruction, per instance. Never commit directly to main.
 - **The Unity editor cannot falsify physics, shaders, or sync behaviour** — only wearing the
   avatar in ChilloutVR counts as verification, and the report/README must not claim otherwise.
 - This file is **excluded from the built `.unitypackage`** (the build script skips it); it needs
