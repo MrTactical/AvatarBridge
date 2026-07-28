@@ -85,6 +85,7 @@ namespace AvatarBridge
                 }
 
                 ReportSyncUsage(ctx);
+                SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
@@ -106,6 +107,44 @@ namespace AvatarBridge
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
             }
             return report;
+        }
+
+        /// <summary>
+        /// Persists the converted avatar as a prefab in the output folder.
+        ///
+        /// The converted avatar otherwise lives only in the scene, and scenes are the one
+        /// thing nobody saves right after converting: a tester's Unity died mid-shader-
+        /// compilation during the CCK's bundle build (a native crash, no managed stack — the
+        /// log just stops), the scene reloaded from its last save, and the entire conversion
+        /// was gone. The generated ASSETS all survive on disk; the GameObject wiring them
+        /// together was the only casualty, and it is exactly what this preserves. After any
+        /// crash, drag the prefab back into the scene and continue.
+        /// </summary>
+        static void SaveConvertedPrefab(BridgeContext ctx)
+        {
+            try
+            {
+                string safe = string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()));
+                string path = $"{ctx.OutputDir}/{safe}.prefab";
+                var prefab = PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out bool success);
+                if (success && prefab != null)
+                {
+                    ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
+                        $"{path} — a crash or an unsaved scene can no longer lose the conversion; " +
+                        "drag the prefab back into the scene to continue where you left off.");
+                }
+                else
+                {
+                    ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
+                        "The scene object is still fine — save the scene to keep it. The usual cause " +
+                        "is a component Unity refuses to persist; the console names it.");
+                }
+            }
+            catch (Exception e)
+            {
+                ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
+                    $"{e.Message} — the scene object is still fine; save the scene to keep it.");
+            }
         }
 
         /// <summary>

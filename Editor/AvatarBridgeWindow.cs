@@ -539,6 +539,16 @@ namespace AvatarBridge
                 settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
             AddBlinkToggle(b);
 
+            b.Add(BridgeElements.SubHeading("Gesture tester  (play mode)"));
+            b.Add(BridgeElements.Hint(
+                "VRChat's Gesture Manager cannot drive a converted avatar — it needs a VRC " +
+                "descriptor (removed), and the converted gesture logic reads the integer " +
+                "GestureLeftIdx/RightIdx that ChilloutVR feeds in game. Enter play mode, select " +
+                "the converted avatar, and press a pose; fingers and gesture expressions should " +
+                "react exactly as they will in game."));
+            b.Add(BuildGestureTesterRow("Left", "GestureLeftIdx"));
+            b.Add(BuildGestureTesterRow("Right", "GestureRightIdx"));
+
             parent.Add(card);
         }
 
@@ -700,6 +710,51 @@ namespace AvatarBridge
                 "Detect blink blendshapes on the face mesh (e.g. \"Blink L\"/\"Blink R\") and turn on " +
                 "CVR's Eye Blink Settings.",
                 settings.wireBlinkBlendshapes, v => settings.wireBlinkBlendshapes = v));
+        }
+
+        /// <summary>One row of pose buttons that drive a hand's gesture parameters at runtime —
+        /// the Gesture-Manager equivalent for converted avatars. Values are ChilloutVR's.</summary>
+        static VisualElement BuildGestureTesterRow(string label, string idxParameter)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.flexWrap = Wrap.Wrap;
+            var caption = new Label(label);
+            caption.style.width = 40;
+            caption.style.unityTextAlign = TextAnchor.MiddleLeft;
+            row.Add(caption);
+            (string name, int value)[] poses =
+            {
+                ("Idle", 0), ("Open", -1), ("Fist", 1), ("Thumbs", 2),
+                ("Gun", 3), ("Point", 4), ("Peace", 5), ("RnR", 6)
+            };
+            foreach (var pose in poses)
+            {
+                int value = pose.value;
+                row.Add(new Button(() => SetGestureParameters(idxParameter, value)) { text = pose.name });
+            }
+            return row;
+        }
+
+        static void SetGestureParameters(string idxParameter, int value)
+        {
+            if (!Application.isPlaying)
+            {
+                Debug.LogWarning("[AvatarBridge] The gesture tester needs play mode — animators only evaluate there.");
+                return;
+            }
+            var selected = Selection.activeGameObject;
+            var animator = selected != null ? selected.GetComponentInParent<Animator>() : null;
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                Debug.LogWarning("[AvatarBridge] Select the converted avatar (or any object under it) first.");
+                return;
+            }
+            // The int drives the discrete pose states; the float rides along for any float
+            // logic that survived conversion; the weight makes the analog fist curl fully.
+            animator.SetInteger(idxParameter, value);
+            animator.SetFloat(idxParameter.Replace("Idx", ""), value);
+            animator.SetFloat(idxParameter.Replace("Idx", "Weight"), value == 1 ? 1f : 0f);
         }
 
         void BuildExtrasCard(VisualElement parent)
