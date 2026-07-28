@@ -353,13 +353,26 @@ namespace AvatarBridge
                 return null;
             }
 
-            // 3 & 4 need the vertex body before anything is edited, so find it first.
+            // 1 & 2 — the struct members, each in whichever file declares it.
+            inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
+                "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
+            v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
+                "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
+
+            // 3 & 4 — located AFTER the struct edits, and that order is load-bearing.
+            //
+            // These are inserted by INDEX, and in a self-contained shader the structs live in
+            // this same file — so the two edits above push everything below them along by their
+            // own length. An index taken before them lands ~68 characters early, which put the
+            // macros INSIDE the identifier "vdir" and produced a shader whose only complaint was
+            // "undeclared identifier 'r'". (The old code replaced a matched substring, which is
+            // position-independent; switching to an index made the ordering matter and nothing
+            // said so.) Everything below therefore reads the text as it now stands.
             //
             // The output struct is found ANYWHERE in the function body, not just as its first
             // statement: authors routinely compute normals, tangents and view directions before
             // declaring the output ("Burning Glasses" declares four float3s first), and an
-            // initialiser is just as common ("v2f o = (v2f)0;"). Requiring the declaration to
-            // come first refused perfectly ordinary shaders. The body is delimited by brace
+            // initialiser is just as common ("v2f o = (v2f)0;"). The body is delimited by brace
             // matching rather than a regex so a declaration in the NEXT function can't be
             // mistaken for this one's.
             int vertStart = vertFile.Text.IndexOf(sig.Value, StringComparison.Ordinal);
@@ -390,14 +403,6 @@ namespace AvatarBridge
             string outVar = declaration.Groups[1].Value;
             int insertAt = bodyOpen + declaration.Index + declaration.Length;
 
-            // 1 & 2 — the struct members, each in whichever file declares it.
-            inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
-                "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
-            v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
-                "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
-
-            // 3 & 4 — immediately after the output struct is declared. Inserted by index, since
-            // the surrounding text is no longer guaranteed to be unique.
             vertFile.Text = vertFile.Text.Insert(insertAt,
                 $"\n\t\t\t\tUNITY_SETUP_INSTANCE_ID({inArg});\n\t\t\t\tUNITY_INITIALIZE_VERTEX_OUTPUT_STEREO({outVar});");
 
