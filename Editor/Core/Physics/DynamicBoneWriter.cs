@@ -35,11 +35,22 @@ namespace AvatarBridge
         {
             var db = data.SourceGameObject.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
+            // Same GameObject as the source PhysBone, so animations that toggle the OBJECT keep
+            // working untouched; animations that toggled the PhysBone COMPONENT are re-wired to
+            // this component by AnimatorMerger via this registration.
+            ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
+            {
+                Source = data.SourceGameObject,
+                Host = data.SourceGameObject,
+                Physics = db
+            });
             if (!data.InitiallyActive)
             {
                 db.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name,
-                    "Source PhysBone was disabled; DynamicBone created disabled. Animator toggles that enabled it are not re-wired.");
+                    "Source PhysBone was disabled; DynamicBone created disabled. Animator toggles that " +
+                    "activated the original object or component keep working — object toggles hit this " +
+                    "same GameObject, and component toggles are re-wired by the animator pass.");
             }
 
             db.m_Elasticity = Mathf.Clamp01(data.Pull) * ElasticityScale;

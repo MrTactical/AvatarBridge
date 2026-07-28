@@ -215,6 +215,11 @@ namespace AvatarBridge
             DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
 
+            // After every merge, injection and clip clone, right before saving: animations that
+            // toggled a converted PhysBone's GameObject or component are taught to reach the
+            // generated physics as well.
+            RewirePhysicsToggles(master, ctx);
+
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
             // Persist controller + override controller and hook both to the CVRAvatar.
@@ -3346,6 +3351,213 @@ namespace AvatarBridge
         /// anything that resolves to nothing at all. The serialized file is the ground truth the
         /// in-memory object graph can lie about, so this reads the text, not the objects.
         /// </summary>
+        /// <summary>
+        /// Teaches toggle animations to reach the generated physics.
+        ///
+        /// A MagicaCloth conversion hosts each chain on its own holder object at the avatar
+        /// root, because MagicaCloth2 measures inertia at the cloth object (see
+        /// MagicaClothWriter). The cost surfaced on an avatar with four hairstyles: the
+        /// hair-swap animations activate each hairstyle's own objects, the PhysBone used to
+        /// ride along with them, but the holder — on a path no animation had ever heard of —
+        /// stayed disabled forever. Three of four hairstyles wore stiff hair in game.
+        ///
+        /// So, for every clip the final controller references: a GameObject active-state curve
+        /// whose target is a converted PhysBone's object (or any ancestor of it) is copied onto
+        /// the holder's own path, and a VRCPhysBone m_Enabled curve is retargeted at the
+        /// generated component's type. The added curves are byte-for-byte the original curve,
+        /// so the physics follows its chain's visibility exactly — including Write Defaults
+        /// fall-back behaviour, since scene defaults mirror too (an inactive style's holder is
+        /// created inactive). Clips are cloned before modification; they may be the source
+        /// avatar's own assets.
+        /// </summary>
+        static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
+        {
+            var chains = ctx.ConvertedPhysicsChains;
+            if (chains == null || chains.Count == 0)
+            {
+                return;
+            }
+
+            var root = ctx.Target.transform;
+            var pathCache = new Dictionary<string, Transform>();
+            Transform Resolve(string path)
+            {
+                if (!pathCache.TryGetValue(path, out var t))
+                {
+                    pathCache[path] = t = string.IsNullOrEmpty(path) ? root : root.Find(path);
+                }
+                return t;
+            }
+
+            var rewired = new Dictionary<AnimationClip, AnimationClip>();
+            int curvesAdded = 0, clipsTouched = 0;
+
+            AnimationClip Rewire(AnimationClip clip)
+            {
+                if (clip == null)
+                {
+                    return null;
+                }
+                if (rewired.TryGetValue(clip, out var known))
+                {
+                    return known;
+                }
+
+                Dictionary<EditorCurveBinding, AnimationCurve> additions = null;
+                var existing = AnimationUtility.GetCurveBindings(clip);
+                foreach (var binding in existing)
+                {
+                    bool objectToggle = binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                    bool physBoneToggle = !objectToggle && binding.propertyName == "m_Enabled"
+                        && binding.type != null && binding.type.Name == "VRCPhysBone";
+                    if (!objectToggle && !physBoneToggle)
+                    {
+                        continue;
+                    }
+                    var animated = Resolve(binding.path);
+                    if (animated == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var chain in chains)
+                    {
+                        if (chain.Source == null || chain.Host == null)
+                        {
+                            continue;
+                        }
+                        var source = chain.Source.transform;
+                        var host = chain.Host.transform;
+                        EditorCurveBinding target;
+                        if (objectToggle)
+                        {
+                            // Hosts INSIDE the toggled subtree already ride along (DynamicBone
+                            // lives on the source object; and toggling the avatar root covers
+                            // everything). Only an outside host needs the extra curve.
+                            if (source != animated && !source.IsChildOf(animated))
+                            {
+                                continue;
+                            }
+                            if (host == animated || host.IsChildOf(animated))
+                            {
+                                continue;
+                            }
+                            target = EditorCurveBinding.FloatCurve(
+                                AnimationUtility.CalculateTransformPath(host, root),
+                                typeof(GameObject), "m_IsActive");
+                        }
+                        else
+                        {
+                            // The PhysBone component itself was animated on/off; the component
+                            // type died with the conversion, so retarget at what replaced it.
+                            if (source != animated || chain.Physics == null)
+                            {
+                                continue;
+                            }
+                            target = EditorCurveBinding.FloatCurve(
+                                AnimationUtility.CalculateTransformPath(host, root),
+                                chain.Physics.GetType(), "m_Enabled");
+                        }
+                        bool alreadyDriven = false;
+                        foreach (var have in existing)
+                        {
+                            if (have.path == target.path && have.type == target.type
+                                && have.propertyName == target.propertyName)
+                            {
+                                alreadyDriven = true;
+                                break;
+                            }
+                        }
+                        if (alreadyDriven)
+                        {
+                            continue; // the clip already drives it deliberately
+                        }
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null)
+                        {
+                            continue;
+                        }
+                        if (additions == null)
+                        {
+                            additions = new Dictionary<EditorCurveBinding, AnimationCurve>();
+                        }
+                        additions[target] = curve;
+                    }
+                }
+
+                if (additions == null)
+                {
+                    rewired[clip] = clip;
+                    return clip;
+                }
+                var clone = UnityEngine.Object.Instantiate(clip);
+                clone.name = clip.name;
+                clone.hideFlags = HideFlags.None;
+                foreach (var pair in additions)
+                {
+                    AnimationUtility.SetEditorCurve(clone, pair.Key, pair.Value);
+                }
+                curvesAdded += additions.Count;
+                clipsTouched++;
+                rewired[clip] = clone;
+                return clone;
+            }
+
+            Motion RewireMotion(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    return Rewire(clip);
+                }
+                if (motion is BlendTree tree)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        var replaced = RewireMotion(children[i].motion);
+                        if (!ReferenceEquals(replaced, children[i].motion))
+                        {
+                            children[i].motion = replaced;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        // Assigning children re-derives thresholds under automatic mode; pin
+                        // manual mode for the write, exactly like the deep copier does.
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+                return motion;
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        child.state.motion = RewireMotion(child.state.motion);
+                    }
+                });
+            }
+
+            if (clipsTouched > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
+                    "Animations that switched a converted PhysBone's object or component (hair swaps, " +
+                    "outfit toggles) now switch the generated physics too. Without this, a chain " +
+                    "belonging to a style that was inactive at conversion time could never wake up — " +
+                    "its cloth lives on its own object at the avatar root, on a path the original " +
+                    "animations never animated.");
+            }
+        }
+
         static void AuditSerializedReferences(BridgeContext ctx, string controllerPath)
         {
             string fullPath;

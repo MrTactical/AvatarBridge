@@ -496,6 +496,10 @@ Bipeds are unaffected by any of it.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
   only one is left driving the chain — two solvers on the same bones jitter rather than blend.
   Nothing is deleted, so switching variant is one checkbox; the report names the one kept.
+- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the
+  original PhysBone's object (or animated the component on/off) are re-wired to switch the
+  generated MagicaCloth/DynamicBone too — a chain belonging to a style that was inactive at
+  conversion time wakes up when its style does. The report counts the re-wired curves.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.

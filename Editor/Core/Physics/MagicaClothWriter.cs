@@ -57,16 +57,29 @@ namespace AvatarBridge
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
             }
+            // Sibling-unique, because animation paths address children by name: an avatar with
+            // four hairstyles produces several chains rooted at a bone called "Hair_root", and
+            // two holders both named "MagicaCloth_Hair_root" mean every animation curve aimed at
+            // one of them resolves to whichever Unity finds first.
+            holderName = UniqueChildName(ctx.Target.transform, holderName);
             var holder = new GameObject(holderName);
             holder.transform.SetParent(ctx.Target.transform, false);
             if (!data.InitiallyActive)
             {
                 holder.SetActive(false);
                 ctx.Report.Approximated(Category, data.Root.name,
-                    "Source PhysBone was disabled; cloth created disabled. Animator toggles that enabled it are not re-wired.");
+                    "Source PhysBone was disabled; cloth created disabled. Animator toggles that " +
+                    "activated the original object (hair swaps, outfit toggles) are re-wired to " +
+                    "activate this cloth too — see the Animator section of this report.");
             }
 
             var cloth = holder.AddComponent<MagicaCloth>();
+            ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
+            {
+                Source = data.SourceGameObject,
+                Host = holder,
+                Physics = cloth
+            });
             var sdata = cloth.SerializeData;
 
             // Optional: start from a preset for this kind of chain instead of the global
@@ -179,6 +192,20 @@ namespace AvatarBridge
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        static string UniqueChildName(Transform parent, string name)
+        {
+            if (parent.Find(name) == null)
+            {
+                return name;
+            }
+            int suffix = 2;
+            while (parent.Find($"{name} {suffix}") != null)
+            {
+                suffix++;
+            }
+            return $"{name} {suffix}";
         }
 
         /// <summary>
