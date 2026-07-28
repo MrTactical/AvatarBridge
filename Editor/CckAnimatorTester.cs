@@ -225,10 +225,24 @@ namespace AvatarBridge
             var gestures = new BridgeElements.Card("Gestures");
             gestures.Body.Add(PoseRow("Left", "GestureLeft"));
             gestures.Body.Add(PoseRow("Right", "GestureRight"));
-            gestures.Body.Add(DrivenSlider("Left trigger (fist curl)", 0f, 1f, 0f,
-                v => { var a = LiveAnimator(); Drive(a, "GestureLeftWeight", v); }));
-            gestures.Body.Add(DrivenSlider("Right trigger (fist curl)", 0f, 1f, 0f,
-                v => { var a = LiveAnimator(); Drive(a, "GestureRightWeight", v); }));
+            // The game's analog fist: the trigger squeeze IS the gesture — GestureLeft carries
+            // the 0..1 grip value and Idx rounds along (decompiled: Gesture = grip in the fist
+            // band). Driving only the weight did nothing until the fist state was already
+            // active, which read as "slider doesn't work".
+            gestures.Body.Add(DrivenSlider("Left trigger (fist curl)", 0f, 1f, 0f, v =>
+            {
+                var a = LiveAnimator();
+                Drive(a, "GestureLeft", v);
+                Drive(a, "GestureLeftIdx", Mathf.RoundToInt(v));
+                Drive(a, "GestureLeftWeight", v);
+            }));
+            gestures.Body.Add(DrivenSlider("Right trigger (fist curl)", 0f, 1f, 0f, v =>
+            {
+                var a = LiveAnimator();
+                Drive(a, "GestureRight", v);
+                Drive(a, "GestureRightIdx", Mathf.RoundToInt(v));
+                Drive(a, "GestureRightWeight", v);
+            }));
             gestures.SetEnabled(live);
             scroll.Add(gestures);
 
