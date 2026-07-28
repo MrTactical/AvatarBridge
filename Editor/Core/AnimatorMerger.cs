@@ -109,6 +109,10 @@ namespace AvatarBridge
         // value reaches everyone else exactly as it does in VRChat. An avatar's AFK sign or
         // sleeping pose works in ChilloutVR with no conversion at all, and the report was telling
         // its owner the feature was dead.
+        // "VelocityMagnitude" stays in this list for the "#" prefix it confers — the value is
+        // computed per-client, so syncing it would be waste — but it is NOT frozen anymore:
+        // FeedVelocityMagnitude derives it from the native VelocityX/Y/Z every frame, and the
+        // "nothing writes them in game" note below explicitly skips it.
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
@@ -191,6 +195,7 @@ namespace AvatarBridge
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
             CreateParameterStreams(master, ctx);
+            FeedVelocityMagnitude(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
@@ -1281,7 +1286,7 @@ namespace AvatarBridge
                 {
                     param.defaultFloat = coreDefault;
                 }
-                if (KnownUnsupportedVrcParameters.Contains(bareName))
+                if (KnownUnsupportedVrcParameters.Contains(bareName) && bareName != "VelocityMagnitude")
                 {
                     unsupportedPresent.Add(bareName);
                 }
@@ -2621,6 +2626,13 @@ namespace AvatarBridge
                 // ChilloutVR only reports whether full-body tracking is on, so the six VRChat
                 // states collapse to the two that matter: 3 = head and hands, 6 = full body.
                 // Both are above zero, which is what most avatars actually test for.
+                //
+                // (VelocityX/Y/Z need no stream and must never get one: they are CLIENT CORE
+                // parameters — BetterBetterCharacterController feeds the local player, and
+                // PuppetMaster feeds every remote copy from its root velocity — and core
+                // parameters are read-only to streams anyway. VelocityMagnitude is different:
+                // the client does not compute it, so FeedVelocityMagnitude derives it in the
+                // animator from the native three.)
                 (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f)
             };
             var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
@@ -2731,6 +2743,132 @@ namespace AvatarBridge
                     "so anything this drives would otherwise sit frozen at its default for everyone else.");
             }
             EditorUtility.SetDirty(stream);
+        }
+
+        /// <summary>
+        /// VRChat's VelocityMagnitude has no ChilloutVR source, but its three components do:
+        /// VelocityX/Y/Z are CLIENT CORE parameters, fed for the local player by
+        /// BetterBetterCharacterController and for every remote copy by PuppetMaster (both
+        /// decompiled). So the magnitude is derived inside the animator: a minimal
+        /// self-looping state whose AnimatorDriver recomputes sqrt(x² + y² + z²) every cycle.
+        ///
+        /// The parameter keeps its "#" local prefix deliberately: every client runs the
+        /// animator, so every client computes the value for every copy — exactly how the
+        /// VRChat built-in behaved, at zero sync cost. GoGo Loco gates much of its locomotion
+        /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
+        /// sat half-dead.
+        /// </summary>
+        static void FeedVelocityMagnitude(AnimatorController master, BridgeContext ctx)
+        {
+            AnimatorControllerParameter target = null;
+            foreach (var p in master.parameters)
+            {
+                if (p.name.TrimStart('#') == "VelocityMagnitude")
+                {
+                    target = p;
+                    break;
+                }
+            }
+            if (target == null)
+            {
+                return;
+            }
+
+            // The driver reads the native components and one scratch cell; declare what the
+            // avatar didn't. The natives are Floats the client feeds by exact name.
+            var parameters = master.parameters.ToList();
+            void Ensure(string name)
+            {
+                if (parameters.All(p => p.name != name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Float,
+                        defaultFloat = 0f
+                    });
+                }
+            }
+            const string Scratch = "#VelocityMagnitudeCalc";
+            Ensure("VelocityX");
+            Ensure("VelocityY");
+            Ensure("VelocityZ");
+            Ensure(Scratch);
+            master.parameters = parameters.ToArray();
+
+            AnimatorDriverTask Task(string targetName, AnimatorDriverTask.Operator op,
+                string aParam, string bParam, float bStatic = 0f)
+            {
+                var task = new AnimatorDriverTask
+                {
+                    targetType = AnimatorDriverTask.ParameterType.Float,
+                    targetName = targetName,
+                    op = op,
+                    aType = AnimatorDriverTask.SourceType.Parameter,
+                    aParamType = AnimatorDriverTask.ParameterType.Float,
+                    aName = aParam
+                };
+                if (bParam != null)
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Parameter;
+                    task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.bName = bParam;
+                }
+                else
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Static;
+                    task.bValue = bStatic;
+                }
+                return task;
+            }
+
+            // A 1/60 s clip whose only curve targets an undeclared animator parameter — it
+            // exists to give the state a length, so the exit-time self-transition below cycles
+            // and the enter tasks re-run every cycle.
+            var tick = new AnimationClip { name = "VelocityMagnitude Tick" };
+            tick.SetCurve("", typeof(Animator), Scratch + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "VelocityMagnitude Feed",
+                hideFlags = HideFlags.HideInHierarchy
+            };
+            var state = machine.AddState("Recompute");
+            state.writeDefaultValues = false;
+            state.motion = tick;
+            machine.defaultState = state;
+
+            var loop = state.AddTransition(state);
+            loop.hasExitTime = true;
+            loop.exitTime = 1f;
+            loop.hasFixedDuration = true;
+            loop.duration = 0f;
+
+            var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+            driver.localOnly = false; // remote copies must compute too — their VelocityX/Y/Z are fed
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Multiplication, "VelocityX", "VelocityX"));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Multiplication, "VelocityY", "VelocityY"));
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Addition, Scratch, target.name));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Multiplication, "VelocityZ", "VelocityZ"));
+            driver.EnterTasks.Add(Task(Scratch, AnimatorDriverTask.Operator.Addition, Scratch, target.name));
+            driver.EnterTasks.Add(Task(target.name, AnimatorDriverTask.Operator.Power, Scratch, null, 0.5f));
+
+            var layers = master.layers.ToList();
+            layers.Add(new AnimatorControllerLayer
+            {
+                name = "VelocityMagnitude Feed",
+                defaultWeight = 1f,
+                stateMachine = machine
+            });
+            master.layers = layers.ToArray();
+
+            ctx.Report.Converted(Category, $"\"{target.name}\" computed from the native velocity",
+                "VRChat's VelocityMagnitude has no ChilloutVR source, but VelocityX/Y/Z are client " +
+                "core parameters — fed for the local player and for every remote copy alike — so a " +
+                "generated driver layer recomputes sqrt(x²+y²+z²) each cycle. Kept local (\"#\"): " +
+                "every client computes it for every copy, which is how the VRChat built-in behaved, " +
+                "at zero sync cost. Locomotion systems like GoGo Loco gate on this; frozen at 0 it " +
+                "read as never-moving.");
         }
 
         internal static string SanitizeParameterName(string source)

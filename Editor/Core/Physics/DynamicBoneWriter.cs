@@ -15,9 +15,10 @@ namespace AvatarBridge
     ///   spring    -> m_Damping (inverted)
     ///   stiffness -> m_Stiffness
     ///   immobile  -> m_Inert
-    ///   gravity   -> m_Force only, at full magnitude; m_Gravity is forced to zero because
-    ///                ChilloutVR's rest-pose cancellation for it is scale-dependent (see the
-    ///                comment on the gravity block below)
+    ///   gravity   -> m_Force only, scaled by ElasticityScale so the force/restore balance —
+    ///                and therefore the resting pose — matches VRChat; m_Gravity is forced to
+    ///                zero because ChilloutVR's rest-pose cancellation for it is
+    ///                scale-dependent (see the comment on the gravity block below)
     ///   curves    -> distribution curves (identical multiplier-along-chain semantics)
     /// </summary>
     public static class DynamicBoneWriter
@@ -102,7 +103,15 @@ namespace AvatarBridge
             // The two halves were collinear parts of one magnitude, so collapsing them into one
             // field means the full magnitude — summing the halves would overshoot it by up to 41%.
             // Added rather than assigned so any force already on the component still composes.
-            float g = Mathf.Abs(data.Gravity) * GravityScale;
+            //
+            // Scaled by ElasticityScale, and that factor is load-bearing: where a chain settles
+            // is the BALANCE of constant force against elastic restore, and the restore was
+            // already scaled down by ElasticityScale to sit in DynamicBone's useful range.
+            // Carrying the force over at full strength made every gravity-tinted chain deflect
+            // ~5x further than VRChat — a tester's tail with gravity -0.07 (a gentle upward
+            // bias in VRChat) converted to a force that pinned the tail at the sky. Scaling
+            // force and restore by the same factor preserves the resting pose exactly.
+            float g = Mathf.Abs(data.Gravity) * GravityScale * ElasticityScale;
             if (g > 0f)
             {
                 float sign = data.Gravity >= 0f ? -1f : 1f;
@@ -162,7 +171,10 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category, data.Root.name,
-                $"DynamicBone with {data.Colliders.Count} collider(s).");
+                $"DynamicBone with {data.Colliders.Count} collider(s). Source PhysBone was " +
+                $"pull {data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, " +
+                $"gravity {data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. " +
+                "Tune the DynamicBone directly if this chain wants a different feel.");
         }
 
         static DynamicBoneColliderBase GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
