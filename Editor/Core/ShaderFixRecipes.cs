@@ -87,14 +87,45 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>The recipe written for exactly this source, or null.</summary>
-        public static Recipe Find(string source)
+        /// <summary>
+        /// The recipe for this shader, or null. <paramref name="exactRevision"/> reports whether
+        /// the file is byte-for-byte the one the recipe was written against.
+        ///
+        /// Matching is by shader name AND by every edit having something to bind to — not by the
+        /// fingerprint, which turned out to be the wrong gate. The first field test failed on a
+        /// file that differed from mine by something invisible (a trailing newline is enough),
+        /// and refusing a shader we can demonstrably fix is a worse outcome than the risk the
+        /// hash was guarding against. The anchors are the stronger guarantee anyway: a shader
+        /// that shares this one's name AND contains every exact line we intend to rewrite is
+        /// that shader, whatever its byte count. The fingerprint stays, as the difference
+        /// between "verified revision" and "adapted" in the report.
+        /// </summary>
+        public static Recipe Find(string shaderName, string source, out bool exactRevision)
         {
+            exactRevision = false;
+            if (string.IsNullOrEmpty(source))
+            {
+                return null;
+            }
             string fingerprint = Fingerprint(source);
             foreach (var recipe in All)
             {
-                if (recipe.Fingerprint == fingerprint)
+                if (!string.Equals(recipe.ShaderName, shaderName, StringComparison.Ordinal))
                 {
+                    continue;
+                }
+                bool anchored = true;
+                foreach (var edit in recipe.Edits)
+                {
+                    if (source.IndexOf(edit.Find, StringComparison.Ordinal) < 0)
+                    {
+                        anchored = false;
+                        break;
+                    }
+                }
+                if (anchored)
+                {
+                    exactRevision = recipe.Fingerprint == fingerprint;
                     return recipe;
                 }
             }

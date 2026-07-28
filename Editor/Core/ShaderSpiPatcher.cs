@@ -109,7 +109,7 @@ namespace AvatarBridge
                     }
 
                     var fixedShader = TryPatch(source, shader.name, dir, out string reason,
-                        out var appliedRecipe);
+                        out var appliedRecipe, out bool recipeWasExact);
                     patched[shader] = fixedShader;
                     if (fixedShader == null)
                     {
@@ -120,7 +120,8 @@ namespace AvatarBridge
                     repointed.Add(shader.name);
                     if (appliedRecipe != null)
                     {
-                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}");
+                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
+                            (recipeWasExact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
                     }
                     changed = true;
                 }
@@ -281,9 +282,10 @@ namespace AvatarBridge
         /// Writes a patched copy, or returns null with the reason it was refused.
         /// </summary>
         static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
-            out ShaderFixRecipes.Recipe appliedRecipe)
+            out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact)
         {
             appliedRecipe = null;
+            recipeWasExact = false;
             var unit = ReadUnit(sourcePath);
             if (unit.Count == 0)
             {
@@ -295,7 +297,7 @@ namespace AvatarBridge
 
             // Taken before a single edit, so the fingerprint identifies the file as the user has
             // it — not as we are about to leave it.
-            var recipe = ShaderFixRecipes.Find(text);
+            var recipe = ShaderFixRecipes.Find(shaderName, text, out bool exactRecipeRevision);
 
             // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
             // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
@@ -430,13 +432,15 @@ namespace AvatarBridge
             {
                 if (!ShaderFixRecipes.TryApply(recipe, shaderFile.Text, out string patched, out string failure))
                 {
-                    // The fingerprint matched the ORIGINAL file, so this means our own generic
-                    // edits moved something the recipe anchors on. Refusing keeps the promise
-                    // that a recipe applies whole or not at all.
+                    // Every anchor was present in the ORIGINAL file, so this means our own
+                    // generic edits moved one. Refusing keeps the promise that a recipe applies
+                    // whole or not at all.
                     reason = $"its stereo recipe no longer fits after the generic patch ({failure})";
                     return null;
                 }
                 shaderFile.Text = patched;
+                appliedRecipe = recipe;
+                recipeWasExact = exactRecipeRevision;
             }
 
             // Rename so it can't collide with the original in the shader list.
