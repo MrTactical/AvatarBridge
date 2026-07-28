@@ -360,9 +360,13 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   sharing them are unaffected. (Those shaders usually aren't yours.)
 - **A copy that doesn't compile is thrown away**, so the worst case is a line in the report rather
   than wrong pixels.
-- **Not everything can be patched.** Surface shaders have no vertex stage to edit, locked or
-  generated shaders can't be parsed, and structs in a shared include can't be edited from one file.
-  Those are listed for hand-fixing instead.
+- **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
+  a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
+- **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
+  speaks single-pass instanced and was left untouched*. Locked and generated shaders (Poiyomi
+  lock-in and SPS live at `Hidden/Locked/…`) are read and checked like any other; modern Poiyomi
+  declares the full macro set, so these normally land in the already-correct list rather than
+  needing anything.
 - **There's nothing to undo.** The macros are mode-agnostic — real instancing code under CVR,
   nothing under VRChat or on desktop. The patched copy stays correct everywhere.
 
