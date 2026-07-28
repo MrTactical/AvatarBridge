@@ -586,6 +586,16 @@ the avatar is standing still while in game it walks, turns and head-tracks const
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
 
+### Console floods with "Broken text PPtr … Face Tracking Layers.controller" on import
+
+Versions before 2.59.2 shipped the face-tracking layer template with orphaned leftovers from how
+it was authored — transitions pointing at states that no longer exist. Unity validates every
+object in the file on import, reachable or not, so a fresh import printed one error per orphan.
+Alarming, but harmless: the actual face-tracking layers were always intact, and converted
+avatars never contained the debris (the converter copies only the layers, which is exactly the
+reachable part). Update to 2.59.2 — the template is cleaned and the errors stop. No
+reconversion needed.
+
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
 Before 2.59.0, conversions were written **inside the tool's own folder**
