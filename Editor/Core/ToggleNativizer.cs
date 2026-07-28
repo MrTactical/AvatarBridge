@@ -34,10 +34,6 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
-            if (!ctx.Settings.nativizeObjectToggles)
-            {
-                return;
-            }
             _targetsUnsupportedReported = false;
             _dumpedTargetFields = false;
 

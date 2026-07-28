@@ -37,16 +37,12 @@ namespace AvatarBridge
     [Serializable]
     public class BridgeSettings
     {
+        // Steps that used to be options here — VRCFury/MA baking, VRC-component cleanup,
+        // Fury toggle rebuilding, humanoid masking — always run now. Every off-state
+        // produced a conversion that was broken or read as broken; necessary steps
+        // aren't options.
         [Header("General")]
         public bool cloneAvatar = true;
-        public bool deleteVrcComponents = true;
-        // Run VRCFury's own "Build a Test Copy" pipeline first so Fury toggles, linked
-        // clothing, full controllers etc. are baked into real layers before converting.
-        public bool bakeVrcFury = true;
-        // Bake Modular Avatar / NDMF (merge armature, menus, params, reactive toggles…) via
-        // NDMF's manual bake before converting — for MA avatars that don't also use VRCFury
-        // (a VRCFury bake already runs NDMF, so MA+Fury avatars are covered by the Fury bake).
-        public bool bakeModularAvatar = true;
         // OUTSIDE the tool's own folder, deliberately: conversions used to default into
         // Assets/AvatarBridge/Output, and the delete-and-reimport update flow everyone uses
         // for .unitypackage tools erased every converted controller, override, prefab and
@@ -63,8 +59,6 @@ namespace AvatarBridge
         public bool convertFxLayer = true;
 
         [Header("Parameters")]
-        // Master switch for rebuilding VRCFury's merged toggles into something readable.
-        public bool nativizeObjectToggles = true;
         // AnimatorLayers keeps every toggle inside the generated controller (works
         // without pressing "Create Controller"); CvrNativeTargets defers object toggles
         // to the CCK's own builder via GameObject targets.
@@ -81,9 +75,6 @@ namespace AvatarBridge
         // isAas gates CanSaveToProfile, so without one the value resets between avatar loads —
         // plus somewhere for the user to see and drive it by hand.
         public bool exposeMenulessSyncedParameters = true;
-        // Convert the CCK's native hand-pose layers to select discrete gestures via the
-        // integer GestureLeftIdx/RightIdx (analog fist stays on the float parameter).
-        public bool integerHandGestures = true;
 
         [Header("Physics")]
         public PhysicsTarget physicsTarget = PhysicsTarget.MagicaCloth2;
@@ -182,21 +173,6 @@ namespace AvatarBridge
         // disagrees with the game.
         public bool useNativeContacts = false;
 
-        // Give merged VRChat layers an avatar mask that blocks humanoid muscles, restoring the
-        // separation VRChat gets from FX being its own playable layer. Guards against a
-        // Write-Defaults state re-asserting the rest pose over ChilloutVR's locomotion.
-        //
-        // CONFIRMED to fix the "bicycle pose" — an avatar standing in a bent rest pose in game
-        // while only the head and hands follow tracking. Tested in ChilloutVR on a tester's
-        // avatar: 20 merged layers masked, 18 blocked from muscles and 2 narrowed to the hands,
-        // and the pose came right. An earlier note here said this had never been observed helping
-        // anyone; that is no longer true.
-        //
-        // Still off by default, because it touches every merged layer on the avatar and the
-        // exposure is universal while the confirmed cases are not. Layers that animate the body
-        // on purpose are skipped, so it is safe to try on anything — and the report names the
-        // suspect layers whether it is on or off.
-        public bool maskMergedLayers = false;
 
         // Copy shaders that lack single-pass instanced stereo support into RehomedAssets with the
         // required macros added, and repoint this avatar's materials at the copies. Originals are

@@ -90,11 +90,20 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
+- **The output folder is the whole conversion** — every clip and mask the controller references
+  is copied into `RehomedAssets` and the controller repointed, so a conversion survives being
+  moved to a project without the source avatar's folders. (One tester's controller referenced 71
+  clips — every hand pose included — that lived only next to the source avatar; anywhere else
+  they'd play as stillness with no error.) The CCK's own clips stay referenced: uploading
+  requires the CCK, so they're always present.
 - **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
   CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
   produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
   coupled to stance the way VR height is), visemes, emotes and the avatar's whole Advanced
-  Settings menu, coerced by declared type exactly like the client. (VRChat's Gesture Manager
+  Settings menu, coerced by declared type exactly like the client. The menu card follows the
+  controller on the avatar's Animator: it refreshes itself when the controller or its parameter
+  list changes, and greys any entry whose parameter the controller doesn't declare — driving
+  those would do nothing in game either. (VRChat's Gesture Manager
   cannot drive a converted avatar — it needs the removed VRC descriptor and speaks float where
   ChilloutVR speaks int.)
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
@@ -154,7 +163,7 @@ defines.
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
-| Gestures | `GestureLeftIdx` / `RightIdx` ints | analog fist curl stays native |
+| Gestures | float threshold bands, the CCK's own idiom | analog fist curl stays native |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
@@ -572,16 +581,16 @@ them back — delete again, or update to a version whose ABI scripts start with 
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
-The "bicycle pose". **Turn on *Mask merged layers off the humanoid rig* in Advanced and convert
-again** — confirmed to fix it, tested in game.
+The "bicycle pose". **Reconvert on a current version** — since 2.62.0 merged layers are always
+masked off the humanoid rig (it used to be an Advanced option, confirmed in game and now
+mandatory).
 
 VRChat keeps FX on its own playable layer, so an FX layer there physically can't write humanoid
 muscles. ChilloutVR runs one controller, so nothing stops a merged layer doing exactly that and
-fighting locomotion for the body every frame.
-
-The report names the layers that could, both before and after. Layers that animate the body on
-purpose are left alone either way, which is why it's safe to try on any avatar — and nothing else
-changes: object toggles, blendshapes and material animation are untouched by the mask.
+fighting locomotion for the body every frame. The masking restores VRChat's separation; layers
+that animate the body on purpose are left alone, and object toggles, blendshapes and material
+animation are untouched. If you see this pose on a 2.62.0+ conversion, report it — the report
+names every layer that could write muscles.
 
 ### A chain moves differently in game than in Unity
 
@@ -629,6 +638,16 @@ that converted fine. Convert again on the current version; if it persists, that'
 
 Different from magenta and worth reporting separately. The material survived but its **textures**
 didn't — the same VRCFury temp problem one level deeper. Convert again on the current version.
+
+### Gestures or emotes freeze — but only on another PC, or in game
+
+Before 2.61.0, the converted controller referenced its clips wherever the source avatar kept
+them. In a project without those folders, every missing clip resolves to None and plays as
+stillness — the state machine runs, transitions fire, fingers don't move, and nothing errors.
+The controller working on the author's PC while fingers freeze for someone else is the
+signature. Since 2.61.0 every referenced clip and mask is copied into the output folder's
+`RehomedAssets` and the controller repointed, so the output folder alone is the whole
+conversion. Reconvert on a current version if you hit this.
 
 ### A menu control appears, moves, syncs — and does nothing
 

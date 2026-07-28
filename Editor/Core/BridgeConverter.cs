@@ -66,16 +66,15 @@ namespace AvatarBridge
                 MiscConverter.Run(ctx);
                 ConstraintConverter.Run(ctx);
                 ShaderSpiPatcher.Run(ctx);
+                // Last content pass: the controller is final here, so every clip it ends up
+                // referencing gets pulled into the output folder — a conversion that works on
+                // this PC must also work on one without the source avatar's folders.
+                AnimationSelfContainer.Run(ctx);
 
-                if (settings.deleteVrcComponents)
-                {
-                    MiscConverter.DeleteVrcComponents(ctx);
-                }
-                else
-                {
-                    report.Warning("Cleanup", "VRC components kept",
-                        "The CCK upload will likely complain about them; enable cleanup or remove them manually.");
-                }
+                // Always: ChilloutVR deletes them on load anyway, the CCK upload complains
+                // about them, and an avatar still wearing its VRC descriptor reads as "not
+                // converted" — it convinced even the maintainer once.
+                MiscConverter.DeleteVrcComponents(ctx);
 
                 // Deactivate the original whenever we worked on a separate object
                 // (explicit clone or a VRCFury-baked copy).
@@ -249,7 +248,6 @@ namespace AvatarBridge
             // Fury-driven feature (toggles, linked clothing, full controllers) is lost.
             // Fury's bake also runs NDMF internally, so it covers avatars that use both
             // VRCFury and Modular Avatar.
-            if (ctx.Settings.bakeVrcFury)
             {
                 var baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
                 if (baked != null)
@@ -266,7 +264,6 @@ namespace AvatarBridge
 
             // Modular Avatar / NDMF, for MA avatars that don't also use VRCFury (those are
             // already handled above). NDMF's manual bake applies MA and hands back a copy.
-            if (ctx.Settings.bakeModularAvatar)
             {
                 var baked = ModularAvatarBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
                 if (baked != null)
