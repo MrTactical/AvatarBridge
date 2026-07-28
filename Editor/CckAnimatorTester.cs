@@ -45,6 +45,7 @@ namespace AvatarBridge
         };
 
         CVRAvatar _override;
+        float _loudness = 1f;
 
         void OnEnable()
         {
@@ -69,13 +70,35 @@ namespace AvatarBridge
             }
             var selected = Selection.activeGameObject;
             var fromSelection = selected != null ? selected.GetComponentInParent<CVRAvatar>() : null;
-            return fromSelection != null ? fromSelection : FindObjectOfType<CVRAvatar>();
+            if (fromSelection != null)
+            {
+                return fromSelection;
+            }
+            // A conversion scene usually holds several CVRAvatars — the greyed-out original,
+            // sometimes a thumbnail rig — so "first found" picked the wrong one for a tester.
+            // Prefer an active avatar whose animator actually has a controller.
+            CVRAvatar best = null;
+            int bestScore = -1;
+            foreach (var candidate in FindObjectsOfType<CVRAvatar>(true))
+            {
+                var animator = candidate.GetComponentInChildren<Animator>(true);
+                bool usable = animator != null && animator.runtimeAnimatorController != null;
+                bool active = candidate.gameObject.activeInHierarchy;
+                int score = (usable ? 2 : 0) + (active ? 1 : 0);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+            return best;
         }
 
         /// <summary>
-        /// The animator to drive, or null with a console note when driving is impossible.
-        /// Resolved at click time, not build time — play mode starts and stops while the
-        /// window sits open.
+        /// The animator to drive, or null with a console note SAYING WHICH LINK FAILED —
+        /// "not found" with an avatar plainly in the scene is a bug report about the error
+        /// message. Resolved at click time, not build time: play mode starts and stops while
+        /// the window sits open, and play-mode reloads invalidate cached references.
         /// </summary>
         Animator LiveAnimator()
         {
@@ -85,10 +108,21 @@ namespace AvatarBridge
                 return null;
             }
             var avatar = ResolveAvatar();
-            var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
-            if (animator == null || animator.runtimeAnimatorController == null)
+            if (avatar == null)
             {
-                Debug.LogWarning("[AvatarBridge] No ChilloutVR avatar with an animator found — select one or set it in the tester window.");
+                Debug.LogWarning("[AvatarBridge] No CVRAvatar component found anywhere in the scene.");
+                return null;
+            }
+            var animator = avatar.GetComponentInChildren<Animator>(true);
+            if (animator == null)
+            {
+                Debug.LogWarning($"[AvatarBridge] \"{avatar.name}\" has no Animator component anywhere under it.");
+                return null;
+            }
+            if (animator.runtimeAnimatorController == null)
+            {
+                Debug.LogWarning($"[AvatarBridge] \"{avatar.name}\"'s Animator has no controller assigned — " +
+                                 "was this conversion finished, or the assignment lost with an unsaved scene?");
                 return null;
             }
             return animator;
@@ -230,13 +264,22 @@ namespace AvatarBridge
             scroll.Add(locomotion);
 
             // ---- face & emotes -----------------------------------------------------------
+            // Visemes and blinking are NOT animator features in ChilloutVR: the client's lip
+            // sync and blink controller write BLENDSHAPE WEIGHTS on the face mesh directly.
+            // The parameters are still driven for any animator logic that reads them, but the
+            // visible mouth comes from the blendshapes — driving only the parameter looked
+            // like "visemes don't work" to the first tester who tried.
             var face = new BridgeElements.Card("Face & emotes");
             var viseme = new DropdownField("Viseme", new List<string>(VisemeNames), 0);
             viseme.RegisterValueChangedCallback(e =>
-                Drive(LiveAnimator(), "VisemeIdx", System.Array.IndexOf(VisemeNames, e.newValue)));
+                ApplyViseme(System.Array.IndexOf(VisemeNames, e.newValue), _loudness));
             face.Body.Add(viseme);
-            face.Body.Add(DrivenSlider("Viseme loudness", 0f, 1f, 0f,
-                v => Drive(LiveAnimator(), "VisemeLoudness", v)));
+            face.Body.Add(DrivenSlider("Viseme loudness", 0f, 1f, 1f, v =>
+            {
+                _loudness = v;
+                ApplyViseme(System.Array.IndexOf(VisemeNames, viseme.value), v);
+            }));
+            face.Body.Add(DrivenSlider("Blink", 0f, 1f, 0f, ApplyBlink));
             var emoteRow = new VisualElement();
             emoteRow.style.flexDirection = FlexDirection.Row;
             var emoteField = new IntegerField("Emote") { value = 0 };
@@ -287,6 +330,56 @@ namespace AvatarBridge
             scroll.Add(reset);
         }
 
+        /// <summary>
+        /// What the client's LipSyncManager does: zero every viseme blendshape on the face
+        /// mesh, weight the active one by loudness. Parameters ride along for animator logic.
+        /// Only the standard 15-blendshape viseme mode is emulated; jaw-bone and
+        /// single-blendshape modes get their parameters and nothing visible.
+        /// </summary>
+        void ApplyViseme(int index, float loudness)
+        {
+            var animator = LiveAnimator();
+            Drive(animator, "VisemeIdx", index);
+            Drive(animator, "VisemeLoudness", loudness);
+
+            var avatar = ResolveAvatar();
+            var mesh = avatar != null ? avatar.bodyMesh : null;
+            var shared = mesh != null ? mesh.sharedMesh : null;
+            if (shared == null || avatar.visemeBlendshapes == null)
+            {
+                return;
+            }
+            for (int i = 0; i < avatar.visemeBlendshapes.Length; i++)
+            {
+                string shapeName = avatar.visemeBlendshapes[i];
+                int shape = string.IsNullOrEmpty(shapeName) ? -1 : shared.GetBlendShapeIndex(shapeName);
+                if (shape >= 0)
+                {
+                    mesh.SetBlendShapeWeight(shape, i == index ? loudness * 100f : 0f);
+                }
+            }
+        }
+
+        /// <summary>Blink, the same way — the client writes the blink blendshapes directly.</summary>
+        void ApplyBlink(float amount)
+        {
+            var avatar = ResolveAvatar();
+            var mesh = avatar != null ? avatar.bodyMesh : null;
+            var shared = mesh != null ? mesh.sharedMesh : null;
+            if (shared == null || avatar.blinkBlendshape == null)
+            {
+                return;
+            }
+            foreach (var shapeName in avatar.blinkBlendshape)
+            {
+                int shape = string.IsNullOrEmpty(shapeName) ? -1 : shared.GetBlendShapeIndex(shapeName);
+                if (shape >= 0)
+                {
+                    mesh.SetBlendShapeWeight(shape, amount * 100f);
+                }
+            }
+        }
+
         VisualElement PoseRow(string label, string floatParameter)
         {
             var row = new VisualElement();
@@ -323,6 +416,31 @@ namespace AvatarBridge
             return slider;
         }
 
+        /// <summary>Current value of a declared parameter, or null — so controls can open
+        /// showing the avatar's ACTUAL state in play mode instead of factory defaults.</summary>
+        static float? ReadParam(Animator animator, string name)
+        {
+            if (animator == null)
+            {
+                return null;
+            }
+            foreach (var parameter in animator.parameters)
+            {
+                if (parameter.name != name)
+                {
+                    continue;
+                }
+                switch (parameter.type)
+                {
+                    case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
+                    case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
+                    case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
+                    default: return null;
+                }
+            }
+            return null;
+        }
+
         void BuildMenuControls(VisualElement parent, CVRAvatar avatar)
         {
             var settings = avatar != null && avatar.avatarSettings != null
@@ -333,6 +451,9 @@ namespace AvatarBridge
                 parent.Add(BridgeElements.Hint("No Advanced Avatar Settings entries on this avatar."));
                 return;
             }
+            var live = Application.isPlaying && avatar != null
+                ? avatar.GetComponentInChildren<Animator>(true)
+                : null;
             foreach (var entry in settings)
             {
                 if (entry == null || string.IsNullOrEmpty(entry.machineName))
@@ -344,13 +465,13 @@ namespace AvatarBridge
                 switch (entry.type)
                 {
                     case CVRAdvancedSettingsEntry.SettingsType.Toggle:
-                        var toggle = new Toggle(label);
+                        var toggle = new Toggle(label) { value = (ReadParam(live, parameter) ?? 0f) != 0f };
                         toggle.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
                         parent.Add(toggle);
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Slider:
-                        parent.Add(DrivenSlider(label, 0f, 1f, 0f,
+                        parent.Add(DrivenSlider(label, 0f, 1f, ReadParam(live, parameter) ?? 0f,
                             v => Drive(LiveAnimator(), parameter, v)));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Dropdown:
@@ -368,19 +489,21 @@ namespace AvatarBridge
                         {
                             names.Add("option 0");
                         }
-                        var choice = new DropdownField(label, names, 0);
+                        int current = Mathf.Clamp(
+                            Mathf.RoundToInt(ReadParam(live, parameter) ?? 0f), 0, names.Count - 1);
+                        var choice = new DropdownField(label, names, current);
                         choice.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, names.IndexOf(e.newValue)));
                         parent.Add(choice);
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
-                        parent.Add(DrivenSlider($"{label}  X", -1f, 1f, 0f,
+                        parent.Add(DrivenSlider($"{label}  X", -1f, 1f, ReadParam(live, parameter + "-x") ?? 0f,
                             v => Drive(LiveAnimator(), parameter + "-x", v)));
-                        parent.Add(DrivenSlider($"{label}  Y", -1f, 1f, 0f,
+                        parent.Add(DrivenSlider($"{label}  Y", -1f, 1f, ReadParam(live, parameter + "-y") ?? 0f,
                             v => Drive(LiveAnimator(), parameter + "-y", v)));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.InputSingle:
-                        var input = new FloatField(label);
+                        var input = new FloatField(label) { value = ReadParam(live, parameter) ?? 0f };
                         input.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue));
                         parent.Add(input);
