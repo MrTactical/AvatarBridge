@@ -245,6 +245,18 @@ namespace AvatarBridge
         /// position-matched selection data, which reproduces the original exactly and fails
         /// silently when the match is off. A slightly stiffer ear that is visible in the report
         /// beats a chain that is subtly wrong for reasons nobody can see.
+        ///
+        /// That cost has a degenerate end, found on a tester's breast chains: when the ignored
+        /// bones sit at the TIPS of the tree (squish/deform helpers excluded by the author), the
+        /// decomposition descends past every real joint and the "largest clean subtrees" are bare
+        /// leaves. A leaf root is one pinned particle — the whole cloth converts cleanly and
+        /// never moves. So each promoted root is now checked for movable content (a non-ignored
+        /// descendant, or an endpoint tip about to be synthesized): dead roots are dropped, and if
+        /// none survive the cloth falls back to the PhysBone's own root with the ignores left
+        /// unhonoured — a few helper bones jiggling is the far smaller error than the chain being
+        /// a statue. The fallback is refused when the ignores include humanoid-mapped bones,
+        /// because simulating those fights the animator and IK (see PhysBoneChainData); a dead
+        /// chain is safer than that, and the report says which trade was taken.
         /// </summary>
         static void WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data)
         {
@@ -288,27 +300,83 @@ namespace AvatarBridge
 
             Collect(data.Root);
 
-            if (sdata.rootBones.Count == 0)
+            // A promoted root only produces motion through its descendants — MagicaCloth2 pins
+            // every root in place, and a pinned particle with nothing below it is a statue. When
+            // the author's ignores sit at the tips of the tree, the decomposition above collapses
+            // to exactly those statues (a tester's breast chains converted to two pinned leaves
+            // and never moved). An endpoint offset rescues a leaf root — SynthesizeEndpointBones
+            // will give it a real "_End" child to swing — so leaves only count as dead without one.
+            int MovableDescendants(Transform t)
             {
-                // Everything under the root was ignored. Nothing to simulate, and a BoneCloth with
-                // no roots errors at runtime, so fall back to the root and say what happened.
-                sdata.rootBones.Add(data.Root);
-                ctx.Report.Warning(Category, data.Root.name,
-                    $"All {data.Ignores.Count} branch(es) under this PhysBone's root were in its Ignore " +
-                    "Transforms list, leaving nothing to simulate. The chain was left rooted as-is, which " +
-                    "means it now simulates bones VRChat excluded — delete this cloth if it misbehaves.");
+                int n = 0;
+                for (int i = 0; i < t.childCount; i++)
+                {
+                    var child = t.GetChild(i);
+                    if (!ignored.Contains(child))
+                    {
+                        n += 1 + MovableDescendants(child);
+                    }
+                }
+                return n;
+            }
+
+            var deadRoots = new List<Transform>();
+            if (data.EndpointPosition.sqrMagnitude <= 1e-8f)
+            {
+                deadRoots = sdata.rootBones.Where(r => MovableDescendants(r) == 0).ToList();
+            }
+
+            if (sdata.rootBones.Count > deadRoots.Count)
+            {
+                // At least one branch still moves: keep those, drop the statues.
+                foreach (var dead in deadRoots)
+                {
+                    sdata.rootBones.Remove(dead);
+                }
+                var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
+                    $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
+                    $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. MagicaCloth2 has no ignore list — " +
+                    "every root simulates its whole subtree — so the excluded bones are left out by not " +
+                    "rooting anything above them. MagicaCloth2 holds a root bone still, so each of these " +
+                    "branches now bends from its second joint rather than its first; if one feels stiff at " +
+                    "the base, that is why." +
+                    (deadRoots.Count > 0
+                        ? $" {deadRoots.Count} childless branch(es) were dropped rather than rooted " +
+                          "(a root with nothing below it is a single pinned particle that can never move)."
+                        : ""));
                 return;
             }
 
-            var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
-            ctx.Report.Approximated(Category, data.Root.name,
-                $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
-                $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
-                $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. MagicaCloth2 has no ignore list — " +
-                "every root simulates its whole subtree — so the excluded bones are left out by not " +
-                "rooting anything above them. MagicaCloth2 holds a root bone still, so each of these " +
-                "branches now bends from its second joint rather than its first; if one feels stiff at " +
-                "the base, that is why.");
+            // Nothing movable survives the decomposition — every clean subtree is a bare leaf, or
+            // everything under the root was ignored outright. Honouring the ignores here means
+            // shipping a cloth that can never move, so the choice is between over-simulating and
+            // a statue.
+            bool humanoidInvolved = data.HumanoidExclusions.Count > 0;
+            if (humanoidInvolved && deadRoots.Count > 0)
+            {
+                // Simulating a humanoid-mapped bone fights the animator and IK for the transform
+                // every frame; a dead chain is the safer of two wrong answers. The pinned roots
+                // stay so the cloth remains valid and inspectable.
+                ctx.Report.Warning(Category, data.Root.name,
+                    $"This cloth CANNOT move: honouring the {data.Ignores.Count} excluded transform(s) " +
+                    $"(including {data.HumanoidExclusions.Count} humanoid-mapped bone(s), which must never " +
+                    "simulate) leaves only pinned root particles. It was kept for inspection — delete it, " +
+                    "or restructure the source PhysBone if this chain is meant to move.");
+                return;
+            }
+
+            sdata.rootBones.Clear();
+            sdata.rootBones.Add(data.Root);
+            ctx.Report.Warning(Category, data.Root.name,
+                $"{data.Ignores.Count} Ignore Transform(s) NOT honoured — MagicaCloth2 can only exclude " +
+                "a bone by rooting the cloth below it, and here that leaves nothing that can move (the " +
+                "exclusions sit at the chain's tips, or cover everything under the root). The cloth is " +
+                $"rooted at \"{data.Root.name}\" with the full tree simulating instead, so the excluded " +
+                "bones (usually squish/deform helpers) now jiggle where VRChat held them rigid — the far " +
+                "smaller error than the chain freezing solid. Delete those bones from the cloth by hand " +
+                "if it matters.");
         }
 
         /// <summary>
