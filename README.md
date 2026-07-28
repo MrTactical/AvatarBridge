@@ -49,7 +49,7 @@ now. What actually differs, as of mid-2026:
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
 | **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost by design ([beta](#native-contacts)) | ✅ | — |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
-| Voice at the mouth and gaze limits, *measured off your avatar's own mesh and poses* | ✅ | — |
+| Gaze limits *measured off your avatar's own poses*; view & voice placed the CCK's own Auto way | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
@@ -158,12 +158,13 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | viewpoint, visemes, blink, eye look (gaze limits measured from the poses); voice placed at the mouth, measured from a viseme shape |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); view & voice placed exactly as the CCK's own **Auto** buttons place them — eye-bone midpoint and jaw bone — with the VRChat viewpoint and viseme-measured mouth as fallbacks |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
+| Skinned mesh bounds | normalized — centre 0, extents ≥ the avatar's height | stops meshes vanishing at screen edges; larger authored boxes are kept |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |

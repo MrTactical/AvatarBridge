@@ -107,13 +107,18 @@ namespace AvatarBridge
             }
 
             // --- viewpoint -----------------------------------------------------------
-            // Voice comes after the visemes below, since the best source for it is the mouth
-            // measured off an open-mouth viseme shape.
-            cvrAvatar.viewPosition = AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
+            // The CCK's own Auto placement first — one convention for every avatar; the
+            // bounds estimate only covers rigs the Auto chain can't read.
+            bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
+            cvrAvatar.viewPosition = autoView
+                ? viewAuto
+                : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;
             ctx.Report.Converted(Category, "Viewpoint",
-                $"Viewpoint estimated at {cvrAvatar.viewPosition.y:0.00} m " +
-                (humanoid ? "from the eye/head bones" : "from the mesh bounds") +
+                $"Viewpoint at {cvrAvatar.viewPosition.y:0.00} m " +
+                (autoView
+                    ? "— the CCK's own Auto placement (between the eye bones)"
+                    : (humanoid ? "estimated from the eye/head bones" : "estimated from the mesh bounds")) +
                 " — check it in the scene view and nudge if the first-person camera sits wrong.");
 
             // --- face mesh -----------------------------------------------------------
@@ -147,9 +152,21 @@ namespace AvatarBridge
             }
 
             // --- voice position ------------------------------------------------------
-            cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, face, visemes, animator,
-                cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
-            MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+            // The CCK's Auto placement (jaw bone, else head offset); viseme-measured mouth
+            // only when the rig has neither bone.
+            if (AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto))
+            {
+                cvrAvatar.voicePosition = voiceAuto;
+                ctx.Report.Converted(Category, "Voice position",
+                    "The CCK's own Auto placement — the jaw bone, or just ahead of the head bone when " +
+                    "there is no jaw.");
+            }
+            else
+            {
+                cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, face, visemes, animator,
+                    cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
+                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+            }
 
             // --- blink ---------------------------------------------------------------
             WireBlink(ctx, cvrAvatar, mesh);

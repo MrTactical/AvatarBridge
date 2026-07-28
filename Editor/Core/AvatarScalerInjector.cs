@@ -152,8 +152,10 @@ namespace AvatarBridge
                 note);
         }
 
-        /// <summary>Avatar eye height in metres (the CVR/VRChat "height"), from the viewpoint.</summary>
-        static float MeasureHeight(BridgeContext ctx)
+        /// <summary>Avatar eye height in metres (the CVR/VRChat "height"), from the viewpoint.
+        /// Also the bounds normalizer's size reference, so "how big is this avatar" has one
+        /// answer everywhere.</summary>
+        internal static float MeasureHeight(BridgeContext ctx)
         {
             if (ctx.CvrAvatar != null)
             {

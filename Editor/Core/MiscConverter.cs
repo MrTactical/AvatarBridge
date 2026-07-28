@@ -27,6 +27,49 @@ namespace AvatarBridge
             {
                 ConvertSpatialAudio(ctx);
             }
+            NormalizeSkinnedBounds(ctx);
+        }
+
+        /// <summary>
+        /// Unity culls a skinned mesh by its AUTHORED bounding box, not by where animation,
+        /// physics or cloth actually put the vertices — the box is baked from the bind pose
+        /// and never follows. The moment the stale box leaves the camera frustum the whole
+        /// mesh blinks out: classically at screen edges, or for another player looking from
+        /// the side. Centre zero puts the box on each mesh's root bone; the extent floor is
+        /// the avatar's own measured height (at least 1.5 m), so a chibi doesn't drag a
+        /// stadium-sized box around and a giant isn't clipped by a human-sized one. Authored
+        /// extents larger than the floor are kept — shrinking a deliberately large box could
+        /// CAUSE the very culling this prevents.
+        /// </summary>
+        static void NormalizeSkinnedBounds(BridgeContext ctx)
+        {
+            float floor = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
+            int changed = 0;
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var bounds = renderer.localBounds;
+                var extents = new Vector3(
+                    Mathf.Max(bounds.extents.x, floor),
+                    Mathf.Max(bounds.extents.y, floor),
+                    Mathf.Max(bounds.extents.z, floor));
+                if (bounds.center == Vector3.zero && bounds.extents == extents)
+                {
+                    continue;
+                }
+                renderer.localBounds = new Bounds(Vector3.zero, extents * 2f);
+                EditorUtility.SetDirty(renderer);
+                changed++;
+            }
+            if (changed > 0)
+            {
+                ctx.Report.Converted("Meshes",
+                    $"{changed} skinned mesh bounding box(es) normalized — centre 0, extents at least {floor:0.##} m",
+                    "Unity culls a skinned mesh by its authored bind-pose box, not by where animation, physics " +
+                    "or cloth actually put the vertices — so a mesh can vanish at screen edges while plainly on " +
+                    "camera. Each box now sits centred on its mesh's root bone and reaches at least the avatar's " +
+                    "own measured height in every direction, scaled with the avatar if it resizes; authored boxes " +
+                    "larger than that are kept, since shrinking one could cause the very culling this prevents.");
+            }
         }
 
         static void ConvertHeadChops(BridgeContext ctx)
