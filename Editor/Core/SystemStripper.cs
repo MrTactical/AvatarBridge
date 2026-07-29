@@ -242,7 +242,12 @@ namespace AvatarBridge
                 // Trees on the very next line exists to take exactly these branches out one at a
                 // time. So: name matches still remove the layer (that names its owner), but the
                 // majority heuristic never deletes a shared tree — it gets pruned instead.
-                if (referenceHit && ContainsDirectBlendTree(layer.stateMachine))
+                // …but only when something innocent is actually riding along. A shared tree whose
+                // every reference belongs to the stripped system has no passengers to protect,
+                // and keeping it just leaves that system's dead machinery in the avatar — which
+                // is what the strip was asked to remove. Seen on "[VF173] PCS: Activation":
+                // 7 of 7 references stripped, 0 survivors, kept for nothing.
+                if (referenceHit && strippedRefs < refs.Count && ContainsDirectBlendTree(layer.stateMachine))
                 {
                     ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
                         $"{strippedRefs} of its {refs.Count} parameter references belong to stripped systems, " +
