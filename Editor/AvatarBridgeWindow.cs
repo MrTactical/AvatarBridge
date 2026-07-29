@@ -105,7 +105,7 @@ namespace AvatarBridge
             root.AddToClassList("ab-root");
             // How the VRChat SDK does it too: one class on the root, and the stylesheet handles
             // both skins from there rather than every colour being decided in C#.
-            root.AddToClassList(EditorGUIUtility.isProSkin ? "dark" : "light");
+            BridgeTheme.ApplySkin(root);
 
             var sheet = Resources.Load<StyleSheet>("AvatarBridge");
             if (sheet != null)
@@ -980,7 +980,7 @@ namespace AvatarBridge
         void CreateGUI()
         {
             var root = rootVisualElement;
-            root.AddToClassList(EditorGUIUtility.isProSkin ? "dark" : "light");
+            BridgeTheme.ApplySkin(root);
             var sheet = Resources.Load<StyleSheet>("AvatarBridge");
             if (sheet != null)
             {

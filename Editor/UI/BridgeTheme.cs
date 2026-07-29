@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
@@ -22,6 +23,28 @@ namespace AvatarBridge
     internal static class BridgeTheme
     {
         public static bool Dark => EditorGUIUtility.isProSkin;
+
+        /// <summary>
+        /// Puts the skin class on a root element EXCLUSIVELY — the light rules sit after the
+        /// dark ones in the stylesheet, so an element carrying both renders light forever.
+        ///
+        /// AddToClassList cannot express that. It only ever adds, so a single wrong reading of
+        /// <c>isProSkin</c> permanently pins a dark editor to the light palette: light card
+        /// headers with the dark theme's white text on them, which is unreadable and looks for
+        /// all the world like the window is broken. It survives every subsequent rebuild,
+        /// because nothing ever takes the class back off.
+        ///
+        /// One wrong reading is easy to come by: <c>isProSkin</c> is not dependable outside a
+        /// GUI context, and the tester rebuilds itself from an EditorApplication.update poll
+        /// whenever the avatar's controller changes. Callers that rebuild from such a context
+        /// should pass a value they captured somewhere trustworthy rather than let this read it.
+        /// </summary>
+        public static void ApplySkin(VisualElement root, bool? dark = null)
+        {
+            bool isDark = dark ?? Dark;
+            root.EnableInClassList("dark", isDark);
+            root.EnableInClassList("light", !isDark);
+        }
 
         // The two platforms, as they colour themselves. Darkened slightly from the source values
         // so white text sits on them at a comfortable contrast.
