@@ -4938,6 +4938,11 @@ namespace AvatarBridge
             // property -> (how many bindings, an example path, the shader to blame)
             var dead = new Dictionary<string, (int count, string path, string shader)>();
             var locked = new HashSet<string>();
+            // Properties whose material ALREADY carries Poiyomi's animated flag and STILL has no
+            // such property in its shader. That combination is the difference between "nobody
+            // flagged it" and "flagging it did not help", and the second is not fixable by
+            // repeating the flag-and-relock advice.
+            var flaggedAndStillMissing = new HashSet<string>();
 
             void Audit(Motion motion)
             {
@@ -5000,6 +5005,15 @@ namespace AvatarBridge
                             {
                                 locked.Add(property);
                             }
+                            // Poiyomi records "animate this" as an override tag. Finding one
+                            // here means the author already did the thing the usual advice
+                            // tells them to do, and the property STILL is not in the shader —
+                            // so the advice is wrong for this property and saying it again
+                            // would send them round the same loop.
+                            if (!string.IsNullOrEmpty(material.GetTag(property + "Animated", false, "")))
+                            {
+                                flaggedAndStillMissing.Add(property);
+                            }
                             break;
                         }
                     }
@@ -5023,6 +5037,11 @@ namespace AvatarBridge
             {
                 return;
             }
+            var fixable = dead.Keys.Where(p => !flaggedAndStillMissing.Contains(p)).ToList();
+            var stubborn = dead.Keys.Where(flaggedAndStillMissing.Contains).ToList();
+            string List(IEnumerable<string> names) =>
+                string.Join(", ", names.Take(6)) + (names.Count() > 6 ? ", …" : "");
+
             var worst = dead.OrderByDescending(p => p.Value.count).Take(6)
                 .Select(p => $"{p.Key} ({p.Value.count} renderer(s), e.g. \"{p.Value.path}\")");
             bool anyLocked = locked.Count > 0;
@@ -5030,22 +5049,31 @@ namespace AvatarBridge
                 $"{dead.Count} animated material property(ies) don't exist on the shader they target",
                 string.Join("; ", worst) + (dead.Count > 6 ? "; …" : "") + ". " +
                 (anyLocked
-                    ? "These materials use a LOCKED (optimised) Poiyomi/Thry shader. Locking bakes any " +
-                      "property that wasn't flagged animated into the shader as a fixed value and removes " +
-                      "it, so writing to it does nothing. Flagging it afterwards sets " +
-                      "\"_<Name>Animated\" on the material but has no effect until you UNLOCK and LOCK " +
-                      "the materials again — a material can therefore claim a property is animated while " +
-                      "its shader has no such property. Fix it in Poiyomi's own material inspector: " +
-                      "unlock the material, find the property, and mark it animated (right-click it) " +
-                      "— that also switches on the shader SECTION the property belongs to, which " +
-                      "matters, because a disabled section is compiled out of the shader entirely and " +
-                      "no amount of flagging brings it back. Then lock again. Do it there rather than " +
-                      "by editing the material file: only Poiyomi knows which section each property " +
-                      "needs."
+                    ? "These materials use a LOCKED (optimised) Poiyomi/Thry shader, which bakes any " +
+                      "property that wasn't flagged animated into a fixed value and deletes it, so " +
+                      "writing to it does nothing.\n\n" +
+                      (fixable.Count > 0
+                          ? $"WORTH FIXING ({fixable.Count}): {List(fixable)} — nothing has flagged these " +
+                            "yet. In Poiyomi's material inspector: unlock, right-click the property, mark " +
+                            "it animated, lock again. Marking it there also switches on the shader " +
+                            "SECTION it belongs to, which is why it has to be done in Poiyomi's UI and " +
+                            "not by editing the material file.\n\n"
+                          : "") +
+                      (stubborn.Count > 0
+                          ? $"PROBABLY NOT FIXABLE ({stubborn.Count}): {List(stubborn)} — these are " +
+                            "ALREADY flagged animated on the material, and the property still isn't in " +
+                            "the shader. Someone has done the unlock-flag-relock already and it did not " +
+                            "take. That happens when the property's shader section is switched off (a " +
+                            "disabled section is compiled out entirely, and no flag brings it back), or " +
+                            "when the animation was authored against a different Poiyomi version than " +
+                            "the one installed. Re-locking again will not change it. Enabling the right " +
+                            "section on the material might, if you know which one it is; otherwise treat " +
+                            "these as lost with the avatar as it stands.\n\n"
+                          : "")
                     : "Whatever drives them will appear to work — parameter synced, layer playing, clip at " +
                       "full weight — and change nothing on screen. Check the property name against the " +
-                      "shader, or assign the material the animation was authored for.") +
-                " This is not caused by conversion: the same animation is equally dead in VRChat, so a " +
+                      "shader, or assign the material the animation was authored for. ") +
+                "This is not caused by conversion: the same animation is equally dead in VRChat, so a " +
                 "toggle that visibly worked there points at a build-time step (Poiyomi's auto-lock on " +
                 "upload) that this project isn't running.");
         }
@@ -5253,11 +5281,17 @@ namespace AvatarBridge
                 $"{clipsTouched} clip(s), of which {clipsEmptied} were left animating nothing" +
                 (layersRemoved > 0 ? $", and {layersRemoved} layer(s) removed with them" : "") +
                 ". These wrote to material properties the shader on those renderers does not have, " +
-                "so they did nothing here and did nothing in VRChat either — see the warning above " +
-                "for why. Removing them takes the dead sliders and toggles out of your menu instead " +
-                "of leaving controls that move and change nothing. Fix the materials in Poiyomi and " +
-                "convert again to get the real controls back; nothing was changed on the source " +
-                "avatar, and only the conversion's own copies of the clips were edited.");
+                "so they did nothing here and did nothing in VRChat either. Removing them takes the " +
+                "dead sliders and toggles out of your menu instead of leaving controls that move and " +
+                "change nothing.\n\nGETTING THEM BACK IS MANUAL, AND MAY NOT BE POSSIBLE. The warning " +
+                "above splits them: the ones nothing has flagged yet usually come back after an " +
+                "unlock, flag and re-lock in Poiyomi's material inspector, and converting again picks " +
+                "them up. The ones already flagged and still missing have had that done to them " +
+                "once and it did not take — their shader section is switched off, or the animation " +
+                "predates the installed Poiyomi — and no amount of re-locking will change it. If you " +
+                "would rather ship the controls anyway, dead or not, turn off \"Remove animation that " +
+                "can't do anything\" in Advanced.\n\nNothing on the source avatar was changed; only " +
+                "the conversion's own copies of the clips were edited.");
         }
 
         /// <summary>

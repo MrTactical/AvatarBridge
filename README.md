@@ -790,6 +790,17 @@ it set the flags correctly and the properties still didn't appear, because their
 while the rebuild changed how the avatar looked. Only Poiyomi knows which section each property
 needs.
 
+**Some of them will never work again, and the report says which.** It splits the list in two:
+
+| the report says | what it means |
+|---|---|
+| **Worth fixing** | Nothing has flagged the property yet. Unlock → mark animated → lock, then convert again. |
+| **Probably not fixable** | The material *already* carries the animated flag and the property still isn't in the shader. Someone has done that fix and it didn't take — the section is off, or the animation predates the installed Poiyomi. Re-locking again changes nothing. |
+
+The second group is worth knowing about before you spend an evening on it. Those controls are
+[removed from the converted avatar](#its-a-head-start-not-a-magic-button) by default rather than
+shipped as menu entries that do nothing.
+
 Everything upstream looks healthy while this is happening, which is what makes it expensive — the
 parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugger and the tester's
 own [Animator layers](#its-a-head-start-not-a-magic-button) readout both confirm it. The report names
