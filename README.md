@@ -818,6 +818,25 @@ parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugge
 own [Animator layers](#its-a-head-start-not-a-magic-button) readout both confirm it. The report names
 the property and the renderer so you don't have to work back from the animator.
 
+### A toggle switches on but never back off
+
+**Reconvert on 2.87.0 or later.**
+
+VRChat's usual toggle is two animator states: one holding the clip that changes something, and one
+holding **nothing at all**, whose job is to put it back. That empty state works because VRChat's
+Write Defaults writes each property's captured default — the off direction is an implicit rule
+rather than animation. Converted, there is nothing in the off state to undo the change, so the
+toggle switches on and stays on. Every toggle on such an avatar behaves the same way, because
+they're all built the same way.
+
+Conversions now **measure** the default off your avatar and bake it into a real clip: whatever the
+property is at conversion time — the object active, the blendshape at rest, the material as
+authored — becomes an explicit curve on the off state. It restores by animating, which behaves the
+same on any platform.
+
+One thing worth knowing: **whatever is true at conversion time is what "off" now means.** If a
+toggle should rest in its other position, set the avatar up that way before converting.
+
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Two known causes, both fixed, both worth naming if you

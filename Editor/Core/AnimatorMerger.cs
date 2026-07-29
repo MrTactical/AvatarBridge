@@ -266,6 +266,7 @@ namespace AvatarBridge
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
+            FillEmptyStatesWithRestoreClips(master, vrcLayers, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -4027,6 +4028,157 @@ namespace AvatarBridge
                     "the body deliberately, so nothing was changed. If hand gestures do not move your " +
                     "fingers in game, these are the layers to look at first: turn off fingers in their " +
                     "avatar mask, or lower their weight.");
+            }
+        }
+
+        /// <summary>
+        /// Gives every empty "off" state a real clip that restores what its layer animates.
+        ///
+        /// The VRChat idiom for a toggle is two states: one holding the clip that changes
+        /// something, and one holding NOTHING, whose job is to put it back. That empty state
+        /// only works because Write Defaults writes each property's captured default, and the
+        /// avatar arrives relying on it — which is why the source plays correctly in VRChat and
+        /// in Gesture Manager.
+        ///
+        /// Converted, the same layer can turn a toggle ON and never off again: the "off" state
+        /// has no animation in it, so there is nothing to undo the change. Every toggle on the
+        /// avatar behaves the same way, because they are all built the same way.
+        ///
+        /// Rather than depend on Write Defaults behaving identically on both platforms, the
+        /// default is MEASURED off the converted avatar and baked into a clip. Whatever the
+        /// property is at conversion time — the object active, the blendshape at 0, the material
+        /// as authored — becomes an explicit curve, so the off state restores it by playing
+        /// animation rather than by relying on an implicit rule.
+        ///
+        /// Only properties the layer's own other states animate are restored, so a state stays
+        /// silent about everything it was already silent about, and layers keep their
+        /// independence.
+        /// </summary>
+        static void FillEmptyStatesWithRestoreClips(AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+            string dir = $"{ctx.OutputDir}/RehomedAssets";
+            int filled = 0, layersTouched = 0;
+            var names = new List<string>();
+
+            foreach (var layer in vrcLayers)
+            {
+                // What this layer animates, and which of its states have nothing at all.
+                var bindings = new HashSet<EditorCurveBinding>();
+                var objectBindings = new HashSet<EditorCurveBinding>();
+                var empties = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null)
+                        {
+                            continue;
+                        }
+                        if (state.motion == null)
+                        {
+                            empties.Add(state);
+                            continue;
+                        }
+                        CollectBindings(state.motion, bindings, objectBindings);
+                    }
+                });
+                if (empties.Count == 0 || (bindings.Count == 0 && objectBindings.Count == 0))
+                {
+                    continue;
+                }
+
+                var clip = new AnimationClip { name = SanitizeFileName($"{layer.name} restore") };
+                int curves = 0;
+                foreach (var binding in bindings)
+                {
+                    // Humanoid muscles are masked off these layers anyway, and baking a muscle
+                    // default would fight locomotion for the whole session.
+                    if (binding.type == typeof(Animator))
+                    {
+                        continue;
+                    }
+                    if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                    {
+                        continue;
+                    }
+                    AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0f, 0f, value));
+                    curves++;
+                }
+                foreach (var binding in objectBindings)
+                {
+                    if (!AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
+                    {
+                        continue;
+                    }
+                    AnimationUtility.SetObjectReferenceCurve(clip, binding,
+                        new[] { new ObjectReferenceKeyframe { time = 0f, value = value } });
+                    curves++;
+                }
+                if (curves == 0)
+                {
+                    UnityEngine.Object.DestroyImmediate(clip);
+                    continue;
+                }
+
+                if (!AssetDatabase.IsValidFolder(dir))
+                {
+                    System.IO.Directory.CreateDirectory(dir);
+                    AssetDatabase.Refresh();
+                }
+                string path = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{clip.name}.anim");
+                AssetDatabase.CreateAsset(clip, path);
+                foreach (var state in empties)
+                {
+                    state.motion = clip;
+                    filled++;
+                }
+                layersTouched++;
+                names.Add(layer.name);
+            }
+
+            if (filled == 0)
+            {
+                return;
+            }
+            AssetDatabase.SaveAssets();
+            ctx.Report.Converted(Category,
+                $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
+                $"{string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", …" : "")} — VRChat's toggle " +
+                "idiom leaves the off state EMPTY and lets Write Defaults put the property back. That " +
+                "makes the off direction depend on an implicit rule rather than on animation, and a " +
+                "toggle built that way can switch on and never off again. Each off state now plays a " +
+                "clip holding the value the property has on this avatar right now — object active, " +
+                "blendshape at rest, material as authored — so it restores by animating, the same on " +
+                "any platform. Only properties its own layer animates are touched. If a toggle should " +
+                "rest in its OTHER position, set that up on the avatar before converting: whatever is " +
+                "true at conversion time is what \"off\" now means.");
+        }
+
+        static void CollectBindings(Motion motion, HashSet<EditorCurveBinding> floats,
+            HashSet<EditorCurveBinding> objects)
+        {
+            if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children)
+                {
+                    CollectBindings(child.motion, floats, objects);
+                }
+                return;
+            }
+            if (!(motion is AnimationClip clip))
+            {
+                return;
+            }
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                floats.Add(binding);
+            }
+            foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+            {
+                objects.Add(binding);
             }
         }
 
