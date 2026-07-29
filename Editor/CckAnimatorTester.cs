@@ -350,9 +350,6 @@ namespace AvatarBridge
             gestures.SetEnabled(live);
             scroll.Add(gestures);
 
-            // ---- what the animator is ACTUALLY doing -------------------------------------
-            scroll.Add(BuildLayerCard(avatar));
-
             // ---- locomotion --------------------------------------------------------------
             var locomotion = new BridgeElements.Card("Locomotion");
             locomotion.Body.Add(DrivenSlider("Movement X  (strafe)", -1f, 1f, 0f, v =>
@@ -567,6 +564,21 @@ namespace AvatarBridge
             }) { text = "Resting defaults  (what the game reports standing still)" });
             reset.SetEnabled(live);
             scroll.Add(reset);
+
+            // ---- what the animator is ACTUALLY doing -------------------------------------
+            // Pinned BELOW the scroll view, not inside it. The whole point of a live layer
+            // readout is watching it react while a control above is being driven — a toggle
+            // flipped in the menu card, a gesture button, a stance change. Inside the scroll
+            // the readout left the screen the moment the user scrolled to the control they
+            // wanted to drive, which is exactly when it mattered. Down here the cards scroll
+            // behind it and the layers stay put; its own rows scroll internally, capped, so
+            // fifty layers cannot swallow the window either.
+            var layers = BuildLayerCard(avatar);
+            layers.style.flexShrink = 0;
+            layers.style.marginLeft = 8;
+            layers.style.marginRight = 8;
+            layers.style.marginBottom = 6;
+            root.Add(layers);
         }
 
         /// <summary>
@@ -711,6 +723,13 @@ namespace AvatarBridge
             }
             card.Body.Add(header);
 
+            // The rows scroll under the fixed column header, capped so the pinned card leaves
+            // the controls above it room to breathe. Scrollbar space is why the header sits
+            // outside: with it inside, the header would shift left whenever the bar appears.
+            var list = new ScrollView();
+            list.style.maxHeight = 240;
+            card.Body.Add(list);
+
             var rows = new List<(Label weight, Label playing, VisualElement row)>();
             int conflictCount = 0;
             for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
@@ -770,7 +789,7 @@ namespace AvatarBridge
                 {
                     child.style.marginRight = 6;
                 }
-                card.Body.Add(row);
+                list.Add(row);
                 rows.Add((weight, playing, row));
             }
 

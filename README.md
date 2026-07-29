@@ -113,8 +113,9 @@ actually running.
   list changes, and greys any entry whose parameter the controller doesn't declare — driving
   those would do nothing in game either. (VRChat's Gesture Manager cannot drive a converted
   avatar — it needs the VRC descriptor, which conversion removes.) A live **Animator layers**
-  readout shows every layer's weight, avatar mask and currently-playing clips — the same view
-  ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't show — and marks any
+  readout — pinned to the bottom of the window so it stays visible while you drive the controls
+  above it — shows every layer's weight, avatar mask and currently-playing clips: the same view
+  ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't show, and marks any
   layer sitting above the hand-pose layers that could overwrite your gestures.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
