@@ -274,7 +274,44 @@ namespace AvatarBridge
             // Stored up front so the poll doesn't immediately rebuild what was just built.
             _fingerprint = ComputeFingerprint();
             rootVisualElement.Clear();
-            Build();
+            try
+            {
+                Build();
+            }
+            catch (System.Exception e)
+            {
+                // A half-built window is indistinguishable from a styling bug — blank cards, no
+                // text — and this window has now cost several releases to exactly that confusion.
+                // Say what actually happened, in the window, where it cannot be missed.
+                Debug.LogException(e);
+                var failure = new BridgeElements.Card("The tester failed to build its UI");
+                failure.Body.Add(BridgeElements.Hint(
+                    $"{e.GetType().Name}: {e.Message}\n\nThe full stack trace is in the Console. " +
+                    "This is a bug in AvatarBridge, not in your avatar — please report it with " +
+                    "that message."));
+                rootVisualElement.Add(failure);
+            }
+        }
+
+        /// <summary>
+        /// Builds one card, and turns a failure into a card that SAYS it failed rather than
+        /// taking the rest of the window down with it. Every card here reads whatever the
+        /// avatar's controller happens to contain, so one hostile controller should cost its own
+        /// card and nothing else.
+        /// </summary>
+        static VisualElement SafeCard(string what, System.Func<VisualElement> build)
+        {
+            try
+            {
+                return build();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e);
+                var card = new BridgeElements.Card($"{what} — failed to build");
+                card.Body.Add(BridgeElements.Hint($"{e.GetType().Name}: {e.Message}"));
+                return card;
+            }
         }
 
         void Build()
@@ -532,7 +569,7 @@ namespace AvatarBridge
             scroll.Add(face);
 
             // ---- face tracking -----------------------------------------------------------
-            var faceTracking = BuildFaceTrackingCard(avatar);
+            var faceTracking = SafeCard("Face tracking", () => BuildFaceTrackingCard(avatar));
             faceTracking.SetEnabled(live);
             scroll.Add(faceTracking);
 
@@ -580,7 +617,7 @@ namespace AvatarBridge
             // wanted to drive, which is exactly when it mattered. Down here the cards scroll
             // behind it and the layers stay put; its own rows scroll internally, capped, so
             // fifty layers cannot swallow the window either.
-            var layers = BuildLayerCard(avatar);
+            var layers = SafeCard("Animator layers", () => BuildLayerCard(avatar));
             layers.style.flexShrink = 0;
             layers.style.marginLeft = 8;
             layers.style.marginRight = 8;
@@ -926,69 +963,94 @@ namespace AvatarBridge
         /// bounds either cannot reach half the expression or invents travel the rig ignores.
         /// The rig itself is the only authority on which is which, so it is asked.
         /// </summary>
-        static void FaceParamRange(UnityEditor.Animations.AnimatorController asset, string name,
+        /// <summary>
+        /// Every blend parameter's range, from ONE walk of the controller.
+        ///
+        /// The first version of this asked the controller per parameter, which is the same walk
+        /// fifty times over — and on a 58-layer avatar carrying VRCFury's deep Direct trees that
+        /// is not a slow build, it is a window that never finishes one, re-entered twice a
+        /// second by the change poll. It rendered as blank cards, which looks exactly like the
+        /// styling bug this window had the week before, and cost another release to tell apart.
+        /// Walk once, answer from a dictionary.
+        /// </summary>
+        static Dictionary<string, Vector2> ScanParameterRanges(
+            UnityEditor.Animations.AnimatorController asset)
+        {
+            var ranges = new Dictionary<string, Vector2>();
+            if (asset == null)
+            {
+                return ranges;
+            }
+            var visited = new HashSet<Motion>();
+
+            void Note(string name, float value)
+            {
+                if (string.IsNullOrEmpty(name))
+                {
+                    return;
+                }
+                ranges[name] = ranges.TryGetValue(name, out var span)
+                    ? new Vector2(Mathf.Min(span.x, value), Mathf.Max(span.y, value))
+                    : new Vector2(value, value);
+            }
+
+            void ScanTree(Motion motion)
+            {
+                // Trees are shared between states constantly (VRCFury reuses one tree across
+                // dozens of toggles), so without this the walk re-descends the same subtree
+                // over and over.
+                if (!(motion is BlendTree tree) || !visited.Add(motion))
+                {
+                    return;
+                }
+                bool oneD = tree.blendType == BlendTreeType.Simple1D;
+                foreach (var child in tree.children)
+                {
+                    Note(tree.blendParameter, oneD ? child.threshold : child.position.x);
+                    if (!oneD)
+                    {
+                        Note(tree.blendParameterY, child.position.y);
+                    }
+                    ScanTree(child.motion);
+                }
+            }
+
+            void ScanMachine(AnimatorStateMachine machine)
+            {
+                if (machine == null)
+                {
+                    return;
+                }
+                foreach (var child in machine.states)
+                {
+                    ScanTree(child.state != null ? child.state.motion : null);
+                }
+                foreach (var sub in machine.stateMachines)
+                {
+                    ScanMachine(sub.stateMachine);
+                }
+            }
+
+            foreach (var layer in asset.layers)
+            {
+                ScanMachine(layer.stateMachine);
+            }
+            return ranges;
+        }
+
+        /// <summary>
+        /// A parameter's slider bounds, never narrower than 0..1 — a parameter used only as a
+        /// gate has a single threshold and would otherwise collapse to a zero-width slider.
+        /// </summary>
+        static void FaceParamRange(Dictionary<string, Vector2> ranges, string name,
             out float lo, out float hi)
         {
             lo = 0f;
             hi = 1f;
-            if (asset == null)
+            if (ranges != null && ranges.TryGetValue(name, out var span) && span.x <= span.y)
             {
-                return;
-            }
-            float min = float.MaxValue, max = float.MinValue;
-            foreach (var layer in asset.layers)
-            {
-                ScanTreesForRange(layer.stateMachine, name, ref min, ref max);
-            }
-            // Never narrower than 0..1 — a parameter used only as a gate has a single threshold
-            // and would otherwise collapse to a zero-width slider.
-            if (min <= max)
-            {
-                lo = Mathf.Min(0f, min);
-                hi = Mathf.Max(1f, max);
-            }
-        }
-
-        static void ScanTreesForRange(AnimatorStateMachine machine, string name,
-            ref float min, ref float max)
-        {
-            if (machine == null)
-            {
-                return;
-            }
-            foreach (var child in machine.states)
-            {
-                ScanTreeForRange(child.state != null ? child.state.motion : null, name, ref min, ref max);
-            }
-            foreach (var sub in machine.stateMachines)
-            {
-                ScanTreesForRange(sub.stateMachine, name, ref min, ref max);
-            }
-        }
-
-        static void ScanTreeForRange(Motion motion, string name, ref float min, ref float max)
-        {
-            if (!(motion is BlendTree tree))
-            {
-                return;
-            }
-            bool onX = tree.blendParameter == name;
-            bool onY = tree.blendParameterY == name;
-            foreach (var child in tree.children)
-            {
-                if (onX)
-                {
-                    min = Mathf.Min(min, tree.blendType == BlendTreeType.Simple1D
-                        ? child.threshold : child.position.x);
-                    max = Mathf.Max(max, tree.blendType == BlendTreeType.Simple1D
-                        ? child.threshold : child.position.x);
-                }
-                if (onY)
-                {
-                    min = Mathf.Min(min, child.position.y);
-                    max = Mathf.Max(max, child.position.y);
-                }
-                ScanTreeForRange(child.motion, name, ref min, ref max);
+                lo = Mathf.Min(0f, span.x);
+                hi = Mathf.Max(1f, span.y);
             }
         }
 
@@ -1025,6 +1087,7 @@ namespace AvatarBridge
                 runtime = over.runtimeAnimatorController;
             }
             var asset = runtime as UnityEditor.Animations.AnimatorController;
+            var ranges = ScanParameterRanges(asset);
 
             card.SetSummary($"{faceParams.Count} parameters");
             card.Body.Add(BridgeElements.Hint(
@@ -1084,7 +1147,7 @@ namespace AvatarBridge
 
                 foreach (string param in inGroup)
                 {
-                    FaceParamRange(asset, param, out float lo, out float hi);
+                    FaceParamRange(ranges, param, out float lo, out float hi);
                     float start = FaceRest.TryGetValue(param, out float rest) ? rest : 0f;
                     string label = param.StartsWith("v2/") ? param.Substring(3) : param;
                     var slider = new Slider(label, lo, hi)
