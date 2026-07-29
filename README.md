@@ -169,7 +169,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); view & voice placed exactly as the CCK's own **Auto** buttons place them — eye-bone midpoint and jaw bone — with the VRChat viewpoint and viseme-measured mouth as fallbacks |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); view & voice placed exactly as the CCK's own **Auto** buttons place them — eye-bone midpoint and jaw bone, with the root's scale accounted for — and the VRChat viewpoint and viseme-measured mouth as fallbacks |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |

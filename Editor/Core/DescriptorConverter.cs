@@ -37,7 +37,13 @@ namespace AvatarBridge
             // viewpoint stays as the fallback for rigs the Auto chain can't read.
             var animator = ctx.TargetAnimator;
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
-            cvrAvatar.viewPosition = autoView ? viewAuto : vrc.ViewPosition;
+            // The fallback needs converting, not copying: VRChat stores its viewpoint as an
+            // UNSCALED local offset and applies the avatar's scale at runtime, while ChilloutVR
+            // stores the offset with the scale already in it. Copying it across put the viewpoint
+            // at 1/scale of its height on any avatar whose root isn't at scale 1.
+            cvrAvatar.viewPosition = autoView
+                ? viewAuto
+                : Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.lossyScale);
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;   // replaced below, once the face is known
 
             // --- Face mesh, visemes --------------------------------------------------

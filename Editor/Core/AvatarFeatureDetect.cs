@@ -275,7 +275,7 @@ namespace AvatarBridge
 
             // Push forward toward the face so the camera isn't inside the head.
             world += root.transform.forward * 0.04f;
-            return root.transform.InverseTransformPoint(world);
+            return RootOffset(root, world);
         }
 
         // ---------------------------------------------- the CCK's own Auto placement ----
@@ -339,7 +339,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            localPosition = RoundNearZero(root.transform.InverseTransformPoint(world));
+            localPosition = RoundNearZero(RootOffset(root, world));
             return true;
         }
 
@@ -368,7 +368,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            localPosition = root.transform.InverseTransformPoint(world);
+            localPosition = RootOffset(root, world);
             return true;
         }
 
@@ -421,6 +421,30 @@ namespace AvatarBridge
                 Mathf.Abs(position.z) < tolerance ? 0f : position.z);
         }
 
+        /// <summary>
+        /// A world point expressed the way CVRAvatar stores viewPosition and voicePosition:
+        /// the offset from the avatar root, **with the root's scale still in it**.
+        ///
+        /// This is not what InverseTransformPoint gives you, and the difference is invisible on
+        /// the majority of avatars because their root scale is 1. On a root scaled to 1.4 the
+        /// viewpoint landed at 1/1.4 of its correct height — around the collarbone rather than
+        /// the eyes — and clicking the CCK's own Auto button "fixed" it, which is what finally
+        /// gave the bug away.
+        ///
+        /// The CCK's contract is visible in its inspector: the position handle reads back
+        /// `TransformPoint(Scale(viewPosition, 1/lossyScale))` and writes
+        /// `Scale(InverseTransformPoint(handle), lossyScale)`, so the stored value is a
+        /// scale-inclusive offset from the root. Its Auto button assigns `eye.position`
+        /// outright, which is the same thing whenever the root sits at the origin — the usual
+        /// authoring case, and the reason the shortcut holds. Going through the root explicitly
+        /// matches the contract without inheriting the assumption.
+        /// </summary>
+        static Vector3 RootOffset(GameObject root, Vector3 world)
+        {
+            return Vector3.Scale(root.transform.InverseTransformPoint(world),
+                                 root.transform.lossyScale);
+        }
+
         /// <summary>Voice emitted from the head, like VRChat does. Avatar-local, unscaled.</summary>
         public static Vector3 EstimateVoicePosition(GameObject root, Animator animator)
         {
@@ -429,7 +453,7 @@ namespace AvatarBridge
                 var head = animator.GetBoneTransform(HumanBodyBones.Head);
                 if (head != null)
                 {
-                    return root.transform.InverseTransformPoint(head.position);
+                    return RootOffset(root, head.position);
                 }
             }
             return EstimateViewPosition(root, animator);
