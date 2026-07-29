@@ -226,6 +226,33 @@ namespace AvatarBridge
                 int strippedRefs = refs.Count(isStripped);
                 bool referenceHit = strippedRefs > 0 && strippedRefs >= refs.Count * 0.6f;
 
+                // …unless the layer is a SHARED one, in which case a majority means nothing.
+                //
+                // VRCFury's LayerToTreeService folds dozens of unrelated toggles into a single
+                // Direct blend tree for performance. On an NSFW-heavy avatar most of those
+                // toggles belong to systems being stripped, so the 60% test fired and deleted
+                // the whole layer — and with it every innocent branch sharing the ride. One
+                // avatar lost its ENTIRE wardrobe that way: 116 of 162 references were stripped
+                // systems, the other 46 were the clothing, and all 46 went too. The menu entries
+                // then looked dead (nothing read their parameters, because their only reader had
+                // just been deleted) and were tidied away, so the toggles vanished from the menu
+                // as well — three passes each behaving correctly on the wreckage of the first.
+                //
+                // A direct tree is the aggregator pattern by construction, and PruneDirectBlend-
+                // Trees on the very next line exists to take exactly these branches out one at a
+                // time. So: name matches still remove the layer (that names its owner), but the
+                // majority heuristic never deletes a shared tree — it gets pruned instead.
+                if (referenceHit && ContainsDirectBlendTree(layer.stateMachine))
+                {
+                    ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
+                        $"{strippedRefs} of its {refs.Count} parameter references belong to stripped systems, " +
+                        "but this layer is a shared blend tree — VRChat tooling packs unrelated toggles into " +
+                        "one of these for performance. Removing it would take the other " +
+                        $"{refs.Count - strippedRefs} along with it (that is how an avatar loses its whole " +
+                        "wardrobe to an SPS strip). The stripped branches are pruned out individually below.");
+                    referenceHit = false;
+                }
+
                 // Locomotion replacements are all-or-nothing. GoGo's Base/Poses/Action layers
                 // condition mostly on Velocity/Upright/Grounded/AFK — the game-fed built-ins —
                 // so the 60% majority above never fires for them, and with "Remove GoGo Loco"
@@ -276,6 +303,53 @@ namespace AvatarBridge
         /// stripped, its branches must be pruned out of those shared trees or its
         /// leftover math keeps running (integrating garbage values forever).
         /// </summary>
+        /// <summary>
+        /// True when any state in the layer plays a Direct blend tree — the shape VRChat tooling
+        /// uses to pack many independent toggles into one layer, and therefore the shape that
+        /// must be pruned rather than deleted.
+        /// </summary>
+        static bool ContainsDirectBlendTree(AnimatorStateMachine machine)
+        {
+            if (machine == null)
+            {
+                return false;
+            }
+            bool Search(Motion motion)
+            {
+                if (!(motion is BlendTree tree))
+                {
+                    return false;
+                }
+                if (tree.blendType == BlendTreeType.Direct)
+                {
+                    return true;
+                }
+                foreach (var child in tree.children)
+                {
+                    if (Search(child.motion))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            foreach (var child in machine.states)
+            {
+                if (child.state != null && Search(child.state.motion))
+                {
+                    return true;
+                }
+            }
+            foreach (var child in machine.stateMachines)
+            {
+                if (ContainsDirectBlendTree(child.stateMachine))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         internal static void PruneDirectBlendTrees(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers, Func<string, bool> isStripped)
         {
