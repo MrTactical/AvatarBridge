@@ -53,11 +53,12 @@ mid-2026:
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([beta](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
+| Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([experimental](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
+| A play-mode tester that drives the converted avatar the way the game does | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
 
 Every ✅ in the AvatarBridge column is documented on this page, and most are confirmed in game —
@@ -88,12 +89,16 @@ actually running.
   and many others are built.
 - **Readable output** — clothing toggles come out as one `Toggle <name>` layer each, on real
   `bool` parameters.
+- **Toggles that go both ways** — VRChat's standard toggle leaves its "off" state empty and lets
+  Write Defaults undo the change. Nothing carries that rule across, so those toggles used to switch
+  on and stay on. The off direction is now [real animation](#a-toggle-switches-on-but-never-back-off),
+  reusing your avatar's own clip where it has one.
 - **Bloat removed** — GoGo Loco and SPS/OGB/PCS stripped (one avatar went from 3088 to 240 of 3200
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts** — one-to-one, with real proximity and zero sync cost (contacts
-  are per-client by design), using a system the CCK doesn't expose ([beta](#native-contacts)).
+  are per-client by design), using a system the CCK doesn't expose ([experimental](#native-contacts)).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -198,9 +203,9 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, converted into ChilloutVR's space, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
-| Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
+| Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
@@ -510,7 +515,7 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   the animator. Smoothing proxies VRChat never synced automatically become `#`-local — which costs
   **zero** sync bits, so a full smoothed rig fits ChilloutVR's 3200-bit budget comfortably — and
   the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
-  point. *(Labelled "None" before v2.48.1, which undersold it.)*
+  point.
 
 **Every mode needs a tracking source at runtime** — true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480) and set CVR's *Eye Tracking* and
@@ -564,7 +569,7 @@ A GUID-matching stub (like the DynamicBone one) could recover simple components,
 run VRCFury or NDMF — those are real code needing the real SDK — so Fury avatars would silently
 convert to empty shells. Unity also deserializes by field name and *silently defaults* what it can't
 match, so every SDK update would quietly change the output. The DynamicBone stub exists to work
-around a paywall; the VRChat SDK is free and one click.
+around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 </details>
 
 ## Known limitations
@@ -617,7 +622,9 @@ Bipeds are unaffected by any of it.
   while an emote plays, which is why its idle state can hold a full-body clip with Write Defaults on
   and harm nothing; ChilloutVR has no playable layers, so at weight 1 that idle state would hold
   your whole body in its rest pose above locomotion and walking would stop working entirely. Raise
-  the weight yourself in the Animator window if you want the layer live.
+  the weight yourself in the Animator window if you want the layer live. **The one exception is a
+  kept GoGo Loco** — GoGo drives Action itself, so with *Remove GoGo Loco* unticked the layer is
+  merged live at weight 1 instead.
 - **Constant contact receivers** reset to 0 when *any* pointer exits — CVR triggers don't count
   occupants.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
@@ -693,34 +700,17 @@ the avatar is standing still while in game it walks, turns and head-tracks const
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
 
-### Console floods with "Broken text PPtr … Face Tracking Layers.controller" on import
-
-Versions before 2.59.2 shipped the face-tracking layer template with orphaned leftovers from how
-it was authored — transitions pointing at states that no longer exist. Unity validates every
-object in the file on import, reachable or not, so a fresh import printed one error per orphan.
-Alarming, but harmless: the actual face-tracking layers were always intact, and converted
-avatars never contained the debris (the converter copies only the layers, which is exactly the
-reachable part). Update to 2.59.2 — the template is cleaned and the errors stop. No
-reconversion needed.
-
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
-Before 2.59.0, conversions were written **inside the tool's own folder**
-(`Assets/AvatarBridge/Output`). The natural way to update a `.unitypackage` — delete the old
-folder, import the new one — erased every conversion with it: Missing (Runtime Animator
-Controller) on converted avatars, override controllers gone, particles rendering as pink squares.
+Only affects conversions made before 2.59.0, which were written **inside the tool's own folder**
+(`Assets/AvatarBridge/Output`) — so deleting that folder to update the `.unitypackage` erased them
+with it. **Check the Windows Recycle Bin first:** Unity trashes deleted assets rather than
+destroying them, and restoring the folder relinks everything, because the `.meta` files carry the
+GUIDs the scene points at. Otherwise reconvert — the source avatars were never touched.
 
-Two recoveries, in order:
-
-1. **Check the Windows Recycle Bin.** Unity moves deleted assets to the trash rather than
-   destroying them. Restore the `Output` folder (files *and* their `.meta` companions come back
-   together), move it into the project, and every reference relinks — the `.meta` files carry the
-   GUIDs the scene points at.
-2. **Reconvert.** The source avatars were never touched; conversions are reproducible.
-
-Since 2.59.0 output lands in `Assets/AvatarBridgeOutput`, a sibling folder the tool's
-delete-and-reimport update flow can't reach. Anything still in the old location is moved there
-automatically on load, with GUIDs preserved so existing references keep working.
+Output has landed in the sibling `Assets/AvatarBridgeOutput` since 2.59.0, where the update flow
+can't reach it, and anything left in the old location is moved there automatically with its GUIDs
+intact.
 
 ### Something is bright magenta
 
@@ -735,66 +725,73 @@ didn't — the same VRCFury temp problem one level deeper. Convert again on the 
 
 ### Gestures freeze in game, or on another PC
 
-**Reconvert on 2.71.0 or later.** Three historical causes, all fixed:
+**Reconvert on 2.71.0 or later.**
 
-1. *Before 2.71.0*, a merged FX layer that carried finger curves was narrowed to a hands-only
-   mask instead of being blocked. Merged layers sit **above** ChilloutVR's `LeftHand`/`RightHand`
-   layers, so on Override at full weight they overwrote the pose the gesture had just played —
-   even material-swap layers with no finger animation of their own, purely by writing defaults
-   into channels the mask let through. The signature is unmistakable and maddening: the in-game
-   CCK Debugger reports `LeftHand — Layer Weight: 1.00, Playing Clips: 1.00 Thumbs Up` while your
-   fingers sit in their rest pose. The animator is correct; something above it is winning. Those
-   curves never moved a finger in VRChat either (its FX playable layer can't drive humanoid
-   muscles), so they're blocked with the rest now, and a final audit strips fingers from any
-   remaining mask above the hand layers.
+Before 2.71.0, a merged FX layer carrying finger curves was narrowed to a hands-only mask instead of
+being blocked. Merged layers sit **above** ChilloutVR's `LeftHand`/`RightHand` layers, so on
+Override at full weight they overwrote the pose the gesture had just played — even material-swap
+layers with no finger animation of their own, purely by writing defaults into channels the mask let
+through. The signature is unmistakable and maddening: the in-game CCK Debugger reports `LeftHand —
+Layer Weight: 1.00, Playing Clips: 1.00 Thumbs Up` while your fingers sit in their rest pose. The
+animator is correct; something above it is winning. Those curves never moved a finger in VRChat
+either — its FX playable layer can't drive humanoid muscles — so they're blocked with the rest now,
+and a final audit strips fingers from any mask left above the hand layers.
 
-2. *Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
-   parameters — which ChilloutVR's own stock avatar animator never uses, and which the game
-   doesn't reliably feed. Fingers worked in the editor tester (which drives them directly) and
-   froze in game. Conversions now condition on the `GestureLeft`/`GestureRight` floats with the
-   CCK's own threshold bands — the same client path every stock avatar runs.
-3. *Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in
-   a project without those folders every missing clip resolves to None and plays as stillness,
-   with no error anywhere. "Works on the author's PC, frozen on someone else's" is this one's
-   signature. Every referenced clip and mask is now copied into the output's `RehomedAssets`.
+Also worth knowing, and not a conversion problem: on Index-type controllers ChilloutVR only
+registers gestures at all while *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled
+in its settings. With both off, no avatar gestures work, stock or converted.
 
-Also worth knowing: on Index-type controllers ChilloutVR only registers gestures at all while
-*Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its settings — with both
-off, no avatar gestures work, stock or converted.
+<details><summary>Two older causes, both fixed long before that</summary>
+
+*Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
+parameters — which ChilloutVR's own stock avatar animator never uses, and which the game doesn't
+reliably feed. Fingers worked in the editor tester (which drives them directly) and froze in game.
+Conversions condition on the `GestureLeft`/`GestureRight` floats with the CCK's own threshold bands
+now, the same client path every stock avatar runs.
+
+*Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in a
+project without those folders every missing clip resolves to None and plays as stillness, with no
+error anywhere. "Works on the author's PC, frozen on someone else's" is that one's signature. Every
+referenced clip and mask is copied into the output's `RehomedAssets` now.
+
+</details>
 
 ### The viewpoint or voice position is nowhere near the head
 
-**Reconvert on 2.81.0 or later**, and check whether the avatar has a **scaled parent**.
+**Reconvert on 2.86.1 or later.**
 
-**The viewpoint now comes from your avatar's VRChat descriptor** (2.86.1) — the position its author
-placed by eye and shipped, copied across unchanged. (2.86.0 briefly multiplied it by the root's
-scale, which is a no-op on a scale-1 avatar and threw the viewpoint metres up on anything else.) The CCK's *Auto* button reads the humanoid **eye bones**, and on rigs
-where those bones aren't where the eyes are, it is confidently wrong; one robot avatar's eye
-mapping sat 6 cm off-centre and 9 cm behind its face, and the author's own value matched the
-hand-corrected position on X exactly and Z to half a millimetre. Auto is still used when the
-descriptor has no viewpoint set, and the report says which was used and how far apart they were.
+**The viewpoint comes from your avatar's VRChat descriptor** — the position its author placed by eye
+and shipped, copied across unchanged. The CCK's *Auto* button instead reads the humanoid **eye
+bones**, and on rigs where those bones aren't where the eyes are it is confidently wrong: one robot
+avatar's eye mapping sat 6 cm off-centre and 9 cm behind its face, while the author's own value
+matched the hand-corrected position exactly on X and to half a millimetre on Z. Auto is still used
+when the descriptor has no viewpoint set, and the report says which was used and how far apart they
+were.
 
-Three older causes, all fixed:
+The conversion checks its own answer — it re-draws each position the way the CCK's inspector will
+and measures it against the head bone — so the report tells you when a placement is wrong instead
+of leaving it for the first person who hears your voice coming from ten metres away. Putting the
+avatar at the top of the scene hierarchy before converting avoids the scale cases entirely, and the
+CVRAvatar inspector's own **Auto** buttons are always a safe manual fix.
+
+<details><summary>Three older causes, all fixed</summary>
 
 - **Bone axes (2.86.0).** Offsets were applied in the head bone's own orientation. A bone's local
   axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
-  sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets now use the
-  avatar root's orientation, which is the one transform whose forward is really forward.
-- **Scaled bones (2.82.0).** With no jaw bone, the voice position is placed a few centimetres in
-  front of the head — and that offset used to be applied through the head bone's own transform,
-  which multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100×
-  bone scales, turning a 6 cm nudge into 6 m. The offset is now sized from the avatar's own
-  hips-to-head span and applied by rotation only, so bone scale can't reach it. The viewpoint was
-  never affected — it's a midpoint between two eye-bone *positions*, with no offset to inflate.
+  sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets use the avatar
+  root's orientation now, the one transform whose forward is really forward.
+- **Scaled bones (2.82.0).** With no jaw bone the voice position sits a few centimetres in front of
+  the head, and that offset used to be applied through the head bone's own transform — which
+  multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100× bone
+  scales, turning a 6 cm nudge into 6 m. The offset is sized from the avatar's own hips-to-head span
+  and applied by rotation only now, so bone scale can't reach it. The viewpoint was never affected:
+  it's a midpoint between two eye-bone *positions*, with no offset to inflate.
 - **Scaled parents (2.81.0).** ChilloutVR stores both positions as an offset carrying the avatar's
   own **`localScale`** — what the CCK's inspector reads and writes. Earlier conversions used the
   avatar's *world* scale, identical until the avatar sits under a parent with a scale on it, at
   which point they diverge by the parent's factor.
 
-The conversion now checks its own answer — it re-draws each position the way the CCK's inspector
-will and measures it against the head bone — so the report tells you when a placement is wrong
-instead of leaving it for the first person who hears your voice coming from ten metres away.
-Putting the avatar at the top of the scene hierarchy before converting avoids it entirely.
+</details>
 
 Whatever the cause, the CVRAvatar inspector's own **Auto** buttons place both exactly where the
 conversion aims to, so they're always a safe manual fix.
@@ -830,13 +827,13 @@ needs.
 | **Probably not fixable** | The material *already* carries the animated flag and the property still isn't in the shader. Someone has done that fix and it didn't take — the section is off, or the animation predates the installed Poiyomi. Re-locking again changes nothing. |
 
 The second group is worth knowing about before you spend an evening on it. Those controls are
-[removed from the converted avatar](#its-a-head-start-not-a-magic-button) by default rather than
-shipped as menu entries that do nothing.
+[removed from the converted avatar](#what-gets-converted) by default rather than shipped as menu
+entries that do nothing.
 
 Everything upstream looks healthy while this is happening, which is what makes it expensive — the
-parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugger and the tester's
-own [Animator layers](#its-a-head-start-not-a-magic-button) readout both confirm it. The report names
-the property and the renderer so you don't have to work back from the animator.
+parameter syncs, the layer sits at weight 1, the clip plays, and both the CCK Debugger and the
+tester's own **Animator layers** readout confirm it. The report names the property and the renderer
+so you don't have to work back from the animator.
 
 ### A toggle switches on but never back off
 
