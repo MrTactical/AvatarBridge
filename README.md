@@ -120,6 +120,10 @@ actually running.
   drive the controls above it — shows every layer's weight, avatar mask and currently-playing
   clips: the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't
   show, and marks any layer sitting above the hand-pose layers that could overwrite your gestures.
+- **Animations that can't possibly work get named** — a locked Poiyomi shader silently deletes any
+  property that wasn't flagged animated, so the toggle plays perfectly and changes nothing. The
+  report lists every one, and *Tools → Avatar Bridge → [Fix locked material properties](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)*
+  repairs them on copies without touching your originals.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -736,9 +740,18 @@ nowhere. Flagging it later sets `_<Name>Animated` on the *material*, but that ch
 the material is **unlocked and locked again** — so a material can claim a property is animated while
 its shader genuinely has no such property.
 
-The fix is on the avatar: select the affected materials → **unlock** → confirm the property is
-marked animated → **lock** again. Note that flags are per material: if only some of the avatar's
-materials carry the flag, only those respond after re-locking.
+**AvatarBridge can do the fix for you: *Tools → Avatar Bridge → Fix locked material properties*.**
+It reads your animations, works out exactly which properties are being written into nowhere,
+**copies** the affected materials beside the avatar, flags those properties, and re-locks them —
+your originals are never modified, so the VRChat avatar and any material shared with it keep
+working. Re-locking recompiles shaders, so allow it a few minutes on a large avatar.
+
+It's a menu command rather than part of conversion on purpose: the rebuild is slow, and it reaches
+into Poiyomi's internals, which change between versions. If either step fails it says so and stops
+somewhere safe — worst case you're left with unlocked materials, which *work*, just unoptimised.
+
+By hand it's: select the materials → **unlock** → flag the property as animated → **lock** again.
+Flags are per material, so if only some of the avatar's materials carry one, only those respond.
 
 Everything upstream looks healthy while this is happening, which is what makes it expensive — the
 parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugger and the tester's

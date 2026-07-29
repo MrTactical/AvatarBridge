@@ -5035,8 +5035,11 @@ namespace AvatarBridge
                       "it, so writing to it does nothing. Flagging it afterwards sets " +
                       "\"_<Name>Animated\" on the material but has no effect until you UNLOCK and LOCK " +
                       "the materials again — a material can therefore claim a property is animated while " +
-                      "its shader has no such property. Select the affected materials, unlock, check the " +
-                      "property is marked animated, and lock again."
+                      "its shader has no such property. Run *Tools -> Avatar Bridge -> Fix locked " +
+                      "material properties* to do it for you: it copies the affected materials beside " +
+                      "the avatar, flags exactly the properties your animations drive, and re-locks " +
+                      "them, leaving your originals untouched. By hand it is: select the materials, " +
+                      "unlock, flag the property as animated, lock again."
                     : "Whatever drives them will appear to work — parameter synced, layer playing, clip at " +
                       "full weight — and change nothing on screen. Check the property name against the " +
                       "shader, or assign the material the animation was authored for.") +
