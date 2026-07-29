@@ -55,7 +55,7 @@ mid-2026:
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
 | Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([beta](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
-| Gaze limits *measured off your avatar's own poses*; view & voice placed the CCK's own Auto way | ✅ | — |
+| Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
@@ -178,7 +178,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); view & voice placed exactly as the CCK's own **Auto** buttons place them — eye-bone midpoint and jaw bone, with the root's scale accounted for — and the VRChat viewpoint and viseme-measured mouth as fallbacks |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, converted into ChilloutVR's space, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
@@ -746,8 +746,19 @@ off, no avatar gestures work, stock or converted.
 
 **Reconvert on 2.81.0 or later**, and check whether the avatar has a **scaled parent**.
 
-Two causes, both fixed:
+**The viewpoint now comes from your avatar's VRChat descriptor** (2.86.0) — the position its author
+placed by eye and shipped. The CCK's *Auto* button reads the humanoid **eye bones**, and on rigs
+where those bones aren't where the eyes are, it is confidently wrong; one robot avatar's eye
+mapping sat 6 cm off-centre and 9 cm behind its face, and the author's own value matched the
+hand-corrected position on X exactly and Z to half a millimetre. Auto is still used when the
+descriptor has no viewpoint set, and the report says which was used and how far apart they were.
 
+Three older causes, all fixed:
+
+- **Bone axes (2.86.0).** Offsets were applied in the head bone's own orientation. A bone's local
+  axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
+  sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets now use the
+  avatar root's orientation, which is the one transform whose forward is really forward.
 - **Scaled bones (2.82.0).** With no jaw bone, the voice position is placed a few centimetres in
   front of the head — and that offset used to be applied through the head bone's own transform,
   which multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100×

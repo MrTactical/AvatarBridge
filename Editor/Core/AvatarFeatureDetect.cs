@@ -464,7 +464,12 @@ namespace AvatarBridge
         /// </summary>
         static Vector3 OffsetFromBone(Transform bone, Vector3 offsetInMetres)
         {
-            return bone.position + bone.rotation * offsetInMetres;
+            // The AVATAR's orientation, not the bone's. A bone's local axes are whatever the
+            // rigger felt like: on one robot avatar the head bone's +Z pointed at the sky, so
+            // "6 cm forward" became "6 cm up" and the voice position sat above the eyes. The
+            // avatar root is the one transform whose forward really is forward.
+            var root = bone.root;
+            return bone.position + root.rotation * offsetInMetres;
         }
 
         /// <summary>One eye only (cyclops rigs, asymmetric heads): the CCK removes the eye's

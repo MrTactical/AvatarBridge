@@ -37,14 +37,37 @@ namespace AvatarBridge
             // viewpoint stays as the fallback for rigs the Auto chain can't read.
             var animator = ctx.TargetAnimator;
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
-            // The fallback needs converting, not copying: VRChat stores its viewpoint as an
-            // UNSCALED local offset and applies the avatar's scale at runtime, while ChilloutVR
-            // stores the offset with the scale already in it. Copying it across put the viewpoint
-            // at 1/scale of its height on any avatar whose root isn't at scale 1. localScale, to
-            // match the CCK inspector's own arithmetic exactly.
-            cvrAvatar.viewPosition = autoView
-                ? viewAuto
-                : Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.localScale);
+
+            // The AUTHOR'S viewpoint wins when there is one.
+            //
+            // This used to prefer the CCK's Auto placement, for one convention across every
+            // avatar. The convention is worth less than being right: Auto reads the humanoid eye
+            // bones, and on rigs where those bones are not where the eyes are — a robot avatar
+            // whose eye mapping sat 6 cm off-centre and 9 cm behind the face — it produces a
+            // confidently wrong answer, and so does the CCK's own button. The descriptor value is
+            // the one a human placed by eye and then shipped, and on that avatar it matched the
+            // hand-corrected position on X exactly and Z to half a millimetre.
+            //
+            // Converting, not copying: VRChat stores an UNSCALED local offset and applies the
+            // avatar's scale at runtime, while ChilloutVR stores the offset scale included.
+            bool haveAuthored = vrc.ViewPosition != Vector3.zero;
+            var authored = Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.localScale);
+            cvrAvatar.viewPosition = haveAuthored
+                ? authored
+                : autoView ? viewAuto : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
+
+            if (haveAuthored && autoView)
+            {
+                float apart = Vector3.Distance(authored, viewAuto);
+                ctx.Report.Converted(Category, "Viewpoint — the author's own, from the VRChat descriptor",
+                    $"Placed at the viewpoint this avatar shipped with in VRChat. The CCK's Auto " +
+                    $"button (midpoint of the eye bones) would put it {apart:0.###} m away" +
+                    (apart > 0.05f
+                        ? " — far enough apart that this rig's eye bones are not where its eyes are, " +
+                          "which is exactly the case the author's value exists to settle."
+                        : ", so the two agree and either would have done.") +
+                    " Auto remains one click away in the CVRAvatar inspector if you prefer it.");
+            }
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;   // replaced below, once the face is known
 
             // --- Face mesh, visemes --------------------------------------------------
@@ -106,19 +129,33 @@ namespace AvatarBridge
 
             AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
                 cvrAvatar.viewPosition, cvrAvatar.voicePosition);
-            if (autoView || autoVoice)
+            if (!haveAuthored && (autoView || autoVoice))
             {
                 bool hasJaw = animator != null && animator.isHuman &&
                               animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
                 ctx.Report.Converted(Category, "View & voice placed the CCK's own way",
                     (autoView
-                        ? "View between the eye bones"
-                        : "View kept from the VRChat descriptor (no usable eye or head bones)") + "; " +
+                        ? "View between the eye bones (this avatar's VRChat descriptor had no viewpoint set)"
+                        : "View estimated from the avatar's bounds (no usable eye or head bones)") + "; " +
                     (autoVoice
                         ? (hasJaw ? "voice at the jaw bone" : "voice just ahead of the head bone (no jaw bone)")
                         : "voice measured from the viseme mesh") +
-                    " — the same positions the Auto buttons on the CVRAvatar inspector produce, so every " +
-                    "avatar lands on one convention.");
+                    " — the same positions the Auto buttons on the CVRAvatar inspector produce.");
+            }
+            else if (haveAuthored)
+            {
+                bool hasJaw = animator != null && animator.isHuman &&
+                              animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
+                ctx.Report.Converted(Category, "Voice position",
+                    (autoVoice
+                        ? (hasJaw
+                            ? "At the jaw bone — a bone that exists is worth more than any estimate."
+                            : "Just ahead of the head bone; this rig has no jaw bone to use. " +
+                              "Offsets are applied along the AVATAR's forward, not the head bone's, " +
+                              "because a bone's own axes can point anywhere.")
+                        : "Measured from the viseme mesh — no jaw bone on this rig.") +
+                    " VRChat has no voice position to inherit, so unlike the viewpoint this one is " +
+                    "always derived. Check it with the CVRAvatar gizmo before uploading.");
             }
 
             // ChilloutVR has all three of VRChat's lip-sync styles, not just visemes:
