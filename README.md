@@ -104,7 +104,10 @@ actually running.
   controller on the avatar's Animator: it refreshes itself when the controller or its parameter
   list changes, and greys any entry whose parameter the controller doesn't declare — driving
   those would do nothing in game either. (VRChat's Gesture Manager cannot drive a converted
-  avatar — it needs the VRC descriptor, which conversion removes.)
+  avatar — it needs the VRC descriptor, which conversion removes.) A live **Animator layers**
+  readout shows every layer's weight, avatar mask and currently-playing clips — the same view
+  ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't show — and marks any
+  layer sitting above the hand-pose layers that could overwrite your gestures.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -675,14 +678,25 @@ didn't — the same VRCFury temp problem one level deeper. Convert again on the 
 
 ### Gestures freeze in game, or on another PC
 
-**Reconvert on 2.62.0 or later.** Two historical causes, both fixed:
+**Reconvert on 2.71.0 or later.** Three historical causes, all fixed:
 
-1. *Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
+1. *Before 2.71.0*, a merged FX layer that carried finger curves was narrowed to a hands-only
+   mask instead of being blocked. Merged layers sit **above** ChilloutVR's `LeftHand`/`RightHand`
+   layers, so on Override at full weight they overwrote the pose the gesture had just played —
+   even material-swap layers with no finger animation of their own, purely by writing defaults
+   into channels the mask let through. The signature is unmistakable and maddening: the in-game
+   CCK Debugger reports `LeftHand — Layer Weight: 1.00, Playing Clips: 1.00 Thumbs Up` while your
+   fingers sit in their rest pose. The animator is correct; something above it is winning. Those
+   curves never moved a finger in VRChat either (its FX playable layer can't drive humanoid
+   muscles), so they're blocked with the rest now, and a final audit strips fingers from any
+   remaining mask above the hand layers.
+
+2. *Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
    parameters — which ChilloutVR's own stock avatar animator never uses, and which the game
    doesn't reliably feed. Fingers worked in the editor tester (which drives them directly) and
    froze in game. Conversions now condition on the `GestureLeft`/`GestureRight` floats with the
    CCK's own threshold bands — the same client path every stock avatar runs.
-2. *Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in
+3. *Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in
    a project without those folders every missing clip resolves to None and plays as stillness,
    with no error anywhere. "Works on the author's PC, frozen on someone else's" is this one's
    signature. Every referenced clip and mask is now copied into the output's `RehomedAssets`.

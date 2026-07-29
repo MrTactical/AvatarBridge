@@ -228,6 +228,9 @@ namespace AvatarBridge
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
+            // After every layer that will exist, exists: the stack order it checks is the one
+            // the game will run.
+            AuditHandPoseConflicts(master, convertingGestureLayer, ctx);
             // Run last: after every merge and injection, make sure no transition conditions
             // it on a parameter using a comparison its final type can't express (e.g. a
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
@@ -3872,6 +3875,116 @@ namespace AvatarBridge
                       "finger in VRChat either, and letting them through here would overwrite your hand " +
                       "gestures, since merged layers sit above the hand-pose layers."
                     : ""));
+        }
+
+        /// <summary>
+        /// The last line of defence for hand gestures, and the reason this exists is worth
+        /// writing down: a tester spent five rounds on an avatar whose CCK Debugger read
+        /// "LeftHand — Layer Weight 1.00, playing Thumbs Up 1.00" while the fingers sat in
+        /// their rest pose. The animator was right every time it was checked. Two MATERIAL
+        /// SWAP layers above it carried a fingers-only mask, and on Override at weight 1 they
+        /// rewrote the finger muscles every frame — with no finger curves of their own, purely
+        /// by writing defaults into channels their mask let through.
+        ///
+        /// The rule is exact. When the CCK's own LeftHand/RightHand layers survive — which is
+        /// whenever the avatar's Gesture layer was not converted — posing the fingers is THEIR
+        /// job, and any layer above them that may write finger muscles is damage. MaskMergedLayers
+        /// covers the case it owns, merged layers that arrive with NO mask; a layer that arrives
+        /// WITH one is skipped by it, and injected layers never pass through it at all. So this
+        /// checks the finished stack rather than trusting the passes that built it.
+        /// </summary>
+        static void AuditHandPoseConflicts(AnimatorController master, bool convertingGestureLayer, BridgeContext ctx)
+        {
+            if (convertingGestureLayer)
+            {
+                return; // the avatar's own gesture layers ARE the hand pose — nothing to protect
+            }
+            var layers = master.layers;
+            int handTop = -1;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (layers[i].name == "LeftHand" || layers[i].name == "RightHand")
+                {
+                    handTop = i;
+                }
+            }
+            if (handTop < 0)
+            {
+                return;
+            }
+
+            var repaired = new List<string>();
+            var warned = new List<string>();
+            bool changed = false;
+            for (int i = handTop + 1; i < layers.Length; i++)
+            {
+                var layer = layers[i];
+                var mask = layer.avatarMask;
+                // A null mask is MaskMergedLayers' business, not this one's — flagging those
+                // here would fire on every injected layer we write ourselves.
+                if (mask == null || layer.defaultWeight <= 0f
+                    || layer.blendingMode != AnimatorLayerBlendingMode.Override)
+                {
+                    continue;
+                }
+                if (!mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
+                    && !mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers))
+                {
+                    continue;
+                }
+                InspectLayerCurves(layer, out bool body, out _);
+                if (body)
+                {
+                    // A layer that deliberately drives the body — a kept GoGo locomotion
+                    // replacement, say. Silently stripping its fingers would be us overruling
+                    // the author, so this one is the user's call.
+                    warned.Add(layer.name);
+                    continue;
+                }
+                var stripped = new AvatarMask { name = mask.name + "_NoFingers" };
+                for (int part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+                {
+                    var bodyPart = (AvatarMaskBodyPart)part;
+                    stripped.SetHumanoidBodyPartActive(bodyPart,
+                        bodyPart != AvatarMaskBodyPart.LeftFingers
+                        && bodyPart != AvatarMaskBodyPart.RightFingers
+                        && mask.GetHumanoidBodyPartActive(bodyPart));
+                }
+                stripped.transformCount = mask.transformCount;
+                for (int t = 0; t < mask.transformCount; t++)
+                {
+                    stripped.SetTransformPath(t, mask.GetTransformPath(t));
+                    stripped.SetTransformActive(t, mask.GetTransformActive(t));
+                }
+                layer.avatarMask = stripped;
+                repaired.Add(layer.name);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                master.layers = layers;
+            }
+            if (repaired.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{repaired.Count} layer(s) above the hand-pose layers stopped from overwriting gestures",
+                    $"{string.Join(", ", repaired.Take(6))}{(repaired.Count > 6 ? ", …" : "")} — each sat " +
+                    "above ChilloutVR's LeftHand/RightHand layers with a mask that let it write finger " +
+                    "muscles, which on Override at full weight replaces whatever pose the gesture just " +
+                    "played. Fingers were removed from their masks; everything else those layers animate " +
+                    "is untouched. This is what makes a gesture look \"dead\" in game while the CCK " +
+                    "Debugger shows the right clip playing at weight 1.");
+            }
+            if (warned.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{warned.Count} body layer(s) above the hand-pose layers can write finger muscles",
+                    $"{string.Join(", ", warned.Take(6))}{(warned.Count > 6 ? ", …" : "")} — they animate " +
+                    "the body deliberately, so nothing was changed. If hand gestures do not move your " +
+                    "fingers in game, these are the layers to look at first: turn off fingers in their " +
+                    "avatar mask, or lower their weight.");
+            }
         }
 
         static void WarnLocomotionOverrides(List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)

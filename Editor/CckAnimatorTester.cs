@@ -333,6 +333,9 @@ namespace AvatarBridge
             gestures.SetEnabled(live);
             scroll.Add(gestures);
 
+            // ---- what the animator is ACTUALLY doing -------------------------------------
+            scroll.Add(BuildLayerCard(avatar));
+
             // ---- locomotion --------------------------------------------------------------
             var locomotion = new BridgeElements.Card("Locomotion");
             locomotion.Body.Add(DrivenSlider("Movement X  (strafe)", -1f, 1f, 0f, v =>
@@ -625,6 +628,185 @@ namespace AvatarBridge
                 }) { text = pose.name });
             }
             return row;
+        }
+
+        /// <summary>
+        /// Per layer: its weight, its avatar mask, and the clips it is playing RIGHT NOW —
+        /// read from the same Animator API ChilloutVR's own CCK Debugger uses, plus a mask
+        /// column the debugger cannot show, because masks live on the controller asset and
+        /// only an editor can reach them.
+        ///
+        /// It exists because of the bug that took five rounds to find. The debugger read
+        /// "LeftHand — Layer Weight 1.00, playing Thumbs Up 1.00" while the avatar's fingers
+        /// sat in their rest pose, and every check of the animator said it was correct —
+        /// because it WAS. Two layers further down the list had masks letting them rewrite the
+        /// same muscles afterwards. Either row alone looks fine; the two together are the whole
+        /// diagnosis, which is why they had to be on one screen.
+        /// </summary>
+        VisualElement BuildLayerCard(CVRAvatar avatar)
+        {
+            var card = new BridgeElements.Card("Animator layers  (live)");
+            var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+            var runtime = animator != null ? animator.runtimeAnimatorController : null;
+            while (runtime is AnimatorOverrideController over)
+            {
+                runtime = over.runtimeAnimatorController;
+            }
+            var asset = runtime as UnityEditor.Animations.AnimatorController;
+
+            if (!Application.isPlaying || animator == null || asset == null)
+            {
+                card.Body.Add(BridgeElements.Hint(
+                    animator == null || asset == null
+                        ? "No animator controller to read yet."
+                        : "Enter PLAY MODE — layer weights and playing clips only exist while the " +
+                          "animator evaluates. This is the same readout ChilloutVR's CCK Debugger " +
+                          "shows in game, so what you see here is what a tester would report."));
+                return card;
+            }
+
+            // Which layers own the hand pose, and therefore which layers ABOVE them are able to
+            // ruin it. Highest index wins: it is the one that writes last.
+            int handTop = -1;
+            for (int i = 0; i < asset.layers.Length; i++)
+            {
+                if (asset.layers[i].name == "LeftHand" || asset.layers[i].name == "RightHand")
+                {
+                    handTop = i;
+                }
+            }
+
+            var header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.Add(Column("LAYER", 1f, 0));
+            header.Add(Column("WEIGHT", 0f, 52));
+            header.Add(Column("MASK", 0f, 120));
+            header.Add(Column("PLAYING", 1.4f, 0));
+            foreach (var child in header.Children())
+            {
+                child.AddToClassList("ab-sub");
+            }
+            card.Body.Add(header);
+
+            var rows = new List<(Label weight, Label playing, VisualElement row)>();
+            for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
+            {
+                var layer = asset.layers[i];
+                bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask)
+                                 && layer.name != "LeftHand" && layer.name != "RightHand";
+
+                var row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.marginBottom = 1;
+                row.tooltip = conflicts
+                    ? $"Layer {i} sits ABOVE the hand-pose layer ({handTop}) and its mask lets it write " +
+                      "finger muscles. On Override at weight 1 it replaces whatever pose a gesture just " +
+                      "played — the fingers stop moving in game even though the gesture is playing here."
+                    : $"Layer {i} — {layer.blendingMode}, default weight {layer.defaultWeight:0.##}.";
+
+                var name = Column($"{i}  {layer.name}", 1f, 0);
+                if (conflicts)
+                {
+                    name.text = $"{i}  ⚠ {layer.name}";
+                    name.style.color = BridgeTheme.Bad;
+                }
+                else if (i == handTop || layer.name == "LeftHand" || layer.name == "RightHand")
+                {
+                    name.style.color = BridgeTheme.Good;
+                }
+                row.Add(name);
+
+                var weight = Column("–", 0f, 52);
+                row.Add(weight);
+
+                var mask = Column(layer.avatarMask != null ? layer.avatarMask.name : "none", 0f, 120);
+                mask.style.color = BridgeTheme.Muted;
+                mask.tooltip = layer.avatarMask != null
+                    ? "The avatar mask limits which parts of the rig this layer may write."
+                    : "No mask: this layer may write anything its clips animate.";
+                row.Add(mask);
+
+                var playing = Column("", 1.4f, 0);
+                row.Add(playing);
+
+                card.Body.Add(row);
+                rows.Add((weight, playing, row));
+            }
+
+            if (handTop < 0)
+            {
+                card.Body.Add(BridgeElements.Hint(
+                    "No LeftHand/RightHand layer — this avatar's own gesture layers took over the " +
+                    "hand pose, so nothing here is checked against them."));
+            }
+
+            // 10 Hz: fast enough to read a gesture landing, slow enough to be free. The
+            // scheduler stops with the element, so a closed window costs nothing.
+            card.schedule.Execute(() =>
+            {
+                if (!Application.isPlaying || animator == null)
+                {
+                    return;
+                }
+                for (int i = 0; i < rows.Count && i < animator.layerCount; i++)
+                {
+                    float w = animator.GetLayerWeight(i);
+                    rows[i].weight.text = w.ToString("0.00");
+                    rows[i].weight.style.color = w > 0.001f ? BridgeTheme.Good : BridgeTheme.Muted;
+
+                    var clips = animator.GetCurrentAnimatorClipInfo(i);
+                    var text = new List<string>();
+                    foreach (var info in clips)
+                    {
+                        if (info.clip != null && info.weight > 0.001f)
+                        {
+                            text.Add($"{info.weight:0.00} {info.clip.name}");
+                        }
+                    }
+                    if (animator.IsInTransition(i))
+                    {
+                        foreach (var info in animator.GetNextAnimatorClipInfo(i))
+                        {
+                            if (info.clip != null && info.weight > 0.001f)
+                            {
+                                text.Add($"→ {info.weight:0.00} {info.clip.name}");
+                            }
+                        }
+                    }
+                    rows[i].playing.text = text.Count == 0
+                        ? "—"
+                        : string.Join(", ", text.GetRange(0, Mathf.Min(3, text.Count)))
+                          + (text.Count > 3 ? $" +{text.Count - 3}" : "");
+                    // Null hands the colour back to the stylesheet rather than pinning a
+                    // literal one, so the row still reads correctly in both editor skins.
+                    rows[i].playing.style.color = text.Count == 0
+                        ? new StyleColor(BridgeTheme.Muted)
+                        : new StyleColor(StyleKeyword.Null);
+                }
+            }).Every(100);
+
+            return card;
+        }
+
+        static bool PermitsFingers(AvatarMask mask)
+        {
+            return mask != null
+                   && (mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
+                       || mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers));
+        }
+
+        static Label Column(string text, float grow, float width)
+        {
+            var label = new Label(text);
+            label.style.flexGrow = grow;
+            label.style.flexShrink = 1;
+            label.style.overflow = Overflow.Hidden;
+            if (width > 0f)
+            {
+                label.style.width = width;
+                label.style.flexShrink = 0;
+            }
+            return label;
         }
 
         static VisualElement DrivenSlider(string label, float lo, float hi, float initial,
