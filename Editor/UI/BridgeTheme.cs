@@ -46,6 +46,41 @@ namespace AvatarBridge
             bool isDark = dark ?? Dark;
             root.EnableInClassList("dark", isDark);
             root.EnableInClassList("light", !isDark);
+
+            // And the panel's own theme, which is the part our classes cannot reach.
+            //
+            // Unity picks the editor theme stylesheet when a window's visual tree is first
+            // built, from isProSkin AT THAT INSTANT. A window whose backing panel is created
+            // during a domain reload can therefore keep the LIGHT theme for the rest of its
+            // life inside a dark editor — and it is not our cards that give it away, it is
+            // every built-in control. ObjectField, Slider, Button and Toggle all render pale,
+            // and no class of ours can undo that, because this stylesheet never styles them.
+            //
+            // Re-asserting the right theme is free when it is already right, and rescues the
+            // window when it is not. Element stylesheets resolve after the panel's, so adding
+            // the correct one wins even where the wrong one cannot be taken away.
+            var wanted = LoadTheme(isDark);
+            var unwanted = LoadTheme(!isDark);
+            if (unwanted != null)
+            {
+                root.styleSheets.Remove(unwanted);
+            }
+            if (wanted != null && !root.styleSheets.Contains(wanted))
+            {
+                root.styleSheets.Add(wanted);
+            }
+        }
+
+        /// <summary>
+        /// Unity's own generated editor theme. The path is internal, so a null result is an
+        /// ordinary outcome on a version that moved it — the caller carries on with whatever
+        /// theme the panel already had rather than failing.
+        /// </summary>
+        static StyleSheet LoadTheme(bool dark)
+        {
+            return EditorGUIUtility.Load(dark
+                ? "StyleSheets/Generated/DefaultCommonDark.uss.asset"
+                : "StyleSheets/Generated/DefaultCommonLight.uss.asset") as StyleSheet;
         }
 
         // The two platforms, as they colour themselves. Darkened slightly from the source values
