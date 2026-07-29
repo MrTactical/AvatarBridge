@@ -121,9 +121,10 @@ actually running.
   clips: the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't
   show, and marks any layer sitting above the hand-pose layers that could overwrite your gestures.
 - **Animations that can't possibly work get named** — a locked Poiyomi shader silently deletes any
-  property that wasn't flagged animated, so the toggle plays perfectly and changes nothing. The
-  report lists every one, and *Tools → Avatar Bridge → [Fix locked material properties](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)*
-  repairs them on copies without touching your originals.
+  property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
+  VRChat as much as here. The report [lists every one](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
+  with the renderer it belongs to, so the fix is a minute in Poiyomi's inspector instead of a day
+  in the animator.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -765,18 +766,17 @@ nowhere. Flagging it later sets `_<Name>Animated` on the *material*, but that ch
 the material is **unlocked and locked again** — so a material can claim a property is animated while
 its shader genuinely has no such property.
 
-**AvatarBridge can do the fix for you: *Tools → Avatar Bridge → Fix locked material properties*.**
-It reads your animations, works out exactly which properties are being written into nowhere,
-**copies** the affected materials beside the avatar, flags those properties, and re-locks them —
-your originals are never modified, so the VRChat avatar and any material shared with it keep
-working. Re-locking recompiles shaders, so allow it a few minutes on a large avatar.
+**Fix it in Poiyomi's own material inspector**, and only there: unlock the material, right-click the
+property, mark it animated, then lock again. Flags are per material, so if only some of the
+avatar's materials carry one, only those respond.
 
-It's a menu command rather than part of conversion on purpose: the rebuild is slow, and it reaches
-into Poiyomi's internals, which change between versions. If either step fails it says so and stops
-somewhere safe — worst case you're left with unlocked materials, which *work*, just unoptimised.
-
-By hand it's: select the materials → **unlock** → flag the property as animated → **lock** again.
-Flags are per material, so if only some of the avatar's materials carry one, only those respond.
+It has to be Poiyomi's UI because marking a property animated *also enables the shader section it
+belongs to*. Poiyomi is modular: a disabled section is compiled out of the locked shader
+completely, and no flag on a property inside it will bring it back. AvatarBridge briefly shipped a
+command that automated the unlock/flag/re-lock, and it was withdrawn in 2.83.0 for exactly this —
+it set the flags correctly and the properties still didn't appear, because their sections were off,
+while the rebuild changed how the avatar looked. Only Poiyomi knows which section each property
+needs.
 
 Everything upstream looks healthy while this is happening, which is what makes it expensive — the
 parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugger and the tester's
