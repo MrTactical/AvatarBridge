@@ -499,18 +499,95 @@ namespace AvatarBridge
         /// the eyes — and clicking the CCK's own Auto button "fixed" it, which is what finally
         /// gave the bug away.
         ///
-        /// The CCK's contract is visible in its inspector: the position handle reads back
-        /// `TransformPoint(Scale(viewPosition, 1/lossyScale))` and writes
-        /// `Scale(InverseTransformPoint(handle), lossyScale)`, so the stored value is a
-        /// scale-inclusive offset from the root. Its Auto button assigns `eye.position`
-        /// outright, which is the same thing whenever the root sits at the origin — the usual
-        /// authoring case, and the reason the shortcut holds. Going through the root explicitly
-        /// matches the contract without inheriting the assumption.
+        /// The CCK's contract is written down in its own inspector, and the scale it uses is
+        /// **localScale**:
+        ///
+        ///     Vector3 scale = avatarTransform.localScale;
+        ///     pos    = avatarTransform.TransformPoint(Scale(viewPosition, 1/scale));   // read
+        ///     stored = Scale(avatarTransform.InverseTransformPoint(handle), scale);    // write
+        ///
+        /// localScale, NOT lossyScale — and the difference is invisible on an avatar sitting at
+        /// the top of the hierarchy, where the two are equal. Parent that avatar under anything
+        /// scaled and they diverge by the parent's factor, which throws the viewpoint metres
+        /// away from the head. An earlier revision here used lossyScale and was confirmed
+        /// correct on an unparented avatar, which proved nothing about the parented case.
+        ///
+        /// Matching localScale is also right for the game: an uploaded avatar is instantiated
+        /// with no scaled ancestor, so localScale IS its world scale there.
         /// </summary>
         static Vector3 RootOffset(GameObject root, Vector3 world)
         {
             return Vector3.Scale(root.transform.InverseTransformPoint(world),
-                                 root.transform.lossyScale);
+                                 root.transform.localScale);
+        }
+
+        /// <summary>
+        /// The CCK's own round trip: what its inspector will draw for a stored position. Used to
+        /// CHECK a computed placement instead of trusting the arithmetic that produced it —
+        /// this contract has now been got wrong twice, in both directions.
+        /// </summary>
+        /// <summary>
+        /// Checks the viewpoint and voice position where the user will actually see them: back
+        /// through the CCK inspector's own arithmetic, measured against the head the avatar has.
+        ///
+        /// The space these are stored in has now been got wrong twice — once by dropping the
+        /// scale entirely, once by using lossyScale where the CCK uses localScale — and both
+        /// times the mistake was invisible on the avatars to hand, because an unparented root
+        /// makes those two scales equal, and glaring to a tester whose avatar sat under
+        /// something scaled. Arithmetic this easy to get wrong by inspection should be measured
+        /// instead, so it is.
+        ///
+        /// The tolerance is deliberately loose: half a head-to-hips is not a rounding question,
+        /// it means the value is in the wrong space entirely.
+        /// </summary>
+        public static void VerifyHeadPlacement(BridgeContext ctx, string category,
+            Animator animator, Vector3 viewPosition, Vector3 voicePosition)
+        {
+            if (animator == null || !animator.isHuman)
+            {
+                return;
+            }
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null)
+            {
+                return;
+            }
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            float tolerance = hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            void Check(string what, Vector3 stored)
+            {
+                float distance = Vector3.Distance(
+                    CckGizmoWorldPoint(ctx.Target, stored), head.position);
+                if (distance <= tolerance)
+                {
+                    return;
+                }
+                ctx.Report.Warning(category,
+                    $"{what} lands {distance:0.##} m from the head bone",
+                    "Drawn where the CCK's own inspector draws it, that is far enough from the head " +
+                    "to be wrong rather than merely unusual. The usual cause is the avatar sitting " +
+                    "under a PARENT with a scale on it: ChilloutVR stores these positions against " +
+                    "the avatar's own localScale, so a scaled ancestor moves them. Put the avatar at " +
+                    "the top of the scene hierarchy (or clear the parent's scale) and convert again. " +
+                    "Either way, check it before uploading — the CVRAvatar inspector's own Auto " +
+                    "buttons place them exactly where this conversion aims to.");
+            }
+
+            Check("Viewpoint", viewPosition);
+            Check("Voice position", voicePosition);
+        }
+
+        public static Vector3 CckGizmoWorldPoint(GameObject root, Vector3 stored)
+        {
+            var scale = root.transform.localScale;
+            var inverse = new Vector3(
+                Mathf.Approximately(scale.x, 0f) ? 0f : 1f / scale.x,
+                Mathf.Approximately(scale.y, 0f) ? 0f : 1f / scale.y,
+                Mathf.Approximately(scale.z, 0f) ? 0f : 1f / scale.z);
+            return root.transform.TransformPoint(Vector3.Scale(stored, inverse));
         }
 
         /// <summary>Voice emitted from the head, like VRChat does. Avatar-local, unscaled.</summary>

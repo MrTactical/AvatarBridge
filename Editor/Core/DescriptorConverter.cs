@@ -40,10 +40,11 @@ namespace AvatarBridge
             // The fallback needs converting, not copying: VRChat stores its viewpoint as an
             // UNSCALED local offset and applies the avatar's scale at runtime, while ChilloutVR
             // stores the offset with the scale already in it. Copying it across put the viewpoint
-            // at 1/scale of its height on any avatar whose root isn't at scale 1.
+            // at 1/scale of its height on any avatar whose root isn't at scale 1. localScale, to
+            // match the CCK inspector's own arithmetic exactly.
             cvrAvatar.viewPosition = autoView
                 ? viewAuto
-                : Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.lossyScale);
+                : Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.localScale);
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;   // replaced below, once the face is known
 
             // --- Face mesh, visemes --------------------------------------------------
@@ -102,6 +103,9 @@ namespace AvatarBridge
                     animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
             }
+
+            AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
+                cvrAvatar.viewPosition, cvrAvatar.voicePosition);
             if (autoView || autoVoice)
             {
                 bool hasJaw = animator != null && animator.isHuman &&
@@ -529,6 +533,7 @@ namespace AvatarBridge
             eyelidMesh = mesh;
             return mesh.GetBlendShapeName(eyelids[0]);
         }
+
     }
 }
 #endif

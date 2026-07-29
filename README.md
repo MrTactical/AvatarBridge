@@ -729,6 +729,23 @@ Also worth knowing: on Index-type controllers ChilloutVR only registers gestures
 *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its settings — with both
 off, no avatar gestures work, stock or converted.
 
+### The viewpoint or voice position is nowhere near the head
+
+**Reconvert on 2.81.0 or later**, and check whether the avatar has a **scaled parent**.
+
+ChilloutVR stores both positions as an offset carrying the avatar's own **`localScale`** — that
+is what the CCK's inspector reads and writes. A conversion before 2.81.0 used the avatar's *world*
+scale instead, which is the same number right up until the avatar sits under a parent that has a
+scale on it; then the two diverge by the parent's factor and the gizmos fly off into space.
+
+The conversion now checks its own answer — it re-draws each position the way the CCK's inspector
+will and measures it against the head bone — so the report tells you when a placement is wrong
+instead of leaving it for the first person who hears your voice coming from ten metres away.
+Putting the avatar at the top of the scene hierarchy before converting avoids it entirely.
+
+Whatever the cause, the CVRAvatar inspector's own **Auto** buttons place both exactly where the
+conversion aims to, so they're always a safe manual fix.
+
 ### A toggle switches on, the layer plays — and nothing changes on screen
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**,

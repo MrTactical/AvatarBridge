@@ -252,16 +252,15 @@ namespace AvatarBridge
         /// World to the space CVRAvatar stores <c>viewPosition</c> and <c>voicePosition</c> in:
         /// the offset from the avatar root with the root's scale still in it.
         ///
-        /// An earlier revision dropped the scale multiply here, on the reasoning that
-        /// InverseTransformPoint had already done the job and the converter's two entry points
-        /// disagreed about it. They did disagree, and making them agree was right — but they were
-        /// made to agree on the wrong space. The CCK's inspector settles it: its handle writes
-        /// `Scale(InverseTransformPoint(handle), lossyScale)`. Scale 1 hid this from both of us.
+        /// The scale is **localScale**, exactly as the CCK's own handle uses
+        /// (`Scale(InverseTransformPoint(handle), avatarTransform.localScale)`). This line has
+        /// been wrong twice: once with the multiply dropped entirely, once with lossyScale,
+        /// which agrees with localScale only while the avatar has no scaled ancestor.
         /// </summary>
         static Vector3 Local(GameObject root, Vector3 world)
         {
             return Vector3.Scale(root.transform.InverseTransformPoint(world),
-                                 root.transform.lossyScale);
+                                 root.transform.localScale);
         }
     }
 }

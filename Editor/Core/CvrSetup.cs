@@ -168,6 +168,9 @@ namespace AvatarBridge
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
             }
 
+            AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
+                cvrAvatar.viewPosition, cvrAvatar.voicePosition);
+
             // --- blink ---------------------------------------------------------------
             WireBlink(ctx, cvrAvatar, mesh);
 
