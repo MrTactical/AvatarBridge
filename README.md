@@ -146,7 +146,7 @@ humanoid for ChilloutVR.)*
 | Unity | **2022.3.22f1** | the version VRChat and CCK 4 both use; install it *through* VCC |
 | ChilloutVR CCK | **4.0.x** | always required — it's what the tool builds for |
 | VRChat Avatars SDK | SDK3, **via VCC / VPM** | required to convert; without it you get [Setup mode](#setup-mode). The legacy `.unitypackage` SDK cannot coexist with the CCK — see [Troubleshooting](#troubleshooting) |
-| [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use them |
+| [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use them; added in VCC alongside the SDK |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended physics target |
 | [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
 
@@ -155,26 +155,28 @@ still converts.
 
 ## Installation
 
-**Start in the [Creator Companion](https://vcc.docs.vrchat.com/).** VRChat's SDK ships only as a
-VPM package, and VPM packages only go into projects VCC manages — a Unity project you make yourself
-has no supported way to get the SDK. So VCC creates the project and installs Unity; everything else
-goes in afterwards, by hand, in this order. ([ALCOM](https://vrc-get.anatawa12.com/en/alcom/) is a
-drop-in alternative and works the same way.)
+**Everything on the VRChat side comes from the [Creator Companion](https://vcc.docs.vrchat.com/) —
+including the project itself.** The SDK ships only as a VPM package, and VPM packages install only
+into projects VCC manages, so a Unity project you make by hand has no supported way to get one.
+([ALCOM](https://vrc-get.anatawa12.com/en/alcom/) is a drop-in alternative and works the same way.)
+
+**If you already build avatars, you already have all of this** — duplicate that project and skip to
+step 3. It has the SDK, VRCFury or Modular Avatar and your avatars in it, imported in the right
+order, which is most of this list already done.
 
 > ⚠️ **Import order matters.** Let Unity finish compiling after each step. Importing out of order
-> can corrupt VRCFury data or leave broken scripting defines.
+> can corrupt VRCFury data or leave broken scripting defines. Duplicating an existing project
+> sidesteps this — it was already built in order.
 
-1. **A VCC project on Unity 2022.3.22f1** — either **New Project → Avatars**, or a **duplicate of
-   your existing avatar project**. Never convert in your real upload project. Either way VCC
-   installs the VRChat Avatars SDK for you.
-2. **ChilloutVR CCK 4** — the `.unitypackage` from
-   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/). Not a VPM
-   package; import it into `Assets` like any other.
-3. **A physics package** (optional) — MagicaCloth2 or DynamicBone.
-4. **VRCFury / Modular Avatar** — whichever your avatars use. Both add to VCC in one click from
-   their own sites.
-5. **Your avatars** — import any that aren't already there, *after* VRCFury.
-6. **AvatarBridge, last** — the `.unitypackage` from
+1. **A VCC project on Unity 2022.3.22f1** — **duplicate your avatar project**, or **New Project →
+   Avatars**. Never convert in your real upload project.
+2. **VRCFury / Modular Avatar**, then **your avatars** — in VCC's **Manage Packages**, from the
+   community repos you'll likely already have listed. Fury before the avatars that need it.
+3. **ChilloutVR CCK 4** — the `.unitypackage` from
+   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/). Not a VPM package;
+   import it into `Assets` like any other.
+4. **A physics package** (optional) — MagicaCloth2 or DynamicBone.
+5. **AvatarBridge, last** — the `.unitypackage` from
    [Releases](https://github.com/MrTactical/AvatarBridge/releases). It must live under `Assets`,
    not `Packages`, or the optional MagicaCloth2 / DynamicBone integration won't resolve.
 
