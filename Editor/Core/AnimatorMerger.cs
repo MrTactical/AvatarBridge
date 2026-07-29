@@ -266,7 +266,7 @@ namespace AvatarBridge
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
-            FillEmptyStatesWithRestoreClips(master, vrcLayers, ctx);
+            FillEmptyStatesWithRestoreClips(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -4054,8 +4054,7 @@ namespace AvatarBridge
         /// silent about everything it was already silent about, and layers keep their
         /// independence.
         /// </summary>
-        static void FillEmptyStatesWithRestoreClips(AnimatorController master,
-            List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        static void FillEmptyStatesWithRestoreClips(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
@@ -4107,8 +4106,17 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var layer in vrcLayers)
+            // Every layer of the finished controller except the ones that must not be touched —
+            // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
+            // when it gives it its own name, so keying on it silently skipped exactly the layers
+            // most likely to need this: six plain wardrobe toggles, four of them reported broken.
+            // A layer is still the avatar's toggle after it has been renamed.
+            foreach (var layer in layers)
             {
+                if (IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
                 // What this layer animates, and which of its states have nothing at all.
                 var bindings = new HashSet<EditorCurveBinding>();
                 var objectBindings = new HashSet<EditorCurveBinding>();
