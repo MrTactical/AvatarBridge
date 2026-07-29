@@ -36,26 +36,34 @@ sit along it — because that's the trip your avatar is making.</em></p>
 
 ## Already using vrc3cvr?
 
-[vrc3cvr](https://github.com/imagitama/vrc3cvr) is a fine tool and the reason this one exists —
-AvatarBridge started by studying it (see [Credits](#credits)). But the two are generations apart
-now. What actually differs, as of mid-2026:
+vrc3cvr is the reason this one exists — AvatarBridge started by studying it (see
+[Credits](#credits)). **Use [Narazaka's vrc3cvr](https://github.com/Narazaka/vrc3cvr) (MIT) as the
+point of comparison**: the [original](https://github.com/imagitama/vrc3cvr) was archived in May
+2023, and Narazaka's is the maintained CCK4-era fork. If you want a smaller, focused converter,
+it's a good tool and it is the one to compare against.
 
-| | AvatarBridge | vrc3cvr |
+The two overlap less than the names suggest. What differs, from Narazaka's documentation as of
+mid-2026:
+
+| | AvatarBridge | vrc3cvr (Narazaka) |
 |---|---|---|
 | Menus, parameters, gestures | ✅ | ✅ |
-| PhysBones → DynamicBone | ✅ 1:1 | ✅ |
+| PhysBones → DynamicBone | ✅ built in | via the external [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) |
 | PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
-| **VRCFury / Modular Avatar baked automatically** (toggles, linked clothing, merged armatures survive) | ✅ | manual |
+| **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
+| **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| **ChilloutVR's native contacts** — real proximity, tags verbatim, zero sync cost by design ([beta](#native-contacts)) | ✅ | — |
+| Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([beta](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; view & voice placed the CCK's own Auto way | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
 
-Every ✅ above is documented on this page, and most are confirmed in game — see the banner above
-for what that means here.
+Every ✅ in the AvatarBridge column is documented on this page, and most are confirmed in game —
+see the banner above for what that means here. The right-hand column is read from vrc3cvr's own
+documentation, not from testing it; if anything there is wrong or has since changed,
+[open an issue](https://github.com/MrTactical/AvatarBridge/issues) and it gets corrected.
 
 ## It's a head start, not a magic button
 
@@ -316,10 +324,7 @@ with pointers and triggers.
 
 **Contacts are per-client by design** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer, and this is confirmed in game: every client simulates every avatar's contacts itself,
-so reactions work over the network with **no sync involved and no sync bits spent**. Whether the
-parameter a receiver drives also replicates its *value* is that parameter's own sync declaration,
-exactly as everywhere else.
+developer, and this is confirmed in game: every client simulates every avatar's contacts itself.
 
 > ⚠️ Experimental — this talks to a component internal to the game, not the CCK, so any ChilloutVR
 > update can break it, possibly for good. Treat it as a bonus, not something the avatar depends
@@ -333,14 +338,20 @@ still reads, including the content-type flag that lets other players' hands trig
 Its MIT-licensed custom inspector is adapted into the generated declarations, so contact
 components get proper foldouts and per-receiver-type help text in the editor.
 
-<details>
-<summary>How it works without CCK support</summary>
+**How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
+a record of each component's assembly, namespace and class name, which every player's client
+resolves against its own assemblies at load. The contact implementation already ships *inside the
+ChilloutVR client*; it is the CCK that provides no way to author it. So AvatarBridge generates
+matching declarations into `AvatarBridge/Runtime` on import — same identity, same field layout,
+verified against the decompiled client — and the game's own implementation is what runs. Nothing
+here reimplements contacts in Unity, and nothing is bundled into the avatar; the declarations are
+removed automatically if a future CCK ships the real thing.
 
-An asset bundle carries no script assemblies, only a record of each script's assembly, namespace and
-class, which the player resolves against its own. AvatarBridge generates matching declarations into
-`AvatarBridge/Runtime` on import, and removes them automatically if a future CCK provides the real
-thing.
-</details>
+That is also why sync works out differently from the `CVRPointer` + trigger emulation other
+converters use. Emulation needs the network to agree on *collision events*; here every client
+already simulates every avatar's contacts locally, so **detection** costs no sync at all. Whether
+the parameter a receiver drives replicates its *value* is that parameter's own sync declaration —
+unchanged, and exactly as everywhere else.
 
 > ✅ **Confirmed in a live ChilloutVR instance:** validation clean, avatar uploaded, contacts
 > triggered by other players, and CVR's own runtime gizmos drawing the components — proof the
@@ -760,8 +771,9 @@ GitHub issue — those get tracked, linked to a fix and closed with a release.
 ## Credits
 
 - Gesture tables, CVR core parameters and several conversion patterns were studied from
-  [vrc3cvr](https://github.com/imagitama/vrc3cvr) (MIT) and the
-  [Narazaka fork](https://github.com/Narazaka/vrc3cvr).
+  [vrc3cvr](https://github.com/Narazaka/vrc3cvr) (MIT), maintained by **Narazaka**, and from the
+  [original by imagitama](https://github.com/imagitama/vrc3cvr) (MIT, archived 2023) it forks.
+  AvatarBridge is MIT too, deliberately: anything here that's useful to vrc3cvr is theirs to take.
 - Gesture mapping and the Parameter Stream approach follow the official ChilloutVR references.
 - The DynamicBone gravity split mirrors
   [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone).
