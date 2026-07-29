@@ -139,8 +139,29 @@ namespace AvatarBridge
             var masterLayers = master.layers.ToList();
             var vrcLayers = new List<AnimatorControllerLayer>();
 
+            // In keep-GoGo mode the Base/Additive/Action layers REPLACE ChilloutVR's locomotion,
+            // so they are supposed to run at full weight and drive the body.
+            bool gogoDrivesLocomotion = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx);
+            int actionLayersRested = 0;
+
             foreach (var (id, controller) in vrcControllers)
             {
+                // VRChat's ACTION playable layer sits at weight 0 and is raised to 1 by a
+                // VRCPlayableLayerControl behaviour only while an emote plays. That is why the
+                // stock Action layer can have a Write-Defaults idle state ("WaitForActionOrAFK")
+                // holding a full-body clip and harm nothing there: at weight 0 the layer
+                // contributes nothing at all.
+                //
+                // ChilloutVR has no playable layers. Merged into one controller the layer runs at
+                // whatever weight it is given, forever — so carrying VRChat's in-controller weight
+                // of 1 across hands that idle state the entire body, above locomotion, with no
+                // mask. The avatar then stands in its rest pose and NOTHING moves it: movement
+                // sliders, walking, crouching, all dead, in the editor and in game alike.
+                //
+                // Weight 0 is the faithful conversion — it is VRChat's own default. Emotes are
+                // unaffected: they come from ChilloutVR's own Locomotion/Emotes layer, which the
+                // CCK base controller keeps and the Emote parameter drives.
+                bool actionAtRest = id == VRCAvatarDescriptor.AnimLayerType.Action && !gogoDrivesLocomotion;
                 var copier = new AnimatorDeepCopier();
                 MergeParameters(master, controller, ctx);
 
@@ -180,11 +201,31 @@ namespace AvatarBridge
                         clone.defaultWeight = 1f;
                         firstLayerOfController = false;
                     }
+                    if (actionAtRest)
+                    {
+                        // After the first-layer rule above, which would otherwise re-raise it.
+                        clone.defaultWeight = 0f;
+                        actionLayersRested++;
+                    }
                     clone.avatarMask = ReplaceVrcMask(clone.avatarMask, ctx);
                     masterLayers.Add(clone);
                     vrcLayers.Add(clone);
                 }
                 ctx.Report.Converted(Category, $"{id} layer merged", $"{controller.layers.Length} sub-layers");
+            }
+
+            if (actionLayersRested > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Action layer merged at weight 0, the weight VRChat gives it",
+                    "VRChat keeps the Action playable layer at weight 0 and raises it only while an " +
+                    "emote plays, which is why its idle state can hold a full-body clip with Write " +
+                    "Defaults on and harm nothing. ChilloutVR has no playable layers, so carrying " +
+                    "weight 1 across would let that idle state hold your whole body in its rest pose " +
+                    "above locomotion — walking, crouching and the movement sliders would all do " +
+                    "nothing. Emotes are unaffected: they play from ChilloutVR's own " +
+                    "Locomotion/Emotes layer, driven by the Emote parameter. If you deliberately want " +
+                    "this layer live, raise its weight in the Animator window.");
             }
 
             master.layers = masterLayers.ToArray();

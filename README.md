@@ -571,7 +571,12 @@ Bipeds are unaffected by any of it.
 
 - **Action-layer emotes.** Only **Gesture** and **FX** convert by default — Base, Additive and
   Action are off, because CVR drives locomotion and emotes itself. You can tick Action on, but its
-  states rely on VRChat's emote flow and may be unreachable.
+  states rely on VRChat's emote flow and may be unreachable. When it is ticked, the layer is merged
+  at **weight 0 — the weight VRChat itself gives it.** VRChat raises the Action playable layer only
+  while an emote plays, which is why its idle state can hold a full-body clip with Write Defaults on
+  and harm nothing; ChilloutVR has no playable layers, so at weight 1 that idle state would hold
+  your whole body in its rest pose above locomotion and walking would stop working entirely. Raise
+  the weight yourself in the Animator window if you want the layer live.
 - **Constant contact receivers** reset to 0 when *any* pointer exits — CVR triggers don't count
   occupants.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
