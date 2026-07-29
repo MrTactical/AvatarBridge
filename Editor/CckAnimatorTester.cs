@@ -1,6 +1,8 @@
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -529,6 +531,11 @@ namespace AvatarBridge
             face.SetEnabled(live);
             scroll.Add(face);
 
+            // ---- face tracking -----------------------------------------------------------
+            var faceTracking = BuildFaceTrackingCard(avatar);
+            faceTracking.SetEnabled(live);
+            scroll.Add(faceTracking);
+
             // ---- the avatar's own menu ---------------------------------------------------
             var menu = new BridgeElements.Card("Avatar menu  (Advanced Avatar Settings)");
             BuildMenuControls(menu.Body, avatar);
@@ -857,6 +864,270 @@ namespace AvatarBridge
             return mask != null
                    && (mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
                        || mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers));
+        }
+
+        // ------------------------------------------------------------ face tracking ----
+
+        /// <summary>
+        /// The eye/face parameters that carry no "v2/" prefix. Everything else is recognised by
+        /// that prefix, so an avatar carrying its own Unified Expressions rig is driven here
+        /// just as well as the bundled one.
+        /// </summary>
+        static readonly HashSet<string> PlainFaceParams = new HashSet<string>
+        {
+            "EyeTracking", "FaceTracking", "EyesY", "LeftEyeX", "RightEyeX",
+            "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
+        };
+
+        /// <summary>Resting values that are NOT zero — a face tracking rig parked at 0
+        /// everywhere has its eyes shut and its pupils pinned. From the rig's own readme.</summary>
+        static readonly Dictionary<string, float> FaceRest = new Dictionary<string, float>
+        {
+            { "#Direct", 1f }, { "EyeTracking", 1f }, { "FaceTracking", 1f },
+            { "LeftEyeLidExpandedSqueeze", 0.8f }, { "RightEyeLidExpandedSqueeze", 0.8f },
+            { "EyesDilation", 0.5f }
+        };
+
+        static bool IsFaceParam(string name)
+        {
+            return name.StartsWith("v2/") || PlainFaceParams.Contains(name);
+        }
+
+        /// <summary>
+        /// Which section a parameter belongs under. Classified from the name rather than a fixed
+        /// table, so a rig that adds shapes still files them somewhere sensible. Side and version
+        /// markers come off first: "v2/MouthUpperUpLeft" and "LeftEyeX" both have to reduce to
+        /// something the prefix tests can read.
+        /// </summary>
+        static string FaceGroup(string name)
+        {
+            string n = name.StartsWith("v2/") ? name.Substring(3) : name;
+            if (n.StartsWith("Left")) { n = n.Substring(4); }
+            else if (n.StartsWith("Right")) { n = n.Substring(5); }
+            if (n.StartsWith("Tongue")) { return "Tongue"; }
+            if (n.StartsWith("Brow")) { return "Brows"; }
+            if (n.StartsWith("Cheek") || n.StartsWith("Nose")) { return "Cheeks & nose"; }
+            if (n.StartsWith("Lip") || n.StartsWith("MouthClosed")) { return "Lips"; }
+            if (n.StartsWith("Jaw")) { return "Jaw"; }
+            if (n.StartsWith("Mouth") || n.StartsWith("SmileFrown")) { return "Mouth"; }
+            if (n.StartsWith("Eye")) { return "Eyes"; }
+            return "Other";
+        }
+
+        static readonly string[] FaceGroupOrder =
+        {
+            "Eyes", "Brows", "Jaw", "Mouth", "Lips", "Cheeks & nose", "Tongue", "Other"
+        };
+
+        /// <summary>
+        /// A parameter's real range, read from the blend trees that consume it rather than
+        /// guessed from its name. Unified Expressions mixes 0..1 shapes with -1..1 bipolar ones
+        /// (JawX, SmileFrown, CheekPuffSuck, the tongue axes), and a slider with the wrong
+        /// bounds either cannot reach half the expression or invents travel the rig ignores.
+        /// The rig itself is the only authority on which is which, so it is asked.
+        /// </summary>
+        static void FaceParamRange(UnityEditor.Animations.AnimatorController asset, string name,
+            out float lo, out float hi)
+        {
+            lo = 0f;
+            hi = 1f;
+            if (asset == null)
+            {
+                return;
+            }
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (var layer in asset.layers)
+            {
+                ScanTreesForRange(layer.stateMachine, name, ref min, ref max);
+            }
+            // Never narrower than 0..1 — a parameter used only as a gate has a single threshold
+            // and would otherwise collapse to a zero-width slider.
+            if (min <= max)
+            {
+                lo = Mathf.Min(0f, min);
+                hi = Mathf.Max(1f, max);
+            }
+        }
+
+        static void ScanTreesForRange(AnimatorStateMachine machine, string name,
+            ref float min, ref float max)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            foreach (var child in machine.states)
+            {
+                ScanTreeForRange(child.state != null ? child.state.motion : null, name, ref min, ref max);
+            }
+            foreach (var sub in machine.stateMachines)
+            {
+                ScanTreesForRange(sub.stateMachine, name, ref min, ref max);
+            }
+        }
+
+        static void ScanTreeForRange(Motion motion, string name, ref float min, ref float max)
+        {
+            if (!(motion is BlendTree tree))
+            {
+                return;
+            }
+            bool onX = tree.blendParameter == name;
+            bool onY = tree.blendParameterY == name;
+            foreach (var child in tree.children)
+            {
+                if (onX)
+                {
+                    min = Mathf.Min(min, tree.blendType == BlendTreeType.Simple1D
+                        ? child.threshold : child.position.x);
+                    max = Mathf.Max(max, tree.blendType == BlendTreeType.Simple1D
+                        ? child.threshold : child.position.x);
+                }
+                if (onY)
+                {
+                    min = Mathf.Min(min, child.position.y);
+                    max = Mathf.Max(max, child.position.y);
+                }
+                ScanTreeForRange(child.motion, name, ref min, ref max);
+            }
+        }
+
+        /// <summary>
+        /// Drives the eye and face tracking parameters the way ChilloutVR's VRCFaceTracking
+        /// bridge drives them — the same Drive path as every other control here, coerced by the
+        /// declared type.
+        ///
+        /// It reads the parameters off the avatar's own controller, so it covers the bundled
+        /// CVR-VRCFT rig and any avatar carrying its own Unified Expressions setup equally, and
+        /// shows nothing at all when the avatar has no face tracking. The editor cannot prove a
+        /// headset will feed these — only wearing it can — but it does prove the SHAPES move,
+        /// which is the half that breaks silently in conversion.
+        /// </summary>
+        VisualElement BuildFaceTrackingCard(CVRAvatar avatar)
+        {
+            var card = new BridgeElements.Card("Face tracking");
+            var declared = ControllerParameterList(avatar);
+            var faceParams = declared.Where(IsFaceParam).ToList();
+
+            if (faceParams.Count == 0)
+            {
+                card.Body.Add(BridgeElements.Hint(
+                    "No face tracking parameters on this avatar's controller. Convert with " +
+                    "\"CVR-VRCFT\" face tracking selected, or bring an avatar that carries its " +
+                    "own Unified Expressions rig."));
+                return card;
+            }
+
+            var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+            var runtime = animator != null ? animator.runtimeAnimatorController : null;
+            while (runtime is AnimatorOverrideController over)
+            {
+                runtime = over.runtimeAnimatorController;
+            }
+            var asset = runtime as UnityEditor.Animations.AnimatorController;
+
+            card.SetSummary($"{faceParams.Count} parameters");
+            card.Body.Add(BridgeElements.Hint(
+                "Drives the same parameters the VRCFaceTracking bridge drives in game. Blendshapes " +
+                "moving here is what proves the rig survived conversion; whether a headset feeds " +
+                "them is only answerable in game."));
+
+            var sliders = new Dictionary<string, Slider>();
+
+            // The two gates first: with these at 0 the rig is off and every slider below looks
+            // broken. That is a support question waiting to happen, so they lead.
+            foreach (string gate in new[] { "EyeTracking", "FaceTracking" })
+            {
+                if (!declared.Contains(gate))
+                {
+                    continue;
+                }
+                var toggle = new Toggle(gate) { value = true };
+                toggle.tooltip = $"The rig's own master switch for this half. At 0 nothing below " +
+                                 "moves, however hard it is driven.";
+                toggle.RegisterValueChangedCallback(e => Drive(LiveAnimator(), gate, e.newValue ? 1f : 0f));
+                card.Body.Add(toggle);
+            }
+
+            var searchable = new List<(VisualElement element, string key)>();
+            if (faceParams.Count > 12)
+            {
+                var search = new ToolbarSearchField();
+                search.style.width = Length.Percent(100);
+                search.style.marginTop = 4;
+                search.style.marginBottom = 4;
+                search.RegisterValueChangedCallback(e =>
+                {
+                    string query = (e.newValue ?? "").ToLowerInvariant();
+                    foreach (var (element, key) in searchable)
+                    {
+                        element.style.display = key.Contains(query) ? DisplayStyle.Flex : DisplayStyle.None;
+                    }
+                });
+                card.Body.Add(search);
+            }
+
+            foreach (string group in FaceGroupOrder)
+            {
+                // The two gates already have their own toggles above.
+                var inGroup = faceParams
+                    .Where(p => p != "EyeTracking" && p != "FaceTracking" && FaceGroup(p) == group)
+                    .OrderBy(p => p).ToList();
+                if (inGroup.Count == 0)
+                {
+                    continue;
+                }
+                var heading = BridgeElements.SubHeading(group);
+                heading.style.marginTop = 6;
+                card.Body.Add(heading);
+                searchable.Add((heading, group.ToLowerInvariant()));
+
+                foreach (string param in inGroup)
+                {
+                    FaceParamRange(asset, param, out float lo, out float hi);
+                    float start = FaceRest.TryGetValue(param, out float rest) ? rest : 0f;
+                    string label = param.StartsWith("v2/") ? param.Substring(3) : param;
+                    var slider = new Slider(label, lo, hi)
+                    {
+                        value = start,
+                        showInputField = true,
+                        tooltip = $"{param}   ({lo:0.##} to {hi:0.##}, read from the rig's own blend trees)",
+                    };
+                    slider.RegisterValueChangedCallback(e => Drive(LiveAnimator(), param, e.newValue));
+                    card.Body.Add(slider);
+                    sliders[param] = slider;
+                    searchable.Add((slider, label.ToLowerInvariant()));
+                }
+            }
+
+            var restButton = new Button(() =>
+            {
+                var a = LiveAnimator();
+                if (a == null)
+                {
+                    return;
+                }
+                foreach (var pair in sliders)
+                {
+                    float value = FaceRest.TryGetValue(pair.Key, out float rest) ? rest : 0f;
+                    pair.Value.SetValueWithoutNotify(value);
+                    Drive(a, pair.Key, value);
+                }
+                // #Direct is the rig's blend-tree master weight and has no slider of its own;
+                // left at 0 the whole face freezes, which reads as "face tracking is broken".
+                foreach (var pair in FaceRest)
+                {
+                    Drive(a, pair.Key, pair.Value);
+                }
+            })
+            {
+                text = "Neutral face  (the rig's own resting values)",
+                tooltip = "Not all zero: eyelids rest at 0.8 and pupils at 0.5. Zeroing everything " +
+                          "shuts the eyes and pins the pupils, which looks like a broken rig.",
+            };
+            restButton.style.marginTop = 6;
+            card.Body.Add(restButton);
+            return card;
         }
 
         /// <summary>Fixed-width cell. Never shrinks, so the columns stay in line.</summary>

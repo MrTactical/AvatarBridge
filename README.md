@@ -112,11 +112,14 @@ actually running.
   controller on the avatar's Animator: it refreshes itself when the controller or its parameter
   list changes, and greys any entry whose parameter the controller doesn't declare — driving
   those would do nothing in game either. (VRChat's Gesture Manager cannot drive a converted
-  avatar — it needs the VRC descriptor, which conversion removes.) A live **Animator layers**
-  readout — pinned to the bottom of the window so it stays visible while you drive the controls
-  above it — shows every layer's weight, avatar mask and currently-playing clips: the same view
-  ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't show, and marks any
-  layer sitting above the hand-pose layers that could overwrite your gestures.
+  avatar — it needs the VRC descriptor, which conversion removes.) A **Face tracking** section drives
+  every eye and Unified Expressions parameter the avatar's controller declares, grouped by
+  region, with each slider's range read from the rig's own blend trees — so bipolar shapes
+  (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half of it. A live
+  **Animator layers** readout — pinned to the bottom of the window so it stays visible while you
+  drive the controls above it — shows every layer's weight, avatar mask and currently-playing
+  clips: the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't
+  show, and marks any layer sitting above the hand-pose layers that could overwrite your gestures.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
