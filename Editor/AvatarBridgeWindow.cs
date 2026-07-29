@@ -431,6 +431,14 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
                 settings.stripSpsSystems, v => settings.stripSpsSystems = v));
+            b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
+                "Curves writing to material properties the shader doesn't have — the signature of a " +
+                "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +
+                "VRChat either, so removing them keeps dead sliders and toggles out of your menu " +
+                "instead of leaving controls that move and change nothing. Renderers whose materials " +
+                "an animation swaps are never touched, and only the conversion's own copies of the " +
+                "clips are edited. The report names everything removed.",
+                settings.stripDeadMaterialAnimation, v => settings.stripDeadMaterialAnimation = v));
             var extra = new TextField("Extra strip keywords")
             {
                 value = settings.extraStripKeywords,

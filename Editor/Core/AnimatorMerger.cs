@@ -5119,6 +5119,244 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Removes animation that provably cannot do anything, and everything that existed only
+        /// to drive it.
+        ///
+        /// A locked Poiyomi shader deletes the properties it baked, so a clip writing to one is
+        /// writing into nowhere — in ChilloutVR and equally in VRChat, which is where these
+        /// avatars normally arrive from already broken. AuditMaterialProperties names them;
+        /// leaving them in place means shipping a menu full of sliders that do nothing, and the
+        /// next person to test the avatar spends their evening on the animator.
+        ///
+        /// Only the individually dead CURVES go. A clip animating a property across thirty
+        /// renderers where nine still have it keeps those nine. A clip left with no curves at
+        /// all, in a layer where every state is likewise empty, means the layer cannot do
+        /// anything either — and once the layer goes, the parameter is unread and the existing
+        /// menu pruning takes the control with it. That cascade is the point: it is what turns
+        /// "the slider does nothing" into "there is no slider".
+        ///
+        /// Runs after AnimationSelfContainer, so every clip touched is the conversion's own copy
+        /// in the output folder. The source avatar's clips are never modified.
+        /// </summary>
+        internal static void StripDeadMaterialCurves(BridgeContext ctx)
+        {
+            var master = ctx.MergedController;
+            if (master == null || !ctx.Settings.stripDeadMaterialAnimation)
+            {
+                return;
+            }
+            var root = ctx.Target.transform;
+
+            // Renderers whose material SLOTS are animated are off limits. A clip that swaps in a
+            // different material makes "the current material has no such property" a statement
+            // about this instant, not about the avatar — the swapped-in material may well have
+            // it, and stripping would break a working effect.
+            var swapped = new HashSet<Renderer>();
+            var clips = new HashSet<AnimationClip>();
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        CollectClips(child.state != null ? child.state.motion : null, clips);
+                    }
+                });
+            }
+            foreach (var clip in clips)
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (!binding.propertyName.StartsWith("m_Materials."))
+                    {
+                        continue;
+                    }
+                    var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                    var renderer = target != null ? target.GetComponent<Renderer>() : null;
+                    if (renderer != null)
+                    {
+                        swapped.Add(renderer);
+                    }
+                }
+            }
+
+            var byProperty = new Dictionary<string, int>();
+            int curvesRemoved = 0, clipsTouched = 0, clipsEmptied = 0;
+
+            foreach (var clip in clips)
+            {
+                var doomed = new List<EditorCurveBinding>();
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!binding.propertyName.StartsWith("material."))
+                    {
+                        continue;
+                    }
+                    string property = binding.propertyName.Substring("material.".Length);
+                    int dot = property.LastIndexOf('.');
+                    if (dot > 0 && property.Length - dot == 2)
+                    {
+                        property = property.Substring(0, dot);
+                    }
+                    var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                    var renderer = target != null ? target.GetComponent<Renderer>() : null;
+                    // Unresolvable path: AuditClipBindings owns that, and guessing here could
+                    // delete animation for an object a later step restores.
+                    if (renderer == null || swapped.Contains(renderer))
+                    {
+                        continue;
+                    }
+                    if (renderer.sharedMaterials.Any(m => m != null && m.HasProperty(property)))
+                    {
+                        continue;
+                    }
+                    doomed.Add(binding);
+                    byProperty.TryGetValue(property, out int seen);
+                    byProperty[property] = seen + 1;
+                }
+                if (doomed.Count == 0)
+                {
+                    continue;
+                }
+                foreach (var binding in doomed)
+                {
+                    AnimationUtility.SetEditorCurve(clip, binding, null);
+                }
+                curvesRemoved += doomed.Count;
+                clipsTouched++;
+                if (AnimationUtility.GetCurveBindings(clip).Length == 0
+                    && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0)
+                {
+                    clipsEmptied++;
+                }
+                EditorUtility.SetDirty(clip);
+            }
+
+            if (curvesRemoved == 0)
+            {
+                return;
+            }
+
+            int layersRemoved = RemoveEmptyToggleLayers(master, ctx);
+            // The parameter and menu pruning that already exists does the rest of the cascade,
+            // now that nothing reads those parameters.
+            PruneOrphanedParameters(master, ctx);
+            PruneDeadMenuEntries(master, ctx);
+            EditorUtility.SetDirty(master);
+            AssetDatabase.SaveAssets();
+
+            var worst = byProperty.OrderByDescending(p => p.Value).Take(6)
+                .Select(p => $"{p.Key} ({p.Value})");
+            ctx.Report.Converted(Category,
+                $"Removed {curvesRemoved} animation curve(s) that could never have done anything",
+                $"{string.Join(", ", worst)}{(byProperty.Count > 6 ? ", …" : "")} — across " +
+                $"{clipsTouched} clip(s), of which {clipsEmptied} were left animating nothing" +
+                (layersRemoved > 0 ? $", and {layersRemoved} layer(s) removed with them" : "") +
+                ". These wrote to material properties the shader on those renderers does not have, " +
+                "so they did nothing here and did nothing in VRChat either — see the warning above " +
+                "for why. Removing them takes the dead sliders and toggles out of your menu instead " +
+                "of leaving controls that move and change nothing. Fix the materials in Poiyomi and " +
+                "convert again to get the real controls back; nothing was changed on the source " +
+                "avatar, and only the conversion's own copies of the clips were edited.");
+        }
+
+        /// <summary>
+        /// Layers whose every state now animates nothing. Deliberately narrow: a layer with any
+        /// state behaviour is left alone (a driver still fires), as are the CCK's own layers and
+        /// anything injected, because "does nothing visible" is not the same as "does nothing".
+        /// </summary>
+        static int RemoveEmptyToggleLayers(AnimatorController master, BridgeContext ctx)
+        {
+            var keep = new List<AnimatorControllerLayer>();
+            var dropped = new List<string>();
+            foreach (var layer in master.layers)
+            {
+                if (IsProtectedLayer(layer.name) || !LayerAnimatesNothing(layer))
+                {
+                    keep.Add(layer);
+                    continue;
+                }
+                dropped.Add(layer.name);
+            }
+            if (dropped.Count == 0)
+            {
+                return 0;
+            }
+            master.layers = keep.ToArray();
+            ctx.Report.Converted(Category,
+                $"Removed {dropped.Count} layer(s) left animating nothing",
+                string.Join(", ", dropped.Take(8)) + (dropped.Count > 8 ? ", …" : "") +
+                " — every clip in them wrote only to material properties their shader doesn't have.");
+            return dropped.Count;
+        }
+
+        static bool IsProtectedLayer(string name)
+        {
+            return name == "Locomotion/Emotes" || name == "LeftHand" || name == "RightHand"
+                   || name == "Size" || name == "Linear Smoothing Layer"
+                   || name.StartsWith("[FT] ");
+        }
+
+        static bool LayerAnimatesNothing(AnimatorControllerLayer layer)
+        {
+            bool empty = true;
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                if (machine.behaviours != null && machine.behaviours.Length > 0)
+                {
+                    empty = false;
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state == null)
+                    {
+                        continue;
+                    }
+                    if (child.state.behaviours != null && child.state.behaviours.Length > 0)
+                    {
+                        empty = false;
+                        return;
+                    }
+                    if (MotionAnimatesSomething(child.state.motion))
+                    {
+                        empty = false;
+                        return;
+                    }
+                }
+            });
+            return empty;
+        }
+
+        static bool MotionAnimatesSomething(Motion motion)
+        {
+            if (motion is BlendTree tree)
+            {
+                return tree.children.Any(c => MotionAnimatesSomething(c.motion));
+            }
+            if (!(motion is AnimationClip clip))
+            {
+                return false;
+            }
+            return AnimationUtility.GetCurveBindings(clip).Length > 0
+                   || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0;
+        }
+
+        static void CollectClips(Motion motion, HashSet<AnimationClip> into)
+        {
+            if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children)
+                {
+                    CollectClips(child.motion, into);
+                }
+            }
+            else if (motion is AnimationClip clip)
+            {
+                into.Add(clip);
+            }
+        }
+
+        /// <summary>
         /// Reads the FINAL saved controller file and judges every serialized guid. Runs from
         /// BridgeConverter after AnimationSelfContainer, so it sees the file the user will
         /// actually upload. Three verdicts: a reference into bake-temp or one the conversion

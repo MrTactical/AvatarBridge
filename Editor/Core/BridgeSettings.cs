@@ -142,6 +142,12 @@ namespace AvatarBridge
         // Comma-separated extra keywords; matched as parameter prefixes AND layer-name
         // substrings, for VRC-only add-ons the built-in lists don't know about.
         public string extraStripKeywords = "";
+        // Animation writing to material properties the renderer's shader does not have — the
+        // signature of a locked Poiyomi shader that baked them away. Such a curve does nothing
+        // in ChilloutVR and did nothing in VRChat either. Removing it, and anything left with
+        // no purpose, keeps dead sliders and toggles out of the avatar's menu. Renderers whose
+        // materials are swapped by an animation are never touched.
+        public bool stripDeadMaterialAnimation = true;
 
         [Header("Contacts")]
         public bool convertContacts = true;

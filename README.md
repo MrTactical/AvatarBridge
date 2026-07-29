@@ -204,6 +204,18 @@ defines.
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
 
+**Animation that can't do anything is stripped too** (*Remove animation that can't do anything*,
+on by default). A curve writing to a material property the renderer's shader doesn't have — the
+signature of a [locked Poiyomi shader](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
+that baked it away — does nothing in ChilloutVR and did nothing in VRChat either. Those curves go,
+and anything left with no purpose goes with them: a clip animating nothing, a layer whose every
+clip is empty, then the parameter and the menu control that drove it. The result is an avatar
+without sliders that move and change nothing. Renderers whose materials an animation *swaps* are
+never touched — there the property may well exist on the material being swapped in — and only the
+conversion's own copies of the clips are edited, so the source avatar is untouched. Fix the
+materials in Poiyomi and convert again to get the real controls back; the report names everything
+removed either way.
+
 **Keeping GoGo is experimental, with hard limits.** With *Remove GoGo Loco* unticked, GoGo fully
 replaces ChilloutVR's locomotion the way it replaces VRChat's: the CCK's own Locomotion/Emotes
 layer is removed and GoGo's Base/Poses/Action take over, driven by the game-fed velocity and

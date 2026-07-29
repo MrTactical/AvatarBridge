@@ -70,6 +70,9 @@ namespace AvatarBridge
                 // referencing gets pulled into the output folder — a conversion that works on
                 // this PC must also work on one without the source avatar's folders.
                 AnimationSelfContainer.Run(ctx);
+                // After self-containment, because it edits clips: every one it touches is now
+                // the conversion's own copy, never the source avatar's.
+                AnimatorMerger.StripDeadMaterialCurves(ctx);
                 // And only then judge the saved file's references — auditing any earlier
                 // flags things the self-container is about to fix.
                 AnimatorMerger.AuditSerializedReferences(ctx);
