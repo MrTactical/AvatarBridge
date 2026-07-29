@@ -829,10 +829,13 @@ rather than animation. Converted, there is nothing in the off state to undo the 
 toggle switches on and stays on. Every toggle on such an avatar behaves the same way, because
 they're all built the same way.
 
-Conversions now **measure** the default off your avatar and bake it into a real clip: whatever the
-property is at conversion time — the object active, the blendshape at rest, the material as
-authored — becomes an explicit curve on the off state. It restores by animating, which behaves the
-same on any platform.
+Conversions now give that off state a real animation. **If your avatar already has a clip that does
+the job it uses yours** — the "on" half of a pair that was simply never wired into the empty state.
+Only when there's nothing suitable is one generated, by **measuring** the property off your avatar:
+whatever it is at conversion time — the object active, the blendshape at rest, the material as
+authored — becomes an explicit curve. Either way the toggle restores by animating, which behaves
+the same on any platform. The report says which layers reused an existing clip and which got a new
+one.
 
 One thing worth knowing: **whatever is true at conversion time is what "off" now means.** If a
 toggle should rest in its other position, set the avatar up that way before converting.

@@ -4059,8 +4059,22 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, layersTouched = 0;
+            int filled = 0, layersTouched = 0, reused = 0;
             var names = new List<string>();
+
+            // Every clip the avatar already has, so an authored one can be preferred over a
+            // generated one.
+            var allClips = new HashSet<AnimationClip>();
+            foreach (var candidate in master.layers)
+            {
+                WalkMachines(candidate.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        CollectClips(child.state != null ? child.state.motion : null, allClips);
+                    }
+                });
+            }
 
             foreach (var layer in vrcLayers)
             {
@@ -4123,6 +4137,26 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // Prefer the avatar's OWN animation. If the author already ships a clip that
+                // sets these same properties to these same values — the "on" half of a pair
+                // that was simply never wired into the empty state — use theirs. A generated
+                // clip is a last resort, not a default: theirs may carry curves and timing this
+                // snapshot cannot know about, and one asset is better than two that agree.
+                var existing = FindEquivalentClip(clip, allClips);
+                if (existing != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(clip);
+                    foreach (var state in empties)
+                    {
+                        state.motion = existing;
+                        filled++;
+                    }
+                    layersTouched++;
+                    names.Add($"{layer.name} (reused \"{existing.name}\")");
+                    reused++;
+                    continue;
+                }
+
                 if (!AssetDatabase.IsValidFolder(dir))
                 {
                     System.IO.Directory.CreateDirectory(dir);
@@ -4146,7 +4180,12 @@ namespace AvatarBridge
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
                 $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
-                $"{string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", …" : "")} — VRChat's toggle " +
+                $"{string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", …" : "")}" +
+                (reused > 0
+                    ? $" — {reused} of them reuse an animation the avatar ALREADY had, which is " +
+                      "preferred wherever one matches; the rest were generated. "
+                    : " — ") +
+                "VRChat's toggle " +
                 "idiom leaves the off state EMPTY and lets Write Defaults put the property back. That " +
                 "makes the off direction depend on an implicit rule rather than on animation, and a " +
                 "toggle built that way can switch on and never off again. Each off state now plays a " +
@@ -4155,6 +4194,67 @@ namespace AvatarBridge
                 "any platform. Only properties its own layer animates are touched. If a toggle should " +
                 "rest in its OTHER position, set that up on the avatar before converting: whatever is " +
                 "true at conversion time is what \"off\" now means.");
+        }
+
+        /// <summary>
+        /// An existing clip that does exactly what the generated one would: the same bindings,
+        /// held at the same values. Requires an EXACT match on both — a clip that restores most
+        /// of what is needed would leave the rest changed, which is the bug being fixed.
+        /// </summary>
+        static AnimationClip FindEquivalentClip(AnimationClip generated, HashSet<AnimationClip> candidates)
+        {
+            var wantFloats = AnimationUtility.GetCurveBindings(generated);
+            var wantObjects = AnimationUtility.GetObjectReferenceCurveBindings(generated);
+
+            foreach (var candidate in candidates)
+            {
+                if (candidate == null)
+                {
+                    continue;
+                }
+                var haveFloats = AnimationUtility.GetCurveBindings(candidate);
+                var haveObjects = AnimationUtility.GetObjectReferenceCurveBindings(candidate);
+                if (haveFloats.Length != wantFloats.Length || haveObjects.Length != wantObjects.Length)
+                {
+                    continue;
+                }
+
+                bool same = true;
+                foreach (var binding in wantFloats)
+                {
+                    var mine = AnimationUtility.GetEditorCurve(generated, binding);
+                    var theirs = AnimationUtility.GetEditorCurve(candidate, binding);
+                    // A restore clip holds one value; anything that moves over time is a
+                    // different animation, whatever it happens to start at.
+                    if (theirs == null || theirs.length == 0 || mine == null || mine.length == 0
+                        || !Mathf.Approximately(theirs.keys[0].value, mine.keys[0].value)
+                        || !Mathf.Approximately(theirs.keys[theirs.length - 1].value, mine.keys[0].value))
+                    {
+                        same = false;
+                        break;
+                    }
+                }
+                if (!same)
+                {
+                    continue;
+                }
+                foreach (var binding in wantObjects)
+                {
+                    var mine = AnimationUtility.GetObjectReferenceCurve(generated, binding);
+                    var theirs = AnimationUtility.GetObjectReferenceCurve(candidate, binding);
+                    if (theirs == null || theirs.Length == 0 || mine == null || mine.Length == 0
+                        || theirs[0].value != mine[0].value)
+                    {
+                        same = false;
+                        break;
+                    }
+                }
+                if (same)
+                {
+                    return candidate;
+                }
+            }
+            return null;
         }
 
         static void CollectBindings(Motion motion, HashSet<EditorCurveBinding> floats,
