@@ -53,9 +53,10 @@ namespace AvatarBridge
             if (optimizer == null)
             {
                 EditorUtility.DisplayDialog("Fix locked material properties",
-                    "Poiyomi (Thry's shader optimizer) isn't in this project, so nothing can be " +
-                    "unlocked or re-locked here.\n\nThis tool only helps with materials using a " +
-                    "locked Poiyomi shader.", "OK");
+                    "Couldn't reach Thry's shader optimizer in this project.\n\nIf Poiyomi IS " +
+                    "installed, its API has moved somewhere this build doesn't recognise — please " +
+                    "report it, and meanwhile use Thry → Material Lock Manager to unlock, flag the " +
+                    "properties the conversion report names, and lock again.", "OK");
                 return;
             }
 
@@ -363,33 +364,81 @@ namespace AvatarBridge
         /// </summary>
         static Type FindOptimizer()
         {
+            // The namespace MOVED between Poiyomi versions — 8.x had Thry.ShaderOptimizer, 9.x
+            // has Thry.ThryEditor.ShaderOptimizer — and hardcoding one of them told a project
+            // with Poiyomi plainly installed that it had none. Try the spellings we know, then
+            // stop caring about the namespace altogether.
+            foreach (string candidate in new[]
+                     {
+                         "Thry.ThryEditor.ShaderOptimizer",
+                         "Thry.ShaderOptimizer",
+                     })
+            {
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var type = assembly.GetType(candidate, false);
+                        if (type != null)
+                        {
+                            return type;
+                        }
+                    }
+                    catch
+                    {
+                        // Broken or reflection-only assemblies; ignore.
+                    }
+                }
+            }
+
+            // Any type CALLED ShaderOptimizer that can actually do both jobs. Identifying it by
+            // what it can do rather than where it lives survives the next move.
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                try
+                foreach (var type in SafeTypes(assembly))
                 {
-                    var type = assembly.GetType("Thry.ShaderOptimizer", false);
-                    if (type != null)
+                    if (type != null && type.Name == "ShaderOptimizer"
+                        && FindMaterialsMethod(type, "LockMaterials") != null
+                        && FindMaterialsMethod(type, "UnlockMaterials") != null)
                     {
                         return type;
                     }
                 }
-                catch
-                {
-                    // Broken or reflection-only assemblies; ignore.
-                }
             }
             return null;
+        }
+
+        static IEnumerable<Type> SafeTypes(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e)
+            {
+                // A half-loadable assembly still lists what it managed to load.
+                return e.Types.Where(t => t != null);
+            }
+            catch
+            {
+                return Array.Empty<Type>();
+            }
+        }
+
+        static MethodInfo FindMaterialsMethod(Type type, string name)
+        {
+            return type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(m => m.Name == name
+                                     && m.GetParameters().Length >= 1
+                                     && m.GetParameters()[0].ParameterType
+                                         .IsAssignableFrom(typeof(List<Material>)));
         }
 
         static bool Call(Type optimizer, string method, List<Material> materials)
         {
             try
             {
-                var target = optimizer.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .FirstOrDefault(m => m.Name == method
-                                         && m.GetParameters().Length >= 1
-                                         && m.GetParameters()[0].ParameterType
-                                             .IsAssignableFrom(typeof(List<Material>)));
+                var target = FindMaterialsMethod(optimizer, method);
                 if (target == null)
                 {
                     return false;
