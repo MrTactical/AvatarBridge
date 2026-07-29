@@ -47,8 +47,11 @@ namespace AvatarBridge
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
-                ctx.Report.Skipped(Category, "Face tracking not set up (chosen)",
-                    "Face-tracking mode is None — set it up yourself.");
+                ctx.Report.Skipped(Category, "Kept the avatar's own face tracking (chosen)",
+                    "Nothing was added or replaced. If the avatar already has a face tracking rig " +
+                    "it is merged like the rest of its animator — see the entry naming the " +
+                    "parameters that came through. If it has none, this is where one would go: " +
+                    "convert again with \"CVR-VRCFT\" selected.");
                 return;
             }
 

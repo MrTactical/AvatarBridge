@@ -16,6 +16,74 @@ namespace AvatarBridge
     /// </summary>
     public static class AvatarFeatureDetect
     {
+        // ------------------------------------------- face tracking parameters ----
+
+        /// <summary>
+        /// The eye/face parameters that carry no "v2/" anywhere in the name — the bundled
+        /// CVR-VRCFT rig's own spelling.
+        /// </summary>
+        static readonly HashSet<string> FtPlainNames = new HashSet<string>
+        {
+            "EyesY", "LeftEyeX", "RightEyeX",
+            "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
+        };
+
+        /// <summary>The rig's master switches, whatever spelling it uses for them.</summary>
+        static readonly HashSet<string> FtGateNames = new HashSet<string>
+        {
+            "EyeTracking", "FaceTracking", "EyeTrackingActive", "LipTrackingActive",
+            "FacialExpressionsDisabled"
+        };
+
+        /// <summary>
+        /// Is this a face-tracking parameter, whichever tool built the rig?
+        ///
+        /// Matching on a "v2/" PREFIX is not enough and was the first version's mistake: an
+        /// OSCmooth rig names the same shape "#OSCm/Proxy/FT/v2/EyeLeftX", so a prefix test
+        /// finds nothing at all on a perfectly good avatar and reports it as having no face
+        /// tracking. The version marker can sit anywhere in the path.
+        ///
+        /// Smoothing chains are deliberately excluded. VRCFury and OSCmooth both generate
+        /// per-parameter "…/Smoothed/Pass1" helpers; those are the smoother's own workings,
+        /// driven FROM the proxy, and writing to them is overwritten on the next frame.
+        /// </summary>
+        public static bool IsFaceTrackingParameter(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name.Contains("/Smoothed/"))
+            {
+                return false;
+            }
+            if (name.Contains("v2/"))
+            {
+                return true;
+            }
+            string shortName = FaceTrackingShortName(name);
+            return FtPlainNames.Contains(shortName) || FtGateNames.Contains(shortName);
+        }
+
+        /// <summary>The rig's own on/off switches — worth showing first, because with one of
+        /// these at 0 every shape below it looks broken however hard it is driven.</summary>
+        public static bool IsFaceTrackingGate(string name)
+        {
+            return IsFaceTrackingParameter(name) && FtGateNames.Contains(FaceTrackingShortName(name));
+        }
+
+        /// <summary>
+        /// The readable tail of a parameter name: "#OSCm/Proxy/FT/v2/EyeLeftX" -> "EyeLeftX".
+        /// The prefixes carry no meaning for someone reading fifty rows of them, and the
+        /// grouping rules need the bare shape name to classify it.
+        /// </summary>
+        public static string FaceTrackingShortName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+            string trimmed = name.TrimStart('#');
+            int slash = trimmed.LastIndexOf('/');
+            return slash >= 0 && slash < trimmed.Length - 1 ? trimmed.Substring(slash + 1) : trimmed;
+        }
+
         // ------------------------------------------------------------------- blink ----
 
         /// <summary>

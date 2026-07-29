@@ -299,6 +299,7 @@ namespace AvatarBridge
             RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
             AuditMaterialProperties(master, ctx);
+            ReportKeptFaceTracking(master, ctx);
             AuditCurveControlledGameParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -5042,6 +5043,40 @@ namespace AvatarBridge
                 " This is not caused by conversion: the same animation is equally dead in VRChat, so a " +
                 "toggle that visibly worked there points at a build-time step (Poiyomi's auto-lock on " +
                 "upload) that this project isn't running.");
+        }
+
+        /// <summary>
+        /// Says what happened to the avatar's OWN face tracking when the user chose to keep it.
+        ///
+        /// The report used to answer that question with "Face tracking not set up (chosen) —
+        /// mode is None", which is true of the setting and badly misleading about the outcome:
+        /// the window calls that choice "Keep the avatar's own rig", and a reader who has just
+        /// watched their VRCFT parameters not appear anywhere reads "None" as "it was dropped".
+        /// Counting what actually survived the merge answers it directly.
+        /// </summary>
+        static void ReportKeptFaceTracking(AnimatorController master, BridgeContext ctx)
+        {
+            if (ctx.Settings.faceTrackingMode != FaceTrackingMode.None)
+            {
+                return;
+            }
+            var kept = master.parameters
+                .Select(p => p.name)
+                .Where(AvatarFeatureDetect.IsFaceTrackingParameter)
+                .ToList();
+            if (kept.Count == 0)
+            {
+                return;
+            }
+            var shown = kept.Take(6).Select(AvatarFeatureDetect.FaceTrackingShortName);
+            ctx.Report.Converted(Category,
+                $"Kept the avatar's own face tracking rig — {kept.Count} parameter(s) came through",
+                $"{string.Join(", ", shown)}{(kept.Count > 6 ? ", …" : "")}. Its layers, clips and " +
+                "parameters were merged like any others and nothing was replaced, because face " +
+                "tracking is set to \"Keep the avatar's own rig\". Drive these in the CCK Animator " +
+                "Tester's Face tracking section to confirm the shapes still move. Whether a headset " +
+                "feeds them in game depends on the rig's own OSC setup, which is unchanged by " +
+                "conversion and outside what this tool touches.");
         }
 
         // Serialized guid sets of the source controllers, captured before any merging.

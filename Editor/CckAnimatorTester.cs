@@ -949,24 +949,22 @@ namespace AvatarBridge
         /// that prefix, so an avatar carrying its own Unified Expressions rig is driven here
         /// just as well as the bundled one.
         /// </summary>
-        static readonly HashSet<string> PlainFaceParams = new HashSet<string>
-        {
-            "EyeTracking", "FaceTracking", "EyesY", "LeftEyeX", "RightEyeX",
-            "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
-        };
-
         /// <summary>Resting values that are NOT zero — a face tracking rig parked at 0
-        /// everywhere has its eyes shut and its pupils pinned. From the rig's own readme.</summary>
+        /// everywhere has its eyes shut and its pupils pinned. Keyed by the SHORT name, so a
+        /// rig that prefixes its parameters gets the same treatment. From the rig's readme.</summary>
         static readonly Dictionary<string, float> FaceRest = new Dictionary<string, float>
         {
-            { "#Direct", 1f }, { "EyeTracking", 1f }, { "FaceTracking", 1f },
+            { "Direct", 1f }, { "EyeTracking", 1f }, { "FaceTracking", 1f },
+            { "EyeTrackingActive", 1f }, { "LipTrackingActive", 1f },
             { "LeftEyeLidExpandedSqueeze", 0.8f }, { "RightEyeLidExpandedSqueeze", 0.8f },
+            { "EyeLidLeft", 0.75f }, { "EyeLidRight", 0.75f },
             { "EyesDilation", 0.5f }
         };
 
-        static bool IsFaceParam(string name)
+        static float FaceRestValue(string param)
         {
-            return name.StartsWith("v2/") || PlainFaceParams.Contains(name);
+            return FaceRest.TryGetValue(AvatarFeatureDetect.FaceTrackingShortName(param), out float v)
+                ? v : 0f;
         }
 
         /// <summary>
@@ -977,7 +975,7 @@ namespace AvatarBridge
         /// </summary>
         static string FaceGroup(string name)
         {
-            string n = name.StartsWith("v2/") ? name.Substring(3) : name;
+            string n = AvatarFeatureDetect.FaceTrackingShortName(name);
             if (n.StartsWith("Left")) { n = n.Substring(4); }
             else if (n.StartsWith("Right")) { n = n.Substring(5); }
             if (n.StartsWith("Tongue")) { return "Tongue"; }
@@ -1108,7 +1106,7 @@ namespace AvatarBridge
         {
             var card = new BridgeElements.Card("Face tracking");
             var declared = ControllerParameterList(avatar);
-            var faceParams = declared.Where(IsFaceParam).ToList();
+            var faceParams = declared.Where(AvatarFeatureDetect.IsFaceTrackingParameter).ToList();
 
             if (faceParams.Count == 0)
             {
@@ -1136,18 +1134,19 @@ namespace AvatarBridge
 
             var sliders = new Dictionary<string, Slider>();
 
-            // The two gates first: with these at 0 the rig is off and every slider below looks
-            // broken. That is a support question waiting to happen, so they lead.
-            foreach (string gate in new[] { "EyeTracking", "FaceTracking" })
+            // The gates first: with one of these at 0 the rig is off and every slider below it
+            // looks broken. That is a support question waiting to happen, so they lead.
+            foreach (string gate in faceParams.Where(AvatarFeatureDetect.IsFaceTrackingGate))
             {
-                if (!declared.Contains(gate))
+                string captured = gate;
+                var toggle = new Toggle(AvatarFeatureDetect.FaceTrackingShortName(gate))
                 {
-                    continue;
-                }
-                var toggle = new Toggle(gate) { value = true };
-                toggle.tooltip = $"The rig's own master switch for this half. At 0 nothing below " +
-                                 "moves, however hard it is driven.";
-                toggle.RegisterValueChangedCallback(e => Drive(LiveAnimator(), gate, e.newValue ? 1f : 0f));
+                    value = FaceRestValue(gate) > 0f,
+                    tooltip = $"{gate}\n\nThe rig's own master switch for this half. At 0 nothing " +
+                              "below moves, however hard it is driven.",
+                };
+                toggle.RegisterValueChangedCallback(e =>
+                    Drive(LiveAnimator(), captured, e.newValue ? 1f : 0f));
                 card.Body.Add(toggle);
             }
 
@@ -1171,10 +1170,10 @@ namespace AvatarBridge
 
             foreach (string group in FaceGroupOrder)
             {
-                // The two gates already have their own toggles above.
+                // The gates already have their own toggles above.
                 var inGroup = faceParams
-                    .Where(p => p != "EyeTracking" && p != "FaceTracking" && FaceGroup(p) == group)
-                    .OrderBy(p => p).ToList();
+                    .Where(p => !AvatarFeatureDetect.IsFaceTrackingGate(p) && FaceGroup(p) == group)
+                    .OrderBy(AvatarFeatureDetect.FaceTrackingShortName).ToList();
                 if (inGroup.Count == 0)
                 {
                     continue;
@@ -1187,11 +1186,10 @@ namespace AvatarBridge
                 foreach (string param in inGroup)
                 {
                     FaceParamRange(ranges, param, out float lo, out float hi);
-                    float start = FaceRest.TryGetValue(param, out float rest) ? rest : 0f;
-                    string label = param.StartsWith("v2/") ? param.Substring(3) : param;
+                    string label = AvatarFeatureDetect.FaceTrackingShortName(param);
                     var slider = new Slider(label, lo, hi)
                     {
-                        value = start,
+                        value = FaceRestValue(param),
                         showInputField = true,
                         tooltip = $"{param}   ({lo:0.##} to {hi:0.##}, read from the rig's own blend trees)",
                     };
@@ -1211,16 +1209,19 @@ namespace AvatarBridge
                 }
                 foreach (var pair in sliders)
                 {
-                    float value = FaceRest.TryGetValue(pair.Key, out float rest) ? rest : 0f;
+                    float value = FaceRestValue(pair.Key);
                     pair.Value.SetValueWithoutNotify(value);
                     Drive(a, pair.Key, value);
                 }
-                // #Direct is the rig's blend-tree master weight and has no slider of its own;
-                // left at 0 the whole face freezes, which reads as "face tracking is broken".
-                foreach (var pair in FaceRest)
+                // The gates and #Direct have no slider of their own. #Direct is the rig's
+                // blend-tree master weight; left at 0 the whole face freezes, which reads as
+                // "face tracking is broken". Undeclared names are ignored, like the game does.
+                foreach (string param in declared.Where(AvatarFeatureDetect.IsFaceTrackingGate))
                 {
-                    Drive(a, pair.Key, pair.Value);
+                    Drive(a, param, FaceRestValue(param));
                 }
+                Drive(a, "#Direct", 1f);
+                Drive(a, "Direct", 1f);
             })
             {
                 text = "Neutral face  (the rig's own resting values)",
