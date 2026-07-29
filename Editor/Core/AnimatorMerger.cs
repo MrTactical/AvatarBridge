@@ -3835,28 +3835,43 @@ namespace AvatarBridge
                 {
                     continue; // deliberate body animation; reported separately
                 }
+                // Finger curves get NO special treatment — they are blocked with the rest.
+                //
+                // Narrowing such a layer to a hands-only mask looked generous: keep whatever
+                // finger animation the FX layer had. It is actually the opposite. The premise of
+                // this whole pass is that VRChat's FX playable layer CANNOT drive humanoid
+                // muscles — so those finger curves never moved a finger in VRChat either. A
+                // hands mask hands them a power VRChat denied them, and every merged FX layer
+                // sits ABOVE the CCK's LeftHand/RightHand layers in the stack, so on Override at
+                // weight 1 they overwrite the hand pose the moment it plays.
+                //
+                // That is exactly how a converted avatar ends up with the CCK Debugger reporting
+                // "LeftHand — weight 1.00, playing Thumbs Up 1.00" while the fingers sit in their
+                // rest pose: two material-swap layers, of all things, were masked to fingers-only
+                // and stomping the gesture every frame. Gestures matter; a dead finger curve on a
+                // material swap does not.
+                layer.avatarMask = GetNoMuscleMask(ctx);
+                masked++;
                 if (fingers)
                 {
-                    layer.avatarMask = GetFingersOnlyMask(ctx);
                     handed++;
-                }
-                else
-                {
-                    layer.avatarMask = GetNoMuscleMask(ctx);
-                    masked++;
                 }
             }
 
-            if (masked == 0 && handed == 0)
+            if (masked == 0)
             {
                 return;
             }
             master.layers = layers;
-            ctx.Report.Converted(Category, $"{masked + handed} merged layer(s) masked off the humanoid rig",
-                $"{masked} blocked from muscles entirely, {handed} narrowed to the hands. VRChat's FX layer " +
-                "cannot drive humanoid muscles; merged into one ChilloutVR controller it could, and any state " +
-                "with Write Defaults on would then re-assert the rest pose over locomotion every frame. " +
-                "Object toggles, blendshapes and material animation are unaffected.");
+            ctx.Report.Converted(Category, $"{masked} merged layer(s) masked off the humanoid rig",
+                "VRChat's FX layer cannot drive humanoid muscles; merged into one ChilloutVR controller it " +
+                "could, and any state with Write Defaults on would then re-assert the rest pose over " +
+                "locomotion every frame. Object toggles, blendshapes and material animation are unaffected." +
+                (handed > 0
+                    ? $" {handed} of them carried finger curves, which are blocked too — they could not move a " +
+                      "finger in VRChat either, and letting them through here would overwrite your hand " +
+                      "gestures, since merged layers sit above the hand-pose layers."
+                    : ""));
         }
 
         static void WarnLocomotionOverrides(List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
