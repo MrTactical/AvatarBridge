@@ -44,13 +44,10 @@ namespace AvatarBridge
             ("Gun", 3), ("Point", 4), ("Peace", 5), ("RnR", 6)
         };
 
-        const string LayersOpenKey = "AvatarBridge.Tester.LayersOpen";
-
         CVRAvatar _override;
         float _loudness = 1f;
         int _fingerprint;
         double _nextPoll;
-        bool _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
 
         void OnEnable()
         {
@@ -64,15 +61,12 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Where the UI gets built — NOT OnEnable, which is the callback this window used for
-        /// its whole life and the reason it rendered in the light theme inside a dark editor.
-        ///
-        /// OnEnable runs before the window's UI Toolkit panel is set up, and the editor's theme
-        /// stylesheet is part of that setup. A tree built there can miss it, and then every
-        /// built-in control — ObjectField, Slider, Button, Toggle — draws pale, which no
-        /// stylesheet of ours can correct because ours never styles those controls. CreateGUI
-        /// exists for exactly this, and it is what the converter window has always used; that is
-        /// the entire reason the two windows disagreed side by side on the same build.
+        /// The build lives here and not in OnEnable, which is where it lived for this window's
+        /// whole life: OnEnable runs before the window's panel attaches, and a tree built that
+        /// early renders with the wrong editor theme after some domain reloads. CreateGUI is
+        /// the callback Unity provides for exactly this, and it is the one the converter
+        /// window has always used — the two windows disagreeing side by side on the same build
+        /// is what finally pointed here.
         /// </summary>
         void CreateGUI()
         {
@@ -284,6 +278,8 @@ namespace AvatarBridge
             // Same dress code as the main window: without the stylesheet the cards and banner
             // render as bare labels, which looked exactly as rough as that sounds.
             root.AddToClassList("ab-root");
+            // Exclusive, not additive: the root survives every Rebuild, so an added class is
+            // permanent — and carrying both skin classes renders light in a dark editor.
             BridgeTheme.ApplySkin(root);
             var sheet = Resources.Load<StyleSheet>("AvatarBridge");
             if (sheet != null && !root.styleSheets.Contains(sheet))
@@ -663,12 +659,7 @@ namespace AvatarBridge
         /// </summary>
         VisualElement BuildLayerCard(CVRAvatar avatar)
         {
-            // Collapsed by default and remembered across rebuilds — this is a diagnostic, not
-            // something to scroll past on every visit, and the fingerprint poll rebuilds the
-            // whole window whenever the controller changes.
-            var card = new BridgeElements.Card("Animator layers  (live)",
-                summary: null, expanded: _layersOpen,
-                onToggle: open => { _layersOpen = open; EditorPrefs.SetBool(LayersOpenKey, open); });
+            var card = new BridgeElements.Card("Animator layers  (live)");
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
             while (runtime is AnimatorOverrideController over)
@@ -701,84 +692,60 @@ namespace AvatarBridge
 
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
-            header.Add(Cell("#", 22, TextAnchor.MiddleRight));
-            header.Add(Flex("LAYER", 1f));
-            header.Add(Cell("WT", 38, TextAnchor.MiddleRight));
-            header.Add(Cell("MASK", 76, TextAnchor.MiddleLeft));
-            header.Add(Flex("PLAYING", 1.3f));
+            header.Add(Column("LAYER", 1f, 0));
+            header.Add(Column("WEIGHT", 0f, 52));
+            header.Add(Column("MASK", 0f, 120));
+            header.Add(Column("PLAYING", 1.4f, 0));
             foreach (var child in header.Children())
             {
                 child.AddToClassList("ab-sub");
-                child.style.marginRight = 6;
             }
             card.Body.Add(header);
 
             var rows = new List<(Label weight, Label playing, VisualElement row)>();
-            int conflictCount = 0;
             for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
             {
                 var layer = asset.layers[i];
                 bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask)
                                  && layer.name != "LeftHand" && layer.name != "RightHand";
-                if (conflicts)
-                {
-                    conflictCount++;
-                }
 
                 var row = new VisualElement();
                 row.style.flexDirection = FlexDirection.Row;
-                row.style.paddingTop = 1;
-                row.style.paddingBottom = 1;
-                // Banding, not borders: at fifty-plus layers the eye needs help staying on a
-                // line, and a 4% wash costs nothing in either editor skin.
-                if (i % 2 == 1)
-                {
-                    row.style.backgroundColor = new Color(1f, 1f, 1f, 0.04f);
-                }
+                row.style.marginBottom = 1;
                 row.tooltip = conflicts
                     ? $"Layer {i} sits ABOVE the hand-pose layer ({handTop}) and its mask lets it write " +
                       "finger muscles. On Override at weight 1 it replaces whatever pose a gesture just " +
                       "played — the fingers stop moving in game even though the gesture is playing here."
-                    : $"Layer {i} \"{layer.name}\" — {layer.blendingMode}, default weight " +
-                      $"{layer.defaultWeight:0.##}, mask " +
-                      (layer.avatarMask != null ? layer.avatarMask.name : "none") + ".";
+                    : $"Layer {i} — {layer.blendingMode}, default weight {layer.defaultWeight:0.##}.";
 
-                var index = Cell(i.ToString(), 22, TextAnchor.MiddleRight);
-                index.style.color = BridgeTheme.Muted;
-                row.Add(index);
-
-                var name = Flex(conflicts ? "⚠ " + layer.name : layer.name, 1f);
+                var name = Column($"{i}  {layer.name}", 1f, 0);
                 if (conflicts)
                 {
+                    name.text = $"{i}  ⚠ {layer.name}";
                     name.style.color = BridgeTheme.Bad;
                 }
-                else if (layer.name == "LeftHand" || layer.name == "RightHand")
+                else if (i == handTop || layer.name == "LeftHand" || layer.name == "RightHand")
                 {
                     name.style.color = BridgeTheme.Good;
                 }
                 row.Add(name);
 
-                var weight = Cell("–", 38, TextAnchor.MiddleRight);
+                var weight = Column("–", 0f, 52);
                 row.Add(weight);
 
-                var mask = Cell(ShortMaskName(layer.avatarMask), 76, TextAnchor.MiddleLeft);
+                var mask = Column(layer.avatarMask != null ? layer.avatarMask.name : "none", 0f, 120);
                 mask.style.color = BridgeTheme.Muted;
+                mask.tooltip = layer.avatarMask != null
+                    ? "The avatar mask limits which parts of the rig this layer may write."
+                    : "No mask: this layer may write anything its clips animate.";
                 row.Add(mask);
 
-                var playing = Flex("", 1.3f);
+                var playing = Column("", 1.4f, 0);
                 row.Add(playing);
 
-                foreach (var child in row.Children())
-                {
-                    child.style.marginRight = 6;
-                }
                 card.Body.Add(row);
                 rows.Add((weight, playing, row));
             }
-
-            card.SetSummary(conflictCount > 0
-                ? $"{rows.Count} layers · {conflictCount} may overwrite gestures"
-                : $"{rows.Count} layers");
 
             if (handTop < 0)
             {
@@ -842,65 +809,18 @@ namespace AvatarBridge
                        || mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers));
         }
 
-        /// <summary>Fixed-width cell. Never shrinks, so the columns stay in line.</summary>
-        static Label Cell(string text, float width, TextAnchor align)
-        {
-            var label = Clipped(text);
-            label.style.width = width;
-            label.style.flexShrink = 0;
-            label.style.flexGrow = 0;
-            label.style.unityTextAlign = align;
-            return label;
-        }
-
-        /// <summary>
-        /// Proportional cell. <c>flexBasis 0</c> and <c>minWidth 0</c> are the whole trick:
-        /// without them a flex item refuses to shrink below its text width, so one long layer
-        /// name shoves every column after it off its grid — which is exactly how the first
-        /// version of this card looked.
-        /// </summary>
-        static Label Flex(string text, float grow)
-        {
-            var label = Clipped(text);
-            label.style.flexGrow = grow;
-            label.style.flexShrink = 1;
-            label.style.flexBasis = 0;
-            label.style.minWidth = 0;
-            return label;
-        }
-
-        static Label Clipped(string text)
+        static Label Column(string text, float grow, float width)
         {
             var label = new Label(text);
+            label.style.flexGrow = grow;
+            label.style.flexShrink = 1;
             label.style.overflow = Overflow.Hidden;
-            label.style.whiteSpace = WhiteSpace.NoWrap;
-            label.style.textOverflow = TextOverflow.Ellipsis;
-            label.style.fontSize = 11;
+            if (width > 0f)
+            {
+                label.style.width = width;
+                label.style.flexShrink = 0;
+            }
             return label;
-        }
-
-        /// <summary>
-        /// Masks are named for the file system, not for reading fifty at a time. "AvatarBridge_"
-        /// on every row is pure noise; what matters is what the mask lets through.
-        /// </summary>
-        static string ShortMaskName(AvatarMask mask)
-        {
-            if (mask == null)
-            {
-                return "none";
-            }
-            switch (mask.name)
-            {
-                case "AvatarBridge_NoMuscles": return "no muscles";
-                case "AvatarBridge_FingersOnly": return "fingers";
-                case "AvatarBridge_HandLeft": return "L hand";
-                case "AvatarBridge_HandRight": return "R hand";
-                case "AvatarBridge_HandsOnly": return "hands";
-                case "AvatarBridge_FullBody": return "full body";
-            }
-            return mask.name.StartsWith("AvatarBridge_")
-                ? mask.name.Substring("AvatarBridge_".Length)
-                : mask.name;
         }
 
         static VisualElement DrivenSlider(string label, float lo, float hi, float initial,

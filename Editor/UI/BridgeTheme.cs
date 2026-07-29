@@ -25,62 +25,24 @@ namespace AvatarBridge
         public static bool Dark => EditorGUIUtility.isProSkin;
 
         /// <summary>
-        /// Puts the skin class on a root element EXCLUSIVELY — the light rules sit after the
-        /// dark ones in the stylesheet, so an element carrying both renders light forever.
+        /// Puts the skin class on a root element EXCLUSIVELY, reading <c>isProSkin</c> live.
         ///
-        /// AddToClassList cannot express that. It only ever adds, so a single wrong reading of
-        /// <c>isProSkin</c> permanently pins a dark editor to the light palette: light card
-        /// headers with the dark theme's white text on them, which is unreadable and looks for
-        /// all the world like the window is broken. It survives every subsequent rebuild,
-        /// because nothing ever takes the class back off.
+        /// Exclusively, because a window's root element survives every Rebuild — only its
+        /// children are cleared — so a class added once stays forever. AddToClassList could
+        /// therefore leave an element carrying BOTH classes, and the light rules sit after the
+        /// dark ones in the stylesheet, so light would win from then on.
         ///
-        /// READ IT LIVE. The <paramref name="dark"/> override exists for callers that genuinely
-        /// have a better value, and caching the skin is not that: a window's field initialiser
-        /// and OnEnable both run during a domain reload, where the answer is not yet the user's
-        /// theme. Caching there pins the window to whatever the reload happened to say, which is
-        /// a worse failure than the one it was meant to prevent — it never corrects itself,
-        /// where a live read is right again on the very next rebuild.
+        /// Nothing more than the two classes. A previous revision also force-loaded Unity's
+        /// generated editor-theme stylesheets onto the element; that broke the window in BOTH
+        /// skins at once, because those sheets are panel-level assets that were never meant to
+        /// cascade from an element. The panel applies the editor theme itself, correctly, as
+        /// long as the tree is built in CreateGUI rather than OnEnable.
         /// </summary>
         public static void ApplySkin(VisualElement root, bool? dark = null)
         {
             bool isDark = dark ?? Dark;
             root.EnableInClassList("dark", isDark);
             root.EnableInClassList("light", !isDark);
-
-            // And the panel's own theme, which is the part our classes cannot reach.
-            //
-            // Unity picks the editor theme stylesheet when a window's visual tree is first
-            // built, from isProSkin AT THAT INSTANT. A window whose backing panel is created
-            // during a domain reload can therefore keep the LIGHT theme for the rest of its
-            // life inside a dark editor — and it is not our cards that give it away, it is
-            // every built-in control. ObjectField, Slider, Button and Toggle all render pale,
-            // and no class of ours can undo that, because this stylesheet never styles them.
-            //
-            // Re-asserting the right theme is free when it is already right, and rescues the
-            // window when it is not. Element stylesheets resolve after the panel's, so adding
-            // the correct one wins even where the wrong one cannot be taken away.
-            var wanted = LoadTheme(isDark);
-            var unwanted = LoadTheme(!isDark);
-            if (unwanted != null)
-            {
-                root.styleSheets.Remove(unwanted);
-            }
-            if (wanted != null && !root.styleSheets.Contains(wanted))
-            {
-                root.styleSheets.Add(wanted);
-            }
-        }
-
-        /// <summary>
-        /// Unity's own generated editor theme. The path is internal, so a null result is an
-        /// ordinary outcome on a version that moved it — the caller carries on with whatever
-        /// theme the panel already had rather than failing.
-        /// </summary>
-        static StyleSheet LoadTheme(bool dark)
-        {
-            return EditorGUIUtility.Load(dark
-                ? "StyleSheets/Generated/DefaultCommonDark.uss.asset"
-                : "StyleSheets/Generated/DefaultCommonLight.uss.asset") as StyleSheet;
         }
 
         // The two platforms, as they colour themselves. Darkened slightly from the source values
