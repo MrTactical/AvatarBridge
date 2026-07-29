@@ -61,6 +61,21 @@ namespace AvatarBridge
             // and a conversion swaps it wholesale — polling a cheap fingerprint keeps the card
             // true without the user having to know a refresh is a thing.
             EditorApplication.update += PollForChanges;
+        }
+
+        /// <summary>
+        /// Where the UI gets built — NOT OnEnable, which is the callback this window used for
+        /// its whole life and the reason it rendered in the light theme inside a dark editor.
+        ///
+        /// OnEnable runs before the window's UI Toolkit panel is set up, and the editor's theme
+        /// stylesheet is part of that setup. A tree built there can miss it, and then every
+        /// built-in control — ObjectField, Slider, Button, Toggle — draws pale, which no
+        /// stylesheet of ours can correct because ours never styles those controls. CreateGUI
+        /// exists for exactly this, and it is what the converter window has always used; that is
+        /// the entire reason the two windows disagreed side by side on the same build.
+        /// </summary>
+        void CreateGUI()
+        {
             Rebuild();
         }
 
