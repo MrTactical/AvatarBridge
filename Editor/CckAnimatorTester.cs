@@ -52,10 +52,18 @@ namespace AvatarBridge
         float _loudness = 1f;
         int _fingerprint;
         double _nextPoll;
-        bool _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
+        // Read in OnEnable, NEVER as a field initializer. An EditorWindow is a ScriptableObject,
+        // and Unity forbids EditorPrefs there:
+        //   "GetBool is not allowed to be called from a ScriptableObject constructor (or
+        //    instance field initializer), call it in OnEnable instead."
+        // It throws during construction and leaves the window half-built — which renders as an
+        // unthemed window full of blank cards, looks exactly like a styling bug, and cost four
+        // releases of chasing stylesheets before the editor log was read.
+        bool _layersOpen;
 
         void OnEnable()
         {
+            _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += Rebuild;
             // The menu card mirrors whatever controller sits on the avatar's Animator RIGHT
@@ -75,7 +83,38 @@ namespace AvatarBridge
         /// </summary>
         void CreateGUI()
         {
+            // Structured exactly like AvatarBridgeWindow.CreateGUI, because that window has
+            // never once rendered in the wrong theme and this one would not stop.
+            //
+            // The skin and the stylesheet are applied HERE and never again. Build() used to
+            // re-apply them on every rebuild — including rebuilds fired from the
+            // EditorApplication.update poll, where isProSkin is not dependable. A single false
+            // reading there swaps the root to .light, and because rebuilds only happen when the
+            // avatar's controller changes, nothing comes along to put it back. That is the
+            // difference between the two windows: this one asked the question hundreds of times
+            // in the wrong place, the converter asks it once in the right one.
+            //
+            // Rebuild only ever Clears CHILDREN, so the class and the stylesheet set up here
+            // survive every rebuild untouched.
+            var root = rootVisualElement;
+            root.AddToClassList("ab-root");
+            BridgeTheme.ApplySkin(root);
+            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
+            if (sheet != null && !root.styleSheets.Contains(sheet))
+            {
+                root.styleSheets.Add(sheet);
+            }
             Rebuild();
+        }
+
+        /// <summary>Focus is a genuine GUI context, so it is the safe place to notice the user
+        /// switched the editor theme. Costs two class toggles.</summary>
+        void OnFocus()
+        {
+            if (rootVisualElement != null)
+            {
+                BridgeTheme.ApplySkin(rootVisualElement);
+            }
         }
 
         void OnDisable()
