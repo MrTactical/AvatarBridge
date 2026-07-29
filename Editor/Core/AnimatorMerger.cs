@@ -4059,7 +4059,7 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0;
+            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0;
             var names = new List<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
@@ -4068,8 +4068,23 @@ namespace AvatarBridge
             // The LOWEST layer index that animates each property — its rightful owner. See the
             // check below for why depth rather than exclusivity.
             var owner = new Dictionary<EditorCurveBinding, int>();
+            // Snapshot ONCE. master.layers hands back a fresh array of fresh wrappers on every
+            // access, so an index looked up against one call is meaningless against another —
+            // Array.IndexOf(master.layers, layer) never matches and quietly returns -1, which
+            // is how an earlier revision decided no layer owned anything and generated nothing
+            // at all. Layer names are unique by construction (MakeUniqueLayerName), so they are
+            // the identity to key on.
+            var layers = master.layers;
+            var indexByName = new Dictionary<string, int>();
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (!indexByName.ContainsKey(layers[i].name))
+                {
+                    indexByName[layers[i].name] = i;
+                }
+            }
             int layerIndex = -1;
-            foreach (var candidate in master.layers)
+            foreach (var candidate in layers)
             {
                 layerIndex++;
                 var floatsHere = new HashSet<EditorCurveBinding>();
@@ -4119,6 +4134,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                candidates += empties.Count;
 
                 var clip = new AnimationClip { name = SanitizeFileName($"{layer.name} restore") };
                 int curves = 0, shared = 0;
@@ -4133,9 +4149,10 @@ namespace AvatarBridge
                 // right: the shirt layer restores the shirt, and the dress layer stays silent, so
                 // when the dress is ON its own clip still wins from above, and when it is off the
                 // shirt layer decides. Silence at the top, authority at the bottom.
-                int here = System.Array.IndexOf(master.layers, layer);
+                int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
+                    // Unknown binding: nobody else claims it, so this layer may restore it.
                     return !owner.TryGetValue(binding, out int lowest) || lowest == here;
                 }
 
@@ -4219,6 +4236,19 @@ namespace AvatarBridge
 
             if (filled == 0)
             {
+                // Candidates but no fills is not a quiet "nothing to do" — it is the shape of a
+                // bug in this pass, and one that already shipped once by saying nothing at all.
+                // A toggle that switches on and never off is the visible symptom, so say it here
+                // rather than leave the report silent about a pass that ran and achieved zero.
+                if (candidates > 0)
+                {
+                    ctx.Report.Warning(Category,
+                        $"{candidates} empty \"off\" state(s) were left without a restore animation",
+                        "Each belongs to a toggle whose off direction now depends on Write Defaults " +
+                        "putting the property back. If any of these switch on and never off again, " +
+                        "that is why. Please report it with this conversion — the pass that fills " +
+                        "them found candidates and produced nothing, which it should not do.");
+                }
                 return;
             }
             AssetDatabase.SaveAssets();
