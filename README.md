@@ -9,7 +9,7 @@ finish by hand.
 
 > ## ✅ It actually works
 >
-> **30+ avatars converted, uploaded and worn in ChilloutVR** — by the author and by independent
+> **75+ avatars converted, uploaded and worn in ChilloutVR** — by the author and by independent
 > testers, on other people's models, not just tidy test cases. Heavy ones too: 400k-triangle
 > avatars with 56 material slots, full VRCFury rigs, face tracking, the lot.
 >
@@ -98,28 +98,35 @@ actually running.
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
   tracks the 3200-bit sync budget, and flags shaders the uploader will reject.
-- **The output folder is the whole conversion** — every clip and mask the controller references
-  is copied into `RehomedAssets` and the controller repointed, so a conversion survives being
-  moved to a project without the source avatar's folders. (One tester's controller referenced 71
-  clips — every hand pose included — that lived only next to the source avatar; anywhere else
-  they'd play as stillness with no error.) The CCK's own clips stay referenced: uploading
-  requires the CCK, so they're always present.
-- **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge →
-  CCK Animator Tester*: gestures, locomotion as the exclusive stances the game can actually
-  produce (standing, crouching, prone, airborne, flying, sitting, swimming — with Upright
-  coupled to stance the way VR height is), visemes, emotes and the avatar's whole Advanced
-  Settings menu, coerced by declared type exactly like the client. The menu card follows the
-  controller on the avatar's Animator: it refreshes itself when the controller or its parameter
-  list changes, and greys any entry whose parameter the controller doesn't declare — driving
-  those would do nothing in game either. (VRChat's Gesture Manager cannot drive a converted
-  avatar — it needs the VRC descriptor, which conversion removes.) A **Face tracking** section drives
-  every eye and Unified Expressions parameter the avatar's controller declares, grouped by
-  region, with each slider's range read from the rig's own blend trees — so bipolar shapes
-  (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half of it. A live
-  **Animator layers** readout — pinned to the bottom of the window so it stays visible while you
-  drive the controls above it — shows every layer's weight, avatar mask and currently-playing
-  clips: the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it can't
-  show, and marks any layer sitting above the hand-pose layers that could overwrite your gestures.
+- **The output folder is the whole conversion** — every clip and mask the controller references is
+  copied into `RehomedAssets` and the controller repointed, so a conversion survives being moved to
+  a project without the source avatar's folders. One tester's controller referenced 71 clips that
+  lived only next to the source avatar; anywhere else they'd have played as stillness, with no
+  error. (The CCK's own clips stay referenced — uploading requires the CCK, so they're always
+  present.)
+- **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge → CCK
+  Animator Tester*: gestures, stances, visemes, emotes, face tracking and the avatar's whole
+  Advanced Settings menu, plus a live Animator-layers readout. VRChat's Gesture Manager can't do
+  this — it needs the VRC descriptor, which conversion removes.
+  <details><summary>What it drives, and how faithfully</summary>
+
+  Locomotion is offered as the **exclusive stances the game can actually produce** — standing,
+  crouching, prone, airborne, flying, sitting, swimming — with Upright coupled to stance the way VR
+  height is. Menu controls are coerced by declared type exactly like the client, and the card
+  follows the controller on the avatar's Animator: it refreshes when the controller or its
+  parameter list changes, and greys any entry whose parameter the controller doesn't declare,
+  because driving those would do nothing in game either.
+
+  The **Face tracking** section drives every eye and Unified Expressions parameter the controller
+  declares, grouped by region, with each slider's range read from the rig's own blend trees — so
+  bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
+
+  The **Animator layers** readout is pinned to the bottom of the window so it stays visible while
+  you drive the controls above it, and shows every layer's weight, avatar mask and currently
+  playing clips — the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it
+  can't show. Any layer sitting above the hand-pose layers that could overwrite your gestures is
+  marked.
+  </details>
 - **Animations that can't possibly work get named** — a locked Poiyomi shader silently deletes any
   property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
   VRChat as much as here. The report [lists every one](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
@@ -135,9 +142,10 @@ humanoid for ChilloutVR.)*
 
 | What | Version | Notes |
 |---|---|---|
-| Unity | **2022.3.22f1** | the version VRChat and CCK 4 both use |
+| [Creator Companion](https://vcc.docs.vrchat.com/) (or [ALCOM](https://vrc-get.anatawa12.com/en/alcom/)) | current | **how the project itself is made** — see [Installation](#installation) |
+| Unity | **2022.3.22f1** | the version VRChat and CCK 4 both use; install it *through* VCC |
 | ChilloutVR CCK | **4.0.x** | always required — it's what the tool builds for |
-| VRChat Avatars SDK | SDK3, **via Creator Companion / VPM** | required to convert; without it you get [Setup mode](#setup-mode). The legacy `.unitypackage` SDK cannot coexist with the CCK — see [Troubleshooting](#troubleshooting) |
+| VRChat Avatars SDK | SDK3, **via VCC / VPM** | required to convert; without it you get [Setup mode](#setup-mode). The legacy `.unitypackage` SDK cannot coexist with the CCK — see [Troubleshooting](#troubleshooting) |
 | [VRCFury](https://vrcfury.com/download) / [Modular Avatar](https://modular-avatar.nadena.dev/) | current | only if your avatars use them |
 | [MagicaCloth2](https://assetstore.unity.com/packages/tools/physics/magica-cloth-2-242307) | *optional* | recommended physics target |
 | [DynamicBone](https://assetstore.unity.com/packages/tools/animation/dynamic-bone-16743) | *optional* | alternative; the free [VRLabs stub](https://github.com/VRLabs/Dynamic-Bones-Stub) is enough to convert |
@@ -147,16 +155,26 @@ still converts.
 
 ## Installation
 
+**Start in the [Creator Companion](https://vcc.docs.vrchat.com/).** VRChat's SDK ships only as a
+VPM package, and VPM packages only go into projects VCC manages — a Unity project you make yourself
+has no supported way to get the SDK. So VCC creates the project and installs Unity; everything else
+goes in afterwards, by hand, in this order. ([ALCOM](https://vrc-get.anatawa12.com/en/alcom/) is a
+drop-in alternative and works the same way.)
+
 > ⚠️ **Import order matters.** Let Unity finish compiling after each step. Importing out of order
 > can corrupt VRCFury data or leave broken scripting defines.
 
-1. **Unity 2022.3.22f1**
-2. **A copy of your avatar project** — duplicate it. Never convert in your real upload project.
-3. **ChilloutVR CCK 4**
-4. **A physics package** (optional)
-5. **VRCFury / Modular Avatar** — whichever your avatars use
-6. **Your avatars** — import any that aren't already there, *after* VRCFury
-7. **AvatarBridge, last** — the `.unitypackage` from
+1. **A VCC project on Unity 2022.3.22f1** — either **New Project → Avatars**, or a **duplicate of
+   your existing avatar project**. Never convert in your real upload project. Either way VCC
+   installs the VRChat Avatars SDK for you.
+2. **ChilloutVR CCK 4** — the `.unitypackage` from
+   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/). Not a VPM
+   package; import it into `Assets` like any other.
+3. **A physics package** (optional) — MagicaCloth2 or DynamicBone.
+4. **VRCFury / Modular Avatar** — whichever your avatars use. Both add to VCC in one click from
+   their own sites.
+5. **Your avatars** — import any that aren't already there, *after* VRCFury.
+6. **AvatarBridge, last** — the `.unitypackage` from
    [Releases](https://github.com/MrTactical/AvatarBridge/releases). It must live under `Assets`,
    not `Packages`, or the optional MagicaCloth2 / DynamicBone integration won't resolve.
 
