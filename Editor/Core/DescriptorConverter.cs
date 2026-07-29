@@ -48,10 +48,15 @@ namespace AvatarBridge
             // the one a human placed by eye and then shipped, and on that avatar it matched the
             // hand-corrected position on X exactly and Z to half a millimetre.
             //
-            // Converting, not copying: VRChat stores an UNSCALED local offset and applies the
-            // avatar's scale at runtime, while ChilloutVR stores the offset scale included.
+            // Copied, NOT scaled. An earlier revision multiplied this by the root's localScale,
+            // on the reasoning that VRChat stores an unscaled local offset — that reasoning was
+            // wrong. VRChat's viewpoint is authored against the avatar at the size it ships at,
+            // so it is already the world-metre offset ChilloutVR stores. On a scale-1 avatar the
+            // two are identical, which is why it went unnoticed; on a root scaled 1.374 it put
+            // the viewpoint 70 cm above the head. The avatar that caught it settles it in two
+            // axes: unscaled Z is 0.1105 against a hand-corrected 0.1095, and X is 0 in both.
             bool haveAuthored = vrc.ViewPosition != Vector3.zero;
-            var authored = Vector3.Scale(vrc.ViewPosition, ctx.Target.transform.localScale);
+            var authored = vrc.ViewPosition;
             cvrAvatar.viewPosition = haveAuthored
                 ? authored
                 : autoView ? viewAuto : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);

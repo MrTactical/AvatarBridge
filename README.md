@@ -746,8 +746,9 @@ off, no avatar gestures work, stock or converted.
 
 **Reconvert on 2.81.0 or later**, and check whether the avatar has a **scaled parent**.
 
-**The viewpoint now comes from your avatar's VRChat descriptor** (2.86.0) — the position its author
-placed by eye and shipped. The CCK's *Auto* button reads the humanoid **eye bones**, and on rigs
+**The viewpoint now comes from your avatar's VRChat descriptor** (2.86.1) — the position its author
+placed by eye and shipped, copied across unchanged. (2.86.0 briefly multiplied it by the root's
+scale, which is a no-op on a scale-1 avatar and threw the viewpoint metres up on anything else.) The CCK's *Auto* button reads the humanoid **eye bones**, and on rigs
 where those bones aren't where the eyes are, it is confidently wrong; one robot avatar's eye
 mapping sat 6 cm off-centre and 9 cm behind its face, and the author's own value matched the
 hand-corrected position on X exactly and Z to half a millimetre. Auto is still used when the
