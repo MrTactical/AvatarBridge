@@ -34,10 +34,12 @@ namespace AvatarBridge
         /// all the world like the window is broken. It survives every subsequent rebuild,
         /// because nothing ever takes the class back off.
         ///
-        /// One wrong reading is easy to come by: <c>isProSkin</c> is not dependable outside a
-        /// GUI context, and the tester rebuilds itself from an EditorApplication.update poll
-        /// whenever the avatar's controller changes. Callers that rebuild from such a context
-        /// should pass a value they captured somewhere trustworthy rather than let this read it.
+        /// READ IT LIVE. The <paramref name="dark"/> override exists for callers that genuinely
+        /// have a better value, and caching the skin is not that: a window's field initialiser
+        /// and OnEnable both run during a domain reload, where the answer is not yet the user's
+        /// theme. Caching there pins the window to whatever the reload happened to say, which is
+        /// a worse failure than the one it was meant to prevent — it never corrects itself,
+        /// where a live read is right again on the very next rebuild.
         /// </summary>
         public static void ApplySkin(VisualElement root, bool? dark = null)
         {

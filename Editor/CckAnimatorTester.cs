@@ -52,15 +52,8 @@ namespace AvatarBridge
         double _nextPoll;
         bool _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
 
-        // Captured where it can be trusted, never inside the update poll. isProSkin is not
-        // dependable outside a GUI context, and this window rebuilds itself from
-        // EditorApplication.update whenever the avatar's controller changes — one false reading
-        // there used to pin the whole window to the light palette permanently.
-        bool _dark = EditorGUIUtility.isProSkin;
-
         void OnEnable()
         {
-            _dark = EditorGUIUtility.isProSkin;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += Rebuild;
             // The menu card mirrors whatever controller sits on the avatar's Animator RIGHT
@@ -79,17 +72,6 @@ namespace AvatarBridge
         }
 
         void OnPlayModeChanged(PlayModeStateChange _) => Rebuild();
-
-        /// <summary>Focus is a GUI context, so it is a safe moment to notice the user changed
-        /// the editor theme under us.</summary>
-        void OnFocus()
-        {
-            if (_dark != EditorGUIUtility.isProSkin)
-            {
-                _dark = EditorGUIUtility.isProSkin;
-                Rebuild();
-            }
-        }
 
         void PollForChanges()
         {
@@ -287,7 +269,7 @@ namespace AvatarBridge
             // Same dress code as the main window: without the stylesheet the cards and banner
             // render as bare labels, which looked exactly as rough as that sounds.
             root.AddToClassList("ab-root");
-            BridgeTheme.ApplySkin(root, _dark);
+            BridgeTheme.ApplySkin(root);
             var sheet = Resources.Load<StyleSheet>("AvatarBridge");
             if (sheet != null && !root.styleSheets.Contains(sheet))
             {
