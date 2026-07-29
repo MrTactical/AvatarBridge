@@ -400,7 +400,8 @@ namespace AvatarBridge
                         return false;
                     }
                     float headBoneHeight = Vector3.Distance(hips.position, head.position);
-                    world = head.TransformPoint(new Vector3(0f, -0.1f * headBoneHeight, 0.1f * headBoneHeight));
+                    world = OffsetFromBone(head, new Vector3(
+                        0f, -0.1f * headBoneHeight, 0.1f * headBoneHeight));
                 }
             }
             else
@@ -430,7 +431,15 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
-                world = head.TransformPoint(new Vector3(0f, 0.005f, 0.06f));
+                // The CCK's numbers (5 mm up, 6 cm forward) are metres for a human-sized head.
+                // Expressed as fractions of this avatar's own hips-to-head span they come out
+                // the same on a 1.8 m biped and stay sane on anything else, without inheriting
+                // a bone scale.
+                var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+                float span = hips != null ? Vector3.Distance(hips.position, head.position) : 0f;
+                world = OffsetFromBone(head, span > 0.0001f
+                    ? new Vector3(0f, 0.008f * span, 0.1f * span)
+                    : new Vector3(0f, 0.005f, 0.06f));
             }
             else
             {
@@ -438,6 +447,24 @@ namespace AvatarBridge
             }
             localPosition = RootOffset(root, world);
             return true;
+        }
+
+        /// <summary>
+        /// A point offset from a bone, in the bone's DIRECTIONS but in world-space metres.
+        ///
+        /// Not <c>bone.TransformPoint</c>, which is what the CCK uses and what put a tester's
+        /// voice position 6 metres in front of their avatar. TransformPoint multiplies the offset
+        /// by the bone's world SCALE, and plenty of rigs carry a scale on their bones —
+        /// Second Life-derived skeletons routinely run at 100× — so a 6 cm nudge becomes 6 m.
+        /// It is invisible on a rig whose bones are all scale 1, which is most of them, which is
+        /// why it survived: the viewpoint (a midpoint between two eye bone POSITIONS) was fine on
+        /// the same avatar, and only the offset-based fallback broke.
+        ///
+        /// Rotation carries the direction; the caller sizes the offset from the avatar itself.
+        /// </summary>
+        static Vector3 OffsetFromBone(Transform bone, Vector3 offsetInMetres)
+        {
+            return bone.position + bone.rotation * offsetInMetres;
         }
 
         /// <summary>One eye only (cyclops rigs, asymmetric heads): the CCK removes the eye's

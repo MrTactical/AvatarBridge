@@ -733,10 +733,18 @@ off, no avatar gestures work, stock or converted.
 
 **Reconvert on 2.81.0 or later**, and check whether the avatar has a **scaled parent**.
 
-ChilloutVR stores both positions as an offset carrying the avatar's own **`localScale`** — that
-is what the CCK's inspector reads and writes. A conversion before 2.81.0 used the avatar's *world*
-scale instead, which is the same number right up until the avatar sits under a parent that has a
-scale on it; then the two diverge by the parent's factor and the gizmos fly off into space.
+Two causes, both fixed:
+
+- **Scaled bones (2.82.0).** With no jaw bone, the voice position is placed a few centimetres in
+  front of the head — and that offset used to be applied through the head bone's own transform,
+  which multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100×
+  bone scales, turning a 6 cm nudge into 6 m. The offset is now sized from the avatar's own
+  hips-to-head span and applied by rotation only, so bone scale can't reach it. The viewpoint was
+  never affected — it's a midpoint between two eye-bone *positions*, with no offset to inflate.
+- **Scaled parents (2.81.0).** ChilloutVR stores both positions as an offset carrying the avatar's
+  own **`localScale`** — what the CCK's inspector reads and writes. Earlier conversions used the
+  avatar's *world* scale, identical until the avatar sits under a parent with a scale on it, at
+  which point they diverge by the parent's factor.
 
 The conversion now checks its own answer — it re-draws each position the way the CCK's inspector
 will and measures it against the head bone — so the report tells you when a placement is wrong
