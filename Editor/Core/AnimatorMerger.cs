@@ -298,6 +298,7 @@ namespace AvatarBridge
             RewirePhysicsToggles(master, ctx);
             RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
+            AuditMaterialProperties(master, ctx);
             AuditCurveControlledGameParameters(master, ctx);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
@@ -4906,6 +4907,141 @@ namespace AvatarBridge
                 "worked in VRChat, make sure the package it was built with is INSTALLED in this " +
                 "project and convert again, so its bake runs first. Clips animating objects a " +
                 "stripped system removed also land here, and those are fine.");
+        }
+
+        /// <summary>
+        /// Material animations that write to a property their own shader does not have.
+        ///
+        /// This is the quietest failure on the platform. The toggle appears in the menu, the
+        /// parameter syncs, the layer plays its clip at weight 1 — the CCK Debugger and this
+        /// tool's own layer readout both show it working — and nothing happens on screen,
+        /// because the value is being written to a uniform that does not exist.
+        ///
+        /// The usual cause is a LOCKED (optimised) Poiyomi/Thry shader. Locking inlines every
+        /// property that was not flagged animated AT LOCK TIME as a literal constant and deletes
+        /// it from the shader. Flagging a property afterwards sets `_<Name>Animated` on the
+        /// material but changes nothing until the material is unlocked and locked again — so a
+        /// material can claim a property is animated while its shader has no such property. On
+        /// the avatar that prompted this, a "wet skin" toggle wrote _DetailNormalMapScale and
+        /// _Matcap3Intensity to a shader whose entire Properties block was 46 lines and
+        /// contained neither.
+        ///
+        /// Nothing here can be fixed by conversion — the same animation is equally dead in
+        /// VRChat — but saying so precisely is the difference between a five-minute re-lock and
+        /// a day spent looking at the animator, which is where every other clue points.
+        /// </summary>
+        static void AuditMaterialProperties(AnimatorController master, BridgeContext ctx)
+        {
+            var root = ctx.Target.transform;
+            var seen = new HashSet<AnimationClip>();
+            // property -> (how many bindings, an example path, the shader to blame)
+            var dead = new Dictionary<string, (int count, string path, string shader)>();
+            var locked = new HashSet<string>();
+
+            void Audit(Motion motion)
+            {
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Audit(child.motion);
+                    }
+                    return;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    return;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!binding.propertyName.StartsWith("material."))
+                    {
+                        continue;
+                    }
+                    string property = binding.propertyName.Substring("material.".Length);
+                    // Colour and vector channels arrive one component at a time
+                    // ("material._Color.r"); the property is everything before the channel.
+                    int dot = property.LastIndexOf('.');
+                    if (dot > 0 && property.Length - dot == 2)
+                    {
+                        property = property.Substring(0, dot);
+                    }
+                    var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                    var renderer = target != null ? target.GetComponent<Renderer>() : null;
+                    if (renderer == null)
+                    {
+                        continue; // a dead path — AuditClipBindings owns that report
+                    }
+                    Material carrier = null;
+                    foreach (var material in renderer.sharedMaterials)
+                    {
+                        if (material != null && material.HasProperty(property))
+                        {
+                            carrier = material;
+                            break;
+                        }
+                    }
+                    if (carrier != null)
+                    {
+                        continue;
+                    }
+                    string shaderName = null;
+                    foreach (var material in renderer.sharedMaterials)
+                    {
+                        if (material != null && material.shader != null)
+                        {
+                            shaderName = material.shader.name;
+                            // Thry's optimiser writes its output under these names; a locked
+                            // shader is the difference between "author forgot" and "author
+                            // flagged it but never re-locked".
+                            if (shaderName.StartsWith("Hidden/Locked/")
+                                || material.shader.name.Contains("/OptimizedShaders/"))
+                            {
+                                locked.Add(property);
+                            }
+                            break;
+                        }
+                    }
+                    dead.TryGetValue(property, out var entry);
+                    dead[property] = (entry.count + 1, entry.path ?? binding.path, entry.shader ?? shaderName);
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Audit(child.state != null ? child.state.motion : null);
+                    }
+                });
+            }
+
+            if (dead.Count == 0)
+            {
+                return;
+            }
+            var worst = dead.OrderByDescending(p => p.Value.count).Take(6)
+                .Select(p => $"{p.Key} ({p.Value.count} renderer(s), e.g. \"{p.Value.path}\")");
+            bool anyLocked = locked.Count > 0;
+            ctx.Report.Warning(Category,
+                $"{dead.Count} animated material property(ies) don't exist on the shader they target",
+                string.Join("; ", worst) + (dead.Count > 6 ? "; …" : "") + ". " +
+                (anyLocked
+                    ? "These materials use a LOCKED (optimised) Poiyomi/Thry shader. Locking bakes any " +
+                      "property that wasn't flagged animated into the shader as a fixed value and removes " +
+                      "it, so writing to it does nothing. Flagging it afterwards sets " +
+                      "\"_<Name>Animated\" on the material but has no effect until you UNLOCK and LOCK " +
+                      "the materials again — a material can therefore claim a property is animated while " +
+                      "its shader has no such property. Select the affected materials, unlock, check the " +
+                      "property is marked animated, and lock again."
+                    : "Whatever drives them will appear to work — parameter synced, layer playing, clip at " +
+                      "full weight — and change nothing on screen. Check the property name against the " +
+                      "shader, or assign the material the animation was authored for.") +
+                " This is not caused by conversion: the same animation is equally dead in VRChat, so a " +
+                "toggle that visibly worked there points at a build-time step (Poiyomi's auto-lock on " +
+                "upload) that this project isn't running.");
         }
 
         // Serialized guid sets of the source controllers, captured before any merging.

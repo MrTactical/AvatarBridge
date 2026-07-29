@@ -725,6 +725,26 @@ Also worth knowing: on Index-type controllers ChilloutVR only registers gestures
 *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its settings — with both
 off, no avatar gestures work, stock or converted.
 
+### A toggle switches on, the layer plays — and nothing changes on screen
+
+If the report says **"animated material property(ies) don't exist on the shader they target"**,
+this is it, and **it is not the conversion**: the same animation does nothing in VRChat either.
+
+**Locked (optimised) Poiyomi/Thry shaders bake any property that wasn't flagged animated *at lock
+time* into the shader as a fixed value and delete the property.** Writing to it afterwards goes
+nowhere. Flagging it later sets `_<Name>Animated` on the *material*, but that changes nothing until
+the material is **unlocked and locked again** — so a material can claim a property is animated while
+its shader genuinely has no such property.
+
+The fix is on the avatar: select the affected materials → **unlock** → confirm the property is
+marked animated → **lock** again. Note that flags are per material: if only some of the avatar's
+materials carry the flag, only those respond after re-locking.
+
+Everything upstream looks healthy while this is happening, which is what makes it expensive — the
+parameter syncs, the layer sits at weight 1, the clip plays, and the CCK Debugger and the tester's
+own [Animator layers](#its-a-head-start-not-a-magic-button) readout both confirm it. The report names
+the property and the renderer so you don't have to work back from the animator.
+
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Two known causes, both fixed, both worth naming if you
