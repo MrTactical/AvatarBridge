@@ -837,8 +837,15 @@ authored — becomes an explicit curve. Either way the toggle restores by animat
 the same on any platform. The report says which layers reused an existing clip and which got a new
 one.
 
-One thing worth knowing: **whatever is true at conversion time is what "off" now means.** If a
-toggle should rest in its other position, set the avatar up that way before converting.
+Two things worth knowing:
+
+- **Whatever is true at conversion time is what "off" now means.** If a toggle should rest in its
+  other position, set the avatar up that way before converting.
+- **A property two layers animate is deliberately left out of the restore.** Where a dress toggle
+  and a shirt toggle both move the shirt, an off state that asserted "shirt on" would sit above the
+  shirt layer and override it permanently. Staying silent there is what lets the lower layer keep
+  control — so a toggle sharing its target with another may still depend on Write Defaults. The
+  report counts these.
 
 ### A menu control appears, moves, syncs — and does nothing
 

@@ -4059,21 +4059,33 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, layersTouched = 0, reused = 0;
+            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0;
             var names = new List<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
             var allClips = new HashSet<AnimationClip>();
+            // And how many layers animate each property. A restore may only assert what its own
+            // layer ALONE touches — see the comment on the check below.
+            var owners = new Dictionary<EditorCurveBinding, int>();
             foreach (var candidate in master.layers)
             {
+                var floatsHere = new HashSet<EditorCurveBinding>();
+                var objectsHere = new HashSet<EditorCurveBinding>();
                 WalkMachines(candidate.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
-                        CollectClips(child.state != null ? child.state.motion : null, allClips);
+                        var motion = child.state != null ? child.state.motion : null;
+                        CollectClips(motion, allClips);
+                        CollectBindings(motion, floatsHere, objectsHere);
                     }
                 });
+                foreach (var binding in floatsHere.Concat(objectsHere))
+                {
+                    owners.TryGetValue(binding, out int seen);
+                    owners[binding] = seen + 1;
+                }
             }
 
             foreach (var layer in vrcLayers)
@@ -4105,13 +4117,32 @@ namespace AvatarBridge
                 }
 
                 var clip = new AnimationClip { name = SanitizeFileName($"{layer.name} restore") };
-                int curves = 0;
+                int curves = 0, shared = 0;
+
+                // A property TWO layers animate must stay untouched here, and this is the whole
+                // reason the rule exists: silence is what lets the lower layer own it.
+                //
+                // On the avatar that found this, a dress toggle and a shirt toggle both animate
+                // the shirt object. Giving the dress layer's off state an explicit "shirt on"
+                // made it assert that every frame — and because it sits ABOVE the shirt layer,
+                // the shirt could no longer be switched off at all. The empty state was doing
+                // useful work by saying nothing.
+                bool Exclusive(EditorCurveBinding binding)
+                {
+                    return !owners.TryGetValue(binding, out int count) || count <= 1;
+                }
+
                 foreach (var binding in bindings)
                 {
                     // Humanoid muscles are masked off these layers anyway, and baking a muscle
                     // default would fight locomotion for the whole session.
                     if (binding.type == typeof(Animator))
                     {
+                        continue;
+                    }
+                    if (!Exclusive(binding))
+                    {
+                        shared++;
                         continue;
                     }
                     if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
@@ -4123,6 +4154,11 @@ namespace AvatarBridge
                 }
                 foreach (var binding in objectBindings)
                 {
+                    if (!Exclusive(binding))
+                    {
+                        shared++;
+                        continue;
+                    }
                     if (!AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
                     {
                         continue;
@@ -4131,6 +4167,7 @@ namespace AvatarBridge
                         new[] { new ObjectReferenceKeyframe { time = 0f, value = value } });
                     curves++;
                 }
+                sharedSkipped += shared;
                 if (curves == 0)
                 {
                     UnityEngine.Object.DestroyImmediate(clip);
@@ -4193,7 +4230,14 @@ namespace AvatarBridge
                 "blendshape at rest, material as authored — so it restores by animating, the same on " +
                 "any platform. Only properties its own layer animates are touched. If a toggle should " +
                 "rest in its OTHER position, set that up on the avatar before converting: whatever is " +
-                "true at conversion time is what \"off\" now means.");
+                "true at conversion time is what \"off\" now means." +
+                (sharedSkipped > 0
+                    ? $" {sharedSkipped} propert(ies) were deliberately left out: more than one layer " +
+                      "animates them, and an off state asserting one would override the other layer for " +
+                      "good — a dress toggle and a shirt toggle that both move the shirt, say, where " +
+                      "the dress layer sits higher and would win permanently. Staying silent there is " +
+                      "what lets the lower layer keep control."
+                    : ""));
         }
 
         /// <summary>
