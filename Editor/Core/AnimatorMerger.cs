@@ -4065,11 +4065,13 @@ namespace AvatarBridge
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
             var allClips = new HashSet<AnimationClip>();
-            // And how many layers animate each property. A restore may only assert what its own
-            // layer ALONE touches — see the comment on the check below.
-            var owners = new Dictionary<EditorCurveBinding, int>();
+            // The LOWEST layer index that animates each property — its rightful owner. See the
+            // check below for why depth rather than exclusivity.
+            var owner = new Dictionary<EditorCurveBinding, int>();
+            int layerIndex = -1;
             foreach (var candidate in master.layers)
             {
+                layerIndex++;
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
                 WalkMachines(candidate.stateMachine, machine =>
@@ -4083,8 +4085,10 @@ namespace AvatarBridge
                 });
                 foreach (var binding in floatsHere.Concat(objectsHere))
                 {
-                    owners.TryGetValue(binding, out int seen);
-                    owners[binding] = seen + 1;
+                    if (!owner.ContainsKey(binding))
+                    {
+                        owner[binding] = layerIndex;
+                    }
                 }
             }
 
@@ -4119,17 +4123,20 @@ namespace AvatarBridge
                 var clip = new AnimationClip { name = SanitizeFileName($"{layer.name} restore") };
                 int curves = 0, shared = 0;
 
-                // A property TWO layers animate must stay untouched here, and this is the whole
-                // reason the rule exists: silence is what lets the lower layer own it.
+                // Where several layers animate one property, only the LOWEST of them may restore
+                // it. Depth decides, not exclusivity.
                 //
-                // On the avatar that found this, a dress toggle and a shirt toggle both animate
-                // the shirt object. Giving the dress layer's off state an explicit "shirt on"
-                // made it assert that every frame — and because it sits ABOVE the shirt layer,
-                // the shirt could no longer be switched off at all. The empty state was doing
-                // useful work by saying nothing.
-                bool Exclusive(EditorCurveBinding binding)
+                // A dress toggle and a shirt toggle both animate the shirt object. Let both
+                // restore it and the higher one — the dress — asserts "shirt on" every frame and
+                // the shirt can never be switched off. Let neither restore it and the shirt can
+                // never be switched back on. Give it to the lower layer and every combination is
+                // right: the shirt layer restores the shirt, and the dress layer stays silent, so
+                // when the dress is ON its own clip still wins from above, and when it is off the
+                // shirt layer decides. Silence at the top, authority at the bottom.
+                int here = System.Array.IndexOf(master.layers, layer);
+                bool Owns(EditorCurveBinding binding)
                 {
-                    return !owners.TryGetValue(binding, out int count) || count <= 1;
+                    return !owner.TryGetValue(binding, out int lowest) || lowest == here;
                 }
 
                 foreach (var binding in bindings)
@@ -4140,7 +4147,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    if (!Exclusive(binding))
+                    if (!Owns(binding))
                     {
                         shared++;
                         continue;
@@ -4154,7 +4161,7 @@ namespace AvatarBridge
                 }
                 foreach (var binding in objectBindings)
                 {
-                    if (!Exclusive(binding))
+                    if (!Owns(binding))
                     {
                         shared++;
                         continue;
@@ -4232,11 +4239,12 @@ namespace AvatarBridge
                 "rest in its OTHER position, set that up on the avatar before converting: whatever is " +
                 "true at conversion time is what \"off\" now means." +
                 (sharedSkipped > 0
-                    ? $" {sharedSkipped} propert(ies) were deliberately left out: more than one layer " +
-                      "animates them, and an off state asserting one would override the other layer for " +
-                      "good — a dress toggle and a shirt toggle that both move the shirt, say, where " +
-                      "the dress layer sits higher and would win permanently. Staying silent there is " +
-                      "what lets the lower layer keep control."
+                    ? $" {sharedSkipped} propert(ies) were left to a lower layer: where several layers " +
+                      "animate one thing, only the lowest restores it. A dress toggle and a shirt " +
+                      "toggle that both move the shirt is the usual case — if the dress layer restored " +
+                      "the shirt it would assert it from above and the shirt could never be taken off, " +
+                      "and if neither did it could never be put back on. The lower layer owns it, the " +
+                      "higher one stays silent, and both toggles work."
                     : ""));
         }
 

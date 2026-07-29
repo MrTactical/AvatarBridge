@@ -841,11 +841,11 @@ Two things worth knowing:
 
 - **Whatever is true at conversion time is what "off" now means.** If a toggle should rest in its
   other position, set the avatar up that way before converting.
-- **A property two layers animate is deliberately left out of the restore.** Where a dress toggle
-  and a shirt toggle both move the shirt, an off state that asserted "shirt on" would sit above the
-  shirt layer and override it permanently. Staying silent there is what lets the lower layer keep
-  control — so a toggle sharing its target with another may still depend on Write Defaults. The
-  report counts these.
+- **Where several layers animate one thing, only the lowest restores it.** A dress toggle and a
+  shirt toggle that both move the shirt is the usual case: if the dress layer restored the shirt it
+  would assert it from above and the shirt could never come off; if neither did, it could never go
+  back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
+  counts what was left to a lower layer.
 
 ### A menu control appears, moves, syncs — and does nothing
 
