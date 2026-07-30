@@ -203,7 +203,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured. On a [quadruped decoy rig](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) both are re-measured on the bones you can actually see |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
@@ -214,7 +214,7 @@ defines.
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
-| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quads on ice](#quadruped--finalik-avatars--on-ice) |
+| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
@@ -303,7 +303,7 @@ It matters when the source sits in a **different chain** — and there the paren
 agree, by moving the constrained bone under the source's own parent. That isn't an approximation:
 it turns the one constraint Unity can't express into one it can, and it cascades, because once a
 chain's root pair matches every pair below it matches too. This is what makes
-[quadrupeds](#quadruped--finalik-avatars--on-ice) work.
+[quadrupeds](#quadruped--finalik-avatars) work.
 
 Moving a bone is only safe when nothing depends on where it *is*, so it happens only when the relay
 is rotation-only, **no mesh skins to the bone**, **no animation addresses it** (curves are matched
@@ -597,11 +597,16 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ## Known limitations
 
-### Quadruped / FinalIK avatars — on ice
+### Quadruped / FinalIK avatars
 
-**Don't expect a working quad right now** — but as of 2.88.0 the report says why, and there turn
-out to be two different avatars hiding under one symptom. Both hold their rest pose in game with
-only the IK-tracked parts following you.
+**Partly working as of 2.92.0.** A decoy-rig quadruped now walks in game — confirmed by wearing one,
+which is the only test that counts. Getting there took three separate fixes, and one wall is still
+standing. There are also two different avatars hiding under one symptom, so start by finding out
+which you have; the report names it.
+
+**Turn off "Base / locomotion" for a quadruped.** It's off by default. VRChat's stock locomotion
+layer and ChilloutVR's own both drive the decoy biped, and with both present the avatar holds its
+rest pose. With it off, ChilloutVR drives the decoy and the relays carry it onto the animal.
 
 **Most quadrupeds are a hidden humanoid rig.** The model carries a second, invisible biped skeleton
 — bones named like `HipsHuman`, `thighHuman.L`, `HeadHuman` — and Unity's humanoid map points only
@@ -623,9 +628,19 @@ all. **Two things break the rest, and the report names both:**
   that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
   computes and writes its own rotation with no hook in between. Un-mirroring the bones and
   re-rigging is the only cure, and that's a job for your 3D package.
+- **PhysBones on a relayed bone (2.91.0).** A constraint writes that bone every frame; a cloth
+  solver integrates it from its own last state. Together they feed each other until the transform
+  goes **NaN**, and the chain hangs broken with nothing to see in the animator. VRChat survives it
+  because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone don't. Those
+  chains are skipped now and listed in the report.
+- **Both markers on the decoy (2.92.0).** ChilloutVR parents the viewpoint and voice position to the
+  humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
+  animal's skull. Both are measured on the relayed bones instead; see
+  [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
 
-⚠️ **So a mirrored hind rig still doesn't work**, and that's the common build. The report tells you
-which bones and why, rather than leaving you to guess.
+⚠️ **A mirrored hind rig still doesn't work**, and that's the common build — the front half moves,
+the back half lands reflected. The report tells you which bones and why, rather than leaving you to
+guess.
 
 **A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
@@ -838,6 +853,20 @@ and measures it against the head bone — so the report tells you when a placeme
 of leaving it for the first person who hears your voice coming from ten metres away. Putting the
 avatar at the top of the scene hierarchy before converting avoids the scale cases entirely, and the
 CVRAvatar inspector's own **Auto** buttons are always a safe manual fix.
+
+**On a quadruped, neither the author's viewpoint nor Auto is looking at your avatar** (2.92.0). Those
+rigs are a [hidden humanoid decoy](#quadruped--finalik-avatars), and ChilloutVR hangs both
+markers off the humanoid **Head** bone — which is part of the decoy, not part of the animal. On the
+dragon this was found on, the shipped viewpoint sat **0.57 m** from the dragon's eyes, inside its
+skull: looking up was fine, looking down filled the screen with the inside of its own mouth. Auto
+was no better — it reads the decoy's eye bones and lands half a metre out too.
+
+The relay constraints say where the real bones are, so the conversion follows them: a constraint
+whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
+both markers are measured there instead. Ordinary avatars are untouched — the rewrite only happens
+when the two answers are more than 5 cm apart. It can't be perfect, because the markers still ride
+the humanoid Head bone whatever happens, so check them with the gizmo and drag either one if you
+want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 

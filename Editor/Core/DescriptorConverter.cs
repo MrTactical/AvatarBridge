@@ -57,11 +57,39 @@ namespace AvatarBridge
             // axes: unscaled Z is 0.1105 against a hand-corrected 0.1095, and X is 0 in both.
             bool haveAuthored = vrc.ViewPosition != Vector3.zero;
             var authored = vrc.ViewPosition;
-            cvrAvatar.viewPosition = haveAuthored
+            var humanoidView = haveAuthored
                 ? authored
                 : autoView ? viewAuto : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
 
-            if (haveAuthored && autoView)
+            // ...unless the humanoid rig is a DECOY and none of the above is looking at the
+            // avatar at all. See AvatarFeatureDetect.DecoyRigAnchors: on a quadruped whose
+            // humanoid map points at a hidden stand-in skeleton, the author's VRChat viewpoint,
+            // the CCK's Auto button and our own estimate all agree with each other and all sit on
+            // the stand-in. The 5 cm gate keeps this silent on every rig where the relay exists
+            // but changes nothing, so an ordinary avatar's conversion is untouched.
+            bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
+                                out var decoyView, out var decoyVoice, out string decoyDetail)
+                            && Vector3.Distance(decoyView, humanoidView) > 0.05f;
+            cvrAvatar.viewPosition = decoyRig ? decoyView : humanoidView;
+
+            if (decoyRig)
+            {
+                float moved = Vector3.Distance(humanoidView, decoyView);
+                ctx.Report.Approximated(Category, "Viewpoint & voice measured on the VISIBLE head",
+                    "This avatar's humanoid rig is a decoy: the bones Unity's humanoid map points " +
+                    "at are a hidden stand-in skeleton, and constraints relay them onto the body " +
+                    "you can actually see. ChilloutVR parents both the viewpoint and the voice " +
+                    "position to the humanoid Head bone, so the viewpoint this avatar shipped " +
+                    "with — and the CCK's Auto button, and every estimate here — all land on the " +
+                    $"stand-in, {moved:0.##} m from where this avatar's face is. Far enough to sit " +
+                    "INSIDE the head, which looks fine until you glance down and the inside of " +
+                    $"your own mouth fills the screen. Both were measured on the relayed bones " +
+                    $"instead — {decoyDetail}. Check them with the CVRAvatar gizmo before " +
+                    "uploading: the markers ride the humanoid Head bone whatever happens, so on a " +
+                    "rig like this they can be put in the right place but not made to track it " +
+                    "perfectly. Drag either gizmo if you want it elsewhere.");
+            }
+            else if (haveAuthored && autoView)
             {
                 float apart = Vector3.Distance(authored, viewAuto);
                 ctx.Report.Converted(Category, "Viewpoint — the author's own, from the VRChat descriptor",
@@ -121,7 +149,12 @@ namespace AvatarBridge
             // The CCK's Auto placement again (jaw bone, else a head-bone offset); the
             // viseme-measured mouth stays as the fallback for rigs without either bone.
             bool autoVoice = AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto);
-            if (autoVoice)
+            if (decoyRig)
+            {
+                // Reported together with the viewpoint above — the two share one cause and one fix.
+                cvrAvatar.voicePosition = decoyVoice;
+            }
+            else if (autoVoice)
             {
                 cvrAvatar.voicePosition = voiceAuto;
             }
@@ -132,9 +165,15 @@ namespace AvatarBridge
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
             }
 
-            AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
-                cvrAvatar.viewPosition, cvrAvatar.voicePosition);
-            if (!haveAuthored && (autoView || autoVoice))
+            // Skipped on a decoy rig: this check measures both markers against the humanoid head
+            // bone, and on such a rig they are deliberately NOT near it. Left in, it would fire a
+            // warning blaming a scaled ancestor for the placement that just fixed the avatar.
+            if (!decoyRig)
+            {
+                AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
+                    cvrAvatar.viewPosition, cvrAvatar.voicePosition);
+            }
+            if (!haveAuthored && (autoView || autoVoice) && !decoyRig)
             {
                 bool hasJaw = animator != null && animator.isHuman &&
                               animator.GetBoneTransform(HumanBodyBones.Jaw) != null;

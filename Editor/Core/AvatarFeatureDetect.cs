@@ -450,6 +450,240 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// The visible head and eyes of a DECOY RIG — a quadruped (or any non-biped) whose
+        /// humanoid map points at a hidden stand-in skeleton, with constraints relaying that
+        /// skeleton onto the bones you can actually see.
+        ///
+        /// This has to be handled because ChilloutVR hangs BOTH markers off the humanoid Head
+        /// bone. <c>AvatarHeadPoint.GetPointParent()</c> and <c>AvatarVoicePoint.GetPointParent()</c>
+        /// each return <c>animator.GetBoneTransform(HumanBodyBones.Head)</c>; the client spawns a
+        /// marker at the stored offset while the avatar is at rest, then re-parents it to that
+        /// bone. So on a decoy rig both markers land on the STAND-IN, wherever the stand-in
+        /// happens to be — which on the quadruped that produced this code was 0.57 m from the
+        /// dragon's eyes, inside its skull. Look up and you see out; look down and the inside of
+        /// the mouth fills the screen.
+        ///
+        /// Neither of the usual answers helps there: the CCK's Auto button reads the humanoid eye
+        /// bones, which are part of the stand-in, and the author's VRChat viewpoint was placed for
+        /// VRChat's own conventions against that same stand-in.
+        ///
+        /// The relay itself says where the visible bones are. A constraint whose SOURCE is the
+        /// humanoid Head or an eye bone exists to drive that bone's visible counterpart, so the
+        /// constrained transform is the answer:
+        ///
+        ///     Eye.L &lt;- RealEye.L      Eye.R &lt;- RealEye.R      Head &lt;- HeadHuman
+        ///
+        /// Only relays pointing AWAY from the humanoid rig count. A rig that constrains one
+        /// humanoid bone to another is doing something else and is left alone.
+        /// </summary>
+        public static bool DecoyRigAnchors(GameObject root, Animator animator,
+            out Transform head, out Transform leftEye, out Transform rightEye)
+        {
+            head = null;
+            leftEye = null;
+            rightEye = null;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+
+            var humanoid = new HashSet<Transform>();
+            foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (bone == HumanBodyBones.LastBone)
+                {
+                    continue;
+                }
+                var mapped = animator.GetBoneTransform(bone);
+                if (mapped != null)
+                {
+                    humanoid.Add(mapped);
+                }
+            }
+
+            var headBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            var leftEyeBone = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var rightEyeBone = animator.GetBoneTransform(HumanBodyBones.RightEye);
+
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    continue;
+                }
+                var driven = ConstraintTarget(component);
+                if (driven == null || humanoid.Contains(driven))
+                {
+                    continue;
+                }
+                foreach (var source in ConstraintSources(component))
+                {
+                    if (source == null)
+                    {
+                        continue;
+                    }
+                    if (source == headBone && head == null)
+                    {
+                        head = driven;
+                    }
+                    else if (source == leftEyeBone && leftEye == null)
+                    {
+                        leftEye = driven;
+                    }
+                    else if (source == rightEyeBone && rightEye == null)
+                    {
+                        rightEye = driven;
+                    }
+                }
+            }
+            return head != null || (leftEye != null && rightEye != null);
+        }
+
+        static readonly string[] JawNameVariants =
+            { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
+
+        /// <summary>
+        /// View and voice positions for a decoy rig, measured on the bones you can SEE.
+        ///
+        /// Same conventions as the CCK's own Auto buttons — eye midpoint for the view, jaw for
+        /// the voice, a head-bone offset when a bone is missing — just aimed at the visible
+        /// counterparts <see cref="DecoyRigAnchors"/> found instead of at the stand-in skeleton.
+        /// Returns false on every ordinary rig, where there is no relay to follow.
+        /// </summary>
+        public static bool DecoyRigPlacement(GameObject root, Animator animator,
+            out Vector3 viewLocal, out Vector3 voiceLocal, out string detail)
+        {
+            viewLocal = default;
+            voiceLocal = default;
+            detail = null;
+            if (!DecoyRigAnchors(root, animator, out var head, out var leftEye, out var rightEye))
+            {
+                return false;
+            }
+
+            // The avatar's own size, so the fallback offsets below scale with it rather than
+            // assuming a human head. Taken off the humanoid rig because that is the one chain
+            // guaranteed to exist, and it is the right order of magnitude either way.
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var headBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            float span = hips != null && headBone != null
+                ? Vector3.Distance(hips.position, headBone.position)
+                : 0f;
+
+            string viewFrom;
+            Vector3 viewWorld;
+            if (leftEye != null && rightEye != null)
+            {
+                viewWorld = (leftEye.position + rightEye.position) / 2f;
+                viewFrom = $"midway between \"{leftEye.name}\" and \"{rightEye.name}\"";
+            }
+            else if (leftEye != null || rightEye != null)
+            {
+                viewWorld = ProjectSingleEye(animator, leftEye != null ? leftEye : rightEye);
+                viewFrom = $"\"{(leftEye != null ? leftEye : rightEye).name}\", projected onto the centreline";
+            }
+            else
+            {
+                viewWorld = OffsetFromBone(head, span > 0.0001f
+                    ? new Vector3(0f, -0.1f * span, 0.1f * span)
+                    : new Vector3(0f, -0.05f, 0.05f));
+                viewFrom = $"just in front of \"{head.name}\" (this rig relays no eye bones)";
+            }
+
+            string voiceFrom;
+            Vector3 voiceWorld;
+            var jaw = head != null ? FindChildByNameVariants(head, JawNameVariants) : null;
+            if (jaw != null)
+            {
+                voiceWorld = jaw.position;
+                voiceFrom = $"at \"{jaw.name}\"";
+            }
+            else if (head != null)
+            {
+                voiceWorld = OffsetFromBone(head, span > 0.0001f
+                    ? new Vector3(0f, 0.008f * span, 0.1f * span)
+                    : new Vector3(0f, 0.005f, 0.06f));
+                voiceFrom = $"just in front of \"{head.name}\"";
+            }
+            else
+            {
+                voiceWorld = viewWorld;
+                voiceFrom = "with the viewpoint (no visible head bone to work from)";
+            }
+
+            viewLocal = RoundNearZero(RootOffset(root, viewWorld));
+            voiceLocal = RootOffset(root, voiceWorld);
+            detail = $"View {viewFrom}; voice {voiceFrom}";
+            return true;
+        }
+
+        /// <summary>
+        /// The transform a constraint drives, for Unity's own constraints and VRChat's alike,
+        /// or null when the component is not a constraint at all.
+        /// </summary>
+        static Transform ConstraintTarget(Component component)
+        {
+            if (component is UnityEngine.Animations.IConstraint)
+            {
+                return component.transform;
+            }
+            string typeName = component.GetType().Name;
+            if (!typeName.StartsWith("VRC", StringComparison.Ordinal) ||
+                !typeName.EndsWith("Constraint", StringComparison.Ordinal))
+            {
+                return null;
+            }
+            // NOT "?? component.transform": an unassigned Transform field comes back as Unity's
+            // FAKE null — a live C# reference whose overloaded == reports null while ?? passes it
+            // straight through. That distinction crashed every conversion in 2.88.0.
+            var target = Field<Transform>(component, "TargetTransform");
+            return target != null ? target : component.transform;
+        }
+
+        /// <summary>Every source transform a constraint reads, Unity's or VRChat's.</summary>
+        static IEnumerable<Transform> ConstraintSources(Component component)
+        {
+            if (component is UnityEngine.Animations.IConstraint unity)
+            {
+                for (int i = 0; i < unity.sourceCount; i++)
+                {
+                    yield return unity.GetSource(i).sourceTransform;
+                }
+                yield break;
+            }
+            if (!(Field<object>(component, "Sources") is System.Collections.IEnumerable sources))
+            {
+                yield break;
+            }
+            foreach (var entry in sources)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+                var transform = Field<Transform>(entry, "SourceTransform");
+                if (transform != null)
+                {
+                    yield return transform;
+                }
+            }
+        }
+
+        /// <summary>Reads a public field or property by name, or default when it isn't there.</summary>
+        static T Field<T>(object instance, string name)
+        {
+            if (instance == null)
+            {
+                return default;
+            }
+            var type = instance.GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+            object value = type.GetField(name, flags)?.GetValue(instance)
+                           ?? type.GetProperty(name, flags)?.GetValue(instance);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
         /// A point offset from a bone, in the bone's DIRECTIONS but in world-space metres.
         ///
         /// Not <c>bone.TransformPoint</c>, which is what the CCK uses and what put a tester's
