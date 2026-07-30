@@ -390,8 +390,28 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
+                // Under the head first, then anywhere on the avatar that is still near it.
+                //
+                // Eye bones are not always children of the head bone, and assuming they are cost a
+                // taur base 14 cm of viewpoint. That rig parks them in a cloned spine chain under
+                // a node named "Head.children.go.here" — a different branch of the skeleton — so
+                // no amount of searching below the head could ever have found them:
+                //
+                //   eyes: .../hind.chest/HipsAgain/SpineAgain/ChestAgain/NeckAgain/Head.children.go.here/eye.L
+                //   head: .../Hips/Spine/Chest/Neck/Head
+                //
+                // Rigs do this whenever something else needs to drive the eyes — poseclone
+                // systems, VRCFury rewrites, a separate "Eyes" object. NearHeadByNameVariants
+                // widens the net to the whole avatar but only accepts a bone that lands within
+                // the same distance of the head this rig's own proportions already allow, so a
+                // stray match somewhere down the body is refused rather than believed.
                 var namedLeft = FindChildByNameVariants(head, LeftEyeNameVariants);
                 var namedRight = FindChildByNameVariants(head, RightEyeNameVariants);
+                if (namedLeft == null || namedRight == null)
+                {
+                    namedLeft = namedLeft != null ? namedLeft : NearHeadByNameVariants(root, animator, head, LeftEyeNameVariants);
+                    namedRight = namedRight != null ? namedRight : NearHeadByNameVariants(root, animator, head, RightEyeNameVariants);
+                }
                 if (namedLeft != null && namedRight != null)
                 {
                     world = (namedLeft.position + namedRight.position) / 2f;
@@ -867,6 +887,53 @@ namespace AvatarBridge
             return Mathf.Abs(dotUp) > Mathf.Abs(dotRight)
                 ? eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.up)
                 : eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.right);
+        }
+
+        /// <summary>
+        /// An eye-named bone anywhere on the avatar, accepted only if it sits within a plausible
+        /// distance of the head — the same tolerance <see cref="VerifyHeadPlacement"/> judges a
+        /// finished viewpoint by. The nearest qualifying match wins, so a rig with several
+        /// candidates gets the one on the face rather than the first in hierarchy order.
+        /// </summary>
+        static Transform NearHeadByNameVariants(GameObject root, Animator animator, Transform head,
+            string[] nameVariants)
+        {
+            if (root == null || head == null)
+            {
+                return null;
+            }
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips)
+                : null;
+            float tolerance = hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var candidate in root.GetComponentsInChildren<Transform>(true))
+            {
+                bool named = false;
+                foreach (string variant in nameVariants)
+                {
+                    if (string.Equals(candidate.name, variant, StringComparison.OrdinalIgnoreCase))
+                    {
+                        named = true;
+                        break;
+                    }
+                }
+                if (!named)
+                {
+                    continue;
+                }
+                float distance = Vector3.Distance(candidate.position, head.position);
+                if (distance <= tolerance && distance < bestDistance)
+                {
+                    best = candidate;
+                    bestDistance = distance;
+                }
+            }
+            return best;
         }
 
         static Transform FindChildByNameVariants(Transform parent, string[] nameVariants)

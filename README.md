@@ -884,11 +884,15 @@ matched the hand-corrected position exactly on X and to half a millimetre on Z. 
 when the descriptor has no viewpoint set, and the report says which was used and how far apart they
 were.
 
-**Eye bones are found by name when the rig doesn't map them** (3.0.2), and that search now knows
-Blender's `.L`/`.R` suffix (`eye.L`, `eye.R`) and looks through the whole head, not just its direct
-children. Without both, a taur base whose eyes sat three joints below the head fell through to a
-blind head-offset estimate and put the viewpoint 14 cm low, on the muzzle. Blender exports that
-suffix by default, so this affected far more than one avatar.
+**Eye bones are found by name when the rig doesn't map them**, and that search knows Blender's
+`.L`/`.R` suffix (`eye.L`, `eye.R`) as well as `LeftEye`-style names (3.0.2) — Blender exports that
+suffix by default, so it covers most anthro avatars. It also looks **anywhere on the avatar**, not
+only under the head bone (3.0.3): rigs park eye bones outside the head all the time when something
+else needs to drive them, and one taur base keeps its pair in a cloned spine chain under a node
+named `Head.children.go.here`. A match is only accepted if it lands within the same distance of the
+head that this rig's proportions already allow, so a stray bone elsewhere on the body is refused.
+Without this the viewpoint fell through to a blind head-offset estimate and sat 14 cm low, on the
+muzzle.
 
 **Unless the authored value is provably in the wrong place** (2.100.0). A viewpoint isn't a matter
 of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
