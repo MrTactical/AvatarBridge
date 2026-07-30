@@ -318,6 +318,7 @@ namespace AvatarBridge
             // the animator window, dead toggles in game, and a conversion report with no errors.
             // If anything the controller referenced in memory failed to arrive on disk, that is
             // an Error, in the report, with numbers.
+            FillEmptyBlendTreeSlots(ctx, master);
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
             // The serialized-guid audit runs from BridgeConverter AFTER AnimationSelfContainer,
@@ -400,6 +401,93 @@ namespace AvatarBridge
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
+        }
+
+        /// <summary>
+        /// Gives every empty blend-tree slot a real (empty) clip, because an empty one crashes Unity.
+        ///
+        /// A blend tree child whose motion is missing — the asset it named is gone, or a bake never
+        /// produced it — is the thing at the bottom of every crash dump this project has collected:
+        /// <c>DoBlendTreeEvaluation</c>, reached from <c>GenerateGraph</c>. It fires whenever
+        /// ANYTHING builds a playable graph from the controller, and plenty of things do that are
+        /// nothing to do with this tool: assigning it to an Animator, enabling one, selecting the
+        /// object in the Inspector, and — the one that matters most — the CCK's own uploader, which
+        /// instantiates the avatar to build it and takes the editor down with it. An avatar in that
+        /// state simply cannot be uploaded.
+        ///
+        /// Refusing to assign the controller only protected our own step. This removes the hazard
+        /// itself: each empty slot gets a shared, genuinely empty clip. Nothing is lost — the slot
+        /// already animated nothing — but the graph builder now has a valid motion to read instead
+        /// of a hole, so the controller is safe for anyone to instantiate.
+        ///
+        /// Deliberately NOT deleting the children. Blend tree children carry thresholds, and
+        /// removing one re-numbers its neighbours and changes how the rest blend. An empty clip in
+        /// place keeps every threshold where the author put it.
+        /// </summary>
+        static void FillEmptyBlendTreeSlots(BridgeContext ctx, AnimatorController master)
+        {
+            AnimationClip filler = null;
+            int filled = 0;
+            var seen = new HashSet<Motion>();
+
+            void Walk(Motion motion)
+            {
+                if (!(motion is BlendTree tree) || !seen.Add(tree))
+                {
+                    return;
+                }
+                var children = tree.children;
+                bool changed = false;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    if (children[i].motion == null)
+                    {
+                        if (filler == null)
+                        {
+                            filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                            AssetDatabase.AddObjectToAsset(filler, master);
+                        }
+                        children[i].motion = filler;
+                        changed = true;
+                        filled++;
+                    }
+                    else
+                    {
+                        Walk(children[i].motion);
+                    }
+                }
+                if (changed)
+                {
+                    // children is a copy; the setter is what writes it back.
+                    tree.children = children;
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Walk(child.state.motion);
+                    }
+                });
+            }
+
+            if (filled > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{filled} empty blend tree slot(s) filled with an empty clip",
+                    "These slots pointed at motions that aren't there — an asset that's gone, or one " +
+                    "the avatar's own build step never produced. Unity CRASHES when it builds a " +
+                    "playable graph containing an empty blend tree slot, which happens when the " +
+                    "controller is assigned to an Animator, when you select the avatar, and when " +
+                    "the CCK builds it to upload — so this had to be repaired rather than reported. " +
+                    "Each slot now holds a genuinely empty clip: nothing is lost, since the slot " +
+                    "animated nothing to begin with, and every threshold stays where the author put " +
+                    "it. Whatever those motions were supposed to be is still missing, so find out " +
+                    "why they didn't arrive before you rely on the feature that used them.");
+            }
         }
 
         /// <summary>
