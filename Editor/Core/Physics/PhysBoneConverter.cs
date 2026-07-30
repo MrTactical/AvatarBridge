@@ -75,7 +75,7 @@ namespace AvatarBridge
                     foreach (var pb in physBones)
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, chain))
+                        if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain))
                         {
                             continue;
                         }
@@ -102,7 +102,7 @@ namespace AvatarBridge
                     foreach (var pb in physBones)
                     {
                         var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, dbChain))
+                        if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain))
                         {
                             continue;
                         }
@@ -133,6 +133,61 @@ namespace AvatarBridge
                     Object.DestroyImmediate(collider);
                 }
             }
+        }
+
+        /// <summary>
+        /// A bone a constraint drives must never also be simulated.
+        ///
+        /// A constraint writes that bone's rotation every frame from somewhere else; a cloth
+        /// solver integrates it from its own previous state. Run both on one bone and each is
+        /// fed the other's output, the integration diverges, and within a second or two the
+        /// transform is **NaN** — which never recovers, propagates down the hierarchy, and
+        /// leaves everything below the cloth root at NaN position while the root itself looks
+        /// fine.
+        ///
+        /// The symptom is not subtle and not obviously physics: the chain "explodes", or hangs
+        /// in a pose nothing explains, at rest, in play mode and in game alike, with no motion
+        /// needed to trigger it. It cost this project a long hunt through the animator and the
+        /// constraint maths before the NaN was spotted.
+        ///
+        /// VRChat tolerates the overlap because its PhysBone integrator runs after constraints
+        /// each frame and simply re-reads the result. MagicaCloth2 and DynamicBone do not, and
+        /// nothing here can reorder them.
+        ///
+        /// The chain is skipped whole rather than trimmed. Simulating a constraint-driven bone
+        /// is meaningless anyway — the constraint fully determines its rotation — and a chain
+        /// re-rooted below the constrained part would be a different chain than its author made.
+        /// </summary>
+        static bool SkipConstraintDrivenChain(BridgeContext ctx, PhysBoneChainData chain)
+        {
+            if (chain.Root == null)
+            {
+                return false;
+            }
+            foreach (var t in chain.Root.GetComponentsInChildren<Transform>(true))
+            {
+                foreach (var component in t.GetComponents<Component>())
+                {
+                    if (component == null || !component.GetType().Name.StartsWith("VRC")
+                        || !component.GetType().Name.EndsWith("Constraint"))
+                    {
+                        continue;
+                    }
+                    ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
+                        $"Not simulated: \"{t.name}\" in this chain is driven by a " +
+                        $"{component.GetType().Name}. A constraint writes that bone every frame " +
+                        "and a cloth solver integrates it from its own last state, so together " +
+                        "they feed each other until the transform goes NaN — the chain then hangs " +
+                        "broken at rest, in play mode and in game, with nothing to see in the " +
+                        "animator. VRChat gets away with it because PhysBones re-read the " +
+                        "constraint result each frame; MagicaCloth2 and DynamicBone don't, and the " +
+                        "order can't be changed here. The constraint fully determines that bone's " +
+                        "rotation anyway, so the physics had nothing to add. Remove the constraint " +
+                        "if you want the chain simulated instead.");
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>

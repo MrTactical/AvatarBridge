@@ -741,6 +741,23 @@ that animate the body on purpose are left alone, and object toggles, blendshapes
 animation are untouched. If you see this pose on a 2.62.0+ conversion, report it — the report
 names every layer that could write muscles.
 
+### A bone chain hangs broken, or MagicaCloth throws in the Scene view
+
+**Reconvert on 2.91.0 or later.** A chain whose bones are also driven by a **constraint** is no
+longer simulated, and the report says which and why.
+
+A constraint writes its bone's rotation every frame from somewhere else; a cloth solver integrates
+that bone from its own previous state. Run both on one bone and each is fed the other's output —
+the integration diverges, and within seconds the transform is **NaN**. NaN never recovers and
+spreads down the hierarchy, so the chain hangs in a pose nothing explains, identically at rest, in
+play mode and in game. MagicaCloth's own Scene-view gizmo can throw a `NullReferenceException` from
+inside Burst while sorting those points, which is the same problem seen from a different angle.
+
+VRChat tolerates the overlap because PhysBones re-read the constraint's result each frame.
+MagicaCloth2 and DynamicBone don't, and nothing here can reorder them. The constraint fully
+determines that bone's rotation anyway, so the physics had nothing to add — remove the constraint if
+you want the chain simulated instead.
+
 ### A chain moves differently in game than in Unity
 
 Expected — **Unity can't preview cloth.** Nothing steps the solver in edit mode, and in play mode
