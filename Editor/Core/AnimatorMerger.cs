@@ -4348,8 +4348,12 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0;
+            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
             var names = new List<string>();
+            // Deterministic file names, so reconverting REPLACES last time's restore clips instead
+            // of parking a numbered copy beside them. One avatar had 200 of them.
+            var writtenPaths = new HashSet<string>();
+            var keptClips = new HashSet<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
@@ -4422,7 +4426,16 @@ namespace AvatarBridge
                         }
                         if (state.motion == null)
                         {
-                            empties.Add(state);
+                            // An empty state is only an "off" state if the layer can REST in it.
+                            // A router can't be rested in and must not be given values to assert.
+                            if (!IsPassThroughState(state))
+                            {
+                                empties.Add(state);
+                            }
+                            else
+                            {
+                                routers++;
+                            }
                             continue;
                         }
                         CollectBindings(state.motion, bindings, objectBindings);
@@ -4521,8 +4534,20 @@ namespace AvatarBridge
                     System.IO.Directory.CreateDirectory(dir);
                     AssetDatabase.Refresh();
                 }
-                string path = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{clip.name}.anim");
+                // A stable name per layer, uniquified only against THIS run. GenerateUniqueAssetPath
+                // uniquifies against the folder, so every reconversion parked another numbered copy
+                // next to the last — one avatar's output folder had reached "restore 9".
+                string path = $"{dir}/{clip.name}.anim";
+                for (int n = 2; !writtenPaths.Add(path); n++)
+                {
+                    path = $"{dir}/{clip.name} {n}.anim";
+                }
+                if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+                {
+                    AssetDatabase.DeleteAsset(path);
+                }
                 AssetDatabase.CreateAsset(clip, path);
+                keptClips.Add(path);
                 foreach (var state in empties)
                 {
                     state.motion = clip;
@@ -4549,6 +4574,7 @@ namespace AvatarBridge
                 }
                 return;
             }
+            int stale = DeleteStaleRestoreClips(dir, keptClips);
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
                 $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
@@ -4573,7 +4599,127 @@ namespace AvatarBridge
                       "the shirt it would assert it from above and the shirt could never be taken off, " +
                       "and if neither did it could never be put back on. The lower layer owns it, the " +
                       "higher one stays silent, and both toggles work."
+                    : "") +
+                (routers > 0
+                    ? $" {routers} empty state(s) were left empty because the layer only passes " +
+                      "THROUGH them: their transitions cover every value of a parameter, so the layer " +
+                      "can never come to rest there. The local/remote gate VRChat avatars use is the " +
+                      "usual one, and it is empty deliberately — giving it values to hold would make " +
+                      "it assert them for as long as the layer sat there."
+                    : "") +
+                (stale > 0
+                    ? $" {stale} restore clip(s) from a previous conversion of this avatar were deleted; " +
+                      "they are regenerated every time and used to pile up beside each other."
                     : ""));
+        }
+
+        /// <summary>
+        /// Removes restore clips left in the output folder by an earlier conversion of this same
+        /// avatar. Only files this pass names, only in this avatar's own output folder, and only
+        /// ones the controller just built does not reference — so what goes is exactly the litter
+        /// from a previous run, which reconverting has already replaced.
+        /// </summary>
+        static int DeleteStaleRestoreClips(string dir, HashSet<string> keep)
+        {
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                return 0;
+            }
+            int removed = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { dir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path) || keep.Contains(path))
+                {
+                    continue;
+                }
+                // " restore.anim" and " restore 4.anim" — the shapes this pass has ever written.
+                string file = System.IO.Path.GetFileNameWithoutExtension(path);
+                int cut = file.LastIndexOf(" restore", StringComparison.Ordinal);
+                if (cut < 0)
+                {
+                    continue;
+                }
+                string tail = file.Substring(cut + " restore".Length).Trim();
+                if (tail.Length > 0 && !int.TryParse(tail, out _))
+                {
+                    continue;
+                }
+                if (AssetDatabase.DeleteAsset(path))
+                {
+                    removed++;
+                }
+            }
+            return removed;
+        }
+
+        /// <summary>
+        /// Whether an empty state is a ROUTER — somewhere the layer passes through — rather than an
+        /// "off" state it comes to rest in. Only the second kind may be given a restore clip.
+        ///
+        /// VRChat avatars are full of routers. The common one is a local/remote gate: an empty
+        /// default state named something like "LocalCheck" whose outgoing transitions split on
+        /// <c>IsLocal</c>, one branch driven by the wearer's own controls and the other by a synced
+        /// dropdown. It is empty ON PURPOSE — it exists to choose, not to assert. Handing it the
+        /// values of whatever it happens to lead to makes it hold those values for as long as the
+        /// layer sits there, and on any avatar whose gate condition never resolves, that is forever.
+        /// A hat grab layer was found doing exactly this.
+        ///
+        /// Two shapes say "you cannot stay here", and neither can occur in the toggle idiom:
+        ///
+        ///   - an outgoing transition with NO conditions, which always fires;
+        ///   - the same parameter compared Greater in one transition and Less in another, which
+        ///     between them cover every value it can hold.
+        ///
+        /// The second is deliberately measured ACROSS transitions, not within one. A single
+        /// transition carrying both — <c>GestureLeft &gt; 3.9 &amp;&amp; &lt; 4.1</c> — is a band
+        /// asking for one specific value, which is a perfectly ordinary way for a toggle's off
+        /// state to wait for a gesture. Counting that as a router would skip the very layers this
+        /// pass exists for.
+        /// </summary>
+        static bool IsPassThroughState(AnimatorState state)
+        {
+            var transitions = state != null ? state.transitions : null;
+            if (transitions == null || transitions.Length == 0)
+            {
+                return false; // nowhere to go: this is where the layer lives
+            }
+            var openedAbove = new HashSet<string>();
+            var openedBelow = new HashSet<string>();
+            foreach (var transition in transitions)
+            {
+                if (transition == null)
+                {
+                    continue;
+                }
+                var conditions = transition.conditions;
+                if (conditions == null || conditions.Length == 0)
+                {
+                    return true; // unconditional exit
+                }
+                var above = new HashSet<string>();
+                var below = new HashSet<string>();
+                foreach (var condition in conditions)
+                {
+                    if (condition.mode == AnimatorConditionMode.Greater)
+                    {
+                        above.Add(condition.parameter);
+                    }
+                    else if (condition.mode == AnimatorConditionMode.Less)
+                    {
+                        below.Add(condition.parameter);
+                    }
+                }
+                // A band within one transition asks for a value; it doesn't cover the space.
+                var band = new HashSet<string>(above);
+                band.IntersectWith(below);
+                above.ExceptWith(band);
+                below.ExceptWith(band);
+                openedAbove.UnionWith(above);
+                openedBelow.UnionWith(below);
+            }
+            openedAbove.IntersectWith(openedBelow);
+            return openedAbove.Count > 0;
         }
 
         /// <summary>

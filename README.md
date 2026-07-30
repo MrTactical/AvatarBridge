@@ -1212,7 +1212,7 @@ authored — becomes an explicit curve. Either way the toggle restores by animat
 the same on any platform. The report says which layers reused an existing clip and which got a new
 one.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **Whatever is true at conversion time is what "off" now means.** If a toggle should rest in its
   other position, set the avatar up that way before converting.
@@ -1221,6 +1221,15 @@ Two things worth knowing:
   would assert it from above and the shirt could never come off; if neither did, it could never go
   back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
   counts what was left to a lower layer.
+- **Not every empty state is an off state** (3.4.10). Some exist to *choose* — the local/remote gate
+  VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
+  controls drive one branch and a synced dropdown drives the other. The layer only passes through
+  it, so handing it values makes it hold them for as long as it sits there — and if the gate's
+  condition never resolves, forever. Those are now recognised by their transitions covering every
+  value of a parameter, and left empty. The report counts them.
+
+  *Before 3.4.10 a hat-grab layer's gate was given the "hat on the head" animation, which asserted
+  the hat visible from above its own toggle.*
 
 ### A menu control appears, moves, syncs — and does nothing
 

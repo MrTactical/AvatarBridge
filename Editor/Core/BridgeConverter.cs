@@ -107,6 +107,7 @@ namespace AvatarBridge
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();
+                RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
 
                 report.Converted("Conversion", "Finished",
@@ -159,6 +160,51 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
                     $"{e.Message} — the scene object is still fine; save the scene to keep it.");
+            }
+        }
+
+        /// <summary>
+        /// Re-binds every Animator against a freshly loaded copy of its controller, as the last
+        /// thing the conversion does.
+        ///
+        /// A MITIGATION, not a cure, and it should be described that way. Keeping the controller's
+        /// GUID stable means rewriting the asset file in place and force-reimporting it, and that
+        /// reimport DESTROYS the old asset's sub-objects — every state machine and embedded clip —
+        /// and builds new ones. Anything still holding the old ones is left dangling; an open
+        /// Animator window says so out loud, filling the console with "The object of type
+        /// 'AnimatorStateMachine' has been destroyed". Several passes run after the controller is
+        /// saved and some of them save assets again, so the binding an Animator was given earlier
+        /// may not be the one on disk by the time the conversion ends. Re-binding here means the
+        /// last graph built is built from the final file.
+        ///
+        /// It does NOT make the conversion safe under Unity's "Enter Play Mode Options". With
+        /// Reload Domain and Reload Scene both off, entering play mode restores a scene backup and
+        /// re-awakes Animators without rebuilding anything, and that path reliably dies in
+        /// GenerateGraph on a controller written this session. Turning the option off is the only
+        /// thing that has been shown to prevent it — see WarnFastPlayMode.
+        /// </summary>
+        static void RebindAnimators(BridgeContext ctx)
+        {
+            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            {
+                var assigned = animator.runtimeAnimatorController;
+                if (assigned == null)
+                {
+                    continue;
+                }
+                string path = AssetDatabase.GetAssetPath(assigned);
+                if (string.IsNullOrEmpty(path))
+                {
+                    continue;
+                }
+                var current = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(path);
+                if (current == null)
+                {
+                    continue;
+                }
+                // Only ever re-assigns what is already there, so the "would this crash Unity"
+                // decision made before the first assignment still stands.
+                animator.runtimeAnimatorController = current;
             }
         }
 

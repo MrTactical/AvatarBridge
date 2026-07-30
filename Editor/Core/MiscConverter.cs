@@ -233,6 +233,13 @@ namespace AvatarBridge
                     AssetDatabase.AddObjectToAsset(kv.Value, controller);
                 }
             }
+            // Every clone leaves its original behind inside the controller, still carrying the
+            // head-chop curves that now point at a component this pass is about to delete. Nothing
+            // references them once the states have been re-pointed, but they stay in the file and
+            // read as live conversion bugs to anyone grepping it — one avatar shipped 22 dead
+            // globalScaleFactor curves in copies no state could reach.
+            int orphans = RemoveUnreferencedSubAssets(controller,
+                cache.Where(kv => kv.Key != kv.Value).Select(kv => kv.Key));
             // Animated exclusions start Shown, so the toggle drives them from a sensible baseline.
             foreach (var t in animated)
             {
@@ -247,7 +254,80 @@ namespace AvatarBridge
             AssetDatabase.SaveAssets();
 
             ctx.Report.Converted("Head chop", $"Rewired {cloned} head-chop toggle animation(s) to FPRExclusion",
-                "The toggles now drive each FPRExclusion's IsShown instead of the removed VRC Head Chop.");
+                "The toggles now drive each FPRExclusion's IsShown instead of the removed VRC Head Chop." +
+                (orphans > 0
+                    ? $" {orphans} superseded cop(ies) of those clips were removed from the controller — " +
+                      "rewiring works on a copy, and the original was being left in the file still " +
+                      "animating the deleted VRChat component, where it looked like a live bug."
+                    : ""));
+        }
+
+        /// <summary>
+        /// Deletes sub-assets of a controller that nothing in it points at any more. Used after a
+        /// pass that replaces clips with rewritten copies: the originals are dead weight, and dead
+        /// weight inside a controller is indistinguishable from a broken reference when someone
+        /// reads the file to work out why something doesn't animate.
+        ///
+        /// Only objects handed in are considered, and only if the controller genuinely no longer
+        /// reaches them — a clip still used by one state and replaced in another must stay.
+        /// </summary>
+        static int RemoveUnreferencedSubAssets(AnimatorController controller,
+            IEnumerable<AnimationClip> suspects)
+        {
+            var live = new HashSet<Motion>();
+            void Reach(Motion motion)
+            {
+                if (motion == null || !live.Add(motion) || !(motion is BlendTree tree))
+                {
+                    return;
+                }
+                foreach (var child in tree.children)
+                {
+                    Reach(child.motion);
+                }
+            }
+            void Walk(AnimatorStateMachine machine)
+            {
+                if (machine == null)
+                {
+                    return;
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        Reach(child.state.motion);
+                    }
+                }
+                foreach (var child in machine.stateMachines)
+                {
+                    Walk(child.stateMachine);
+                }
+            }
+            foreach (var layer in controller.layers)
+            {
+                Walk(layer.stateMachine);
+            }
+
+            string controllerPath = AssetDatabase.GetAssetPath(controller);
+            int removed = 0;
+            foreach (var clip in suspects.Distinct())
+            {
+                if (clip == null || live.Contains(clip))
+                {
+                    continue;
+                }
+                // Only ever our own controller's sub-assets: never touch a clip that lives in the
+                // user's project as a file of its own.
+                if (!AssetDatabase.IsSubAsset(clip) || AssetDatabase.GetAssetPath(clip) != controllerPath)
+                {
+                    continue;
+                }
+                AssetDatabase.RemoveObjectFromAsset(clip);
+                Object.DestroyImmediate(clip, true);
+                removed++;
+            }
+            return removed;
         }
 
         static void RewriteHeadChopMachine(BridgeContext ctx, AnimatorStateMachine machine,
