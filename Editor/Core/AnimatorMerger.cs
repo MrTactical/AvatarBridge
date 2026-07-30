@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -376,19 +378,86 @@ namespace AvatarBridge
                 bool wasEnabled = animator.enabled;
                 animator.enabled = false;
                 animator.runtimeAnimatorController = overrides;
-                if (wasEnabled)
+
+                // Re-enabled only if the controller is safe to build a graph from.
+                //
+                // 3.0.1 deferred this to a later editor tick, on the theory that the asset was
+                // still importing. That was wrong: the crash simply moved to the deferred call.
+                // Timing was never the problem — enabling an Animator builds the Mecanim playable
+                // graph, and a controller referencing assets that resolve to NOTHING makes Unity's
+                // graph builder walk into them and segfault inside EvaluateState. No amount of
+                // waiting fixes a dangling reference.
+                //
+                // So the reference check happens first, and a controller that fails it is left
+                // assigned but not instantiated. The prefab is still correct and still uploads;
+                // the editor just doesn't try to run something it cannot run. Enabling the
+                // Animator by hand will still crash, which is Unity's behaviour with a broken
+                // controller and not something this side can repair — the report says so and says
+                // where the broken references came from.
+                if (wasEnabled && !HasUnresolvedReferences(overrides))
                 {
-                    var deferred = animator;
-                    EditorApplication.delayCall += () =>
-                    {
-                        if (deferred != null)
-                        {
-                            deferred.enabled = true;
-                        }
-                    };
+                    animator.enabled = true;
+                }
+                else if (wasEnabled)
+                {
+                    ctx.Report.Warning(Category, "Animator left switched off on the converted avatar",
+                        "Its controller references assets that resolve to nothing, and switching an " +
+                        "Animator on makes Unity build a playable graph from it — which CRASHES the " +
+                        "editor outright when a referenced motion isn't there. The controller is " +
+                        "assigned and the prefab is intact; the component is just not running. See " +
+                        "the unresolvable-asset error above for where those references came from, " +
+                        "fix that, and convert again. Switching it on by hand will crash Unity.");
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
+        }
+
+        /// <summary>
+        /// Whether a controller asset (or anything it wraps) references a GUID that resolves to no
+        /// asset in this project.
+        ///
+        /// Read from the saved FILE rather than the object graph, because that is where a dangling
+        /// reference is still visible: in managed code it has already collapsed to a plain null,
+        /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
+        /// once — a text scan of one .controller.
+        /// </summary>
+        static bool HasUnresolvedReferences(RuntimeAnimatorController controller)
+        {
+            try
+            {
+                var paths = new List<string>();
+                for (RuntimeAnimatorController c = controller; c != null; )
+                {
+                    string p = AssetDatabase.GetAssetPath(c);
+                    if (!string.IsNullOrEmpty(p))
+                    {
+                        paths.Add(p);
+                    }
+                    c = c is AnimatorOverrideController over ? over.runtimeAnimatorController : null;
+                }
+                foreach (string assetPath in paths)
+                {
+                    string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", assetPath));
+                    if (!File.Exists(absolute))
+                    {
+                        continue;
+                    }
+                    foreach (Match match in Regex.Matches(File.ReadAllText(absolute), "guid: ([0-9a-f]{32})"))
+                    {
+                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(match.Groups[1].Value)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Unreadable for any reason: treat as unsafe. Leaving an Animator switched off is
+                // an inconvenience; a hard editor crash costs unsaved work.
+                return true;
+            }
+            return false;
         }
 
         // ------------------------------------------------------------------ setup ----

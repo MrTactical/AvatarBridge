@@ -73,8 +73,9 @@ two platforms differ and VRCFury setups vary endlessly. **It assumes you know yo
 Unity**: the Animator window, blend trees, the `CVRAvatar` component.
 
 Every run writes a `ConversionReport.md` you're **expected to read** — act on each *Warning*,
-*Approximated* and *Skipped* entry — and every conversion should be **tested in ChilloutVR** before
-you call it done. The editor can't show you gestures, contacts, synced parameters or physics
+*Approximated* and *Skipped* entry — alongside a `Diagnostics.md` you don't need to read at all
+unless something's wrong, and should attach to any bug report. Every conversion should be **tested
+in ChilloutVR** before you call it done. The editor can't show you gestures, contacts, synced parameters or physics
 actually running.
 
 ## Highlights
@@ -802,7 +803,17 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.0.1 — update and try again.**
+**Fixed in 3.0.1 and 3.2.0 — update and try again.**
+
+There were two causes, and the first fix only found one of them. **3.2.0 is the one that matters**:
+enabling an Animator makes Unity build a Mecanim playable graph, and a controller referencing assets
+that resolve to **nothing** makes that builder walk into them and segfault. Timing had nothing to do
+with it. The controller's references are now checked before the Animator is switched on, and one
+that fails is left assigned but not running — the prefab is intact and still uploads, the editor
+just doesn't try to run something it can't. The report says so, and points at the unresolvable-asset
+error for where the bad references came from (usually a VRCFury or Modular Avatar bake that errored
+partway). Switching that Animator on by hand will still crash Unity; that's Unity's behaviour with a
+broken controller, not something this side can repair.
 
 Unity would hard-crash (not an error — the editor vanishes) partway through conversion, most often
 when converting the *same* avatar a second time. The crash dump always landed in the same place:
@@ -1087,8 +1098,12 @@ versions and detected packages already in it.
 
 Two things make a report solvable immediately:
 
-1. **Attach `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/`. Nearly every bug
-   fixed so far was diagnosed from this file.
+1. **Attach `ConversionReport.md` and `Diagnostics.md`** from `Assets/AvatarBridgeOutput/<avatar>/`.
+   Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` (3.2.0) carries the
+   measurements behind it — package versions, every setting used, the rig's shape, where the head
+   and eye bones actually sit against the viewpoint, the constraint census, and which asset
+   references resolve to nothing. It's all facts and no advice, so it diffs cleanly between two
+   conversions. Nothing in either file leaves your machine unless you send it.
 2. **Attach the right log:**
 
    | Symptom | Log |

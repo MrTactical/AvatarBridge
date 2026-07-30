@@ -337,6 +337,17 @@ namespace AvatarBridge
             AssetDatabase.ImportAsset(path);
             ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] Report written to {path}");
+
+            // Never allowed to take the conversion down with it: the report is the deliverable,
+            // diagnostics are a bonus, and a crash here would lose both.
+            try
+            {
+                DiagnosticsWriter.Write(ctx);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AvatarBridge] Diagnostics could not be written: {e}");
+            }
         }
     }
 }
