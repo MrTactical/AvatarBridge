@@ -150,6 +150,7 @@ namespace AvatarBridge
             var dropped = new SortedSet<string>();
             var lost = new SortedSet<string>();        // the object is gone: something here removed it
             var neverBuilt = new SortedSet<string>();  // the object is there, but never had a constraint
+            var movedByBake = new SortedSet<string>(); // the object exists under a different parent
 
             foreach (var clip in clips)
             {
@@ -200,7 +201,23 @@ namespace AvatarBridge
                         // this, VRCFury generated the ear, tongue, wrist and toe constraint sets
                         // and never generated the finger set, so 140 clips addressed constraints
                         // that had never existed to convert.
-                        (ObjectExists(ctx, binding.path) ? neverBuilt : lost).Add(where);
+                        if (ObjectExists(ctx, binding.path))
+                        {
+                            neverBuilt.Add(where);
+                        }
+                        else if (ElsewhereByName(ctx, binding.path, out string actualPath))
+                        {
+                            // Same object, different parent. VRCFury moves its generated objects
+                            // into place at UPLOAD time and clips are authored against where they
+                            // end up; a test-copy bake doesn't always perform that move, so the
+                            // paths miss by a parent. Blaming the conversion for it — which the
+                            // "GONE" wording did — sends people hunting a bug on the wrong side.
+                            movedByBake.Add($"{where} — found at `{actualPath}`");
+                        }
+                        else
+                        {
+                            lost.Add(where);
+                        }
                         continue;
                     }
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
@@ -247,6 +264,19 @@ namespace AvatarBridge
                     "usual innocent cause — turn that strip off and convert again to check. " +
                     "Anything else is worth reporting as a bug: " + string.Join("; ", lost) + ".");
             }
+            if (movedByBake.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{movedByBake.Count} curve(s) name a path the avatar's own build step didn't produce",
+                    "The object the clip is looking for EXISTS on this avatar — under a different " +
+                    "parent. VRCFury and Modular Avatar move their generated objects into place " +
+                    "during the upload build, and the clips are authored against where they end up; " +
+                    "a bake that stops short leaves them where they started, so every path misses " +
+                    "by a parent. This is not something the conversion did, and repointing them here " +
+                    "would not help — an object left at the wrong path is usually missing the " +
+                    "constraint the curve wanted as well. Get the SOURCE avatar building cleanly " +
+                    "and convert again. Found: " + string.Join("; ", movedByBake) + ".");
+            }
             if (neverBuilt.Count > 0)
             {
                 ctx.Report.Warning(Category,
@@ -261,6 +291,45 @@ namespace AvatarBridge
                     "were generated and the finger set never was. These curves were dead before " +
                     "conversion started: " + string.Join("; ", neverBuilt) + ".");
             }
+        }
+
+        /// <summary>
+        /// Finds an object with the same LEAF NAME as an unresolvable curve path, elsewhere on the
+        /// avatar — the signature of a build step that didn't move things where the clips expect.
+        ///
+        /// Only when the name is unique, because a leaf name shared by several objects identifies
+        /// nothing and a wrong guess here would be worse than no guess. Used for diagnosis only:
+        /// the path is reported, never rewritten, since an object at the wrong path usually also
+        /// lacks the constraint the curve wanted.
+        /// </summary>
+        static bool ElsewhereByName(BridgeContext ctx, string path, out string actualPath)
+        {
+            actualPath = null;
+            if (ctx.Target == null || string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+            int slash = path.LastIndexOf('/');
+            string leaf = slash >= 0 ? path.Substring(slash + 1) : path;
+            Transform found = null;
+            foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name != leaf)
+                {
+                    continue;
+                }
+                if (found != null)
+                {
+                    return false;   // ambiguous — a shared leaf name proves nothing
+                }
+                found = t;
+            }
+            if (found == null)
+            {
+                return false;
+            }
+            actualPath = ctx.PathInTarget(found);
+            return true;
         }
 
         /// <summary>Whether a curve's path still resolves to an object on the converted avatar.</summary>
