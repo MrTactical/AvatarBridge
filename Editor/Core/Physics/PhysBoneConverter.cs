@@ -25,6 +25,7 @@ namespace AvatarBridge
             }
 
             GrabbyBonesSupport.Reset();
+            ReportGrabbableChains(ctx, physBones);
 
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
             // animator switch between them. All get converted so nothing is lost, but at most
@@ -133,6 +134,58 @@ namespace AvatarBridge
                     Object.DestroyImmediate(collider);
                 }
             }
+        }
+
+        /// <summary>
+        /// Names the chains whose whole point is being GRABBED, because that is the part which
+        /// doesn't cross.
+        ///
+        /// MagicaCloth2 has no grab. VRChat's PhysBones do, and plenty of avatars are built
+        /// entirely around it — a pump handle, a leash, a lever, anything a stranger is meant to
+        /// pull. Worse, the failure is completely silent and looks like something else: on a
+        /// balloon avatar the pump handle carries a contact SENDER, and inflating works by someone
+        /// grabbing the handle so the sender moves into the matching receiver. Convert that and
+        /// every part still checks out — cloth present, sender present, receiver present, tags
+        /// matching — but nobody can grab the handle, so it never moves, so nothing fires. An
+        /// afternoon went into blaming the contact tags for it.
+        ///
+        /// The GrabbyBones mod restores grabbing, but it is a client mod: it only works for people
+        /// who have installed it, so an avatar that depends on it is inert for most of the room.
+        /// Nothing here can fix that, which is exactly why it is worth saying.
+        /// </summary>
+        static void ReportGrabbableChains(BridgeContext ctx, VRCPhysBone[] physBones)
+        {
+            var grabbable = new List<string>();
+            foreach (var pb in physBones)
+            {
+                // AdvancedBool, not bool: "Other" means "defer to the filter", which still allows
+                // grabbing, so only an explicit False rules a chain out.
+                if (pb == null || pb.allowGrabbing == VRC.Dynamics.VRCPhysBoneBase.AdvancedBool.False)
+                {
+                    continue;
+                }
+                var root = pb.rootTransform != null ? pb.rootTransform : pb.transform;
+                // Contacts riding the chain are the tell that grabbing DRIVES something, rather
+                // than just being a nicety on some hair.
+                bool carriesContact = root.GetComponentInChildren<
+                    VRC.SDK3.Dynamics.Contact.Components.VRCContactSender>(true) != null;
+                grabbable.Add(root.name + (carriesContact ? " (carries a contact)" : ""));
+            }
+            if (grabbable.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Approximated(Category,
+                $"{grabbable.Count} chain(s) could be grabbed in VRChat; MagicaCloth2 can't be",
+                string.Join(", ", grabbable.Take(8)) + (grabbable.Count > 8 ? ", …" : "") +
+                ". VRChat lets you take hold of a PhysBone and pull it; MagicaCloth2 has no " +
+                "equivalent, so these hang and swing but can't be held. The GrabbyBones mod adds " +
+                "grabbing back, and this conversion names its cloths to match so it works — but it " +
+                "is a client mod, so only people who have installed it can grab anything here. " +
+                "Any chain marked \"carries a contact\" is worth a closer look: if the feature works " +
+                "by someone pulling that chain so its contact reaches a receiver, then without the " +
+                "mod the contact never fires and the whole feature is inert, with nothing visibly " +
+                "wrong anywhere.");
         }
 
         /// <summary>

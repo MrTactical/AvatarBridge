@@ -80,7 +80,8 @@ namespace AvatarBridge
             {
                 Source = data.SourceGameObject,
                 Host = holder,
-                Physics = cloth
+                Physics = cloth,
+                Root = data.Root
             });
             var sdata = cloth.SerializeData;
 

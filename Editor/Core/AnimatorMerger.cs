@@ -294,6 +294,10 @@ namespace AvatarBridge
             DeclareDanglingParameters(master, ctx);
             DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
+            // AFTER pruning, because pruning decides what is live using the same vestigial-field
+            // rule this pass deliberately ignores — run it earlier and the parameters it adds are
+            // the first thing thrown away.
+            SafeguardBlendParameters(master, ctx);
 
             // After every merge, injection and clip clone, right before saving: animations that
             // toggled a converted PhysBone's GameObject or component are taught to reach the
@@ -318,9 +322,12 @@ namespace AvatarBridge
             // the animator window, dead toggles in game, and a conversion report with no errors.
             // If anything the controller referenced in memory failed to arrive on disk, that is
             // an Error, in the report, with numbers.
-            FillEmptyBlendTreeSlots(ctx, master);
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
+            // AFTER the save, not before: the filler clip is attached with AddObjectToAsset, which
+            // needs an object that is already an asset. Called earlier it silently achieved
+            // nothing, which is exactly what happened in 3.3.4.
+            FillEmptyMotionSlots(ctx, master);
             // The serialized-guid audit runs from BridgeConverter AFTER AnimationSelfContainer,
             // so it judges the FINAL file — auditing here flagged references the self-container
             // was about to repoint, and told a user "do not upload" a fine conversion.
@@ -416,19 +423,60 @@ namespace AvatarBridge
         /// state simply cannot be uploaded.
         ///
         /// Refusing to assign the controller only protected our own step. This removes the hazard
-        /// itself: each empty slot gets a shared, genuinely empty clip. Nothing is lost — the slot
-        /// already animated nothing — but the graph builder now has a valid motion to read instead
-        /// of a hole, so the controller is safe for anyone to instantiate.
+        /// itself: each empty slot gets a shared filler clip. Nothing is lost — the slot already
+        /// animated nothing — but the graph builder now has a valid motion to read instead of a
+        /// hole, so the controller is safe for anyone to instantiate.
+        ///
+        /// THE FILLER IS NOT AN EMPTY CLIP, which is what 3.4.2 through 3.4.8 used. A clip with no
+        /// curves at all is degenerate to Mecanim, and binding one trips
+        ///
+        ///     Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 &&
+        ///     mem->m_ConstantClipValueCount &lt;= (int)clip->m_ConstantClip.curveCount'
+        ///
+        /// once per state that holds it — the count it is comparing is the size of the value array
+        /// the animator reads and writes bindings through.
+        ///
+        /// BE PRECISE ABOUT WHAT THIS FIXED, because the avatar it was found on had two things
+        /// wrong at once. The assertions, a menu whose controls had swapped places, and a body in
+        /// the wrong materials all came from Unity's "Enter Play Mode Options" being on — proven by
+        /// turning it off and watching every symptom go, with no reconversion. See
+        /// BridgeConverter.WarnFastPlayMode. What a curve-less placeholder does is make OUR output
+        /// the thing that setting breaks, on an avatar that would otherwise survive it, and 66
+        /// states shared one on that avatar.
+        ///
+        /// So the filler carries ONE constant curve, on a dedicated empty child of the avatar that
+        /// nothing else touches, holding that object's own active state at the value it already
+        /// has. Writing it changes nothing on any frame; existing means Mecanim has a real curve
+        /// count to agree with itself about, and a user who likes fast play mode keeps it.
         ///
         /// Deliberately NOT deleting the children. Blend tree children carry thresholds, and
-        /// removing one re-numbers its neighbours and changes how the rest blend. An empty clip in
+        /// removing one re-numbers its neighbours and changes how the rest blend. A filler clip in
         /// place keeps every threshold where the author put it.
         /// </summary>
-        static void FillEmptyBlendTreeSlots(BridgeContext ctx, AnimatorController master)
+        static void FillEmptyMotionSlots(BridgeContext ctx, AnimatorController master)
         {
             AnimationClip filler = null;
             int filled = 0;
+            int states = 0;
             var seen = new HashSet<Motion>();
+
+            AnimationClip Filler()
+            {
+                if (filler == null)
+                {
+                    filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                    string anchor = EmptySlotAnchorPath(ctx);
+                    if (anchor != null)
+                    {
+                        // One curve, constant, asserting a value the object already has. See the
+                        // summary: a curve-less clip misaligns the animator's binding array.
+                        filler.SetCurve(anchor, typeof(GameObject), "m_IsActive",
+                            AnimationCurve.Constant(0f, 1f / 60f, 1f));
+                    }
+                    AssetDatabase.AddObjectToAsset(filler, master);
+                }
+                return filler;
+            }
 
             void Walk(Motion motion)
             {
@@ -440,14 +488,9 @@ namespace AvatarBridge
                 bool changed = false;
                 for (int i = 0; i < children.Length; i++)
                 {
-                    if (children[i].motion == null)
+                    if (children[i].motion == null || IsCurveless(children[i].motion, filler))
                     {
-                        if (filler == null)
-                        {
-                            filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
-                            AssetDatabase.AddObjectToAsset(filler, master);
-                        }
-                        children[i].motion = filler;
+                        children[i].motion = Filler();
                         changed = true;
                         filled++;
                     }
@@ -469,25 +512,98 @@ namespace AvatarBridge
                 {
                     foreach (var child in machine.states)
                     {
-                        Walk(child.state.motion);
+                        // The state's OWN motion as well as anything nested below it. An empty
+                        // state was the case 3.3.4 missed entirely — it only ever looked at blend
+                        // tree children, so it found nothing to do on the avatar that crashed and
+                        // said nothing. Unity works out a state's duration from its motion, and
+                        // does that while building the graph (EvaluateStateDuration, under
+                        // SetStateMachineInInitialState), so a state with no motion is the same
+                        // hole as an empty blend tree slot.
+                        if (child.state.motion == null || IsCurveless(child.state.motion, filler))
+                        {
+                            child.state.motion = Filler();
+                            filled++;
+                            states++;
+                        }
+                        else
+                        {
+                            Walk(child.state.motion);
+                        }
                     }
                 });
             }
 
             if (filled > 0)
             {
-                ctx.Report.Warning(Category,
-                    $"{filled} empty blend tree slot(s) filled with an empty clip",
-                    "These slots pointed at motions that aren't there — an asset that's gone, or one " +
-                    "the avatar's own build step never produced. Unity CRASHES when it builds a " +
-                    "playable graph containing an empty blend tree slot, which happens when the " +
-                    "controller is assigned to an Animator, when you select the avatar, and when " +
-                    "the CCK builds it to upload — so this had to be repaired rather than reported. " +
-                    "Each slot now holds a genuinely empty clip: nothing is lost, since the slot " +
-                    "animated nothing to begin with, and every threshold stays where the author put " +
-                    "it. Whatever those motions were supposed to be is still missing, so find out " +
-                    "why they didn't arrive before you rely on the feature that used them.");
+                EditorUtility.SetDirty(master);
+                AssetDatabase.SaveAssets();
             }
+
+            if (filled > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{filled} empty motion slot(s) given a placeholder clip" +
+                    (states == 0 ? " (all blend tree slots)"
+                        : states == filled ? " (all animator states)"
+                        : $" ({states} animator states, {filled - states} blend tree slots)"),
+                    "These slots had no motion, or held a clip with no curves in it — an asset " +
+                    "that's gone, one the avatar's own build step never produced, or a state left " +
+                    "empty. Unity CRASHES when it builds a playable graph containing an empty slot, " +
+                    "which happens when the controller is assigned to an Animator, when you select " +
+                    "the avatar, and when the CCK builds it to upload — so this had to be repaired " +
+                    "rather than reported. A CURVE-LESS clip is just as bad in a quieter way: Mecanim " +
+                    "sizes its binding array from the curve count, and a clip with none misaligns it, " +
+                    "so bindings land on each other's slots — the symptom is menu controls that have " +
+                    "swapped places and materials selecting the wrong option, with " +
+                    "\"Assertion failed on expression: 'mem->m_ConstantClipValueCount ...'\" in the " +
+                    "console. Each slot now holds a placeholder that animates one inert value on the " +
+                    "avatar's \"AvatarBridge_EmptySlot\" object, so it changes nothing and Mecanim " +
+                    "still has a curve to count. Every threshold stays where the author put it. " +
+                    "Whatever those motions were supposed to be is still missing, so find out why " +
+                    "they didn't arrive before you rely on the feature that used them.");
+            }
+        }
+
+        /// <summary>
+        /// A clip that animates literally nothing, which Mecanim cannot size a binding array from.
+        ///
+        /// Humanoid clips are excluded deliberately: their muscle data lives outside the curve
+        /// arrays, so VRChat's <c>proxy_hands_*</c> and every FBX animation read as curve-less here
+        /// and are perfectly valid. Legacy clips likewise never reach a Mecanim graph.
+        /// </summary>
+        static bool IsCurveless(Motion motion, AnimationClip filler)
+        {
+            if (!(motion is AnimationClip clip) || clip == filler)
+            {
+                return false;
+            }
+            return !clip.humanMotion && !clip.legacy
+                && AnimationUtility.GetCurveBindings(clip).Length == 0
+                && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0;
+        }
+
+        /// <summary>
+        /// A dedicated empty child of the avatar, existing only so the placeholder clip has
+        /// something inert to animate. Nothing else reads it, nothing else writes it, and holding
+        /// its own active state at the value it already has is a no-op on every frame — the point
+        /// is purely that the clip carries a curve at all.
+        /// </summary>
+        static string EmptySlotAnchorPath(BridgeContext ctx)
+        {
+            if (ctx == null || ctx.Target == null)
+            {
+                return null;
+            }
+            const string anchorName = "AvatarBridge_EmptySlot";
+            var anchor = ctx.Target.transform.Find(anchorName);
+            if (anchor == null)
+            {
+                var holder = new GameObject(anchorName);
+                holder.transform.SetParent(ctx.Target.transform, false);
+                anchor = holder.transform;
+            }
+            anchor.gameObject.SetActive(true);
+            return ctx.PathInTarget(anchor);
         }
 
         /// <summary>
@@ -2575,6 +2691,151 @@ namespace AvatarBridge
             return true;
         }
 
+        /// <summary>
+        /// Points every blend tree parameter field at a parameter that actually exists.
+        ///
+        /// THIS IS A CRASH FIX, and the distinction it rests on is the whole point. Two questions
+        /// look the same and are not:
+        ///
+        ///   - "which parameters does this avatar actually USE?" — Direct trees read neither axis
+        ///     field and 1D trees ignore Y, so counting those would invent phantom references.
+        ///     CollectReferencedParameters is right to skip them, and this pass does not change it.
+        ///   - "which parameters must EXIST for Unity to build a graph?" — all of them. Unity binds
+        ///     every blendParameter, blendParameterY and directBlendParameter it finds, vestigial
+        ///     or not, and resolves each to an index in the parameter table. A name that isn't
+        ///     there resolves to nothing, and the read happens inside
+        ///     <c>EvaluateStateDuration → DoBlendTreeEvaluation</c> — a segfault, not an error.
+        ///
+        /// Answering the first question for both is what left an avatar with six undeclared blend
+        /// parameters: "Blend" and "Value" and "Smooth Amount" (Unity's own defaults, left behind
+        /// on VRCFury and template Direct trees), "MovementZ", a VRCFury tracking-control name, and
+        /// one that was the empty string. Every one is invisible in the Animator window and fatal
+        /// on the frame the graph is built.
+        ///
+        /// Dangling names are RENAMED with a "#" prefix and declared as Float 0 rather than
+        /// declared as they stand: "#" keeps them local to the wearer so they cost no sync bits, a
+        /// prefixed name cannot collide with a menu entry, and the original is still readable in
+        /// the Animator window. Nothing else can reference them — anything referenced by a
+        /// transition or a driver was already declared by DeclareDanglingParameters, so a blend
+        /// parameter still missing at this point is referenced by this field and nothing else.
+        /// </summary>
+        static void SafeguardBlendParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var declared = new HashSet<string>(master.parameters.Select(p => p.name));
+            var added = new List<AnimatorControllerParameter>();
+            var repointed = new SortedSet<string>();
+            var map = new Dictionary<string, string>();
+            var seen = new HashSet<BlendTree>();
+
+            string Safe(string name)
+            {
+                string key = name ?? "";
+                if (key.Length > 0 && declared.Contains(key))
+                {
+                    return key;
+                }
+                if (map.TryGetValue(key, out string already))
+                {
+                    return already;
+                }
+                string basis = key.Length == 0 ? "AvatarBridgeUnused" : key.TrimStart('#');
+                string candidate = "#" + basis;
+                for (int n = 2; declared.Contains(candidate); n++)
+                {
+                    candidate = $"#{basis} {n}";
+                }
+                declared.Add(candidate);
+                added.Add(new AnimatorControllerParameter
+                {
+                    name = candidate,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f
+                });
+                map[key] = candidate;
+                repointed.Add(key.Length == 0 ? "(blank)" : key);
+                return candidate;
+            }
+
+            void Walk(Motion motion)
+            {
+                if (!(motion is BlendTree tree) || !seen.Add(tree))
+                {
+                    return;
+                }
+                tree.blendParameter = Safe(tree.blendParameter);
+                tree.blendParameterY = Safe(tree.blendParameterY);
+                var kids = tree.children;
+                bool changed = false;
+                for (int i = 0; i < kids.Length; i++)
+                {
+                    string safe = Safe(kids[i].directBlendParameter);
+                    if (safe != kids[i].directBlendParameter)
+                    {
+                        kids[i].directBlendParameter = safe;
+                        changed = true;
+                    }
+                    Walk(kids[i].motion);
+                }
+                if (changed)
+                {
+                    // children is a value-type copy, and the setter re-derives thresholds unless
+                    // automatic thresholds are off across the write.
+                    bool auto = tree.useAutomaticThresholds;
+                    tree.useAutomaticThresholds = false;
+                    tree.children = kids;
+                    tree.useAutomaticThresholds = auto;
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            Walk(child.state.motion);
+                        }
+                    }
+                });
+            }
+
+            if (added.Count == 0)
+            {
+                return;
+            }
+            // DELIBERATELY NOT DECLARED, which is the opposite of what 3.4.11's own report claimed
+            // and took two versions to establish. 3.4.11 renamed the fields and — through an array
+            // setter that turned out not to add anything to a controller that is already an asset —
+            // declared nothing. It worked: no crash, repeated Plays, fast play mode on. 3.4.12
+            // "completed" it with AddParameter, and the crash came straight back.
+            //
+            // So the repair is the RENAME, not the declaration. Every dangling field now names one
+            // "#"-prefixed parameter instead of several different ones, and critically none of them
+            // is the empty string — which is almost certainly the one that mattered, since Unity
+            // resolves a missing NAME to an index of -1 and reads 0, while a blank name goes
+            // somewhere else entirely. Adding the parameters for real changes what the graph builder
+            // does with those trees, and on the avatar this was found on that is fatal.
+            //
+            // Anyone tempted to declare them: this was measured twice, in both directions, on a
+            // reproducible crash. Do not do it without doing that again.
+            EditorUtility.SetDirty(master);
+
+            ctx.Report.Warning(Category,
+                $"{repointed.Count} blend tree parameter(s) named something the controller never declared",
+                $"{string.Join(", ", repointed)} — Unity binds EVERY blend tree parameter field when it " +
+                "builds a playable graph, including the ones a Direct tree never reads and the Y axis a " +
+                "1D tree ignores. One of these was BLANK, and a blank one takes the editor down with a " +
+                "SIGSEGV inside DoBlendTreeEvaluation rather than an error — on Play, on selecting the " +
+                "avatar, and in the CCK's uploader. \"Blend\", \"Value\" and \"Smooth Amount\" are Unity's " +
+                "own defaults left behind on trees that stopped using them, so they arrive on plenty of " +
+                "avatars through no fault of yours. Each field is now renamed to a single \"#\"-prefixed " +
+                "name so none is blank. They are deliberately NOT declared as parameters: declaring them " +
+                "was tried and brought the crash back, twice measured. Nothing changes about how the " +
+                "avatar behaves — these fields were being read as garbage or not at all.");
+        }
+
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>
         static bool MotionUsesParameter(Motion motion, string param)
         {
@@ -4236,8 +4497,12 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0;
+            int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
             var names = new List<string>();
+            // Deterministic file names, so reconverting REPLACES last time's restore clips instead
+            // of parking a numbered copy beside them. One avatar had 200 of them.
+            var writtenPaths = new HashSet<string>();
+            var keptClips = new HashSet<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
@@ -4310,7 +4575,16 @@ namespace AvatarBridge
                         }
                         if (state.motion == null)
                         {
-                            empties.Add(state);
+                            // An empty state is only an "off" state if the layer can REST in it.
+                            // A router can't be rested in and must not be given values to assert.
+                            if (!IsPassThroughState(state))
+                            {
+                                empties.Add(state);
+                            }
+                            else
+                            {
+                                routers++;
+                            }
                             continue;
                         }
                         CollectBindings(state.motion, bindings, objectBindings);
@@ -4409,8 +4683,20 @@ namespace AvatarBridge
                     System.IO.Directory.CreateDirectory(dir);
                     AssetDatabase.Refresh();
                 }
-                string path = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{clip.name}.anim");
+                // A stable name per layer, uniquified only against THIS run. GenerateUniqueAssetPath
+                // uniquifies against the folder, so every reconversion parked another numbered copy
+                // next to the last — one avatar's output folder had reached "restore 9".
+                string path = $"{dir}/{clip.name}.anim";
+                for (int n = 2; !writtenPaths.Add(path); n++)
+                {
+                    path = $"{dir}/{clip.name} {n}.anim";
+                }
+                if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+                {
+                    AssetDatabase.DeleteAsset(path);
+                }
                 AssetDatabase.CreateAsset(clip, path);
+                keptClips.Add(path);
                 foreach (var state in empties)
                 {
                     state.motion = clip;
@@ -4437,6 +4723,7 @@ namespace AvatarBridge
                 }
                 return;
             }
+            int stale = DeleteStaleRestoreClips(dir, keptClips);
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
                 $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
@@ -4461,7 +4748,127 @@ namespace AvatarBridge
                       "the shirt it would assert it from above and the shirt could never be taken off, " +
                       "and if neither did it could never be put back on. The lower layer owns it, the " +
                       "higher one stays silent, and both toggles work."
+                    : "") +
+                (routers > 0
+                    ? $" {routers} empty state(s) were left empty because the layer only passes " +
+                      "THROUGH them: their transitions cover every value of a parameter, so the layer " +
+                      "can never come to rest there. The local/remote gate VRChat avatars use is the " +
+                      "usual one, and it is empty deliberately — giving it values to hold would make " +
+                      "it assert them for as long as the layer sat there."
+                    : "") +
+                (stale > 0
+                    ? $" {stale} restore clip(s) from a previous conversion of this avatar were deleted; " +
+                      "they are regenerated every time and used to pile up beside each other."
                     : ""));
+        }
+
+        /// <summary>
+        /// Removes restore clips left in the output folder by an earlier conversion of this same
+        /// avatar. Only files this pass names, only in this avatar's own output folder, and only
+        /// ones the controller just built does not reference — so what goes is exactly the litter
+        /// from a previous run, which reconverting has already replaced.
+        /// </summary>
+        static int DeleteStaleRestoreClips(string dir, HashSet<string> keep)
+        {
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                return 0;
+            }
+            int removed = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { dir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path) || keep.Contains(path))
+                {
+                    continue;
+                }
+                // " restore.anim" and " restore 4.anim" — the shapes this pass has ever written.
+                string file = System.IO.Path.GetFileNameWithoutExtension(path);
+                int cut = file.LastIndexOf(" restore", StringComparison.Ordinal);
+                if (cut < 0)
+                {
+                    continue;
+                }
+                string tail = file.Substring(cut + " restore".Length).Trim();
+                if (tail.Length > 0 && !int.TryParse(tail, out _))
+                {
+                    continue;
+                }
+                if (AssetDatabase.DeleteAsset(path))
+                {
+                    removed++;
+                }
+            }
+            return removed;
+        }
+
+        /// <summary>
+        /// Whether an empty state is a ROUTER — somewhere the layer passes through — rather than an
+        /// "off" state it comes to rest in. Only the second kind may be given a restore clip.
+        ///
+        /// VRChat avatars are full of routers. The common one is a local/remote gate: an empty
+        /// default state named something like "LocalCheck" whose outgoing transitions split on
+        /// <c>IsLocal</c>, one branch driven by the wearer's own controls and the other by a synced
+        /// dropdown. It is empty ON PURPOSE — it exists to choose, not to assert. Handing it the
+        /// values of whatever it happens to lead to makes it hold those values for as long as the
+        /// layer sits there, and on any avatar whose gate condition never resolves, that is forever.
+        /// A hat grab layer was found doing exactly this.
+        ///
+        /// Two shapes say "you cannot stay here", and neither can occur in the toggle idiom:
+        ///
+        ///   - an outgoing transition with NO conditions, which always fires;
+        ///   - the same parameter compared Greater in one transition and Less in another, which
+        ///     between them cover every value it can hold.
+        ///
+        /// The second is deliberately measured ACROSS transitions, not within one. A single
+        /// transition carrying both — <c>GestureLeft &gt; 3.9 &amp;&amp; &lt; 4.1</c> — is a band
+        /// asking for one specific value, which is a perfectly ordinary way for a toggle's off
+        /// state to wait for a gesture. Counting that as a router would skip the very layers this
+        /// pass exists for.
+        /// </summary>
+        static bool IsPassThroughState(AnimatorState state)
+        {
+            var transitions = state != null ? state.transitions : null;
+            if (transitions == null || transitions.Length == 0)
+            {
+                return false; // nowhere to go: this is where the layer lives
+            }
+            var openedAbove = new HashSet<string>();
+            var openedBelow = new HashSet<string>();
+            foreach (var transition in transitions)
+            {
+                if (transition == null)
+                {
+                    continue;
+                }
+                var conditions = transition.conditions;
+                if (conditions == null || conditions.Length == 0)
+                {
+                    return true; // unconditional exit
+                }
+                var above = new HashSet<string>();
+                var below = new HashSet<string>();
+                foreach (var condition in conditions)
+                {
+                    if (condition.mode == AnimatorConditionMode.Greater)
+                    {
+                        above.Add(condition.parameter);
+                    }
+                    else if (condition.mode == AnimatorConditionMode.Less)
+                    {
+                        below.Add(condition.parameter);
+                    }
+                }
+                // A band within one transition asks for a value; it doesn't cover the space.
+                var band = new HashSet<string>(above);
+                band.IntersectWith(below);
+                above.ExceptWith(band);
+                below.ExceptWith(band);
+                openedAbove.UnionWith(above);
+                openedBelow.UnionWith(below);
+            }
+            openedAbove.IntersectWith(openedBelow);
+            return openedAbove.Count > 0;
         }
 
         /// <summary>

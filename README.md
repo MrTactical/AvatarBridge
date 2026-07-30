@@ -225,7 +225,7 @@ defines.
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn |
-| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
+| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
 | Shaders without stereo support | patched copy in `RehomedAssets` | optional — see [below](#shaders-that-only-draw-into-one-eye) |
@@ -395,6 +395,51 @@ with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
 **Advanced** and contacts convert one to one: real proximity, tags verbatim.
+
+### Grabbing a chain
+
+**MagicaCloth2 has no grab.** VRChat lets you take hold of a PhysBone and pull it, and plenty of
+avatars are built entirely around that — a pump handle, a leash, a lever, anything a stranger is
+meant to pull. Converted, those chains still hang and swing, but nobody can hold them.
+
+[GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) adds grabbing back,
+and AvatarBridge already targets it: converted cloths are named after the PhysBone's parameter so
+the mod's `_IsGrabbed` and `_Angle` drive your existing grab-reactive logic, and those parameters
+are kept synced rather than made local. That's as far as any converter can go — **grabbing is a
+client mod**, so only people who have installed it can grab anything on your avatar.
+
+**The failure this causes is silent and looks like something else** (3.4.1). On one balloon avatar
+the pump handle carries a contact *sender*, and inflating works by someone grabbing the handle so
+that sender reaches its receiver. Convert it and every part checks out — cloth present, sender
+present, receiver present, tags matching — but the handle can't be grabbed, so it never moves and
+nothing fires. An afternoon went into blaming the contact tags. The report now lists every chain
+that was grabbable in VRChat and marks the ones carrying a contact, because those are the features
+that go completely inert without the mod.
+
+### Being touched by ordinary ChilloutVR players
+
+A contact only fires when something **sends** a matching tag, and the two platforms name the same
+body parts differently. Everyone in ChilloutVR carries pointers on their hands and index fingers
+whatever avatar they wear — the client turns each `CVRPointer` into a contact sender tagged with its
+`type` — but those types are `LeftHand`, `RightHand`, `index`, where VRChat says `HandL`, `HandR`,
+`FingerIndexL`. `Hand` happens to be spelled the same on both, which is why *some* converted
+contacts worked and others silently never fired.
+
+Receivers now listen for both (3.4.0), so a stranger's hand or finger sets them off:
+
+| Your receiver listens for | Also listens for |
+|---|---|
+| `Hand` | `grab` |
+| `HandL` / `HandR` | `LeftHand` / `RightHand` |
+| any `FingerIndex*` | `index` |
+
+The VRChat tags are kept, so converted avatars still trigger each other exactly as before.
+
+**Tags the author invented — `pump`, `Balloon`, a system's private name — reach nobody**, because
+nothing else in the game sends that word. Between two copies of the same avatar they work fine; to
+everyone else those receivers are inert. That's usually deliberate, so nothing is changed, but the
+report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
+be able to set it off.
 
 **Contacts are per-client by design** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
@@ -846,15 +891,21 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.3.4 — update and try again.**
+**Fixed in 3.4.2 — update and try again.**
 
-The hazard itself is now repaired, so it's gone from every direction: converting, selecting the
-avatar, entering play mode, **and uploading**. An empty blend tree slot — one whose motion is
-missing, usually because a VRCFury or Modular Avatar build didn't finish — crashes Unity's graph
-builder, and the CCK's uploader instantiates your avatar to build it, so such an avatar couldn't be
-uploaded at all. Each empty slot now gets a genuinely empty clip: nothing is lost, since the slot
-animated nothing, and every blend threshold stays where the author put it. The report tells you how
-many, so you can still chase down why those motions never arrived.
+The hazard itself is repaired, so it's gone from every direction: converting, selecting the avatar,
+entering play mode, **and uploading**. Unity works out a state's duration and a blend tree's blend
+while it builds the playable graph, so **any motion slot with nothing in it** — an empty animator
+state, or a blend tree child whose asset is gone — makes that builder walk into a hole and segfault.
+The CCK's uploader instantiates your avatar to build it, so an avatar in that state couldn't be
+uploaded at all.
+
+Every empty slot now gets a genuinely empty clip. Nothing is lost — the slot animated nothing — and
+blend thresholds all stay where the author put them. The report says how many, and how many were
+states rather than blend tree slots, so you can still chase down why those motions never arrived.
+
+*3.3.4 fixed only the blend tree half of this and attached its filler clip before the controller was
+an asset, so on an avatar whose empty slots were plain states it silently did nothing at all.*
 
 **A controller referencing assets that resolve to nothing makes Unity's Mecanim graph builder
 segfault**, and *assigning* such a controller to an `Animator` is enough to trigger it — the setter
@@ -876,6 +927,64 @@ same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTree
 **If your avatar's controller has no broken references, none of this applies** — the Animator is
 wired up exactly as before.
 
+**A blend tree naming a parameter that doesn't exist is the same crash from a different direction**
+(fixed in 3.4.11). Unity binds *every* blend tree parameter field when it builds a graph — including
+the ones a Direct tree never reads and the Y axis a 1D tree ignores — and resolves each to an index
+in the parameter table. A name that isn't there resolves to nothing, and the read happens inside
+`DoBlendTreeEvaluation`, so the editor dies instead of logging. `Blend`, `Value` and `Smooth Amount`
+are Unity's own defaults left behind on trees that stopped using them, so they arrive on plenty of
+avatars through no fault of yours; one conversion had six, including **a field that was blank**.
+
+Every such field is now renamed to a single `#`-prefixed name, so none of them is blank and they all
+agree. They are deliberately **not** declared as parameters — that was tried in 3.4.12 and brought
+the crash straight back, measured in both directions on a reproducible case. The blank one is almost
+certainly what mattered: Unity resolves a missing *name* to an index of -1 and reads 0, while a blank
+name goes somewhere else entirely. Nothing changes about how the avatar behaves — those fields were
+being read as garbage or not at all.
+
+### Unity crashes when you press Play, or the avatar renders with the wrong materials there
+
+**Reconvert on 3.4.14 or later.** Reconverting used to replace the saved controller by copying raw
+bytes over the file and force-reimporting it — which keeps the GUID but **destroys the native object
+and every sub-asset**, leaving everything that still held them (the Animator window, tester tools,
+anything alive across a play session with domain reload off) holding corpses. With "Enter Play Mode
+Options" on, nothing between conversions throws that stale state away, and pressing Play re-awakes
+Animators against it: `Assertion failed: 'MecanimDataWasBuilt()'`, then a SIGSEGV inside
+`GenerateGraph`. A hand-edited controller never crashes this way because hand-editing *mutates the
+existing object* — and from 3.4.14, so does reconverting. Same file, same GUID, same native object;
+Unity rebuilds its animation data the ordinary way. The `AnimatorStateMachine has been destroyed`
+console spam after reconverting goes away with it.
+
+*The rest of this section describes the earlier symptoms and remains true of older versions.*
+
+**Reconvert on 3.4.9 or later.** If you can't yet, turning off Edit → Project Settings → Editor →
+"Enter Play Mode Settings" and reopening the scene clears it immediately, with no reconversion.
+
+The symptoms, all at once on the avatar this was found on:
+
+- `Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 && ...'`, repeated;
+- menu controls **swapped places with each other** — sliders on toggles, a dropdown under the wrong
+  name;
+- white skin and flat clothes, on an avatar that looked correct in the scene a second earlier;
+- and, on the next Play, the editor dying with `Assertion failed on expression:
+  'MecanimDataWasBuilt()'` and a SIGSEGV inside `mecanim::statemachine::EvaluateState`.
+
+**Two things had to line up.** "Enter Play Mode Options" skips the scene and/or domain reload, so
+pressing Play *restores a backup* of the scene rather than reloading it and rebinds every Animator
+against state carried over from edit mode. And, up to 3.4.8, the clip this tool put into empty
+animator states had **no curves in it at all**. Mecanim sizes the array it reads and writes bindings
+through from the curve count, so a curve-less clip is exactly what it asserts about — and with 66
+states sharing one, our own output was what made that editor option toxic.
+
+From 3.4.9 the placeholder animates one inert value on a dedicated `AvatarBridge_EmptySlot` object
+added to the avatar. It changes nothing on any frame, it exists purely so the clip has a curve to
+count, and any curve-less clip the avatar arrived with is swapped for it too. The conversion no
+longer depends on that editor setting either way, which is the point — it's a setting people turn on
+for speed, and a converter shouldn't care.
+
+The report still names the setting when it's on, and `Diagnostics.md` records it, so the next bug
+report carries the answer.
+
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
 Only affects conversions made before 2.59.0, which were written **inside the tool's own folder**
@@ -887,6 +996,37 @@ GUIDs the scene points at. Otherwise reconvert — the source avatars were never
 Output has landed in the sibling `Assets/AvatarBridgeOutput` since 2.59.0, where the update flow
 can't reach it, and anything left in the old location is moved there automatically with its GUIDs
 intact.
+
+### A hat or held item drifts off when I resize myself
+
+**Reconvert on 3.4.7 or later**, with the avatar scaler on.
+
+A `ParentConstraint` holds its target a fixed distance from its source, and that distance is in
+**metres** — Unity rotates it by the source bone but never scales it. So with the height slider the
+body moved and the offset didn't: shrink and the prop hung off you, grow and it sank inside you. One
+cowboy hat sat 13–18 cm out.
+
+From 3.4.7 each offset is handed to the hierarchy instead. A small empty named
+`AvatarBridge_ScaleRelay_<prop>` is parented to the source bone at exactly the point the offset was
+already producing, and the constraint is re-pointed at it with a zero offset. Being a real child, it
+inherits the avatar's scale, so the gap grows and shrinks with you. Nothing moves at the default
+size, and no animation, layer or curve is involved.
+
+Four cases are deliberately left as they were, and the report names each one:
+
+| Left alone | Why |
+|---|---|
+| Offsets an animation drives | Zeroing an offset a curve is driving would hand the prop to an animation that no longer matches it |
+| Sources inside a cloth or dynamic-bone chain | A new child of a simulated bone becomes a new particle and changes how the chain moves |
+| Sources outside the avatar | An offset from a world anchor is meant to be in metres |
+| Unlocked constraints | Unity re-derives their offsets from the live transform and would write the old one straight back |
+
+For those, nudge the offset by hand for the size you actually use, or leave the slider near default.
+
+*3.4.5 attempted this in the animation instead — scaled copies of every offset written into the
+generated scale clips — and got it wrong: an avatar rendered pure white in play mode and the editor
+crashed on scene reload. Reverted in 3.4.6. The attempt and why it failed are recorded in
+`AvatarScalerInjector.cs`.*
 
 ### Something is bright magenta
 
@@ -1100,7 +1240,7 @@ authored — becomes an explicit curve. Either way the toggle restores by animat
 the same on any platform. The report says which layers reused an existing clip and which got a new
 one.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **Whatever is true at conversion time is what "off" now means.** If a toggle should rest in its
   other position, set the avatar up that way before converting.
@@ -1109,6 +1249,15 @@ Two things worth knowing:
   would assert it from above and the shirt could never come off; if neither did, it could never go
   back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
   counts what was left to a lower layer.
+- **Not every empty state is an off state** (3.4.10). Some exist to *choose* — the local/remote gate
+  VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
+  controls drive one branch and a synced dropdown drives the other. The layer only passes through
+  it, so handing it values makes it hold them for as long as it sits there — and if the gate's
+  condition never resolves, forever. Those are now recognised by their transitions covering every
+  value of a parameter, and left empty. The report counts them.
+
+  *Before 3.4.10 a hat-grab layer's gate was given the "hat on the head" animation, which asserted
+  the hat visible from above its own toggle.*
 
 ### A menu control appears, moves, syncs — and does nothing
 

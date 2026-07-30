@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.Animations;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 
@@ -213,6 +214,31 @@ namespace AvatarBridge
             clip.SetCurve("", typeof(Transform), "m_LocalScale.z", AnimationCurve.Constant(0f, 1f / 60f, scale.z));
             return clip;
         }
+
+        /// <summary>
+        /// CONSTRAINT OFFSETS ARE NOT HANDLED HERE — see <see cref="ConstraintScaleRelay"/>, which
+        /// runs as its own pass after the constraints have been converted.
+        ///
+        /// The history is worth keeping, because the obvious fix is the wrong one. A parent
+        /// constraint holds its target a fixed number of metres from its source and Unity never
+        /// scales that, so props drift off a shrinking avatar. 3.4.5 tried to correct it by writing
+        /// scaled copies of every offset into the nine generated scale clips. It made an avatar
+        /// render pure white in play mode and crashed the editor on scene reload; reverted in 3.4.6.
+        ///
+        /// Two things were wrong with it, and the second is the one to think about:
+        ///
+        ///   1. ORDER. The scaler runs inside AnimatorMerger (pass 65); ConstraintConverter runs
+        ///      at 67. So the constraints were read before VRC ones had been converted into Unity
+        ///      ones, and before AlignLocalSpaceRelays re-parents transforms — which changes the
+        ///      very paths being baked into the curves.
+        ///   2. The Size layer's state has Write Defaults ON and sits LAST, so it has the final
+        ///      say over everything. Widening what its clips animate widens what it asserts every
+        ///      frame, and that is not a small change to make blindly on a blend tree the whole
+        ///      avatar hangs off.
+        ///
+        /// 3.4.7 fixed it in the hierarchy instead: the offset becomes a real child of the source
+        /// bone, so scale reaches it the ordinary way and no clip, layer or curve is involved.
+        /// </summary>
 
         static string UniqueName(string name, HashSet<string> taken)
         {

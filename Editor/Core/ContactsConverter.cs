@@ -50,6 +50,8 @@ namespace AvatarBridge
                 if (native) { ConvertReceiverNative(ctx, receiver); } else { ConvertReceiver(ctx, receiver); }
             }
 
+            ReportUnreachableTags(ctx, listenedTags);
+
             if (ctx.Settings.createDefaultColliderPointers && listenedTags.Count > 0)
             {
                 CreateDefaultColliderPointers(ctx, listenedTags);
@@ -81,6 +83,108 @@ namespace AvatarBridge
             Object.DestroyImmediate(sender);
         }
 
+        /// <summary>
+        /// Names the receivers only another copy of this same avatar can ever set off.
+        ///
+        /// A contact tag is just a word, and a receiver fires only when something SENDS that word.
+        /// Body-part tags are fine — everyone has hands. A tag the author invented ("pump",
+        /// "Balloon", a system's own private name) exists nowhere else in the game, so that
+        /// receiver is dead to every player who isn't wearing this avatar. That is often exactly
+        /// what the author intended, and just as often a surprise, so it is worth stating plainly
+        /// instead of leaving someone to wonder why nobody can trigger it.
+        /// </summary>
+        static void ReportUnreachableTags(BridgeContext ctx, HashSet<string> listenedTags)
+        {
+            var custom = listenedTags
+                .Where(t => !string.IsNullOrEmpty(t)
+                            && !ChilloutVrPointerTypes.ContainsKey(t)
+                            && !UniversalTags.Contains(t))
+                .OrderBy(t => t).ToList();
+            if (custom.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Approximated(Category,
+                $"{custom.Count} contact tag(s) only this avatar can trigger",
+                $"\"{string.Join("\", \"", custom.Take(8))}\"" + (custom.Count > 8 ? ", …" : "") +
+                ". A contact fires when something sends a matching tag, and these aren't body parts " +
+                "— nothing any other player carries sends them. Between two copies of this avatar " +
+                "they work exactly as they did in VRChat; to anyone else those receivers do " +
+                "nothing. That's usually deliberate (an avatar's own private system), so nothing " +
+                "was changed. If you wanted strangers to set one off, add a body-part tag to it: " +
+                "\"Hand\", \"HandL\"/\"HandR\" or \"FingerIndexR\" all reach an ordinary " +
+                "ChilloutVR player, because the conversion pairs them with that player's own " +
+                "pointer names.");
+        }
+
+        /// <summary>Body-part tags every player carries, whichever platform the avatar came from.</summary>
+        static readonly HashSet<string> UniversalTags = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
+        {
+            "Head", "Torso", "Foot", "FootL", "FootR",
+            "FingerMiddle", "FingerMiddleL", "FingerMiddleR",
+            "FingerRing", "FingerRingL", "FingerRingR",
+            "FingerLittle", "FingerLittleL", "FingerLittleR",
+        };
+
+        /// <summary>
+        /// VRChat contact tag -> the ChilloutVR pointer type that means the same thing, so an
+        /// ordinary ChilloutVR player can trigger a converted receiver.
+        ///
+        /// A receiver only ever fires for a tag something else is actually SENDING, and the two
+        /// platforms name the same body parts differently. Everyone in ChilloutVR carries pointers
+        /// on their hands and index fingers whatever avatar they're wearing — the client turns each
+        /// CVRPointer into a contact sender tagged with its <c>type</c> string
+        /// (<c>PointerToContact.Create</c>) — but those types are "LeftHand", "RightHand", "index",
+        /// where VRChat says "HandL", "HandR", "FingerIndexL". A converted head-pat receiver
+        /// listening for "HandR" therefore sits there forever, because nothing in the game sends
+        /// that word.
+        ///
+        /// "Hand" happens to be spelled the same on both platforms, which is why some converted
+        /// contacts work and others don't — a difference that looks arbitrary until you see the
+        /// list.
+        ///
+        /// Adding rather than replacing: the VRChat tags stay so converted avatars still trigger
+        /// each other exactly as they did, and the ChilloutVR names are extra ways in.
+        /// </summary>
+        static readonly Dictionary<string, string[]> ChilloutVrPointerTypes =
+            new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                { "Hand",         new[] { "grab" } },          // "Hand" already matches by name
+                { "HandL",        new[] { "LeftHand" } },
+                { "HandR",        new[] { "RightHand" } },
+                { "Finger",       new[] { "index" } },
+                { "FingerL",      new[] { "index" } },
+                { "FingerR",      new[] { "index" } },
+                { "FingerIndex",  new[] { "index" } },
+                { "FingerIndexL", new[] { "index" } },
+                { "FingerIndexR", new[] { "index" } },
+            };
+
+        static string[] WithChilloutVrPointerTypes(IEnumerable<string> vrcTags)
+        {
+            var types = new List<string>();
+            foreach (string tag in vrcTags)
+            {
+                if (string.IsNullOrEmpty(tag) || types.Contains(tag))
+                {
+                    continue;
+                }
+                types.Add(tag);
+                if (!ChilloutVrPointerTypes.TryGetValue(tag, out var equivalents))
+                {
+                    continue;
+                }
+                foreach (string equivalent in equivalents)
+                {
+                    if (!types.Contains(equivalent))
+                    {
+                        types.Add(equivalent);
+                    }
+                }
+            }
+            return types.ToArray();
+        }
+
         static void ConvertReceiver(BridgeContext ctx, VRCContactReceiver receiver)
         {
             if (receiver.collisionTags.Count == 0 || string.IsNullOrEmpty(receiver.parameter))
@@ -96,7 +200,7 @@ namespace AvatarBridge
             trigger.useAdvancedTrigger = true;
             trigger.isLocalInteractable = receiver.allowSelf;
             trigger.isNetworkInteractable = receiver.allowOthers;
-            trigger.allowedTypes = receiver.collisionTags.Distinct().ToArray();
+            trigger.allowedTypes = WithChilloutVrPointerTypes(receiver.collisionTags);
 
             string typeName = receiver.receiverType.ToString();
             if (typeName.Contains("Constant"))
@@ -386,7 +490,9 @@ namespace AvatarBridge
             var contact = host.AddComponent(receiverType);
             ApplyShape(contact, receiver.shapeType, receiver.radius, receiver.height,
                 receiver.position, receiver.rotation);
-            SetMember(contact, "collisionTags", receiver.collisionTags.Distinct().ToArray());
+            // Same widening as the CVRAdvancedAvatarSettingsTrigger path — a native receiver is
+            // matched against the very same tags, so it needs the ChilloutVR pointer names too.
+            SetMember(contact, "collisionTags", WithChilloutVrPointerTypes(receiver.collisionTags));
             SetMember(contact, "allowSelf", receiver.allowSelf);
             SetMember(contact, "allowOthers", receiver.allowOthers);
             SetMember(contact, "localOnly", receiver.localOnly);
