@@ -783,6 +783,7 @@ namespace AvatarBridge
             // has to as well.
             var target = Get<Transform>(vrc, "TargetTransform", null);
             var constrained = target != null ? target : vrc.transform;
+            bool isScale = vrc.GetType().Name == "VRCScaleConstraint";
             foreach (var s in ReadSources(vrc))
             {
                 if (s.Transform == null || Mathf.Approximately(s.Weight, 0f)
@@ -790,9 +791,44 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                // A SCALE constraint asks a different question, and answering it the rotation way
+                // cried wolf on a perfectly good avatar. VRChat's local-space scale constraint
+                // copies the source's localScale; Unity's copies its lossyScale. Those are the
+                // same number whenever every ancestor of the source is unit-scaled — which is the
+                // normal case, because a limb-scaling rig hangs its reference objects off an
+                // unscaled holder. One avatar was told its arm and leg scaling was "a gap in the
+                // conversion, worth reporting" when all twelve constraints converted exactly.
+                //
+                // Same shape as the parent-alignment identity used for rotation above: when the
+                // two spaces provably coincide, there is nothing to warn about.
+                if (isScale && AncestorsAreUnitScaled(ctx, s.Transform))
+                {
+                    continue;
+                }
                 crossChain.Add($"`{ctx.PathInTarget(constrained)}` from `{ctx.PathInTarget(s.Transform)}`");
                 return; // one line per constraint is enough to find it
             }
+        }
+
+        /// <summary>
+        /// Whether every ancestor of a transform, up to the avatar root, has unit localScale — in
+        /// which case its lossyScale equals its localScale and world/local scale are the same
+        /// value. Its OWN scale is irrelevant: that is the thing being copied, not the space it is
+        /// measured in.
+        /// </summary>
+        static bool AncestorsAreUnitScaled(BridgeContext ctx, Transform t)
+        {
+            var root = ctx.Target != null ? ctx.Target.transform : null;
+            for (var p = t.parent; p != null && p != root; p = p.parent)
+            {
+                var s = p.localScale;
+                if (!Mathf.Approximately(s.x, 1f) || !Mathf.Approximately(s.y, 1f)
+                    || !Mathf.Approximately(s.z, 1f))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         static void ReportLocalSpace(BridgeContext ctx, List<string> crossChain)
@@ -805,11 +841,15 @@ namespace AvatarBridge
                 $"{crossChain.Count} constraint(s) relayed a bone from another chain in local space",
                 "These will not follow their source correctly, and there is no option to change — " +
                 "it is a gap in the conversion, so the avatar is worth reporting.\n\n" +
-                "VRChat solved them against the source's **local** rotation. Unity's constraints " +
-                "only ever solve in world space, and ChilloutVR ships no local-space equivalent, so " +
-                "each of these now inherits its source's world orientation instead of its pose. " +
-                "Constraints whose source shares their own parent are unaffected — there the two " +
-                "spaces agree exactly — and are not listed.\n\n" +
+                "VRChat solved them against the source's **local** value. Unity's constraints only " +
+                "ever solve in world space, and ChilloutVR ships no local-space equivalent, so a " +
+                "rotation relay now inherits its source's world orientation instead of its pose, " +
+                "and a position or scale relay reads a world value where a local one was meant.\n\n" +
+                "Two cases are provably identical and are NOT listed: a constraint whose source " +
+                "shares its own parent (the parent rotation cancels on both sides), and a SCALE " +
+                "constraint every one of whose source's ancestors is unit-scaled (lossyScale then " +
+                "equals localScale). A limb-scaling rig is normally the second case and converts " +
+                "exactly.\n\n" +
                 "An avatar that drives a real skeleton from a hidden humanoid one (how most " +
                 "quadrupeds are built) is made entirely of these, which is why such avatars arrive " +
                 "stuck in their rest pose with only the tracked parts moving.\n\n" +
