@@ -88,8 +88,185 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
+            RepointConstraintCurves(ctx);
             ReportLocalSpace(ctx, localSpaceRelays);
             ReportMirrored(ctx, mirrored);
+        }
+
+        /// <summary>
+        /// Repoints every animation curve that drove a VRC constraint at the Unity constraint
+        /// that replaced it.
+        ///
+        /// Converting the component is only half the job. A curve carries the TYPE it animates
+        /// and the SERIALIZED property name, and neither survives the swap: a clip saying
+        /// "VRCParentConstraint.IsActive" finds no such component afterwards, and Unity plays a
+        /// binding it cannot resolve as silence — no error, no warning, nothing in the animator
+        /// to look at.
+        ///
+        /// That silence is expensive, because animating a constraint on and off is how a whole
+        /// category of avatar feature works. On the quadruped this was found on, every "Lock"
+        /// toggle — one limb, both front legs, both back, the whole body — every sit, lay-down,
+        /// loaf and rear-up pose, and flight mode, all worked by releasing the relay constraints
+        /// so an animation could take the bones over. All of them were dead, and the report had
+        /// nothing to say about it.
+        ///
+        /// The names differ throughout, which is why nothing worked by accident:
+        ///
+        ///     IsActive     -> m_Active        GlobalWeight -> m_Weight
+        ///     Locked       -> m_IsLocked      Sources[i].Weight -> m_Sources.Array.data[i].weight
+        ///
+        /// <c>FreezeToWorld</c> has no Unity equivalent at all — the component-level conversion
+        /// already reports dropping it, and a curve driving it is dropped here for the same
+        /// reason rather than left pointing at nothing.
+        /// </summary>
+        static void RepointConstraintCurves(BridgeContext ctx)
+        {
+            var clips = new HashSet<AnimationClip>();
+            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            {
+                var controller = animator.runtimeAnimatorController;
+                if (controller == null)
+                {
+                    continue;
+                }
+                foreach (var clip in controller.animationClips)
+                {
+                    if (clip != null)
+                    {
+                        clips.Add(clip);
+                    }
+                }
+            }
+
+            int repointed = 0;
+            var dropped = new SortedSet<string>();
+            var lost = new SortedSet<string>();
+
+            foreach (var clip in clips)
+            {
+                // GetCurveBindings hands back a copy, so rewriting inside the loop is safe.
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type == null
+                        || !binding.type.Name.StartsWith("VRC", StringComparison.Ordinal)
+                        || !binding.type.Name.EndsWith("Constraint", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    string property = MapConstraintProperty(binding.propertyName);
+                    var replacement = ConstraintTypeOnPath(ctx, binding.path, binding.type.Name);
+                    string where = $"\"{clip.name}\" -> {binding.path} ({binding.propertyName})";
+
+                    // Either way the old binding goes: it names a component that no longer exists.
+                    AnimationUtility.SetEditorCurve(clip, binding, null);
+                    if (property == null)
+                    {
+                        dropped.Add(where);
+                        continue;
+                    }
+                    if (replacement == null)
+                    {
+                        lost.Add(where);
+                        continue;
+                    }
+                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                    {
+                        path = binding.path,
+                        type = replacement,
+                        propertyName = property
+                    }, curve);
+                    repointed++;
+                }
+            }
+
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{repointed} animation curve(s) repointed at the Unity constraints",
+                    "Clips that switch a constraint on and off carry the component TYPE and its " +
+                    "serialized property name, and both change during conversion — a curve left " +
+                    "saying \"VRCParentConstraint.IsActive\" plays as silence, with nothing to see " +
+                    "in the animator. This is how limb-lock, sit, lay-down and flight toggles work " +
+                    "on constraint-driven avatars, so they now work again.");
+            }
+            if (dropped.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{dropped.Count} curve(s) drove a constraint property Unity doesn't have",
+                    "Dropped rather than left pointing at nothing — almost always 'Freeze To " +
+                    "World', which has no Unity or ChilloutVR equivalent. A toggle relying on it " +
+                    "will change the constraint but not pin anything in place: " +
+                    string.Join("; ", dropped) + ".");
+            }
+            if (lost.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{lost.Count} curve(s) drove a constraint that isn't there any more",
+                    "The clip animates a constraint on an object that now has none. The usual " +
+                    "cause is a VRC 'Target Transform': the Unity constraint was placed on the " +
+                    "object it drives instead, so the curve's path no longer finds it. Re-point " +
+                    "these by hand if the feature matters: " + string.Join("; ", lost) + ".");
+            }
+        }
+
+        /// <summary>
+        /// VRC constraint property names to Unity's serialized ones. Null for anything Unity has
+        /// no equivalent for, which the caller drops.
+        /// </summary>
+        static string MapConstraintProperty(string vrcProperty)
+        {
+            switch (vrcProperty)
+            {
+                case "IsActive": return "m_Active";
+                case "GlobalWeight": return "m_Weight";
+                case "Locked": return "m_IsLocked";
+                case "Enabled":
+                case "m_Enabled": return "m_Enabled";
+            }
+            // Per-source weights: Sources.Array.data[2].Weight -> m_Sources.Array.data[2].weight
+            const string prefix = "Sources.Array.data[";
+            const string suffix = "].Weight";
+            if (vrcProperty.StartsWith(prefix, StringComparison.Ordinal) &&
+                vrcProperty.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                string index = vrcProperty.Substring(prefix.Length,
+                    vrcProperty.Length - prefix.Length - suffix.Length);
+                return $"m_Sources.Array.data[{index}].weight";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The Unity constraint now sitting where a VRC one used to. Prefers the same kind
+        /// ("VRCRotationConstraint" -> "RotationConstraint") and falls back to any constraint on
+        /// the object, since a curve driving the wrong kind still beats a curve driving nothing.
+        /// </summary>
+        static Type ConstraintTypeOnPath(BridgeContext ctx, string path, string vrcTypeName)
+        {
+            var transform = string.IsNullOrEmpty(path)
+                ? ctx.Target.transform
+                : ctx.Target.transform.Find(path);
+            if (transform == null)
+            {
+                return null;
+            }
+            string sameKind = vrcTypeName.Substring("VRC".Length);
+            Type any = null;
+            foreach (var component in transform.GetComponents<Component>())
+            {
+                if (component == null || !(component is IConstraint))
+                {
+                    continue;
+                }
+                var type = component.GetType();
+                if (type.Name == sameKind)
+                {
+                    return type;
+                }
+                any = any ?? type;
+            }
+            return any;
         }
 
         /// <summary>

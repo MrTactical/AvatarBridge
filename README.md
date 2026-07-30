@@ -637,6 +637,15 @@ all. **Two things break the rest, and the report names both:**
   humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
   animal's skull. Both are measured on the relayed bones instead; see
   [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
+- **Toggles that switch a constraint on and off (2.94.0).** This one isn't quadruped-specific, it
+  just bites hardest here. An animation curve carries the component **type** and the **serialized
+  property name**, and conversion changes both — a clip still saying `VRCParentConstraint.IsActive`
+  plays as silence, with nothing to see in the animator. That's how limb locks, sit/lay-down/loaf
+  poses and flight modes work on any constraint-driven avatar: release the relay so an animation can
+  take the bones over. Curves are repointed at the Unity constraint now
+  (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`). **`FreezeToWorld`
+  has no Unity or ChilloutVR equivalent** and is dropped — a toggle relying on it will change the
+  constraint but won't pin anything in world space.
 - **First-person head hiding aimed at the decoy (2.93.0).** ChilloutVR hides your own head by adding
   an `FPRExclusion` to the humanoid Head bone. That bone skins nothing here, so nothing was hidden
   and the view filled with the inside of the animal's head. One is added to the head you can see
