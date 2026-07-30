@@ -47,6 +47,7 @@ namespace AvatarBridge
             text.AppendLine();
 
             Section(text, "Packages", () => Packages(ctx));
+            Section(text, "Editor", () => EditorEnvironment());
             Section(text, "Settings used", () => SettingsDump(ctx));
             Section(text, "Rig", () => Rig(ctx));
             Section(text, "Head, eyes and the viewpoint", () => HeadGeometry(ctx));
@@ -125,6 +126,35 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ settings ----
+
+        /// <summary>
+        /// Editor options that change whether a converted avatar can even be tested, rather than
+        /// anything about the avatar. "Enter Play Mode Options" earns its place: with Reload Scene
+        /// off, pressing Play takes a different code path (RestoreSceneBackups → ResetOpenScenes →
+        /// Animator::AwakeFromLoad) that rebinds every Animator against whatever survived from edit
+        /// mode. On an avatar whose controller was just rewritten in place, that has produced both
+        /// a hard SIGSEGV inside GenerateGraph and an avatar rendering with the wrong materials.
+        /// The crash stack is unreachable with the option off.
+        /// </summary>
+        static string EditorEnvironment()
+        {
+            var rows = new List<string>
+            {
+                Row("Unity", Application.unityVersion),
+                Row("Colour space", PlayerSettings.colorSpace.ToString()),
+                Row("Enter Play Mode Options",
+                    EditorSettings.enterPlayModeOptionsEnabled ? "**ON**" : "off")
+            };
+            if (EditorSettings.enterPlayModeOptionsEnabled)
+            {
+                var options = EditorSettings.enterPlayModeOptions;
+                rows.Add(Row("· Reload Domain",
+                    options.HasFlag(EnterPlayModeOptions.DisableDomainReload) ? "**disabled**" : "on"));
+                rows.Add(Row("· Reload Scene",
+                    options.HasFlag(EnterPlayModeOptions.DisableSceneReload) ? "**disabled**" : "on"));
+            }
+            return Table(new[] { "", "" }, rows);
+        }
 
         static string SettingsDump(BridgeContext ctx)
         {

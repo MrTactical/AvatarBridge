@@ -927,6 +927,28 @@ same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTree
 **If your avatar's controller has no broken references, none of this applies** — the Animator is
 wired up exactly as before.
 
+### Unity crashes when you press Play, or the avatar renders with the wrong materials there
+
+**Turn off Edit → Project Settings → Editor → "Enter Play Mode Settings"**, reopen the scene, and try
+again. From 3.4.8 the report says so on any conversion made with it enabled, and `Diagnostics.md`
+records the setting.
+
+The option skips the scene and/or domain reload to make Play faster. Pressing Play then *restores a
+backup* of the scene rather than reloading it, which rebinds every Animator against state carried
+over from edit mode — and a controller AvatarBridge just wrote is the newest thing in the project.
+
+Two symptoms come from this and get blamed on the conversion:
+
+- **The editor dies on Play**, with `Assertion failed on expression: 'MecanimDataWasBuilt()'` and a
+  SIGSEGV inside `mecanim::statemachine::EvaluateState`. The whole stack sits under
+  `RestoreSceneBackups`, which **does not run at all** with the option off — so this particular crash
+  is unreachable on the default settings.
+- **The avatar looks right in the scene and wrong the moment you press Play** — white skin, flat
+  clothes — which is a half-bound animator applying stale data, not a missing texture.
+
+Unity prints its own version of this advice to the console every time it enters play mode that way.
+It is easy to miss among the rest.
+
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
 Only affects conversions made before 2.59.0, which were written **inside the tool's own folder**

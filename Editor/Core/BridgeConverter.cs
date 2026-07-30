@@ -98,6 +98,7 @@ namespace AvatarBridge
                 // damage is done by the assignment itself. This stays as a net for anything else
                 // that might put one back on an Animator during a later pass.
                 DetachCrashingController(ctx);
+                WarnFastPlayMode(ctx);
                 ReportSyncUsage(ctx);
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
@@ -159,6 +160,54 @@ namespace AvatarBridge
                 ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
                     $"{e.Message} — the scene object is still fine; save the scene to keep it.");
             }
+        }
+
+        /// <summary>
+        /// Warns when Unity's "Enter Play Mode Options" are on, because a freshly converted avatar
+        /// is exactly the case they break.
+        ///
+        /// With **Reload Scene** disabled, pressing Play doesn't reload the scene — it restores a
+        /// backup of it: RestoreSceneBackups → ResetOpenScenes → ActivateSceneAfterReset →
+        /// Animator::AwakeFromLoad → SetAnimatorController → GenerateGraph. That rebinds every
+        /// Animator against state carried over from edit mode, and the controller this tool just
+        /// wrote is the newest thing in the project. With **Reload Domain** also disabled, nothing
+        /// managed is rebuilt either, so a stale binding survives intact.
+        ///
+        /// Both symptoms it has produced here were reported as conversion bugs and were not:
+        ///   - "Assertion failed on expression: 'MecanimDataWasBuilt()'" followed by SIGSEGV inside
+        ///     mecanim::statemachine::EvaluateState — the whole stack sits under RestoreSceneBackups,
+        ///     which does not run at all with the option off;
+        ///   - an avatar rendering with the wrong materials in play mode while looking correct in
+        ///     the scene, which is what a half-bound animator applying stale data looks like.
+        ///
+        /// Unity's own console says the same thing when it enters play mode this way. This is a
+        /// warning, not a repair: it is the user's editor preference and not ours to change.
+        /// </summary>
+        static void WarnFastPlayMode(BridgeContext ctx)
+        {
+            if (!EditorSettings.enterPlayModeOptionsEnabled)
+            {
+                return;
+            }
+            var options = EditorSettings.enterPlayModeOptions;
+            bool noScene = options.HasFlag(EnterPlayModeOptions.DisableSceneReload);
+            bool noDomain = options.HasFlag(EnterPlayModeOptions.DisableDomainReload);
+            string which = noScene && noDomain ? "Reload Domain and Reload Scene are both off"
+                : noScene ? "Reload Scene is off"
+                : noDomain ? "Reload Domain is off"
+                : "it is on";
+
+            ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on — turn it off before testing",
+                $"Edit → Project Settings → Editor → Enter Play Mode Settings ({which}). It skips the scene " +
+                "and/or domain reload, so pressing Play rebinds every Animator against state left over from " +
+                "edit mode — and the controller this conversion just wrote is the newest thing in the project. " +
+                "Two things that get blamed on conversion come from this and nothing else: Unity dying on Play " +
+                "with \"Assertion failed on expression: 'MecanimDataWasBuilt()'\" and a SIGSEGV inside " +
+                "GenerateGraph, and an avatar that looks right in the scene but renders with the wrong " +
+                "materials the moment you press Play. That crash stack runs through RestoreSceneBackups, which " +
+                "does not execute at all with the option off. Unity says the same in its own console every time " +
+                "you enter play mode this way. Turn it off, reopen the scene, and test again before reporting " +
+                "either symptom.");
         }
 
         /// <summary>
