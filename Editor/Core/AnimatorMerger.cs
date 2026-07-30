@@ -2805,29 +2805,35 @@ namespace AvatarBridge
             {
                 return;
             }
-            // AddParameter, not the `parameters` array setter. The setter renamed the tree fields
-            // happily and then dropped every declaration on the floor — the saved controller came
-            // back with blend trees pointing at "#Blend" and no "#Blend" in the parameter list, so
-            // the pass reported a repair it had not made. Verified by reading the output; the array
-            // setter is not a reliable way to ADD to a controller that is already an asset.
-            foreach (var parameter in added)
-            {
-                master.AddParameter(parameter);
-            }
+            // DELIBERATELY NOT DECLARED, which is the opposite of what 3.4.11's own report claimed
+            // and took two versions to establish. 3.4.11 renamed the fields and — through an array
+            // setter that turned out not to add anything to a controller that is already an asset —
+            // declared nothing. It worked: no crash, repeated Plays, fast play mode on. 3.4.12
+            // "completed" it with AddParameter, and the crash came straight back.
+            //
+            // So the repair is the RENAME, not the declaration. Every dangling field now names one
+            // "#"-prefixed parameter instead of several different ones, and critically none of them
+            // is the empty string — which is almost certainly the one that mattered, since Unity
+            // resolves a missing NAME to an index of -1 and reads 0, while a blank name goes
+            // somewhere else entirely. Adding the parameters for real changes what the graph builder
+            // does with those trees, and on the avatar this was found on that is fatal.
+            //
+            // Anyone tempted to declare them: this was measured twice, in both directions, on a
+            // reproducible crash. Do not do it without doing that again.
             EditorUtility.SetDirty(master);
 
             ctx.Report.Warning(Category,
                 $"{repointed.Count} blend tree parameter(s) named something the controller never declared",
                 $"{string.Join(", ", repointed)} — Unity binds EVERY blend tree parameter field when it " +
                 "builds a playable graph, including the ones a Direct tree never reads and the Y axis a " +
-                "1D tree ignores. A name that isn't in the parameter list resolves to nothing, and the " +
-                "read lands inside DoBlendTreeEvaluation, where it takes the editor down with a SIGSEGV " +
-                "rather than an error — on Play, on selecting the avatar, and in the CCK's uploader. " +
-                "\"Blend\", \"Value\" and \"Smooth Amount\" are Unity's own defaults left behind on trees " +
-                "that stopped using them, so they arrive on plenty of avatars through no fault of yours. " +
-                "Each is now declared as a local Float 0 under a \"#\" name, which costs no sync bits and " +
-                "cannot collide with a menu entry. Nothing changes about how the avatar behaves: these " +
-                "fields were being read as garbage or not at all.");
+                "1D tree ignores. One of these was BLANK, and a blank one takes the editor down with a " +
+                "SIGSEGV inside DoBlendTreeEvaluation rather than an error — on Play, on selecting the " +
+                "avatar, and in the CCK's uploader. \"Blend\", \"Value\" and \"Smooth Amount\" are Unity's " +
+                "own defaults left behind on trees that stopped using them, so they arrive on plenty of " +
+                "avatars through no fault of yours. Each field is now renamed to a single \"#\"-prefixed " +
+                "name so none is blank. They are deliberately NOT declared as parameters: declaring them " +
+                "was tried and brought the crash back, twice measured. Nothing changes about how the " +
+                "avatar behaves — these fields were being read as garbage or not at all.");
         }
 
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>

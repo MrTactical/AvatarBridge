@@ -933,10 +933,14 @@ the ones a Direct tree never reads and the Y axis a 1D tree ignores — and reso
 in the parameter table. A name that isn't there resolves to nothing, and the read happens inside
 `DoBlendTreeEvaluation`, so the editor dies instead of logging. `Blend`, `Value` and `Smooth Amount`
 are Unity's own defaults left behind on trees that stopped using them, so they arrive on plenty of
-avatars through no fault of yours; one conversion had six, including a field that was blank. Each is
-now declared as a local `Float 0` under a `#` name, which costs no sync bits and can't collide with a
-menu entry. Nothing changes about how the avatar behaves — those fields were being read as garbage
-or not at all.
+avatars through no fault of yours; one conversion had six, including **a field that was blank**.
+
+Every such field is now renamed to a single `#`-prefixed name, so none of them is blank and they all
+agree. They are deliberately **not** declared as parameters — that was tried in 3.4.12 and brought
+the crash straight back, measured in both directions on a reproducible case. The blank one is almost
+certainly what mattered: Unity resolves a missing *name* to an index of -1 and reads 0, while a blank
+name goes somewhere else entirely. Nothing changes about how the avatar behaves — those fields were
+being read as garbage or not at all.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
