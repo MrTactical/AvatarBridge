@@ -225,7 +225,7 @@ defines.
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn |
-| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled |
+| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
 | Shaders without stereo support | patched copy in `RehomedAssets` | optional — see [below](#shaders-that-only-draw-into-one-eye) |
@@ -395,6 +395,26 @@ with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
 **Advanced** and contacts convert one to one: real proximity, tags verbatim.
+
+### Grabbing a chain
+
+**MagicaCloth2 has no grab.** VRChat lets you take hold of a PhysBone and pull it, and plenty of
+avatars are built entirely around that — a pump handle, a leash, a lever, anything a stranger is
+meant to pull. Converted, those chains still hang and swing, but nobody can hold them.
+
+[GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) adds grabbing back,
+and AvatarBridge already targets it: converted cloths are named after the PhysBone's parameter so
+the mod's `_IsGrabbed` and `_Angle` drive your existing grab-reactive logic, and those parameters
+are kept synced rather than made local. That's as far as any converter can go — **grabbing is a
+client mod**, so only people who have installed it can grab anything on your avatar.
+
+**The failure this causes is silent and looks like something else** (3.4.1). On one balloon avatar
+the pump handle carries a contact *sender*, and inflating works by someone grabbing the handle so
+that sender reaches its receiver. Convert it and every part checks out — cloth present, sender
+present, receiver present, tags matching — but the handle can't be grabbed, so it never moves and
+nothing fires. An afternoon went into blaming the contact tags. The report now lists every chain
+that was grabbable in VRChat and marks the ones carrying a contact, because those are the features
+that go completely inert without the mod.
 
 ### Being touched by ordinary ChilloutVR players
 
