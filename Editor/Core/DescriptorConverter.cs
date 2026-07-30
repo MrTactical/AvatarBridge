@@ -216,8 +216,9 @@ namespace AvatarBridge
             else
             {
                 cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, targetFace, vrc.VisemeBlendShapes,
-                    animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
-                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+                    animator, cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail,
+                    out string badJaw);
+                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail, badJaw);
             }
 
             // Said out loud whenever the humanoid rig moves no geometry, because everything above

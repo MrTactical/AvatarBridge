@@ -56,6 +56,19 @@ namespace AvatarBridge
         public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
             Animator animator, Vector3 viewPosition, out Method method, out string detail)
         {
+            return Locate(root, face, visemeShapes, animator, viewPosition, out method, out detail, out _);
+        }
+
+        /// <summary>
+        /// As above, additionally reporting a humanoid Jaw bone that was ignored for not being
+        /// anywhere a jaw could be. See <see cref="JawIsBelievable"/> — the caller should say so,
+        /// because it points at the avatar's rig rather than at anything the conversion did.
+        /// </summary>
+        public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
+            Animator animator, Vector3 viewPosition, out Method method, out string detail,
+            out string rejectedJaw)
+        {
+            rejectedJaw = null;
             Transform head = animator != null && animator.isHuman
                 ? animator.GetBoneTransform(HumanBodyBones.Head)
                 : null;
@@ -72,9 +85,13 @@ namespace AvatarBridge
                 : null;
             if (jaw != null)
             {
-                method = Method.JawBone;
-                detail = $"from the jaw bone \"{jaw.name}\"";
-                return Local(root, jaw.position);
+                if (JawIsBelievable(root, animator, jaw, out string why))
+                {
+                    method = Method.JawBone;
+                    detail = $"from the jaw bone \"{jaw.name}\"";
+                    return Local(root, jaw.position);
+                }
+                rejectedJaw = $"\"{jaw.name}\" ({why})";
             }
 
             if (head != null)
@@ -90,6 +107,64 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Whether the rig's Jaw bone is anywhere a jaw could be. Geometry decides; the name is
+        /// never consulted.
+        ///
+        /// The humanoid Jaw slot is optional and unpoliced, and riggers fill it with whatever was
+        /// nearest when they clicked. One avatar mapped Jaw to a bone called "fronthair1", 21 cm
+        /// ABOVE the head bone and a centimetre above the viewpoint — so the voice came out of the
+        /// top of the head, and the CVRAvatar gizmo drew it hovering over the hair. Trusting a
+        /// mapped bone because it is mapped is how that ships.
+        ///
+        /// Two things are true of every real jaw and of nothing on top of a head:
+        ///   - it is BELOW the eyes. Not level, not above: a jaw hinges under them. Eyes are the
+        ///     reference rather than the head bone because the head bone sits at the base of the
+        ///     skull, which a jaw is legitimately level with or slightly above.
+        ///   - it is within a head's reach of the head bone. A quarter of hips-to-head is generous
+        ///     for a skull and still rejects a bone out at the end of a hair strand or an ear.
+        ///
+        /// Failing either, the caller falls back to the head bone, which is where the voice sat
+        /// before jaw support existed and is never grossly wrong.
+        /// </summary>
+        static bool JawIsBelievable(GameObject root, Animator animator, Transform jaw, out string why)
+        {
+            why = null;
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null)
+            {
+                return true; // nothing to measure against; the mapping is all there is
+            }
+
+            var left = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var right = animator.GetBoneTransform(HumanBodyBones.RightEye);
+            Vector3 up = root.transform.up;
+            if (left != null || right != null)
+            {
+                Vector3 eyes = left != null && right != null ? (left.position + right.position) * 0.5f
+                    : (left != null ? left.position : right.position);
+                float above = Vector3.Dot(jaw.position - eyes, up);
+                if (above > 0f)
+                {
+                    why = $"{above:0.##} m above the eyes — a jaw hinges below them";
+                    return false;
+                }
+            }
+
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            float reach = hips != null
+                ? Mathf.Max(0.12f, Vector3.Distance(hips.position, head.position) * 0.25f)
+                : 0.35f;
+            float away = Vector3.Distance(jaw.position, head.position);
+            if (away > reach)
+            {
+                why = $"{away:0.##} m from the head bone, past the {reach:0.##} m this rig's own " +
+                      "proportions allow for a skull";
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Says where the voice ended up and how it was found, with the numbers — because this is
         /// one of the few conversion results you can check by looking. ChilloutVR draws both
         /// gizmos in the scene view, so a mouth in the wrong place is obvious at a glance.
@@ -98,9 +173,20 @@ namespace AvatarBridge
         /// path runs without the VRChat SDK, where DescriptorConverter does not compile at all.
         /// </summary>
         public static void Report(BridgeContext ctx, string category, Vector3 voicePosition,
-            Method method, string detail)
+            Method method, string detail, string rejectedJaw = null)
         {
             string where = $"{voicePosition.y:0.000} m up, {voicePosition.z:0.000} m forward";
+
+            if (!string.IsNullOrEmpty(rejectedJaw))
+            {
+                ctx.Report.Approximated(category, "The rig's \"jaw\" bone isn't on the jaw — ignored",
+                    $"This avatar's humanoid Jaw slot points at {rejectedJaw}. The slot is optional " +
+                    "and nothing checks it, so a rigger can map it to anything, and this one is " +
+                    "somewhere no jaw can be. Left as it is — retargeting it could move geometry — " +
+                    "but the voice was placed without it, because taking it at face value puts your " +
+                    "voice wherever that bone happens to sit. Worth fixing in the model's Rig tab if " +
+                    "you also want jaw-flap animation to work.");
+            }
 
             if (method == Method.VisemeShape)
             {

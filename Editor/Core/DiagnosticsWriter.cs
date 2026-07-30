@@ -298,7 +298,22 @@ namespace AvatarBridge
                 rows.Add(Row("Humanoid Hips bone", Bone(ctx, root, hips)));
                 rows.Add(Row("Humanoid LeftEye", Bone(ctx, root, leftEye)));
                 rows.Add(Row("Humanoid RightEye", Bone(ctx, root, rightEye)));
-                rows.Add(Row("Humanoid Jaw", Bone(ctx, root, jaw)));
+                // Flagged rather than just listed: the Jaw slot is optional and unchecked, riggers
+                // fill it with whatever, and a Jaw sitting above the eyes is a rig fault that
+                // otherwise only shows up as a voice coming out of the top of someone's head.
+                string jawNote = "";
+                if (jaw != null && (leftEye != null || rightEye != null))
+                {
+                    Vector3 eyes = leftEye != null && rightEye != null
+                        ? (leftEye.position + rightEye.position) * 0.5f
+                        : (leftEye != null ? leftEye.position : rightEye.position);
+                    float above = Vector3.Dot(jaw.position - eyes, root.up);
+                    if (above > 0f)
+                    {
+                        jawNote = $"<br>**{above:0.##} m ABOVE the eyes — not a jaw**";
+                    }
+                }
+                rows.Add(Row("Humanoid Jaw", Bone(ctx, root, jaw) + jawNote));
 
                 if (head != null)
                 {

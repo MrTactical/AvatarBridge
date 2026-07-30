@@ -1134,7 +1134,15 @@ check them with the gizmo and drag either one if you want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 
-- **Bone axes (2.86.0).** Offsets were applied in the head bone's own orientation. A bone's local
+- **A "jaw" bone that isn't a jaw (3.4.15).** The humanoid **Jaw** slot is optional and nothing
+  validates it, so riggers fill it with whatever was nearest — one avatar mapped it to a bone called
+  `fronthair1`, 21 cm *above* the head bone and a centimetre above the viewpoint, and the voice duly
+  came out of the top of its head. A mapped Jaw is now checked before it's believed: it must sit
+  **below the eyes** (a jaw hinges under them — the head bone is a bad reference, since a jaw is
+  legitimately level with the base of the skull) and within a quarter of the rig's own hips-to-head
+  span of the head bone. Failing either, it's ignored and the voice falls back to the head bone, with
+  the rejected bone named in the report and flagged in `Diagnostics.md`. Nothing is retargeted — that
+  would move geometry — so fix it in the model's Rig tab if you want jaw-flap animation as well. A bone's local
   axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
   sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets use the avatar
   root's orientation now, the one transform whose forward is really forward.
