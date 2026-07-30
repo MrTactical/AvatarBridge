@@ -668,6 +668,46 @@ namespace AvatarBridge
             return true;
         }
 
+        /// <summary>
+        /// How much of the humanoid rig actually moves geometry.
+        ///
+        /// Zero is the loudest signal an avatar can give and the conversion used to say nothing
+        /// about it. Every quadruped that has caused trouble scored zero: a decoy relay skeleton,
+        /// a poseclone puppet, and a FinalIK VRIK proxy — three unrelated designs, one symptom.
+        /// It matters because the viewpoint, the voice position and ChilloutVR's first-person head
+        /// hiding all hang off humanoid bones, so when those bones drive nothing visible, all three
+        /// land somewhere the wearer isn't, and every internal check still passes because they are
+        /// correct *relative to the rig they were measured against*.
+        /// </summary>
+        public static void HumanoidDeformShare(GameObject root, Animator animator,
+            out int mapped, out int deforming)
+        {
+            mapped = 0;
+            deforming = 0;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return;
+            }
+            var deformingBones = DeformingBones(root);
+            foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (bone == HumanBodyBones.LastBone)
+                {
+                    continue;
+                }
+                var t = animator.GetBoneTransform(bone);
+                if (t == null)
+                {
+                    continue;
+                }
+                mapped++;
+                if (deformingBones.Contains(t))
+                {
+                    deforming++;
+                }
+            }
+        }
+
         static readonly string[] JawNameVariants =
             { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
 

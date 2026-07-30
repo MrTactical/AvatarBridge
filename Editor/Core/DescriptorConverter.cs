@@ -217,6 +217,29 @@ namespace AvatarBridge
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
             }
 
+            // Said out loud whenever the humanoid rig moves no geometry, because everything above
+            // is then measured against a skeleton nobody can see. Three quadrupeds have now hit
+            // this from three unrelated directions — a decoy relay rig, a poseclone puppet, and a
+            // humanoid map pointing into a FinalIK VRIK proxy — and in each case every internal
+            // check passed while the viewpoint sat half a metre from the avatar's face. A check
+            // that passes on the wrong skeleton is worth nothing, so the fact gets reported even
+            // when nothing here can act on it.
+            AvatarFeatureDetect.HumanoidDeformShare(ctx.Target, animator, out int mappedBones, out int deformingBones);
+            if (mappedBones > 0 && deformingBones == 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"None of this avatar's {mappedBones} humanoid bones move any geometry",
+                    "Unity's humanoid map points at a skeleton that deforms no mesh — a stand-in, a " +
+                    "poseclone, or a FinalIK proxy — and the visible body is driven from it " +
+                    "indirectly. That matters here because ChilloutVR hangs the viewpoint, the voice " +
+                    "position AND first-person head hiding off humanoid bones, so all three follow " +
+                    "the stand-in rather than the body you see. They may be measurably correct " +
+                    "against that skeleton and still be in the wrong place on your avatar. Check all " +
+                    "three with the CVRAvatar gizmos before uploading and drag them onto the visible " +
+                    "head if they're off. Diagnostics.md lists every bone the map points at, with " +
+                    "full paths, if you need to see which skeleton was used.");
+            }
+
             // Skipped on a decoy rig: this check measures both markers against the humanoid head
             // bone, and on such a rig they are deliberately NOT near it. Left in, it would fire a
             // warning blaming a scaled ancestor for the placement that just fixed the avatar.

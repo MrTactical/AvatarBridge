@@ -604,6 +604,15 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ### Quadruped / FinalIK avatars
 
+**There are three of these, not two** (3.2.2). Every quadruped that has caused trouble shares one
+symptom — **none of its humanoid bones move any geometry** — reached from three unrelated designs: a
+decoy relay skeleton, a poseclone puppet, and a humanoid map pointing into a **FinalIK VRIK proxy**.
+That matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head
+hiding off humanoid bones, so all three follow a skeleton nobody can see, pass every internal check
+against it, and still land half a metre from the avatar's face. The conversion now says so outright,
+and `Diagnostics.md` lists every mapped bone with its full path so you can see which skeleton was
+used.
+
 **Partly working as of 2.92.0.** A decoy-rig quadruped now walks in game — confirmed by wearing one,
 which is the only test that counts. Getting there took three separate fixes, and one wall is still
 standing. There are also two different avatars hiding under one symptom, so start by finding out
