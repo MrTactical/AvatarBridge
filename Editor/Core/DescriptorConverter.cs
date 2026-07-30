@@ -70,6 +70,7 @@ namespace AvatarBridge
             // whose head bone is half a head-height away from it is not expressing a preference.
             // So when the authored value fails that check and Auto passes it, Auto wins.
             bool authoredIsWrong = false;
+            string autoOverrideNote = null;
             if (haveAuthored && autoView
                 && AvatarFeatureDetect.HeadDistance(ctx.Target, animator, authored, out float authoredOff, out float tolerance)
                 && AvatarFeatureDetect.HeadDistance(ctx.Target, animator, viewAuto, out float autoOff, out _))
@@ -77,14 +78,18 @@ namespace AvatarBridge
                 authoredIsWrong = authoredOff > tolerance && autoOff <= tolerance;
                 if (authoredIsWrong)
                 {
-                    ctx.Report.Approximated(Category, "Viewpoint — the CCK's Auto placement, not the author's",
+                    // Written, not reported, until the decoy check below has had its say. Reporting
+                    // here printed two contradictory viewpoint lines on a decoy rig — "Auto was used
+                    // instead" followed by "measured on the visible head", which is what actually
+                    // happened. Whichever wins should be the only one that speaks.
+                    autoOverrideNote =
                         $"The viewpoint this avatar shipped with in VRChat lands {authoredOff:0.##} m from its " +
                         $"head bone, past the {tolerance:0.##} m this rig's own proportions allow, so it is in " +
                         "the wrong place rather than merely unusual — you would spawn looking out of the " +
                         $"avatar's body. The CCK's Auto placement (midpoint of the eye bones) lands {autoOff:0.##} m " +
                         "from the head and was used instead. The author's value is normally preferred, because a " +
                         "human placed it by eye; it is only overridden when it fails a check the rig itself " +
-                        "settles. Drag the gizmo on the CVRAvatar if neither is right.");
+                        "settles. Drag the gizmo on the CVRAvatar if neither is right.";
                 }
             }
 
@@ -131,7 +136,12 @@ namespace AvatarBridge
                     "rig like this they can be put in the right place but not made to track it " +
                     "perfectly. Drag either gizmo if you want it elsewhere.");
             }
-            else if (haveAuthored && autoView && !authoredIsWrong)
+            else if (authoredIsWrong)
+            {
+                ctx.Report.Approximated(Category, "Viewpoint — the CCK's Auto placement, not the author's",
+                    autoOverrideNote);
+            }
+            else if (haveAuthored && autoView)
             {
                 float apart = Vector3.Distance(authored, viewAuto);
                 ctx.Report.Converted(Category, "Viewpoint — the author's own, from the VRChat descriptor",

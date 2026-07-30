@@ -348,8 +348,16 @@ namespace AvatarBridge
 
         // ---------------------------------------------- the CCK's own Auto placement ----
 
-        static readonly string[] LeftEyeNameVariants = { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left" };
-        static readonly string[] RightEyeNameVariants = { "RightEye", "Right_Eye", "EyeRight", "Eye_Right" };
+        // Blender's ".L"/".R" suffix convention is in here because leaving it out cost a real
+        // avatar 14 cm. A taur base names its eyes "eye.L" and "eye.R" and doesn't map them in the
+        // humanoid rig, so the name search missed and Auto fell through to its blind fallback —
+        // a fraction of the hips-to-head span offset from the head bone — landing the viewpoint on
+        // the muzzle instead of between the eyes. Blender exports that suffix by default, which is
+        // most anthro avatars, so this was never a one-avatar problem.
+        static readonly string[] LeftEyeNameVariants =
+            { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left", "eye.L", "eye_L", "eyeL", "L_eye", "Eye.L.001" };
+        static readonly string[] RightEyeNameVariants =
+            { "RightEye", "Right_Eye", "EyeRight", "Eye_Right", "eye.R", "eye_R", "eyeR", "R_eye", "Eye.R.001" };
 
         /// <summary>
         /// The CVRAvatar inspector's "Auto" button for View Position, replicated from the
@@ -870,9 +878,18 @@ namespace AvatarBridge
                 {
                     return child;
                 }
-                foreach (Transform candidate in parent)
+                // Every descendant, not just direct children. Eye bones are routinely a few
+                // joints below the head — behind a skull, a face rig or an "eyes" grouping node —
+                // and the taur base that exposed this keeps "eye.L" three levels down. A
+                // direct-children scan missed it, Auto fell back to a blind head offset, and the
+                // viewpoint landed 14 cm low on the muzzle.
+                //
+                // Safe to widen because the match is an exact name comparison against a short
+                // list, not a substring: "eyelid.L" and "eye_socket" don't qualify.
+                foreach (Transform candidate in parent.GetComponentsInChildren<Transform>(true))
                 {
-                    if (string.Equals(candidate.name, potentialName, StringComparison.OrdinalIgnoreCase))
+                    if (candidate != parent
+                        && string.Equals(candidate.name, potentialName, StringComparison.OrdinalIgnoreCase))
                     {
                         return candidate;
                     }

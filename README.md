@@ -884,6 +884,12 @@ matched the hand-corrected position exactly on X and to half a millimetre on Z. 
 when the descriptor has no viewpoint set, and the report says which was used and how far apart they
 were.
 
+**Eye bones are found by name when the rig doesn't map them** (3.0.2), and that search now knows
+Blender's `.L`/`.R` suffix (`eye.L`, `eye.R`) and looks through the whole head, not just its direct
+children. Without both, a taur base whose eyes sat three joints below the head fell through to a
+blind head-offset estimate and put the viewpoint 14 cm low, on the muzzle. Blender exports that
+suffix by default, so this affected far more than one avatar.
+
 **Unless the authored value is provably in the wrong place** (2.100.0). A viewpoint isn't a matter
 of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
 proportions allow *and* Auto lands within them, Auto wins and the report says so. One taur base
