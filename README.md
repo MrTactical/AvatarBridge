@@ -604,13 +604,28 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ### Quadruped / FinalIK avatars
 
-**There are three of these, not two.** Every quadruped that has caused trouble shares one symptom —
-**none of its humanoid bones move any geometry** — reached from three unrelated designs: a decoy
-relay skeleton, a poseclone puppet, and a humanoid map pointing into a **FinalIK VRIK proxy**. That
-matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head hiding
-off humanoid bones, so all three follow a skeleton nobody can see, pass every internal check against
-it, and still land half a metre from the avatar's face. The conversion says so outright (3.2.2), and
-`Diagnostics.md` lists every mapped bone with its full path so you can see which skeleton was used.
+**Quadruped support is real but partial, and how much you get depends on how yours was built.**
+Unity has no quadruped rig — every quad on VRChat is a humanoid skeleton driving an animal-shaped
+one by some trick, and *which trick* decides what survives conversion. Three have been converted and
+dissected here; they behave completely differently.
+
+All three share one symptom, which is the fastest way to recognise the family: **none of their
+humanoid bones move any geometry.** The conversion reports that outright, and `Diagnostics.md` gives
+you the number (`Mapped bones … that deform mesh: 0 (0%)`) plus every mapped bone's full path. It
+matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head hiding off
+humanoid bones — so on all three they follow a skeleton nobody can see, pass every internal check
+against it, and still land half a metre from the avatar's face.
+
+| How it's built | Tell-tale | What you get |
+|---|---|---|
+| **Constraint relay** — hidden biped, VRC constraints copying it onto the animal | bones named `*Human`, ~60 VRC constraints | **Walks in game.** Locomotion, poses, limb locks, viewpoint, first-person head all working. Hind legs land reflected — see below |
+| **Unity-constraint rig** (e.g. AnyTaur) — same idea, Unity's own constraints | `RotationConstraint` throughout, no VRC constraints | **Best case.** Nothing to translate, so none of the constraint walls apply at all |
+| **FinalIK proxy** — humanoid mapped into a `VRIK` proxy skeleton | mapped bones sit under `.../VRIK/PROXY_*` | **Least working.** The visible body is posed by IK and relays that can't convert |
+
+**The one thing worth knowing before you start:** a quad built on **Unity constraints converts almost
+untouched**, because VRChat's constraint features are what don't survive — local-space solving and
+the negative-scale correction. If you're choosing or commissioning a quad base for ChilloutVR, that
+is the single biggest predictor of how well it will land.
 
 **The viewpoint and voice get rescued when they land off the body** (3.3.0). Rather than trying to
 recognise a fourth rig design, this asks the one question no skeleton can lie about: is the marker
@@ -619,10 +634,8 @@ the avatar, however well it measured, and it's re-placed from the eye markers th
 body. A marker already on the body is never touched, so avatars that are correct — including the
 other two quadrupeds — can't be disturbed. Naming only nominates candidates; geometry decides.
 
-**Partly working as of 2.92.0.** A decoy-rig quadruped now walks in game — confirmed by wearing one,
-which is the only test that counts. Getting there took three separate fixes, and one wall is still
-standing. There are also two different avatars hiding under one symptom, so start by finding out
-which you have; the report names it.
+**A constraint-relay quadruped walks in game** — confirmed by wearing one, which is the only test
+that counts. Getting there took several separate fixes, and the walls below are still standing.
 
 **Turn off "Base / locomotion" for a quadruped.** It's off by default. VRChat's stock locomotion
 layer and ChilloutVR's own both drive the decoy biped, and with both present the avatar holds its
@@ -675,8 +688,23 @@ all. **Two things break the rest, and the report names both:**
   instead — your camera only; everyone else sees the whole avatar. Delete it if you'd rather not.
 
 ⚠️ **A mirrored hind rig still doesn't work**, and that's the common build — the front half moves,
-the back half lands reflected. The report tells you which bones and why, rather than leaving you to
-guess.
+the back half lands reflected. The report names the exact bones. Both quadrupeds dissected here that
+use VRC constraints hit it in the same place, and it looks the same on each: the hind limbs are the
+humanoid legs relayed *in local space* and *mirrored*, so they fail both walls at once —
+
+```
+LOCAL_INVERSE_CNST_UpperLeg_L  ←  HOOMAN_UpperLeg_L      (local space, mirrored parent)
+LOCAL_INVERSE_CNST_LowerLeg_L  ←  HOOMAN_LowerLeg_L
+LOCAL_INVERSE_CNST_Foot_L      ←  HOOMAN_Foot_L
+```
+
+If your quad has a **"biped" mode**, try it — it usually stops using the mirrored hind rig entirely
+and is often the configuration that converts cleanly.
+
+**Honest summary: this is limited support, not full support.** One rig style walks; one converts
+almost perfectly; one mostly doesn't. Nothing here is a silent failure — the report and
+`Diagnostics.md` name which family you have, which bones fail, and why — but a quadruped still needs
+testing in game before you trust it, and some will need author-side changes no converter can make.
 
 **A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
