@@ -118,10 +118,18 @@ namespace AvatarBridge
             // constraints relaying it onto the visible body — puts both markers on the stand-in
             // instead of on the avatar. See AvatarFeatureDetect.DecoyRigAnchors.
             bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
-                                out var decoyView, out var decoyVoice, out string decoyDetail)
+                                out var decoyView, out var decoyVoice, out var visibleHead, out string decoyDetail)
                             && Vector3.Distance(decoyView, humanoidView) > 0.05f;
             cvrAvatar.viewPosition = decoyRig ? decoyView : humanoidView;
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;
+
+            if (decoyRig && AvatarFeatureDetect.ExcludeVisibleHeadFromFirstPerson(animator, visibleHead))
+            {
+                ctx.Report.Converted(Category, $"First-person head hiding moved to \"{visibleHead.name}\"",
+                    "ChilloutVR hides your own head in first person by adding an FPRExclusion to the " +
+                    "humanoid Head bone, which on a decoy rig skins nothing. One was added to the head " +
+                    "you can actually see instead. It only affects YOUR camera.");
+            }
 
             if (decoyRig)
             {

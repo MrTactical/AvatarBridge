@@ -637,6 +637,10 @@ all. **Two things break the rest, and the report names both:**
   humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
   animal's skull. Both are measured on the relayed bones instead; see
   [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
+- **First-person head hiding aimed at the decoy (2.93.0).** ChilloutVR hides your own head by adding
+  an `FPRExclusion` to the humanoid Head bone. That bone skins nothing here, so nothing was hidden
+  and the view filled with the inside of the animal's head. One is added to the head you can see
+  instead — your camera only; everyone else sees the whole avatar. Delete it if you'd rather not.
 
 ⚠️ **A mirrored hind rig still doesn't work**, and that's the common build — the front half moves,
 the back half lands reflected. The report tells you which bones and why, rather than leaving you to

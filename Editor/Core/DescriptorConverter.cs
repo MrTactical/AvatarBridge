@@ -68,9 +68,20 @@ namespace AvatarBridge
             // the stand-in. The 5 cm gate keeps this silent on every rig where the relay exists
             // but changes nothing, so an ordinary avatar's conversion is untouched.
             bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
-                                out var decoyView, out var decoyVoice, out string decoyDetail)
+                                out var decoyView, out var decoyVoice, out var visibleHead, out string decoyDetail)
                             && Vector3.Distance(decoyView, humanoidView) > 0.05f;
             cvrAvatar.viewPosition = decoyRig ? decoyView : humanoidView;
+
+            if (decoyRig && AvatarFeatureDetect.ExcludeVisibleHeadFromFirstPerson(animator, visibleHead))
+            {
+                ctx.Report.Converted(Category, $"First-person head hiding moved to \"{visibleHead.name}\"",
+                    "ChilloutVR hides your own head in first person by adding an FPRExclusion to the " +
+                    "humanoid Head bone. On a decoy rig that bone is part of the stand-in skeleton and " +
+                    "skins nothing, so the client hides nothing and you spend the session looking at " +
+                    "the inside of your own head. One was added to the head you can actually see " +
+                    "instead. It only affects YOUR camera — everyone else sees the whole avatar — and " +
+                    "deleting it puts your head back in shot.");
+            }
 
             if (decoyRig)
             {

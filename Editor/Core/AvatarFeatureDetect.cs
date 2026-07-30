@@ -539,6 +539,43 @@ namespace AvatarBridge
             return head != null || (leftEye != null && rightEye != null);
         }
 
+        /// <summary>
+        /// Hides the VISIBLE head in first person on a decoy rig, by adding the CCK's own
+        /// <c>FPRExclusion</c> to it.
+        ///
+        /// ChilloutVR does this for you, but it aims at the same wrong bone everything else does.
+        /// <c>AvatarClone.AddExclusionToHeadIfNeeded()</c> reads
+        /// <c>animator.GetBoneTransform(HumanBodyBones.Head)</c> and, if that GameObject has no
+        /// exclusion of its own, adds one with <c>isShown = false</c>. On a decoy rig that bone is
+        /// part of the stand-in skeleton and skins nothing, so the client dutifully hides nothing
+        /// and you spend the session looking at the inside of your own head.
+        ///
+        /// The component only affects the first-person render clone — it shrinks the excluded
+        /// hierarchy to zero for your camera, never for anyone else's — and it is on the CCK's
+        /// avatar whitelist, so it survives upload. An exclusion the author placed themselves is
+        /// left alone.
+        /// </summary>
+        public static bool ExcludeVisibleHeadFromFirstPerson(Animator animator, Transform visibleHead)
+        {
+            if (visibleHead == null)
+            {
+                return false;
+            }
+            // An ordinary rig needs nothing: the client's own auto-add already targets this bone.
+            var humanoidHead = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head)
+                : null;
+            if (humanoidHead == visibleHead || visibleHead.GetComponent<FPRExclusion>() != null)
+            {
+                return false;
+            }
+            var exclusion = visibleHead.gameObject.AddComponent<FPRExclusion>();
+            exclusion.target = visibleHead;
+            exclusion.isShown = false;
+            exclusion.shrinkToZero = true;
+            return true;
+        }
+
         static readonly string[] JawNameVariants =
             { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
 
@@ -551,15 +588,17 @@ namespace AvatarBridge
         /// Returns false on every ordinary rig, where there is no relay to follow.
         /// </summary>
         public static bool DecoyRigPlacement(GameObject root, Animator animator,
-            out Vector3 viewLocal, out Vector3 voiceLocal, out string detail)
+            out Vector3 viewLocal, out Vector3 voiceLocal, out Transform visibleHead, out string detail)
         {
             viewLocal = default;
             voiceLocal = default;
+            visibleHead = null;
             detail = null;
             if (!DecoyRigAnchors(root, animator, out var head, out var leftEye, out var rightEye))
             {
                 return false;
             }
+            visibleHead = head;
 
             // The avatar's own size, so the fallback offsets below scale with it rather than
             // assuming a human head. Taken off the humanoid rig because that is the one chain
