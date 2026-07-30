@@ -628,11 +628,14 @@ all. **Two things break the rest, and the report names both:**
   that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
   computes and writes its own rotation with no hook in between. Un-mirroring the bones and
   re-rigging is the only cure, and that's a job for your 3D package.
-- **PhysBones on a relayed bone (2.91.0).** A constraint writes that bone every frame; a cloth
+- **PhysBones on a relayed bone (2.91.0, widened in 2.97.0).** A constraint writes that bone every frame; a cloth
   solver integrates it from its own last state. Together they feed each other until the transform
   goes **NaN**, and the chain hangs broken with nothing to see in the animator. VRChat survives it
   because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone don't. Those
-  chains are skipped now and listed in the report.
+  chains are skipped now and listed in the report. **Unity's own constraints count too** (2.97.0) —
+  the loop is engine-level and doesn't care which component writes the rotation. 2.91.0 only looked
+  for VRChat's, so a quadruped base built entirely on Unity constraints went straight past it with a
+  tail cloth simulating three constraint-driven bones.
 - **Both markers on the decoy (2.92.0).** ChilloutVR parents the viewpoint and voice position to the
   humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
   animal's skull. Both are measured on the relayed bones instead; see
@@ -914,6 +917,19 @@ conversion aims to, so they're always a safe manual fix.
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**,
 this is it, and **it is not the conversion**: the same animation does nothing in VRChat either.
+
+**Two report lines cover the other version of this** — a clip whose curves address objects that
+aren't on the avatar — and 2.97.0 split them apart, because they mean opposite things:
+
+- **"animate paths that were ALREADY missing in VRChat"** is not a problem. Every dead path is now
+  checked against the avatar *as it arrived*, and these weren't there either — so the curves were
+  silent in VRChat exactly as they will be here, and nothing was lost. Usually the clip belongs to a
+  feature that variant isn't configured for. It used to be reported as a warning, which made healthy
+  conversions look alarming: one quadruped base tripped it 44 times, all harmless.
+- **"LOST paths that existed before conversion"** is the real one. Those objects were on the avatar
+  when it arrived and aren't now, so the feature worked in VRChat and won't here. A stripped system
+  (GoGo, SPS) taking objects a clip still references is the usual innocent cause — turn that strip
+  off and convert again to check. Anything else is worth reporting as a bug.
 
 **Locked (optimised) Poiyomi/Thry shaders bake any property that wasn't flagged animated *at lock
 time* into the shader as a fixed value and delete the property.** Writing to it afterwards goes

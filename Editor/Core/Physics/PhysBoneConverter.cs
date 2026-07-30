@@ -154,6 +154,10 @@ namespace AvatarBridge
         /// each frame and simply re-reads the result. MagicaCloth2 and DynamicBone do not, and
         /// nothing here can reorder them.
         ///
+        /// Unity's own constraints count as much as VRChat's, which 2.91.0 missed by matching on
+        /// the "VRC*Constraint" type name. The feedback loop is engine-level and does not care
+        /// which component writes the rotation.
+        ///
         /// The chain is skipped whole rather than trimmed. Simulating a constraint-driven bone
         /// is meaningless anyway — the constraint fully determines its rotation — and a chain
         /// re-rooted below the constrained part would be a different chain than its author made.
@@ -168,8 +172,21 @@ namespace AvatarBridge
             {
                 foreach (var component in t.GetComponents<Component>())
                 {
-                    if (component == null || !component.GetType().Name.StartsWith("VRC")
-                        || !component.GetType().Name.EndsWith("Constraint"))
+                    if (component == null)
+                    {
+                        continue;
+                    }
+                    // Unity's constraints count too, not just VRChat's. 2.91.0 only matched
+                    // "VRC*Constraint" — but the NaN is an engine-level feedback loop between a
+                    // component that WRITES a rotation every frame and a solver that integrates
+                    // from its own previous state, and which constraint type does the writing is
+                    // irrelevant. An avatar authored on Unity constraints (the AnyTaur quadruped
+                    // base is entirely built this way) sailed straight past the 2.91.0 check with
+                    // a tail cloth simulating three constraint-driven bones.
+                    bool isConstraint = component is UnityEngine.Animations.IConstraint
+                        || (component.GetType().Name.StartsWith("VRC", System.StringComparison.Ordinal)
+                            && component.GetType().Name.EndsWith("Constraint", System.StringComparison.Ordinal));
+                    if (!isConstraint)
                     {
                         continue;
                     }

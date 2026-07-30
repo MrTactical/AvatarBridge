@@ -5163,6 +5163,32 @@ namespace AvatarBridge
         static void AuditClipBindings(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
+
+            // The SOURCE hierarchy, so a dead path can be blamed correctly.
+            //
+            // "44 clips animate paths that don't exist" is the loudest thing this report says, and
+            // on a healthy avatar it is usually not our doing — a quadruped base fired it 44 times
+            // for clips addressing a configuration that prefab simply wasn't in, all of them
+            // equally inert in VRChat. Shouting about those buries the cases that matter and makes
+            // a clean conversion look broken. So each dead path is checked against the avatar as it
+            // arrived: still missing there, and it was already silent before AvatarBridge touched
+            // it; present there but not here, and something in this conversion moved or stripped
+            // it, which is a real defect and is reported as one.
+            var sourceRoot = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.transform : null;
+            var sourceCache = new Dictionary<string, bool>();
+            bool ResolvedBefore(string path)
+            {
+                if (sourceRoot == null || string.IsNullOrEmpty(path))
+                {
+                    return false; // no source to compare against: never claim we broke it
+                }
+                if (!sourceCache.TryGetValue(path, out var was))
+                {
+                    sourceCache[path] = was = sourceRoot.Find(path) != null;
+                }
+                return was;
+            }
+
             var resolveCache = new Dictionary<string, bool>();
             bool Resolves(string path)
             {
@@ -5179,6 +5205,8 @@ namespace AvatarBridge
 
             var seen = new HashSet<AnimationClip>();
             var broken = new List<(string clip, int dead, int total, string example)>();
+            // Clips whose dead paths DID resolve before conversion — the ones we are responsible for.
+            var lostClips = new List<(string clip, int dead, int total, string example)>();
 
             void Audit(Motion motion)
             {
@@ -5194,8 +5222,9 @@ namespace AvatarBridge
                 {
                     return;
                 }
-                int dead = 0, total = 0;
+                int dead = 0, total = 0, lost = 0;
                 string example = null;
+                string lostExample = null;
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip)
                              .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
                 {
@@ -5216,9 +5245,18 @@ namespace AvatarBridge
                     {
                         dead++;
                         example = example ?? binding.path;
+                        if (ResolvedBefore(binding.path))
+                        {
+                            lost++;
+                            lostExample = lostExample ?? binding.path;
+                        }
                     }
                 }
-                if (dead > 0)
+                if (lost > 0)
+                {
+                    lostClips.Add((clip.name, lost, total, lostExample));
+                }
+                else if (dead > 0)
                 {
                     broken.Add((clip.name, dead, total, example));
                 }
@@ -5235,6 +5273,22 @@ namespace AvatarBridge
                 });
             }
 
+            // Paths this conversion lost. Rare, and always worth acting on.
+            if (lostClips.Count > 0)
+            {
+                lostClips.Sort((a, b) => b.dead.CompareTo(a.dead));
+                var lostLines = lostClips.Take(8)
+                    .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
+                ctx.Report.Warning(Category,
+                    $"{lostClips.Count} clip(s) LOST paths that existed before conversion",
+                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". These " +
+                    "objects were on the avatar when it arrived and are not on it now, so these " +
+                    "curves worked in VRChat and play as silence here. Something in this conversion " +
+                    "moved or removed them — a stripped system (GoGo, SPS) taking objects a clip " +
+                    "still references is the usual innocent explanation, and turning that strip off " +
+                    "and converting again will tell you. Anything else is a bug worth reporting.");
+            }
+
             if (broken.Count == 0)
             {
                 return;
@@ -5242,14 +5296,20 @@ namespace AvatarBridge
             broken.Sort((a, b) => b.dead.CompareTo(a.dead));
             var lines = broken.Take(8)
                 .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
-            ctx.Report.Warning(Category,
-                $"{broken.Count} clip(s) animate paths that don't exist on this avatar",
-                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Unity plays these " +
-                "curves as silence — and did in VRChat too, unless a build-time tool (VRCFury path " +
-                "rewriting, Modular Avatar) fixed the paths at upload. If one of these features " +
-                "worked in VRChat, make sure the package it was built with is INSTALLED in this " +
-                "project and convert again, so its bake runs first. Clips animating objects a " +
-                "stripped system removed also land here, and those are fine.");
+            // NOT a warning. These paths were already missing on the source avatar, so the curves
+            // were silent in VRChat too and nothing was lost in conversion. Flagging them as
+            // problems made healthy conversions look broken — one quadruped base tripped this 44
+            // times for clips addressing a configuration that prefab wasn't set up for.
+            ctx.Report.Converted(Category,
+                $"{broken.Count} clip(s) animate paths that were ALREADY missing in VRChat",
+                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Checked against the " +
+                "avatar as it arrived: these objects weren't there either, so Unity played the " +
+                "curves as silence in VRChat exactly as it will here. Nothing was lost in " +
+                "conversion and there is usually nothing to do. Two cases are worth a look: a " +
+                "build-time tool (VRCFury path rewriting, Modular Avatar) may have been fixing the " +
+                "paths at upload — if so, install that package here and convert again so its bake " +
+                "runs first — or the clip belongs to a feature this avatar variant isn't configured " +
+                "for, which is normal and harmless.");
         }
 
         /// <summary>
