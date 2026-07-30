@@ -881,14 +881,17 @@ The relay constraints say where the real bones are, so the conversion follows th
 whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
 both markers are measured there instead.
 
-Ordinary avatars are untouched, and two gates keep it that way. The rewrite only happens when the
-two answers are more than 5 cm apart, **and** only when the humanoid rig is genuinely a decoy —
-measured by how much of it deforms mesh, since a stand-in skeleton moves no geometry at all
-(2.98.0). Reading the head is not the same as reproducing it: a taur base whose flight system feeds
-head rotation into a constraint had its viewpoint confidently moved to a bone called `HipsAgain`.
-Checking the head bone alone wasn't enough either — that avatar has a full humanoid torso but a head
-bone carrying no weights of its own — so the whole mapped skeleton is what gets measured. If a
-meaningful share of your avatar's humanoid bones move geometry, none of this fires.
+**This only fires when your avatar relays both humanoid EYE bones** (2.99.0), and that requirement
+is doing real work. A taur base kept tripping earlier versions: its constraint sourced from the
+humanoid head drives a hip clone, because that's its head-puppet feature — the head as an *input*
+that swings the body, not a bone being reproduced somewhere visible. The result was a viewpoint
+placed at the avatar's hips. Nothing about the rig separated the two cases (that base has a genuine
+stand-in skeleton too), and nor did distance — the dragon's real head sits 0.46 m from its humanoid
+head, the taur's hip clone 0.50 m. Relayed eyes do: an eye bone exists to aim eyeballs, so a
+constraint driven from one is reproducing a face, and a puppet input never has them.
+
+A decoy rig that maps no eye bones therefore keeps the author's own viewpoint, as before 2.92.0. An
+unhelpful viewpoint beats one confidently placed at your hips.
 
 It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
 check them with the gizmo and drag either one if you want it elsewhere.

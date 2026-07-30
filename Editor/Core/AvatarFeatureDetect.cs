@@ -577,7 +577,30 @@ namespace AvatarBridge
                     }
                 }
             }
-            return head != null || (leftEye != null && rightEye != null);
+            // BOTH relayed eyes, or nothing. This is the gate that finally worked, after three
+            // that didn't, and the reasoning behind it is the useful part.
+            //
+            // Every attempt to recognise a decoy by the RIG failed, because the taur base that
+            // kept tripping this genuinely has one — a humanoid stand-in that deforms no mesh,
+            // exactly like the dragon's. What it does NOT have is a relayed head. Its constraint
+            // sourced from the humanoid head drives a hip clone, because that is its head-puppet
+            // feature: the head is an INPUT that swings the body, not a bone being reproduced
+            // somewhere visible.
+            //
+            // Position can't tell those apart — measured on both avatars, the dragon's real head
+            // sits 0.46 m from its humanoid head and the taur's hip clone 0.50 m. Neither can the
+            // constraint itself; they are the same component doing opposite jobs.
+            //
+            // Relayed EYES can. An eye bone exists to aim a pair of eyeballs, so a constraint
+            // driving something from one is reproducing a face — there is no other reason to do
+            // it. A puppet input never has them, and the taur's report said so outright: "this
+            // rig relays no eye bones", right before it guessed from the hip clone anyway.
+            //
+            // The cost is a decoy rig that maps no eye bones no longer gets this treatment, and
+            // falls back to the author's own viewpoint as it did before 2.92.0. That is the safe
+            // direction to fail in: a viewpoint that is merely unhelpful beats one confidently
+            // placed at the avatar's hips.
+            return leftEye != null && rightEye != null;
         }
 
         /// <summary>
@@ -650,25 +673,10 @@ namespace AvatarBridge
                 ? Vector3.Distance(hips.position, headBone.position)
                 : 0f;
 
-            string viewFrom;
-            Vector3 viewWorld;
-            if (leftEye != null && rightEye != null)
-            {
-                viewWorld = (leftEye.position + rightEye.position) / 2f;
-                viewFrom = $"midway between \"{leftEye.name}\" and \"{rightEye.name}\"";
-            }
-            else if (leftEye != null || rightEye != null)
-            {
-                viewWorld = ProjectSingleEye(animator, leftEye != null ? leftEye : rightEye);
-                viewFrom = $"\"{(leftEye != null ? leftEye : rightEye).name}\", projected onto the centreline";
-            }
-            else
-            {
-                viewWorld = OffsetFromBone(head, span > 0.0001f
-                    ? new Vector3(0f, -0.1f * span, 0.1f * span)
-                    : new Vector3(0f, -0.05f, 0.05f));
-                viewFrom = $"just in front of \"{head.name}\" (this rig relays no eye bones)";
-            }
+            // DecoyRigAnchors guarantees both eyes; there is no head-only guess any more, because
+            // guessing a face from one relayed bone is what put a taur's viewpoint at its hips.
+            Vector3 viewWorld = (leftEye.position + rightEye.position) / 2f;
+            string viewFrom = $"midway between \"{leftEye.name}\" and \"{rightEye.name}\"";
 
             string voiceFrom;
             Vector3 voiceWorld;
