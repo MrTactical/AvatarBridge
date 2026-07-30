@@ -125,6 +125,10 @@ actually running.
   The **Face tracking** section drives every eye and Unified Expressions parameter the controller
   declares, grouped by region, with each slider's range read from the rig's own blend trees — so
   bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
+  On an avatar converted to **native** `CVRFaceTracking` there are no such parameters — the client
+  writes blendshapes straight from the headset, with no animator in the loop — so the section shows
+  a slider per **mapped blendshape** instead (3.1.0), writing the mesh the same way the client will.
+  Before that it showed a single lone toggle and looked broken while being perfectly correct.
 
   The **Animator layers** readout is pinned to the bottom of the window so it stays visible while
   you drive the controls above it, and shows every layer's weight, avatar mask and currently

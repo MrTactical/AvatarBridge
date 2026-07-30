@@ -1117,6 +1117,25 @@ namespace AvatarBridge
                 return card;
             }
 
+            // NATIVE face tracking declares no per-expression parameters, so the parameter walk
+            // below would build an empty card. ChilloutVR's CVRFaceTracking component reads the
+            // headset and writes blendshapes straight onto the mesh — there is no animator in the
+            // loop at all, which is the entire point of the native path. The only parameter such
+            // an avatar carries is the FacialExpressionsDisabled gate, so this card rendered one
+            // lone toggle and looked broken while being perfectly correct.
+            //
+            // The mapping is still testable, just not through the animator: drive the mapped
+            // blendshapes directly, which is what the client does with them.
+            if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
+            {
+                var native = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
+                if (native != null && native.FaceMesh != null && native.FaceBlendShapes != null)
+                {
+                    BuildNativeFaceShapeSliders(card, native);
+                    return card;
+                }
+            }
+
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
             while (runtime is AnimatorOverrideController over)
@@ -1231,6 +1250,123 @@ namespace AvatarBridge
             restButton.style.marginTop = 6;
             card.Body.Add(restButton);
             return card;
+        }
+
+        /// <summary>
+        /// Sliders for an avatar whose face tracking is ChilloutVR's NATIVE kind: one per mapped
+        /// blendshape, writing the mesh directly.
+        ///
+        /// This is not a simulation of the animator — there is no animator involved. CVRFaceTracking
+        /// holds a slot per Unified Expression, each naming a blendshape on FaceMesh, and in game it
+        /// writes those shapes from the headset scaled by BlendShapeStrength. Moving one here does
+        /// the same write, so what you see is exactly what the mapping will produce.
+        ///
+        /// What this proves and what it doesn't: a shape that moves is mapped to real geometry and
+        /// survived conversion. Whether a headset ever feeds it is still only answerable in game.
+        /// </summary>
+        void BuildNativeFaceShapeSliders(BridgeElements.Card card, CVRFaceTracking native)
+        {
+            var mesh = native.FaceMesh.sharedMesh;
+            if (mesh == null)
+            {
+                card.Body.Add(BridgeElements.Hint(
+                    $"\"{native.FaceMesh.name}\" has no mesh, so its blendshapes can't be driven."));
+                return;
+            }
+
+            // Distinct, in mapping order, skipping the CCK's empty-slot marker.
+            var shapes = new List<string>();
+            var seen = new HashSet<string>();
+            foreach (string shape in native.FaceBlendShapes)
+            {
+                if (!string.IsNullOrEmpty(shape) && shape != "-none-" && seen.Add(shape)
+                    && mesh.GetBlendShapeIndex(shape) >= 0)
+                {
+                    shapes.Add(shape);
+                }
+            }
+
+            card.SetSummary($"{shapes.Count} blendshapes  (native)");
+            card.Body.Add(BridgeElements.Hint(
+                $"This avatar uses ChilloutVR's NATIVE face tracking, so there are no per-expression " +
+                $"animator parameters to drive — CVRFaceTracking writes these {shapes.Count} blendshapes on " +
+                $"\"{native.FaceMesh.name}\" straight from the headset. The sliders below make the same " +
+                "writes, so a shape that moves is mapped to real geometry. Whether a headset feeds it is " +
+                "only answerable in game."));
+
+            if (shapes.Count == 0)
+            {
+                card.Body.Add(BridgeElements.Hint(
+                    "No slot names a blendshape that exists on this mesh — the mapping is empty. " +
+                    "Assign shapes on the CVRFaceTracking component, or convert again with a face " +
+                    "mesh whose shapes follow Unified Expressions naming."));
+                return;
+            }
+
+            var searchable = new List<(VisualElement element, string key)>();
+            if (shapes.Count > 12)
+            {
+                var search = new ToolbarSearchField();
+                search.style.width = Length.Percent(100);
+                search.style.marginTop = 4;
+                search.style.marginBottom = 4;
+                search.RegisterValueChangedCallback(e =>
+                {
+                    string query = (e.newValue ?? "").ToLowerInvariant();
+                    foreach (var (element, key) in searchable)
+                    {
+                        element.style.display = key.Contains(query) ? DisplayStyle.Flex : DisplayStyle.None;
+                    }
+                });
+                card.Body.Add(search);
+            }
+
+            var built = new List<(Slider slider, int index)>();
+            foreach (string shape in shapes)
+            {
+                int index = mesh.GetBlendShapeIndex(shape);
+                var renderer = native.FaceMesh;
+                var slider = new Slider(shape, 0f, 100f)
+                {
+                    value = renderer.GetBlendShapeWeight(index),
+                    showInputField = true,
+                    tooltip = $"Blendshape {index} on \"{renderer.name}\".\n\nIn game ChilloutVR writes " +
+                              $"this from the headset, scaled by Blend Shape Strength ({native.BlendShapeStrength:0}%).",
+                };
+                slider.RegisterValueChangedCallback(e =>
+                {
+                    if (renderer != null)
+                    {
+                        Undo.RecordObject(renderer, "Face tracking preview");
+                        renderer.SetBlendShapeWeight(index, e.newValue);
+                    }
+                });
+                card.Body.Add(slider);
+                built.Add((slider, index));
+                searchable.Add((slider, shape.ToLowerInvariant()));
+            }
+
+            var reset = new Button(() =>
+            {
+                var renderer = native.FaceMesh;
+                if (renderer == null)
+                {
+                    return;
+                }
+                Undo.RecordObject(renderer, "Face tracking preview reset");
+                foreach (var (slider, index) in built)
+                {
+                    slider.SetValueWithoutNotify(0f);
+                    renderer.SetBlendShapeWeight(index, 0f);
+                }
+            })
+            {
+                text = "Clear all shapes  (back to 0)",
+                tooltip = "Native shapes rest at 0 — unlike the VRCFT rig, whose eyelids and pupils " +
+                          "rest part-open. These are driven from the headset, so 0 is the true rest.",
+            };
+            reset.style.marginTop = 6;
+            card.Body.Add(reset);
         }
 
         /// <summary>Fixed-width cell. Never shrinks, so the columns stay in line.</summary>
