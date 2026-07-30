@@ -264,11 +264,11 @@ namespace AvatarBridge
                 var rightEye = animator.GetBoneTransform(HumanBodyBones.RightEye);
                 var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
 
-                rows.Add(Row("Humanoid Head bone", Bone(root, head)));
-                rows.Add(Row("Humanoid Hips bone", Bone(root, hips)));
-                rows.Add(Row("Humanoid LeftEye", Bone(root, leftEye)));
-                rows.Add(Row("Humanoid RightEye", Bone(root, rightEye)));
-                rows.Add(Row("Humanoid Jaw", Bone(root, jaw)));
+                rows.Add(Row("Humanoid Head bone", Bone(ctx, root, head)));
+                rows.Add(Row("Humanoid Hips bone", Bone(ctx, root, hips)));
+                rows.Add(Row("Humanoid LeftEye", Bone(ctx, root, leftEye)));
+                rows.Add(Row("Humanoid RightEye", Bone(ctx, root, rightEye)));
+                rows.Add(Row("Humanoid Jaw", Bone(ctx, root, jaw)));
 
                 if (head != null)
                 {
@@ -288,24 +288,55 @@ namespace AvatarBridge
             // Bones named like eyes, wherever they live. On more than one rig these are nowhere
             // near the humanoid map — parked in a cloned chain, or under a face rig — and knowing
             // that instantly is the difference between a five-minute answer and an afternoon.
+            var mappedEyes = new HashSet<Transform>();
+            if (animator != null && animator.isHuman)
+            {
+                foreach (var bone in new[] { HumanBodyBones.LeftEye, HumanBodyBones.RightEye })
+                {
+                    var t = animator.GetBoneTransform(bone);
+                    if (t != null)
+                    {
+                        mappedEyes.Add(t);
+                    }
+                }
+            }
             var eyeish = ctx.Target.GetComponentsInChildren<Transform>(true)
                 .Where(t => t.name.IndexOf("eye", StringComparison.OrdinalIgnoreCase) >= 0)
-                .Take(12).ToList();
+                .ToList();
             if (eyeish.Count > 0)
             {
+                // Mapped ones first, and never truncated away. The first version listed the first
+                // twelve in hierarchy order, which on a rig carrying a duplicate skeleton showed
+                // the template chain and hid the pair the humanoid map actually uses — the one
+                // fact the table exists to establish.
+                var ordered = eyeish.OrderByDescending(mappedEyes.Contains).Take(20).ToList();
                 text.AppendLine();
-                text.AppendLine("Transforms with \"eye\" in the name:");
+                text.AppendLine($"Transforms with \"eye\" in the name ({eyeish.Count} found" +
+                                (eyeish.Count > ordered.Count ? $", showing {ordered.Count}" : "") +
+                                "; **mapped** = the humanoid rig points at it):");
                 text.AppendLine();
-                text.AppendLine(Table(new[] { "Name", "Avatar-local position", "Path" },
-                    eyeish.Select(t => Row($"`{t.name}`", Vec(root.InverseTransformPoint(t.position)),
-                        $"`{ctx.PathInTarget(t)}`")).ToList()));
+                text.AppendLine(Table(new[] { "Name", "Avatar-local position", "Mapped", "Path" },
+                    ordered.Select(t => Row($"`{t.name}`", Vec(root.InverseTransformPoint(t.position)),
+                        mappedEyes.Contains(t) ? "**yes**" : "", $"`{ctx.PathInTarget(t)}`")).ToList()));
             }
             return text.ToString();
         }
 
-        static string Bone(Transform root, Transform bone)
+        /// <summary>
+        /// A mapped humanoid bone with its FULL PATH, which is not optional detail.
+        ///
+        /// Rigs duplicate skeletons — a template chain, a poseclone, a deformation chain — and the
+        /// duplicates carry identical bone names. The first diagnostics file written listed
+        /// "HOOMAN_Eye_L" at two different positions in two different tables and gave no way to
+        /// tell which one the humanoid map actually points at. A name alone is not an identity.
+        /// </summary>
+        static string Bone(BridgeContext ctx, Transform root, Transform bone)
         {
-            return bone == null ? "*unmapped*" : $"`{bone.name}` at {Vec(root.InverseTransformPoint(bone.position))}";
+            if (bone == null)
+            {
+                return "*unmapped*";
+            }
+            return $"`{bone.name}` at {Vec(root.InverseTransformPoint(bone.position))}<br>`{ctx.PathInTarget(bone)}`";
         }
 
         // -------------------------------------------------------------- constraints ----
