@@ -95,6 +95,24 @@ namespace AvatarBridge
                         "settles. Drag the gizmo on the CVRAvatar if neither is right.";
                 }
             }
+            // The check above measures against the HIPS, and hips are mis-mapped as often as any
+            // other optional slot — one rig pointed them at the armature root on the floor, which
+            // stretched the tolerance to 0.89 m and would have accepted a viewpoint anywhere in
+            // the avatar's upper half. The eyes answer for themselves.
+            if (haveAuthored && autoView && !authoredIsWrong
+                && AvatarFeatureDetect.ViewpointSitsAboveEyes(ctx.Target, animator, authored,
+                    out float aboveEyes, out float eyeSeparation))
+            {
+                authoredIsWrong = true;
+                autoOverrideNote =
+                    $"The viewpoint this avatar shipped with in VRChat sits {aboveEyes:0.###} m ABOVE the " +
+                    $"midpoint of its eye bones — more than the {eyeSeparation:0.###} m between the eyes " +
+                    "themselves, so it is on the brow or above it rather than behind the eyes. A viewpoint " +
+                    "is never legitimately above the eyes: you would spawn looking over your own face. The " +
+                    "CCK's Auto placement (the eye midpoint) was used instead. Below the eyes is left alone " +
+                    "— down a muzzle or inside a helmet is a real choice — and the author's value is " +
+                    "otherwise always preferred. Drag the gizmo on the CVRAvatar if neither is right.";
+            }
 
             var humanoidView = haveAuthored && !authoredIsWrong
                 ? authored
@@ -151,8 +169,10 @@ namespace AvatarBridge
                     $"Placed at the viewpoint this avatar shipped with in VRChat. The CCK's Auto " +
                     $"button (midpoint of the eye bones) would put it {apart:0.###} m away" +
                     (apart > 0.05f
-                        ? " — far enough apart that this rig's eye bones are not where its eyes are, " +
-                          "which is exactly the case the author's value exists to settle."
+                        ? " — they disagree by more than a viewpoint usually moves, which happens when a " +
+                          "rig's eye bones sit somewhere other than its eyes, or when the author placed " +
+                          "the value by eye and was a little out. The author's is kept: it is right far " +
+                          "more often, and it is the only one of the two a human ever looked through."
                         : ", so the two agree and either would have done.") +
                     " Auto remains one click away in the CVRAvatar inspector if you prefer it.");
             }
@@ -310,7 +330,11 @@ namespace AvatarBridge
                         : "voice measured from the viseme mesh") +
                     " — the same positions the Auto buttons on the CVRAvatar inspector produce.");
             }
-            else if (haveAuthored)
+            // Only when the CCK-Auto path placed the voice. When it didn't, MouthLocator has
+            // already reported where the voice went AND how it got there, and a second line here
+            // said "no jaw bone on this rig" — which is wrong on a rig whose jaw was rejected
+            // rather than absent, and duplicated the entry above it either way.
+            else if (haveAuthored && autoVoice)
             {
                 // "Usable", not merely mapped — a Jaw pointing at a hair bone is neither.
                 var jawBone = animator != null && animator.isHuman
@@ -318,13 +342,11 @@ namespace AvatarBridge
                 bool hasJaw = jawBone != null &&
                               AvatarFeatureDetect.JawIsBelievable(ctx.Target, animator, jawBone, out _);
                 ctx.Report.Converted(Category, "Voice position",
-                    (autoVoice
-                        ? (hasJaw
-                            ? "At the jaw bone — a bone that exists is worth more than any estimate."
-                            : "Just ahead of the head bone; this rig has no jaw bone to use. " +
-                              "Offsets are applied along the AVATAR's forward, not the head bone's, " +
-                              "because a bone's own axes can point anywhere.")
-                        : "Measured from the viseme mesh — no jaw bone on this rig.") +
+                    (hasJaw
+                        ? "At the jaw bone — a bone that exists is worth more than any estimate."
+                        : "Just ahead of the head bone; this rig has no jaw bone to use. " +
+                          "Offsets are applied along the AVATAR's forward, not the head bone's, " +
+                          "because a bone's own axes can point anywhere.") +
                     " VRChat has no voice position to inherit, so unlike the viewpoint this one is " +
                     "always derived. Check it with the CVRAvatar gizmo before uploading.");
             }

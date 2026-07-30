@@ -444,6 +444,53 @@ namespace AvatarBridge
         /// offset in front of the head bone (CCK_CVRAvatarEditor.AutoSetVoicePosition,
         /// mirrored). Avatar-local; false without a humanoid jaw or head.</summary>
         /// <summary>
+        /// Whether a viewpoint sits ABOVE the eyes by more than the avatar's own eye separation —
+        /// which no viewpoint ever legitimately does.
+        ///
+        /// This exists because the head-distance check that normally catches a bad authored
+        /// viewpoint measures against the HIPS, and hips are mis-mapped at least as often as jaws.
+        /// One avatar mapped Hips to the armature root at floor level, which made its hips-to-head
+        /// span 1.78 m, which made the tolerance 0.89 m, which would have accepted a viewpoint
+        /// anywhere in the upper half of the avatar. Its authored viewpoint sat 10 cm above the
+        /// eye bones — on the brow — and sailed through.
+        ///
+        /// Interpupillary distance is the right yardstick here: it comes from the two bones being
+        /// compared against, so it needs no other part of the rig to be mapped correctly, and it
+        /// scales with the avatar. A human avatar's is around 6 cm, so an authored value has to be
+        /// more than that above the eye centres before this fires — far outside the range anyone
+        /// places a viewpoint on purpose, and comfortably clear of authors who nudge one slightly
+        /// up for comfort.
+        ///
+        /// Below the eyes is deliberately NOT checked. Placing a viewpoint at the tip of a muzzle
+        /// or down inside a helmet is a real choice on non-human avatars, and this only means to
+        /// catch the direction that is always a mistake.
+        /// </summary>
+        public static bool ViewpointSitsAboveEyes(GameObject root, Animator animator,
+            Vector3 localViewpoint, out float above, out float eyeSeparation)
+        {
+            above = 0f;
+            eyeSeparation = 0f;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+            var left = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var right = animator.GetBoneTransform(HumanBodyBones.RightEye);
+            if (left == null || right == null)
+            {
+                return false; // needs both, since the separation is the yardstick
+            }
+            eyeSeparation = Vector3.Distance(left.position, right.position);
+            if (eyeSeparation < 0.0001f)
+            {
+                return false;
+            }
+            Vector3 eyes = RootOffset(root, (left.position + right.position) * 0.5f);
+            above = Vector3.Dot(localViewpoint - eyes, Vector3.up);
+            return above > eyeSeparation;
+        }
+
+        /// <summary>
         /// Whether the rig's Jaw bone is anywhere a jaw could be. Geometry decides; the name is
         /// never consulted.
         ///

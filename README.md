@@ -1134,15 +1134,27 @@ check them with the gizmo and drag either one if you want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 
-- **A "jaw" bone that isn't a jaw (3.4.15).** The humanoid **Jaw** slot is optional and nothing
+- **A viewpoint above the eyes (3.4.17).** The author's VRChat viewpoint is preferred over the CCK's
+  Auto placement, and it's overridden only when the rig itself proves it wrong. That check measured
+  against the **hips** — and hips get mis-mapped as readily as jaws: one avatar pointed them at the
+  armature root on the floor, which stretched the tolerance to 0.89 m and would have accepted a
+  viewpoint anywhere in its upper half. Its authored value sat 10 cm above the eye bones, on the brow.
+  A viewpoint is now also rejected when it sits above the eye midpoint by more than the avatar's own
+  **interpupillary distance** — a yardstick that comes from the two bones being compared, so no other
+  slot has to be mapped correctly, and that scales with the avatar (about 6 cm on a human, far outside
+  where anyone places a viewpoint deliberately). *Below* the eyes is deliberately left alone: down a
+  muzzle or inside a helmet is a real choice.
+- **A "jaw" bone that isn't a jaw (3.4.15, extended in 3.4.16).** The humanoid **Jaw** slot is optional and nothing
   validates it, so riggers fill it with whatever was nearest — one avatar mapped it to a bone called
   `fronthair1`, 21 cm *above* the head bone and a centimetre above the viewpoint, and the voice duly
   came out of the top of its head. A mapped Jaw is now checked before it's believed: it must sit
   **below the eyes** (a jaw hinges under them — the head bone is a bad reference, since a jaw is
   legitimately level with the base of the skull) and within a quarter of the rig's own hips-to-head
-  span of the head bone. Failing either, it's ignored and the voice falls back to the head bone, with
-  the rejected bone named in the report and flagged in `Diagnostics.md`. Nothing is retargeted — that
-  would move geometry — so fix it in the model's Rig tab if you want jaw-flap animation as well. A bone's local
+  span of the head bone. Failing either, the jaw is ignored and the voice is measured from an
+  open-mouth viseme instead — the vertices that shape moves *are* the mouth — falling back to the head
+  bone only if there's no viseme either. The rejected bone is named in the report and flagged in
+  `Diagnostics.md`. Nothing is retargeted — that would move geometry — so fix it in the model's Rig
+  tab if you want jaw-flap animation as well. A bone's local
   axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
   sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets use the avatar
   root's orientation now, the one transform whose forward is really forward.
