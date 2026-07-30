@@ -292,14 +292,23 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
-⚠️ **Solving in local space doesn't survive.** VRChat's constraints can read the source's **local**
-rotation instead of its world one, and that's the default in the SDK's own inspector. Unity's
-constraints only ever solve in world space, and ChilloutVR ships no equivalent — its constraint
-types are Unity's own. Most of the time this costs nothing: where the constrained object and its
-source hang off the same parent, the parent's rotation appears on both sides and cancels, so the
-two spaces agree exactly. It matters when the source sits in a **different chain**, and the report
-names every one of those. See [quadrupeds](#quadruped--finalik-avatars--on-ice), which are built
-entirely out of that case.
+**Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
+**local** rotation instead of its world one, and that's the default in the SDK's own inspector.
+Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its
+constraint types are Unity's own.
+
+Most of the time this costs nothing: where the constrained object and its source hang off the same
+parent, that parent's rotation appears on both sides and cancels, so the two spaces agree exactly.
+It matters when the source sits in a **different chain** — and there the parents can be *made* to
+agree, by moving the constrained bone under the source's own parent. That isn't an approximation:
+it turns the one constraint Unity can't express into one it can, and it cascades, because once a
+chain's root pair matches every pair below it matches too. This is what makes
+[quadrupeds](#quadruped--finalik-avatars--on-ice) work.
+
+Moving a bone is only safe when nothing depends on where it *is*, so it happens only when the relay
+is rotation-only, **no mesh skins to the bone**, and **no animation addresses it** — curves are
+matched by path, and a moved bone would silently stop being animated. Every move is named in the
+report, and anything failing a check is left alone and reported instead.
 
 ## PhysBones → MagicaCloth2
 
@@ -596,10 +605,15 @@ relay that decoy onto the real skeleton, bone by bone: the torso rides the biped
 chain *is* the biped spine, the front legs are the biped's legs. It's an elegant trick and it needs
 no FinalIK at all, so ChilloutVR has nothing to delete.
 
-What breaks it is that every one of those constraints solves in **local space**, and
-[Unity's cannot](#constraints-that-drive-another-object). Each real bone ends up inheriting the
-biped's world orientation rather than its pose. The report now names every relay it found, so this
-is diagnosable instead of mysterious — but naming it isn't fixing it, and the fix isn't written yet.
+What used to break it is the handful of constraints that solve in **local space**, which
+[Unity's cannot](#constraints-that-drive-another-object) — typically the hind legs copying the
+humanoid legs' articulation, so one biped walk cycle moves four legs. **2.89.0 repairs those** by
+moving the copied bones under the same parent as the bones they copy, which makes a world-space
+constraint reproduce them exactly. Everything else in such a rig already converted correctly: on
+the avatar this was worked out from, 51 of the 59 relays needed nothing and only 8 did.
+
+⚠️ **Still worth testing before you trust it.** This is one avatar's evidence, and only in the
+editor so far. The report names every bone that was moved and every relay that couldn't be.
 
 **A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 

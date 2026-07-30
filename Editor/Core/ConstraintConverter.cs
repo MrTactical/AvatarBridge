@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Animations;
 
@@ -19,6 +20,12 @@ namespace AvatarBridge
     {
         const string Category = "Constraints";
 
+        /// <summary>
+        /// Transforms AlignLocalSpaceRelays moved this run. Their VRChat RotationAtRest was
+        /// expressed against the parent they USED to have, so it must not be copied across.
+        /// </summary>
+        static HashSet<Transform> reparented = new HashSet<Transform>();
+
         public static void Run(BridgeContext ctx)
         {
             if (!ctx.Settings.convertConstraints)
@@ -28,6 +35,10 @@ namespace AvatarBridge
 
             int converted = 0;
             var localSpaceRelays = new List<string>();
+            // MUST run before anything converts: a Unity constraint bakes its rest offsets
+            // against the parent the transform has when it is created.
+            reparented = AlignLocalSpaceRelays(ctx);
+            var realigned = reparented;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
                 if (component == null)
@@ -63,7 +74,10 @@ namespace AvatarBridge
                 if (ok)
                 {
                     converted++;
-                    NoteLocalSpace(ctx, component, localSpaceRelays);
+                    if (!realigned.Contains(component.transform))
+                    {
+                        NoteLocalSpace(ctx, component, localSpaceRelays);
+                    }
                     UnityEngine.Object.DestroyImmediate(component);
                 }
             }
@@ -73,6 +87,209 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
             ReportLocalSpace(ctx, localSpaceRelays);
+        }
+
+        /// <summary>
+        /// Makes a local-space rotation relay reproducible by moving its target under the SAME
+        /// parent as its source.
+        ///
+        /// A world-space constraint equals a local-space one exactly when the two transforms'
+        /// parents hold the same world rotation, because that rotation then appears on both sides
+        /// and cancels. Aligning the parents is therefore not an approximation — it turns the one
+        /// constraint Unity cannot express into one it can, and it cascades: once a chain's root
+        /// pair matches, every pair below it matches too.
+        ///
+        /// This is how a decoy-rig quadruped's hind legs are driven — a second leg rig copying the
+        /// humanoid legs' articulation, so one biped walk cycle moves four legs.
+        ///
+        /// Moving a bone is only safe when nothing depends on where it IS, so all of these must
+        /// hold, and every one of them is checked:
+        ///
+        /// * the relay is rotation-only — nothing reads the moved transform's position;
+        /// * no SkinnedMeshRenderer binds the subtree, so no mesh deforms with it;
+        /// * no animation curve addresses the subtree, since curves are matched by PATH and a
+        ///   moved bone would silently stop being animated (they are driven by the constraint
+        ///   here, which is the whole point of the rig);
+        /// * source and target are both inside the avatar.
+        ///
+        /// Anything failing a check is left alone and reported instead.
+        /// </summary>
+        static HashSet<Transform> AlignLocalSpaceRelays(BridgeContext ctx)
+        {
+            var moved = new HashSet<Transform>();
+            var skinned = new HashSet<Transform>();
+            foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.rootBone != null)
+                {
+                    skinned.Add(smr.rootBone);
+                }
+                foreach (var bone in smr.bones)
+                {
+                    if (bone != null)
+                    {
+                        skinned.Add(bone);
+                    }
+                }
+            }
+
+            var animatedPaths = new HashSet<string>();
+            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            {
+                var rac = animator.runtimeAnimatorController;
+                if (rac == null)
+                {
+                    continue;
+                }
+                foreach (var clip in rac.animationClips)
+                {
+                    if (clip == null)
+                    {
+                        continue;
+                    }
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        animatedPaths.Add(binding.path);
+                    }
+                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    {
+                        animatedPaths.Add(binding.path);
+                    }
+                }
+            }
+
+            foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null || component.GetType().Name != "VRCRotationConstraint"
+                    || !Get(component, "SolveInLocalSpace", false))
+                {
+                    continue;
+                }
+                var targetField = Get<Transform>(component, "TargetTransform", null);
+                var constrained = targetField != null ? targetField : component.transform;
+                var source = FirstWeightedSource(component);
+                if (source == null || source.parent == null || constrained.parent == null
+                    || source.parent == constrained.parent
+                    || !constrained.IsChildOf(ctx.Target.transform)
+                    || !source.IsChildOf(ctx.Target.transform))
+                {
+                    continue;
+                }
+
+                string why = BlocksMove(ctx, constrained, skinned, animatedPaths);
+                if (why != null)
+                {
+                    ctx.Report.Approximated(Category, ctx.PathInTarget(constrained),
+                        $"Solved in local space against \"{source.name}\", which Unity cannot do, and " +
+                        $"the bone could not be moved under that source's parent to make it " +
+                        $"equivalent: {why}. The relay is converted as a world-space constraint and " +
+                        "will not follow correctly.");
+                    continue;
+                }
+
+                string before = ctx.PathInTarget(constrained);
+                constrained.SetParent(source.parent, worldPositionStays: true);
+                moved.Add(constrained);
+                ctx.Report.Converted(Category, ctx.PathInTarget(constrained),
+                    $"Local-space rotation relay from \"{source.name}\" — moved under that bone's " +
+                    $"parent (\"{source.parent.name}\") so a world-space constraint reproduces it " +
+                    "exactly. Was " + before + ". Rotation is all this bone supplies: nothing skins " +
+                    "to it and no animation addresses it, so where it sits does not matter.");
+            }
+
+            if (moved.Count > 0)
+            {
+                RepointMaskPaths(ctx);
+            }
+            return moved;
+        }
+
+        /// <summary>Null when the transform may be moved; otherwise the reason it may not.</summary>
+        static string BlocksMove(BridgeContext ctx, Transform root, HashSet<Transform> skinned,
+                                 HashSet<string> animatedPaths)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (skinned.Contains(t))
+                {
+                    return $"\"{t.name}\" is a skinning bone";
+                }
+                if (animatedPaths.Contains(ctx.PathInTarget(t)))
+                {
+                    return $"an animation animates \"{t.name}\", and curves are addressed by path";
+                }
+            }
+            return null;
+        }
+
+        static Transform FirstWeightedSource(object vrc)
+        {
+            foreach (var s in ReadSources(vrc))
+            {
+                if (s.Transform != null && !Mathf.Approximately(s.Weight, 0f))
+                {
+                    return s.Transform;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Avatar masks enumerate transform PATHS, and the merge has already written them. A path
+        /// a move invalidated would silently drop that transform out of every mask that lists it.
+        /// </summary>
+        static void RepointMaskPaths(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+            var live = new HashSet<string>();
+            foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
+            {
+                live.Add(ctx.PathInTarget(t));
+            }
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                var mask = layer.avatarMask;
+                if (mask == null)
+                {
+                    continue;
+                }
+                bool dirty = false;
+                for (int i = mask.transformCount - 1; i >= 0; i--)
+                {
+                    string path = mask.GetTransformPath(i);
+                    if (string.IsNullOrEmpty(path) || live.Contains(path))
+                    {
+                        continue;
+                    }
+                    // The leaf still exists somewhere; find it and rewrite, else drop the entry.
+                    string leaf = path.Substring(path.LastIndexOf('/') + 1);
+                    string replacement = null;
+                    foreach (string candidate in live)
+                    {
+                        if (candidate.EndsWith("/" + leaf, StringComparison.Ordinal) || candidate == leaf)
+                        {
+                            if (replacement != null)
+                            {
+                                replacement = null; // ambiguous — leave it rather than guess
+                                break;
+                            }
+                            replacement = candidate;
+                        }
+                    }
+                    if (replacement != null)
+                    {
+                        mask.SetTransformPath(i, replacement);
+                        dirty = true;
+                    }
+                }
+                if (dirty)
+                {
+                    EditorUtility.SetDirty(mask);
+                }
+            }
         }
 
         /// <summary>
@@ -276,7 +493,12 @@ namespace AvatarBridge
                 return true;
             }
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            // A bone AlignLocalSpaceRelays moved has a new parent, so VRChat's authored
+            // RotationAtRest — measured against the old one — no longer describes it. Its rest IS
+            // where it sits now: the move preserved world rotation, so this is the same pose.
+            unity.rotationAtRest = reparented.Contains(vrc.transform)
+                ? vrc.transform.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
