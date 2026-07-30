@@ -394,7 +394,7 @@ namespace AvatarBridge
                 // Animator by hand will still crash, which is Unity's behaviour with a broken
                 // controller and not something this side can repair — the report says so and says
                 // where the broken references came from.
-                if (wasEnabled && !HasUnresolvedReferences(overrides))
+                if (wasEnabled && !ControllerWouldCrashUnity(overrides))
                 {
                     animator.enabled = true;
                 }
@@ -421,7 +421,7 @@ namespace AvatarBridge
         /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
         /// once — a text scan of one .controller.
         /// </summary>
-        static bool HasUnresolvedReferences(RuntimeAnimatorController controller)
+        internal static bool ControllerWouldCrashUnity(RuntimeAnimatorController controller)
         {
             try
             {

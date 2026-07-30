@@ -818,33 +818,28 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.0.1 and 3.2.0 — update and try again.**
+**Fixed in 3.3.1 — update and try again.**
 
-There were two causes, and the first fix only found one of them. **3.2.0 is the one that matters**:
-enabling an Animator makes Unity build a Mecanim playable graph, and a controller referencing assets
-that resolve to **nothing** makes that builder walk into them and segfault. Timing had nothing to do
-with it. The controller's references are now checked before the Animator is switched on, and one
-that fails is left assigned but not running — the prefab is intact and still uploads, the editor
-just doesn't try to run something it can't. The report says so, and points at the unresolvable-asset
-error for where the bad references came from (usually a VRCFury or Modular Avatar bake that errored
-partway). Switching that Animator on by hand will still crash Unity; that's Unity's behaviour with a
-broken controller, not something this side can repair.
+It took three attempts because the trigger kept moving. The cause never did: **enabling an Animator
+makes Unity build a Mecanim playable graph, and a controller referencing assets that resolve to
+nothing makes that builder segfault.** 3.0.1 blamed timing and deferred the assignment (the crash
+moved to the deferred call). 3.2.0 left the Animator switched off (the crash moved to the
+**Inspector** — merely selecting the converted avatar runs `AwakeFromLoad` and builds the graph, with
+nothing of ours on the stack).
 
-Unity would hard-crash (not an error — the editor vanishes) partway through conversion, most often
-when converting the *same* avatar a second time. The crash dump always landed in the same place:
-`GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTreeEvaluation`, or in the player loop
-running the graph a frame later.
+3.3.1 removes the reference from the Animator entirely once the conversion's own passes are done, so
+nothing in the editor can instantiate it. **ChilloutVR is unaffected by the removal**: the CVRAvatar
+still carries the base controller and the overrides, which is what the client reads on load. The
+broken references are still in the controller though, so fix them and convert again before
+uploading — see the unresolvable-asset error for where they came from, usually a VRCFury or Modular
+Avatar bake that errored partway.
 
-The cause was AvatarBridge handing the freshly written animator controller to a live `Animator`
-before the asset had finished importing. Assigning `runtimeAnimatorController` to an **enabled**
-Animator makes Unity build the whole Mecanim playable graph on the spot, and on a re-conversion the
-controller is still settling — it gets written to a scratch folder, copied over the original to
-preserve its GUID, then reimported. Unity asserts `MecanimDataWasBuilt()` and segfaults on a blend
-tree that doesn't exist yet.
+Unity hard-crashes (not an error — the editor vanishes), most often when converting the *same*
+avatar a second time or when clicking the converted avatar afterwards. The dump always lands in the
+same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTreeEvaluation`.
 
-The controller is now assigned with the Animator switched off (which stores it without building
-anything) and re-enabled on a later editor tick, and the reimport is forced synchronous so it is
-genuinely finished before anyone reads it.
+**If your avatar's controller has no broken references, none of this applies** — the Animator is
+wired up exactly as before.
 
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
