@@ -2805,7 +2805,15 @@ namespace AvatarBridge
             {
                 return;
             }
-            master.parameters = master.parameters.Concat(added).ToArray();
+            // AddParameter, not the `parameters` array setter. The setter renamed the tree fields
+            // happily and then dropped every declaration on the floor — the saved controller came
+            // back with blend trees pointing at "#Blend" and no "#Blend" in the parameter list, so
+            // the pass reported a repair it had not made. Verified by reading the output; the array
+            // setter is not a reliable way to ADD to a controller that is already an asset.
+            foreach (var parameter in added)
+            {
+                master.AddParameter(parameter);
+            }
             EditorUtility.SetDirty(master);
 
             ctx.Report.Warning(Category,
