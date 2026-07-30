@@ -199,8 +199,9 @@ namespace AvatarBridge
             else
             {
                 cvrAvatar.voicePosition = MouthLocator.Locate(ctx.Target, face, visemes, animator,
-                    cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail);
-                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
+                    cvrAvatar.viewPosition, out var mouthMethod, out string mouthDetail,
+                    out string badJaw);
+                MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail, badJaw);
             }
 
             // Skipped on a decoy rig: the check measures both markers against the humanoid head

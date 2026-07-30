@@ -56,6 +56,19 @@ namespace AvatarBridge
         public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
             Animator animator, Vector3 viewPosition, out Method method, out string detail)
         {
+            return Locate(root, face, visemeShapes, animator, viewPosition, out method, out detail, out _);
+        }
+
+        /// <summary>
+        /// As above, additionally reporting a humanoid Jaw bone that was ignored for not being
+        /// anywhere a jaw could be. See <see cref="AvatarFeatureDetect.JawIsBelievable"/> — say so,
+        /// because it points at the avatar's rig rather than at anything the conversion did.
+        /// </summary>
+        public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
+            Animator animator, Vector3 viewPosition, out Method method, out string detail,
+            out string rejectedJaw)
+        {
+            rejectedJaw = null;
             Transform head = animator != null && animator.isHuman
                 ? animator.GetBoneTransform(HumanBodyBones.Head)
                 : null;
@@ -72,9 +85,13 @@ namespace AvatarBridge
                 : null;
             if (jaw != null)
             {
-                method = Method.JawBone;
-                detail = $"from the jaw bone \"{jaw.name}\"";
-                return Local(root, jaw.position);
+                if (AvatarFeatureDetect.JawIsBelievable(root, animator, jaw, out string why))
+                {
+                    method = Method.JawBone;
+                    detail = $"from the jaw bone \"{jaw.name}\"";
+                    return Local(root, jaw.position);
+                }
+                rejectedJaw = $"\"{jaw.name}\" ({why})";
             }
 
             if (head != null)
@@ -98,9 +115,20 @@ namespace AvatarBridge
         /// path runs without the VRChat SDK, where DescriptorConverter does not compile at all.
         /// </summary>
         public static void Report(BridgeContext ctx, string category, Vector3 voicePosition,
-            Method method, string detail)
+            Method method, string detail, string rejectedJaw = null)
         {
             string where = $"{voicePosition.y:0.000} m up, {voicePosition.z:0.000} m forward";
+
+            if (!string.IsNullOrEmpty(rejectedJaw))
+            {
+                ctx.Report.Approximated(category, "The rig's \"jaw\" bone isn't on the jaw — ignored",
+                    $"This avatar's humanoid Jaw slot points at {rejectedJaw}. The slot is optional " +
+                    "and nothing checks it, so a rigger can map it to anything, and this one is " +
+                    "somewhere no jaw can be. Left as it is — retargeting it could move geometry — " +
+                    "but the voice was placed without it, because taking it at face value puts your " +
+                    "voice wherever that bone happens to sit. Worth fixing in the model's Rig tab if " +
+                    "you also want jaw-flap animation to work.");
+            }
 
             if (method == Method.VisemeShape)
             {
