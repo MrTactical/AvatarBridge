@@ -358,55 +358,45 @@ namespace AvatarBridge
                 // left the editor showing something the game never runs, and play-mode preview
                 // disagreeing with the real thing.
                 //
-                // Assigned with the Animator switched OFF, and this is not defensive padding —
-                // it stops Unity crashing outright. Setting runtimeAnimatorController on an
-                // ENABLED Animator makes the editor build the Mecanim playable graph then and
-                // there: Rebind -> CreateInternalControllerPlayable -> GenerateGraph ->
-                // SetStateMachineInInitialState -> DoBlendTreeEvaluation. Both controllers were
-                // written moments ago, and on a RE-conversion AnimatorAssetSaver.Persist takes
-                // the long way round — build in a scratch folder, copy the bytes over the
-                // original, delete the scratch, reimport — so the asset can still be settling
-                // when the graph is built. Unity asserts 'MecanimDataWasBuilt()' and then
-                // segfaults evaluating a blend tree that isn't there yet. Five crash dumps in one
-                // morning, all with that stack, all on the line below.
+                // NOT ASSIGNED AT ALL when the controller references assets that resolve to
+                // nothing, because assigning one crashes Unity outright.
                 //
-                // A disabled Animator stores the controller without building anything, which is
-                // all the conversion needs — later passes read runtimeAnimatorController.
-                // animationClips, and that is asset data, not graph data. The graph is built on
-                // re-enable, deferred to a later editor tick by which time the import has
-                // finished.
-                bool wasEnabled = animator.enabled;
-                animator.enabled = false;
-                animator.runtimeAnimatorController = overrides;
-
-                // Re-enabled only if the controller is safe to build a graph from.
+                // This took four attempts, and the reason is worth writing down: every earlier fix
+                // assumed something that isn't true.
                 //
-                // 3.0.1 deferred this to a later editor tick, on the theory that the asset was
-                // still importing. That was wrong: the crash simply moved to the deferred call.
-                // Timing was never the problem — enabling an Animator builds the Mecanim playable
-                // graph, and a controller referencing assets that resolve to NOTHING makes Unity's
-                // graph builder walk into them and segfault inside EvaluateState. No amount of
-                // waiting fixes a dangling reference.
+                //   3.0.1  "the asset is still importing"   -> deferred it; crash moved to the delayCall
+                //   3.2.0  "a disabled Animator is safe"    -> crash moved to the Inspector
+                //   3.3.1  "unlink it after conversion"     -> too late; the assignment already did it
                 //
-                // So the reference check happens first, and a controller that fails it is left
-                // assigned but not instantiated. The prefab is still correct and still uploads;
-                // the editor just doesn't try to run something it cannot run. Enabling the
-                // Animator by hand will still crash, which is Unity's behaviour with a broken
-                // controller and not something this side can repair — the report says so and says
-                // where the broken references came from.
-                if (wasEnabled && !ControllerWouldCrashUnity(overrides))
+                // The false assumption underneath all three was that a DISABLED Animator stores a
+                // controller without building anything. It does not. set_runtimeAnimatorController
+                // calls Animator::Rebind regardless of enabled state, and Rebind builds the whole
+                // Mecanim playable graph: CreateInternalControllerPlayable -> GenerateGraph ->
+                // SetStateMachineInInitialState -> DoBlendTreeEvaluation. A dangling motion
+                // reference in there is a segfault, and disabling never had anything to do with it
+                // — it only ever looked like it helped because healthy controllers survive.
+                //
+                // So the check happens BEFORE the assignment, which is the only place it can work.
+                // Nothing is lost by skipping it: ChilloutVR reads CVRAvatar.overrides on load, not
+                // the Animator, and later conversion passes fall back to ctx.MergedController for
+                // the clip list.
+                if (ControllerWouldCrashUnity(overrides))
                 {
-                    animator.enabled = true;
+                    ctx.Report.Error(Category, "Controller NOT assigned to the Animator — it crashes Unity",
+                        "This controller references assets that resolve to nothing. Handing such a " +
+                        "controller to an Animator makes Unity build a playable graph from it on the " +
+                        "spot — even with the component switched off — and that walks into the " +
+                        "missing references and kills the editor with no error, losing unsaved work. " +
+                        "It has been left unassigned so that cannot happen. ChilloutVR is unaffected " +
+                        "by that on its own: the CVRAvatar still carries the base controller and the " +
+                        "overrides, which is what the client reads on load. The broken references are " +
+                        "still in the controller though, so fix them and convert again before " +
+                        "uploading — see the unresolvable-asset error for where they came from, " +
+                        "usually a VRCFury or Modular Avatar bake that errored partway.");
                 }
-                else if (wasEnabled)
+                else
                 {
-                    ctx.Report.Warning(Category, "Animator left switched off on the converted avatar",
-                        "Its controller references assets that resolve to nothing, and switching an " +
-                        "Animator on makes Unity build a playable graph from it — which CRASHES the " +
-                        "editor outright when a referenced motion isn't there. The controller is " +
-                        "assigned and the prefab is intact; the component is just not running. See " +
-                        "the unresolvable-asset error above for where those references came from, " +
-                        "fix that, and convert again. Switching it on by hand will crash Unity.");
+                    animator.runtimeAnimatorController = overrides;
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);

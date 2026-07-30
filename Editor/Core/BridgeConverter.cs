@@ -89,7 +89,10 @@ namespace AvatarBridge
                     descriptor.gameObject.SetActive(false);
                 }
 
-                // Must happen before the prefab is saved, so the saved asset is safe too.
+                // Belt and braces. AnimatorMerger already refuses to assign a controller that
+                // would crash Unity, which is the only place that check can actually work — the
+                // damage is done by the assignment itself. This stays as a net for anything else
+                // that might put one back on an Animator during a later pass.
                 DetachCrashingController(ctx);
                 ReportSyncUsage(ctx);
                 SaveConvertedPrefab(ctx);
