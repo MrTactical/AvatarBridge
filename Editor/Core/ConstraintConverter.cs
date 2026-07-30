@@ -35,6 +35,7 @@ namespace AvatarBridge
 
             int converted = 0;
             var localSpaceRelays = new List<string>();
+            var mirrored = new List<string>();
             // MUST run before anything converts: a Unity constraint bakes its rest offsets
             // against the parent the transform has when it is created.
             reparented = AlignLocalSpaceRelays(ctx);
@@ -78,6 +79,7 @@ namespace AvatarBridge
                     {
                         NoteLocalSpace(ctx, component, localSpaceRelays);
                     }
+                    NoteMirrored(ctx, component, mirrored);
                     UnityEngine.Object.DestroyImmediate(component);
                 }
             }
@@ -87,6 +89,59 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
             ReportLocalSpace(ctx, localSpaceRelays);
+            ReportMirrored(ctx, mirrored);
+        }
+
+        /// <summary>
+        /// VRChat corrects a constraint's result for a MIRRORED parent and Unity does not.
+        ///
+        /// <c>VRCConstraintJob.CorrectQuaternion</c> runs whenever the parent's lossy scale has
+        /// mixed sign — at least one axis negative and one not — and negates the quaternion
+        /// components the flipped axes invert (x &lt; 0 negates y and z). Unity's constraints have
+        /// no such step, so the result lands reflected: mirrored along the negative axis.
+        ///
+        /// Nothing on this side can add the correction. Unity's constraint computes and applies
+        /// its own rotation internally; there is no hook between "read the source" and "write the
+        /// transform", and ChilloutVR ships no constraint type that has one.
+        /// </summary>
+        static void NoteMirrored(BridgeContext ctx, Component vrc, List<string> mirrored)
+        {
+            var target = Get<Transform>(vrc, "TargetTransform", null);
+            var constrained = target != null ? target : vrc.transform;
+            var parent = constrained.parent;
+            if (parent == null)
+            {
+                return;
+            }
+            var s = parent.lossyScale;
+            bool mixedSign = Mathf.Min(s.x, Mathf.Min(s.y, s.z)) < 0f
+                             && Mathf.Max(s.x, Mathf.Max(s.y, s.z)) >= 0f;
+            if (mixedSign)
+            {
+                mirrored.Add($"`{ctx.PathInTarget(constrained)}` (parent \"{parent.name}\" scale " +
+                             $"{s.x:0.##}, {s.y:0.##}, {s.z:0.##})");
+            }
+        }
+
+        static void ReportMirrored(BridgeContext ctx, List<string> mirrored)
+        {
+            if (mirrored.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning(Category,
+                $"{mirrored.Count} constraint(s) sit under a mirrored parent and will be reflected",
+                "Un-mirror those bones in your 3D package and re-rig, or drive them some other " +
+                "way — there is no setting here that changes it.\n\n" +
+                "VRChat's solver corrects a constraint result when the parent's scale has one axis " +
+                "negative, flipping the quaternion components that axis inverts. Unity's " +
+                "constraints have no such step and ChilloutVR ships no type that does, so these " +
+                "land mirrored along that axis.\n\n" +
+                "A negative scale on a bone usually means a limb was duplicated and mirrored " +
+                "rather than rigged twice. On a quadruped built from a hidden humanoid rig, the " +
+                "hind legs are typically the front legs mirrored — which is also why their relays " +
+                "cross left to right.\n\n" +
+                string.Join("\n", mirrored));
         }
 
         /// <summary>
@@ -162,7 +217,8 @@ namespace AvatarBridge
                     continue;
                 }
 
-                string why = BlocksMove(ctx, constrained, skinned, animatedPaths);
+                string why = BlocksMove(ctx, constrained, skinned, animatedPaths)
+                             ?? BlocksMirroredMove(constrained, source.parent);
                 if (why != null)
                 {
                     ctx.Report.Approximated(Category, ctx.PathInTarget(constrained),
@@ -248,6 +304,43 @@ namespace AvatarBridge
                 }
             }
             return used;
+        }
+
+        /// <summary>
+        /// Refuses a move that would cross a MIRROR.
+        ///
+        /// A negative axis scale flips handedness, and re-parenting cannot carry that across:
+        /// Unity keeps world position and rotation, but a mirrored basis is not something a
+        /// different parent can express, so the bone lands reflected.
+        ///
+        /// This is not a corner case. A quadruped's hind rig is routinely the front rig mirrored —
+        /// which is exactly why its relays cross left to right — so the mirrored bones are the
+        /// same ones a local-space relay wants moved.
+        ///
+        /// It also marks where the conversion is lossy for a reason nothing here can repair:
+        /// VRChat's solver corrects the result quaternion for mixed-sign lossy scale
+        /// (VRCConstraintJob.CorrectQuaternion negates y and z when x is negative) and Unity's
+        /// constraints have no equivalent step.
+        /// </summary>
+        static string BlocksMirroredMove(Transform constrained, Transform newParent)
+        {
+            bool Mirrored(Vector3 s) => s.x < 0f || s.y < 0f || s.z < 0f;
+
+            foreach (var t in constrained.GetComponentsInChildren<Transform>(true))
+            {
+                if (Mirrored(t.localScale))
+                {
+                    return $"\"{t.name}\" is mirrored (negative scale), and handedness cannot " +
+                           "survive re-parenting";
+                }
+            }
+            if (constrained.parent != null
+                && Mirrored(constrained.parent.lossyScale) != Mirrored(newParent.lossyScale))
+            {
+                return $"\"{constrained.parent.name}\" and \"{newParent.name}\" have opposite " +
+                       "handedness, so the move would reflect the bone";
+            }
+            return null;
         }
 
         /// <summary>Null when the transform may be moved; otherwise the reason it may not.</summary>

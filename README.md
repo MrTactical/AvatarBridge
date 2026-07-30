@@ -306,9 +306,14 @@ chain's root pair matches every pair below it matches too. This is what makes
 [quadrupeds](#quadruped--finalik-avatars--on-ice) work.
 
 Moving a bone is only safe when nothing depends on where it *is*, so it happens only when the relay
-is rotation-only, **no mesh skins to the bone**, and **no animation addresses it** — curves are
-matched by path, and a moved bone would silently stop being animated. Every move is named in the
-report, and anything failing a check is left alone and reported instead.
+is rotation-only, **no mesh skins to the bone**, **no animation addresses it** (curves are matched
+by path, and a moved bone would silently stop being animated), and **nothing involved is mirrored**
+— a negative scale flips handedness, which no re-parenting can carry across. Every move is named in
+the report, and anything failing a check is left alone and reported instead.
+
+⚠️ **A mirrored parent is lossy whatever happens.** VRChat's solver corrects a constraint's result
+when the parent's scale has a negative axis; Unity's constraints don't, and ChilloutVR ships no type
+that does. Constraints under such a parent land reflected, and the report names every one.
 
 ## PhysBones → MagicaCloth2
 
@@ -605,15 +610,22 @@ relay that decoy onto the real skeleton, bone by bone: the torso rides the biped
 chain *is* the biped spine, the front legs are the biped's legs. It's an elegant trick and it needs
 no FinalIK at all, so ChilloutVR has nothing to delete.
 
-What used to break it is the handful of constraints that solve in **local space**, which
-[Unity's cannot](#constraints-that-drive-another-object) — typically the hind legs copying the
-humanoid legs' articulation, so one biped walk cycle moves four legs. **2.89.0 repairs those** by
-moving the copied bones under the same parent as the bones they copy, which makes a world-space
-constraint reproduce them exactly. Everything else in such a rig already converted correctly: on
-the avatar this was worked out from, 51 of the 59 relays needed nothing and only 8 did.
+Most of that converts. On the avatar this was worked out from, 51 of 59 relays needed nothing at
+all. **Two things break the rest, and the report names both:**
 
-⚠️ **Still worth testing before you trust it.** This is one avatar's evidence, and only in the
-editor so far. The report names every bone that was moved and every relay that couldn't be.
+- **Relays that solve in [local space](#constraints-that-drive-another-object)** — typically the
+  hind legs copying the humanoid legs' articulation, so one walk cycle moves four legs. Where the
+  copied bone can be moved under the same parent as the bone it copies, that is repaired exactly;
+  where it can't, it's reported.
+- **Mirrored bones.** A hind rig is usually the front rig *mirrored* — which is why its relays
+  cross left to right — and a mirrored bone carries a negative scale. VRChat's solver corrects a
+  constraint result for that; **Unity's constraints have no such step and ChilloutVR ships no type
+  that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
+  computes and writes its own rotation with no hook in between. Un-mirroring the bones and
+  re-rigging is the only cure, and that's a job for your 3D package.
+
+⚠️ **So a mirrored hind rig still doesn't work**, and that's the common build. The report tells you
+which bones and why, rather than leaving you to guess.
 
 **A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
