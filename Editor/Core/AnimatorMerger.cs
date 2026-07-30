@@ -509,7 +509,9 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{filled} empty motion slot(s) filled with an empty clip" +
-                    (states > 0 ? $" ({states} of them animator states, the rest blend tree slots)" : ""),
+                    (states == 0 ? " (all blend tree slots)"
+                        : states == filled ? " (all animator states)"
+                        : $" ({states} animator states, {filled - states} blend tree slots)"),
                     "These slots had no motion — an asset that's gone, one the avatar's own build " +
                     "step never produced, or a state left empty. Unity CRASHES when it builds a " +
                     "playable graph containing one, which happens when the " +
