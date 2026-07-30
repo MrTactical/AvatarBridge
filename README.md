@@ -881,12 +881,14 @@ The relay constraints say where the real bones are, so the conversion follows th
 whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
 both markers are measured there instead.
 
-Ordinary avatars are untouched, and two gates keep it that way (2.96.0). The rewrite only happens
-when the two answers are more than 5 cm apart, **and** only when the humanoid head bone deforms no
-mesh — which is what makes a rig a decoy in the first place. Reading the head is not the same as
-reproducing it: a taur base whose flight system feeds head rotation into a constraint had its
-viewpoint confidently moved to a bone called `HipsAgain` before that second gate existed. If your
-avatar's humanoid head has vertices weighted to it, none of this fires.
+Ordinary avatars are untouched, and two gates keep it that way. The rewrite only happens when the
+two answers are more than 5 cm apart, **and** only when the humanoid rig is genuinely a decoy —
+measured by how much of it deforms mesh, since a stand-in skeleton moves no geometry at all
+(2.98.0). Reading the head is not the same as reproducing it: a taur base whose flight system feeds
+head rotation into a constraint had its viewpoint confidently moved to a bone called `HipsAgain`.
+Checking the head bone alone wasn't enough either — that avatar has a full humanoid torso but a head
+bone carrying no weights of its own — so the whole mapped skeleton is what gets measured. If a
+meaningful share of your avatar's humanoid bones move geometry, none of this fires.
 
 It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
 check them with the gizmo and drag either one if you want it elsewhere.

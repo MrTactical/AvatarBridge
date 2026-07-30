@@ -516,9 +516,32 @@ namespace AvatarBridge
             //
             // What actually distinguishes a decoy is that its bones are INVISIBLE: the humanoid
             // map points at a stand-in that deforms no mesh, and the constraints exist to move
-            // the bones that do. So if the humanoid head has vertices weighted to it, that head
-            // is the real one, no relay is needed, and nothing here should fire.
-            if (headBone == null || DeformingBones(root).Contains(headBone))
+            // the bones that do.
+            //
+            // Testing that on the head bone ALONE was not enough, and this is the part worth
+            // remembering. A taur base has a real humanoid torso — arms, hands, fingers, spine,
+            // all skinning the mesh — but its humanoid Head happens to carry no weights of its
+            // own, so a head-only check waved it straight through and the viewpoint went to
+            // "HipsAgain" anyway. Being a decoy is a property of the WHOLE rig, so the whole rig
+            // is what gets measured.
+            //
+            // The threshold is loose on purpose. A true decoy scores zero — every mapped bone is a
+            // stand-in — while a real humanoid clears a fifth on its fingers alone. Nothing sits
+            // near the line, so this only has to survive a rig with a few stray weights.
+            if (headBone == null || humanoid.Count == 0)
+            {
+                return false;
+            }
+            var deforming = DeformingBones(root);
+            int deformingHumanoid = 0;
+            foreach (var bone in humanoid)
+            {
+                if (deforming.Contains(bone))
+                {
+                    deformingHumanoid++;
+                }
+            }
+            if (deformingHumanoid > humanoid.Count * 0.2f)
             {
                 return false;
             }
