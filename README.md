@@ -396,6 +396,31 @@ with pointers and triggers.
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
 **Advanced** and contacts convert one to one: real proximity, tags verbatim.
 
+### Being touched by ordinary ChilloutVR players
+
+A contact only fires when something **sends** a matching tag, and the two platforms name the same
+body parts differently. Everyone in ChilloutVR carries pointers on their hands and index fingers
+whatever avatar they wear — the client turns each `CVRPointer` into a contact sender tagged with its
+`type` — but those types are `LeftHand`, `RightHand`, `index`, where VRChat says `HandL`, `HandR`,
+`FingerIndexL`. `Hand` happens to be spelled the same on both, which is why *some* converted
+contacts worked and others silently never fired.
+
+Receivers now listen for both (3.4.0), so a stranger's hand or finger sets them off:
+
+| Your receiver listens for | Also listens for |
+|---|---|
+| `Hand` | `grab` |
+| `HandL` / `HandR` | `LeftHand` / `RightHand` |
+| any `FingerIndex*` | `index` |
+
+The VRChat tags are kept, so converted avatars still trigger each other exactly as before.
+
+**Tags the author invented — `pump`, `Balloon`, a system's private name — reach nobody**, because
+nothing else in the game sends that word. Between two copies of the same avatar they work fine; to
+everyone else those receivers are inert. That's usually deliberate, so nothing is changed, but the
+report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
+be able to set it off.
+
 **Contacts are per-client by design** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
 developer, and this is confirmed in game: every client simulates every avatar's contacts itself.
