@@ -1,4 +1,5 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.Animations;
@@ -25,6 +26,54 @@ namespace AvatarBridge
     public static class ParameterMenuConverter
     {
         const string Category = "Parameters & menu";
+
+        /// <summary>
+        /// Menu entries whose name suggests they duplicate something ChilloutVR already tells the
+        /// avatar about, paired with the client parameter that carries it.
+        ///
+        /// Deliberately narrow. "sit" and "fly" are left out because they match Position, Visitor
+        /// and butterfly; a wrong hint pointing someone at the wrong parameter is worse than no
+        /// hint. This only ever prints advice — nothing is rewired, because matching a menu name
+        /// to a client parameter is a guess about intent and guessing wrong would hijack an
+        /// unrelated toggle.
+        /// </summary>
+        static readonly (string Needle, string Parameter, string When)[] ClientDrivenEquivalents =
+        {
+            ("flight", "Flying", "you actually fly (or enter a zero-gravity world)"),
+            ("flying", "Flying", "you actually fly (or enter a zero-gravity world)"),
+            ("swimming", "Swimming", "you enter water"),
+            ("crouch", "Crouching", "you crouch"),
+            ("prone", "Prone", "you go prone"),
+        };
+
+        /// <summary>
+        /// Points out that the client drives this state natively, so the pose can follow what the
+        /// player is really doing instead of a menu toggle. ChilloutVR feeds these to every avatar
+        /// animator the same way it feeds Grounded and the velocities — for flight,
+        /// <c>BetterBetterCharacterController</c> sets <c>AvatarAnimatorManager.Flying</c>.
+        /// </summary>
+        static void NoteClientDrivenEquivalent(BridgeContext ctx, string parameterName, string display)
+        {
+            string haystack = ((parameterName ?? "") + " " + (display ?? "")).ToLowerInvariant();
+            foreach (var candidate in ClientDrivenEquivalents)
+            {
+                if (haystack.IndexOf(candidate.Needle, StringComparison.Ordinal) < 0)
+                {
+                    continue;
+                }
+                ctx.Report.Converted(Category, $"\"{display}\" — ChilloutVR drives \"{candidate.Parameter}\" itself",
+                    $"Converted as a normal menu toggle, which is what it was. Worth knowing: ChilloutVR " +
+                    $"feeds every avatar a \"{candidate.Parameter}\" parameter and sets it whenever " +
+                    $"{candidate.When} — the same way it drives Grounded and the movement velocities. " +
+                    $"Point this layer's transitions at \"{candidate.Parameter}\" instead of the menu " +
+                    "parameter and the pose follows what you're really doing, with no menu needed. " +
+                    "The parameter is already declared and needs no parameter stream. Keep the menu " +
+                    "toggle alongside it if you like: the client only sets these when the WORLD allows " +
+                    "it, so in a world with flight disabled the automatic version never fires. Nothing " +
+                    "was rewired here — which layer meant what is your call.");
+                return;
+            }
+        }
 
         /// <summary>
         /// Label for a dropdown slot that exists only because ChilloutVR addresses options by
@@ -330,6 +379,8 @@ namespace AvatarBridge
                     "so it becomes a toggle you switch off again. If it drives a one-shot effect, add a " +
                     "state in the animator that drives the parameter back to 0.");
             }
+
+            NoteClientDrivenEquivalent(ctx, p.name, display);
 
             switch (p.valueType)
             {
