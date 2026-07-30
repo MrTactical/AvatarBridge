@@ -318,9 +318,12 @@ namespace AvatarBridge
             // the animator window, dead toggles in game, and a conversion report with no errors.
             // If anything the controller referenced in memory failed to arrive on disk, that is
             // an Error, in the report, with numbers.
-            FillEmptyBlendTreeSlots(ctx, master);
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
+            // AFTER the save, not before: the filler clip is attached with AddObjectToAsset, which
+            // needs an object that is already an asset. Called earlier it silently achieved
+            // nothing, which is exactly what happened in 3.3.4.
+            FillEmptyMotionSlots(ctx, master);
             // The serialized-guid audit runs from BridgeConverter AFTER AnimationSelfContainer,
             // so it judges the FINAL file — auditing here flagged references the self-container
             // was about to repoint, and told a user "do not upload" a fine conversion.
@@ -424,11 +427,22 @@ namespace AvatarBridge
         /// removing one re-numbers its neighbours and changes how the rest blend. An empty clip in
         /// place keeps every threshold where the author put it.
         /// </summary>
-        static void FillEmptyBlendTreeSlots(BridgeContext ctx, AnimatorController master)
+        static void FillEmptyMotionSlots(BridgeContext ctx, AnimatorController master)
         {
             AnimationClip filler = null;
             int filled = 0;
+            int states = 0;
             var seen = new HashSet<Motion>();
+
+            AnimationClip Filler()
+            {
+                if (filler == null)
+                {
+                    filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                    AssetDatabase.AddObjectToAsset(filler, master);
+                }
+                return filler;
+            }
 
             void Walk(Motion motion)
             {
@@ -442,12 +456,7 @@ namespace AvatarBridge
                 {
                     if (children[i].motion == null)
                     {
-                        if (filler == null)
-                        {
-                            filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
-                            AssetDatabase.AddObjectToAsset(filler, master);
-                        }
-                        children[i].motion = filler;
+                        children[i].motion = Filler();
                         changed = true;
                         filled++;
                     }
@@ -469,18 +478,41 @@ namespace AvatarBridge
                 {
                     foreach (var child in machine.states)
                     {
-                        Walk(child.state.motion);
+                        // The state's OWN motion as well as anything nested below it. An empty
+                        // state was the case 3.3.4 missed entirely — it only ever looked at blend
+                        // tree children, so it found nothing to do on the avatar that crashed and
+                        // said nothing. Unity works out a state's duration from its motion, and
+                        // does that while building the graph (EvaluateStateDuration, under
+                        // SetStateMachineInInitialState), so a state with no motion is the same
+                        // hole as an empty blend tree slot.
+                        if (child.state.motion == null)
+                        {
+                            child.state.motion = Filler();
+                            filled++;
+                            states++;
+                        }
+                        else
+                        {
+                            Walk(child.state.motion);
+                        }
                     }
                 });
             }
 
             if (filled > 0)
             {
+                EditorUtility.SetDirty(master);
+                AssetDatabase.SaveAssets();
+            }
+
+            if (filled > 0)
+            {
                 ctx.Report.Warning(Category,
-                    $"{filled} empty blend tree slot(s) filled with an empty clip",
-                    "These slots pointed at motions that aren't there — an asset that's gone, or one " +
-                    "the avatar's own build step never produced. Unity CRASHES when it builds a " +
-                    "playable graph containing an empty blend tree slot, which happens when the " +
+                    $"{filled} empty motion slot(s) filled with an empty clip" +
+                    (states > 0 ? $" ({states} of them animator states, the rest blend tree slots)" : ""),
+                    "These slots had no motion — an asset that's gone, one the avatar's own build " +
+                    "step never produced, or a state left empty. Unity CRASHES when it builds a " +
+                    "playable graph containing one, which happens when the " +
                     "controller is assigned to an Animator, when you select the avatar, and when " +
                     "the CCK builds it to upload — so this had to be repaired rather than reported. " +
                     "Each slot now holds a genuinely empty clip: nothing is lost, since the slot " +

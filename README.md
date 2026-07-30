@@ -891,15 +891,21 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.3.4 — update and try again.**
+**Fixed in 3.4.2 — update and try again.**
 
-The hazard itself is now repaired, so it's gone from every direction: converting, selecting the
-avatar, entering play mode, **and uploading**. An empty blend tree slot — one whose motion is
-missing, usually because a VRCFury or Modular Avatar build didn't finish — crashes Unity's graph
-builder, and the CCK's uploader instantiates your avatar to build it, so such an avatar couldn't be
-uploaded at all. Each empty slot now gets a genuinely empty clip: nothing is lost, since the slot
-animated nothing, and every blend threshold stays where the author put it. The report tells you how
-many, so you can still chase down why those motions never arrived.
+The hazard itself is repaired, so it's gone from every direction: converting, selecting the avatar,
+entering play mode, **and uploading**. Unity works out a state's duration and a blend tree's blend
+while it builds the playable graph, so **any motion slot with nothing in it** — an empty animator
+state, or a blend tree child whose asset is gone — makes that builder walk into a hole and segfault.
+The CCK's uploader instantiates your avatar to build it, so an avatar in that state couldn't be
+uploaded at all.
+
+Every empty slot now gets a genuinely empty clip. Nothing is lost — the slot animated nothing — and
+blend thresholds all stay where the author put them. The report says how many, and how many were
+states rather than blend tree slots, so you can still chase down why those motions never arrived.
+
+*3.3.4 fixed only the blend tree half of this and attached its filler clip before the controller was
+an asset, so on an avatar whose empty slots were plain states it silently did nothing at all.*
 
 **A controller referencing assets that resolve to nothing makes Unity's Mecanim graph builder
 segfault**, and *assigning* such a controller to an `Animator` is enough to trigger it — the setter
