@@ -117,21 +117,7 @@ namespace AvatarBridge
         static HashSet<Transform> AlignLocalSpaceRelays(BridgeContext ctx)
         {
             var moved = new HashSet<Transform>();
-            var skinned = new HashSet<Transform>();
-            foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (smr.rootBone != null)
-                {
-                    skinned.Add(smr.rootBone);
-                }
-                foreach (var bone in smr.bones)
-                {
-                    if (bone != null)
-                    {
-                        skinned.Add(bone);
-                    }
-                }
-            }
+            var skinned = SkinningBones(ctx.Target);
 
             var animatedPaths = new HashSet<string>();
             foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
@@ -202,6 +188,66 @@ namespace AvatarBridge
                 RepointMaskPaths(ctx);
             }
             return moved;
+        }
+
+        /// <summary>
+        /// Bones that actually deform something: a vertex somewhere carries a non-zero weight for
+        /// them.
+        ///
+        /// NOT simply everything in <c>SkinnedMeshRenderer.bones</c> — an FBX puts the WHOLE
+        /// skeleton in that array whether or not a vertex is weighted to it, so testing membership
+        /// asks "is this in the armature", which every bone is. A decoy rig exists precisely to be
+        /// in the armature while deforming nothing, so that test rejected the exact case it was
+        /// written to allow.
+        ///
+        /// Reading weights off an imported mesh is fine here: the Read/Write flag only governs
+        /// whether the data survives into a build, and editor code always sees it.
+        /// </summary>
+        static HashSet<Transform> SkinningBones(GameObject root)
+        {
+            var used = new HashSet<Transform>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                var bones = smr.bones;
+                if (mesh == null || bones == null || bones.Length == 0)
+                {
+                    continue;
+                }
+                var indices = new HashSet<int>();
+                try
+                {
+                    var weights = mesh.GetAllBoneWeights();
+                    for (int i = 0; i < weights.Length; i++)
+                    {
+                        if (weights[i].weight > 0f)
+                        {
+                            indices.Add(weights[i].boneIndex);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // Unreadable for some reason: assume every listed bone deforms, which only
+                    // ever refuses a move that might have been safe.
+                    foreach (var bone in bones)
+                    {
+                        if (bone != null)
+                        {
+                            used.Add(bone);
+                        }
+                    }
+                    continue;
+                }
+                foreach (int index in indices)
+                {
+                    if (index >= 0 && index < bones.Length && bones[index] != null)
+                    {
+                        used.Add(bones[index]);
+                    }
+                }
+            }
+            return used;
         }
 
         /// <summary>Null when the transform may be moved; otherwise the reason it may not.</summary>
