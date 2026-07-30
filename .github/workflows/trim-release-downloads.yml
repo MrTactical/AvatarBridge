@@ -1,0 +1,55 @@
+name: Trim old release downloads
+
+# Keeps the .unitypackage attached to the newest few releases and removes it from
+# the rest. The releases, tags, titles and NOTES are never touched — the notes are
+# this project's changelog, and GitHub still serves a source zip from every tag, so
+# an archived version stays readable and rebuildable, just not one-click.
+#
+# Every package ever built is also kept locally by the maintainer and can be
+# re-attached with `gh release upload <tag> <file>` if one is ever needed again.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many of the newest releases keep their download"
+        default: "5"
+
+permissions:
+  contents: write
+
+jobs:
+  trim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove packages from all but the newest releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ github.event.inputs.keep || '5' }}
+        run: |
+          set -euo pipefail
+
+          # Newest first, which is the order the releases API returns.
+          gh api "repos/$REPO/releases?per_page=100" --paginate \
+            --jq '.[] | [.tag_name, (.assets | map(.name) | join(","))] | @tsv' > all.tsv
+          total=$(wc -l < all.tsv)
+          echo "$total release(s); keeping downloads on the newest $KEEP."
+
+          tail -n +"$((KEEP + 1))" all.tsv > older.tsv || true
+          deleted=0
+          while IFS=$'\t' read -r tag assets; do
+            if [ -n "${assets:-}" ]; then
+              IFS=',' read -ra names <<< "$assets"
+              for name in "${names[@]}"; do
+                echo "  $tag — removing $name"
+                gh release delete-asset "$tag" "$name" --yes
+                deleted=$((deleted + 1))
+              done
+            fi
+          done < older.tsv
+
+          echo "Removed $deleted download(s). Releases, tags and notes untouched."

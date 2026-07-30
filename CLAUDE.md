@@ -45,6 +45,24 @@ Nobody reads a wall of text, and a changelog that isn't read may as well not exi
 applies to report entries — say what broke and what to do, and put the mechanism somewhere
 optional.
 
+## Releases keep only the newest 5 downloads
+
+Only the five most recent releases carry a `.unitypackage`; older ones keep their page, tag and
+notes but no download. The notes are the changelog, so they are never deleted — and GitHub still
+serves a source zip from every tag, so an archived version stays rebuildable.
+
+`.github/workflows/trim-release-downloads.yml` does this on every published release, and can be run
+by hand from the Actions tab. **A `release`-triggered workflow only runs from the default branch**,
+so it does nothing until it is on `main`. Until then, trim manually after releasing:
+
+```bash
+gh api "repos/MrTactical/AvatarBridge/releases?per_page=100" --paginate --jq '.[] | [.tag_name, (.assets|map(.name)|join(","))] | @tsv' | tail -n +6
+```
+
+Every package ever built is kept locally in `D:\AvatarBridge` (`*.unitypackage` is gitignored, so
+none of them were ever in git). Re-attach one with `gh release upload <tag> <file>` — which is why
+removing a download is safe, and why the "never delete an old package" rule below matters.
+
 ## Standing project rules (summary — details in auto-memory)
 
 - **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead. The build
