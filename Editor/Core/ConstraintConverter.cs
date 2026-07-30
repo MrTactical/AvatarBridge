@@ -99,7 +99,14 @@ namespace AvatarBridge
                 return;
             }
             // The Unity constraint may have been placed on TargetTransform rather than here.
-            var constrained = Get<Transform>(vrc, "TargetTransform", null) ?? vrc.transform;
+            //
+            // NOT "?? vrc.transform": an unassigned Transform field comes back as Unity's FAKE
+            // null — a live C# reference whose overloaded == reports null while ?? does not, so
+            // ?? hands back the fake and the next .parent throws UnassignedReferenceException.
+            // Every other TargetTransform read in this file already compares with !=; this one
+            // has to as well.
+            var target = Get<Transform>(vrc, "TargetTransform", null);
+            var constrained = target != null ? target : vrc.transform;
             foreach (var s in ReadSources(vrc))
             {
                 if (s.Transform == null || Mathf.Approximately(s.Weight, 0f)
