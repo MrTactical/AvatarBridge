@@ -941,15 +941,17 @@ intact.
 
 ### A hat or held item drifts off when I resize myself
 
-**Fixed in 3.4.5.** A `ParentConstraint` holds its target a fixed distance from its source, and that
-distance is in **metres** — Unity never scales it, whatever the avatar's scale is. So with the
-height slider the body moved and the offset didn't: shrink, and the prop hung off you; grow, and it
-sank inside you. One cowboy hat sat 13–18 cm out.
+**Known limitation — no fix yet.** A `ParentConstraint` holds its target a fixed distance from its
+source, and that distance is in **metres**; Unity never scales it, whatever the avatar's scale is.
+So with the height slider the body moves and the offset doesn't: shrink and the prop hangs off you,
+grow and it sinks inside you. One cowboy hat sat 13–18 cm out.
 
-The generated scale clips now scale those offsets by the same factor, so props keep their place
-across the whole slider range. Offsets that are already zero aren't touched (most are), and an offset
-your **own** animator drives is left alone so nothing fights it. The report says how many were
-adjusted.
+**Work around it** by nudging the prop's constraint offset by hand for the size you actually use, or
+by leaving the height slider near its default. Turning the scaler off avoids it entirely.
+
+*3.4.5 attempted an automatic fix and got it wrong — it made an avatar render pure white in play
+mode and crashed the editor on scene reload, and was reverted in 3.4.6. The attempt and why it
+failed are recorded in `AvatarScalerInjector.cs` for whoever tries again.*
 
 ### Something is bright magenta
 

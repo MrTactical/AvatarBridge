@@ -93,20 +93,7 @@ namespace AvatarBridge
                 layers.Add(clone);
                 added++;
             }
-            var constraintOffsets = CollectConstraintOffsets(ctx);
-            var sizeLayer = BuildSizeLayer(baseScale, height,
-                constraintOffsets, ConstraintOffsetsAnimatedByAvatar(master));
-            if (constraintOffsets.Count > 0)
-            {
-                ctx.Report.Converted(Category,
-                    $"{constraintOffsets.Count} constrained prop offset(s) now scale with you",
-                    "A Parent Constraint holds its target a fixed distance from its source, in " +
-                    "METRES — Unity never scales that offset, whatever the avatar's scale is. Left " +
-                    "alone, a hat or a held item drifts off you as you shrink and sinks into you as " +
-                    "you grow, because the body moves and the offset doesn't. The height slider now " +
-                    "scales these offsets by the same factor, so props keep their place. Offsets " +
-                    "your own animator already drives are left alone so nothing fights it.");
-            }
+            var sizeLayer = BuildSizeLayer(baseScale, height);
             sizeLayer.name = UniqueName(SizeLayer, existing);
             layers.Add(sizeLayer);
             added++;
@@ -190,8 +177,7 @@ namespace AvatarBridge
         /// knot every √2 step: nine children from 0.25× to 4×, worst-case error between knots
         /// about 1.5%, which the smoothing layer hides entirely.
         /// </summary>
-        static AnimatorControllerLayer BuildSizeLayer(Vector3 baseScale, float height,
-            List<ConstraintOffset> constraintOffsets, HashSet<string> animatedByAvatar)
+        static AnimatorControllerLayer BuildSizeLayer(Vector3 baseScale, float height)
         {
             var tree = new BlendTree
             {
@@ -208,8 +194,6 @@ namespace AvatarBridge
                 float slider = i / (float)(knots - 1);
                 float factor = ScaleAtZero * Mathf.Pow(ScaleRange, slider);
                 var clip = MakeScaleClip($"AvatarScale_{factor:0.###}x", baseScale * factor);
-                // Constrained props resize with the body; see CollectConstraintOffsets.
-                ApplyConstraintOffsets(clip, constraintOffsets, animatedByAvatar, factor);
                 tree.AddChild(clip, slider);
             }
 
@@ -232,111 +216,29 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// A ParentConstraint's translation offset, remembered so the scale clips can scale it.
-        /// </summary>
-        class ConstraintOffset
-        {
-            public string Path;
-            public int SourceIndex;
-            public Vector3 Offset;      // as authored, at the avatar's original scale
-        }
-
-        /// <summary>
-        /// Every non-zero ParentConstraint translation offset on the avatar.
+        /// NOT DONE HERE, and the attempt is worth recording so it isn't repeated the same way.
         ///
-        /// These have to move with the scaler because Unity refuses to move them itself. A
-        /// ParentConstraint computes <c>position = source.position + source.rotation * offset</c>
-        /// and the offset is a fixed distance in METRES — no parent's scale touches it. So when
-        /// the scaler shrinks the root, every bone moves closer together while a constrained prop
-        /// stays its authored distance away, and when it grows, the prop sinks in. A cowboy hat
-        /// held 13-18 cm off its source is where this was found: drifting off the head when small,
-        /// buried in it when large.
+        /// A ParentConstraint holds its target a fixed distance from its source, in metres, and
+        /// Unity never scales that offset — so a hat or held item drifts off a shrinking avatar
+        /// and sinks into a growing one. 3.4.5 tried to fix it by writing scaled copies of every
+        /// offset into the nine generated scale clips. It made an avatar render pure white in play
+        /// mode and crashed the editor on scene reload, and was reverted in 3.4.6.
         ///
-        /// Offsets that are already zero are skipped — the vast majority — so a typical avatar
-        /// gains no curves at all and its clips are unchanged.
-        /// </summary>
-        static List<ConstraintOffset> CollectConstraintOffsets(BridgeContext ctx)
-        {
-            var found = new List<ConstraintOffset>();
-            foreach (var constraint in ctx.Target.GetComponentsInChildren<ParentConstraint>(true))
-            {
-                if (constraint == null)
-                {
-                    continue;
-                }
-                string path = ctx.PathInTarget(constraint.transform);
-                for (int i = 0; i < constraint.sourceCount; i++)
-                {
-                    var offset = constraint.GetTranslationOffset(i);
-                    if (offset.sqrMagnitude < 1e-10f)
-                    {
-                        continue;   // nothing to scale
-                    }
-                    found.Add(new ConstraintOffset { Path = path, SourceIndex = i, Offset = offset });
-                }
-            }
-            return found;
-        }
-
-        /// <summary>
-        /// Writes each remembered offset into a scale clip, multiplied by that clip's factor, so
-        /// a prop keeps its proportions as the avatar resizes.
+        /// Two things were wrong with the approach, and the second is the one to think about:
         ///
-        /// Deliberately NOT applied to a constraint the avatar animates itself: if the author is
-        /// already driving an offset, two sources would fight and theirs should win. The scaler is
-        /// a convenience, not something worth breaking a hand-built system for.
+        ///   1. ORDER. The scaler runs inside AnimatorMerger (pass 65); ConstraintConverter runs
+        ///      at 67. So the constraints were read before VRC ones had been converted into Unity
+        ///      ones, and before AlignLocalSpaceRelays re-parents transforms — which changes the
+        ///      very paths being baked into the curves.
+        ///   2. The Size layer's state has Write Defaults ON and sits LAST, so it has the final
+        ///      say over everything. Widening what its clips animate widens what it asserts every
+        ///      frame, and that is not a small change to make blindly on a blend tree the whole
+        ///      avatar hangs off.
+        ///
+        /// Anyone retrying this: do it as its own pass after ConstraintConverter, on the saved
+        /// clips, and verify against a converted avatar in play mode before shipping it — the
+        /// failure was immediate and obvious the moment anyone pressed play.
         /// </summary>
-        static void ApplyConstraintOffsets(AnimationClip clip, List<ConstraintOffset> offsets,
-            HashSet<string> animatedByAvatar, float factor)
-        {
-            foreach (var entry in offsets)
-            {
-                string prefix = $"m_TranslationOffsets.Array.data[{entry.SourceIndex}]";
-                if (animatedByAvatar.Contains(entry.Path + "/" + prefix))
-                {
-                    continue;
-                }
-                var scaled = entry.Offset * factor;
-                clip.SetCurve(entry.Path, typeof(ParentConstraint), prefix + ".x",
-                    AnimationCurve.Constant(0f, 1f / 60f, scaled.x));
-                clip.SetCurve(entry.Path, typeof(ParentConstraint), prefix + ".y",
-                    AnimationCurve.Constant(0f, 1f / 60f, scaled.y));
-                clip.SetCurve(entry.Path, typeof(ParentConstraint), prefix + ".z",
-                    AnimationCurve.Constant(0f, 1f / 60f, scaled.z));
-            }
-        }
-
-        /// <summary>
-        /// Constraint offsets the avatar's own animator already drives, which the scaler leaves
-        /// alone. Keyed "path/m_TranslationOffsets.Array.data[i]".
-        /// </summary>
-        static HashSet<string> ConstraintOffsetsAnimatedByAvatar(AnimatorController master)
-        {
-            var driven = new HashSet<string>();
-            if (master == null)
-            {
-                return driven;
-            }
-            foreach (var clip in master.animationClips)
-            {
-                if (clip == null)
-                {
-                    continue;
-                }
-                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                {
-                    if (binding.propertyName.StartsWith("m_TranslationOffsets.Array.data[",
-                            System.StringComparison.Ordinal))
-                    {
-                        // Trim the ".x"/".y"/".z" so all three axes share one key.
-                        int dot = binding.propertyName.LastIndexOf('.');
-                        string prop = dot > 0 ? binding.propertyName.Substring(0, dot) : binding.propertyName;
-                        driven.Add(binding.path + "/" + prop);
-                    }
-                }
-            }
-            return driven;
-        }
 
         static string UniqueName(string name, HashSet<string> taken)
         {
