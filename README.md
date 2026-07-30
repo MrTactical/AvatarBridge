@@ -976,6 +976,21 @@ aren't on the avatar — and 2.97.0 split them apart, because they mean opposite
   (GoGo, SPS) taking objects a clip still references is the usual innocent cause — turn that strip
   off and convert again to check. Anything else is worth reporting as a bug.
 
+**Clips that switch a constraint on and off get the same treatment** (3.1.2), because the same three
+outcomes mean three different things:
+
+- **"repointed at the Unity constraints"** — working. The type and property names change during
+  conversion, and these followed. Some also had to follow their constraint to a different object,
+  because a VRC constraint using `Target Transform` is rebuilt *on the thing it drives*.
+- **"drove a constraint that was never built"** — **check your bake, not the conversion.** The object
+  is on the avatar but has no constraint and never did, so there was nothing to convert. VRCFury and
+  Modular Avatar generate constraints *during the bake*, and a bake that errors partway generates
+  some sets and not others — one quadruped had its ear, tongue, wrist and toe constraints built and
+  its finger set missing, leaving 140 curves addressing things that never existed. Build a test copy
+  of the **source** avatar on its own and confirm it completes without errors.
+- **"drove a constraint on an object that is now GONE"** — the object itself vanished during
+  conversion. A stripped system is the innocent cause; anything else is a bug worth reporting.
+
 **Locked (optimised) Poiyomi/Thry shaders bake any property that wasn't flagged animated *at lock
 time* into the shader as a fixed value and delete the property.** Writing to it afterwards goes
 nowhere. Flagging it later sets `_<Name>Animated` on the *material*, but that changes nothing until

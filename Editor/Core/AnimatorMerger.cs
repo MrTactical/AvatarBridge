@@ -5871,12 +5871,25 @@ namespace AvatarBridge
             if (intoTemp > 0 || introduced > 0)
             {
                 ctx.Report.Error(Category,
-                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s) the conversion introduced",
+                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s)",
                     $"e.g. {badSample}. VRCFury deletes its temp folder on its next build — which entering " +
                     "play mode triggers if the original avatar is still in the scene — and an " +
                     "unresolvable reference is already dead. Either way those animations will stop " +
-                    "working after the next play or Fury build. This is a conversion bug: please report " +
-                    "it with this file attached. Do not upload this conversion.");
+                    "working after the next play or Fury build. Do not upload this conversion." +
+                    (introduced > 0
+                        // Blaming the conversion outright sent someone hunting a bug on this side
+                        // when the real cause was a VRCFury bake failing partway: the controller
+                        // referenced assets Fury never finished writing, and the same avatar showed
+                        // hundreds of Fury exceptions in the editor log. Check that first, because a
+                        // half-built bake produces exactly this and nothing here can repair it.
+                        ? " CHECK YOUR BAKE FIRST: if VRCFury or Modular Avatar errored while baking " +
+                          "this avatar, the assets it was still writing never arrived and the references " +
+                          "point at nothing. Build a test copy of the SOURCE avatar on its own (Tools > " +
+                          "VRCFury > Build a Test Copy) and see whether it completes cleanly — a version " +
+                          "mismatch between the avatar's package and your installed VRCFury is the usual " +
+                          "cause. If that bake is clean and this still happens, it is a conversion bug: " +
+                          "please report it with this file attached."
+                        : ""));
             }
             if (inherited > 0)
             {

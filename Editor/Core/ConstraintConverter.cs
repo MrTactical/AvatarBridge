@@ -148,7 +148,8 @@ namespace AvatarBridge
 
             int repointed = 0, followed = 0;
             var dropped = new SortedSet<string>();
-            var lost = new SortedSet<string>();
+            var lost = new SortedSet<string>();        // the object is gone: something here removed it
+            var neverBuilt = new SortedSet<string>();  // the object is there, but never had a constraint
 
             foreach (var clip in clips)
             {
@@ -192,7 +193,14 @@ namespace AvatarBridge
                     }
                     if (replacement == null)
                     {
-                        lost.Add(where);
+                        // Two very different situations, and telling them apart is the difference
+                        // between "report this" and "fix your bake". If the object is not there at
+                        // all, something in this conversion removed it. If it is there but carries
+                        // no constraint, nothing ever put one on it — on the avatar that prompted
+                        // this, VRCFury generated the ear, tongue, wrist and toe constraint sets
+                        // and never generated the finger set, so 140 clips addressed constraints
+                        // that had never existed to convert.
+                        (ObjectExists(ctx, binding.path) ? neverBuilt : lost).Add(where);
                         continue;
                     }
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
@@ -233,12 +241,36 @@ namespace AvatarBridge
             if (lost.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{lost.Count} curve(s) drove a constraint that isn't there any more",
-                    "The clip animates a constraint on an object that now has none. The usual " +
-                    "cause is a VRC 'Target Transform': the Unity constraint was placed on the " +
-                    "object it drives instead, so the curve's path no longer finds it. Re-point " +
-                    "these by hand if the feature matters: " + string.Join("; ", lost) + ".");
+                    $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
+                    "The clip animates a constraint on an object this conversion no longer has. A " +
+                    "stripped system (GoGo, SPS) taking an object a clip still references is the " +
+                    "usual innocent cause — turn that strip off and convert again to check. " +
+                    "Anything else is worth reporting as a bug: " + string.Join("; ", lost) + ".");
             }
+            if (neverBuilt.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{neverBuilt.Count} curve(s) drove a constraint that was never built",
+                    "The object is right there on the avatar, but it has no constraint and never " +
+                    "did — so there was nothing for this conversion to convert, and nothing it " +
+                    "could have moved. That normally means the avatar's own build step didn't " +
+                    "finish: VRCFury and Modular Avatar generate constraints during the bake, and " +
+                    "a bake that errors partway generates some sets and not others. Build a test " +
+                    "copy of the SOURCE avatar on its own and check it completes without errors — " +
+                    "on the avatar this was found on, the ear, tongue, wrist and toe constraints " +
+                    "were generated and the finger set never was. These curves were dead before " +
+                    "conversion started: " + string.Join("; ", neverBuilt) + ".");
+            }
+        }
+
+        /// <summary>Whether a curve's path still resolves to an object on the converted avatar.</summary>
+        static bool ObjectExists(BridgeContext ctx, string path)
+        {
+            if (ctx.Target == null)
+            {
+                return false;
+            }
+            return string.IsNullOrEmpty(path) || ctx.Target.transform.Find(path) != null;
         }
 
         /// <summary>
