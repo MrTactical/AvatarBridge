@@ -443,6 +443,69 @@ namespace AvatarBridge
         /// <summary>The Auto button for Voice Position: the jaw bone, else a small fixed
         /// offset in front of the head bone (CCK_CVRAvatarEditor.AutoSetVoicePosition,
         /// mirrored). Avatar-local; false without a humanoid jaw or head.</summary>
+        /// <summary>
+        /// Whether the rig's Jaw bone is anywhere a jaw could be. Geometry decides; the name is
+        /// never consulted.
+        ///
+        /// The humanoid Jaw slot is optional and unpoliced, and riggers fill it with whatever was
+        /// nearest when they clicked. One avatar mapped Jaw to a bone called "fronthair1", 21 cm
+        /// ABOVE the head bone and a centimetre above the viewpoint — so the voice came out of the
+        /// top of the head, and the CVRAvatar gizmo drew it hovering over the hair. Trusting a
+        /// mapped bone because it is mapped is how that ships.
+        ///
+        /// Two things are true of every real jaw and of nothing on top of a head:
+        ///   - it is BELOW the eyes. Not level, not above: a jaw hinges under them. Eyes are the
+        ///     reference rather than the head bone because the head bone sits at the base of the
+        ///     skull, which a jaw is legitimately level with or slightly above.
+        ///   - it is within a head's reach of the head bone. A quarter of hips-to-head is generous
+        ///     for a skull and still rejects a bone out at the end of a hair strand or an ear.
+        ///
+        /// Lives here rather than in MouthLocator because BOTH voice paths need it and only one
+        /// of them was guarded first time round — the CCK-Auto path is the one that usually runs,
+        /// so guarding the fallback alone changed nothing on the avatar that found this.
+        /// </summary>
+        public static bool JawIsBelievable(GameObject root, Animator animator, Transform jaw, out string why)
+        {
+            why = null;
+            if (root == null || animator == null || jaw == null)
+            {
+                return true;
+            }
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null)
+            {
+                return true; // nothing to measure against; the mapping is all there is
+            }
+
+            var left = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var right = animator.GetBoneTransform(HumanBodyBones.RightEye);
+            Vector3 up = root.transform.up;
+            if (left != null || right != null)
+            {
+                Vector3 eyes = left != null && right != null ? (left.position + right.position) * 0.5f
+                    : (left != null ? left.position : right.position);
+                float above = Vector3.Dot(jaw.position - eyes, up);
+                if (above > 0f)
+                {
+                    why = $"{above:0.##} m above the eyes — a jaw hinges below them";
+                    return false;
+                }
+            }
+
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            float reach = hips != null
+                ? Mathf.Max(0.12f, Vector3.Distance(hips.position, head.position) * 0.25f)
+                : 0.35f;
+            float away = Vector3.Distance(jaw.position, head.position);
+            if (away > reach)
+            {
+                why = $"{away:0.##} m from the head bone, past the {reach:0.##} m this rig's own " +
+                      "proportions allow for a skull";
+                return false;
+            }
+            return true;
+        }
+
         public static bool CckAutoVoicePosition(GameObject root, Animator animator, out Vector3 localPosition)
         {
             localPosition = default;
@@ -452,6 +515,16 @@ namespace AvatarBridge
             }
             var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            // A mapped Jaw is only used if it is somewhere a jaw could be. The slot is optional
+            // and unvalidated, so it gets filled with whatever was nearest — one rig pointed it
+            // at a hair bone above the eyes, and the voice came out of the top of the head. When
+            // it fails, this returns false rather than falling back to the head offset, so the
+            // caller reaches MouthLocator, which can measure the mouth off a viseme shape and
+            // reports the rejected bone by name.
+            if (jaw != null && !JawIsBelievable(root, animator, jaw, out _))
+            {
+                return false;
+            }
             Vector3 world;
             if (jaw != null)
             {

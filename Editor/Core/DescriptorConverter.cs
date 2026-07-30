@@ -296,8 +296,11 @@ namespace AvatarBridge
             }
             if (!haveAuthored && (autoView || autoVoice) && !decoyRig)
             {
-                bool hasJaw = animator != null && animator.isHuman &&
-                              animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
+                // "Usable", not merely mapped — a Jaw pointing at a hair bone is neither.
+                var jawBone = animator != null && animator.isHuman
+                    ? animator.GetBoneTransform(HumanBodyBones.Jaw) : null;
+                bool hasJaw = jawBone != null &&
+                              AvatarFeatureDetect.JawIsBelievable(ctx.Target, animator, jawBone, out _);
                 ctx.Report.Converted(Category, "View & voice placed the CCK's own way",
                     (autoView
                         ? "View between the eye bones (this avatar's VRChat descriptor had no viewpoint set)"
@@ -309,8 +312,11 @@ namespace AvatarBridge
             }
             else if (haveAuthored)
             {
-                bool hasJaw = animator != null && animator.isHuman &&
-                              animator.GetBoneTransform(HumanBodyBones.Jaw) != null;
+                // "Usable", not merely mapped — a Jaw pointing at a hair bone is neither.
+                var jawBone = animator != null && animator.isHuman
+                    ? animator.GetBoneTransform(HumanBodyBones.Jaw) : null;
+                bool hasJaw = jawBone != null &&
+                              AvatarFeatureDetect.JawIsBelievable(ctx.Target, animator, jawBone, out _);
                 ctx.Report.Converted(Category, "Voice position",
                     (autoVoice
                         ? (hasJaw
