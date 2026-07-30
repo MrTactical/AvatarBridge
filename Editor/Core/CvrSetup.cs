@@ -110,16 +110,47 @@ namespace AvatarBridge
             // The CCK's own Auto placement first — one convention for every avatar; the
             // bounds estimate only covers rigs the Auto chain can't read.
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
-            cvrAvatar.viewPosition = autoView
+            var humanoidView = autoView
                 ? viewAuto
                 : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
+
+            // A decoy rig — the humanoid map pointing at a hidden stand-in skeleton, with
+            // constraints relaying it onto the visible body — puts both markers on the stand-in
+            // instead of on the avatar. See AvatarFeatureDetect.DecoyRigAnchors.
+            bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
+                                out var decoyView, out var decoyVoice, out var visibleHead, out string decoyDetail)
+                            && Vector3.Distance(decoyView, humanoidView) > 0.05f;
+            cvrAvatar.viewPosition = decoyRig ? decoyView : humanoidView;
             cvrAvatar.voicePosition = cvrAvatar.viewPosition;
-            ctx.Report.Converted(Category, "Viewpoint",
-                $"Viewpoint at {cvrAvatar.viewPosition.y:0.00} m " +
-                (autoView
-                    ? "— the CCK's own Auto placement (between the eye bones)"
-                    : (humanoid ? "estimated from the eye/head bones" : "estimated from the mesh bounds")) +
-                " — check it in the scene view and nudge if the first-person camera sits wrong.");
+
+            if (decoyRig && AvatarFeatureDetect.ExcludeVisibleHeadFromFirstPerson(animator, visibleHead))
+            {
+                ctx.Report.Converted(Category, $"First-person head hiding moved to \"{visibleHead.name}\"",
+                    "ChilloutVR hides your own head in first person by adding an FPRExclusion to the " +
+                    "humanoid Head bone, which on a decoy rig skins nothing. One was added to the head " +
+                    "you can actually see instead. It only affects YOUR camera.");
+            }
+
+            if (decoyRig)
+            {
+                ctx.Report.Approximated(Category, "Viewpoint & voice measured on the VISIBLE head",
+                    "This avatar's humanoid rig is a decoy: the bones Unity's humanoid map points " +
+                    "at are a hidden stand-in skeleton, and constraints relay them onto the body " +
+                    "you can actually see. ChilloutVR parents both markers to the humanoid Head " +
+                    $"bone, so the CCK's Auto placement lands {Vector3.Distance(humanoidView, decoyView):0.##} m " +
+                    "from this avatar's face — usually inside its head, where looking down fills " +
+                    $"the screen with the inside of its own mouth. Measured on the relayed bones " +
+                    $"instead — {decoyDetail}. Check both with the CVRAvatar gizmo before uploading.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category, "Viewpoint",
+                    $"Viewpoint at {cvrAvatar.viewPosition.y:0.00} m " +
+                    (autoView
+                        ? "— the CCK's own Auto placement (between the eye bones)"
+                        : (humanoid ? "estimated from the eye/head bones" : "estimated from the mesh bounds")) +
+                    " — check it in the scene view and nudge if the first-person camera sits wrong.");
+            }
 
             // --- face mesh -----------------------------------------------------------
             var face = AvatarFeatureDetect.FindFaceMesh(ctx.Target);
@@ -154,7 +185,11 @@ namespace AvatarBridge
             // --- voice position ------------------------------------------------------
             // The CCK's Auto placement (jaw bone, else head offset); viseme-measured mouth
             // only when the rig has neither bone.
-            if (AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto))
+            if (decoyRig)
+            {
+                cvrAvatar.voicePosition = decoyVoice;   // reported with the viewpoint above
+            }
+            else if (AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto))
             {
                 cvrAvatar.voicePosition = voiceAuto;
                 ctx.Report.Converted(Category, "Voice position",
@@ -168,8 +203,13 @@ namespace AvatarBridge
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail);
             }
 
-            AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
-                cvrAvatar.viewPosition, cvrAvatar.voicePosition);
+            // Skipped on a decoy rig: the check measures both markers against the humanoid head
+            // bone, which on such a rig they are deliberately nowhere near.
+            if (!decoyRig)
+            {
+                AvatarFeatureDetect.VerifyHeadPlacement(ctx, Category, animator,
+                    cvrAvatar.viewPosition, cvrAvatar.voicePosition);
+            }
 
             // --- blink ---------------------------------------------------------------
             WireBlink(ctx, cvrAvatar, mesh);

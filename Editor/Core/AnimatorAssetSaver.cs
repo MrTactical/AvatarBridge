@@ -89,7 +89,13 @@ namespace AvatarBridge
 
             File.Copy(AbsolutePath(buildPath), AbsolutePath(assetPath), true);
             AssetDatabase.DeleteAsset(scratchDir);
-            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+            // ForceSynchronousImport as well as ForceUpdate: without it the reimport can still be
+            // in flight when this returns, and the caller hands a half-imported controller to a
+            // live Animator. Unity then builds a Mecanim graph from data that isn't there and
+            // segfaults — ten crash dumps in one morning, every one inside GenerateGraph or the
+            // player loop that ran the graph it produced.
+            AssetDatabase.ImportAsset(assetPath,
+                ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
 
             // The object we built belonged to the scratch asset just deleted; the live one is
             // whatever was reimported at the original path.

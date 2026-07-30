@@ -73,8 +73,9 @@ two platforms differ and VRCFury setups vary endlessly. **It assumes you know yo
 Unity**: the Animator window, blend trees, the `CVRAvatar` component.
 
 Every run writes a `ConversionReport.md` you're **expected to read** — act on each *Warning*,
-*Approximated* and *Skipped* entry — and every conversion should be **tested in ChilloutVR** before
-you call it done. The editor can't show you gestures, contacts, synced parameters or physics
+*Approximated* and *Skipped* entry — alongside a `Diagnostics.md` you don't need to read at all
+unless something's wrong, and should attach to any bug report. Every conversion should be **tested
+in ChilloutVR** before you call it done. The editor can't show you gestures, contacts, synced parameters or physics
 actually running.
 
 ## Highlights
@@ -125,6 +126,10 @@ actually running.
   The **Face tracking** section drives every eye and Unified Expressions parameter the controller
   declares, grouped by region, with each slider's range read from the rig's own blend trees — so
   bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
+  On an avatar converted to **native** `CVRFaceTracking` there are no such parameters — the client
+  writes blendshapes straight from the headset, with no animator in the loop — so the section shows
+  a slider per **mapped blendshape** instead (3.1.0), writing the mesh the same way the client will.
+  Before that it showed a single lone toggle and looked broken while being perfectly correct.
 
   The **Animator layers** readout is pinned to the bottom of the window so it stays visible while
   you drive the controls above it, and shows every layer's weight, avatar mask and currently
@@ -203,7 +208,7 @@ defines.
 
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
-| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured |
+| Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured. On a [quadruped decoy rig](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) both are re-measured on the bones you can actually see |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
@@ -214,7 +219,7 @@ defines.
 | Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
-| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quads on ice](#quadruped--finalik-avatars--on-ice) |
+| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
@@ -291,6 +296,29 @@ the report says so plainly.
 
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
+
+**Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
+**local** rotation instead of its world one, and that's the default in the SDK's own inspector.
+Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its
+constraint types are Unity's own.
+
+Most of the time this costs nothing: where the constrained object and its source hang off the same
+parent, that parent's rotation appears on both sides and cancels, so the two spaces agree exactly.
+It matters when the source sits in a **different chain** — and there the parents can be *made* to
+agree, by moving the constrained bone under the source's own parent. That isn't an approximation:
+it turns the one constraint Unity can't express into one it can, and it cascades, because once a
+chain's root pair matches every pair below it matches too. This is what makes
+[quadrupeds](#quadruped--finalik-avatars) work.
+
+Moving a bone is only safe when nothing depends on where it *is*, so it happens only when the relay
+is rotation-only, **no mesh skins to the bone**, **no animation addresses it** (curves are matched
+by path, and a moved bone would silently stop being animated), and **nothing involved is mirrored**
+— a negative scale flips handedness, which no re-parenting can carry across. Every move is named in
+the report, and anything failing a check is left alone and reported instead.
+
+⚠️ **A mirrored parent is lossy whatever happens.** VRChat's solver corrects a constraint's result
+when the parent's scale has a negative axis; Unity's constraints don't, and ChilloutVR ships no type
+that does. Constraints under such a parent land reflected, and the report names every one.
 
 ## PhysBones → MagicaCloth2
 
@@ -574,15 +602,114 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ## Known limitations
 
-### Quadruped / FinalIK avatars — on ice
+### Quadruped / FinalIK avatars
 
-**Don't expect a working quad right now.** The conversion completes and the report comes back clean,
-but the avatar holds its rest pose in game with only the IK-tracked parts following you. Several
-real bugs were found and fixed chasing this and none were the cause, so it's parked rather than
-solved.
+**Quadruped support is real but partial, and how much you get depends on how yours was built.**
+Unity has no quadruped rig — every quad on VRChat is a humanoid skeleton driving an animal-shaped
+one by some trick, and *which trick* decides what survives conversion. Three have been converted and
+dissected here; they behave completely differently.
+
+All three share one symptom, which is the fastest way to recognise the family: **none of their
+humanoid bones move any geometry.** The conversion reports that outright, and `Diagnostics.md` gives
+you the number (`Mapped bones … that deform mesh: 0 (0%)`) plus every mapped bone's full path. It
+matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head hiding off
+humanoid bones — so on all three they follow a skeleton nobody can see, pass every internal check
+against it, and still land half a metre from the avatar's face.
+
+| How it's built | Tell-tale | What you get |
+|---|---|---|
+| **Constraint relay** — hidden biped, VRC constraints copying it onto the animal | bones named `*Human`, ~60 VRC constraints | **Walks in game.** Locomotion, poses, limb locks, viewpoint, first-person head all working. Hind legs land reflected — see below |
+| **Unity-constraint rig** (e.g. AnyTaur) — same idea, Unity's own constraints | `RotationConstraint` throughout, no VRC constraints | **Best case.** Nothing to translate, so none of the constraint walls apply at all |
+| **FinalIK proxy** — humanoid mapped into a `VRIK` proxy skeleton | mapped bones sit under `.../VRIK/PROXY_*` | **Least working.** The visible body is posed by IK and relays that can't convert |
+
+**The one thing worth knowing before you start:** a quad built on **Unity constraints converts almost
+untouched**, because VRChat's constraint features are what don't survive — local-space solving and
+the negative-scale correction. If you're choosing or commissioning a quad base for ChilloutVR, that
+is the single biggest predictor of how well it will land.
+
+**The viewpoint and voice get rescued when they land off the body** (3.3.0). Rather than trying to
+recognise a fourth rig design, this asks the one question no skeleton can lie about: is the marker
+further from *every bone that deforms mesh* than this rig's own proportions allow? If so it isn't on
+the avatar, however well it measured, and it's re-placed from the eye markers that **are** on the
+body. A marker already on the body is never touched, so avatars that are correct — including the
+other two quadrupeds — can't be disturbed. Naming only nominates candidates; geometry decides.
+
+**A constraint-relay quadruped walks in game** — confirmed by wearing one, which is the only test
+that counts. Getting there took several separate fixes, and the walls below are still standing.
+
+**Turn off "Base / locomotion" for a quadruped.** It's off by default. VRChat's stock locomotion
+layer and ChilloutVR's own both drive the decoy biped, and with both present the avatar holds its
+rest pose. With it off, ChilloutVR drives the decoy and the relays carry it onto the animal.
+
+**Most quadrupeds are a hidden humanoid rig.** The model carries a second, invisible biped skeleton
+— bones named like `HipsHuman`, `thighHuman.L`, `HeadHuman` — and Unity's humanoid map points only
+at *those*. Nothing the engine solves ever touches a bone that deforms the mesh. Constraints then
+relay that decoy onto the real skeleton, bone by bone: the torso rides the biped hips, the neck
+chain *is* the biped spine, the front legs are the biped's legs. It's an elegant trick and it needs
+no FinalIK at all, so ChilloutVR has nothing to delete.
+
+Most of that converts. On the avatar this was worked out from, 51 of 59 relays needed nothing at
+all. **Two things break the rest, and the report names both:**
+
+- **Relays that solve in [local space](#constraints-that-drive-another-object)** — typically the
+  hind legs copying the humanoid legs' articulation, so one walk cycle moves four legs. Where the
+  copied bone can be moved under the same parent as the bone it copies, that is repaired exactly;
+  where it can't, it's reported.
+- **Mirrored bones.** A hind rig is usually the front rig *mirrored* — which is why its relays
+  cross left to right — and a mirrored bone carries a negative scale. VRChat's solver corrects a
+  constraint result for that; **Unity's constraints have no such step and ChilloutVR ships no type
+  that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
+  computes and writes its own rotation with no hook in between. Un-mirroring the bones and
+  re-rigging is the only cure, and that's a job for your 3D package.
+- **PhysBones on a relayed bone (2.91.0, widened in 2.97.0).** A constraint writes that bone every frame; a cloth
+  solver integrates it from its own last state. Together they feed each other until the transform
+  goes **NaN**, and the chain hangs broken with nothing to see in the animator. VRChat survives it
+  because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone don't. Those
+  chains are skipped now and listed in the report. **Unity's own constraints count too** (2.97.0) —
+  the loop is engine-level and doesn't care which component writes the rotation. 2.91.0 only looked
+  for VRChat's, so a quadruped base built entirely on Unity constraints went straight past it with a
+  tail cloth simulating three constraint-driven bones.
+- **Both markers on the decoy (2.92.0).** ChilloutVR parents the viewpoint and voice position to the
+  humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
+  animal's skull. Both are measured on the relayed bones instead; see
+  [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
+- **Toggles that switch a constraint on and off (2.94.0).** This one isn't quadruped-specific, it
+  just bites hardest here. An animation curve carries the component **type** and the **serialized
+  property name**, and conversion changes both — a clip still saying `VRCParentConstraint.IsActive`
+  plays as silence, with nothing to see in the animator. That's how limb locks, sit/lay-down/loaf
+  poses and flight modes work on any constraint-driven avatar: release the relay so an animation can
+  take the bones over. Curves are repointed at the Unity constraint now
+  (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`). **`FreezeToWorld`
+  has no Unity or ChilloutVR equivalent** and is dropped — a toggle relying on it will change the
+  constraint but won't pin anything in world space.
+- **First-person head hiding aimed at the decoy (2.93.0).** ChilloutVR hides your own head by adding
+  an `FPRExclusion` to the humanoid Head bone. That bone skins nothing here, so nothing was hidden
+  and the view filled with the inside of the animal's head. One is added to the head you can see
+  instead — your camera only; everyone else sees the whole avatar. Delete it if you'd rather not.
+
+⚠️ **A mirrored hind rig still doesn't work**, and that's the common build — the front half moves,
+the back half lands reflected. The report names the exact bones. Both quadrupeds dissected here that
+use VRC constraints hit it in the same place, and it looks the same on each: the hind limbs are the
+humanoid legs relayed *in local space* and *mirrored*, so they fail both walls at once —
+
+```
+LOCAL_INVERSE_CNST_UpperLeg_L  ←  HOOMAN_UpperLeg_L      (local space, mirrored parent)
+LOCAL_INVERSE_CNST_LowerLeg_L  ←  HOOMAN_LowerLeg_L
+LOCAL_INVERSE_CNST_Foot_L      ←  HOOMAN_Foot_L
+```
+
+If your quad has a **"biped" mode**, try it — it usually stops using the mirrored hind rig entirely
+and is often the configuration that converts cleanly.
+
+**Honest summary: this is limited support, not full support.** One rig style walks; one converts
+almost perfectly; one mostly doesn't. Nothing here is a silent failure — the report and
+`Diagnostics.md` name which family you have, which bones fail, and why — but a quadruped still needs
+testing in game before you trust it, and some will need author-side changes no converter can make.
+
+**A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
 <details>
-<summary>What's known, from reading ChilloutVR's own code</summary>
+<summary>What's known about those, from reading ChilloutVR's own code</summary>
 
 - **`GrounderVRIK` is deleted on load.** CVR whitelists components per-avatar and destroys the rest
   silently — worlds get 57 FinalIK types, avatars 13. `VRIK`, `LookAtIK`, `TwistRelaxer`,
@@ -693,12 +820,54 @@ that animate the body on purpose are left alone, and object toggles, blendshapes
 animation are untouched. If you see this pose on a 2.62.0+ conversion, report it — the report
 names every layer that could write muscles.
 
+### A bone chain hangs broken, or MagicaCloth throws in the Scene view
+
+**Reconvert on 2.91.0 or later.** A chain whose bones are also driven by a **constraint** is no
+longer simulated, and the report says which and why.
+
+A constraint writes its bone's rotation every frame from somewhere else; a cloth solver integrates
+that bone from its own previous state. Run both on one bone and each is fed the other's output —
+the integration diverges, and within seconds the transform is **NaN**. NaN never recovers and
+spreads down the hierarchy, so the chain hangs in a pose nothing explains, identically at rest, in
+play mode and in game. MagicaCloth's own Scene-view gizmo can throw a `NullReferenceException` from
+inside Burst while sorting those points, which is the same problem seen from a different angle.
+
+VRChat tolerates the overlap because PhysBones re-read the constraint's result each frame.
+MagicaCloth2 and DynamicBone don't, and nothing here can reorder them. The constraint fully
+determines that bone's rotation anyway, so the physics had nothing to add — remove the constraint if
+you want the chain simulated instead.
+
 ### A chain moves differently in game than in Unity
 
 Expected — **Unity can't preview cloth.** Nothing steps the solver in edit mode, and in play mode
 the avatar is standing still while in game it walks, turns and head-tracks constantly. Shaking the
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
+
+### Unity crashes when you press Convert
+
+**Fixed in 3.3.1 — update and try again.**
+
+It took three attempts because the trigger kept moving. The cause never did: **enabling an Animator
+makes Unity build a Mecanim playable graph, and a controller referencing assets that resolve to
+nothing makes that builder segfault.** 3.0.1 blamed timing and deferred the assignment (the crash
+moved to the deferred call). 3.2.0 left the Animator switched off (the crash moved to the
+**Inspector** — merely selecting the converted avatar runs `AwakeFromLoad` and builds the graph, with
+nothing of ours on the stack).
+
+3.3.1 removes the reference from the Animator entirely once the conversion's own passes are done, so
+nothing in the editor can instantiate it. **ChilloutVR is unaffected by the removal**: the CVRAvatar
+still carries the base controller and the overrides, which is what the client reads on load. The
+broken references are still in the controller though, so fix them and convert again before
+uploading — see the unresolvable-asset error for where they came from, usually a VRCFury or Modular
+Avatar bake that errored partway.
+
+Unity hard-crashes (not an error — the editor vanishes), most often when converting the *same*
+avatar a second time or when clicking the converted avatar afterwards. The dump always lands in the
+same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTreeEvaluation`.
+
+**If your avatar's controller has no broken references, none of this applies** — the Animator is
+wired up exactly as before.
 
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
@@ -768,11 +937,53 @@ matched the hand-corrected position exactly on X and to half a millimetre on Z. 
 when the descriptor has no viewpoint set, and the report says which was used and how far apart they
 were.
 
+**Eye bones are found by name when the rig doesn't map them**, and that search knows Blender's
+`.L`/`.R` suffix (`eye.L`, `eye.R`) as well as `LeftEye`-style names (3.0.2) — Blender exports that
+suffix by default, so it covers most anthro avatars. It also looks **anywhere on the avatar**, not
+only under the head bone (3.0.3): rigs park eye bones outside the head all the time when something
+else needs to drive them, and one taur base keeps its pair in a cloned spine chain under a node
+named `Head.children.go.here`. A match is only accepted if it lands within the same distance of the
+head that this rig's proportions already allow, so a stray bone elsewhere on the body is refused.
+Without this the viewpoint fell through to a blind head-offset estimate and sat 14 cm low, on the
+muzzle.
+
+**Unless the authored value is provably in the wrong place** (2.100.0). A viewpoint isn't a matter
+of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
+proportions allow *and* Auto lands within them, Auto wins and the report says so. One taur base
+shipped its viewpoint at the avatar's **hips**, 0.6 m from its head; the old rule copied it faithfully
+and then warned about the value it had just chosen.
+
 The conversion checks its own answer — it re-draws each position the way the CCK's inspector will
 and measures it against the head bone — so the report tells you when a placement is wrong instead
 of leaving it for the first person who hears your voice coming from ten metres away. Putting the
 avatar at the top of the scene hierarchy before converting avoids the scale cases entirely, and the
 CVRAvatar inspector's own **Auto** buttons are always a safe manual fix.
+
+**On a quadruped, neither the author's viewpoint nor Auto is looking at your avatar** (2.92.0). Those
+rigs are a [hidden humanoid decoy](#quadruped--finalik-avatars), and ChilloutVR hangs both
+markers off the humanoid **Head** bone — which is part of the decoy, not part of the animal. On the
+dragon this was found on, the shipped viewpoint sat **0.57 m** from the dragon's eyes, inside its
+skull: looking up was fine, looking down filled the screen with the inside of its own mouth. Auto
+was no better — it reads the decoy's eye bones and lands half a metre out too.
+
+The relay constraints say where the real bones are, so the conversion follows them: a constraint
+whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
+both markers are measured there instead.
+
+**This only fires when your avatar relays both humanoid EYE bones** (2.99.0), and that requirement
+is doing real work. A taur base kept tripping earlier versions: its constraint sourced from the
+humanoid head drives a hip clone, because that's its head-puppet feature — the head as an *input*
+that swings the body, not a bone being reproduced somewhere visible. The result was a viewpoint
+placed at the avatar's hips. Nothing about the rig separated the two cases (that base has a genuine
+stand-in skeleton too), and nor did distance — the dragon's real head sits 0.46 m from its humanoid
+head, the taur's hip clone 0.50 m. Relayed eyes do: an eye bone exists to aim eyeballs, so a
+constraint driven from one is reproducing a face, and a puppet input never has them.
+
+A decoy rig that maps no eye bones therefore keeps the author's own viewpoint, as before 2.92.0. An
+unhelpful viewpoint beats one confidently placed at your hips.
+
+It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
+check them with the gizmo and drag either one if you want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 
@@ -800,6 +1011,34 @@ conversion aims to, so they're always a safe manual fix.
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**,
 this is it, and **it is not the conversion**: the same animation does nothing in VRChat either.
+
+**Two report lines cover the other version of this** — a clip whose curves address objects that
+aren't on the avatar — and 2.97.0 split them apart, because they mean opposite things:
+
+- **"animate paths that were ALREADY missing in VRChat"** is not a problem. Every dead path is now
+  checked against the avatar *as it arrived*, and these weren't there either — so the curves were
+  silent in VRChat exactly as they will be here, and nothing was lost. Usually the clip belongs to a
+  feature that variant isn't configured for. It used to be reported as a warning, which made healthy
+  conversions look alarming: one quadruped base tripped it 44 times, all harmless.
+- **"LOST paths that existed before conversion"** is the real one. Those objects were on the avatar
+  when it arrived and aren't now, so the feature worked in VRChat and won't here. A stripped system
+  (GoGo, SPS) taking objects a clip still references is the usual innocent cause — turn that strip
+  off and convert again to check. Anything else is worth reporting as a bug.
+
+**Clips that switch a constraint on and off get the same treatment** (3.1.2), because the same three
+outcomes mean three different things:
+
+- **"repointed at the Unity constraints"** — working. The type and property names change during
+  conversion, and these followed. Some also had to follow their constraint to a different object,
+  because a VRC constraint using `Target Transform` is rebuilt *on the thing it drives*.
+- **"drove a constraint that was never built"** — **check your bake, not the conversion.** The object
+  is on the avatar but has no constraint and never did, so there was nothing to convert. VRCFury and
+  Modular Avatar generate constraints *during the bake*, and a bake that errors partway generates
+  some sets and not others — one quadruped had its ear, tongue, wrist and toe constraints built and
+  its finger set missing, leaving 140 curves addressing things that never existed. Build a test copy
+  of the **source** avatar on its own and confirm it completes without errors.
+- **"drove a constraint on an object that is now GONE"** — the object itself vanished during
+  conversion. A stripped system is the innocent cause; anything else is a bug worth reporting.
 
 **Locked (optimised) Poiyomi/Thry shaders bake any property that wasn't flagged animated *at lock
 time* into the shader as a fixed value and delete the property.** Writing to it afterwards goes
@@ -897,8 +1136,12 @@ versions and detected packages already in it.
 
 Two things make a report solvable immediately:
 
-1. **Attach `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/`. Nearly every bug
-   fixed so far was diagnosed from this file.
+1. **Attach `ConversionReport.md` and `Diagnostics.md`** from `Assets/AvatarBridgeOutput/<avatar>/`.
+   Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` (3.2.0) carries the
+   measurements behind it — package versions, every setting used, the rig's shape, where the head
+   and eye bones actually sit against the viewpoint, the constraint census, and which asset
+   references resolve to nothing. It's all facts and no advice, so it diffs cleanly between two
+   conversions. Nothing in either file leaves your machine unless you send it.
 2. **Attach the right log:**
 
    | Symptom | Log |

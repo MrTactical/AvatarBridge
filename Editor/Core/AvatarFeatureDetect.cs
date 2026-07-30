@@ -348,8 +348,16 @@ namespace AvatarBridge
 
         // ---------------------------------------------- the CCK's own Auto placement ----
 
-        static readonly string[] LeftEyeNameVariants = { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left" };
-        static readonly string[] RightEyeNameVariants = { "RightEye", "Right_Eye", "EyeRight", "Eye_Right" };
+        // Blender's ".L"/".R" suffix convention is in here because leaving it out cost a real
+        // avatar 14 cm. A taur base names its eyes "eye.L" and "eye.R" and doesn't map them in the
+        // humanoid rig, so the name search missed and Auto fell through to its blind fallback —
+        // a fraction of the hips-to-head span offset from the head bone — landing the viewpoint on
+        // the muzzle instead of between the eyes. Blender exports that suffix by default, which is
+        // most anthro avatars, so this was never a one-avatar problem.
+        static readonly string[] LeftEyeNameVariants =
+            { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left", "eye.L", "eye_L", "eyeL", "L_eye", "Eye.L.001" };
+        static readonly string[] RightEyeNameVariants =
+            { "RightEye", "Right_Eye", "EyeRight", "Eye_Right", "eye.R", "eye_R", "eyeR", "R_eye", "Eye.R.001" };
 
         /// <summary>
         /// The CVRAvatar inspector's "Auto" button for View Position, replicated from the
@@ -382,8 +390,28 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
+                // Under the head first, then anywhere on the avatar that is still near it.
+                //
+                // Eye bones are not always children of the head bone, and assuming they are cost a
+                // taur base 14 cm of viewpoint. That rig parks them in a cloned spine chain under
+                // a node named "Head.children.go.here" — a different branch of the skeleton — so
+                // no amount of searching below the head could ever have found them:
+                //
+                //   eyes: .../hind.chest/HipsAgain/SpineAgain/ChestAgain/NeckAgain/Head.children.go.here/eye.L
+                //   head: .../Hips/Spine/Chest/Neck/Head
+                //
+                // Rigs do this whenever something else needs to drive the eyes — poseclone
+                // systems, VRCFury rewrites, a separate "Eyes" object. NearHeadByNameVariants
+                // widens the net to the whole avatar but only accepts a bone that lands within
+                // the same distance of the head this rig's own proportions already allow, so a
+                // stray match somewhere down the body is refused rather than believed.
                 var namedLeft = FindChildByNameVariants(head, LeftEyeNameVariants);
                 var namedRight = FindChildByNameVariants(head, RightEyeNameVariants);
+                if (namedLeft == null || namedRight == null)
+                {
+                    namedLeft = namedLeft != null ? namedLeft : NearHeadByNameVariants(root, animator, head, LeftEyeNameVariants);
+                    namedRight = namedRight != null ? namedRight : NearHeadByNameVariants(root, animator, head, RightEyeNameVariants);
+                }
                 if (namedLeft != null && namedRight != null)
                 {
                     world = (namedLeft.position + namedRight.position) / 2f;
@@ -450,6 +478,564 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// The visible head and eyes of a DECOY RIG — a quadruped (or any non-biped) whose
+        /// humanoid map points at a hidden stand-in skeleton, with constraints relaying that
+        /// skeleton onto the bones you can actually see.
+        ///
+        /// This has to be handled because ChilloutVR hangs BOTH markers off the humanoid Head
+        /// bone. <c>AvatarHeadPoint.GetPointParent()</c> and <c>AvatarVoicePoint.GetPointParent()</c>
+        /// each return <c>animator.GetBoneTransform(HumanBodyBones.Head)</c>; the client spawns a
+        /// marker at the stored offset while the avatar is at rest, then re-parents it to that
+        /// bone. So on a decoy rig both markers land on the STAND-IN, wherever the stand-in
+        /// happens to be — which on the quadruped that produced this code was 0.57 m from the
+        /// dragon's eyes, inside its skull. Look up and you see out; look down and the inside of
+        /// the mouth fills the screen.
+        ///
+        /// Neither of the usual answers helps there: the CCK's Auto button reads the humanoid eye
+        /// bones, which are part of the stand-in, and the author's VRChat viewpoint was placed for
+        /// VRChat's own conventions against that same stand-in.
+        ///
+        /// The relay itself says where the visible bones are. A constraint whose SOURCE is the
+        /// humanoid Head or an eye bone exists to drive that bone's visible counterpart, so the
+        /// constrained transform is the answer:
+        ///
+        ///     Eye.L &lt;- RealEye.L      Eye.R &lt;- RealEye.R      Head &lt;- HeadHuman
+        ///
+        /// Only relays pointing AWAY from the humanoid rig count. A rig that constrains one
+        /// humanoid bone to another is doing something else and is left alone.
+        /// </summary>
+        public static bool DecoyRigAnchors(GameObject root, Animator animator,
+            out Transform head, out Transform leftEye, out Transform rightEye)
+        {
+            head = null;
+            leftEye = null;
+            rightEye = null;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+
+            var humanoid = new HashSet<Transform>();
+            foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (bone == HumanBodyBones.LastBone)
+                {
+                    continue;
+                }
+                var mapped = animator.GetBoneTransform(bone);
+                if (mapped != null)
+                {
+                    humanoid.Add(mapped);
+                }
+            }
+
+            var headBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            var leftEyeBone = animator.GetBoneTransform(HumanBodyBones.LeftEye);
+            var rightEyeBone = animator.GetBoneTransform(HumanBodyBones.RightEye);
+
+            // THE test for a decoy rig, and the thing that stops this misfiring.
+            //
+            // "A constraint sourced from the humanoid head" is not enough on its own. Plenty of
+            // ordinary rigs read the head to drive something unrelated — AnyTaur's flight system
+            // has a "Rotation Constraint to Head - Y" feeding a contact sender — and the first
+            // version of this happily decided the head's visible counterpart was a bone called
+            // "HipsAgain", then aimed the viewpoint, the voice and the first-person exclusion at
+            // it. Reading the head is not the same as reproducing it.
+            //
+            // What actually distinguishes a decoy is that its bones are INVISIBLE: the humanoid
+            // map points at a stand-in that deforms no mesh, and the constraints exist to move
+            // the bones that do.
+            //
+            // Testing that on the head bone ALONE was not enough, and this is the part worth
+            // remembering. A taur base has a real humanoid torso — arms, hands, fingers, spine,
+            // all skinning the mesh — but its humanoid Head happens to carry no weights of its
+            // own, so a head-only check waved it straight through and the viewpoint went to
+            // "HipsAgain" anyway. Being a decoy is a property of the WHOLE rig, so the whole rig
+            // is what gets measured.
+            //
+            // The threshold is loose on purpose. A true decoy scores zero — every mapped bone is a
+            // stand-in — while a real humanoid clears a fifth on its fingers alone. Nothing sits
+            // near the line, so this only has to survive a rig with a few stray weights.
+            if (headBone == null || humanoid.Count == 0)
+            {
+                return false;
+            }
+            var deforming = DeformingBones(root);
+            int deformingHumanoid = 0;
+            foreach (var bone in humanoid)
+            {
+                if (deforming.Contains(bone))
+                {
+                    deformingHumanoid++;
+                }
+            }
+            if (deformingHumanoid > humanoid.Count * 0.2f)
+            {
+                return false;
+            }
+
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    continue;
+                }
+                var driven = ConstraintTarget(component);
+                if (driven == null || humanoid.Contains(driven))
+                {
+                    continue;
+                }
+                foreach (var source in ConstraintSources(component))
+                {
+                    if (source == null)
+                    {
+                        continue;
+                    }
+                    if (source == headBone && head == null)
+                    {
+                        head = driven;
+                    }
+                    else if (source == leftEyeBone && leftEye == null)
+                    {
+                        leftEye = driven;
+                    }
+                    else if (source == rightEyeBone && rightEye == null)
+                    {
+                        rightEye = driven;
+                    }
+                }
+            }
+            // BOTH relayed eyes, or nothing. This is the gate that finally worked, after three
+            // that didn't, and the reasoning behind it is the useful part.
+            //
+            // Every attempt to recognise a decoy by the RIG failed, because the taur base that
+            // kept tripping this genuinely has one — a humanoid stand-in that deforms no mesh,
+            // exactly like the dragon's. What it does NOT have is a relayed head. Its constraint
+            // sourced from the humanoid head drives a hip clone, because that is its head-puppet
+            // feature: the head is an INPUT that swings the body, not a bone being reproduced
+            // somewhere visible.
+            //
+            // Position can't tell those apart — measured on both avatars, the dragon's real head
+            // sits 0.46 m from its humanoid head and the taur's hip clone 0.50 m. Neither can the
+            // constraint itself; they are the same component doing opposite jobs.
+            //
+            // Relayed EYES can. An eye bone exists to aim a pair of eyeballs, so a constraint
+            // driving something from one is reproducing a face — there is no other reason to do
+            // it. A puppet input never has them, and the taur's report said so outright: "this
+            // rig relays no eye bones", right before it guessed from the hip clone anyway.
+            //
+            // The cost is a decoy rig that maps no eye bones no longer gets this treatment, and
+            // falls back to the author's own viewpoint as it did before 2.92.0. That is the safe
+            // direction to fail in: a viewpoint that is merely unhelpful beats one confidently
+            // placed at the avatar's hips.
+            return leftEye != null && rightEye != null;
+        }
+
+        /// <summary>
+        /// Hides the VISIBLE head in first person on a decoy rig, by adding the CCK's own
+        /// <c>FPRExclusion</c> to it.
+        ///
+        /// ChilloutVR does this for you, but it aims at the same wrong bone everything else does.
+        /// <c>AvatarClone.AddExclusionToHeadIfNeeded()</c> reads
+        /// <c>animator.GetBoneTransform(HumanBodyBones.Head)</c> and, if that GameObject has no
+        /// exclusion of its own, adds one with <c>isShown = false</c>. On a decoy rig that bone is
+        /// part of the stand-in skeleton and skins nothing, so the client dutifully hides nothing
+        /// and you spend the session looking at the inside of your own head.
+        ///
+        /// The component only affects the first-person render clone — it shrinks the excluded
+        /// hierarchy to zero for your camera, never for anyone else's — and it is on the CCK's
+        /// avatar whitelist, so it survives upload. An exclusion the author placed themselves is
+        /// left alone.
+        /// </summary>
+        public static bool ExcludeVisibleHeadFromFirstPerson(Animator animator, Transform visibleHead)
+        {
+            if (visibleHead == null)
+            {
+                return false;
+            }
+            // An ordinary rig needs nothing: the client's own auto-add already targets this bone.
+            var humanoidHead = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head)
+                : null;
+            if (humanoidHead == visibleHead || visibleHead.GetComponent<FPRExclusion>() != null)
+            {
+                return false;
+            }
+            var exclusion = visibleHead.gameObject.AddComponent<FPRExclusion>();
+            exclusion.target = visibleHead;
+            exclusion.isShown = false;
+            exclusion.shrinkToZero = true;
+            return true;
+        }
+
+        /// <summary>
+        /// How much of the humanoid rig actually moves geometry.
+        ///
+        /// Zero is the loudest signal an avatar can give and the conversion used to say nothing
+        /// about it. Every quadruped that has caused trouble scored zero: a decoy relay skeleton,
+        /// a poseclone puppet, and a FinalIK VRIK proxy — three unrelated designs, one symptom.
+        /// It matters because the viewpoint, the voice position and ChilloutVR's first-person head
+        /// hiding all hang off humanoid bones, so when those bones drive nothing visible, all three
+        /// land somewhere the wearer isn't, and every internal check still passes because they are
+        /// correct *relative to the rig they were measured against*.
+        /// </summary>
+        public static void HumanoidDeformShare(GameObject root, Animator animator,
+            out int mapped, out int deforming)
+        {
+            mapped = 0;
+            deforming = 0;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return;
+            }
+            var deformingBones = DeformingBones(root);
+            foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
+            {
+                if (bone == HumanBodyBones.LastBone)
+                {
+                    continue;
+                }
+                var t = animator.GetBoneTransform(bone);
+                if (t == null)
+                {
+                    continue;
+                }
+                mapped++;
+                if (deformingBones.Contains(t))
+                {
+                    deforming++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Rescues the viewpoint on an avatar whose humanoid rig drives nothing you can see.
+        ///
+        /// Three quadrupeds have now arrived with the humanoid map pointing at an invisible
+        /// skeleton — a decoy relay, a poseclone puppet, a FinalIK VRIK proxy — and every
+        /// viewpoint check passed on all of them, because the checks measure against the same
+        /// skeleton that is wrong. One landed 0.102 m from "its" head bone and 60 cm above the
+        /// avatar's actual eyes.
+        ///
+        /// So this asks the one question the humanoid rig cannot answer: is the viewpoint inside
+        /// the body at all? The visible body is the union of the renderers' own bounds, which owes
+        /// nothing to any skeleton. A viewpoint outside it is wrong however well it scores, and a
+        /// viewpoint inside it is left strictly alone — which is what keeps this off avatars that
+        /// are already correct, including the other two quadrupeds.
+        ///
+        /// The replacement comes from eye-named transforms that are themselves inside the body.
+        /// Naming is only used to nominate candidates; geometry decides. Rigs of this kind carry
+        /// several co-located eye markers (LOCAL_CNST_Eye_L, LOCAL_ZERO_Eye_L, EyeWidth_DEF_*),
+        /// and since they sit in the same place, which one wins does not matter.
+        /// </summary>
+        public static bool RescueViewpointOffBody(GameObject root, Animator animator,
+            Vector3 storedView, out Vector3 localPosition, out string detail)
+        {
+            localPosition = default;
+            detail = null;
+            if (root == null)
+            {
+                return false;
+            }
+
+            // Distance to the nearest bone that actually deforms mesh — NOT a bounding box.
+            // A quadruped's box is enormous (wings, tail, ears) and a viewpoint floating well off
+            // the avatar can sit inside it happily, so containment proves nothing. Deforming bones
+            // are where the body genuinely is.
+            var deforming = DeformingBones(root).Where(b => b != null).ToList();
+            if (deforming.Count == 0)
+            {
+                return false;
+            }
+
+            // The same tolerance every other head check uses, so one rig can't be judged by two
+            // different standards.
+            var head = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            float tolerance = head != null && hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            float NearestDeforming(Vector3 point)
+            {
+                float best = float.MaxValue;
+                foreach (var bone in deforming)
+                {
+                    best = Mathf.Min(best, Vector3.Distance(bone.position, point));
+                }
+                return best;
+            }
+
+            float currentOff = NearestDeforming(CckGizmoWorldPoint(root, storedView));
+            if (currentOff <= tolerance)
+            {
+                return false;   // already on the body — nothing to rescue, and nothing to disturb
+            }
+
+            var candidates = new List<Transform>();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.IndexOf("eye", StringComparison.OrdinalIgnoreCase) >= 0
+                    && NearestDeforming(t.position) <= tolerance)
+                {
+                    candidates.Add(t);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            // Left/right pairs first: a pair straddling the centreline is a face, and its midpoint
+            // is where the eyes are. Falling back to the centroid of whatever is left keeps a
+            // single-marker rig working rather than refusing.
+            var left = candidates.Where(t => t.position.x < root.transform.position.x).ToList();
+            var right = candidates.Where(t => t.position.x > root.transform.position.x).ToList();
+            Vector3 world;
+            if (left.Count > 0 && right.Count > 0)
+            {
+                world = (Average(left) + Average(right)) / 2f;
+                detail = $"midway between {left.Count} left and {right.Count} right eye marker(s), " +
+                         $"e.g. \"{left[0].name}\" / \"{right[0].name}\"";
+            }
+            else
+            {
+                world = Average(candidates);
+                detail = $"the average of {candidates.Count} eye marker(s) inside the body, " +
+                         $"e.g. \"{candidates[0].name}\"";
+            }
+
+            localPosition = RoundNearZero(RootOffset(root, world));
+            return true;
+        }
+
+        /// <summary>
+        /// Whether a stored marker sits further from every mesh-deforming bone than this rig's own
+        /// proportions allow — i.e. it is not on the avatar. Same measurement
+        /// <see cref="RescueViewpointOffBody"/> gates on, exposed so the voice position can be
+        /// judged by it too rather than being left behind on a skeleton nobody can see.
+        /// </summary>
+        public static bool PointIsOffBody(GameObject root, Animator animator, Vector3 stored)
+        {
+            if (root == null)
+            {
+                return false;
+            }
+            var deforming = DeformingBones(root).Where(b => b != null).ToList();
+            if (deforming.Count == 0)
+            {
+                return false;
+            }
+            var head = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            float tolerance = head != null && hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            var point = CckGizmoWorldPoint(root, stored);
+            foreach (var bone in deforming)
+            {
+                if (Vector3.Distance(bone.position, point) <= tolerance)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static Vector3 Average(List<Transform> transforms)
+        {
+            var sum = Vector3.zero;
+            foreach (var t in transforms)
+            {
+                sum += t.position;
+            }
+            return sum / transforms.Count;
+        }
+
+        static readonly string[] JawNameVariants =
+            { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
+
+        /// <summary>
+        /// View and voice positions for a decoy rig, measured on the bones you can SEE.
+        ///
+        /// Same conventions as the CCK's own Auto buttons — eye midpoint for the view, jaw for
+        /// the voice, a head-bone offset when a bone is missing — just aimed at the visible
+        /// counterparts <see cref="DecoyRigAnchors"/> found instead of at the stand-in skeleton.
+        /// Returns false on every ordinary rig, where there is no relay to follow.
+        /// </summary>
+        public static bool DecoyRigPlacement(GameObject root, Animator animator,
+            out Vector3 viewLocal, out Vector3 voiceLocal, out Transform visibleHead, out string detail)
+        {
+            viewLocal = default;
+            voiceLocal = default;
+            visibleHead = null;
+            detail = null;
+            if (!DecoyRigAnchors(root, animator, out var head, out var leftEye, out var rightEye))
+            {
+                return false;
+            }
+            visibleHead = head;
+
+            // The avatar's own size, so the fallback offsets below scale with it rather than
+            // assuming a human head. Taken off the humanoid rig because that is the one chain
+            // guaranteed to exist, and it is the right order of magnitude either way.
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var headBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            float span = hips != null && headBone != null
+                ? Vector3.Distance(hips.position, headBone.position)
+                : 0f;
+
+            // DecoyRigAnchors guarantees both eyes; there is no head-only guess any more, because
+            // guessing a face from one relayed bone is what put a taur's viewpoint at its hips.
+            Vector3 viewWorld = (leftEye.position + rightEye.position) / 2f;
+            string viewFrom = $"midway between \"{leftEye.name}\" and \"{rightEye.name}\"";
+
+            string voiceFrom;
+            Vector3 voiceWorld;
+            var jaw = head != null ? FindChildByNameVariants(head, JawNameVariants) : null;
+            if (jaw != null)
+            {
+                voiceWorld = jaw.position;
+                voiceFrom = $"at \"{jaw.name}\"";
+            }
+            else if (head != null)
+            {
+                voiceWorld = OffsetFromBone(head, span > 0.0001f
+                    ? new Vector3(0f, 0.008f * span, 0.1f * span)
+                    : new Vector3(0f, 0.005f, 0.06f));
+                voiceFrom = $"just in front of \"{head.name}\"";
+            }
+            else
+            {
+                voiceWorld = viewWorld;
+                voiceFrom = "with the viewpoint (no visible head bone to work from)";
+            }
+
+            viewLocal = RoundNearZero(RootOffset(root, viewWorld));
+            voiceLocal = RootOffset(root, voiceWorld);
+            detail = $"View {viewFrom}; voice {voiceFrom}";
+            return true;
+        }
+
+        /// <summary>
+        /// Bones that actually deform a mesh — ones with at least one vertex weighted to them.
+        ///
+        /// Not <c>SkinnedMeshRenderer.bones</c>, which lists the WHOLE skeleton regardless of
+        /// whether a bone moves anything; an FBX exporter puts every bone in there. Only the
+        /// weights prove it. Editor code can read them whatever the mesh's Read/Write setting says.
+        /// </summary>
+        static HashSet<Transform> DeformingBones(GameObject root)
+        {
+            var deforming = new HashSet<Transform>();
+            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = skin.sharedMesh;
+                var bones = skin.bones;
+                if (mesh == null || bones == null || bones.Length == 0)
+                {
+                    continue;
+                }
+                try
+                {
+                    var weights = mesh.GetAllBoneWeights();
+                    for (int i = 0; i < weights.Length; i++)
+                    {
+                        var weight = weights[i];
+                        if (weight.weight > 0f && weight.boneIndex >= 0 && weight.boneIndex < bones.Length
+                            && bones[weight.boneIndex] != null)
+                        {
+                            deforming.Add(bones[weight.boneIndex]);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Unreadable mesh: assume every listed bone deforms, which can only make this
+                    // check MORE cautious — the decoy path stays off rather than firing wrongly.
+                    foreach (var bone in bones)
+                    {
+                        if (bone != null)
+                        {
+                            deforming.Add(bone);
+                        }
+                    }
+                }
+            }
+            return deforming;
+        }
+
+        /// <summary>
+        /// The transform a constraint drives, for Unity's own constraints and VRChat's alike,
+        /// or null when the component is not a constraint at all.
+        /// </summary>
+        static Transform ConstraintTarget(Component component)
+        {
+            if (component is UnityEngine.Animations.IConstraint)
+            {
+                return component.transform;
+            }
+            string typeName = component.GetType().Name;
+            if (!typeName.StartsWith("VRC", StringComparison.Ordinal) ||
+                !typeName.EndsWith("Constraint", StringComparison.Ordinal))
+            {
+                return null;
+            }
+            // NOT "?? component.transform": an unassigned Transform field comes back as Unity's
+            // FAKE null — a live C# reference whose overloaded == reports null while ?? passes it
+            // straight through. That distinction crashed every conversion in 2.88.0.
+            var target = Field<Transform>(component, "TargetTransform");
+            return target != null ? target : component.transform;
+        }
+
+        /// <summary>Every source transform a constraint reads, Unity's or VRChat's.</summary>
+        static IEnumerable<Transform> ConstraintSources(Component component)
+        {
+            if (component is UnityEngine.Animations.IConstraint unity)
+            {
+                for (int i = 0; i < unity.sourceCount; i++)
+                {
+                    yield return unity.GetSource(i).sourceTransform;
+                }
+                yield break;
+            }
+            if (!(Field<object>(component, "Sources") is System.Collections.IEnumerable sources))
+            {
+                yield break;
+            }
+            foreach (var entry in sources)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+                var transform = Field<Transform>(entry, "SourceTransform");
+                if (transform != null)
+                {
+                    yield return transform;
+                }
+            }
+        }
+
+        /// <summary>Reads a public field or property by name, or default when it isn't there.</summary>
+        static T Field<T>(object instance, string name)
+        {
+            if (instance == null)
+            {
+                return default;
+            }
+            var type = instance.GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+            object value = type.GetField(name, flags)?.GetValue(instance)
+                           ?? type.GetProperty(name, flags)?.GetValue(instance);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
         /// A point offset from a bone, in the bone's DIRECTIONS but in world-space metres.
         ///
         /// Not <c>bone.TransformPoint</c>, which is what the CCK uses and what put a tester's
@@ -492,6 +1078,53 @@ namespace AvatarBridge
                 : eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.right);
         }
 
+        /// <summary>
+        /// An eye-named bone anywhere on the avatar, accepted only if it sits within a plausible
+        /// distance of the head — the same tolerance <see cref="VerifyHeadPlacement"/> judges a
+        /// finished viewpoint by. The nearest qualifying match wins, so a rig with several
+        /// candidates gets the one on the face rather than the first in hierarchy order.
+        /// </summary>
+        static Transform NearHeadByNameVariants(GameObject root, Animator animator, Transform head,
+            string[] nameVariants)
+        {
+            if (root == null || head == null)
+            {
+                return null;
+            }
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips)
+                : null;
+            float tolerance = hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var candidate in root.GetComponentsInChildren<Transform>(true))
+            {
+                bool named = false;
+                foreach (string variant in nameVariants)
+                {
+                    if (string.Equals(candidate.name, variant, StringComparison.OrdinalIgnoreCase))
+                    {
+                        named = true;
+                        break;
+                    }
+                }
+                if (!named)
+                {
+                    continue;
+                }
+                float distance = Vector3.Distance(candidate.position, head.position);
+                if (distance <= tolerance && distance < bestDistance)
+                {
+                    best = candidate;
+                    bestDistance = distance;
+                }
+            }
+            return best;
+        }
+
         static Transform FindChildByNameVariants(Transform parent, string[] nameVariants)
         {
             foreach (string potentialName in nameVariants)
@@ -501,9 +1134,18 @@ namespace AvatarBridge
                 {
                     return child;
                 }
-                foreach (Transform candidate in parent)
+                // Every descendant, not just direct children. Eye bones are routinely a few
+                // joints below the head — behind a skull, a face rig or an "eyes" grouping node —
+                // and the taur base that exposed this keeps "eye.L" three levels down. A
+                // direct-children scan missed it, Auto fell back to a blind head offset, and the
+                // viewpoint landed 14 cm low on the muzzle.
+                //
+                // Safe to widen because the match is an exact name comparison against a short
+                // list, not a substring: "eyelid.L" and "eye_socket" don't qualify.
+                foreach (Transform candidate in parent.GetComponentsInChildren<Transform>(true))
                 {
-                    if (string.Equals(candidate.name, potentialName, StringComparison.OrdinalIgnoreCase))
+                    if (candidate != parent
+                        && string.Equals(candidate.name, potentialName, StringComparison.OrdinalIgnoreCase))
                     {
                         return candidate;
                     }
@@ -572,6 +1214,34 @@ namespace AvatarBridge
         /// The tolerance is deliberately loose: half a head-to-hips is not a rounding question,
         /// it means the value is in the wrong space entirely.
         /// </summary>
+        /// <summary>
+        /// How far a stored viewpoint or voice position lands from the humanoid head bone, against
+        /// the tolerance past which that is wrong rather than merely unusual — the same numbers
+        /// <see cref="VerifyHeadPlacement"/> warns on, exposed so a caller can act on them instead
+        /// of shipping a value it already knows is bad. False when there is no head to measure from.
+        /// </summary>
+        public static bool HeadDistance(GameObject root, Animator animator, Vector3 stored,
+            out float distance, out float tolerance)
+        {
+            distance = 0f;
+            tolerance = 0f;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null)
+            {
+                return false;
+            }
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            tolerance = hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+            distance = Vector3.Distance(CckGizmoWorldPoint(root, stored), head.position);
+            return true;
+        }
+
         public static void VerifyHeadPlacement(BridgeContext ctx, string category,
             Animator animator, Vector3 viewPosition, Vector3 voicePosition)
         {

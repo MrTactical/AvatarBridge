@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -355,9 +357,107 @@ namespace AvatarBridge
                 // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
                 // left the editor showing something the game never runs, and play-mode preview
                 // disagreeing with the real thing.
+                //
+                // Assigned with the Animator switched OFF, and this is not defensive padding —
+                // it stops Unity crashing outright. Setting runtimeAnimatorController on an
+                // ENABLED Animator makes the editor build the Mecanim playable graph then and
+                // there: Rebind -> CreateInternalControllerPlayable -> GenerateGraph ->
+                // SetStateMachineInInitialState -> DoBlendTreeEvaluation. Both controllers were
+                // written moments ago, and on a RE-conversion AnimatorAssetSaver.Persist takes
+                // the long way round — build in a scratch folder, copy the bytes over the
+                // original, delete the scratch, reimport — so the asset can still be settling
+                // when the graph is built. Unity asserts 'MecanimDataWasBuilt()' and then
+                // segfaults evaluating a blend tree that isn't there yet. Five crash dumps in one
+                // morning, all with that stack, all on the line below.
+                //
+                // A disabled Animator stores the controller without building anything, which is
+                // all the conversion needs — later passes read runtimeAnimatorController.
+                // animationClips, and that is asset data, not graph data. The graph is built on
+                // re-enable, deferred to a later editor tick by which time the import has
+                // finished.
+                bool wasEnabled = animator.enabled;
+                animator.enabled = false;
                 animator.runtimeAnimatorController = overrides;
+
+                // Re-enabled only if the controller is safe to build a graph from.
+                //
+                // 3.0.1 deferred this to a later editor tick, on the theory that the asset was
+                // still importing. That was wrong: the crash simply moved to the deferred call.
+                // Timing was never the problem — enabling an Animator builds the Mecanim playable
+                // graph, and a controller referencing assets that resolve to NOTHING makes Unity's
+                // graph builder walk into them and segfault inside EvaluateState. No amount of
+                // waiting fixes a dangling reference.
+                //
+                // So the reference check happens first, and a controller that fails it is left
+                // assigned but not instantiated. The prefab is still correct and still uploads;
+                // the editor just doesn't try to run something it cannot run. Enabling the
+                // Animator by hand will still crash, which is Unity's behaviour with a broken
+                // controller and not something this side can repair — the report says so and says
+                // where the broken references came from.
+                if (wasEnabled && !ControllerWouldCrashUnity(overrides))
+                {
+                    animator.enabled = true;
+                }
+                else if (wasEnabled)
+                {
+                    ctx.Report.Warning(Category, "Animator left switched off on the converted avatar",
+                        "Its controller references assets that resolve to nothing, and switching an " +
+                        "Animator on makes Unity build a playable graph from it — which CRASHES the " +
+                        "editor outright when a referenced motion isn't there. The controller is " +
+                        "assigned and the prefab is intact; the component is just not running. See " +
+                        "the unresolvable-asset error above for where those references came from, " +
+                        "fix that, and convert again. Switching it on by hand will crash Unity.");
+                }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
+        }
+
+        /// <summary>
+        /// Whether a controller asset (or anything it wraps) references a GUID that resolves to no
+        /// asset in this project.
+        ///
+        /// Read from the saved FILE rather than the object graph, because that is where a dangling
+        /// reference is still visible: in managed code it has already collapsed to a plain null,
+        /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
+        /// once — a text scan of one .controller.
+        /// </summary>
+        internal static bool ControllerWouldCrashUnity(RuntimeAnimatorController controller)
+        {
+            try
+            {
+                var paths = new List<string>();
+                for (RuntimeAnimatorController c = controller; c != null; )
+                {
+                    string p = AssetDatabase.GetAssetPath(c);
+                    if (!string.IsNullOrEmpty(p))
+                    {
+                        paths.Add(p);
+                    }
+                    c = c is AnimatorOverrideController over ? over.runtimeAnimatorController : null;
+                }
+                foreach (string assetPath in paths)
+                {
+                    string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", assetPath));
+                    if (!File.Exists(absolute))
+                    {
+                        continue;
+                    }
+                    foreach (Match match in Regex.Matches(File.ReadAllText(absolute), "guid: ([0-9a-f]{32})"))
+                    {
+                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(match.Groups[1].Value)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Unreadable for any reason: treat as unsafe. Leaving an Animator switched off is
+                // an inconvenience; a hard editor crash costs unsaved work.
+                return true;
+            }
+            return false;
         }
 
         // ------------------------------------------------------------------ setup ----
@@ -5163,6 +5263,32 @@ namespace AvatarBridge
         static void AuditClipBindings(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
+
+            // The SOURCE hierarchy, so a dead path can be blamed correctly.
+            //
+            // "44 clips animate paths that don't exist" is the loudest thing this report says, and
+            // on a healthy avatar it is usually not our doing — a quadruped base fired it 44 times
+            // for clips addressing a configuration that prefab simply wasn't in, all of them
+            // equally inert in VRChat. Shouting about those buries the cases that matter and makes
+            // a clean conversion look broken. So each dead path is checked against the avatar as it
+            // arrived: still missing there, and it was already silent before AvatarBridge touched
+            // it; present there but not here, and something in this conversion moved or stripped
+            // it, which is a real defect and is reported as one.
+            var sourceRoot = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.transform : null;
+            var sourceCache = new Dictionary<string, bool>();
+            bool ResolvedBefore(string path)
+            {
+                if (sourceRoot == null || string.IsNullOrEmpty(path))
+                {
+                    return false; // no source to compare against: never claim we broke it
+                }
+                if (!sourceCache.TryGetValue(path, out var was))
+                {
+                    sourceCache[path] = was = sourceRoot.Find(path) != null;
+                }
+                return was;
+            }
+
             var resolveCache = new Dictionary<string, bool>();
             bool Resolves(string path)
             {
@@ -5179,6 +5305,8 @@ namespace AvatarBridge
 
             var seen = new HashSet<AnimationClip>();
             var broken = new List<(string clip, int dead, int total, string example)>();
+            // Clips whose dead paths DID resolve before conversion — the ones we are responsible for.
+            var lostClips = new List<(string clip, int dead, int total, string example)>();
 
             void Audit(Motion motion)
             {
@@ -5194,8 +5322,9 @@ namespace AvatarBridge
                 {
                     return;
                 }
-                int dead = 0, total = 0;
+                int dead = 0, total = 0, lost = 0;
                 string example = null;
+                string lostExample = null;
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip)
                              .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
                 {
@@ -5216,9 +5345,18 @@ namespace AvatarBridge
                     {
                         dead++;
                         example = example ?? binding.path;
+                        if (ResolvedBefore(binding.path))
+                        {
+                            lost++;
+                            lostExample = lostExample ?? binding.path;
+                        }
                     }
                 }
-                if (dead > 0)
+                if (lost > 0)
+                {
+                    lostClips.Add((clip.name, lost, total, lostExample));
+                }
+                else if (dead > 0)
                 {
                     broken.Add((clip.name, dead, total, example));
                 }
@@ -5235,6 +5373,22 @@ namespace AvatarBridge
                 });
             }
 
+            // Paths this conversion lost. Rare, and always worth acting on.
+            if (lostClips.Count > 0)
+            {
+                lostClips.Sort((a, b) => b.dead.CompareTo(a.dead));
+                var lostLines = lostClips.Take(8)
+                    .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
+                ctx.Report.Warning(Category,
+                    $"{lostClips.Count} clip(s) LOST paths that existed before conversion",
+                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". These " +
+                    "objects were on the avatar when it arrived and are not on it now, so these " +
+                    "curves worked in VRChat and play as silence here. Something in this conversion " +
+                    "moved or removed them — a stripped system (GoGo, SPS) taking objects a clip " +
+                    "still references is the usual innocent explanation, and turning that strip off " +
+                    "and converting again will tell you. Anything else is a bug worth reporting.");
+            }
+
             if (broken.Count == 0)
             {
                 return;
@@ -5242,14 +5396,20 @@ namespace AvatarBridge
             broken.Sort((a, b) => b.dead.CompareTo(a.dead));
             var lines = broken.Take(8)
                 .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
-            ctx.Report.Warning(Category,
-                $"{broken.Count} clip(s) animate paths that don't exist on this avatar",
-                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Unity plays these " +
-                "curves as silence — and did in VRChat too, unless a build-time tool (VRCFury path " +
-                "rewriting, Modular Avatar) fixed the paths at upload. If one of these features " +
-                "worked in VRChat, make sure the package it was built with is INSTALLED in this " +
-                "project and convert again, so its bake runs first. Clips animating objects a " +
-                "stripped system removed also land here, and those are fine.");
+            // NOT a warning. These paths were already missing on the source avatar, so the curves
+            // were silent in VRChat too and nothing was lost in conversion. Flagging them as
+            // problems made healthy conversions look broken — one quadruped base tripped this 44
+            // times for clips addressing a configuration that prefab wasn't set up for.
+            ctx.Report.Converted(Category,
+                $"{broken.Count} clip(s) animate paths that were ALREADY missing in VRChat",
+                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Checked against the " +
+                "avatar as it arrived: these objects weren't there either, so Unity played the " +
+                "curves as silence in VRChat exactly as it will here. Nothing was lost in " +
+                "conversion and there is usually nothing to do. Two cases are worth a look: a " +
+                "build-time tool (VRCFury path rewriting, Modular Avatar) may have been fixing the " +
+                "paths at upload — if so, install that package here and convert again so its bake " +
+                "runs first — or the clip belongs to a feature this avatar variant isn't configured " +
+                "for, which is normal and harmless.");
         }
 
         /// <summary>
@@ -5780,12 +5940,25 @@ namespace AvatarBridge
             if (intoTemp > 0 || introduced > 0)
             {
                 ctx.Report.Error(Category,
-                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s) the conversion introduced",
+                    $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s)",
                     $"e.g. {badSample}. VRCFury deletes its temp folder on its next build — which entering " +
                     "play mode triggers if the original avatar is still in the scene — and an " +
                     "unresolvable reference is already dead. Either way those animations will stop " +
-                    "working after the next play or Fury build. This is a conversion bug: please report " +
-                    "it with this file attached. Do not upload this conversion.");
+                    "working after the next play or Fury build. Do not upload this conversion." +
+                    (introduced > 0
+                        // Blaming the conversion outright sent someone hunting a bug on this side
+                        // when the real cause was a VRCFury bake failing partway: the controller
+                        // referenced assets Fury never finished writing, and the same avatar showed
+                        // hundreds of Fury exceptions in the editor log. Check that first, because a
+                        // half-built bake produces exactly this and nothing here can repair it.
+                        ? " CHECK YOUR BAKE FIRST: if VRCFury or Modular Avatar errored while baking " +
+                          "this avatar, the assets it was still writing never arrived and the references " +
+                          "point at nothing. Build a test copy of the SOURCE avatar on its own (Tools > " +
+                          "VRCFury > Build a Test Copy) and see whether it completes cleanly — a version " +
+                          "mismatch between the avatar's package and your installed VRCFury is the usual " +
+                          "cause. If that bake is clean and this still happens, it is a conversion bug: " +
+                          "please report it with this file attached."
+                        : ""));
             }
             if (inherited > 0)
             {

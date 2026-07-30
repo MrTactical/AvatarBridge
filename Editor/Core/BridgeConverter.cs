@@ -89,6 +89,8 @@ namespace AvatarBridge
                     descriptor.gameObject.SetActive(false);
                 }
 
+                // Must happen before the prefab is saved, so the saved asset is safe too.
+                DetachCrashingController(ctx);
                 ReportSyncUsage(ctx);
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
@@ -329,6 +331,53 @@ namespace AvatarBridge
             Undo.RegisterCreatedObjectUndo(ctx.Target, "AvatarBridge conversion");
         }
 
+        /// <summary>
+        /// Takes a crash-inducing controller off the scene Animator once every pass that needed to
+        /// read it is done.
+        ///
+        /// A controller referencing assets that resolve to nothing makes Unity's Mecanim graph
+        /// builder segfault, and 3.2.0 stopped AvatarBridge triggering that by leaving the Animator
+        /// switched off. It wasn't enough. The graph is built by anything that awakens the
+        /// component, and the next crash came from the INSPECTOR — clicking the converted avatar
+        /// ran GameObjectInspector.DrawInspector -> ApplyModifiedProperties ->
+        /// ActivateAwakeRecursively -> Animator::AwakeFromLoad -> GenerateGraph. Nothing in this
+        /// tool was on the stack. Merely selecting the object was enough.
+        ///
+        /// So the reference is removed outright. Everything ChilloutVR actually needs still ships:
+        /// CVRAvatar keeps baseController, baseOverrideController and overrides, which are plain
+        /// asset references and build no graph — the client assigns them onto the Animator itself
+        /// on load. Only the editor-side link that Unity eagerly instantiates goes.
+        ///
+        /// Runs last on purpose: ConstraintConverter and the clip audits read
+        /// runtimeAnimatorController.animationClips, so the link has to exist for the whole
+        /// conversion and only becomes a liability once the editor is left alone with it.
+        /// </summary>
+        static void DetachCrashingController(BridgeContext ctx)
+        {
+            var animator = ctx.TargetAnimator;
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                return;
+            }
+            if (!AnimatorMerger.ControllerWouldCrashUnity(animator.runtimeAnimatorController))
+            {
+                return;
+            }
+            animator.runtimeAnimatorController = null;
+            ctx.Report.Error("Animator",
+                "Controller unlinked from the Animator — it CRASHES Unity",
+                "This avatar's controller references assets that resolve to nothing, and Unity " +
+                "builds a Mecanim playable graph from a controller whenever the Animator awakens — " +
+                "which merely SELECTING the object in the Inspector is enough to do. That walks " +
+                "into the missing references and takes the editor down with no error, losing " +
+                "unsaved work. The reference has been removed so the editor can't do it. " +
+                "ChilloutVR is unaffected by the removal itself: the CVRAvatar still carries the " +
+                "base controller and the overrides, which is what the client reads on load. But " +
+                "the broken references are still in that controller, so fix them and convert " +
+                "again before uploading — see the unresolvable-asset error for where they came " +
+                "from, usually a VRCFury or Modular Avatar bake that errored partway.");
+        }
+
         static void WriteReportFile(BridgeContext ctx)
         {
             string path = ctx.OutputDir + "/ConversionReport.md";
@@ -337,6 +386,17 @@ namespace AvatarBridge
             AssetDatabase.ImportAsset(path);
             ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] Report written to {path}");
+
+            // Never allowed to take the conversion down with it: the report is the deliverable,
+            // diagnostics are a bonus, and a crash here would lose both.
+            try
+            {
+                DiagnosticsWriter.Write(ctx);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AvatarBridge] Diagnostics could not be written: {e}");
+            }
         }
     }
 }
