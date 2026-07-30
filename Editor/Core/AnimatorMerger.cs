@@ -294,6 +294,10 @@ namespace AvatarBridge
             DeclareDanglingParameters(master, ctx);
             DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
+            // AFTER pruning, because pruning decides what is live using the same vestigial-field
+            // rule this pass deliberately ignores — run it earlier and the parameters it adds are
+            // the first thing thrown away.
+            SafeguardBlendParameters(master, ctx);
 
             // After every merge, injection and clip clone, right before saving: animations that
             // toggled a converted PhysBone's GameObject or component are taught to reach the
@@ -2685,6 +2689,137 @@ namespace AvatarBridge
             }
             blockedBy = null;
             return true;
+        }
+
+        /// <summary>
+        /// Points every blend tree parameter field at a parameter that actually exists.
+        ///
+        /// THIS IS A CRASH FIX, and the distinction it rests on is the whole point. Two questions
+        /// look the same and are not:
+        ///
+        ///   - "which parameters does this avatar actually USE?" — Direct trees read neither axis
+        ///     field and 1D trees ignore Y, so counting those would invent phantom references.
+        ///     CollectReferencedParameters is right to skip them, and this pass does not change it.
+        ///   - "which parameters must EXIST for Unity to build a graph?" — all of them. Unity binds
+        ///     every blendParameter, blendParameterY and directBlendParameter it finds, vestigial
+        ///     or not, and resolves each to an index in the parameter table. A name that isn't
+        ///     there resolves to nothing, and the read happens inside
+        ///     <c>EvaluateStateDuration → DoBlendTreeEvaluation</c> — a segfault, not an error.
+        ///
+        /// Answering the first question for both is what left an avatar with six undeclared blend
+        /// parameters: "Blend" and "Value" and "Smooth Amount" (Unity's own defaults, left behind
+        /// on VRCFury and template Direct trees), "MovementZ", a VRCFury tracking-control name, and
+        /// one that was the empty string. Every one is invisible in the Animator window and fatal
+        /// on the frame the graph is built.
+        ///
+        /// Dangling names are RENAMED with a "#" prefix and declared as Float 0 rather than
+        /// declared as they stand: "#" keeps them local to the wearer so they cost no sync bits, a
+        /// prefixed name cannot collide with a menu entry, and the original is still readable in
+        /// the Animator window. Nothing else can reference them — anything referenced by a
+        /// transition or a driver was already declared by DeclareDanglingParameters, so a blend
+        /// parameter still missing at this point is referenced by this field and nothing else.
+        /// </summary>
+        static void SafeguardBlendParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var declared = new HashSet<string>(master.parameters.Select(p => p.name));
+            var added = new List<AnimatorControllerParameter>();
+            var repointed = new SortedSet<string>();
+            var map = new Dictionary<string, string>();
+            var seen = new HashSet<BlendTree>();
+
+            string Safe(string name)
+            {
+                string key = name ?? "";
+                if (key.Length > 0 && declared.Contains(key))
+                {
+                    return key;
+                }
+                if (map.TryGetValue(key, out string already))
+                {
+                    return already;
+                }
+                string basis = key.Length == 0 ? "AvatarBridgeUnused" : key.TrimStart('#');
+                string candidate = "#" + basis;
+                for (int n = 2; declared.Contains(candidate); n++)
+                {
+                    candidate = $"#{basis} {n}";
+                }
+                declared.Add(candidate);
+                added.Add(new AnimatorControllerParameter
+                {
+                    name = candidate,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f
+                });
+                map[key] = candidate;
+                repointed.Add(key.Length == 0 ? "(blank)" : key);
+                return candidate;
+            }
+
+            void Walk(Motion motion)
+            {
+                if (!(motion is BlendTree tree) || !seen.Add(tree))
+                {
+                    return;
+                }
+                tree.blendParameter = Safe(tree.blendParameter);
+                tree.blendParameterY = Safe(tree.blendParameterY);
+                var kids = tree.children;
+                bool changed = false;
+                for (int i = 0; i < kids.Length; i++)
+                {
+                    string safe = Safe(kids[i].directBlendParameter);
+                    if (safe != kids[i].directBlendParameter)
+                    {
+                        kids[i].directBlendParameter = safe;
+                        changed = true;
+                    }
+                    Walk(kids[i].motion);
+                }
+                if (changed)
+                {
+                    // children is a value-type copy, and the setter re-derives thresholds unless
+                    // automatic thresholds are off across the write.
+                    bool auto = tree.useAutomaticThresholds;
+                    tree.useAutomaticThresholds = false;
+                    tree.children = kids;
+                    tree.useAutomaticThresholds = auto;
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            Walk(child.state.motion);
+                        }
+                    }
+                });
+            }
+
+            if (added.Count == 0)
+            {
+                return;
+            }
+            master.parameters = master.parameters.Concat(added).ToArray();
+            EditorUtility.SetDirty(master);
+
+            ctx.Report.Warning(Category,
+                $"{repointed.Count} blend tree parameter(s) named something the controller never declared",
+                $"{string.Join(", ", repointed)} — Unity binds EVERY blend tree parameter field when it " +
+                "builds a playable graph, including the ones a Direct tree never reads and the Y axis a " +
+                "1D tree ignores. A name that isn't in the parameter list resolves to nothing, and the " +
+                "read lands inside DoBlendTreeEvaluation, where it takes the editor down with a SIGSEGV " +
+                "rather than an error — on Play, on selecting the avatar, and in the CCK's uploader. " +
+                "\"Blend\", \"Value\" and \"Smooth Amount\" are Unity's own defaults left behind on trees " +
+                "that stopped using them, so they arrive on plenty of avatars through no fault of yours. " +
+                "Each is now declared as a local Float 0 under a \"#\" name, which costs no sync bits and " +
+                "cannot collide with a menu entry. Nothing changes about how the avatar behaves: these " +
+                "fields were being read as garbage or not at all.");
         }
 
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>

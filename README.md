@@ -927,6 +927,17 @@ same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTree
 **If your avatar's controller has no broken references, none of this applies** — the Animator is
 wired up exactly as before.
 
+**A blend tree naming a parameter that doesn't exist is the same crash from a different direction**
+(fixed in 3.4.11). Unity binds *every* blend tree parameter field when it builds a graph — including
+the ones a Direct tree never reads and the Y axis a 1D tree ignores — and resolves each to an index
+in the parameter table. A name that isn't there resolves to nothing, and the read happens inside
+`DoBlendTreeEvaluation`, so the editor dies instead of logging. `Blend`, `Value` and `Smooth Amount`
+are Unity's own defaults left behind on trees that stopped using them, so they arrive on plenty of
+avatars through no fault of yours; one conversion had six, including a field that was blank. Each is
+now declared as a local `Float 0` under a `#` name, which costs no sync bits and can't collide with a
+menu entry. Nothing changes about how the avatar behaves — those fields were being read as garbage
+or not at all.
+
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
 **Reconvert on 3.4.9 or later.** If you can't yet, turning off Edit → Project Settings → Editor →
