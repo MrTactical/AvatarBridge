@@ -26,6 +26,13 @@ namespace AvatarBridge
         /// </summary>
         static HashSet<Transform> reparented = new HashSet<Transform>();
 
+        /// <summary>
+        /// Old path -> new path for constraints that had to move because they used VRC's
+        /// 'Target Transform'. <see cref="HostFor"/> fills it; <see cref="RepointConstraintCurves"/>
+        /// uses it so the clips animating them keep working. Reset per conversion.
+        /// </summary>
+        static Dictionary<string, string> relocated = new Dictionary<string, string>();
+
         public static void Run(BridgeContext ctx)
         {
             if (!ctx.Settings.convertConstraints)
@@ -38,6 +45,7 @@ namespace AvatarBridge
             var mirrored = new List<string>();
             // MUST run before anything converts: a Unity constraint bakes its rest offsets
             // against the parent the transform has when it is created.
+            relocated = new Dictionary<string, string>();   // per conversion, never carried over
             reparented = AlignLocalSpaceRelays(ctx);
             var realigned = reparented;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
@@ -138,7 +146,7 @@ namespace AvatarBridge
                 }
             }
 
-            int repointed = 0;
+            int repointed = 0, followed = 0;
             var dropped = new SortedSet<string>();
             var lost = new SortedSet<string>();
 
@@ -155,7 +163,24 @@ namespace AvatarBridge
                     }
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
                     string property = MapConstraintProperty(binding.propertyName);
-                    var replacement = ConstraintTypeOnPath(ctx, binding.path, binding.type.Name);
+
+                    // Follow the constraint if it moved. A VRC constraint using 'Target Transform'
+                    // is rebuilt on the object it drives, because Unity's constraints only affect
+                    // the object they sit on — so the clip's path names somewhere the constraint no
+                    // longer is. Without this the curve is simply lost, and one quadruped lost 445
+                    // of them: every clip that switched its leveler rig on or off.
+                    string path = binding.path;
+                    var replacement = ConstraintTypeOnPath(ctx, path, binding.type.Name);
+                    if (replacement == null && relocated.TryGetValue(path, out string movedTo))
+                    {
+                        var afterMove = ConstraintTypeOnPath(ctx, movedTo, binding.type.Name);
+                        if (afterMove != null)
+                        {
+                            path = movedTo;
+                            replacement = afterMove;
+                            followed++;
+                        }
+                    }
                     string where = $"\"{clip.name}\" -> {binding.path} ({binding.propertyName})";
 
                     // Either way the old binding goes: it names a component that no longer exists.
@@ -172,7 +197,7 @@ namespace AvatarBridge
                     }
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
                     {
-                        path = binding.path,
+                        path = path,
                         type = replacement,
                         propertyName = property
                     }, curve);
@@ -188,7 +213,13 @@ namespace AvatarBridge
                     "serialized property name, and both change during conversion — a curve left " +
                     "saying \"VRCParentConstraint.IsActive\" plays as silence, with nothing to see " +
                     "in the animator. This is how limb-lock, sit, lay-down and flight toggles work " +
-                    "on constraint-driven avatars, so they now work again.");
+                    "on constraint-driven avatars, so they now work again." +
+                    (followed > 0
+                        ? $" {followed} of them also had to follow their constraint to a new object: " +
+                          "a VRC constraint using 'Target Transform' is rebuilt ON the thing it drives, " +
+                          "because Unity's constraints only affect the object they sit on, and the clips " +
+                          "still named the old one."
+                        : ""));
             }
             if (dropped.Count > 0)
             {
@@ -917,6 +948,17 @@ namespace AvatarBridge
         /// Only redirected inside the avatar. A target somewhere else in the scene is not ours to
         /// add components to, and would not survive the upload anyway.
         /// </summary>
+        /// <summary>
+        /// Where a VRC constraint's Unity replacement goes, and — when that is not where the VRC
+        /// one lived — a note of the move so animation curves can follow it.
+        ///
+        /// Unity's constraints only ever affect the object they sit on, so a VRC constraint using
+        /// 'Target Transform' to drive something else has to be rebuilt ON that something else.
+        /// The clips animating it don't know that: their path still names the old host, and a
+        /// curve whose path resolves to an object with no constraint plays as silence. One
+        /// quadruped lost 445 curves that way — its entire leveler system, switched off by clips
+        /// that could no longer find what they were switching.
+        /// </summary>
         static GameObject HostFor(BridgeContext ctx, Component vrc)
         {
             var target = Get<Transform>(vrc, "TargetTransform", null);
@@ -927,6 +969,11 @@ namespace AvatarBridge
             if (ctx.Target != null && !target.IsChildOf(ctx.Target.transform))
             {
                 return vrc.gameObject;
+            }
+            if (ctx.Target != null)
+            {
+                // Recorded before the component is destroyed, while both paths still resolve.
+                relocated[ctx.PathInTarget(vrc.transform)] = ctx.PathInTarget(target);
             }
             return target.gameObject;
         }
