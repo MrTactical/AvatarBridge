@@ -20,6 +20,9 @@ namespace AvatarBridge
     {
         const string Category = "Avatar descriptor";
 
+        /// <summary>Positions in report text, short enough to read in a sentence.</summary>
+        static string Vec(Vector3 v) => $"({v.x:0.###}, {v.y:0.###}, {v.z:0.###})";
+
         public static void Run(BridgeContext ctx)
         {
             var vrc = ctx.SourceDescriptor;
@@ -225,6 +228,48 @@ namespace AvatarBridge
             // that passes on the wrong skeleton is worth nothing, so the fact gets reported even
             // when nothing here can act on it.
             AvatarFeatureDetect.HumanoidDeformShare(ctx.Target, animator, out int mappedBones, out int deformingBones);
+
+            // Last line of defence, and the only one that doesn't consult the skeleton: if the
+            // viewpoint isn't inside the avatar's own renderer bounds, it is not on the avatar,
+            // whatever measured well to put it there. Only runs when the humanoid rig drives no
+            // geometry — on an ordinary avatar the humanoid answer is the right one and this never
+            // looks — and only when the current answer is demonstrably off the body, so an avatar
+            // that is already correct cannot be disturbed.
+            if (!decoyRig && mappedBones > 0 && deformingBones == 0
+                && AvatarFeatureDetect.RescueViewpointOffBody(ctx.Target, animator,
+                    cvrAvatar.viewPosition, out var rescued, out string rescueDetail))
+            {
+                var before = cvrAvatar.viewPosition;
+                cvrAvatar.viewPosition = rescued;
+                ctx.Report.Approximated(Category, "Viewpoint moved onto the visible body",
+                    $"The viewpoint worked out from this rig — {Vec(before)} — is further from every " +
+                    "bone that actually deforms mesh than this rig's own proportions allow, so it " +
+                    "was placed on a skeleton you can't see. " +
+                    "That happens when the humanoid map points at a stand-in: a decoy rig, a " +
+                    "poseclone, or a FinalIK proxy. Every distance check still passes, because they " +
+                    "all measure against that same skeleton. Re-placed from the eye markers that ARE " +
+                    $"on the body — {rescueDetail} — giving {Vec(rescued)}. Nothing moves when the " +
+                    "original already lands on the body, so this can only ever fire on a rig where " +
+                    "it was wrong. Check it with the CVRAvatar gizmo before uploading.");
+
+                // The voice rides the same invisible skeleton and would otherwise be left on it.
+                // Placed with the viewpoint rather than guessed at: on a rig whose humanoid jaw is
+                // part of the stand-in there is nothing better to measure from, and a voice coming
+                // from the avatar's face beats one coming from thin air beside it.
+                if (AvatarFeatureDetect.PointIsOffBody(ctx.Target, animator, cvrAvatar.voicePosition))
+                {
+                    var voiceBefore = cvrAvatar.voicePosition;
+                    cvrAvatar.voicePosition = rescued;
+                    ctx.Report.Approximated(Category, "Voice position moved onto the visible body",
+                        $"It was at {Vec(voiceBefore)}, off the body for the same reason as the " +
+                        "viewpoint — this rig's humanoid jaw and head are part of the stand-in " +
+                        "skeleton, so there was nothing on the real face to measure from. Placed " +
+                        "with the viewpoint, which puts your voice at the avatar's face rather than " +
+                        "in the air beside it. Drag it onto the mouth on the CVRAvatar if you want " +
+                        "it exact — it is a little high by design, sitting at eye level.");
+                }
+            }
+
             if (mappedBones > 0 && deformingBones == 0)
             {
                 ctx.Report.Warning(Category,

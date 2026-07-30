@@ -604,14 +604,20 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ### Quadruped / FinalIK avatars
 
-**There are three of these, not two** (3.2.2). Every quadruped that has caused trouble shares one
-symptom — **none of its humanoid bones move any geometry** — reached from three unrelated designs: a
-decoy relay skeleton, a poseclone puppet, and a humanoid map pointing into a **FinalIK VRIK proxy**.
-That matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head
-hiding off humanoid bones, so all three follow a skeleton nobody can see, pass every internal check
-against it, and still land half a metre from the avatar's face. The conversion now says so outright,
-and `Diagnostics.md` lists every mapped bone with its full path so you can see which skeleton was
-used.
+**There are three of these, not two.** Every quadruped that has caused trouble shares one symptom —
+**none of its humanoid bones move any geometry** — reached from three unrelated designs: a decoy
+relay skeleton, a poseclone puppet, and a humanoid map pointing into a **FinalIK VRIK proxy**. That
+matters because ChilloutVR hangs the viewpoint, the voice position *and* first-person head hiding
+off humanoid bones, so all three follow a skeleton nobody can see, pass every internal check against
+it, and still land half a metre from the avatar's face. The conversion says so outright (3.2.2), and
+`Diagnostics.md` lists every mapped bone with its full path so you can see which skeleton was used.
+
+**The viewpoint and voice get rescued when they land off the body** (3.3.0). Rather than trying to
+recognise a fourth rig design, this asks the one question no skeleton can lie about: is the marker
+further from *every bone that deforms mesh* than this rig's own proportions allow? If so it isn't on
+the avatar, however well it measured, and it's re-placed from the eye markers that **are** on the
+body. A marker already on the body is never touched, so avatars that are correct — including the
+other two quadrupeds — can't be disturbed. Naming only nominates candidates; geometry decides.
 
 **Partly working as of 2.92.0.** A decoy-rig quadruped now walks in game — confirmed by wearing one,
 which is the only test that counts. Getting there took three separate fixes, and one wall is still

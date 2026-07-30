@@ -708,6 +708,155 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>
+        /// Rescues the viewpoint on an avatar whose humanoid rig drives nothing you can see.
+        ///
+        /// Three quadrupeds have now arrived with the humanoid map pointing at an invisible
+        /// skeleton — a decoy relay, a poseclone puppet, a FinalIK VRIK proxy — and every
+        /// viewpoint check passed on all of them, because the checks measure against the same
+        /// skeleton that is wrong. One landed 0.102 m from "its" head bone and 60 cm above the
+        /// avatar's actual eyes.
+        ///
+        /// So this asks the one question the humanoid rig cannot answer: is the viewpoint inside
+        /// the body at all? The visible body is the union of the renderers' own bounds, which owes
+        /// nothing to any skeleton. A viewpoint outside it is wrong however well it scores, and a
+        /// viewpoint inside it is left strictly alone — which is what keeps this off avatars that
+        /// are already correct, including the other two quadrupeds.
+        ///
+        /// The replacement comes from eye-named transforms that are themselves inside the body.
+        /// Naming is only used to nominate candidates; geometry decides. Rigs of this kind carry
+        /// several co-located eye markers (LOCAL_CNST_Eye_L, LOCAL_ZERO_Eye_L, EyeWidth_DEF_*),
+        /// and since they sit in the same place, which one wins does not matter.
+        /// </summary>
+        public static bool RescueViewpointOffBody(GameObject root, Animator animator,
+            Vector3 storedView, out Vector3 localPosition, out string detail)
+        {
+            localPosition = default;
+            detail = null;
+            if (root == null)
+            {
+                return false;
+            }
+
+            // Distance to the nearest bone that actually deforms mesh — NOT a bounding box.
+            // A quadruped's box is enormous (wings, tail, ears) and a viewpoint floating well off
+            // the avatar can sit inside it happily, so containment proves nothing. Deforming bones
+            // are where the body genuinely is.
+            var deforming = DeformingBones(root).Where(b => b != null).ToList();
+            if (deforming.Count == 0)
+            {
+                return false;
+            }
+
+            // The same tolerance every other head check uses, so one rig can't be judged by two
+            // different standards.
+            var head = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            float tolerance = head != null && hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            float NearestDeforming(Vector3 point)
+            {
+                float best = float.MaxValue;
+                foreach (var bone in deforming)
+                {
+                    best = Mathf.Min(best, Vector3.Distance(bone.position, point));
+                }
+                return best;
+            }
+
+            float currentOff = NearestDeforming(CckGizmoWorldPoint(root, storedView));
+            if (currentOff <= tolerance)
+            {
+                return false;   // already on the body — nothing to rescue, and nothing to disturb
+            }
+
+            var candidates = new List<Transform>();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.IndexOf("eye", StringComparison.OrdinalIgnoreCase) >= 0
+                    && NearestDeforming(t.position) <= tolerance)
+                {
+                    candidates.Add(t);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            // Left/right pairs first: a pair straddling the centreline is a face, and its midpoint
+            // is where the eyes are. Falling back to the centroid of whatever is left keeps a
+            // single-marker rig working rather than refusing.
+            var left = candidates.Where(t => t.position.x < root.transform.position.x).ToList();
+            var right = candidates.Where(t => t.position.x > root.transform.position.x).ToList();
+            Vector3 world;
+            if (left.Count > 0 && right.Count > 0)
+            {
+                world = (Average(left) + Average(right)) / 2f;
+                detail = $"midway between {left.Count} left and {right.Count} right eye marker(s), " +
+                         $"e.g. \"{left[0].name}\" / \"{right[0].name}\"";
+            }
+            else
+            {
+                world = Average(candidates);
+                detail = $"the average of {candidates.Count} eye marker(s) inside the body, " +
+                         $"e.g. \"{candidates[0].name}\"";
+            }
+
+            localPosition = RoundNearZero(RootOffset(root, world));
+            return true;
+        }
+
+        /// <summary>
+        /// Whether a stored marker sits further from every mesh-deforming bone than this rig's own
+        /// proportions allow — i.e. it is not on the avatar. Same measurement
+        /// <see cref="RescueViewpointOffBody"/> gates on, exposed so the voice position can be
+        /// judged by it too rather than being left behind on a skeleton nobody can see.
+        /// </summary>
+        public static bool PointIsOffBody(GameObject root, Animator animator, Vector3 stored)
+        {
+            if (root == null)
+            {
+                return false;
+            }
+            var deforming = DeformingBones(root).Where(b => b != null).ToList();
+            if (deforming.Count == 0)
+            {
+                return false;
+            }
+            var head = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            var hips = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            float tolerance = head != null && hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+
+            var point = CckGizmoWorldPoint(root, stored);
+            foreach (var bone in deforming)
+            {
+                if (Vector3.Distance(bone.position, point) <= tolerance)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static Vector3 Average(List<Transform> transforms)
+        {
+            var sum = Vector3.zero;
+            foreach (var t in transforms)
+            {
+                sum += t.position;
+            }
+            return sum / transforms.Count;
+        }
+
         static readonly string[] JawNameVariants =
             { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
 
