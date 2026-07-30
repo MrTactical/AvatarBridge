@@ -505,6 +505,24 @@ namespace AvatarBridge
             var leftEyeBone = animator.GetBoneTransform(HumanBodyBones.LeftEye);
             var rightEyeBone = animator.GetBoneTransform(HumanBodyBones.RightEye);
 
+            // THE test for a decoy rig, and the thing that stops this misfiring.
+            //
+            // "A constraint sourced from the humanoid head" is not enough on its own. Plenty of
+            // ordinary rigs read the head to drive something unrelated — AnyTaur's flight system
+            // has a "Rotation Constraint to Head - Y" feeding a contact sender — and the first
+            // version of this happily decided the head's visible counterpart was a bone called
+            // "HipsAgain", then aimed the viewpoint, the voice and the first-person exclusion at
+            // it. Reading the head is not the same as reproducing it.
+            //
+            // What actually distinguishes a decoy is that its bones are INVISIBLE: the humanoid
+            // map points at a stand-in that deforms no mesh, and the constraints exist to move
+            // the bones that do. So if the humanoid head has vertices weighted to it, that head
+            // is the real one, no relay is needed, and nothing here should fire.
+            if (headBone == null || DeformingBones(root).Contains(headBone))
+            {
+                return false;
+            }
+
             foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
                 if (component == null)
@@ -654,6 +672,53 @@ namespace AvatarBridge
             voiceLocal = RootOffset(root, voiceWorld);
             detail = $"View {viewFrom}; voice {voiceFrom}";
             return true;
+        }
+
+        /// <summary>
+        /// Bones that actually deform a mesh — ones with at least one vertex weighted to them.
+        ///
+        /// Not <c>SkinnedMeshRenderer.bones</c>, which lists the WHOLE skeleton regardless of
+        /// whether a bone moves anything; an FBX exporter puts every bone in there. Only the
+        /// weights prove it. Editor code can read them whatever the mesh's Read/Write setting says.
+        /// </summary>
+        static HashSet<Transform> DeformingBones(GameObject root)
+        {
+            var deforming = new HashSet<Transform>();
+            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = skin.sharedMesh;
+                var bones = skin.bones;
+                if (mesh == null || bones == null || bones.Length == 0)
+                {
+                    continue;
+                }
+                try
+                {
+                    var weights = mesh.GetAllBoneWeights();
+                    for (int i = 0; i < weights.Length; i++)
+                    {
+                        var weight = weights[i];
+                        if (weight.weight > 0f && weight.boneIndex >= 0 && weight.boneIndex < bones.Length
+                            && bones[weight.boneIndex] != null)
+                        {
+                            deforming.Add(bones[weight.boneIndex]);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Unreadable mesh: assume every listed bone deforms, which can only make this
+                    // check MORE cautious — the decoy path stays off rather than firing wrongly.
+                    foreach (var bone in bones)
+                    {
+                        if (bone != null)
+                        {
+                            deforming.Add(bone);
+                        }
+                    }
+                }
+            }
+            return deforming;
         }
 
         /// <summary>

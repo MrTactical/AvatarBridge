@@ -876,10 +876,17 @@ was no better — it reads the decoy's eye bones and lands half a metre out too.
 
 The relay constraints say where the real bones are, so the conversion follows them: a constraint
 whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
-both markers are measured there instead. Ordinary avatars are untouched — the rewrite only happens
-when the two answers are more than 5 cm apart. It can't be perfect, because the markers still ride
-the humanoid Head bone whatever happens, so check them with the gizmo and drag either one if you
-want it elsewhere.
+both markers are measured there instead.
+
+Ordinary avatars are untouched, and two gates keep it that way (2.96.0). The rewrite only happens
+when the two answers are more than 5 cm apart, **and** only when the humanoid head bone deforms no
+mesh — which is what makes a rig a decoy in the first place. Reading the head is not the same as
+reproducing it: a taur base whose flight system feeds head rotation into a constraint had its
+viewpoint confidently moved to a bone called `HipsAgain` before that second gate existed. If your
+avatar's humanoid head has vertices weighted to it, none of this fires.
+
+It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
+check them with the gizmo and drag either one if you want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 
