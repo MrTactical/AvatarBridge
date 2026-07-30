@@ -941,17 +941,34 @@ intact.
 
 ### A hat or held item drifts off when I resize myself
 
-**Known limitation — no fix yet.** A `ParentConstraint` holds its target a fixed distance from its
-source, and that distance is in **metres**; Unity never scales it, whatever the avatar's scale is.
-So with the height slider the body moves and the offset doesn't: shrink and the prop hangs off you,
-grow and it sinks inside you. One cowboy hat sat 13–18 cm out.
+**Reconvert on 3.4.7 or later**, with the avatar scaler on.
 
-**Work around it** by nudging the prop's constraint offset by hand for the size you actually use, or
-by leaving the height slider near its default. Turning the scaler off avoids it entirely.
+A `ParentConstraint` holds its target a fixed distance from its source, and that distance is in
+**metres** — Unity rotates it by the source bone but never scales it. So with the height slider the
+body moved and the offset didn't: shrink and the prop hung off you, grow and it sank inside you. One
+cowboy hat sat 13–18 cm out.
 
-*3.4.5 attempted an automatic fix and got it wrong — it made an avatar render pure white in play
-mode and crashed the editor on scene reload, and was reverted in 3.4.6. The attempt and why it
-failed are recorded in `AvatarScalerInjector.cs` for whoever tries again.*
+From 3.4.7 each offset is handed to the hierarchy instead. A small empty named
+`AvatarBridge_ScaleRelay_<prop>` is parented to the source bone at exactly the point the offset was
+already producing, and the constraint is re-pointed at it with a zero offset. Being a real child, it
+inherits the avatar's scale, so the gap grows and shrinks with you. Nothing moves at the default
+size, and no animation, layer or curve is involved.
+
+Four cases are deliberately left as they were, and the report names each one:
+
+| Left alone | Why |
+|---|---|
+| Offsets an animation drives | Zeroing an offset a curve is driving would hand the prop to an animation that no longer matches it |
+| Sources inside a cloth or dynamic-bone chain | A new child of a simulated bone becomes a new particle and changes how the chain moves |
+| Sources outside the avatar | An offset from a world anchor is meant to be in metres |
+| Unlocked constraints | Unity re-derives their offsets from the live transform and would write the old one straight back |
+
+For those, nudge the offset by hand for the size you actually use, or leave the slider near default.
+
+*3.4.5 attempted this in the animation instead — scaled copies of every offset written into the
+generated scale clips — and got it wrong: an avatar rendered pure white in play mode and the editor
+crashed on scene reload. Reverted in 3.4.6. The attempt and why it failed are recorded in
+`AvatarScalerInjector.cs`.*
 
 ### Something is bright magenta
 

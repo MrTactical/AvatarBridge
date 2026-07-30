@@ -34,6 +34,12 @@ namespace AvatarBridge
             public UnityEngine.GameObject Source;
             public UnityEngine.GameObject Host;
             public UnityEngine.Behaviour Physics;
+            /// <summary>
+            /// The first bone of the simulated chain. Every transform at or under it is moved by
+            /// the solver, so later passes know not to hang anything new off it — a new child of a
+            /// simulated bone becomes a new particle, which changes how the chain behaves.
+            /// </summary>
+            public UnityEngine.Transform Root;
         }
 
         public System.Collections.Generic.List<ConvertedPhysicsChain> ConvertedPhysicsChains =

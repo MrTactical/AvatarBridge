@@ -216,15 +216,16 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// NOT DONE HERE, and the attempt is worth recording so it isn't repeated the same way.
+        /// CONSTRAINT OFFSETS ARE NOT HANDLED HERE — see <see cref="ConstraintScaleRelay"/>, which
+        /// runs as its own pass after the constraints have been converted.
         ///
-        /// A ParentConstraint holds its target a fixed distance from its source, in metres, and
-        /// Unity never scales that offset — so a hat or held item drifts off a shrinking avatar
-        /// and sinks into a growing one. 3.4.5 tried to fix it by writing scaled copies of every
-        /// offset into the nine generated scale clips. It made an avatar render pure white in play
-        /// mode and crashed the editor on scene reload, and was reverted in 3.4.6.
+        /// The history is worth keeping, because the obvious fix is the wrong one. A parent
+        /// constraint holds its target a fixed number of metres from its source and Unity never
+        /// scales that, so props drift off a shrinking avatar. 3.4.5 tried to correct it by writing
+        /// scaled copies of every offset into the nine generated scale clips. It made an avatar
+        /// render pure white in play mode and crashed the editor on scene reload; reverted in 3.4.6.
         ///
-        /// Two things were wrong with the approach, and the second is the one to think about:
+        /// Two things were wrong with it, and the second is the one to think about:
         ///
         ///   1. ORDER. The scaler runs inside AnimatorMerger (pass 65); ConstraintConverter runs
         ///      at 67. So the constraints were read before VRC ones had been converted into Unity
@@ -235,9 +236,8 @@ namespace AvatarBridge
         ///      frame, and that is not a small change to make blindly on a blend tree the whole
         ///      avatar hangs off.
         ///
-        /// Anyone retrying this: do it as its own pass after ConstraintConverter, on the saved
-        /// clips, and verify against a converted avatar in play mode before shipping it — the
-        /// failure was immediate and obvious the moment anyone pressed play.
+        /// 3.4.7 fixed it in the hierarchy instead: the offset becomes a real child of the source
+        /// bone, so scale reaches it the ordinary way and no clip, layer or curve is involved.
         /// </summary>
 
         static string UniqueName(string name, HashSet<string> taken)

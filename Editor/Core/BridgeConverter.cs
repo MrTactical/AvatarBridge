@@ -65,6 +65,10 @@ namespace AvatarBridge
                 AnimatorMerger.Run(ctx);
                 MiscConverter.Run(ctx);
                 ConstraintConverter.Run(ctx);
+                // After the constraints exist as Unity components and after AlignLocalSpaceRelays
+                // has finished moving transforms about — this pass reads live world poses, so
+                // everything it measures has to have stopped changing first.
+                ConstraintScaleRelay.Run(ctx);
                 ShaderSpiPatcher.Run(ctx);
                 // Last content pass: the controller is final here, so every clip it ends up
                 // referencing gets pulled into the output folder — a conversion that works on

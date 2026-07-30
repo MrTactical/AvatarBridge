@@ -203,6 +203,8 @@ namespace AvatarBridge
         // Inject the bundled avatar scaler (Linear Smoothing + generated Size layer + a
         // "Height" slider, 0.25×–4× geometric). Auto-calibrated: the centre of the slider is the avatar's
         // measured eye height, so it spawns at its original size; every doubling gets equal travel.
+        // Also turns on ConstraintScaleRelay, which re-anchors parent-constraint offsets so props
+        // scale with the avatar rather than staying a fixed number of metres away.
         public bool addAvatarScaler = true;
         // How to handle face tracking. Native = auto-set-up CVRFaceTracking (blendshape-
         // based); DragonSkyRunner = inject that package's animator layers/params; None =

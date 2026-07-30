@@ -43,7 +43,8 @@ namespace AvatarBridge
             {
                 Source = data.SourceGameObject,
                 Host = data.SourceGameObject,
-                Physics = db
+                Physics = db,
+                Root = data.Root
             });
             if (!data.InitiallyActive)
             {

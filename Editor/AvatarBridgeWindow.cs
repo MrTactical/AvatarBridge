@@ -701,7 +701,8 @@ namespace AvatarBridge
             card.Body.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
                 "A smooth avatar scaler: a quick-menu slider covering 0.25×–4× of this avatar's " +
                 "measured height geometrically, with dead centre = exactly its original size (the default, so " +
-                "it spawns unchanged).",
+                "it spawns unchanged). Props held by a parent constraint — hats, held items — are re-anchored " +
+                "so they scale with you instead of drifting off; the report lists any it had to leave alone.",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));
             parent.Add(card);
         }
