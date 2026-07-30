@@ -796,6 +796,26 @@ the avatar is standing still while in game it walks, turns and head-tracks const
 root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
 exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
 
+### Unity crashes when you press Convert
+
+**Fixed in 3.0.1 — update and try again.**
+
+Unity would hard-crash (not an error — the editor vanishes) partway through conversion, most often
+when converting the *same* avatar a second time. The crash dump always landed in the same place:
+`GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTreeEvaluation`, or in the player loop
+running the graph a frame later.
+
+The cause was AvatarBridge handing the freshly written animator controller to a live `Animator`
+before the asset had finished importing. Assigning `runtimeAnimatorController` to an **enabled**
+Animator makes Unity build the whole Mecanim playable graph on the spot, and on a re-conversion the
+controller is still settling — it gets written to a scratch folder, copied over the original to
+preserve its GUID, then reimported. Unity asserts `MecanimDataWasBuilt()` and segfaults on a blend
+tree that doesn't exist yet.
+
+The controller is now assigned with the Animator switched off (which stores it without building
+anything) and re-enabled on a later editor tick, and the reimport is forced synchronous so it is
+genuinely finished before anyone reads it.
+
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
 Only affects conversions made before 2.59.0, which were written **inside the tool's own folder**

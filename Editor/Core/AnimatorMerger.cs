@@ -355,7 +355,38 @@ namespace AvatarBridge
                 // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
                 // left the editor showing something the game never runs, and play-mode preview
                 // disagreeing with the real thing.
+                //
+                // Assigned with the Animator switched OFF, and this is not defensive padding —
+                // it stops Unity crashing outright. Setting runtimeAnimatorController on an
+                // ENABLED Animator makes the editor build the Mecanim playable graph then and
+                // there: Rebind -> CreateInternalControllerPlayable -> GenerateGraph ->
+                // SetStateMachineInInitialState -> DoBlendTreeEvaluation. Both controllers were
+                // written moments ago, and on a RE-conversion AnimatorAssetSaver.Persist takes
+                // the long way round — build in a scratch folder, copy the bytes over the
+                // original, delete the scratch, reimport — so the asset can still be settling
+                // when the graph is built. Unity asserts 'MecanimDataWasBuilt()' and then
+                // segfaults evaluating a blend tree that isn't there yet. Five crash dumps in one
+                // morning, all with that stack, all on the line below.
+                //
+                // A disabled Animator stores the controller without building anything, which is
+                // all the conversion needs — later passes read runtimeAnimatorController.
+                // animationClips, and that is asset data, not graph data. The graph is built on
+                // re-enable, deferred to a later editor tick by which time the import has
+                // finished.
+                bool wasEnabled = animator.enabled;
+                animator.enabled = false;
                 animator.runtimeAnimatorController = overrides;
+                if (wasEnabled)
+                {
+                    var deferred = animator;
+                    EditorApplication.delayCall += () =>
+                    {
+                        if (deferred != null)
+                        {
+                            deferred.enabled = true;
+                        }
+                    };
+                }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
         }
