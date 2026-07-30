@@ -292,6 +292,15 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
+⚠️ **Solving in local space doesn't survive.** VRChat's constraints can read the source's **local**
+rotation instead of its world one, and that's the default in the SDK's own inspector. Unity's
+constraints only ever solve in world space, and ChilloutVR ships no equivalent — its constraint
+types are Unity's own. Most of the time this costs nothing: where the constrained object and its
+source hang off the same parent, the parent's rotation appears on both sides and cancels, so the
+two spaces agree exactly. It matters when the source sits in a **different chain**, and the report
+names every one of those. See [quadrupeds](#quadruped--finalik-avatars--on-ice), which are built
+entirely out of that case.
+
 ## PhysBones → MagicaCloth2
 
 **Structure transfers exactly:** which bone the chain hangs from, which colliders it collides with,
@@ -576,13 +585,26 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 ### Quadruped / FinalIK avatars — on ice
 
-**Don't expect a working quad right now.** The conversion completes and the report comes back clean,
-but the avatar holds its rest pose in game with only the IK-tracked parts following you. Several
-real bugs were found and fixed chasing this and none were the cause, so it's parked rather than
-solved.
+**Don't expect a working quad right now** — but as of 2.88.0 the report says why, and there turn
+out to be two different avatars hiding under one symptom. Both hold their rest pose in game with
+only the IK-tracked parts following you.
+
+**Most quadrupeds are a hidden humanoid rig.** The model carries a second, invisible biped skeleton
+— bones named like `HipsHuman`, `thighHuman.L`, `HeadHuman` — and Unity's humanoid map points only
+at *those*. Nothing the engine solves ever touches a bone that deforms the mesh. Constraints then
+relay that decoy onto the real skeleton, bone by bone: the torso rides the biped hips, the neck
+chain *is* the biped spine, the front legs are the biped's legs. It's an elegant trick and it needs
+no FinalIK at all, so ChilloutVR has nothing to delete.
+
+What breaks it is that every one of those constraints solves in **local space**, and
+[Unity's cannot](#constraints-that-drive-another-object). Each real bone ends up inheriting the
+biped's world orientation rather than its pose. The report now names every relay it found, so this
+is diagnosable instead of mysterious — but naming it isn't fixing it, and the fix isn't written yet.
+
+**A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
 <details>
-<summary>What's known, from reading ChilloutVR's own code</summary>
+<summary>What's known about those, from reading ChilloutVR's own code</summary>
 
 - **`GrounderVRIK` is deleted on load.** CVR whitelists components per-avatar and destroys the rest
   silently — worlds get 57 FinalIK types, avatars 13. `VRIK`, `LookAtIK`, `TwistRelaxer`,

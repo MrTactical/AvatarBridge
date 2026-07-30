@@ -27,6 +27,7 @@ namespace AvatarBridge
             }
 
             int converted = 0;
+            var localSpaceRelays = new List<string>();
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
                 if (component == null)
@@ -62,6 +63,7 @@ namespace AvatarBridge
                 if (ok)
                 {
                     converted++;
+                    NoteLocalSpace(ctx, component, localSpaceRelays);
                     UnityEngine.Object.DestroyImmediate(component);
                 }
             }
@@ -70,6 +72,65 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
+            ReportLocalSpace(ctx, localSpaceRelays);
+        }
+
+        /// <summary>
+        /// VRChat's constraints can solve in LOCAL space — <c>VRCConstraintJob</c> reads the
+        /// source's <c>localPosition</c>/<c>localRotation</c> rather than its world pose — and
+        /// that is the default in the SDK's own inspector. Unity's constraints have no such mode:
+        /// they always solve in world space, and ChilloutVR ships no local-space equivalent (its
+        /// constraint types are Unity's own).
+        ///
+        /// The two agree exactly while the constrained transform and its source hang off the SAME
+        /// parent, because that parent's rotation appears on both sides and cancels. They diverge
+        /// by <c>inverse(targetParent.rotation) * sourceParent.rotation</c> the moment the two sit
+        /// in different chains — so only those are worth naming.
+        ///
+        /// Which is precisely how a "hidden rig" quadruped is built: a decoy humanoid skeleton
+        /// nothing renders, relayed bone by bone onto the real one. Every source is in the other
+        /// chain, so solving in world space hands each real bone the biped's orientation instead
+        /// of its pose.
+        /// </summary>
+        static void NoteLocalSpace(BridgeContext ctx, Component vrc, List<string> crossChain)
+        {
+            if (!Get(vrc, "SolveInLocalSpace", false))
+            {
+                return;
+            }
+            // The Unity constraint may have been placed on TargetTransform rather than here.
+            var constrained = Get<Transform>(vrc, "TargetTransform", null) ?? vrc.transform;
+            foreach (var s in ReadSources(vrc))
+            {
+                if (s.Transform == null || Mathf.Approximately(s.Weight, 0f)
+                    || s.Transform.parent == constrained.parent)
+                {
+                    continue;
+                }
+                crossChain.Add($"`{ctx.PathInTarget(constrained)}` from `{ctx.PathInTarget(s.Transform)}`");
+                return; // one line per constraint is enough to find it
+            }
+        }
+
+        static void ReportLocalSpace(BridgeContext ctx, List<string> crossChain)
+        {
+            if (crossChain.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning(Category,
+                $"{crossChain.Count} constraint(s) relayed a bone from another chain in local space",
+                "These will not follow their source correctly, and there is no option to change — " +
+                "it is a gap in the conversion, so the avatar is worth reporting.\n\n" +
+                "VRChat solved them against the source's **local** rotation. Unity's constraints " +
+                "only ever solve in world space, and ChilloutVR ships no local-space equivalent, so " +
+                "each of these now inherits its source's world orientation instead of its pose. " +
+                "Constraints whose source shares their own parent are unaffected — there the two " +
+                "spaces agree exactly — and are not listed.\n\n" +
+                "An avatar that drives a real skeleton from a hidden humanoid one (how most " +
+                "quadrupeds are built) is made entirely of these, which is why such avatars arrive " +
+                "stuck in their rest pose with only the tracked parts moving.\n\n" +
+                string.Join("\n", crossChain));
         }
 
         // ------------------------------------------------------------------------------
