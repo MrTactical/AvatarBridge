@@ -944,6 +944,19 @@ being read as garbage or not at all.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
+**Reconvert on 3.4.14 or later.** Reconverting used to replace the saved controller by copying raw
+bytes over the file and force-reimporting it — which keeps the GUID but **destroys the native object
+and every sub-asset**, leaving everything that still held them (the Animator window, tester tools,
+anything alive across a play session with domain reload off) holding corpses. With "Enter Play Mode
+Options" on, nothing between conversions throws that stale state away, and pressing Play re-awakes
+Animators against it: `Assertion failed: 'MecanimDataWasBuilt()'`, then a SIGSEGV inside
+`GenerateGraph`. A hand-edited controller never crashes this way because hand-editing *mutates the
+existing object* — and from 3.4.14, so does reconverting. Same file, same GUID, same native object;
+Unity rebuilds its animation data the ordinary way. The `AnimatorStateMachine has been destroyed`
+console spam after reconverting goes away with it.
+
+*The rest of this section describes the earlier symptoms and remains true of older versions.*
+
 **Reconvert on 3.4.9 or later.** If you can't yet, turning off Edit → Project Settings → Editor →
 "Enter Play Mode Settings" and reopening the scene clears it immediately, with no reconversion.
 
