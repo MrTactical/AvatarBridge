@@ -939,6 +939,18 @@ Output has landed in the sibling `Assets/AvatarBridgeOutput` since 2.59.0, where
 can't reach it, and anything left in the old location is moved there automatically with its GUIDs
 intact.
 
+### A hat or held item drifts off when I resize myself
+
+**Fixed in 3.4.5.** A `ParentConstraint` holds its target a fixed distance from its source, and that
+distance is in **metres** — Unity never scales it, whatever the avatar's scale is. So with the
+height slider the body moved and the offset didn't: shrink, and the prop hung off you; grow, and it
+sank inside you. One cowboy hat sat 13–18 cm out.
+
+The generated scale clips now scale those offsets by the same factor, so props keep their place
+across the whole slider range. Offsets that are already zero aren't touched (most are), and an offset
+your **own** animator drives is left alone so nothing fights it. The report says how many were
+adjusted.
+
 ### Something is bright magenta
 
 A material or shader the avatar points at no longer exists. Almost always VRCFury's temp folder,
