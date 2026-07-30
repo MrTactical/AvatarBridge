@@ -864,6 +864,12 @@ matched the hand-corrected position exactly on X and to half a millimetre on Z. 
 when the descriptor has no viewpoint set, and the report says which was used and how far apart they
 were.
 
+**Unless the authored value is provably in the wrong place** (2.100.0). A viewpoint isn't a matter
+of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
+proportions allow *and* Auto lands within them, Auto wins and the report says so. One taur base
+shipped its viewpoint at the avatar's **hips**, 0.6 m from its head; the old rule copied it faithfully
+and then warned about the value it had just chosen.
+
 The conversion checks its own answer — it re-draws each position the way the CCK's inspector will
 and measures it against the head bone — so the report tells you when a placement is wrong instead
 of leaving it for the first person who hears your voice coming from ten metres away. Putting the

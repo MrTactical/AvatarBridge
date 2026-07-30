@@ -941,6 +941,34 @@ namespace AvatarBridge
         /// The tolerance is deliberately loose: half a head-to-hips is not a rounding question,
         /// it means the value is in the wrong space entirely.
         /// </summary>
+        /// <summary>
+        /// How far a stored viewpoint or voice position lands from the humanoid head bone, against
+        /// the tolerance past which that is wrong rather than merely unusual — the same numbers
+        /// <see cref="VerifyHeadPlacement"/> warns on, exposed so a caller can act on them instead
+        /// of shipping a value it already knows is bad. False when there is no head to measure from.
+        /// </summary>
+        public static bool HeadDistance(GameObject root, Animator animator, Vector3 stored,
+            out float distance, out float tolerance)
+        {
+            distance = 0f;
+            tolerance = 0f;
+            if (root == null || animator == null || !animator.isHuman)
+            {
+                return false;
+            }
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null)
+            {
+                return false;
+            }
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            tolerance = hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
+            distance = Vector3.Distance(CckGizmoWorldPoint(root, stored), head.position);
+            return true;
+        }
+
         public static void VerifyHeadPlacement(BridgeContext ctx, string category,
             Animator animator, Vector3 viewPosition, Vector3 voicePosition)
         {

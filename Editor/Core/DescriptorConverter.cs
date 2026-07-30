@@ -57,7 +57,38 @@ namespace AvatarBridge
             // axes: unscaled Z is 0.1105 against a hand-corrected 0.1095, and X is 0 in both.
             bool haveAuthored = vrc.ViewPosition != Vector3.zero;
             var authored = vrc.ViewPosition;
-            var humanoidView = haveAuthored
+
+            // ...but only when it is anywhere near the head.
+            //
+            // Preferring the author's value assumes a human placed it by eye and shipped it. That
+            // holds right up until it doesn't: a taur base shipped a viewpoint at its HIPS, 0.6 m
+            // from its head bone, while the CCK's Auto placement landed on the face. The check
+            // that catches this already ran — the report warned "Viewpoint lands 0.6 m from the
+            // head bone" — it just warned about a value we had already chosen and written.
+            //
+            // A viewpoint is not a matter of taste: it is where the player's eyes go, and a rig
+            // whose head bone is half a head-height away from it is not expressing a preference.
+            // So when the authored value fails that check and Auto passes it, Auto wins.
+            bool authoredIsWrong = false;
+            if (haveAuthored && autoView
+                && AvatarFeatureDetect.HeadDistance(ctx.Target, animator, authored, out float authoredOff, out float tolerance)
+                && AvatarFeatureDetect.HeadDistance(ctx.Target, animator, viewAuto, out float autoOff, out _))
+            {
+                authoredIsWrong = authoredOff > tolerance && autoOff <= tolerance;
+                if (authoredIsWrong)
+                {
+                    ctx.Report.Approximated(Category, "Viewpoint — the CCK's Auto placement, not the author's",
+                        $"The viewpoint this avatar shipped with in VRChat lands {authoredOff:0.##} m from its " +
+                        $"head bone, past the {tolerance:0.##} m this rig's own proportions allow, so it is in " +
+                        "the wrong place rather than merely unusual — you would spawn looking out of the " +
+                        $"avatar's body. The CCK's Auto placement (midpoint of the eye bones) lands {autoOff:0.##} m " +
+                        "from the head and was used instead. The author's value is normally preferred, because a " +
+                        "human placed it by eye; it is only overridden when it fails a check the rig itself " +
+                        "settles. Drag the gizmo on the CVRAvatar if neither is right.");
+                }
+            }
+
+            var humanoidView = haveAuthored && !authoredIsWrong
                 ? authored
                 : autoView ? viewAuto : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
 
@@ -100,7 +131,7 @@ namespace AvatarBridge
                     "rig like this they can be put in the right place but not made to track it " +
                     "perfectly. Drag either gizmo if you want it elsewhere.");
             }
-            else if (haveAuthored && autoView)
+            else if (haveAuthored && autoView && !authoredIsWrong)
             {
                 float apart = Vector3.Distance(authored, viewAuto);
                 ctx.Report.Converted(Category, "Viewpoint — the author's own, from the VRChat descriptor",
