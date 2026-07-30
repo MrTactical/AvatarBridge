@@ -929,25 +929,33 @@ wired up exactly as before.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
-**Turn off Edit → Project Settings → Editor → "Enter Play Mode Settings"**, reopen the scene, and try
-again. From 3.4.8 the report says so on any conversion made with it enabled, and `Diagnostics.md`
-records the setting.
+**Reconvert on 3.4.9 or later.** If you can't yet, turning off Edit → Project Settings → Editor →
+"Enter Play Mode Settings" and reopening the scene clears it immediately, with no reconversion.
 
-The option skips the scene and/or domain reload to make Play faster. Pressing Play then *restores a
-backup* of the scene rather than reloading it, which rebinds every Animator against state carried
-over from edit mode — and a controller AvatarBridge just wrote is the newest thing in the project.
+The symptoms, all at once on the avatar this was found on:
 
-Two symptoms come from this and get blamed on the conversion:
+- `Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 && ...'`, repeated;
+- menu controls **swapped places with each other** — sliders on toggles, a dropdown under the wrong
+  name;
+- white skin and flat clothes, on an avatar that looked correct in the scene a second earlier;
+- and, on the next Play, the editor dying with `Assertion failed on expression:
+  'MecanimDataWasBuilt()'` and a SIGSEGV inside `mecanim::statemachine::EvaluateState`.
 
-- **The editor dies on Play**, with `Assertion failed on expression: 'MecanimDataWasBuilt()'` and a
-  SIGSEGV inside `mecanim::statemachine::EvaluateState`. The whole stack sits under
-  `RestoreSceneBackups`, which **does not run at all** with the option off — so this particular crash
-  is unreachable on the default settings.
-- **The avatar looks right in the scene and wrong the moment you press Play** — white skin, flat
-  clothes — which is a half-bound animator applying stale data, not a missing texture.
+**Two things had to line up.** "Enter Play Mode Options" skips the scene and/or domain reload, so
+pressing Play *restores a backup* of the scene rather than reloading it and rebinds every Animator
+against state carried over from edit mode. And, up to 3.4.8, the clip this tool put into empty
+animator states had **no curves in it at all**. Mecanim sizes the array it reads and writes bindings
+through from the curve count, so a curve-less clip is exactly what it asserts about — and with 66
+states sharing one, our own output was what made that editor option toxic.
 
-Unity prints its own version of this advice to the console every time it enters play mode that way.
-It is easy to miss among the rest.
+From 3.4.9 the placeholder animates one inert value on a dedicated `AvatarBridge_EmptySlot` object
+added to the avatar. It changes nothing on any frame, it exists purely so the clip has a curve to
+count, and any curve-less clip the avatar arrived with is swapped for it too. The conversion no
+longer depends on that editor setting either way, which is the point — it's a setting people turn on
+for speed, and a converter shouldn't care.
+
+The report still names the setting when it's on, and `Diagnostics.md` records it, so the next bug
+report carries the answer.
 
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 

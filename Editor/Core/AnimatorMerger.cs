@@ -419,12 +419,34 @@ namespace AvatarBridge
         /// state simply cannot be uploaded.
         ///
         /// Refusing to assign the controller only protected our own step. This removes the hazard
-        /// itself: each empty slot gets a shared, genuinely empty clip. Nothing is lost — the slot
-        /// already animated nothing — but the graph builder now has a valid motion to read instead
-        /// of a hole, so the controller is safe for anyone to instantiate.
+        /// itself: each empty slot gets a shared filler clip. Nothing is lost — the slot already
+        /// animated nothing — but the graph builder now has a valid motion to read instead of a
+        /// hole, so the controller is safe for anyone to instantiate.
+        ///
+        /// THE FILLER IS NOT AN EMPTY CLIP, which is what 3.4.2 through 3.4.8 used. A clip with no
+        /// curves at all is degenerate to Mecanim, and binding one trips
+        ///
+        ///     Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 &&
+        ///     mem->m_ConstantClipValueCount &lt;= (int)clip->m_ConstantClip.curveCount'
+        ///
+        /// once per state that holds it — the count it is comparing is the size of the value array
+        /// the animator reads and writes bindings through.
+        ///
+        /// BE PRECISE ABOUT WHAT THIS FIXED, because the avatar it was found on had two things
+        /// wrong at once. The assertions, a menu whose controls had swapped places, and a body in
+        /// the wrong materials all came from Unity's "Enter Play Mode Options" being on — proven by
+        /// turning it off and watching every symptom go, with no reconversion. See
+        /// BridgeConverter.WarnFastPlayMode. What a curve-less placeholder does is make OUR output
+        /// the thing that setting breaks, on an avatar that would otherwise survive it, and 66
+        /// states shared one on that avatar.
+        ///
+        /// So the filler carries ONE constant curve, on a dedicated empty child of the avatar that
+        /// nothing else touches, holding that object's own active state at the value it already
+        /// has. Writing it changes nothing on any frame; existing means Mecanim has a real curve
+        /// count to agree with itself about, and a user who likes fast play mode keeps it.
         ///
         /// Deliberately NOT deleting the children. Blend tree children carry thresholds, and
-        /// removing one re-numbers its neighbours and changes how the rest blend. An empty clip in
+        /// removing one re-numbers its neighbours and changes how the rest blend. A filler clip in
         /// place keeps every threshold where the author put it.
         /// </summary>
         static void FillEmptyMotionSlots(BridgeContext ctx, AnimatorController master)
@@ -439,6 +461,14 @@ namespace AvatarBridge
                 if (filler == null)
                 {
                     filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                    string anchor = EmptySlotAnchorPath(ctx);
+                    if (anchor != null)
+                    {
+                        // One curve, constant, asserting a value the object already has. See the
+                        // summary: a curve-less clip misaligns the animator's binding array.
+                        filler.SetCurve(anchor, typeof(GameObject), "m_IsActive",
+                            AnimationCurve.Constant(0f, 1f / 60f, 1f));
+                    }
                     AssetDatabase.AddObjectToAsset(filler, master);
                 }
                 return filler;
@@ -454,7 +484,7 @@ namespace AvatarBridge
                 bool changed = false;
                 for (int i = 0; i < children.Length; i++)
                 {
-                    if (children[i].motion == null)
+                    if (children[i].motion == null || IsCurveless(children[i].motion, filler))
                     {
                         children[i].motion = Filler();
                         changed = true;
@@ -485,7 +515,7 @@ namespace AvatarBridge
                         // does that while building the graph (EvaluateStateDuration, under
                         // SetStateMachineInInitialState), so a state with no motion is the same
                         // hole as an empty blend tree slot.
-                        if (child.state.motion == null)
+                        if (child.state.motion == null || IsCurveless(child.state.motion, filler))
                         {
                             child.state.motion = Filler();
                             filled++;
@@ -508,20 +538,68 @@ namespace AvatarBridge
             if (filled > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{filled} empty motion slot(s) filled with an empty clip" +
+                    $"{filled} empty motion slot(s) given a placeholder clip" +
                     (states == 0 ? " (all blend tree slots)"
                         : states == filled ? " (all animator states)"
                         : $" ({states} animator states, {filled - states} blend tree slots)"),
-                    "These slots had no motion — an asset that's gone, one the avatar's own build " +
-                    "step never produced, or a state left empty. Unity CRASHES when it builds a " +
-                    "playable graph containing one, which happens when the " +
-                    "controller is assigned to an Animator, when you select the avatar, and when " +
-                    "the CCK builds it to upload — so this had to be repaired rather than reported. " +
-                    "Each slot now holds a genuinely empty clip: nothing is lost, since the slot " +
-                    "animated nothing to begin with, and every threshold stays where the author put " +
-                    "it. Whatever those motions were supposed to be is still missing, so find out " +
-                    "why they didn't arrive before you rely on the feature that used them.");
+                    "These slots had no motion, or held a clip with no curves in it — an asset " +
+                    "that's gone, one the avatar's own build step never produced, or a state left " +
+                    "empty. Unity CRASHES when it builds a playable graph containing an empty slot, " +
+                    "which happens when the controller is assigned to an Animator, when you select " +
+                    "the avatar, and when the CCK builds it to upload — so this had to be repaired " +
+                    "rather than reported. A CURVE-LESS clip is just as bad in a quieter way: Mecanim " +
+                    "sizes its binding array from the curve count, and a clip with none misaligns it, " +
+                    "so bindings land on each other's slots — the symptom is menu controls that have " +
+                    "swapped places and materials selecting the wrong option, with " +
+                    "\"Assertion failed on expression: 'mem->m_ConstantClipValueCount ...'\" in the " +
+                    "console. Each slot now holds a placeholder that animates one inert value on the " +
+                    "avatar's \"AvatarBridge_EmptySlot\" object, so it changes nothing and Mecanim " +
+                    "still has a curve to count. Every threshold stays where the author put it. " +
+                    "Whatever those motions were supposed to be is still missing, so find out why " +
+                    "they didn't arrive before you rely on the feature that used them.");
             }
+        }
+
+        /// <summary>
+        /// A clip that animates literally nothing, which Mecanim cannot size a binding array from.
+        ///
+        /// Humanoid clips are excluded deliberately: their muscle data lives outside the curve
+        /// arrays, so VRChat's <c>proxy_hands_*</c> and every FBX animation read as curve-less here
+        /// and are perfectly valid. Legacy clips likewise never reach a Mecanim graph.
+        /// </summary>
+        static bool IsCurveless(Motion motion, AnimationClip filler)
+        {
+            if (!(motion is AnimationClip clip) || clip == filler)
+            {
+                return false;
+            }
+            return !clip.humanMotion && !clip.legacy
+                && AnimationUtility.GetCurveBindings(clip).Length == 0
+                && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0;
+        }
+
+        /// <summary>
+        /// A dedicated empty child of the avatar, existing only so the placeholder clip has
+        /// something inert to animate. Nothing else reads it, nothing else writes it, and holding
+        /// its own active state at the value it already has is a no-op on every frame — the point
+        /// is purely that the clip carries a curve at all.
+        /// </summary>
+        static string EmptySlotAnchorPath(BridgeContext ctx)
+        {
+            if (ctx == null || ctx.Target == null)
+            {
+                return null;
+            }
+            const string anchorName = "AvatarBridge_EmptySlot";
+            var anchor = ctx.Target.transform.Find(anchorName);
+            if (anchor == null)
+            {
+                var holder = new GameObject(anchorName);
+                holder.transform.SetParent(ctx.Target.transform, false);
+                anchor = holder.transform;
+            }
+            anchor.gameObject.SetActive(true);
+            return ctx.PathInTarget(anchor);
         }
 
         /// <summary>
