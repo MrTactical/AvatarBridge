@@ -130,13 +130,24 @@ namespace AvatarBridge
         static void RepointConstraintCurves(BridgeContext ctx)
         {
             var clips = new HashSet<AnimationClip>();
+            var controllers = new List<RuntimeAnimatorController>();
             foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
             {
-                var controller = animator.runtimeAnimatorController;
-                if (controller == null)
+                if (animator.runtimeAnimatorController != null)
                 {
-                    continue;
+                    controllers.Add(animator.runtimeAnimatorController);
                 }
+            }
+            // The merged controller directly as well as via the Animator. A controller that would
+            // crash Unity is deliberately never assigned to an Animator (see AnimatorMerger), and
+            // reading the clip list only through the component would silently skip every curve on
+            // exactly the avatars that need the most repair.
+            if (ctx.MergedController != null)
+            {
+                controllers.Add(ctx.MergedController);
+            }
+            foreach (var controller in controllers)
+            {
                 foreach (var clip in controller.animationClips)
                 {
                     if (clip != null)

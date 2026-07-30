@@ -846,21 +846,20 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.3.1 — update and try again.**
+**Fixed in 3.3.3 — update and try again.**
 
-It took three attempts because the trigger kept moving. The cause never did: **enabling an Animator
-makes Unity build a Mecanim playable graph, and a controller referencing assets that resolve to
-nothing makes that builder segfault.** 3.0.1 blamed timing and deferred the assignment (the crash
-moved to the deferred call). 3.2.0 left the Animator switched off (the crash moved to the
-**Inspector** — merely selecting the converted avatar runs `AwakeFromLoad` and builds the graph, with
-nothing of ours on the stack).
+**A controller referencing assets that resolve to nothing makes Unity's Mecanim graph builder
+segfault**, and *assigning* such a controller to an `Animator` is enough to trigger it — the setter
+calls `Animator::Rebind`, which builds the whole graph regardless of whether the component is
+enabled. That last part is what took four attempts to get right: disabling the Animator, deferring
+the assignment and unlinking afterwards all left the assignment itself in place, so each fix only
+moved where it died.
 
-3.3.1 removes the reference from the Animator entirely once the conversion's own passes are done, so
-nothing in the editor can instantiate it. **ChilloutVR is unaffected by the removal**: the CVRAvatar
-still carries the base controller and the overrides, which is what the client reads on load. The
-broken references are still in the controller though, so fix them and convert again before
-uploading — see the unresolvable-asset error for where they came from, usually a VRCFury or Modular
-Avatar bake that errored partway.
+3.3.3 checks the controller **before** assigning it and doesn't assign one that would crash.
+**ChilloutVR is unaffected**: the CVRAvatar still carries the base controller and the overrides,
+which is what the client reads on load. The broken references remain in the controller though, so
+fix them and convert again before uploading — see the unresolvable-asset error for where they came
+from, usually a VRCFury or Modular Avatar bake that errored partway.
 
 Unity hard-crashes (not an error — the editor vanishes), most often when converting the *same*
 avatar a second time or when clicking the converted avatar afterwards. The dump always lands in the
