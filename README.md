@@ -846,7 +846,15 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.3.3 — update and try again.**
+**Fixed in 3.3.4 — update and try again.**
+
+The hazard itself is now repaired, so it's gone from every direction: converting, selecting the
+avatar, entering play mode, **and uploading**. An empty blend tree slot — one whose motion is
+missing, usually because a VRCFury or Modular Avatar build didn't finish — crashes Unity's graph
+builder, and the CCK's uploader instantiates your avatar to build it, so such an avatar couldn't be
+uploaded at all. Each empty slot now gets a genuinely empty clip: nothing is lost, since the slot
+animated nothing, and every blend threshold stays where the author put it. The report tells you how
+many, so you can still chase down why those motions never arrived.
 
 **A controller referencing assets that resolve to nothing makes Unity's Mecanim graph builder
 segfault**, and *assigning* such a controller to an `Animator` is enough to trigger it — the setter
