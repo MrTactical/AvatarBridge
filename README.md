@@ -1359,6 +1359,29 @@ on runtime layer-weight control, which ChilloutVR has no equivalent for, so they
 whether masked or not. Nothing is lost by blocking them. If you want one driving your body anyway,
 clear its Mask in the Animator window — and expect the stances to stop responding.
 
+### An animation flickers rapidly — often only on other players' screens
+
+**Reconvert on 3.5.2 or later.** Unity's AnyState transitions default to "Can Transition To Self",
+which with ordinary conditions means the destination state re-enters **every frame** the conditions
+hold, restarting its animation each time. Nearly every avatar carries dozens of these and VRChat
+never shows it, because the states involved are mostly *empty* there — restarting nothing looks
+like nothing. Conversion has to fill empty states (they crash Unity's graph builder), and a filled
+state restarted every frame strobes its clip.
+
+The "only other people see it" shape is the same mechanism plus networking: remote copies of your
+avatar hold every `#` local parameter at its default forever (local parameters never sync, and
+parameter streams are stripped from remote copies), so a re-entry condition your live values keep
+false can sit permanently true on everyone else's client. The conversion now disables the self
+re-entry flag on merged AnyState transitions — except those conditioned on a Trigger, where firing
+once per pulse is the intended use. The **Remote view** card in the CCK Animator Tester reproduces
+the remote valuation locally if you want to verify an avatar before uploading.
+
+Root motion is also stripped from grafted and transplanted animations (3.5.2): VRChat flight and
+vehicle systems move the player by animating the body, because VRChat allows nothing else.
+ChilloutVR moves the player itself and hangs the first-person camera on the head bone — the same
+baked movement here shoves the wearer around with no input, so it is removed; the pose stays, the
+game supplies the motion.
+
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Three known causes, all fixed, all worth naming if you

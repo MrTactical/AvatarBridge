@@ -148,6 +148,10 @@ namespace AvatarBridge
                 CollectSerializedGuids(AssetDatabase.GetAssetPath(sourceController), _sourceControllerGuids);
             }
 
+            // Before the merge loop: the Action transplant below and LocomotionGrafter both
+            // prepare clips through the grafter's per-conversion clone caches.
+            LocomotionGrafter.ResetClones();
+
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
             var vrcLayers = new List<AnimatorControllerLayer>();
@@ -351,6 +355,8 @@ namespace AvatarBridge
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
             FillEmptyStatesWithRestoreClips(master, ctx);
+            // AFTER the filler, whose motions are what turned this from harmless into a strobe.
+            SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -3413,7 +3419,13 @@ namespace AvatarBridge
                 {
                     var src = byName[name];
                     var copy = locoMachine.AddState($"[AB] {name}");
-                    copy.motion = src.motion;
+                    // Pose states get the clip WITHOUT its baked movement: a VRChat feature that
+                    // moved the player did it by animating the body (VRChat allows nothing else),
+                    // and here that displaces the wearer's camera with no input. The pose stays;
+                    // ChilloutVR owns motion. See LocomotionGrafter.WithoutRootMotion.
+                    copy.motion = src.motion is AnimationClip poseClip
+                        ? LocomotionGrafter.WithoutRootMotion(poseClip)
+                        : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;
                     copies[name] = copy;
@@ -4455,6 +4467,68 @@ namespace AvatarBridge
         /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
         /// sat half-dead.
         /// </summary>
+        /// <summary>
+        /// Disables "Can Transition To Self" on merged AnyState transitions whose conditions
+        /// carry no Trigger — because with only level conditions, that flag means "re-enter the
+        /// destination EVERY FRAME the conditions hold", restarting its motion each time.
+        ///
+        /// Unity defaults the flag to on and authors rarely touch it, so nearly every avatar
+        /// carries dozens of these. VRChat never shows the problem: the states involved are
+        /// mostly EMPTY there (behaviour-only gates), and restarting nothing looks like nothing.
+        /// Conversion must fill empty states (they crash Unity's graph builder), and a filled
+        /// state restarted every frame strobes its clip — reported as animations rapidly
+        /// flickering, characteristically on OTHER players' screens: remote copies hold "#"
+        /// local parameters at their defaults forever, so a condition the wearer's live values
+        /// keep false can sit permanently true for everyone else.
+        ///
+        /// A transition conditioned on a Trigger is the one legitimate re-entry idiom — fire
+        /// once per pulse — and is left alone. The CCK's own protected layers are not touched.
+        /// </summary>
+        static void SuppressAnyStateSelfRestarts(AnimatorController master, BridgeContext ctx)
+        {
+            var triggers = new HashSet<string>(master.parameters
+                .Where(p => p.type == AnimatorControllerParameterType.Trigger)
+                .Select(p => p.name));
+            int flipped = 0;
+            foreach (var layer in master.layers)
+            {
+                if (layer == null || layer.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var transition in machine.anyStateTransitions)
+                    {
+                        if (transition == null || !transition.canTransitionToSelf
+                            || transition.conditions.Any(c => triggers.Contains(c.parameter)))
+                        {
+                            continue;
+                        }
+                        transition.canTransitionToSelf = false;
+                        EditorUtility.SetDirty(transition);
+                        flipped++;
+                    }
+                });
+            }
+            if (flipped == 0)
+            {
+                return;
+            }
+            EditorUtility.SetDirty(master);
+            ctx.Report.Converted(Category,
+                $"{flipped} AnyState transition(s) stopped restarting their own state every frame",
+                "These carried Unity's default \"Can Transition To Self\", which with ordinary " +
+                "conditions means the destination re-enters EVERY FRAME the conditions hold, " +
+                "restarting its animation each time. VRChat hid it — the states were mostly empty " +
+                "there — but conversion must fill empty states, and a filled state restarted every " +
+                "frame strobes: animations rapidly flicker, often only on OTHER players' screens, " +
+                "because remote copies hold \"#\" local parameters at defaults that can keep such a " +
+                "condition permanently true. Each state now enters once and plays normally; " +
+                "transitions conditioned on a Trigger keep the flag, as pulse-retriggering is the " +
+                "one thing it is for.");
+        }
+
         /// <summary>
         /// Makes VRChat's avatar-scale family live: ScaleFactor, ScaleFactorInverse,
         /// EyeHeightAsPercent and ScaleModified, derived from EyeHeightAsMeters — which

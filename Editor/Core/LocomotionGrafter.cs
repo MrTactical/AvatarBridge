@@ -52,6 +52,97 @@ namespace AvatarBridge
         static readonly Dictionary<(AnimationClip clip, bool loop), AnimationClip> LoopClones
             = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
+        /// <summary>Clip -> root-motion-free clone (or itself when it carried none).</summary>
+        static readonly Dictionary<AnimationClip, AnimationClip> MotionStripped
+            = new Dictionary<AnimationClip, AnimationClip>();
+
+        /// <summary>Names of clips that had movement stripped, for the report.</summary>
+        static readonly List<string> StrippedNames = new List<string>();
+
+        /// <summary>
+        /// Both clone caches MUST be per-conversion: a clone is persisted as a sub-asset of the
+        /// output controller, and a cached clone reused by a SECOND conversion would try to live
+        /// inside two assets at once. AnimatorMerger.Run calls this before any clip is prepared.
+        /// </summary>
+        internal static void ResetClones()
+        {
+            LoopClones.Clear();
+            MotionStripped.Clear();
+            StrippedNames.Clear();
+        }
+
+        /// <summary>
+        /// The clip with every root-movement curve removed: humanoid RootT/RootQ and
+        /// MotionT/MotionQ, and generic Transform curves on the avatar root itself.
+        ///
+        /// VRChat systems bake movement into animations because VRChat's avatars cannot move the
+        /// player any other way — a copter takeoff climbs by animating the body upward. In
+        /// ChilloutVR the CLIENT moves the player (flight, jumps, seats all its own), and the
+        /// first-person camera rides the head bone — so a clip that also displaces the body
+        /// shoves the wearer's camera around with no input. That logic is not converted; the
+        /// muscles keep the pose, the game keeps the movement.
+        /// </summary>
+        internal static AnimationClip WithoutRootMotion(AnimationClip clip)
+        {
+            if (clip == null)
+            {
+                return null;
+            }
+            if (MotionStripped.TryGetValue(clip, out var done))
+            {
+                return done;
+            }
+            var doomed = new List<EditorCurveBinding>();
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (IsRootMovement(binding))
+                {
+                    doomed.Add(binding);
+                }
+            }
+            if (doomed.Count == 0)
+            {
+                MotionStripped[clip] = clip;
+                return clip;
+            }
+            var clone = UnityEngine.Object.Instantiate(clip);
+            clone.name = clip.name;
+            foreach (var binding in doomed)
+            {
+                AnimationUtility.SetEditorCurve(clone, binding, null);
+            }
+            MotionStripped[clip] = clone;
+            StrippedNames.Add(clip.name);
+            return clone;
+        }
+
+        static bool IsRootMovement(EditorCurveBinding binding)
+        {
+            if (!string.IsNullOrEmpty(binding.path))
+            {
+                return false; // a child bone's own animation is pose, not player movement
+            }
+            if (binding.type == typeof(Transform))
+            {
+                return true;
+            }
+            if (binding.type == typeof(Animator))
+            {
+                string p = binding.propertyName;
+                return p.StartsWith("RootT.", StringComparison.Ordinal)
+                    || p.StartsWith("RootQ.", StringComparison.Ordinal)
+                    || p.StartsWith("MotionT.", StringComparison.Ordinal)
+                    || p.StartsWith("MotionQ.", StringComparison.Ordinal);
+            }
+            return false;
+        }
+
+        /// <summary>Full preparation for a locomotion seat: movement stripped, loop matched.</summary>
+        static AnimationClip Prepare(AnimationClip graft, Motion slotOriginal)
+        {
+            return LoopMatched(WithoutRootMotion(graft), slotOriginal);
+        }
+
         static AnimationClip LoopMatched(AnimationClip graft, Motion slotOriginal)
         {
             if (!(slotOriginal is AnimationClip original) || graft == null)
@@ -89,7 +180,9 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master)
         {
-            LoopClones.Clear();
+            // Clone caches are cleared by AnimatorMerger.Run BEFORE the Action transplant, which
+            // also prepares clips through this class — clearing here would only break the
+            // dedupe between the two.
             var cvrLayer = master.layers.FirstOrDefault(l => l != null && l.name == "Locomotion/Emotes");
             if (cvrLayer == null || cvrLayer.stateMachine == null)
             {
@@ -160,6 +253,19 @@ namespace AvatarBridge
                     "client replaces with its internal animations at runtime — the real walk was never part " +
                     "of this avatar. ChilloutVR's equivalent is its own locomotion animation set, which the " +
                     "converted avatar already runs, so nothing is missing.");
+            }
+
+            if (StrippedNames.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Movement baked into {StrippedNames.Count} animation(s) removed — ChilloutVR moves you itself",
+                    $"{string.Join(", ", StrippedNames.Distinct())}. VRChat systems bake movement into their " +
+                    "animations because a VRChat avatar cannot move the player any other way — a copter " +
+                    "takeoff climbs by animating the body upward. Here the client owns all movement (flight, " +
+                    "jumps, seats), and the first-person camera rides the head bone, so a clip that also " +
+                    "displaces the body shoves the wearer around with no input. The root-movement curves were " +
+                    "removed from the converted copies; the pose itself is untouched, and the game supplies " +
+                    "the motion.");
             }
         }
 
@@ -415,7 +521,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                var use = LoopMatched(clip, children[i].motion);
+                var use = Prepare(clip, children[i].motion);
                 if (children[i].motion != use)
                 {
                     children[i].motion = use;
@@ -481,7 +587,7 @@ namespace AvatarBridge
                         proxiesSkipped++;
                         break; // the stock clip in the expected slot; later names are fallbacks
                     }
-                    var use = LoopMatched(clip, cvrState.motion);
+                    var use = Prepare(clip, cvrState.motion);
                     if (cvrState.motion != use)
                     {
                         cvrState.motion = use;
@@ -540,7 +646,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var use = LoopMatched(winners[0], cvrSitting.motion);
+            var use = Prepare(winners[0], cvrSitting.motion);
             if (cvrSitting.motion != use)
             {
                 cvrSitting.motion = use;
@@ -595,7 +701,7 @@ namespace AvatarBridge
                         continue;
                     }
                     var clip = (AnimationClip)found.motion;
-                    var use = LoopMatched(clip, cvrState.motion);
+                    var use = Prepare(clip, cvrState.motion);
                     if (cvrState.motion != use)
                     {
                         cvrState.motion = use;
