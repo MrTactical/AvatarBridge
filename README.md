@@ -305,6 +305,17 @@ evaluate in the editor, so at conversion time the scene pose *is* VRChat's solve
 active, full-weight, single-source rotation constraint the offset is now derived from that pose
 directly, with no cross-engine assumption. Multi-source or inactive constraints still copy the field.
 
+**An unfollowable local-space constraint yields to its animation** (3.4.29). VRChat constraints can
+solve in the source's *local* space; Unity's only solve in world space, and when the constrained bone
+can't be re-parented to bridge that (it skins the mesh), the converted constraint is wrong whenever
+the two parent chains move apart. If a clip in the controller *also* poses that bone, the wrong
+constraint overrides the right animation — constraints evaluate after animators. So in exactly that
+case the constraint is now **disabled** and the animation stands. The avatar that forced the choice:
+windshield pupils mirroring the face eye bones folded 77° edge-on the moment the body folded into a
+car, while the car animation had them keyed perfectly all along. What's lost is only the live follow
+— the pupils sit where the author posed them instead of tracking eye movement. Bones nothing
+animates keep the world-space follow, which is the behaviour the walking quadruped shipped with.
+
 **Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
 **local** rotation instead of its world one, and that's the default in the SDK's own inspector.
 Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its
