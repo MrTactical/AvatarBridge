@@ -4503,6 +4503,8 @@ namespace AvatarBridge
             // of parking a numbered copy beside them. One avatar had 200 of them.
             var writtenPaths = new HashSet<string>();
             var keptClips = new HashSet<string>();
+            // Layers whose empty states are structural rather than a toggle.s off half.
+            var notToggles = new SortedSet<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
@@ -4564,10 +4566,12 @@ namespace AvatarBridge
                 var bindings = new HashSet<EditorCurveBinding>();
                 var objectBindings = new HashSet<EditorCurveBinding>();
                 var empties = new List<AnimatorState>();
+                int stateCount = 0;
                 WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
+                        stateCount++;
                         var state = child.state;
                         if (state == null)
                         {
@@ -4592,6 +4596,24 @@ namespace AvatarBridge
                 });
                 if (empties.Count == 0 || (bindings.Count == 0 && objectBindings.Count == 0))
                 {
+                    continue;
+                }
+                // ONLY the two-state toggle. VRChat's idiom is exactly one empty "off" state and
+                // one state holding the clip, and that shape is the only one where a snapshot of
+                // the avatar is the right thing to put in the empty half.
+                //
+                // Anything larger is a machine, and its empty states are structural. Two have now
+                // shipped as bugs: a local/remote gate given the values of the branch it leads to,
+                // and a slider layer's "Reset/Pause" state given a snapshot that pinned seven chest
+                // blendshapes to 0 — which flattened the avatar's chest the moment the layer rested
+                // there. Neither was an "off" state; both merely had no motion.
+                //
+                // Erring toward doing nothing is cheap here: an unfilled off state behaves exactly
+                // as it did in VRChat, which is the situation this pass improves on rather than
+                // rescues. Erring the other way changes what the avatar looks like.
+                if (stateCount != 2)
+                {
+                    notToggles.Add($"{layer.name} ({stateCount} states)");
                     continue;
                 }
                 candidates += empties.Count;
@@ -4759,6 +4781,15 @@ namespace AvatarBridge
                 (stale > 0
                     ? $" {stale} restore clip(s) from a previous conversion of this avatar were deleted; " +
                       "they are regenerated every time and used to pile up beside each other."
+                    : "") +
+                (notToggles.Count > 0
+                    ? $"\n\nLeft alone, not a two-state toggle ({notToggles.Count}): " +
+                      $"{string.Join(", ", notToggles.Take(6))}{(notToggles.Count > 6 ? ", …" : "")}. " +
+                      "VRChat's idiom is exactly one empty \"off\" state and one holding the clip, and " +
+                      "that is the only shape where a snapshot of the avatar belongs in the empty half. " +
+                      "Bigger layers are machines whose empty states are structural — a slider's " +
+                      "reset/pause, a local/remote gate — and filling those changes how the avatar looks. " +
+                      "They behave exactly as they did in VRChat."
                     : ""));
         }
 

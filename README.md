@@ -1269,6 +1269,12 @@ Three things worth knowing:
   would assert it from above and the shirt could never come off; if neither did, it could never go
   back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
   counts what was left to a lower layer.
+- **Only two-state toggles are filled** (3.4.18). VRChat's idiom is exactly one empty "off" state and
+  one state holding the clip, and that shape is the only one where a snapshot of your avatar belongs
+  in the empty half. Bigger layers are machines whose empty states are structural — a chest slider's
+  `Reset/Pause`, a local/remote gate — and filling those *changes how the avatar looks*: one snapshot
+  pinned seven chest blendshapes to zero and flattened the model the moment the layer rested there.
+  Those layers are now left exactly as VRChat had them, and the report names each one.
 - **Not every empty state is an off state** (3.4.10). Some exist to *choose* — the local/remote gate
   VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
   controls drive one branch and a synced dropdown drives the other. The layer only passes through
