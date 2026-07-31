@@ -297,6 +297,14 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
+**Rotation offsets are measured, not copied** (3.4.28). Copying VRChat's `RotationOffset` field
+trusts that both engines apply it in the same space, and that held until a constraint crossed two
+very differently oriented bones — a car avatar's windshield pupils mirror its face eye bones through
+rotation constraints, and the copied offset left them rotated 77° edge-on, invisible. VRC constraints
+evaluate in the editor, so at conversion time the scene pose *is* VRChat's solver output; for an
+active, full-weight, single-source rotation constraint the offset is now derived from that pose
+directly, with no cross-engine assumption. Multi-source or inactive constraints still copy the field.
+
 **Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
 **local** rotation instead of its world one, and that's the default in the SDK's own inspector.
 Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its

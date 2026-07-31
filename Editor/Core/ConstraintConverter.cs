@@ -991,7 +991,27 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "rotation");
                 return true;
             }
-            unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
+            // MEASURED from the live pose whenever the constraint's output is unambiguous; the
+            // VRChat field is only the fallback. Copying the field trusts that both engines apply
+            // a rotation offset in the same space, and that held right up until a constraint
+            // crossed two very differently oriented bones: a car avatar's windshield pupils mirror
+            // its face eye bones through rotation constraints, and the copied offset left them 77
+            // degrees off — rotated edge-on, invisible. The scene pose at conversion time IS
+            // VRChat's own solver output (VRC constraints evaluate in the editor), so for an
+            // active, full-weight, single-source constraint the offset that reproduces that pose
+            // is derivable with no cross-engine belief at all: Unity evaluates
+            // result = source.rotation * Euler(offset), hence
+            // offset = Inverse(source.rotation) * current.rotation. World rotations throughout,
+            // so AlignLocalSpaceRelays re-parenting cannot disturb the measurement.
+            var rotSources = ReadSources(vrc);
+            bool rotMeasured = Get(vrc, "IsActive", true)
+                && Mathf.Approximately(Get(vrc, "GlobalWeight", 1f), 1f)
+                && rotSources.Count == 1 && rotSources[0].Weight >= 0.999f
+                && rotSources[0].Transform != null
+                && vrc.gameObject.activeInHierarchy;
+            unity.rotationOffset = rotMeasured
+                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * vrc.transform.rotation).eulerAngles
+                : Get(vrc, "RotationOffset", Vector3.zero);
             // A bone AlignLocalSpaceRelays moved has a new parent, so VRChat's authored
             // RotationAtRest — measured against the old one — no longer describes it. Its rest IS
             // where it sits now: the move preserved world rotation, so this is the same pose.
@@ -1001,7 +1021,10 @@ namespace AvatarBridge
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
-            ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Rotation constraint");
+            ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform),
+                rotMeasured
+                    ? "Rotation constraint — offset measured from the pose VRChat's own solver left in the scene"
+                    : "Rotation constraint");
             return true;
         }
 
