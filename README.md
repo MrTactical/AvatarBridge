@@ -1378,13 +1378,16 @@ The "only other people see it" shape is the same mechanism plus networking: remo
 avatar hold every `#` local parameter at its default forever (local parameters never sync, and
 parameter streams are stripped from remote copies), so a re-entry condition your live values keep
 false can sit permanently true on everyone else's client. The conversion now disables the self
-re-entry flag on merged AnyState transitions — but **only where the destination holds still**
-(3.5.7): an empty state, a constant clip, or the conversion's own filler. A state with a real
-animated clip keeps the flag *and* the pinned-at-first-frame look its author shipped with — the
-every-frame restart is what the wearer always saw in VRChat, and clearing it there set multi-frame
-toggle animations playing (and looping) for the first time, which is not what anyone authored.
-Transitions conditioned on a Trigger always keep the flag, as firing once per pulse is the
-intended use. The **Remote view** card in the CCK Animator Tester reproduces the remote valuation
+re-entry flag on merged AnyState transitions — but **only where the restart carries no meaning**
+(3.5.7–3.5.8). A state with a real animated clip keeps the flag *and* the pinned-at-first-frame
+look its author shipped with. A state with an **exit-time transition out** keeps it too, because
+there the restart is load-bearing: every re-entry resets the clock so the timed exit never fires —
+that is the entire mechanism holding the state, and one avatar's every clothing toggle was built
+exactly this way (AnyState-with-self in, exit-time out); clearing the flag set them all cycling
+on/off at clip length. Transitions conditioned on a Trigger always keep the flag, as firing once
+per pulse is the intended use. What still loses the flag is the case the fix exists for: a
+still-holding state with no timed exit, restarted every frame — the filler-filled gate states that
+strobed for remote viewers. The **Remote view** card in the CCK Animator Tester reproduces the remote valuation
 locally if you want to verify an avatar before uploading.
 
 Root motion is also stripped from animations that **travel** (3.5.2, refined in 3.5.3): VRChat

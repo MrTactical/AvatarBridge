@@ -4734,6 +4734,18 @@ namespace AvatarBridge
                         {
                             continue;
                         }
+                        // A destination with an exit-time transition DEPENDS on the restart to
+                        // stay alive: every re-entry resets the clock, so the timed exit never
+                        // fires — that is the whole mechanism holding the state. Clear the flag
+                        // and the state plays through, the timed exit fires, and the same
+                        // AnyState re-enters it from outside: a visible on/off cycle at clip
+                        // length. One avatar's every clothing toggle was built this way
+                        // (AnyState toSelf in, exit-time out), and 3.5.6 set them all cycling.
+                        if (destination != null
+                            && destination.transitions.Any(t => t != null && t.hasExitTime))
+                        {
+                            continue;
+                        }
                         transition.canTransitionToSelf = false;
                         EditorUtility.SetDirty(transition);
                         flipped++;
