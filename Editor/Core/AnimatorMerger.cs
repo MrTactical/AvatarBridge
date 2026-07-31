@@ -148,6 +148,7 @@ namespace AvatarBridge
             // Action layers kept LIVE because the avatar drives them itself — see the weight
             // decision below and the report entry at the end of the merge.
             var actionFeatures = new List<string>();
+            var actionMoved = new List<string>();
 
             foreach (var (id, controller) in vrcControllers)
             {
@@ -227,7 +228,18 @@ namespace AvatarBridge
                         actionLayersRested++;
                         if (ActionLayerDrivesOwnFeature(clone, out string byWhat))
                         {
-                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
+                            // The POSES go where ChilloutVR keeps poses: inside its own
+                            // locomotion layer. The clone stays merged at weight 0 so its
+                            // parameter drivers keep firing on schedule.
+                            int moved = TransplantActionFeature(masterLayers, clone, srcLayer, ctx);
+                            if (moved > 0)
+                            {
+                                actionMoved.Add($"\"{clone.name}\" (driven by {byWhat}, {moved} pose state(s))");
+                            }
+                            else
+                            {
+                                actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
+                            }
                         }
                     }
                     clone.avatarMask = ReplaceVrcMask(clone.avatarMask, ctx);
@@ -237,6 +249,21 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{id} layer merged", $"{controller.layers.Length} sub-layers");
             }
 
+            if (actionMoved.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{actionMoved.Count} Action-layer feature(s) moved into ChilloutVR's locomotion layer",
+                    $"{string.Join("; ", actionMoved)}. VRChat plays these full-body sequences from its " +
+                    "Action playable, raising its weight at runtime — weight control ChilloutVR doesn't " +
+                    "have, and a separate layer can neither yield when idle nor assert without freezing. " +
+                    "ChilloutVR's own home for full-body poses is its Locomotion/Emotes layer, so the " +
+                    "pose states were rebuilt THERE: they take over from locomotion exactly while their " +
+                    "driving conditions hold, and hand back to it on the same conditions the original " +
+                    "used to fade its layer out. The original layer stays merged at weight 0 so its " +
+                    "parameter drivers keep firing on schedule. Not carried over: VRChat's tracking " +
+                    "control (IK cut-off during the sequence) and its half-second weight fades, so " +
+                    "entering and leaving the pose blends over a fixed quarter second instead.");
+            }
             if (actionFeatures.Count > 0)
             {
                 ctx.Report.Approximated(Category,
@@ -3105,6 +3132,241 @@ namespace AvatarBridge
                 "with a motion stops writing defaults — so the first blink closed the eyes for good. " +
                 "ChilloutVR's native Eye Blink now drives the exact shape the removed layer drove. " +
                 "Expression animations that close the eyes are untouched and still win while they play.");
+        }
+
+        /// <summary>
+        /// Rebuilds a VRChat Action feature's pose states inside ChilloutVR's own
+        /// Locomotion/Emotes layer, which is the one place on this platform a full-body pose can
+        /// both assert and let go.
+        ///
+        /// The problem it solves: VRChat's Action playable rests at weight 0 and is raised at
+        /// runtime by behaviours while a sequence plays. ChilloutVR has no runtime layer-weight
+        /// control, and a SEPARATE layer has no way to yield — inert states with Write Defaults
+        /// off hold the last written muscles, Write Defaults on asserts rest pose over locomotion.
+        /// Five versions of state surgery hit that wall. Inside the locomotion layer the wall does
+        /// not exist: when the pose states aren't active, the layer's own locomotion states are,
+        /// still writing muscles every frame. Handing back IS yielding.
+        ///
+        /// What moves is the LIVE WINDOW — the states reachable from a behaviour that raises the
+        /// Action weight (goalWeight 1) without passing one that fades it (goalWeight 0), read
+        /// from the SOURCE layer's behaviours before they're stripped. Those are exactly the
+        /// states VRChat ever showed. Entry: each source transition from outside the window into a
+        /// raise-state becomes an AnyState transition carrying the same conditions — the avatar's
+        /// own arming logic, gestures and all. Exit: each transition from a window state to a
+        /// fade-state becomes a transition to the locomotion layer's default state. Behaviours are
+        /// NOT copied: the original layer stays merged at weight 0, where its parameter drivers
+        /// keep firing exactly as VRChat's did.
+        /// </summary>
+        /// <summary>States whose SOURCE behaviours fade the Action playable to 0 — where VRChat
+        /// stopped showing the layer.</summary>
+        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: false);
+
+        /// <summary>States whose behaviours raise the Action playable to 1 — where VRChat started
+        /// showing it. The entry points of the live window.</summary>
+        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: true);
+
+        static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
+        {
+            var found = new HashSet<string>();
+            if (source == null || source.stateMachine == null)
+            {
+                return found;
+            }
+            WalkMachines(source.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    var state = child.state;
+                    if (state == null || state.behaviours == null)
+                    {
+                        continue;
+                    }
+                    foreach (var behaviour in state.behaviours)
+                    {
+                        // BOTH behaviour types: VRCPlayableLayerControl drives the whole playable's
+                        // weight (the standard way an Action system runs itself), and
+                        // VRCAnimatorLayerControl drives one layer inside a playable. Only the
+                        // Action playable counts either way — a state may also drive FX or Gesture
+                        // weights, and those say nothing about this layer's visibility.
+                        bool matches =
+                            (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
+                                && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
+                                && (on ? playable.goalWeight >= 0.999f : playable.goalWeight <= 0.001f))
+                            || (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl animator
+                                && animator.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
+                                && (on ? animator.goalWeight >= 0.999f : animator.goalWeight <= 0.001f));
+                        if (matches)
+                        {
+                            found.Add(state.name);
+                        }
+                    }
+                }
+            });
+            return found;
+        }
+
+        static int TransplantActionFeature(List<AnimatorControllerLayer> masterLayers,
+            AnimatorControllerLayer clone, AnimatorControllerLayer source, BridgeContext ctx)
+        {
+            try
+            {
+                var locomotion = masterLayers.FirstOrDefault(l =>
+                    l != null && l.name == "Locomotion/Emotes" && l.stateMachine != null);
+                var locoDefault = locomotion != null ? locomotion.stateMachine.defaultState : null;
+                if (locoDefault == null || clone.stateMachine == null)
+                {
+                    return 0;
+                }
+
+                var on = LayerWeightStates(source, on: true);
+                var off = LayerWeightStates(source, on: false);
+                if (on.Count == 0)
+                {
+                    return 0;
+                }
+
+                // The clone's states, flat. Names are unique within a VRChat layer in practice;
+                // a duplicate would only shadow a state of the same name, not corrupt anything.
+                var byName = new Dictionary<string, AnimatorState>();
+                WalkMachines(clone.stateMachine, m =>
+                {
+                    foreach (var child in m.states)
+                    {
+                        if (child.state != null && !byName.ContainsKey(child.state.name))
+                        {
+                            byName[child.state.name] = child.state;
+                        }
+                    }
+                });
+
+                var live = new HashSet<string>(on.Where(byName.ContainsKey));
+                if (live.Count == 0)
+                {
+                    return 0;
+                }
+                var queue = new Queue<string>(live);
+                while (queue.Count > 0)
+                {
+                    var state = byName[queue.Dequeue()];
+                    foreach (var transition in state.transitions)
+                    {
+                        var next = transition != null ? transition.destinationState : null;
+                        if (next != null && !off.Contains(next.name) && byName.ContainsKey(next.name)
+                            && live.Add(next.name))
+                        {
+                            queue.Enqueue(next.name);
+                        }
+                    }
+                }
+
+                // Rebuild the window inside the locomotion machine.
+                var locoMachine = locomotion.stateMachine;
+                var copies = new Dictionary<string, AnimatorState>();
+                foreach (var name in live)
+                {
+                    var src = byName[name];
+                    var copy = locoMachine.AddState($"[AB] {name}");
+                    copy.motion = src.motion;
+                    copy.speed = src.speed;
+                    copy.writeDefaultValues = src.writeDefaultValues;
+                    copies[name] = copy;
+                }
+
+                void CopyTransition(AnimatorStateTransition from, AnimatorStateTransition to)
+                {
+                    to.hasExitTime = from.hasExitTime;
+                    to.exitTime = from.exitTime;
+                    to.hasFixedDuration = from.hasFixedDuration;
+                    to.duration = from.duration;
+                    to.offset = from.offset;
+                    foreach (var condition in from.conditions)
+                    {
+                        to.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                }
+
+                foreach (var name in live)
+                {
+                    var src = byName[name];
+                    foreach (var transition in src.transitions)
+                    {
+                        var dst = transition != null ? transition.destinationState : null;
+                        if (dst != null && copies.TryGetValue(dst.name, out var innerDst))
+                        {
+                            CopyTransition(transition, copies[name].AddTransition(innerDst));
+                        }
+                        else if (transition != null)
+                        {
+                            // Leaving the window (the fade state, or anywhere else): hand the
+                            // body back to locomotion, blending rather than snapping.
+                            var exit = copies[name].AddTransition(locoDefault);
+                            CopyTransition(transition, exit);
+                            exit.hasFixedDuration = true;
+                            exit.duration = 0.25f;
+                        }
+                    }
+                }
+
+                // Arming: every way the source machine could ENTER the window from outside it
+                // becomes an AnyState transition with the same conditions. Unconditional entries
+                // are skipped — an AnyState transition with no conditions would fire every frame.
+                int armed = 0;
+                void Arm(AnimatorStateTransition transition)
+                {
+                    var dst = transition != null ? transition.destinationState : null;
+                    if (dst == null || !on.Contains(dst.name) || !copies.TryGetValue(dst.name, out var target)
+                        || transition.conditions.Length == 0)
+                    {
+                        return;
+                    }
+                    var any = locoMachine.AddAnyStateTransition(target);
+                    any.hasExitTime = false;
+                    any.hasFixedDuration = true;
+                    any.duration = 0.1f;
+                    any.canTransitionToSelf = false;
+                    foreach (var condition in transition.conditions)
+                    {
+                        any.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                    armed++;
+                }
+                WalkMachines(clone.stateMachine, m =>
+                {
+                    foreach (var child in m.states)
+                    {
+                        if (child.state == null || live.Contains(child.state.name))
+                        {
+                            continue;
+                        }
+                        foreach (var transition in child.state.transitions)
+                        {
+                            Arm(transition);
+                        }
+                    }
+                    foreach (var transition in m.anyStateTransitions)
+                    {
+                        Arm(transition);
+                    }
+                });
+                if (armed == 0)
+                {
+                    // No way in: remove what was added rather than leave dead states around.
+                    foreach (var copy in copies.Values)
+                    {
+                        locoMachine.RemoveState(copy);
+                    }
+                    return 0;
+                }
+                return copies.Count;
+            }
+            catch (Exception e)
+            {
+                ctx.Report.Warning(Category, $"Could not move \"{clone.name}\"'s poses into the locomotion layer",
+                    $"{e.GetType().Name}: {e.Message} — the layer stays at weight 0; its visible FX still work.");
+                return 0;
+            }
         }
 
         /// <summary>

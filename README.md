@@ -1315,19 +1315,23 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-**The full-body pose part of such a feature is a platform wall** (3.4.25), and it was fought for
-before being called one. VRChat's Action playable sits at weight 0 and is raised *at runtime* by
-behaviours while a sequence plays — that runtime weight control is the piece ChilloutVR doesn't
-have, and without it there is no safe weight for the layer. At 0 its poses never show. At 1, Unity
-gives a layer no way to *yield*: an inert waiting state with Write Defaults off makes the layer hold
-the last muscles any state wrote (the avatar freezes mid-pose — observed directly, machine sitting
-in its waiting state with the pose stuck), and Write Defaults on would assert the rest pose over
-locomotion instead. 3.4.20–3.4.24 tried every state-level variant of this; each failed on that wall.
+**The full-body poses move into ChilloutVR's own locomotion layer** (3.4.26) — the one place on this
+platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime
+while a sequence plays; ChilloutVR has no runtime weight control, and a *separate* layer has no way
+to yield — inert states with Write Defaults off hold the last written muscles (the avatar freezes
+mid-pose; observed directly), Write Defaults on asserts rest pose over locomotion. Five versions of
+state surgery hit that wall. Inside the locomotion layer it doesn't exist: when the pose states
+aren't active, locomotion's own states are, still writing muscles every frame — handing back *is*
+yielding.
 
-So the layer merges at weight 0 and the report says exactly what that costs: the **visible** part of
-the feature — mesh swaps, materials, toggles — lives in FX layers and works; the full-body pose
-while the sequence plays is lost. Raising the weight by hand in the Animator window shows the poses
-but will freeze the body on whichever pose plays last.
+What moves is the **live window** — the states between the behaviour that raises the Action weight
+and the one that fades it, read from VRChat's own behaviours before they're stripped; exactly the
+states VRChat ever showed. The avatar's arming conditions (parameters, gestures) carry over as the
+entry conditions, and the original layer stays merged at weight 0 so its parameter drivers keep
+firing on schedule. Not carried over: VRChat's tracking control (IK cut-off during sequences) and
+its half-second weight fades — entering and leaving the pose blends over a fixed quarter second.
+When no live window can be identified, the layer stays at weight 0 and the report says exactly what
+that costs.
 
 ### Two near-identical menu controls, and only one works
 
