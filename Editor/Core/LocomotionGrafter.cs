@@ -117,7 +117,15 @@ namespace AvatarBridge
             clone.name = clip.name;
             foreach (var binding in doomed)
             {
-                AnimationUtility.SetEditorCurve(clone, binding, null);
+                // FLATTENED to the first key's value, never deleted: a root curve carries the
+                // body's BASELINE as well as its travel — RootT.y holds the hips at standing
+                // height — and deleting it dropped that to zero, sinking the wearer waist-deep
+                // into the floor (measured in game, three separate ways). A constant curve keeps
+                // the pose exactly where the author started it and moves it nowhere.
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                float first = curve != null && curve.keys.Length > 0 ? curve.keys[0].value : 0f;
+                AnimationUtility.SetEditorCurve(clone, binding,
+                    AnimationCurve.Constant(0f, Mathf.Max(clip.length, 1f / 60f), first));
             }
             MotionStripped[(clip, onlyIfTravels)] = clone;
             StrippedNames.Add(clip.name);
@@ -299,14 +307,16 @@ namespace AvatarBridge
             if (StrippedNames.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Movement baked into {StrippedNames.Count} animation(s) removed — ChilloutVR moves you itself",
+                    $"Movement baked into {StrippedNames.Count} animation(s) flattened — ChilloutVR moves you itself",
                     $"{string.Join(", ", StrippedNames.Distinct())}. VRChat systems bake movement into their " +
                     "animations because a VRChat avatar cannot move the player any other way — a copter " +
                     "takeoff climbs by animating the body upward. Here the client owns all movement (flight, " +
                     "jumps, seats), and the first-person camera rides the head bone, so a clip that also " +
-                    "displaces the body shoves the wearer around with no input. The root-movement curves were " +
-                    "removed from the converted copies; the pose itself is untouched, and the game supplies " +
-                    "the motion.");
+                    "displaces the body shoves the wearer around with no input. Each root-movement curve in " +
+                    "the converted copies is flattened to its STARTING value — held, not deleted, because the " +
+                    "same curve also carries the body's baseline height, and deleting it sank the wearer into " +
+                    "the floor. The pose stays where the author put it; the game supplies the motion. Root " +
+                    "motion that returns home (a backflip's flip, a dance's sway) is untouched.");
             }
         }
 

@@ -3566,14 +3566,45 @@ namespace AvatarBridge
                     entry.AddCondition(AnimatorConditionMode.Greater, 0.5f, readyName);
                 }
 
-                AnimatorDriverTask SetReady(float value) => new AnimatorDriverTask
+                AnimatorDriverTask Task(string targetName, AnimatorDriverTask.Operator op,
+                    string aParam, float aStatic, string bParam)
                 {
-                    targetType = AnimatorDriverTask.ParameterType.Float,
-                    targetName = readyName,
-                    op = AnimatorDriverTask.Operator.Set,
-                    aType = AnimatorDriverTask.SourceType.Static,
-                    aValue = value
-                };
+                    var task = new AnimatorDriverTask
+                    {
+                        targetType = AnimatorDriverTask.ParameterType.Float,
+                        targetName = targetName,
+                        op = op
+                    };
+                    if (aParam != null)
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Parameter;
+                        task.aParamType = AnimatorDriverTask.ParameterType.Float;
+                        task.aName = aParam;
+                    }
+                    else
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Static;
+                        task.aValue = aStatic;
+                    }
+                    if (bParam != null)
+                    {
+                        task.bType = AnimatorDriverTask.SourceType.Parameter;
+                        task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                        task.bName = bParam;
+                    }
+                    return task;
+                }
+                string deltaName = readyName + "_delta";
+                string compareName = readyName + "_cmp";
+                var scratches = new List<string> { deltaName, compareName };
+                string PrevName(string parameter) => readyName + "_prev_" + SanitizeParameterName(parameter);
+
+                // The tick that gives Engaged states a length, so their exit-time self-loop
+                // re-runs the change check every cycle. Same idiom as the velocity feed.
+                var armingTick = new AnimationClip { name = "Arming Tick" };
+                armingTick.SetCurve("", typeof(Animator), compareName + "Tick",
+                    AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
                 var memory = new AnimatorStateMachine
                 {
                     name = $"{clone.name} Arming",
@@ -3581,19 +3612,49 @@ namespace AvatarBridge
                 };
                 var ready = memory.AddState("Ready");
                 ready.writeDefaultValues = false;
+                ready.motion = armingTick;
                 memory.defaultState = ready;
                 var readyDriver = ready.AddStateMachineBehaviour<AnimatorDriver>();
                 readyDriver.localOnly = false;
-                readyDriver.EnterTasks.Add(SetReady(1f));
+                readyDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 1f, null));
                 int engagedCount = 0;
                 foreach (var (_, conditions) in armedEntries)
                 {
-                    var engaged = memory.AddState($"Engaged {++engagedCount}");
+                    engagedCount++;
+                    var parameters = conditions.Select(c => c.parameter).Distinct().ToList();
+
+                    // Capture: drop the flag and remember the values that armed. A separate
+                    // state, because Engaged re-enters itself every tick to re-run its check —
+                    // capturing there would re-baseline every cycle and never see a change.
+                    var capture = memory.AddState($"Capture {engagedCount}");
+                    capture.writeDefaultValues = false;
+                    capture.motion = armingTick;
+                    var captureDriver = capture.AddStateMachineBehaviour<AnimatorDriver>();
+                    captureDriver.localOnly = false;
+                    captureDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                    foreach (var parameter in parameters)
+                    {
+                        scratches.Add(PrevName(parameter));
+                        captureDriver.EnterTasks.Add(Task(PrevName(parameter),
+                            AnimatorDriverTask.Operator.Set, parameter, 0f, null));
+                    }
+
+                    // Engaged: every cycle, delta = OR over parameters of (value != captured).
+                    var engaged = memory.AddState($"Engaged {engagedCount}");
                     engaged.writeDefaultValues = false;
+                    engaged.motion = armingTick;
                     var engagedDriver = engaged.AddStateMachineBehaviour<AnimatorDriver>();
                     engagedDriver.localOnly = false;
-                    engagedDriver.EnterTasks.Add(SetReady(0f));
-                    var hold = ready.AddTransition(engaged);
+                    engagedDriver.EnterTasks.Add(Task(deltaName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                    foreach (var parameter in parameters)
+                    {
+                        engagedDriver.EnterTasks.Add(Task(compareName,
+                            AnimatorDriverTask.Operator.NotEqual, parameter, 0f, PrevName(parameter)));
+                        engagedDriver.EnterTasks.Add(Task(deltaName,
+                            AnimatorDriverTask.Operator.Addition, deltaName, 0f, compareName));
+                    }
+
+                    var hold = ready.AddTransition(capture);
                     hold.hasExitTime = false;
                     hold.hasFixedDuration = true;
                     hold.duration = 0f;
@@ -3601,8 +3662,23 @@ namespace AvatarBridge
                     {
                         hold.AddCondition(condition.mode, condition.threshold, condition.parameter);
                     }
-                    // The complement of (A AND B) is (!A OR !B): one release transition per
-                    // negated condition.
+                    var settle = capture.AddTransition(engaged);
+                    settle.hasExitTime = true;
+                    settle.exitTime = 1f;
+                    settle.hasFixedDuration = true;
+                    settle.duration = 0f;
+                    var loop = engaged.AddTransition(engaged);
+                    loop.hasExitTime = true;
+                    loop.exitTime = 1f;
+                    loop.hasFixedDuration = true;
+                    loop.duration = 0f;
+
+                    // Release and re-raise the flag when the arming conditions have gone FALSE —
+                    // the complement of (A AND B) is (!A OR !B), one transition per negation —
+                    // OR when any armed parameter has CHANGED while they stayed true. The change
+                    // release is what lets a held menu switch straight from one emote to the
+                    // next: Wave -> Dab used to need a trip through None, because "0 < VRCEmote
+                    // < 9" never went false between them.
                     foreach (var condition in conditions)
                     {
                         var release = engaged.AddTransition(ready);
@@ -3612,7 +3688,26 @@ namespace AvatarBridge
                         var (mode, threshold) = InvertCondition(condition);
                         release.AddCondition(mode, threshold, condition.parameter);
                     }
+                    var changed = engaged.AddTransition(ready);
+                    changed.hasExitTime = false;
+                    changed.hasFixedDuration = true;
+                    changed.duration = 0f;
+                    changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
                 }
+                var withScratches = master.parameters.ToList();
+                foreach (var scratch in scratches.Distinct())
+                {
+                    if (withScratches.All(p => p.name != scratch))
+                    {
+                        withScratches.Add(new AnimatorControllerParameter
+                        {
+                            name = scratch,
+                            type = AnimatorControllerParameterType.Float,
+                            defaultFloat = 0f
+                        });
+                    }
+                }
+                master.parameters = withScratches.ToArray();
                 masterLayers.Add(new AnimatorControllerLayer
                 {
                     name = MakeUniqueLayerName(masterLayers, $"[AB] {clone.name} Arming"),

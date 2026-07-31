@@ -1389,8 +1389,10 @@ same baked movement here shoves the wearer around with no input, so it is remove
 whether the clip's root **ends where it started**: a backflip's flip is root rotation and a dance
 sways the whole body, both returning home, and those keep their curves — stripping them broke the
 animations while removing nothing a player could feel. A clip that ends displaced is a mover, and
-looped, a vehicle; those lose the curves. Locomotion-tree grafts are always stripped — there the
-capsule owns every metre.
+looped, a vehicle; those have each root curve **flattened to its starting value** (3.5.5) — held,
+never deleted, because the same curve carries the body's baseline height and deleting it sank the
+wearer waist-deep into the floor. Locomotion-tree grafts are always flattened — there the capsule
+owns every metre.
 
 ### An emote replays forever instead of playing once
 
@@ -1400,10 +1402,11 @@ requires the value to return to zero, so an emote fires on the **rise** of its c
 The converted pose states are re-armed from the locomotion resting state instead — and arming on
 a *level* replays the emote every time the pose hands back, forever, as long as the menu holds
 the value. Conversion now reproduces the rise-only behaviour: a local ready flag gates every
-arming transition, dropped the moment a pose is armed and raised again only when its conditions
-have gone false — select the emote again (or re-select after None) and it plays again, exactly
-like VRChat. Hold-style emotes (dances, AFK poses) are unaffected; they loop until deselected, as
-their own exit conditions have always said.
+arming transition, dropped the moment a pose is armed and raised again when its conditions have
+gone false **or the armed value has changed** (3.5.5) — so switching straight from one emote to
+the next plays the new one, no trip through None required, and re-selecting an emote replays it.
+Hold-style emotes (dances, AFK poses) are unaffected; they loop until deselected, as their own
+exit conditions have always said.
 
 ### A menu control appears, moves, syncs — and does nothing
 
