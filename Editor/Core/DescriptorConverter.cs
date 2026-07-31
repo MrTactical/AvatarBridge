@@ -626,6 +626,47 @@ namespace AvatarBridge
         /// "eye-tracking off" state blink — its ON/OFF clips drive useBlinkBlendshapes, which
         /// does nothing until blink shapes are wired here.
         /// </summary>
+        /// <summary>
+        /// Whether some layer of the converted animator already animates a blink blendshape. Names
+        /// the clip so the report can point at it — "your avatar blinks" is only useful if the user
+        /// can go and look at the thing doing it.
+        /// </summary>
+        static bool AnimatedBlinkShape(BridgeContext ctx, out string drivenBy)
+        {
+            drivenBy = null;
+            var controller = ctx.MergedController;
+            if (controller == null)
+            {
+                return false;
+            }
+            foreach (var clip in controller.animationClips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    const string prefix = "blendShape.";
+                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    string shape = binding.propertyName.Substring(prefix.Length);
+                    // "blink" anywhere in the name, which covers vrc.Blink, Blink L/R, EyeBlink
+                    // and the handful of naming schemes avatars actually use. Deliberately loose:
+                    // a false positive costs the client's blink on an avatar that has its own,
+                    // while a false negative is two systems fighting.
+                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        drivenBy = $"\"{clip.name}\" drives \"{shape}\"";
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)
         {
             var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
@@ -637,6 +678,28 @@ namespace AvatarBridge
             if (left == null && right == null && combined == null)
             {
                 return false;
+            }
+
+            // NOT if the avatar already blinks itself. VRCFury and similar ship a blink system as
+            // animator layers driving their own shape — "vrc.Blink" is the usual name — and the
+            // VRChat descriptor then names no eyelid shape, which is exactly the condition that
+            // brings us here. Turning CVR's native blink on as well puts two systems on one pair of
+            // eyes, and the shape auto-detection has to guess which of several blink-ish shapes is
+            // the eyelid. On the avatar that found this it guessed "Blink" while the animator drove
+            // "vrc.Blink": the pupil vanished, the lids never moved, and the eyes started closed.
+            //
+            // The avatar's own system is the better authority — it was authored against this mesh.
+            if (AnimatedBlinkShape(ctx, out string drivenBy))
+            {
+                cvrAvatar.useBlinkBlendshapes = false;
+                ctx.Report.Converted(Category, "Blink left to the avatar's own animation",
+                    $"This avatar blinks from its own animator ({drivenBy}), so ChilloutVR's native Eye " +
+                    "Blink was left OFF rather than added alongside it. Two blink systems on one pair of " +
+                    "eyes fight, and the loser is whichever the client writes second — the visible result " +
+                    "is eyes that stay open, start closed, or lose a pupil, depending on which shape the " +
+                    "auto-detection picked. Tick Eye Blink Settings on the CVRAvatar if you would rather " +
+                    "have the client's blink and can disable the avatar's own.");
+                return true;
             }
 
             cvrAvatar.useBlinkBlendshapes = true;

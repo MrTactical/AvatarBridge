@@ -214,10 +214,10 @@ namespace AvatarBridge
                         // the avatar's own parameters is not doing what VRChat's Action layer is
                         // for, and resting it at 0 kills the feature outright.
                         if (ActionLayerDrivesOwnFeature(clone, out string byWhat)
-                            && NeutralizeActionIdle(clone, master))
+                            && NeutralizeActionIdle(clone, srcLayer, master, out int inert))
                         {
                             clone.defaultWeight = 1f;
-                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
+                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat}, {inert} state(s) made inert)");
                         }
                         else
                         {
@@ -317,6 +317,7 @@ namespace AvatarBridge
             RepairUnconditionalDriverStates(master, ctx);
             VerifyMenuParameterNames(master, ctx);
             PruneDeadMenuEntries(master, ctx);
+            WithdrawSelfDrivenExposures(master, ctx);
             CompactIntDropdowns(master, ctx);
             // After the menu is final. SystemStripper already drops unreferenced parameters, but
             // it runs long before this and keeps anything a menu entry drives — so a parameter
@@ -2870,6 +2871,94 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Takes back menu entries this conversion invented for parameters the avatar turns out to
+        /// drive itself.
+        ///
+        /// "Expose menuless synced parameters" exists because ChilloutVR syncs from the animator,
+        /// so a synced parameter with no control still needs somewhere to live. It guesses, and the
+        /// guess is wrong whenever the avatar writes that parameter from a driver: the control then
+        /// sits in the menu fighting the animator for the value, which is the same objection that
+        /// already keeps game-driven parameters out.
+        ///
+        /// It also reads as a bug. One transforming avatar came out with a "Car Mode" control (the
+        /// author's, driving TransformMode) directly above a "CarMode" one (ours, driving the
+        /// parameter the Action layer sets for itself) — two controls, near-identical names, one of
+        /// them inert. Only entries recorded in AutoExposedParameters are eligible; anything the
+        /// author put in the menu stays whatever it does.
+        /// </summary>
+        static void WithdrawSelfDrivenExposures(AnimatorController master, BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings : null;
+            if (settings == null || ctx.AutoExposedParameters.Count == 0)
+            {
+                return;
+            }
+
+            // Everything a parameter driver writes anywhere in the merged controller.
+            var driven = new HashSet<string>();
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state == null || child.state.behaviours == null)
+                        {
+                            continue;
+                        }
+                        foreach (var behaviour in child.state.behaviours)
+                        {
+                            if (!(behaviour is VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver driver)
+                                || driver.parameters == null)
+                            {
+                                continue;
+                            }
+                            foreach (var task in driver.parameters)
+                            {
+                                if (!string.IsNullOrEmpty(task.name))
+                                {
+                                    driven.Add(task.name);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            if (driven.Count == 0)
+            {
+                return;
+            }
+
+            var withdrawn = new SortedSet<string>();
+            for (int i = settings.Count - 1; i >= 0; i--)
+            {
+                var entry = settings[i];
+                if (entry == null || string.IsNullOrEmpty(entry.machineName)
+                    || !ctx.AutoExposedParameters.Contains(entry.machineName)
+                    || !driven.Contains(entry.machineName))
+                {
+                    continue;
+                }
+                withdrawn.Add($"\"{entry.name}\" ({entry.machineName})");
+                settings.RemoveAt(i);
+            }
+            if (withdrawn.Count == 0)
+            {
+                return;
+            }
+            EditorUtility.SetDirty(ctx.CvrAvatar);
+            ctx.Report.Converted(Category,
+                $"{withdrawn.Count} menu control(s) withdrawn — the avatar sets these itself",
+                $"{string.Join(", ", withdrawn)}. These had no control in the VRChat menu, so one was " +
+                "created for them to keep them reachable; the merged animator then showed a parameter " +
+                "driver writing each one. A control for a parameter the avatar drives does nothing except " +
+                "fight the animator and sit next to the control that really works — the usual sighting is " +
+                "two near-identically named entries where only one responds. The parameter itself is " +
+                "untouched and still syncs.");
+        }
+
+        /// <summary>
         /// VRChat's built-ins that an Action layer legitimately waits on while doing nothing but
         /// playing emotes. Anything OUTSIDE this set means the avatar is driving the layer itself.
         /// </summary>
@@ -2963,18 +3052,87 @@ namespace AvatarBridge
         /// Returns false if the layer has no identifiable resting state, in which case the caller
         /// leaves the weight at 0 — the safe answer, and the behaviour before this existed.
         /// </summary>
-        static bool NeutralizeActionIdle(AnimatorControllerLayer layer, AnimatorController master)
+        static bool NeutralizeActionIdle(AnimatorControllerLayer layer, AnimatorControllerLayer source,
+            AnimatorController master, out int neutralized)
         {
+            neutralized = 0;
             var machine = layer.stateMachine;
             var idle = machine != null ? machine.defaultState : null;
             if (idle == null)
             {
                 return false;
             }
-            idle.motion = null;          // FillEmptyMotionSlots gives it the inert placeholder
-            idle.writeDefaultValues = false;
+
+            // Every state VRChat would have faded the layer out from, read from VRChat's own data
+            // before it is stripped — see LayerOffStates. Plus the resting state, which VRChat
+            // reaches with the layer already at 0.
+            var inert = LayerOffStates(source);
+            inert.Add(idle.name);
+
+            int made = 0;
+            WalkMachines(machine, m =>
+            {
+                foreach (var child in m.states)
+                {
+                    if (child.state != null && inert.Contains(child.state.name))
+                    {
+                        child.state.motion = null;   // FillEmptyMotionSlots supplies the placeholder
+                        child.state.writeDefaultValues = false;
+                        made++;
+                    }
+                }
+            });
+            neutralized = made;
             EditorUtility.SetDirty(master);
-            return true;
+            return made > 0;
+        }
+
+        /// <summary>
+        /// The names of states that switch their own playable layer OFF, taken from the VRChat
+        /// behaviours attached to them.
+        ///
+        /// This is the piece that makes a live Action layer safe. VRChat's Action states end by
+        /// running a <c>VRC Animator Layer Control</c> that fades the Action layer's weight to 0 —
+        /// that behaviour IS the statement "the layer stops contributing here". ChilloutVR cannot
+        /// run it, and the conversion strips it, so at weight 1 the exit sequence keeps animating
+        /// the body forever: on the avatar this was written for, coming out of vehicle mode left it
+        /// stuck in a half-crouch, because "Prepare Standing", "BlendOut Stand" and "Restore
+        /// Tracking (stand)" ran with nothing left to turn them off.
+        ///
+        /// Rather than guess which states are the tail, this reads the behaviours while they still
+        /// exist and makes exactly those states inert. It is VRChat's own answer to the question,
+        /// which is a great deal better than a heuristic about state names.
+        /// </summary>
+        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
+        {
+            var off = new HashSet<string>();
+            if (source == null || source.stateMachine == null)
+            {
+                return off;
+            }
+            WalkMachines(source.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    var state = child.state;
+                    if (state == null || state.behaviours == null)
+                    {
+                        continue;
+                    }
+                    foreach (var behaviour in state.behaviours)
+                    {
+                        // Only the Action playable: a state may also drive FX or Gesture weights,
+                        // and those say nothing about whether THIS layer has finished.
+                        if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl control
+                            && control.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
+                            && control.goalWeight <= 0.001f)
+                        {
+                            off.Add(state.name);
+                        }
+                    }
+                }
+            });
+            return off;
         }
 
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>

@@ -1315,9 +1315,44 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-If locomotion breaks after this — walking on the spot, a stuck pose — set that layer's weight back to
-0 in the Animator window and report it: it means the waiting state wasn't the only thing holding the
-body.
+**The exit sequence is handled from VRChat's own data** (3.4.21). VRChat's Action states finish by
+running a `VRC Animator Layer Control` that fades the layer's weight to 0 — that behaviour *is* the
+statement "the layer stops contributing here". ChilloutVR can't run it, so at weight 1 the tail states
+(`Prepare Standing`, `BlendOut Stand`, `Restore Tracking (stand)`) kept animating forever and left one
+avatar stuck in a half-crouch on exiting vehicle mode. Rather than guess which states are the tail,
+the conversion now reads those behaviours while they still exist and makes exactly those states inert.
+
+If locomotion still breaks — walking on the spot, a stuck pose — set that layer's weight back to 0 in
+the Animator window and report it.
+
+### Two near-identical menu controls, and only one works
+
+**Fixed in 3.4.21.** ChilloutVR syncs straight from the animator, so a synced parameter with no menu
+control still needs somewhere to live — conversions create one. That guess is wrong when the avatar
+*writes* the parameter itself from a parameter driver: the new control then sits in your menu fighting
+the animator, right next to the control that really works. One transforming avatar shipped a `Car Mode`
+entry (the author's, driving `TransformMode`) directly above a `CarMode` one (ours, driving what the
+Action layer sets for itself).
+
+Invented controls are now withdrawn once the merged animator shows a driver writing that parameter.
+Only controls this tool added are eligible — anything the author put in the menu stays. The parameter
+is untouched and still syncs.
+
+### Your eyes stay open, start closed, or lose a pupil
+
+**Fixed in 3.4.21.** If the VRChat descriptor names no eyelid blendshape, conversions detect one by
+name and switch on ChilloutVR's native Eye Blink. But a descriptor names none for two very different
+reasons: the avatar has no blink at all, or **it blinks from its own animator** — VRCFury and similar
+ship exactly that, driving their own shape (usually `vrc.Blink`).
+
+In the second case, switching on the native blink puts two systems on one pair of eyes, and the
+auto-detection has to guess which of several blink-ish shapes is the eyelid. One avatar had the client
+driving `Blink` while its animator drove `vrc.Blink`: the pupil vanished, the lids never moved, and the
+eyes started closed.
+
+Native blink is now left off when any converted layer already animates a blink shape — the avatar's
+own system was authored against that mesh and is the better authority. Tick Eye Blink Settings on the
+`CVRAvatar` if you'd rather have the client's and can disable the avatar's own.
 
 ### An effect draws in one eye only in VR
 
