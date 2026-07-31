@@ -97,8 +97,13 @@ namespace AvatarBridge
             if (head != null)
             {
                 method = Method.HeadBone;
-                detail = $"from the head bone \"{head.name}\"";
-                return Local(root, head.position);
+                detail = $"just ahead of the head bone \"{head.name}\"";
+                // The CCK's offset, not the bare bone position — the head bone sits at the base of
+                // the skull, so its raw position puts the voice inside the head. Shared with
+                // CckAutoVoicePosition so the two paths cannot drift apart.
+                return AvatarFeatureDetect.HeadVoiceOffset(root, animator, out var ahead)
+                    ? ahead
+                    : Local(root, head.position);
             }
 
             method = Method.ViewPosition;

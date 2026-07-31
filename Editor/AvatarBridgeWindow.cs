@@ -455,7 +455,11 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Gesture (hand poses)", null,
                 settings.convertGestureLayer, v => settings.convertGestureLayer = v));
             b.Add(BridgeElements.Bind("Base / locomotion",
-                "Usually better left to CVR's own locomotion; enable only for custom locomotion avatars.",
+                "REPLACES ChilloutVR's locomotion rather than adding to it — the converted layer sits above " +
+                "CVR's own and drives the same muscles. Leave OFF unless this avatar's locomotion system is " +
+                "the whole point of it. When a replacement doesn't run correctly here (many depend on runtime " +
+                "layer-weight control, which ChilloutVR has no equivalent for) the movement sliders animate " +
+                "nothing and the Airborne / Flying / Sitting / Swimming stances stop responding.",
                 settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));

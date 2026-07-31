@@ -572,28 +572,49 @@ namespace AvatarBridge
             {
                 return false;
             }
-            Vector3 world;
-            if (jaw != null)
-            {
-                world = jaw.position;
-            }
-            else if (head != null)
-            {
-                // The CCK's numbers (5 mm up, 6 cm forward) are metres for a human-sized head.
-                // Expressed as fractions of this avatar's own hips-to-head span they come out
-                // the same on a 1.8 m biped and stay sane on anything else, without inheriting
-                // a bone scale.
-                var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
-                float span = hips != null ? Vector3.Distance(hips.position, head.position) : 0f;
-                world = OffsetFromBone(head, span > 0.0001f
-                    ? new Vector3(0f, 0.008f * span, 0.1f * span)
-                    : new Vector3(0f, 0.005f, 0.06f));
-            }
-            else
+            // NO JAW means this path can only offer a head-bone offset — a guess at where a mouth
+            // usually sits. MouthLocator can do better whenever the avatar has visemes: an
+            // open-mouth shape's vertex deltas ARE the mouth, measured on this face rather than
+            // assumed. So hand the decision over instead of claiming it, and let MouthLocator fall
+            // back to this same offset if it finds no viseme to measure.
+            //
+            // Found on an avatar with 15 viseme blendshapes whose voice still landed mid-face,
+            // because this path answered first and never mentioned the visemes existed.
+            if (jaw == null)
             {
                 return false;
             }
-            localPosition = RootOffset(root, world);
+            if (jaw == null)
+            {
+                return false;
+            }
+            localPosition = RootOffset(root, jaw.position);
+            return true;
+        }
+
+        /// <summary>
+        /// The CCK's own "just ahead of the head bone" voice placement, for rigs with no jaw and no
+        /// viseme to measure. Shared so both voice paths use one definition — MouthLocator's own
+        /// head fallback used the bare head-bone position, which is inside the skull.
+        ///
+        /// The CCK's numbers (5 mm up, 6 cm forward) are metres for a human-sized head. Expressed
+        /// as fractions of this avatar's own hips-to-head span they come out the same on a 1.8 m
+        /// biped and stay sane on anything else, without inheriting a bone scale.
+        /// </summary>
+        public static bool HeadVoiceOffset(GameObject root, Animator animator, out Vector3 localPosition)
+        {
+            localPosition = default;
+            var head = animator != null && animator.isHuman
+                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            if (root == null || head == null)
+            {
+                return false;
+            }
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            float span = hips != null ? Vector3.Distance(hips.position, head.position) : 0f;
+            localPosition = RootOffset(root, OffsetFromBone(head, span > 0.0001f
+                ? new Vector3(0f, 0.008f * span, 0.1f * span)
+                : new Vector3(0f, 0.005f, 0.06f)));
             return true;
         }
 

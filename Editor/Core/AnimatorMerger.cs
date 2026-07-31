@@ -5630,8 +5630,22 @@ namespace AvatarBridge
                             || layer.name.StartsWith("[Action]"));
                     if (!gogoReplacement)
                     {
+                        bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
                         ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
-                            "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                            baseLayer
+                                ? "It sits ABOVE ChilloutVR's own Locomotion/Emotes layer and drives the same " +
+                                  "muscles, so it does not add to CVR's locomotion — it REPLACES it. That is " +
+                                  "what \"Base / locomotion\" means, and it is the right choice only if this " +
+                                  "avatar's own locomotion system runs correctly here. If it does not, the " +
+                                  "symptoms are unmistakable: the movement sliders animate nothing, and the " +
+                                  "Airborne / Flying / Sitting / Swimming stances do nothing, because the layer " +
+                                  "that answers them has been overridden. VRChat locomotion replacements often " +
+                                  "depend on runtime layer-weight control and on parameters ChilloutVR feeds " +
+                                  "differently, neither of which converts. THE FIX IS ONE CLICK: turn OFF " +
+                                  "\"Base / locomotion\" in Animator layers to convert and convert again — " +
+                                  "ChilloutVR's own locomotion is complete and needs nothing from VRChat."
+                                : "It can override CVR's locomotion/pose. Review it; lower its weight or delete " +
+                                  "it if movement breaks.");
                     }
                 }
             }

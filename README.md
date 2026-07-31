@@ -1310,6 +1310,21 @@ Three things worth knowing:
   *Before 3.4.10 a hat-grab layer's gate was given the "hat on the head" animation, which asserted
   the hat visible from above its own toggle.*
 
+### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
+
+**Convert again with "Base / locomotion" turned OFF** (it's off by default).
+
+That option doesn't *add* your avatar's locomotion to ChilloutVR's — it **replaces** it. The converted
+`[Base]` layers sit above CVR's own `Locomotion/Emotes` layer and drive the same muscles, so CVR's
+layer stops having any say. That's correct when the avatar's own locomotion system runs here. Many
+don't: VRChat locomotion replacements routinely depend on runtime layer-weight control, which
+ChilloutVR has no equivalent for, and on parameters the two platforms feed differently. When such a
+system doesn't run, nothing replaces what it displaced — the movement sliders animate nothing and the
+stance buttons stop responding, because the layer that answers them has been overridden.
+
+ChilloutVR's own locomotion is complete and needs nothing from VRChat, so leaving this off is the
+right choice for almost every avatar. The report names each `[Base]` layer that drives muscles.
+
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Three known causes, all fixed, all worth naming if you
