@@ -34,6 +34,26 @@ finish by hand.
 <p align="center"><em>The banner runs VRChat's blue into ChilloutVR's orange, and the step markers
 sit along it — because that's the trip your avatar is making.</em></p>
 
+**Contents:**
+[Comparison](#already-using-vrc3cvr) ·
+[Highlights](#highlights) ·
+[Requirements](#requirements) ·
+[Installation](#installation) ·
+[Usage](#usage) ·
+[What gets converted](#what-gets-converted) ·
+[Constraints](#constraints-that-drive-another-object) ·
+[Physics](#physbones--magicacloth2) ·
+[Contacts](#native-contacts) ·
+[Shaders](#shaders-that-only-draw-into-one-eye) ·
+[Parameter types](#parameter-types) ·
+[Face tracking](#face-tracking) ·
+[Store description](#store-description) ·
+[Setup mode](#setup-mode) ·
+[Known limitations](#known-limitations) ·
+[Troubleshooting](#troubleshooting) ·
+[Reporting a bug](#reporting-a-bug) ·
+[Credits](#credits)
+
 ## Already using vrc3cvr?
 
 vrc3cvr is the reason this one exists — AvatarBridge started by studying it (see
@@ -57,6 +77,7 @@ mid-2026:
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
+| Custom locomotion, fall, sit and flight animations carried into CVR's own locomotion | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
 | A play-mode tester that drives the converted avatar the way the game does | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
@@ -94,6 +115,10 @@ actually running.
   Write Defaults undo the change. Nothing carries that rule across, so those toggles used to switch
   on and stay on. The off direction is now [real animation](#a-toggle-switches-on-but-never-back-off),
   reusing your avatar's own clip where it has one.
+- **Your avatar's own locomotion crosses over** — custom walking, crouching, crawling, falling and
+  sitting animations are grafted into ChilloutVR's locomotion layer, matched by blend-tree
+  position; emotes move into the one layer that can both pose the body and hand it back; a flight
+  pose rides CVR's **native** flight. The game moves you, with your avatar's art.
 - **Bloat removed** — GoGo Loco and SPS/OGB/PCS stripped (one avatar went from 3088 to 240 of 3200
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
@@ -124,21 +149,18 @@ actually running.
   because driving those would do nothing in game either.
 
   **Visemes and blink** are held on the face mesh **every frame, after the animator** — the same
-  place and order ChilloutVR writes them (3.4.32). Before that, each slider wrote once, and on any
-  avatar whose animator also touches the same blendshape the very next animator evaluation erased
-  it — the blink slider "did nothing" on avatars whose blink was wired perfectly. Holding the value
-  also reproduces the game's conflicts honestly: an animation fighting the blink loses here exactly
-  as it will in game.
+  place and order ChilloutVR writes them, so they beat any animation using the same blendshape
+  here exactly as they will in game. An expression that fights the blink loses honestly, in the
+  editor, before you upload.
 
   The **Face tracking** section drives every eye and Unified Expressions parameter the controller
   declares, grouped by region, with each slider's range read from the rig's own blend trees — so
   bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
   On an avatar converted to **native** `CVRFaceTracking` there are no such parameters — the client
   writes blendshapes straight from the headset, with no animator in the loop — so the section shows
-  a slider per **mapped blendshape** instead (3.1.0), writing the mesh the same way the client will.
-  Before that it showed a single lone toggle and looked broken while being perfectly correct.
+  a slider per **mapped blendshape** instead, writing the mesh the same way the client will.
 
-  The **Remote view** card (3.5.1) snaps every `#` local parameter to its default — the value it
+  The **Remote view** card snaps every `#` local parameter to its default — the value it
   holds forever on other players' clients, which never receive local parameters or parameter
   streams. A layer that starts cycling or lands in a different state after pressing it is doing
   exactly that in game for everyone but the wearer — the cause of "an animation loops rapidly for
@@ -313,7 +335,7 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
-**Rotation offsets are measured, not copied** (3.4.28). Copying VRChat's `RotationOffset` field
+**Rotation offsets are measured, not copied.** Copying VRChat's `RotationOffset` field
 trusts that both engines apply it in the same space, and that held until a constraint crossed two
 very differently oriented bones — a car avatar's windshield pupils mirror its face eye bones through
 rotation constraints, and the copied offset left them rotated 77° edge-on, invisible. VRC constraints
@@ -321,7 +343,7 @@ evaluate in the editor, so at conversion time the scene pose *is* VRChat's solve
 active, full-weight, single-source rotation constraint the offset is now derived from that pose
 directly, with no cross-engine assumption. Multi-source or inactive constraints still copy the field.
 
-**An unfollowable local-space constraint yields to its animation** (3.4.29). VRChat constraints can
+**An unfollowable local-space constraint yields to its animation.** VRChat constraints can
 solve in the source's *local* space; Unity's only solve in world space, and when the constrained bone
 can't be re-parented to bridge that (it skins the mesh), the converted constraint is wrong whenever
 the two parent chains move apart. If a clip in the controller *also* poses that bone, the wrong
@@ -397,12 +419,11 @@ than numeric:
 - **Wind influence goes to zero**, because VRChat has no wind at all. ChilloutVR worlds do, and
   MagicaCloth2 ships fully responsive to it, so a converted chain would otherwise pick up motion
   its author never tuned for.
-
-- **`Is Animated` sets Animation Pose Ratio to 1** (3.4.19). MagicaCloth2 settles a chain back to
-  the pose the avatar was *built* in; a PhysBone marked `Is Animated` is one an animation moves. Left
-  at the default the two fight and the cloth wins — a chest or ear slider that scales its own bones
-  simply stops working, and the avatar quietly has a different shape from the original at identical
-  menu settings. The source flag decides this, so it's applied rather than reported.
+- **`Is Animated` sets Animation Pose Ratio to 1**. MagicaCloth2 settles a chain back to the pose
+  the avatar was *built* in; a PhysBone marked `Is Animated` is one an animation moves. Left at
+  the default the two fight and the cloth wins — a chest or ear slider that scales its own bones
+  simply stops working, and the avatar quietly has a different shape from the original at
+  identical menu settings. The source flag decides this, so it's applied rather than reported.
 
 Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
 naming the field to change if that chain wants it.
@@ -449,7 +470,7 @@ the mod's `_IsGrabbed` and `_Angle` drive your existing grab-reactive logic, and
 are kept synced rather than made local. That's as far as any converter can go — **grabbing is a
 client mod**, so only people who have installed it can grab anything on your avatar.
 
-**The failure this causes is silent and looks like something else** (3.4.1). On one balloon avatar
+**The failure this causes is silent and looks like something else.** On one balloon avatar
 the pump handle carries a contact *sender*, and inflating works by someone grabbing the handle so
 that sender reaches its receiver. Convert it and every part checks out — cloth present, sender
 present, receiver present, tags matching — but the handle can't be grabbed, so it never moves and
@@ -466,7 +487,7 @@ whatever avatar they wear — the client turns each `CVRPointer` into a contact 
 `FingerIndexL`. `Hand` happens to be spelled the same on both, which is why *some* converted
 contacts worked and others silently never fired.
 
-Receivers now listen for both (3.4.0), so a stranger's hand or finger sets them off:
+Receivers listen for both, so a stranger's hand or finger sets them off:
 
 | Your receiver listens for | Also listens for |
 |---|---|
@@ -565,16 +586,14 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
   than wrong pixels.
 - **Screen-grab effects are fixed too.** A `GrabPass` texture is a texture *array* under
   instancing — one slice per eye — so lens, refraction and heat-haze shaders that read it with
-  `tex2D` show one eye the other eye's view. Those reads are rewritten to the screen-space
-  macros, same as `_CameraDepthTexture`.
-- **Shaders needing more than the macros get a recipe.** Some fixes can't be derived — a
-  `GrabPass` is a per-eye texture *array* under instancing, so a lens or refraction shader reading
-  it with `tex2D` shows one eye the other eye's view no matter how many macros it has. Those are
-  written by hand once and kept in AvatarBridge's recipe list, then applied to *your* copy on
-  every later conversion. Each recipe is pinned to a fingerprint of the exact shader version it
-  was written for: an updated or edited shader doesn't match and is refused rather than guessed
-  at. Nothing is redistributed — the recipe is the edit, not the shader, and your original file is
-  never touched. Hit one that has no recipe yet? Open an issue and it can be added for everyone.
+  `tex2D` show one eye the other eye's view no matter how many macros they have. Those reads are
+  rewritten to the screen-space macros, same as `_CameraDepthTexture`.
+- **Shaders needing more than the derivable fixes get a recipe** — written by hand once, kept in
+  AvatarBridge's recipe list, and applied to *your* copy on every later conversion. Each recipe is
+  pinned to a fingerprint of the exact shader version it was written for: an updated or edited
+  shader doesn't match and is refused rather than guessed at. Nothing is redistributed — the
+  recipe is the edit, not the shader, and your original file is never touched. Hit one that has
+  no recipe yet? Open an issue and it can be added for everyone.
 - **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
   a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
 - **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
@@ -713,7 +732,7 @@ untouched**, because VRChat's constraint features are what don't survive — loc
 the negative-scale correction. If you're choosing or commissioning a quad base for ChilloutVR, that
 is the single biggest predictor of how well it will land.
 
-**The viewpoint and voice get rescued when they land off the body** (3.3.0). Rather than trying to
+**The viewpoint and voice get rescued when they land off the body.** Rather than trying to
 recognise a fourth rig design, this asks the one question no skeleton can lie about: is the marker
 further from *every bone that deforms mesh* than this rig's own proportions allow? If so it isn't on
 the avatar, however well it measured, and it's re-placed from the eye markers that **are** on the
@@ -723,9 +742,11 @@ other two quadrupeds — can't be disturbed. Naming only nominates candidates; g
 **A constraint-relay quadruped walks in game** — confirmed by wearing one, which is the only test
 that counts. Getting there took several separate fixes, and the walls below are still standing.
 
-**Turn off "Base / locomotion" for a quadruped.** It's off by default. VRChat's stock locomotion
-layer and ChilloutVR's own both drive the decoy biped, and with both present the avatar holds its
-rest pose. With it off, ChilloutVR drives the decoy and the relays carry it onto the animal.
+**"Base / locomotion" is safe to leave on, quadruped or not.** Merged `[Base]` layers are masked
+off the humanoid rig — they can only *replace* ChilloutVR's locomotion, never add to it — so
+ChilloutVR alone drives the decoy biped and the relays carry it onto the animal, while any custom
+locomotion clips are [grafted](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing)
+into CVR's own layer.
 
 **Most quadrupeds are a hidden humanoid rig.** The model carries a second, invisible biped skeleton
 — bones named like `HipsHuman`, `thighHuman.L`, `HeadHuman` — and Unity's humanoid map points only
@@ -747,19 +768,19 @@ all. **Two things break the rest, and the report names both:**
   that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
   computes and writes its own rotation with no hook in between. Un-mirroring the bones and
   re-rigging is the only cure, and that's a job for your 3D package.
-- **PhysBones on a relayed bone (2.91.0, widened in 2.97.0).** A constraint writes that bone every frame; a cloth
+- **PhysBones on a relayed bone.** A constraint writes that bone every frame; a cloth
   solver integrates it from its own last state. Together they feed each other until the transform
   goes **NaN**, and the chain hangs broken with nothing to see in the animator. VRChat survives it
   because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone don't. Those
-  chains are skipped now and listed in the report. **Unity's own constraints count too** (2.97.0) —
-  the loop is engine-level and doesn't care which component writes the rotation. 2.91.0 only looked
+  chains are skipped now and listed in the report. **Unity's own constraints count too** —
+  the loop is engine-level and doesn't care which component writes the rotation. An earlier version only looked
   for VRChat's, so a quadruped base built entirely on Unity constraints went straight past it with a
   tail cloth simulating three constraint-driven bones.
-- **Both markers on the decoy (2.92.0).** ChilloutVR parents the viewpoint and voice position to the
+- **Both markers on the decoy.** ChilloutVR parents the viewpoint and voice position to the
   humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
   animal's skull. Both are measured on the relayed bones instead; see
   [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
-- **Toggles that switch a constraint on and off (2.94.0).** This one isn't quadruped-specific, it
+- **Toggles that switch a constraint on and off.** This one isn't quadruped-specific, it
   just bites hardest here. An animation curve carries the component **type** and the **serialized
   property name**, and conversion changes both — a clip still saying `VRCParentConstraint.IsActive`
   plays as silence, with nothing to see in the animator. That's how limb locks, sit/lay-down/loaf
@@ -768,7 +789,7 @@ all. **Two things break the rest, and the report names both:**
   (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`). **`FreezeToWorld`
   has no Unity or ChilloutVR equivalent** and is dropped — a toggle relying on it will change the
   constraint but won't pin anything in world space.
-- **First-person head hiding aimed at the decoy (2.93.0).** ChilloutVR hides your own head by adding
+- **First-person head hiding aimed at the decoy.** ChilloutVR hides your own head by adding
   an `FPRExclusion` to the humanoid Head bone. That bone skins nothing here, so nothing was hidden
   and the view filled with the inside of the animal's head. One is added to the head you can see
   instead — your camera only; everyone else sees the whole avatar. Delete it if you'd rather not.
@@ -828,16 +849,16 @@ Bipeds are unaffected by any of it.
 
 ### Converted with caveats
 
-- **Action-layer emotes.** Only **Gesture** and **FX** convert by default — Base, Additive and
-  Action are off, because CVR drives locomotion and emotes itself. You can tick Action on, but its
-  states rely on VRChat's emote flow and may be unreachable. When it is ticked, the layer is merged
-  at **weight 0 — the weight VRChat itself gives it.** VRChat raises the Action playable layer only
-  while an emote plays, which is why its idle state can hold a full-body clip with Write Defaults on
-  and harm nothing; ChilloutVR has no playable layers, so at weight 1 that idle state would hold
-  your whole body in its rest pose above locomotion and walking would stop working entirely. Raise
-  the weight yourself in the Animator window if you want the layer live. **The one exception is a
-  kept GoGo Loco** — GoGo drives Action itself, so with *Remove GoGo Loco* unticked the layer is
-  merged live at weight 1 instead.
+- **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default — Base,
+  Additive and Action are off, because CVR drives locomotion and emotes itself. Ticking Action on
+  merges the layer at **weight 0, the weight VRChat itself gives it** (VRChat raises the Action
+  playable only while an emote plays; ChilloutVR has no playable layers to raise, and at weight 1
+  its idle state would hold your body in rest pose above locomotion). The layer's **full-body
+  poses are transplanted into ChilloutVR's own locomotion layer** instead — the one place a pose
+  can both assert and hand back — armed once per condition-rise, exactly like VRChat's emote flow;
+  see [the menu-control entry](#a-menu-control-appears-moves-syncs--and-does-nothing) for the
+  mechanics. **The one exception is a kept GoGo Loco** — GoGo drives Action itself, so with
+  *Remove GoGo Loco* unticked the layer is merged live at weight 1 instead.
 - **Constant contact receivers** reset to 0 when *any* pointer exits — CVR triggers don't count
   occupants.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
@@ -895,7 +916,7 @@ them back — delete again, or update to a version whose ABI scripts start with 
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
-The "bicycle pose". **Reconvert on a current version** — since 2.62.0 merged layers are always
+The "bicycle pose". **Reconvert on a current release** — merged layers are always
 masked off the humanoid rig (it used to be an Advanced option, confirmed in game and now
 mandatory).
 
@@ -908,7 +929,7 @@ names every layer that could write muscles.
 
 ### A bone chain hangs broken, or MagicaCloth throws in the Scene view
 
-**Reconvert on 2.91.0 or later.** A chain whose bones are also driven by a **constraint** is no
+**Reconvert on a current release.** A chain whose bones are also driven by a **constraint** is no
 longer simulated, and the report says which and why.
 
 A constraint writes its bone's rotation every frame from somewhere else; a cloth solver integrates
@@ -932,99 +953,49 @@ exceeded, so a fast shake looks still whatever the settings say. Judge physics i
 
 ### Unity crashes when you press Convert
 
-**Fixed in 3.4.2 — update and try again.**
+**Update to the current release and try again** — the known causes are all repaired, from every
+direction: converting, selecting the avatar, entering play mode, and uploading.
 
-The hazard itself is repaired, so it's gone from every direction: converting, selecting the avatar,
-entering play mode, **and uploading**. Unity works out a state's duration and a blend tree's blend
-while it builds the playable graph, so **any motion slot with nothing in it** — an empty animator
-state, or a blend tree child whose asset is gone — makes that builder walk into a hole and segfault.
-The CCK's uploader instantiates your avatar to build it, so an avatar in that state couldn't be
-uploaded at all.
+Unity's playable-graph builder **segfaults instead of logging** on three kinds of controller
+damage, and the CCK's uploader builds that graph too, so an avatar in this state couldn't even be
+uploaded. All three are repaired during conversion and counted in the report:
 
-Every empty slot now gets a genuinely empty clip. Nothing is lost — the slot animated nothing — and
-blend thresholds all stay where the author put them. The report says how many, and how many were
-states rather than blend tree slots, so you can still chase down why those motions never arrived.
+- **A motion slot with nothing in it** — an empty animator state, or a blend tree child whose
+  asset is gone. Every empty slot gets a placeholder clip; nothing is lost (the slot animated
+  nothing) and every blend threshold stays where the author put it.
+- **A blend tree parameter field naming nothing.** Unity binds *every* such field when it builds
+  a graph — including the ones a Direct tree never reads and the Y axis a 1D tree ignores — and
+  `Blend`, `Value` and `Smooth Amount` are Unity's own defaults left behind on trees that stopped
+  using them, so they arrive on plenty of avatars through no fault of yours. Worst is a field
+  that's **blank**. Each is renamed to a single `#`-prefixed name (deliberately *not* declared as
+  a parameter — declaring them brings the crash back, twice measured); those fields were being
+  read as garbage or not at all, so nothing about the avatar changes.
+- **A controller referencing assets that resolve to nothing.** The controller is checked before
+  it's assigned — assignment alone triggers a full graph build — and one that would crash is not
+  assigned. The broken references usually come from a VRCFury or Modular Avatar bake that errored
+  partway: build a test copy of the source avatar and fix what errors there, then convert again.
 
-*3.3.4 fixed only the blend tree half of this and attached its filler clip before the controller was
-an asset, so on an avatar whose empty slots were plain states it silently did nothing at all.*
-
-**A controller referencing assets that resolve to nothing makes Unity's Mecanim graph builder
-segfault**, and *assigning* such a controller to an `Animator` is enough to trigger it — the setter
-calls `Animator::Rebind`, which builds the whole graph regardless of whether the component is
-enabled. That last part is what took four attempts to get right: disabling the Animator, deferring
-the assignment and unlinking afterwards all left the assignment itself in place, so each fix only
-moved where it died.
-
-3.3.3 checks the controller **before** assigning it and doesn't assign one that would crash.
-**ChilloutVR is unaffected**: the CVRAvatar still carries the base controller and the overrides,
-which is what the client reads on load. The broken references remain in the controller though, so
-fix them and convert again before uploading — see the unresolvable-asset error for where they came
-from, usually a VRCFury or Modular Avatar bake that errored partway.
-
-Unity hard-crashes (not an error — the editor vanishes), most often when converting the *same*
-avatar a second time or when clicking the converted avatar afterwards. The dump always lands in the
-same place: `GenerateGraph` → `SetStateMachineInInitialState` → `DoBlendTreeEvaluation`.
-
-**If your avatar's controller has no broken references, none of this applies** — the Animator is
-wired up exactly as before.
-
-**A blend tree naming a parameter that doesn't exist is the same crash from a different direction**
-(fixed in 3.4.11). Unity binds *every* blend tree parameter field when it builds a graph — including
-the ones a Direct tree never reads and the Y axis a 1D tree ignores — and resolves each to an index
-in the parameter table. A name that isn't there resolves to nothing, and the read happens inside
-`DoBlendTreeEvaluation`, so the editor dies instead of logging. `Blend`, `Value` and `Smooth Amount`
-are Unity's own defaults left behind on trees that stopped using them, so they arrive on plenty of
-avatars through no fault of yours; one conversion had six, including **a field that was blank**.
-
-Every such field is now renamed to a single `#`-prefixed name, so none of them is blank and they all
-agree. They are deliberately **not** declared as parameters — that was tried in 3.4.12 and brought
-the crash straight back, measured in both directions on a reproducible case. The blank one is almost
-certainly what mattered: Unity resolves a missing *name* to an index of -1 and reads 0, while a blank
-name goes somewhere else entirely. Nothing changes about how the avatar behaves — those fields were
-being read as garbage or not at all.
+If your avatar's controller has none of these, the Animator is wired up exactly as before.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
-**Reconvert on 3.4.14 or later.** Reconverting used to replace the saved controller by copying raw
-bytes over the file and force-reimporting it — which keeps the GUID but **destroys the native object
-and every sub-asset**, leaving everything that still held them (the Animator window, tester tools,
-anything alive across a play session with domain reload off) holding corpses. With "Enter Play Mode
-Options" on, nothing between conversions throws that stale state away, and pressing Play re-awakes
-Animators against it: `Assertion failed: 'MecanimDataWasBuilt()'`, then a SIGSEGV inside
-`GenerateGraph`. A hand-edited controller never crashes this way because hand-editing *mutates the
-existing object* — and from 3.4.14, so does reconverting. Same file, same GUID, same native object;
-Unity rebuilds its animation data the ordinary way. The `AnimatorStateMachine has been destroyed`
-console spam after reconverting goes away with it.
+**Reconvert on a current release.** Two historical causes, both long repaired:
 
-*The rest of this section describes the earlier symptoms and remains true of older versions.*
+- Reconverting used to replace the saved controller by copying raw bytes over the file — which
+  keeps the GUID but **destroys the native object and every sub-asset**, leaving everything that
+  still held them (the Animator window, tester tools, anything alive with domain reload off)
+  holding corpses; pressing Play then re-awoke Animators against them (`Assertion failed:
+  'MecanimDataWasBuilt()'`, then a SIGSEGV in `GenerateGraph`). Reconverting now **mutates the
+  existing controller in place**, like a hand edit: same file, same GUID, same native object.
+- The placeholder clip for empty states used to have **no curves at all**, and Mecanim sizes its
+  binding array from the curve count — the source of `'mem->m_ConstantClipValueCount >= 0'`
+  assertions, menu controls swapping places, and white skin under Unity's "Enter Play Mode
+  Options". The placeholder now animates one inert value on a dedicated `AvatarBridge_EmptySlot`
+  object, so the conversion no longer cares about that editor setting.
 
-**Reconvert on 3.4.9 or later.** If you can't yet, turning off Edit → Project Settings → Editor →
-"Enter Play Mode Settings" and reopening the scene clears it immediately, with no reconversion.
-
-The symptoms, all at once on the avatar this was found on:
-
-- `Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 && ...'`, repeated;
-- menu controls **swapped places with each other** — sliders on toggles, a dropdown under the wrong
-  name;
-- white skin and flat clothes, on an avatar that looked correct in the scene a second earlier;
-- and, on the next Play, the editor dying with `Assertion failed on expression:
-  'MecanimDataWasBuilt()'` and a SIGSEGV inside `mecanim::statemachine::EvaluateState`.
-
-**Two things had to line up.** "Enter Play Mode Options" skips the scene and/or domain reload, so
-pressing Play *restores a backup* of the scene rather than reloading it and rebinds every Animator
-against state carried over from edit mode. And, up to 3.4.8, the clip this tool put into empty
-animator states had **no curves in it at all**. Mecanim sizes the array it reads and writes bindings
-through from the curve count, so a curve-less clip is exactly what it asserts about — and with 66
-states sharing one, our own output was what made that editor option toxic.
-
-From 3.4.9 the placeholder animates one inert value on a dedicated `AvatarBridge_EmptySlot` object
-added to the avatar. It changes nothing on any frame, it exists purely so the clip has a curve to
-count, and any curve-less clip the avatar arrived with is swapped for it too. The conversion no
-longer depends on that editor setting either way, which is the point — it's a setting people turn on
-for speed, and a converter shouldn't care.
-
-The report still names the setting when it's on, and `Diagnostics.md` records it, so the next bug
-report carries the answer.
+If you see either symptom on a current conversion, "Enter Play Mode Options" (Edit → Project
+Settings → Editor) deserves the first look — turning it off and reopening the scene clears the
+stale-state class of crash immediately, and the report warns whenever it's on.
 
 ### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
 
@@ -1064,11 +1035,6 @@ Four cases are deliberately left as they were, and the report names each one:
 
 For those, nudge the offset by hand for the size you actually use, or leave the slider near default.
 
-*3.4.5 attempted this in the animation instead — scaled copies of every offset written into the
-generated scale clips — and got it wrong: an avatar rendered pure white in play mode and the editor
-crashed on scene reload. Reverted in 3.4.6. The attempt and why it failed are recorded in
-`AvatarScalerInjector.cs`.*
-
 ### Something is bright magenta
 
 A material or shader the avatar points at no longer exists. Almost always VRCFury's temp folder,
@@ -1082,7 +1048,7 @@ didn't — the same VRCFury temp problem one level deeper. Convert again on the 
 
 ### Gestures freeze in game, or on another PC
 
-**Reconvert on 2.71.0 or later.**
+**Reconvert on a current release.**
 
 Before 2.71.0, a merged FX layer carrying finger curves was narrowed to a hands-only mask instead of
 being blocked. Merged layers sit **above** ChilloutVR's `LeftHand`/`RightHand` layers, so on
@@ -1115,7 +1081,7 @@ referenced clip and mask is copied into the output's `RehomedAssets` now.
 
 ### The viewpoint or voice position is nowhere near the head
 
-**Reconvert on 2.86.1 or later.**
+**Reconvert on a current release.**
 
 **The viewpoint comes from your avatar's VRChat descriptor** — the position its author placed by eye
 and shipped, copied across unchanged. The CCK's *Auto* button instead reads the humanoid **eye
@@ -1126,16 +1092,16 @@ when the descriptor has no viewpoint set, and the report says which was used and
 were.
 
 **Eye bones are found by name when the rig doesn't map them**, and that search knows Blender's
-`.L`/`.R` suffix (`eye.L`, `eye.R`) as well as `LeftEye`-style names (3.0.2) — Blender exports that
+`.L`/`.R` suffix (`eye.L`, `eye.R`) as well as `LeftEye`-style names — Blender exports that
 suffix by default, so it covers most anthro avatars. It also looks **anywhere on the avatar**, not
-only under the head bone (3.0.3): rigs park eye bones outside the head all the time when something
+only under the head bone: rigs park eye bones outside the head all the time when something
 else needs to drive them, and one taur base keeps its pair in a cloned spine chain under a node
 named `Head.children.go.here`. A match is only accepted if it lands within the same distance of the
 head that this rig's proportions already allow, so a stray bone elsewhere on the body is refused.
 Without this the viewpoint fell through to a blind head-offset estimate and sat 14 cm low, on the
 muzzle.
 
-**Unless the authored value is provably in the wrong place** (2.100.0). A viewpoint isn't a matter
+**Unless the authored value is provably in the wrong place.** A viewpoint isn't a matter
 of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
 proportions allow *and* Auto lands within them, Auto wins and the report says so. One taur base
 shipped its viewpoint at the avatar's **hips**, 0.6 m from its head; the old rule copied it faithfully
@@ -1147,7 +1113,7 @@ of leaving it for the first person who hears your voice coming from ten metres a
 avatar at the top of the scene hierarchy before converting avoids the scale cases entirely, and the
 CVRAvatar inspector's own **Auto** buttons are always a safe manual fix.
 
-**On a quadruped, neither the author's viewpoint nor Auto is looking at your avatar** (2.92.0). Those
+**On a quadruped, neither the author's viewpoint nor Auto is looking at your avatar**. Those
 rigs are a [hidden humanoid decoy](#quadruped--finalik-avatars), and ChilloutVR hangs both
 markers off the humanoid **Head** bone — which is part of the decoy, not part of the animal. On the
 dragon this was found on, the shipped viewpoint sat **0.57 m** from the dragon's eyes, inside its
@@ -1158,7 +1124,7 @@ The relay constraints say where the real bones are, so the conversion follows th
 whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
 both markers are measured there instead.
 
-**This only fires when your avatar relays both humanoid EYE bones** (2.99.0), and that requirement
+**This only fires when your avatar relays both humanoid EYE bones**, and that requirement
 is doing real work. A taur base kept tripping earlier versions: its constraint sourced from the
 humanoid head drives a hip clone, because that's its head-puppet feature — the head as an *input*
 that swings the body, not a bone being reproduced somewhere visible. The result was a viewpoint
@@ -1167,7 +1133,7 @@ stand-in skeleton too), and nor did distance — the dragon's real head sits 0.4
 head, the taur's hip clone 0.50 m. Relayed eyes do: an eye bone exists to aim eyeballs, so a
 constraint driven from one is reproducing a face, and a puppet input never has them.
 
-A decoy rig that maps no eye bones therefore keeps the author's own viewpoint, as before 2.92.0. An
+A decoy rig that maps no eye bones therefore keeps the author's own viewpoint. An
 unhelpful viewpoint beats one confidently placed at your hips.
 
 It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
@@ -1175,7 +1141,7 @@ check them with the gizmo and drag either one if you want it elsewhere.
 
 <details><summary>Three older causes, all fixed</summary>
 
-- **A viewpoint above the eyes (3.4.17).** The author's VRChat viewpoint is preferred over the CCK's
+- **A viewpoint above the eyes.** The author's VRChat viewpoint is preferred over the CCK's
   Auto placement, and it's overridden only when the rig itself proves it wrong. That check measured
   against the **hips** — and hips get mis-mapped as readily as jaws: one avatar pointed them at the
   armature root on the floor, which stretched the tolerance to 0.89 m and would have accepted a
@@ -1185,7 +1151,7 @@ check them with the gizmo and drag either one if you want it elsewhere.
   slot has to be mapped correctly, and that scales with the avatar (about 6 cm on a human, far outside
   where anyone places a viewpoint deliberately). *Below* the eyes is deliberately left alone: down a
   muzzle or inside a helmet is a real choice.
-- **A "jaw" bone that isn't a jaw (3.4.15, extended in 3.4.16).** The humanoid **Jaw** slot is optional and nothing
+- **A "jaw" bone that isn't a jaw.** The humanoid **Jaw** slot is optional and nothing
   validates it, so riggers fill it with whatever was nearest — one avatar mapped it to a bone called
   `fronthair1`, 21 cm *above* the head bone and a centimetre above the viewpoint, and the voice duly
   came out of the top of its head. A mapped Jaw is now checked before it's believed: it must sit
@@ -1199,13 +1165,13 @@ check them with the gizmo and drag either one if you want it elsewhere.
   axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
   sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets use the avatar
   root's orientation now, the one transform whose forward is really forward.
-- **Scaled bones (2.82.0).** With no jaw bone the voice position sits a few centimetres in front of
+- **Scaled bones.** With no jaw bone the voice position sits a few centimetres in front of
   the head, and that offset used to be applied through the head bone's own transform — which
   multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100× bone
   scales, turning a 6 cm nudge into 6 m. The offset is sized from the avatar's own hips-to-head span
   and applied by rotation only now, so bone scale can't reach it. The viewpoint was never affected:
   it's a midpoint between two eye-bone *positions*, with no offset to inflate.
-- **Scaled parents (2.81.0).** ChilloutVR stores both positions as an offset carrying the avatar's
+- **Scaled parents.** ChilloutVR stores both positions as an offset carrying the avatar's
   own **`localScale`** — what the CCK's inspector reads and writes. Earlier conversions used the
   avatar's *world* scale, identical until the avatar sits under a parent with a scale on it, at
   which point they diverge by the parent's factor.
@@ -1221,7 +1187,7 @@ If the report says **"animated material property(ies) don't exist on the shader 
 this is it, and **it is not the conversion**: the same animation does nothing in VRChat either.
 
 **Two report lines cover the other version of this** — a clip whose curves address objects that
-aren't on the avatar — and 2.97.0 split them apart, because they mean opposite things:
+aren't on the avatar — and they are split apart, because they mean opposite things:
 
 - **"animate paths that were ALREADY missing in VRChat"** is not a problem. Every dead path is now
   checked against the avatar *as it arrived*, and these weren't there either — so the curves were
@@ -1233,7 +1199,7 @@ aren't on the avatar — and 2.97.0 split them apart, because they mean opposite
   (GoGo, SPS) taking objects a clip still references is the usual innocent cause — turn that strip
   off and convert again to check. Anything else is worth reporting as a bug.
 
-**Clips that switch a constraint on and off get the same treatment** (3.1.2), because the same three
+**Clips that switch a constraint on and off get the same treatment**, because the same three
 outcomes mean three different things:
 
 - **"repointed at the Unity constraints"** — working. The type and property names change during
@@ -1284,7 +1250,7 @@ so you don't have to work back from the animator.
 
 ### A toggle switches on but never back off
 
-**Reconvert on 2.87.0 or later.**
+**Reconvert on a current release.**
 
 VRChat's usual toggle is two animator states: one holding the clip that changes something, and one
 holding **nothing at all**, whose job is to put it back. That empty state works because VRChat's
@@ -1310,25 +1276,25 @@ Three things worth knowing:
   would assert it from above and the shirt could never come off; if neither did, it could never go
   back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
   counts what was left to a lower layer.
-- **Only two-state toggles are filled** (3.4.18). VRChat's idiom is exactly one empty "off" state and
+- **Only two-state toggles are filled.** VRChat's idiom is exactly one empty "off" state and
   one state holding the clip, and that shape is the only one where a snapshot of your avatar belongs
   in the empty half. Bigger layers are machines whose empty states are structural — a chest slider's
   `Reset/Pause`, a local/remote gate — and filling those *changes how the avatar looks*: one snapshot
   pinned seven chest blendshapes to zero and flattened the model the moment the layer rested there.
   Those layers are now left exactly as VRChat had them, and the report names each one.
-- **Not every empty state is an off state** (3.4.10). Some exist to *choose* — the local/remote gate
+- **Not every empty state is an off state.** Some exist to *choose* — the local/remote gate
   VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
   controls drive one branch and a synced dropdown drives the other. The layer only passes through
   it, so handing it values makes it hold them for as long as it sits there — and if the gate's
   condition never resolves, forever. Those are now recognised by their transitions covering every
   value of a parameter, and left empty. The report counts them.
 
-  *Before 3.4.10 a hat-grab layer's gate was given the "hat on the head" animation, which asserted
+  *Before this rule a hat-grab layer's gate was given the "hat on the head" animation, which asserted
   the hat visible from above its own toggle.*
 
 ### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
 
-**Reconvert on 3.4.31 or later** — enabling "Base / locomotion" can no longer cause this.
+**Reconvert on 3.5.8 or later** — enabling "Base / locomotion" can no longer cause this.
 
 Merged into one ChilloutVR controller, a `[Base]` layer lands **above** the client's own
 `Locomotion/Emotes` layer on Override at full weight. From there it can't *add* to CVR's locomotion,
@@ -1341,23 +1307,24 @@ weight 1 it simply held the body still.
 in them still converts — object toggles, blendshapes, materials, parameters, additive motion — and
 CVR's locomotion stays authoritative.
 
-**And the animations themselves survive** (3.5.0): custom walking, crouching, crawling, falling and
-sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in the
-movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
+**And the animations themselves survive**: custom walking, crouching, crawling, falling and
+sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in
+the movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
 whatever it's named. The structure stays ChilloutVR's, so movement and stances always answer; the
 art becomes the avatar's. Each grafted movement cycle's **loop setting is matched to the slot it
-fills** (3.5.1) — a cycle authored without looping would otherwise play once and freeze — while
-jump and fall grafts play **once**, as their exit-time transitions always said (3.5.4: loop-matching
-a wing-flap fall made it flap forever on every hop). A **flight pose lands on CVR's `LocFlying`
-state**: ChilloutVR flies natively, so a VRChat copter/flight system needs none of its speed
-machinery here, just its pose where the client will show it. The pose is **scored, not
-name-matched** (3.5.4) — a state you can sit in: looping clip, idle/hover naming — after the first
-try grafted "Copter *to Robot*", the un-transformation, and flight mode transformed endlessly.
-Pose-style stance states (single-clip Standing/Crouching/Lying) are left alone: they are VR
-tracking poses, and one seated as a desktop crouch idle sank the wearer into the floor. One discovery made this precise: most VRChat avatars don't ship walking
-animations at all — their trees reference `proxy_*` placeholder clips that the VRChat *client*
-replaces at runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's
-own animation set is this platform's version of those placeholders, and the report says which of the
+fills** (a cycle authored without looping would otherwise play once and freeze), while jump and
+fall grafts play **once**, as their exit-time transitions always said. A **flight pose lands on
+CVR's `LocFlying` state**: ChilloutVR flies natively, so a VRChat copter or flight system needs
+none of its speed machinery here, just its pose where the client will show it — and that pose is
+**scored, not name-matched**: a state you can sit in, judged by looping clip and idle/hover naming
+rather than by the first name containing "fly". Pose-style stance states (single-clip
+Standing/Crouching/Lying) are left alone: they are VR tracking poses, and one seated as a desktop
+crouch idle sinks the wearer into the floor.
+
+One discovery made all of this precise: **most VRChat avatars don't ship walking animations at
+all** — their trees reference `proxy_*` placeholder clips that the VRChat *client* replaces at
+runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's own
+animation set is this platform's version of those placeholders, and the report says which of the
 two cases your avatar is.
 
 **Genuine locomotion replacements can't be rescued this way**, and it's worth knowing why: they lean
@@ -1367,7 +1334,7 @@ clear its Mask in the Animator window — and expect the stances to stop respond
 
 ### An animation flickers rapidly — often only on other players' screens
 
-**Reconvert on 3.5.2 or later.** Unity's AnyState transitions default to "Can Transition To Self",
+**Reconvert on 3.5.8 or later.** Unity's AnyState transitions default to "Can Transition To Self",
 which with ordinary conditions means the destination state re-enters **every frame** the conditions
 hold, restarting its animation each time. Nearly every avatar carries dozens of these and VRChat
 never shows it, because the states involved are mostly *empty* there — restarting nothing looks
@@ -1378,8 +1345,8 @@ The "only other people see it" shape is the same mechanism plus networking: remo
 avatar hold every `#` local parameter at its default forever (local parameters never sync, and
 parameter streams are stripped from remote copies), so a re-entry condition your live values keep
 false can sit permanently true on everyone else's client. The conversion now disables the self
-re-entry flag on merged AnyState transitions — but **only where the restart carries no meaning**
-(3.5.7–3.5.8). A state with a real animated clip keeps the flag *and* the pinned-at-first-frame
+re-entry flag on merged AnyState transitions — but **only where the restart carries no meaning**.
+A state with a real animated clip keeps the flag *and* the pinned-at-first-frame
 look its author shipped with. A state with an **exit-time transition out** keeps it too, because
 there the restart is load-bearing: every re-entry resets the clock so the timed exit never fires —
 that is the entire mechanism holding the state, and one avatar's every clothing toggle was built
@@ -1390,38 +1357,38 @@ still-holding state with no timed exit, restarted every frame — the filler-fil
 strobed for remote viewers. The **Remote view** card in the CCK Animator Tester reproduces the remote valuation
 locally if you want to verify an avatar before uploading.
 
-Root motion is also stripped from animations that **travel** (3.5.2, refined in 3.5.3): VRChat
-flight and vehicle systems move the player by animating the body, because VRChat allows nothing
-else. ChilloutVR moves the player itself and hangs the first-person camera on the head bone — the
-same baked movement here shoves the wearer around with no input, so it is removed. The test is
-whether the clip's root **ends where it started**: a backflip's flip is root rotation and a dance
-sways the whole body, both returning home, and those keep their curves — stripping them broke the
-animations while removing nothing a player could feel. A clip that ends displaced is a mover, and
-looped, a vehicle; those have each root curve **flattened to its starting value** (3.5.5) — held,
-never deleted, because the same curve carries the body's baseline height and deleting it sank the
-wearer waist-deep into the floor. Locomotion-tree grafts are always flattened — there the capsule
-owns every metre.
+Root motion is also stripped from animations that **travel**: VRChat flight and vehicle systems
+move the player by animating the body, because VRChat allows nothing else. ChilloutVR moves the
+player itself and hangs the first-person camera on the head bone — the same baked movement here
+shoves the wearer around with no input, so it is removed. The test is whether the clip's root
+**ends where it started**: a backflip's flip is root rotation and a dance sways the whole body,
+both returning home, and those keep their curves — stripping them broke the animations while
+removing nothing a player could feel. A clip that ends displaced is a mover, and looped, a
+vehicle; those have each root curve **flattened to its starting value** — held, never deleted,
+because the same curve carries the body's baseline height and deleting it sank the wearer
+waist-deep into the floor. Locomotion-tree grafts are always flattened — there the capsule owns
+every metre.
 
 ### An emote replays forever instead of playing once
 
-**Reconvert on 3.5.3 or later.** Emotes live in menus that **hold** their value, and VRChat's
+**Reconvert on 3.5.5 or later.** Emotes live in menus that **hold** their value, and VRChat's
 Action graph is built for that: after a play-once emote it parks in a state whose only way back
 requires the value to return to zero, so an emote fires on the **rise** of its condition, once.
 The converted pose states are re-armed from the locomotion resting state instead — and arming on
 a *level* replays the emote every time the pose hands back, forever, as long as the menu holds
-the value. Conversion now reproduces the rise-only behaviour: a local ready flag gates every
-arming transition, dropped the moment a pose is armed and raised again when its conditions have
-gone false **or the armed value has changed** (3.5.5) — so switching straight from one emote to
-the next plays the new one, no trip through None required, and re-selecting an emote replays it.
-Hold-style emotes (dances, AFK poses) are unaffected; they loop until deselected, as their own
-exit conditions have always said.
+the value. Conversion reproduces the rise-only behaviour: a local ready flag gates every arming
+transition, dropped the moment a pose is armed and raised again when its conditions have gone
+false **or the armed value has changed** — so switching straight from one emote to the next plays
+the new one, no trip through None required, and re-selecting an emote replays it. Hold-style
+emotes (dances, AFK poses) are unaffected; they loop until deselected, as their own exit
+conditions have always said.
 
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Three known causes, all fixed, all worth naming if you
 still hit them: a prefab whose constraints drive your bones from proxy objects (see
 [above](#constraints-that-drive-another-object)); a slider whose neutral is 0.5 being declared 0; or
-**a feature living in the Action layer** (fixed in 3.4.20).
+**a feature living in the Action layer**.
 
 That last one is worth understanding, because it looks exactly like a dead parameter. VRChat's Action
 layer is its emote player: VRChat keeps it at weight **0** and raises it only while an emote runs, so
@@ -1440,7 +1407,7 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-**The full-body poses move into ChilloutVR's own locomotion layer** (3.4.26) — the one place on this
+**The full-body poses move into ChilloutVR's own locomotion layer** — the one place on this
 platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime
 while a sequence plays; ChilloutVR has no runtime weight control, and a *separate* layer has no way
 to yield — inert states with Write Defaults off hold the last written muscles (the avatar freezes
@@ -1460,7 +1427,7 @@ that costs.
 
 ### Two near-identical menu controls, and only one works
 
-**Fixed in 3.4.22.** ChilloutVR syncs straight from the animator, so a synced parameter with no menu
+**Reconvert on a current release.** ChilloutVR syncs straight from the animator, so a synced parameter with no menu
 control still needs somewhere to live — conversions create one. That guess is wrong when the avatar
 *writes* the parameter itself from a parameter driver: the new control then sits in your menu fighting
 the animator, right next to the control that really works. One transforming avatar shipped a `Car Mode`
@@ -1473,37 +1440,27 @@ is untouched and still syncs.
 
 ### Your eyes stay open, start closed, or lose a pupil
 
-**Fixed in 3.4.25** — and the fix went through three wrong versions worth recording. An avatar that
-blinks **from its own animator** (VRCFury and similar, usually driving `vrc.Blink`) can't keep that
-system through conversion, and can't share the eyes with the native one either:
-
-- 3.4.21 enabled native blink *alongside* it, guessing `Blink` while the animator drove `vrc.Blink` —
-  two systems, wrong shape, pupil gone.
-- 3.4.22 left blink entirely to the avatar's system. That system's "eyes open" states are **empty**
-  in VRChat, relying on Write Defaults to reopen the lids — and empty states can't survive
-  conversion, because they crash Unity's graph builder and get a filler clip. A state with a motion
-  stops writing defaults, so the first blink wrote the shape to 100 and nothing ever wrote it back:
-  eyes shut from the first blink, pupil with them, on the body *and* on anything else built from the
-  same mesh.
-
-- 3.4.24 picked the shape by name before looking at the layers — and on a mesh carrying both a
-  `Blink` shape and a `vrc.Blink` shape it wired the native blink to the wrong one while the real
-  driver kept running.
+**Reconvert on a current release.** An avatar that blinks **from its own animator** (VRCFury and
+similar, usually driving `vrc.Blink`) can't keep that system through conversion: its "eyes open"
+states are *empty* in VRChat, relying on Write Defaults to reopen the lids, and empty states can't
+survive conversion — they crash Unity's graph builder and get a filler clip, at which point the
+first blink closes the eyes for good. It can't share the eyes with the native blink either — two
+systems, one pair of eyelids.
 
 The animator blink system only exists because **VRChat has no built-in blink. ChilloutVR does.** So
-the conversion (3.4.25) finds the animator layer whose *only job is blinking* — every curve a
-blendshape, the only shape it ever raises matches "blink", no objects, no materials — lets **that
-layer name the shape**, removes it, wires ChilloutVR's native Eye Blink to the same shape, and zeroes
-the shape's live weight in case the old system left the eyes mid-blink. If no layer can be safely
-identified, nothing is removed, native blink stays off, and the report says so.
+the conversion finds the animator layer whose *only job is blinking* — every curve a blendshape,
+the only shape it ever raises matches "blink", no objects, no materials — lets **that layer name
+the shape**, removes it, wires ChilloutVR's native Eye Blink, and zeroes the shape's live weight in
+case the old system left the eyes mid-blink. If no layer can be safely identified, nothing is
+removed, native blink stays off, and the report says so.
 
-One refinement (3.4.32): ChilloutVR writes its blink weight onto the mesh **every frame, after the
-animator** — so whatever shape it's given, the client owns it outright, and an expression animating
-the same shape would silently stop closing the eyes. If the removed layer's shape is also used by
-surviving expression clips, the native blink is moved to a free shape family instead — a `Blink L` /
-`Blink R` pair or a spare combined shape that nothing animates — so the blink and the expressions
-both work. If no free shape exists, the blink keeps the contested shape and the report warns which
-expressions lose. Expressions that close the eyes through *other* shapes were never affected.
+One subtlety: ChilloutVR writes its blink weight onto the mesh **every frame, after the animator**
+— whatever shape it's given, the client owns outright, and an expression animating the same shape
+would silently stop closing the eyes. If the removed layer's shape is also used by surviving
+expression clips, the native blink is moved to a free shape family instead — a `Blink L` /
+`Blink R` pair or a spare combined shape nothing animates — so the blink and the expressions both
+work. If no free shape exists, the blink keeps the contested shape and the report warns which
+expressions lose.
 
 ### An effect draws in one eye only in VR
 
@@ -1533,7 +1490,7 @@ versions and detected packages already in it.
 Two things make a report solvable immediately:
 
 1. **Attach `ConversionReport.md` and `Diagnostics.md`** from `Assets/AvatarBridgeOutput/<avatar>/`.
-   Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` (3.2.0) carries the
+   Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` carries the
    measurements behind it — package versions, every setting used, the rig's shape, where the head
    and eye bones actually sit against the viewpoint, the constraint census, and which asset
    references resolve to nothing. It's all facts and no advice, so it diffs cleanly between two
