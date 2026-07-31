@@ -1682,7 +1682,12 @@ namespace AvatarBridge
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
-                if (ctx.Settings.preserveParameterSyncState && !preserved)
+                // Already-local names are left alone — the Action transplant declares its
+                // "#AB_Ready" flag and scratch cells BEFORE this pass runs, and prefixing them
+                // again made "##AB_Ready_…": still local, still consistent, but a name no reader
+                // of the tester or the report should ever have to puzzle over.
+                if (ctx.Settings.preserveParameterSyncState && !preserved
+                    && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     result = "#" + result;
                 }
