@@ -46,7 +46,10 @@ jobs:
               IFS=',' read -ra names <<< "$assets"
               for name in "${names[@]}"; do
                 echo "  $tag — removing $name"
-                gh release delete-asset "$tag" "$name" --yes
+                # -R explicitly: `gh release` otherwise infers the repo from a git
+                # checkout, and this job never checks one out — the first run failed
+                # with "not a git repository" on exactly this line.
+                gh release delete-asset -R "$REPO" "$tag" "$name" --yes
                 deleted=$((deleted + 1))
               done
             fi
