@@ -363,8 +363,14 @@ than numeric:
   MagicaCloth2 ships fully responsive to it, so a converted chain would otherwise pick up motion
   its author never tuned for.
 
-Stretch & squish, multi-child blending, `Is Animated` and angle limits are reported rather than
-converted, each naming the field to change if that chain wants it.
+- **`Is Animated` sets Animation Pose Ratio to 1** (3.4.19). MagicaCloth2 settles a chain back to
+  the pose the avatar was *built* in; a PhysBone marked `Is Animated` is one an animation moves. Left
+  at the default the two fight and the cloth wins — a chest or ear slider that scales its own bones
+  simply stops working, and the avatar quietly has a different shape from the original at identical
+  menu settings. The source flag decides this, so it's applied rather than reported.
+
+Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
+naming the field to change if that chain wants it.
 
 **Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
 of simulation, so that path maps values 1:1.

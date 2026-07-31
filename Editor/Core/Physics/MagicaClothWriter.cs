@@ -107,6 +107,21 @@ namespace AvatarBridge
             // --- structure ----------------------------------------------------------------
             sdata.clothType = ClothProcess.ClothType.BoneCloth;
 
+            // "Is Animated" on the source PhysBone means exactly one thing: an animation moves
+            // these bones. MagicaCloth2 settles a chain back to its INITIAL pose by default, so
+            // the animation and the cloth then fight and the cloth wins — which is not subtle. On
+            // the avatar that found this, a chest slider scales the breast bones to 0.75 at its
+            // lowest setting, the cloth held them at 1.0, and the converted avatar had a visibly
+            // different figure from the original at identical menu settings.
+            //
+            // Settling to the ANIMATED pose is what the source PhysBone was already doing. This
+            // used to be reported as something for the user to go and tick by hand, which is a
+            // poor trade when the flag that decides it is sitting in the source data.
+            if (data.IsAnimated)
+            {
+                sdata.animationPoseRatio = 1f;
+            }
+
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
@@ -506,10 +521,23 @@ namespace AvatarBridge
 
             if (data.IsAnimated)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    "Source PhysBone had 'Is Animated' on. The cloth settles back to its INITIAL pose; if an " +
-                    "animation moves these bones and the chain fights it, set Animation Pose Ratio to 1 on this " +
-                    "cloth so it settles to the animated pose instead.");
+                // "Is Animated" on a PhysBone means exactly one thing: an animation moves these
+                // bones. MagicaCloth2 settles a chain back to its INITIAL pose by default, so the
+                // animation and the cloth then fight, and the cloth wins — which is not a subtle
+                // effect. On the avatar that found this, a chest slider scales the breast bones to
+                // 0.75 at its lowest setting, the cloth held them at 1.0, and the converted avatar
+                // simply had a different figure from the original at the same menu settings.
+                //
+                // animationPoseRatio = 1 tells the cloth to settle to the ANIMATED pose instead,
+                // which is what the source PhysBone was already doing. Previously this was reported
+                // as something for the user to go and tick by hand; the flag that decides it is
+                // right there in the source data, so there is nothing to ask.
+                ctx.Report.Converted(Category, data.Root.name,
+                    "Source PhysBone had 'Is Animated' on, so this cloth settles to the ANIMATED pose " +
+                    "(Animation Pose Ratio 1) rather than the pose the avatar was built in. Without it the " +
+                    "cloth holds these bones where they started and quietly overrides any animation that " +
+                    "moves them — a chest or ear slider that scales its bones is the usual casualty. Set " +
+                    "Animation Pose Ratio back to 0 on the cloth if you want it to ignore the animation.");
             }
 
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
