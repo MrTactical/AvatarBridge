@@ -359,15 +359,26 @@ namespace AvatarBridge
             List<AnimatorControllerLayer> vrcLayers, Func<string, bool> isStripped)
         {
             int pruned = 0;
+            // Which parameter names justified each layer's pruning. Diagnostic, and hard-won: a
+            // toggle chain died on one avatar because its bool→smoothed-float bridge shared a
+            // layer with stripped math, and "all of its content belonged to stripped systems"
+            // left no way to see WHICH names the stripper believed in. The report now shows its
+            // reasoning, so an overreaching prefix is visible in the conversion that did it.
+            var perLayer = new Dictionary<AnimatorControllerLayer, SortedSet<string>>();
             foreach (var layer in vrcLayers.ToList())
             {
+                var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
                 WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
-                        child.state.motion = PruneMotion(child.state.motion, isStripped, ref pruned);
+                        child.state.motion = PruneMotion(child.state.motion, isStripped, ref pruned, names);
                     }
                 });
+                if (names.Count > 0)
+                {
+                    perLayer[layer] = names;
+                }
             }
             if (pruned > 0)
             {
@@ -383,8 +394,14 @@ namespace AvatarBridge
                 {
                     inert.Add(layer);
                     vrcLayers.Remove(layer);
+                    string evidence = perLayer.TryGetValue(layer, out var names)
+                        ? $" The stripped parameter names that emptied it: {string.Join(", ", names)}. " +
+                          "If one of these is a control you actually use, its machinery was " +
+                          "misclassified — say so in an issue with this line, it is exactly the " +
+                          "evidence needed."
+                        : "";
                     ctx.Report.Converted(Category, $"Removed emptied animator layer \"{layer.name}\"",
-                        "All of its content belonged to stripped systems.");
+                        "All of its content belonged to stripped systems." + evidence);
                 }
             }
             if (inert.Count > 0)
@@ -405,7 +422,8 @@ namespace AvatarBridge
         ///    is dead itself
         /// Returns null when the whole motion is dead.
         /// </summary>
-        static Motion PruneMotion(Motion motion, Func<string, bool> isStripped, ref int pruned)
+        static Motion PruneMotion(Motion motion, Func<string, bool> isStripped, ref int pruned,
+            SortedSet<string> prunedNames = null)
         {
             if (motion == null)
             {
@@ -416,6 +434,16 @@ namespace AvatarBridge
                 if (ClipWritesOnlyStrippedParams(clip, isStripped))
                 {
                     pruned++;
+                    if (prunedNames != null)
+                    {
+                        foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (isStripped(binding.propertyName))
+                            {
+                                prunedNames.Add(binding.propertyName);
+                            }
+                        }
+                    }
                     return null;
                 }
                 return motion;
@@ -429,11 +457,13 @@ namespace AvatarBridge
                 !string.IsNullOrEmpty(tree.blendParameter) && isStripped(tree.blendParameter))
             {
                 pruned++;
+                prunedNames?.Add(tree.blendParameter);
                 return null;
             }
             if (is2D && !string.IsNullOrEmpty(tree.blendParameterY) && isStripped(tree.blendParameterY))
             {
                 pruned++;
+                prunedNames?.Add(tree.blendParameterY);
                 return null;
             }
 
@@ -446,9 +476,10 @@ namespace AvatarBridge
                     !string.IsNullOrEmpty(child.directBlendParameter) && isStripped(child.directBlendParameter))
                 {
                     pruned++;
+                    prunedNames?.Add(child.directBlendParameter);
                     continue;
                 }
-                var newMotion = PruneMotion(child.motion, isStripped, ref pruned);
+                var newMotion = PruneMotion(child.motion, isStripped, ref pruned, prunedNames);
                 if (tree.blendType == BlendTreeType.Direct && newMotion == null)
                 {
                     // Dead branch in a direct tree contributes nothing; drop it entirely.

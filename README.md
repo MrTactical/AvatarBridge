@@ -1378,9 +1378,14 @@ The "only other people see it" shape is the same mechanism plus networking: remo
 avatar hold every `#` local parameter at its default forever (local parameters never sync, and
 parameter streams are stripped from remote copies), so a re-entry condition your live values keep
 false can sit permanently true on everyone else's client. The conversion now disables the self
-re-entry flag on merged AnyState transitions — except those conditioned on a Trigger, where firing
-once per pulse is the intended use. The **Remote view** card in the CCK Animator Tester reproduces
-the remote valuation locally if you want to verify an avatar before uploading.
+re-entry flag on merged AnyState transitions — but **only where the destination holds still**
+(3.5.7): an empty state, a constant clip, or the conversion's own filler. A state with a real
+animated clip keeps the flag *and* the pinned-at-first-frame look its author shipped with — the
+every-frame restart is what the wearer always saw in VRChat, and clearing it there set multi-frame
+toggle animations playing (and looping) for the first time, which is not what anyone authored.
+Transitions conditioned on a Trigger always keep the flag, as firing once per pulse is the
+intended use. The **Remote view** card in the CCK Animator Tester reproduces the remote valuation
+locally if you want to verify an avatar before uploading.
 
 Root motion is also stripped from animations that **travel** (3.5.2, refined in 3.5.3): VRChat
 flight and vehicle systems move the player by animating the body, because VRChat allows nothing

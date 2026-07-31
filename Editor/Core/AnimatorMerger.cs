@@ -4717,6 +4717,23 @@ namespace AvatarBridge
                         {
                             continue;
                         }
+                        // Only states that HOLD STILL lose the flag. The every-frame restart
+                        // pins a state at its first frame — and for a state with a real,
+                        // animated clip, that pin IS the behaviour the avatar shipped with:
+                        // its author saw frame 0 held in VRChat, however the clip's later
+                        // frames look. The first version of this pass cleared the flag
+                        // everywhere, and every multi-frame toggle animation on the next
+                        // avatar started actually PLAYING — looping grow and hue cycles the
+                        // author never saw. The strobe this pass exists to kill only ever
+                        // came from states whose motion is constant or conversion-added
+                        // (VRChat kept them empty; the filler is what restarts visibly), and
+                        // for those the pin and the play are identical — so only those
+                        // change.
+                        var destination = transition.destinationState;
+                        if (destination != null && !MotionHoldsStill(destination.motion))
+                        {
+                            continue;
+                        }
                         transition.canTransitionToSelf = false;
                         EditorUtility.SetDirty(transition);
                         flipped++;
@@ -4732,13 +4749,68 @@ namespace AvatarBridge
                 $"{flipped} AnyState transition(s) stopped restarting their own state every frame",
                 "These carried Unity's default \"Can Transition To Self\", which with ordinary " +
                 "conditions means the destination re-enters EVERY FRAME the conditions hold, " +
-                "restarting its animation each time. VRChat hid it — the states were mostly empty " +
-                "there — but conversion must fill empty states, and a filled state restarted every " +
-                "frame strobes: animations rapidly flicker, often only on OTHER players' screens, " +
-                "because remote copies hold \"#\" local parameters at defaults that can keep such a " +
-                "condition permanently true. Each state now enters once and plays normally; " +
-                "transitions conditioned on a Trigger keep the flag, as pulse-retriggering is the " +
-                "one thing it is for.");
+                "restarting its animation each time. VRChat hid it — the states involved were " +
+                "empty there — but conversion must fill empty states, and a filled state restarted " +
+                "every frame strobes: animations rapidly flicker, often only on OTHER players' " +
+                "screens, because remote copies hold \"#\" local parameters at defaults that can " +
+                "keep such a condition permanently true. Only still-holding states change — a " +
+                "state with a real animated clip keeps the flag AND the held-at-first-frame look " +
+                "its author shipped with. Transitions conditioned on a Trigger keep the flag too; " +
+                "pulse-retriggering is the one thing it is for.");
+        }
+
+        /// <summary>
+        /// Whether a motion never visibly changes while it plays: no motion at all, a clip whose
+        /// every curve holds one value, or a tree of such clips. For these, being restarted every
+        /// frame and playing through are the same picture — so the self-restart suppressor can
+        /// act on them without changing anything an author ever saw.
+        /// </summary>
+        static bool MotionHoldsStill(Motion motion)
+        {
+            if (motion == null)
+            {
+                return true; // empty in VRChat; the filler this pass protects against comes later
+            }
+            if (motion is BlendTree tree)
+            {
+                return tree.children.All(child => MotionHoldsStill(child.motion));
+            }
+            if (!(motion is AnimationClip clip))
+            {
+                return false;
+            }
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve == null || curve.keys.Length < 2)
+                {
+                    continue;
+                }
+                float first = curve.keys[0].value;
+                for (int i = 1; i < curve.keys.Length; i++)
+                {
+                    if (Mathf.Abs(curve.keys[i].value - first) > 1e-5f)
+                    {
+                        return false;
+                    }
+                }
+            }
+            foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+            {
+                var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                if (keys == null || keys.Length < 2)
+                {
+                    continue;
+                }
+                for (int i = 1; i < keys.Length; i++)
+                {
+                    if (keys[i].value != keys[0].value)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
         /// <summary>
