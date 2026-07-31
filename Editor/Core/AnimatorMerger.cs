@@ -4931,6 +4931,7 @@ namespace AvatarBridge
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;
+            var maskedBaseBody = new SortedSet<string>();
 
             foreach (var layer in layers)
             {
@@ -4939,9 +4940,35 @@ namespace AvatarBridge
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
-                if (body)
+                // A [Base] layer is masked even when it DOES animate the body, which is the one
+                // exception to "deliberate body animation is left alone".
+                //
+                // In VRChat the Base playable is the bottom of the stack — the thing that provides
+                // the body pose. ChilloutVR's equivalent is its own Locomotion/Emotes layer, and
+                // that layer is not optional: the stance buttons and movement sliders are answered
+                // there and nowhere else. A merged [Base] layer lands ABOVE it on Override at
+                // weight 1, so it cannot supplement CVR's locomotion — only replace it, and only
+                // with whatever VRChat's Base happened to be doing.
+                //
+                // That is rarely locomotion. On the avatar that forced this, the [Base] layer was
+                // a calibration utility whose three states are "measure me", "Preview" and
+                // "reinitialize"; unmasked at weight 1 it held the body in a measurement pose,
+                // movement animated nothing, and Airborne/Flying/Sitting/Swimming did nothing
+                // because the layer answering them had been overridden. Genuine locomotion
+                // REPLACEMENTS fare no better: they lean on runtime layer-weight control, which
+                // ChilloutVR has no equivalent for, so they cannot run here either way.
+                //
+                // Masked, the layer keeps everything it can actually deliver — object toggles,
+                // blendshapes, materials, parameters, additive floating — and CVR's locomotion
+                // stays authoritative. Enabling "Base / locomotion" can no longer break an avatar.
+                bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
+                if (body && !baseLayer)
                 {
                     continue; // deliberate body animation; reported separately
+                }
+                if (body)
+                {
+                    maskedBaseBody.Add(layer.name);
                 }
                 // Finger curves get NO special treatment — they are blocked with the rest.
                 //
@@ -4980,6 +5007,23 @@ namespace AvatarBridge
                       "finger in VRChat either, and letting them through here would overwrite your hand " +
                       "gestures, since merged layers sit above the hand-pose layers."
                     : ""));
+
+            if (maskedBaseBody.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{maskedBaseBody.Count} \"Base / locomotion\" layer(s) blocked from driving the body",
+                    $"{string.Join(", ", maskedBaseBody)} — these animate humanoid muscles, and merged into one " +
+                    "ChilloutVR controller they land ABOVE the client's own Locomotion/Emotes layer on Override " +
+                    "at full weight. They cannot add to CVR's locomotion from there, only replace it — and CVR's " +
+                    "layer is where the movement sliders and the Airborne / Flying / Sitting / Swimming stances " +
+                    "are answered, so letting them through costs you all of it. What VRChat put in Base is " +
+                    "usually not locomotion anyway (one avatar's was a calibration utility that simply held the " +
+                    "body still), and true locomotion REPLACEMENTS depend on runtime layer-weight control that " +
+                    "ChilloutVR has no equivalent for, so they cannot run here regardless. Everything else in " +
+                    "these layers is untouched: object toggles, blendshapes, materials, parameters and additive " +
+                    "motion all still convert. If you specifically want one driving your body, clear its Mask in " +
+                    "the Animator window — and expect the stances to stop responding.");
+            }
         }
 
         /// <summary>

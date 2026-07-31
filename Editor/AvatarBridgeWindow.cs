@@ -455,11 +455,12 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Gesture (hand poses)", null,
                 settings.convertGestureLayer, v => settings.convertGestureLayer = v));
             b.Add(BridgeElements.Bind("Base / locomotion",
-                "REPLACES ChilloutVR's locomotion rather than adding to it — the converted layer sits above " +
-                "CVR's own and drives the same muscles. Leave OFF unless this avatar's locomotion system is " +
-                "the whole point of it. When a replacement doesn't run correctly here (many depend on runtime " +
-                "layer-weight control, which ChilloutVR has no equivalent for) the movement sliders animate " +
-                "nothing and the Airborne / Flying / Sitting / Swimming stances stop responding.",
+                "Brings across what VRChat kept in its Base layer — object toggles, blendshapes, materials, " +
+                "parameters, additive motion. It can no longer break your locomotion: a Base layer that " +
+                "drives humanoid muscles is masked off the body, because merged in it would sit above " +
+                "ChilloutVR's own locomotion and replace it rather than add to it, taking the movement " +
+                "sliders and the stance buttons with it. True locomotion replacements don't convert either " +
+                "way — they need runtime layer-weight control ChilloutVR has no equivalent for.",
                 settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));

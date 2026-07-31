@@ -1312,18 +1312,23 @@ Three things worth knowing:
 
 ### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
 
-**Convert again with "Base / locomotion" turned OFF** (it's off by default).
+**Reconvert on 3.4.31 or later** — enabling "Base / locomotion" can no longer cause this.
 
-That option doesn't *add* your avatar's locomotion to ChilloutVR's — it **replaces** it. The converted
-`[Base]` layers sit above CVR's own `Locomotion/Emotes` layer and drive the same muscles, so CVR's
-layer stops having any say. That's correct when the avatar's own locomotion system runs here. Many
-don't: VRChat locomotion replacements routinely depend on runtime layer-weight control, which
-ChilloutVR has no equivalent for, and on parameters the two platforms feed differently. When such a
-system doesn't run, nothing replaces what it displaced — the movement sliders animate nothing and the
-stance buttons stop responding, because the layer that answers them has been overridden.
+Merged into one ChilloutVR controller, a `[Base]` layer lands **above** the client's own
+`Locomotion/Emotes` layer on Override at full weight. From there it can't *add* to CVR's locomotion,
+only replace it — and CVR's layer is where the movement sliders and every stance button are answered,
+so letting it through costs you all of them. One avatar's `[Base]` layer turned out to be a
+calibration utility (states literally named `measure me`, `Preview`, `reinitialize`); unmasked at
+weight 1 it simply held the body still.
 
-ChilloutVR's own locomotion is complete and needs nothing from VRChat, so leaving this off is the
-right choice for almost every avatar. The report names each `[Base]` layer that drives muscles.
+`[Base]` layers are now masked off the humanoid rig, exactly like merged FX layers. Everything else
+in them still converts — object toggles, blendshapes, materials, parameters, additive motion — and
+CVR's locomotion stays authoritative.
+
+**Genuine locomotion replacements can't be rescued this way**, and it's worth knowing why: they lean
+on runtime layer-weight control, which ChilloutVR has no equivalent for, so they don't run here
+whether masked or not. Nothing is lost by blocking them. If you want one driving your body anyway,
+clear its Mask in the Animator window — and expect the stances to stop responding.
 
 ### A menu control appears, moves, syncs — and does nothing
 
