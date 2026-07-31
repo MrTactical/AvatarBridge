@@ -76,6 +76,23 @@ namespace AvatarBridge
         /// </summary>
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Menu entries this conversion invented for synced parameters the VRChat menu never
+        /// exposed. Recorded because they are the only entries safe to withdraw later: an entry
+        /// the author made is theirs, while one we added on a guess can be taken back once the
+        /// merged animator shows the avatar drives that parameter itself.
+        /// </summary>
+        public HashSet<string> AutoExposedParameters = new HashSet<string>();
+
+        /// <summary>
+        /// True when the avatar blinks from its own animator (VRCFury-style), so the native-blink
+        /// takeover decision is DEFERRED to AnimatorMerger.ReplaceAnimatorBlink, which can inspect
+        /// the merged layers. The shape is chosen there, from the layer that gets stripped — not
+        /// here: choosing by name first picked "Blink" off an expression clip while the receiver
+        /// drove "vrc.Blink", and the takeover missed entirely.
+        /// </summary>
+        public bool AnimatorBlinkPending;
+
         public Animator TargetAnimator => Target != null ? Target.GetComponent<Animator>() : null;
 
         public string PathInTarget(Transform child) => RelativePath(Target.transform, child);

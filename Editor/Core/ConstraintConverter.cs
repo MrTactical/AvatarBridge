@@ -43,6 +43,8 @@ namespace AvatarBridge
             int converted = 0;
             var localSpaceRelays = new List<string>();
             var mirrored = new List<string>();
+            var disabledLocalSpace = new List<string>();
+            animatedRotationPaths = null;   // per conversion, like `relocated` below
             // MUST run before anything converts: a Unity constraint bakes its rest offsets
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
@@ -86,6 +88,7 @@ namespace AvatarBridge
                     if (!realigned.Contains(component.transform))
                     {
                         NoteLocalSpace(ctx, component, localSpaceRelays);
+                        DisableUnfollowableLocalSpace(ctx, component, typeName, disabledLocalSpace);
                     }
                     NoteMirrored(ctx, component, mirrored);
                     UnityEngine.Object.DestroyImmediate(component);
@@ -99,6 +102,110 @@ namespace AvatarBridge
             RepointConstraintCurves(ctx);
             ReportLocalSpace(ctx, localSpaceRelays);
             ReportMirrored(ctx, mirrored);
+            ReportDisabledLocalSpace(ctx, disabledLocalSpace);
+        }
+
+        /// <summary>
+        /// A local-space rotation relay that could NOT be re-parented converts into a constraint
+        /// that is wrong whenever its two parent chains move apart — and when an animation also
+        /// poses the constrained bone, the wrong constraint OVERRIDES the right animation, because
+        /// constraints evaluate after animators. So in exactly that case the converted constraint
+        /// is disabled: the animation stands, and a bone posed correctly without eye-tracking
+        /// beats one yanked 77 degrees off with it.
+        ///
+        /// The case that forced the choice: a transforming avatar's windshield pupils
+        /// (CarEye_L/R) mirror its face eye bones through local-space rotation constraints, and
+        /// its Car_Idle animation ALSO poses them. Converted world-space, the constraint folded
+        /// the pupils edge-on the moment the body folded into the car; disabled, the animation
+        /// shows them exactly where the author keyed them.
+        ///
+        /// Deliberately narrow: rotation constraints only, only when unmovable, and only when a
+        /// clip in the final controller animates that bone's rotation — a bone nothing animates
+        /// keeps the world-space follow, which at least tracks its source somehow, and that is
+        /// the behaviour the walking quadruped shipped with.
+        /// </summary>
+        static void DisableUnfollowableLocalSpace(BridgeContext ctx, Component vrc, string typeName,
+            List<string> disabled)
+        {
+            if (typeName != "VRCRotationConstraint" || !Get(vrc, "SolveInLocalSpace", false))
+            {
+                return;
+            }
+            string path = ctx.PathInTarget(vrc.transform);
+            if (!AnimatedRotationPaths(ctx).Contains(path))
+            {
+                return;
+            }
+            var unity = vrc.GetComponent<RotationConstraint>();
+            if (unity == null)
+            {
+                return;
+            }
+            unity.constraintActive = false;
+            unity.enabled = false;
+            disabled.Add(path);
+        }
+
+        static HashSet<string> animatedRotationPaths;
+
+        /// <summary>Paths whose rotation some clip in the final controller animates. Cached per
+        /// conversion; Run() resets it alongside the other per-run state.</summary>
+        static HashSet<string> AnimatedRotationPaths(BridgeContext ctx)
+        {
+            if (animatedRotationPaths != null)
+            {
+                return animatedRotationPaths;
+            }
+            animatedRotationPaths = new HashSet<string>();
+            var controllers = new List<RuntimeAnimatorController>();
+            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            {
+                if (animator.runtimeAnimatorController != null)
+                {
+                    controllers.Add(animator.runtimeAnimatorController);
+                }
+            }
+            if (ctx.MergedController != null)
+            {
+                controllers.Add(ctx.MergedController);
+            }
+            foreach (var controller in controllers)
+            {
+                foreach (var clip in controller.animationClips)
+                {
+                    if (clip == null)
+                    {
+                        continue;
+                    }
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Transform)
+                            && (binding.propertyName.StartsWith("m_LocalRotation", StringComparison.Ordinal)
+                                || binding.propertyName.StartsWith("localEulerAngles", StringComparison.Ordinal)))
+                        {
+                            animatedRotationPaths.Add(binding.path);
+                        }
+                    }
+                }
+            }
+            return animatedRotationPaths;
+        }
+
+        static void ReportDisabledLocalSpace(BridgeContext ctx, List<string> disabled)
+        {
+            if (disabled.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Converted(Category,
+                $"{disabled.Count} unfollowable local-space constraint(s) disabled — their animation takes over",
+                $"{string.Join(", ", disabled)} — each solved in LOCAL space in VRChat, could not be " +
+                "re-parented to make Unity's world-space solving equivalent, AND is posed by an " +
+                "animation in the controller. A wrong constraint overrides a right animation " +
+                "(constraints evaluate after animators), so the constraint is disabled and the " +
+                "animation keeps the bone where the author keyed it. What is lost is only the live " +
+                "follow — on the avatar that forced this, windshield pupils that mirrored the eye " +
+                "bones stay posed by the car animation instead of tracking eye movement.");
         }
 
         /// <summary>
@@ -991,7 +1098,27 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "rotation");
                 return true;
             }
-            unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
+            // MEASURED from the live pose whenever the constraint's output is unambiguous; the
+            // VRChat field is only the fallback. Copying the field trusts that both engines apply
+            // a rotation offset in the same space, and that held right up until a constraint
+            // crossed two very differently oriented bones: a car avatar's windshield pupils mirror
+            // its face eye bones through rotation constraints, and the copied offset left them 77
+            // degrees off — rotated edge-on, invisible. The scene pose at conversion time IS
+            // VRChat's own solver output (VRC constraints evaluate in the editor), so for an
+            // active, full-weight, single-source constraint the offset that reproduces that pose
+            // is derivable with no cross-engine belief at all: Unity evaluates
+            // result = source.rotation * Euler(offset), hence
+            // offset = Inverse(source.rotation) * current.rotation. World rotations throughout,
+            // so AlignLocalSpaceRelays re-parenting cannot disturb the measurement.
+            var rotSources = ReadSources(vrc);
+            bool rotMeasured = Get(vrc, "IsActive", true)
+                && Mathf.Approximately(Get(vrc, "GlobalWeight", 1f), 1f)
+                && rotSources.Count == 1 && rotSources[0].Weight >= 0.999f
+                && rotSources[0].Transform != null
+                && vrc.gameObject.activeInHierarchy;
+            unity.rotationOffset = rotMeasured
+                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * vrc.transform.rotation).eulerAngles
+                : Get(vrc, "RotationOffset", Vector3.zero);
             // A bone AlignLocalSpaceRelays moved has a new parent, so VRChat's authored
             // RotationAtRest — measured against the old one — no longer describes it. Its rest IS
             // where it sits now: the move preserved world rotation, so this is the same pose.
@@ -1001,7 +1128,10 @@ namespace AvatarBridge
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
-            ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Rotation constraint");
+            ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform),
+                rotMeasured
+                    ? "Rotation constraint — offset measured from the pose VRChat's own solver left in the scene"
+                    : "Rotation constraint");
             return true;
         }
 

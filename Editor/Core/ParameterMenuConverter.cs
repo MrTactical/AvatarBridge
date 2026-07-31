@@ -363,6 +363,14 @@ namespace AvatarBridge
                 return null;
             }
 
+            if (!hasMenu)
+            {
+                // Remembered, not decided here: whether this one is worth keeping depends on what
+                // the merged animator turns out to do with the parameter, and the merge hasn't
+                // happened yet. See AnimatorMerger.WithdrawSelfDrivenExposures.
+                ctx.AutoExposedParameters.Add(p.name);
+            }
+
             string display = hasMenu
                 ? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
                 : FriendlyParamName(p.name);

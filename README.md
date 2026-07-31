@@ -297,6 +297,25 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
+**Rotation offsets are measured, not copied** (3.4.28). Copying VRChat's `RotationOffset` field
+trusts that both engines apply it in the same space, and that held until a constraint crossed two
+very differently oriented bones — a car avatar's windshield pupils mirror its face eye bones through
+rotation constraints, and the copied offset left them rotated 77° edge-on, invisible. VRC constraints
+evaluate in the editor, so at conversion time the scene pose *is* VRChat's solver output; for an
+active, full-weight, single-source rotation constraint the offset is now derived from that pose
+directly, with no cross-engine assumption. Multi-source or inactive constraints still copy the field.
+
+**An unfollowable local-space constraint yields to its animation** (3.4.29). VRChat constraints can
+solve in the source's *local* space; Unity's only solve in world space, and when the constrained bone
+can't be re-parented to bridge that (it skins the mesh), the converted constraint is wrong whenever
+the two parent chains move apart. If a clip in the controller *also* poses that bone, the wrong
+constraint overrides the right animation — constraints evaluate after animators. So in exactly that
+case the constraint is now **disabled** and the animation stands. The avatar that forced the choice:
+windshield pupils mirroring the face eye bones folded 77° edge-on the moment the body folded into a
+car, while the car animation had them keyed perfectly all along. What's lost is only the live follow
+— the pupils sit where the author posed them instead of tracking eye movement. Bones nothing
+animates keep the world-space follow, which is the behaviour the walking quadruped shipped with.
+
 **Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
 **local** rotation instead of its world one, and that's the default in the SDK's own inspector.
 Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its
@@ -363,8 +382,14 @@ than numeric:
   MagicaCloth2 ships fully responsive to it, so a converted chain would otherwise pick up motion
   its author never tuned for.
 
-Stretch & squish, multi-child blending, `Is Animated` and angle limits are reported rather than
-converted, each naming the field to change if that chain wants it.
+- **`Is Animated` sets Animation Pose Ratio to 1** (3.4.19). MagicaCloth2 settles a chain back to
+  the pose the avatar was *built* in; a PhysBone marked `Is Animated` is one an animation moves. Left
+  at the default the two fight and the cloth wins — a chest or ear slider that scales its own bones
+  simply stops working, and the avatar quietly has a different shape from the original at identical
+  menu settings. The source flag decides this, so it's applied rather than reported.
+
+Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
+naming the field to change if that chain wants it.
 
 **Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
 of simulation, so that path maps values 1:1.
@@ -1269,6 +1294,12 @@ Three things worth knowing:
   would assert it from above and the shirt could never come off; if neither did, it could never go
   back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
   counts what was left to a lower layer.
+- **Only two-state toggles are filled** (3.4.18). VRChat's idiom is exactly one empty "off" state and
+  one state holding the clip, and that shape is the only one where a snapshot of your avatar belongs
+  in the empty half. Bigger layers are machines whose empty states are structural — a chest slider's
+  `Reset/Pause`, a local/remote gate — and filling those *changes how the avatar looks*: one snapshot
+  pinned seven chest blendshapes to zero and flattened the model the moment the layer rested there.
+  Those layers are now left exactly as VRChat had them, and the report names each one.
 - **Not every empty state is an off state** (3.4.10). Some exist to *choose* — the local/remote gate
   VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
   controls drive one branch and a synced dropdown drives the other. The layer only passes through
@@ -1281,9 +1312,86 @@ Three things worth knowing:
 
 ### A menu control appears, moves, syncs — and does nothing
 
-Check the report for that control's name. Two known causes, both fixed, both worth naming if you
+Check the report for that control's name. Three known causes, all fixed, all worth naming if you
 still hit them: a prefab whose constraints drive your bones from proxy objects (see
-[above](#constraints-that-drive-another-object)), or a slider whose neutral is 0.5 being declared 0.
+[above](#constraints-that-drive-another-object)); a slider whose neutral is 0.5 being declared 0; or
+**a feature living in the Action layer** (fixed in 3.4.20).
+
+That last one is worth understanding, because it looks exactly like a dead parameter. VRChat's Action
+layer is its emote player: VRChat keeps it at weight **0** and raises it only while an emote runs, so
+its waiting state can hold a full-body clip and harm nothing. ChilloutVR has no playable layers to
+raise it, so conversions rest it at 0 too — otherwise that waiting state asserts a stand-still pose
+over your locomotion and you walk on the spot.
+
+Some avatars put a *feature* there anyway. One transforming robot kept its entire vehicle mode in an
+Action layer gated on its own `CarMode`/`TransformMode` parameters: every parameter converted, the
+menu toggled them correctly, and nothing happened, because the layer holding the animation could
+never reach any weight.
+
+An Action layer whose transitions wait on the avatar's **own** parameters — anything outside VRChat's
+`VRCEmote`/`AFK`/state built-ins — is now merged at **weight 1**, with its waiting state emptied and
+Write Defaults turned off so it contributes nothing until something drives it. That's the same net
+effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
+about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
+
+**The full-body poses move into ChilloutVR's own locomotion layer** (3.4.26) — the one place on this
+platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime
+while a sequence plays; ChilloutVR has no runtime weight control, and a *separate* layer has no way
+to yield — inert states with Write Defaults off hold the last written muscles (the avatar freezes
+mid-pose; observed directly), Write Defaults on asserts rest pose over locomotion. Five versions of
+state surgery hit that wall. Inside the locomotion layer it doesn't exist: when the pose states
+aren't active, locomotion's own states are, still writing muscles every frame — handing back *is*
+yielding.
+
+What moves is the **live window** — the states between the behaviour that raises the Action weight
+and the one that fades it, read from VRChat's own behaviours before they're stripped; exactly the
+states VRChat ever showed. The avatar's arming conditions (parameters, gestures) carry over as the
+entry conditions, and the original layer stays merged at weight 0 so its parameter drivers keep
+firing on schedule. Not carried over: VRChat's tracking control (IK cut-off during sequences) and
+its half-second weight fades — entering and leaving the pose blends over a fixed quarter second.
+When no live window can be identified, the layer stays at weight 0 and the report says exactly what
+that costs.
+
+### Two near-identical menu controls, and only one works
+
+**Fixed in 3.4.22.** ChilloutVR syncs straight from the animator, so a synced parameter with no menu
+control still needs somewhere to live — conversions create one. That guess is wrong when the avatar
+*writes* the parameter itself from a parameter driver: the new control then sits in your menu fighting
+the animator, right next to the control that really works. One transforming avatar shipped a `Car Mode`
+entry (the author's, driving `TransformMode`) directly above a `CarMode` one (ours, driving what the
+Action layer sets for itself).
+
+Invented controls are now withdrawn once the merged animator shows a driver writing that parameter.
+Only controls this tool added are eligible — anything the author put in the menu stays. The parameter
+is untouched and still syncs.
+
+### Your eyes stay open, start closed, or lose a pupil
+
+**Fixed in 3.4.25** — and the fix went through three wrong versions worth recording. An avatar that
+blinks **from its own animator** (VRCFury and similar, usually driving `vrc.Blink`) can't keep that
+system through conversion, and can't share the eyes with the native one either:
+
+- 3.4.21 enabled native blink *alongside* it, guessing `Blink` while the animator drove `vrc.Blink` —
+  two systems, wrong shape, pupil gone.
+- 3.4.22 left blink entirely to the avatar's system. That system's "eyes open" states are **empty**
+  in VRChat, relying on Write Defaults to reopen the lids — and empty states can't survive
+  conversion, because they crash Unity's graph builder and get a filler clip. A state with a motion
+  stops writing defaults, so the first blink wrote the shape to 100 and nothing ever wrote it back:
+  eyes shut from the first blink, pupil with them, on the body *and* on anything else built from the
+  same mesh.
+
+- 3.4.24 picked the shape by name before looking at the layers — and on a mesh carrying both a
+  `Blink` shape and a `vrc.Blink` shape it wired the native blink to the wrong one while the real
+  driver kept running.
+
+The animator blink system only exists because **VRChat has no built-in blink. ChilloutVR does.** So
+the conversion (3.4.25) finds the animator layer whose *only job is blinking* — every curve a
+blendshape, the only shape it ever raises matches "blink", no objects, no materials — lets **that
+layer name the shape**, removes it, wires ChilloutVR's native Eye Blink to the same shape, and zeroes
+the shape's live weight in case the old system left the eyes mid-blink. Expression animations that
+close the eyes in a smile raise other shapes, so they stay — and still win over the native blink
+while they play, exactly as they won over the animator blink. If no layer can be safely identified,
+nothing is removed, native blink stays off, and the report says so.
 
 ### An effect draws in one eye only in VR
 

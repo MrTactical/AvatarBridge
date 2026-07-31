@@ -145,6 +145,10 @@ namespace AvatarBridge
             // so they are supposed to run at full weight and drive the body.
             bool gogoDrivesLocomotion = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx);
             int actionLayersRested = 0;
+            // Action layers kept LIVE because the avatar drives them itself — see the weight
+            // decision below and the report entry at the end of the merge.
+            var actionFeatures = new List<string>();
+            var actionMoved = new List<string>();
 
             foreach (var (id, controller) in vrcControllers)
             {
@@ -206,8 +210,37 @@ namespace AvatarBridge
                     if (actionAtRest)
                     {
                         // After the first-layer rule above, which would otherwise re-raise it.
+                        //
+                        // ALWAYS weight 0, including for Action layers that carry a feature of the
+                        // avatar's own — and that "including" was fought for and lost, so record
+                        // the whole retreat. 3.4.20–3.4.24 tried to keep feature layers live at
+                        // weight 1 with their non-feature states made inert. Every variant failed
+                        // on the same wall: Unity gives a layer no way to YIELD. An inert state
+                        // with Write Defaults off makes the layer HOLD the last muscles any live
+                        // state wrote — the avatar froze mid-pose, confirmed by watching the stuck
+                        // machine sit in an inert state while the pose persisted — and Write
+                        // Defaults on would assert the rest pose over locomotion instead. VRChat
+                        // resolves this with runtime playable-weight control, which ChilloutVR
+                        // does not have. So the pose portion of such a feature is a platform wall,
+                        // and it is REPORTED as one rather than half-shipped: the FX portion (mesh
+                        // swaps, materials — the visible part) lives in other layers and works.
                         clone.defaultWeight = 0f;
                         actionLayersRested++;
+                        if (ActionLayerDrivesOwnFeature(clone, out string byWhat))
+                        {
+                            // The POSES go where ChilloutVR keeps poses: inside its own
+                            // locomotion layer. The clone stays merged at weight 0 so its
+                            // parameter drivers keep firing on schedule.
+                            int moved = TransplantActionFeature(masterLayers, clone, srcLayer, ctx);
+                            if (moved > 0)
+                            {
+                                actionMoved.Add($"\"{clone.name}\" (driven by {byWhat}, {moved} pose state(s))");
+                            }
+                            else
+                            {
+                                actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
+                            }
+                        }
                     }
                     clone.avatarMask = ReplaceVrcMask(clone.avatarMask, ctx);
                     masterLayers.Add(clone);
@@ -216,6 +249,36 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{id} layer merged", $"{controller.layers.Length} sub-layers");
             }
 
+            if (actionMoved.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{actionMoved.Count} Action-layer feature(s) moved into ChilloutVR's locomotion layer",
+                    $"{string.Join("; ", actionMoved)}. VRChat plays these full-body sequences from its " +
+                    "Action playable, raising its weight at runtime — weight control ChilloutVR doesn't " +
+                    "have, and a separate layer can neither yield when idle nor assert without freezing. " +
+                    "ChilloutVR's own home for full-body poses is its Locomotion/Emotes layer, so the " +
+                    "pose states were rebuilt THERE: they take over from locomotion exactly while their " +
+                    "driving conditions hold, and hand back to it on the same conditions the original " +
+                    "used to fade its layer out. The original layer stays merged at weight 0 so its " +
+                    "parameter drivers keep firing on schedule. Not carried over: VRChat's tracking " +
+                    "control (IK cut-off during the sequence) and its half-second weight fades, so " +
+                    "entering and leaving the pose blends over a fixed quarter second instead.");
+            }
+            if (actionFeatures.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{actionFeatures.Count} Action layer(s) carry a feature this platform cannot pose",
+                    $"{string.Join("; ", actionFeatures)}. VRChat's Action playable sits at weight 0 and " +
+                    "is raised at runtime by behaviours while a sequence plays — that runtime weight " +
+                    "control is the one piece ChilloutVR does not have, and without it there is no safe " +
+                    "weight for such a layer: at 0 its full-body poses never show, at 1 Unity offers no " +
+                    "way for the layer to yield between sequences, so the avatar freezes in its last pose " +
+                    "(tried, at length; it is a wall, not a bug). The layer is merged at weight 0, so " +
+                    "everything OUTSIDE it still works — mesh swaps, materials and toggles live in FX " +
+                    "layers and carry the visible part of the feature. What is lost is the full-body pose " +
+                    "while the sequence plays. Raising the layer's weight by hand in the Animator window " +
+                    "shows the poses but WILL freeze the body on the pose it last played.");
+            }
             if (actionLayersRested > 0)
             {
                 ctx.Report.Converted(Category,
@@ -255,6 +318,7 @@ namespace AvatarBridge
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             StripExistingFaceTracking(master, vrcLayers, ctx);
+            ReplaceAnimatorBlink(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
             // Before RenamePass, so the menu entries' machineNames still line up with the
             // animator parameter names; and before CompactIntDropdowns, which needs the
@@ -284,6 +348,7 @@ namespace AvatarBridge
             RepairUnconditionalDriverStates(master, ctx);
             VerifyMenuParameterNames(master, ctx);
             PruneDeadMenuEntries(master, ctx);
+            WithdrawSelfDrivenExposures(master, ctx);
             CompactIntDropdowns(master, ctx);
             // After the menu is final. SystemStripper already drops unreferenced parameters, but
             // it runs long before this and keeps anything a menu entry drives — so a parameter
@@ -2836,6 +2901,563 @@ namespace AvatarBridge
                 "avatar behaves — these fields were being read as garbage or not at all.");
         }
 
+        /// <summary>
+        /// Takes back menu entries this conversion invented for parameters the avatar turns out to
+        /// drive itself.
+        ///
+        /// "Expose menuless synced parameters" exists because ChilloutVR syncs from the animator,
+        /// so a synced parameter with no control still needs somewhere to live. It guesses, and the
+        /// guess is wrong whenever the avatar writes that parameter from a driver: the control then
+        /// sits in the menu fighting the animator for the value, which is the same objection that
+        /// already keeps game-driven parameters out.
+        ///
+        /// It also reads as a bug. One transforming avatar came out with a "Car Mode" control (the
+        /// author's, driving TransformMode) directly above a "CarMode" one (ours, driving the
+        /// parameter the Action layer sets for itself) — two controls, near-identical names, one of
+        /// them inert. Only entries recorded in AutoExposedParameters are eligible; anything the
+        /// author put in the menu stays whatever it does.
+        /// </summary>
+        static void WithdrawSelfDrivenExposures(AnimatorController master, BridgeContext ctx)
+        {
+            var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings : null;
+            if (settings == null || ctx.AutoExposedParameters.Count == 0)
+            {
+                return;
+            }
+
+            // Everything a parameter driver writes anywhere in the merged controller. The CCK
+            // AnimatorDriver, not the VRChat one: BehaviourPass has already converted every
+            // VRCAvatarParameterDriver by the time this runs, and the first version of this pass
+            // scanned for the VRChat type on the merged controller — zero matches, zero withdrawn,
+            // silently. The converted drivers are the same statements in the CCK's vocabulary.
+            var driven = new HashSet<string>();
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state == null || child.state.behaviours == null)
+                        {
+                            continue;
+                        }
+                        foreach (var behaviour in child.state.behaviours)
+                        {
+                            if (!(behaviour is AnimatorDriver driver))
+                            {
+                                continue;
+                            }
+                            foreach (var task in (driver.EnterTasks ?? Enumerable.Empty<AnimatorDriverTask>())
+                                     .Concat(driver.ExitTasks ?? Enumerable.Empty<AnimatorDriverTask>()))
+                            {
+                                if (task != null && !string.IsNullOrEmpty(task.targetName))
+                                {
+                                    driven.Add(task.targetName);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            if (driven.Count == 0)
+            {
+                return;
+            }
+
+            var withdrawn = new SortedSet<string>();
+            for (int i = settings.Count - 1; i >= 0; i--)
+            {
+                var entry = settings[i];
+                if (entry == null || string.IsNullOrEmpty(entry.machineName)
+                    || !ctx.AutoExposedParameters.Contains(entry.machineName)
+                    || !driven.Contains(entry.machineName))
+                {
+                    continue;
+                }
+                withdrawn.Add($"\"{entry.name}\" ({entry.machineName})");
+                settings.RemoveAt(i);
+            }
+            if (withdrawn.Count == 0)
+            {
+                return;
+            }
+            EditorUtility.SetDirty(ctx.CvrAvatar);
+            ctx.Report.Converted(Category,
+                $"{withdrawn.Count} menu control(s) withdrawn — the avatar sets these itself",
+                $"{string.Join(", ", withdrawn)}. These had no control in the VRChat menu, so one was " +
+                "created for them to keep them reachable; the merged animator then showed a parameter " +
+                "driver writing each one. A control for a parameter the avatar drives does nothing except " +
+                "fight the animator and sit next to the control that really works — the usual sighting is " +
+                "two near-identically named entries where only one responds. The parameter itself is " +
+                "untouched and still syncs.");
+        }
+
+        /// <summary>
+        /// Replaces an animator-driven blink with ChilloutVR's native Eye Blink. Runs when
+        /// DescriptorConverter found SOME blink-ish shape animated — see
+        /// <c>BridgeContext.AnimatorBlinkPending</c> — but the whole decision is made HERE, where
+        /// the merged layers can be inspected.
+        ///
+        /// It has to be, and the first version proved it the hard way: the mesh this was written
+        /// for carries a shape named "Blink" AND one named "vrc.Blink". Deciding the shape first
+        /// (descriptor pass) and hunting its writers second (merge pass) picked "Blink" from an
+        /// expression clip, wired the native blink to it, found no strippable writer of it — and
+        /// the real receiver went on driving "vrc.Blink" to 100 forever. So: find the strippable
+        /// BLINK LAYER first, and let IT name the shape.
+        ///
+        /// A blink layer is one whose animation does nothing but blink: every float curve is a
+        /// blendshape, the ONLY shape it ever raises above zero matches /blink/i, no objects, no
+        /// materials. Expression layers raise other shapes and stay — an expression closing the
+        /// eyes over the native blink is exactly what it did over the animator blink. The weight-0
+        /// generator that flips the trigger parameter animates nothing and is left alone; its
+        /// pulses land on a parameter nothing reads any more.
+        ///
+        /// Why the animator system can't just be kept: its "eyes open" states are EMPTY in VRChat,
+        /// relying on Write Defaults to reopen the lids. Empty states crash Unity's graph builder,
+        /// so conversion must fill them; a state with a motion stops writing defaults; the first
+        /// blink then writes the shape to 100 and nothing ever writes it back. Eyes shut from the
+        /// first blink onward — measured on the mesh itself, resting weight 0 in the prefab and
+        /// 100 in the running scene.
+        /// </summary>
+        static void ReplaceAnimatorBlink(AnimatorController master, BridgeContext ctx)
+        {
+            if (!ctx.AnimatorBlinkPending || ctx.CvrAvatar == null || ctx.CvrAvatar.bodyMesh == null)
+            {
+                return;
+            }
+            var mesh = ctx.CvrAvatar.bodyMesh.sharedMesh;
+            if (mesh == null)
+            {
+                return;
+            }
+
+            var stripped = new List<string>();
+            string blinkShape = null;
+            var layers = master.layers.ToList();
+            for (int i = layers.Count - 1; i >= 0; i--)
+            {
+                var layer = layers[i];
+                if (layer == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                string raised = null;      // the one shape this layer raises, if it qualifies
+                bool pureBlink = true, sawAnything = false;
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var motion = child.state != null ? child.state.motion : null;
+                        foreach (var clip in CollectClips(motion))
+                        {
+                            if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0)
+                            {
+                                pureBlink = false;
+                            }
+                            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                            {
+                                sawAnything = true;
+                                if (!binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                                {
+                                    pureBlink = false;
+                                    continue;
+                                }
+                                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                                if (curve == null || !curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                                {
+                                    continue; // held at zero: the receiver resetting a co-shape
+                                }
+                                string shape = binding.propertyName.Substring("blendShape.".Length);
+                                if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) < 0
+                                    || (raised != null && raised != shape))
+                                {
+                                    pureBlink = false; // raises a non-blink shape, or two shapes
+                                }
+                                else
+                                {
+                                    raised = shape;
+                                }
+                            }
+                        }
+                    }
+                });
+                if (pureBlink && sawAnything && raised != null && mesh.GetBlendShapeIndex(raised) >= 0)
+                {
+                    blinkShape = raised;
+                    stripped.Add(layer.name);
+                    layers.RemoveAt(i);
+                }
+            }
+
+            if (blinkShape == null)
+            {
+                // Nothing safely strippable. Leave the avatar's own system in place and say so —
+                // adding the native blink on top would put two systems on one pair of eyes.
+                ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
+                    "This avatar blinks from its own animator, but no layer could be safely identified " +
+                    "as ONLY blinking, so nothing was removed and ChilloutVR's native blink stays off. " +
+                    "If the eyes stick closed in game, this is where to look: the animator blink relies " +
+                    "on empty-state Write Defaults behaviour that does not survive conversion.");
+                return;
+            }
+
+            master.layers = layers.ToArray();
+            EditorUtility.SetDirty(master);
+
+            var cvrAvatar = ctx.CvrAvatar;
+            cvrAvatar.useBlinkBlendshapes = true;
+            if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
+            {
+                cvrAvatar.blinkBlendshape = new string[4];
+            }
+            cvrAvatar.blinkBlendshape[0] = blinkShape;
+            AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+            // The shape's live weight may be whatever the old system last wrote — the source scene
+            // arrives mid-blink if a previous session stuck it closed. Native blink owns it now,
+            // and its rest is open.
+            int index = mesh.GetBlendShapeIndex(blinkShape);
+            if (index >= 0)
+            {
+                cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+            }
+            EditorUtility.SetDirty(cvrAvatar);
+
+            ctx.Report.Converted(Category,
+                $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
+                $"{string.Join(", ", stripped)} — this system existed to blink \"{blinkShape}\" because " +
+                "VRChat has no built-in blink. Its \"eyes open\" states are EMPTY in VRChat and rely on " +
+                "Write Defaults reopening the lids, which does not survive conversion: empty states " +
+                "crash Unity's graph builder, the filler that prevents that is a motion, and a state " +
+                "with a motion stops writing defaults — so the first blink closed the eyes for good. " +
+                "ChilloutVR's native Eye Blink now drives the exact shape the removed layer drove. " +
+                "Expression animations that close the eyes are untouched and still win while they play.");
+        }
+
+        /// <summary>
+        /// Rebuilds a VRChat Action feature's pose states inside ChilloutVR's own
+        /// Locomotion/Emotes layer, which is the one place on this platform a full-body pose can
+        /// both assert and let go.
+        ///
+        /// The problem it solves: VRChat's Action playable rests at weight 0 and is raised at
+        /// runtime by behaviours while a sequence plays. ChilloutVR has no runtime layer-weight
+        /// control, and a SEPARATE layer has no way to yield — inert states with Write Defaults
+        /// off hold the last written muscles, Write Defaults on asserts rest pose over locomotion.
+        /// Five versions of state surgery hit that wall. Inside the locomotion layer the wall does
+        /// not exist: when the pose states aren't active, the layer's own locomotion states are,
+        /// still writing muscles every frame. Handing back IS yielding.
+        ///
+        /// What moves is the LIVE WINDOW — the states reachable from a behaviour that raises the
+        /// Action weight (goalWeight 1) without passing one that fades it (goalWeight 0), read
+        /// from the SOURCE layer's behaviours before they're stripped. Those are exactly the
+        /// states VRChat ever showed. Entry: each source transition from outside the window into a
+        /// raise-state becomes a transition FROM the locomotion resting state carrying the same conditions — the avatar's
+        /// own arming logic, gestures and all. Exit: each transition from a window state to a
+        /// fade-state becomes a transition to the locomotion layer's default state. Behaviours are
+        /// NOT copied: the original layer stays merged at weight 0, where its parameter drivers
+        /// keep firing exactly as VRChat's did.
+        /// </summary>
+        /// <summary>States whose SOURCE behaviours fade the Action playable to 0 — where VRChat
+        /// stopped showing the layer.</summary>
+        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: false);
+
+        /// <summary>States whose behaviours raise the Action playable to 1 — where VRChat started
+        /// showing it. The entry points of the live window.</summary>
+        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: true);
+
+        static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
+        {
+            var found = new HashSet<string>();
+            if (source == null || source.stateMachine == null)
+            {
+                return found;
+            }
+            WalkMachines(source.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    var state = child.state;
+                    if (state == null || state.behaviours == null)
+                    {
+                        continue;
+                    }
+                    foreach (var behaviour in state.behaviours)
+                    {
+                        // BOTH behaviour types: VRCPlayableLayerControl drives the whole playable's
+                        // weight (the standard way an Action system runs itself), and
+                        // VRCAnimatorLayerControl drives one layer inside a playable. Only the
+                        // Action playable counts either way — a state may also drive FX or Gesture
+                        // weights, and those say nothing about this layer's visibility.
+                        bool matches =
+                            (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
+                                && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
+                                && (on ? playable.goalWeight >= 0.999f : playable.goalWeight <= 0.001f))
+                            || (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl animator
+                                && animator.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
+                                && (on ? animator.goalWeight >= 0.999f : animator.goalWeight <= 0.001f));
+                        if (matches)
+                        {
+                            found.Add(state.name);
+                        }
+                    }
+                }
+            });
+            return found;
+        }
+
+        static int TransplantActionFeature(List<AnimatorControllerLayer> masterLayers,
+            AnimatorControllerLayer clone, AnimatorControllerLayer source, BridgeContext ctx)
+        {
+            try
+            {
+                var locomotion = masterLayers.FirstOrDefault(l =>
+                    l != null && l.name == "Locomotion/Emotes" && l.stateMachine != null);
+                var locoDefault = locomotion != null ? locomotion.stateMachine.defaultState : null;
+                if (locoDefault == null || clone.stateMachine == null)
+                {
+                    return 0;
+                }
+
+                var on = LayerWeightStates(source, on: true);
+                var off = LayerWeightStates(source, on: false);
+                if (on.Count == 0)
+                {
+                    return 0;
+                }
+
+                // The clone's states, flat. Names are unique within a VRChat layer in practice;
+                // a duplicate would only shadow a state of the same name, not corrupt anything.
+                var byName = new Dictionary<string, AnimatorState>();
+                WalkMachines(clone.stateMachine, m =>
+                {
+                    foreach (var child in m.states)
+                    {
+                        if (child.state != null && !byName.ContainsKey(child.state.name))
+                        {
+                            byName[child.state.name] = child.state;
+                        }
+                    }
+                });
+
+                var live = new HashSet<string>(on.Where(byName.ContainsKey));
+                if (live.Count == 0)
+                {
+                    return 0;
+                }
+                var queue = new Queue<string>(live);
+                while (queue.Count > 0)
+                {
+                    var state = byName[queue.Dequeue()];
+                    foreach (var transition in state.transitions)
+                    {
+                        var next = transition != null ? transition.destinationState : null;
+                        if (next != null && !off.Contains(next.name) && byName.ContainsKey(next.name)
+                            && live.Add(next.name))
+                        {
+                            queue.Enqueue(next.name);
+                        }
+                    }
+                }
+
+                // Rebuild the window inside the locomotion machine.
+                var locoMachine = locomotion.stateMachine;
+                var copies = new Dictionary<string, AnimatorState>();
+                foreach (var name in live)
+                {
+                    var src = byName[name];
+                    var copy = locoMachine.AddState($"[AB] {name}");
+                    copy.motion = src.motion;
+                    copy.speed = src.speed;
+                    copy.writeDefaultValues = src.writeDefaultValues;
+                    copies[name] = copy;
+                }
+
+                void CopyTransition(AnimatorStateTransition from, AnimatorStateTransition to)
+                {
+                    to.hasExitTime = from.hasExitTime;
+                    to.exitTime = from.exitTime;
+                    to.hasFixedDuration = from.hasFixedDuration;
+                    to.duration = from.duration;
+                    to.offset = from.offset;
+                    foreach (var condition in from.conditions)
+                    {
+                        to.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                }
+
+                foreach (var name in live)
+                {
+                    var src = byName[name];
+                    foreach (var transition in src.transitions)
+                    {
+                        var dst = transition != null ? transition.destinationState : null;
+                        if (dst != null && copies.TryGetValue(dst.name, out var innerDst))
+                        {
+                            CopyTransition(transition, copies[name].AddTransition(innerDst));
+                        }
+                        else if (transition != null)
+                        {
+                            // Leaving the window (the fade state, or anywhere else): hand the
+                            // body back to locomotion, blending rather than snapping.
+                            var exit = copies[name].AddTransition(locoDefault);
+                            CopyTransition(transition, exit);
+                            exit.hasFixedDuration = true;
+                            exit.duration = 0.25f;
+                        }
+                    }
+                }
+
+                // Arming: every way the source machine could ENTER the window from outside it
+                // becomes an AnyState transition with the same conditions. Unconditional entries
+                // are skipped — an AnyState transition with no conditions would fire every frame.
+                int armed = 0;
+                var armedSignatures = new HashSet<string>();
+                void Arm(AnimatorStateTransition transition)
+                {
+                    var dst = transition != null ? transition.destinationState : null;
+                    if (dst == null || !on.Contains(dst.name) || !copies.TryGetValue(dst.name, out var target)
+                        || transition.conditions.Length == 0)
+                    {
+                        return;
+                    }
+                    // From the locomotion layer's RESTING state, never AnyState. AnyState re-fires
+                    // from INSIDE the window — canTransitionToSelf only blocks the entry state
+                    // re-entering itself, so with the arming parameter still set the machine looped
+                    // Transformation → Car_Idle → AnyState → Transformation, visibly flickering.
+                    // In the source graph re-entry was impossible POSITIONALLY: the arming
+                    // transition left a state the window never returns to. Arming from the resting
+                    // state reproduces that: once inside, nothing can re-fire until the pose has
+                    // handed back AND the conditions have gone false and true again.
+                    string signature = dst.name + "|" + string.Join(",",
+                        transition.conditions.Select(c => $"{c.parameter}{(int)c.mode}{c.threshold}"));
+                    if (!armedSignatures.Add(signature))
+                    {
+                        return;
+                    }
+                    var entry = locoDefault.AddTransition(target);
+                    entry.hasExitTime = false;
+                    entry.hasFixedDuration = true;
+                    entry.duration = 0.1f;
+                    foreach (var condition in transition.conditions)
+                    {
+                        entry.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                    armed++;
+                }
+                WalkMachines(clone.stateMachine, m =>
+                {
+                    foreach (var child in m.states)
+                    {
+                        if (child.state == null || live.Contains(child.state.name))
+                        {
+                            continue;
+                        }
+                        foreach (var transition in child.state.transitions)
+                        {
+                            Arm(transition);
+                        }
+                    }
+                    foreach (var transition in m.anyStateTransitions)
+                    {
+                        Arm(transition);
+                    }
+                });
+                if (armed == 0)
+                {
+                    // No way in: remove what was added rather than leave dead states around.
+                    foreach (var copy in copies.Values)
+                    {
+                        locoMachine.RemoveState(copy);
+                    }
+                    return 0;
+                }
+                return copies.Count;
+            }
+            catch (Exception e)
+            {
+                ctx.Report.Warning(Category, $"Could not move \"{clone.name}\"'s poses into the locomotion layer",
+                    $"{e.GetType().Name}: {e.Message} — the layer stays at weight 0; its visible FX still work.");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// VRChat's built-ins that an Action layer legitimately waits on while doing nothing but
+        /// playing emotes. Anything OUTSIDE this set means the avatar is driving the layer itself.
+        /// </summary>
+        static readonly HashSet<string> EmotePlayerParameters = new HashSet<string>
+        {
+            "VRCEmote", "VRCFaceBlendH", "VRCFaceBlendV", "AFK", "Seated", "InStation",
+            "IsLocal", "Upright", "Grounded", "Supine", "Voice", "Sitting", "TrackingType",
+        };
+
+        /// <summary>
+        /// Whether an Action layer is a FEATURE the avatar drives, rather than VRChat's emote
+        /// player. The distinction decides whether the layer may be merged live.
+        ///
+        /// VRChat keeps the Action playable layer at weight 0 and raises it only while an emote
+        /// runs, so its idle state can hold a full-body clip and harm nothing. ChilloutVR has no
+        /// playable layers, so an Action layer merged at weight 1 asserts that idle over locomotion
+        /// — hence the blanket weight 0, which is right for emotes and fatal for anything else.
+        ///
+        /// "Anything else" is real and not rare: a transforming robot avatar put its entire
+        /// car-mode sequence in an Action layer gated on its own CarMode/TransformMode parameters.
+        /// Every parameter converted, the menu toggled them correctly, and nothing happened,
+        /// because the layer holding the animation could not reach any weight.
+        ///
+        /// The test is what the layer WAITS ON. A transition naming a parameter that isn't one of
+        /// VRChat's emote/state built-ins is the avatar asking for this layer on purpose.
+        /// </summary>
+        static bool ActionLayerDrivesOwnFeature(AnimatorControllerLayer layer, out string byWhat)
+        {
+            byWhat = null;
+            var own = new SortedSet<string>();
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                void Note(AnimatorTransitionBase transition)
+                {
+                    if (transition == null || transition.conditions == null)
+                    {
+                        return;
+                    }
+                    foreach (var condition in transition.conditions)
+                    {
+                        if (!string.IsNullOrEmpty(condition.parameter)
+                            && !EmotePlayerParameters.Contains(condition.parameter)
+                            && !condition.parameter.StartsWith("#", StringComparison.Ordinal))
+                        {
+                            own.Add(condition.parameter);
+                        }
+                    }
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        foreach (var transition in child.state.transitions)
+                        {
+                            Note(transition);
+                        }
+                    }
+                }
+                foreach (var transition in machine.anyStateTransitions)
+                {
+                    Note(transition);
+                }
+                foreach (var transition in machine.entryTransitions)
+                {
+                    Note(transition);
+                }
+            });
+            if (own.Count == 0)
+            {
+                return false;
+            }
+            byWhat = string.Join(", ", own.Take(4)) + (own.Count > 4 ? ", …" : "");
+            return true;
+        }
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>
         static bool MotionUsesParameter(Motion motion, string param)
         {
@@ -4503,6 +5125,8 @@ namespace AvatarBridge
             // of parking a numbered copy beside them. One avatar had 200 of them.
             var writtenPaths = new HashSet<string>();
             var keptClips = new HashSet<string>();
+            // Layers whose empty states are structural rather than a toggle.s off half.
+            var notToggles = new SortedSet<string>();
 
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
@@ -4564,10 +5188,12 @@ namespace AvatarBridge
                 var bindings = new HashSet<EditorCurveBinding>();
                 var objectBindings = new HashSet<EditorCurveBinding>();
                 var empties = new List<AnimatorState>();
+                int stateCount = 0;
                 WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
+                        stateCount++;
                         var state = child.state;
                         if (state == null)
                         {
@@ -4592,6 +5218,24 @@ namespace AvatarBridge
                 });
                 if (empties.Count == 0 || (bindings.Count == 0 && objectBindings.Count == 0))
                 {
+                    continue;
+                }
+                // ONLY the two-state toggle. VRChat's idiom is exactly one empty "off" state and
+                // one state holding the clip, and that shape is the only one where a snapshot of
+                // the avatar is the right thing to put in the empty half.
+                //
+                // Anything larger is a machine, and its empty states are structural. Two have now
+                // shipped as bugs: a local/remote gate given the values of the branch it leads to,
+                // and a slider layer's "Reset/Pause" state given a snapshot that pinned seven chest
+                // blendshapes to 0 — which flattened the avatar's chest the moment the layer rested
+                // there. Neither was an "off" state; both merely had no motion.
+                //
+                // Erring toward doing nothing is cheap here: an unfilled off state behaves exactly
+                // as it did in VRChat, which is the situation this pass improves on rather than
+                // rescues. Erring the other way changes what the avatar looks like.
+                if (stateCount != 2)
+                {
+                    notToggles.Add($"{layer.name} ({stateCount} states)");
                     continue;
                 }
                 candidates += empties.Count;
@@ -4759,6 +5403,15 @@ namespace AvatarBridge
                 (stale > 0
                     ? $" {stale} restore clip(s) from a previous conversion of this avatar were deleted; " +
                       "they are regenerated every time and used to pile up beside each other."
+                    : "") +
+                (notToggles.Count > 0
+                    ? $"\n\nLeft alone, not a two-state toggle ({notToggles.Count}): " +
+                      $"{string.Join(", ", notToggles.Take(6))}{(notToggles.Count > 6 ? ", …" : "")}. " +
+                      "VRChat's idiom is exactly one empty \"off\" state and one holding the clip, and " +
+                      "that is the only shape where a snapshot of the avatar belongs in the empty half. " +
+                      "Bigger layers are machines whose empty states are structural — a slider's " +
+                      "reset/pause, a local/remote gate — and filling those changes how the avatar looks. " +
+                      "They behave exactly as they did in VRChat."
                     : ""));
         }
 

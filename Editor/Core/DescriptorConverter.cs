@@ -399,7 +399,7 @@ namespace AvatarBridge
             {
                 WireDescriptorBlink(ctx, cvrAvatar, blinkShape, eyelidMesh);
             }
-            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, cvrAvatar))
+            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, vrc, cvrAvatar))
             {
                 // Reported inside.
             }
@@ -626,7 +626,80 @@ namespace AvatarBridge
         /// "eye-tracking off" state blink — its ON/OFF clips drive useBlinkBlendshapes, which
         /// does nothing until blink shapes are wired here.
         /// </summary>
-        static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)
+        /// <summary>
+        /// Whether some layer of the converted animator already animates a blink blendshape. Names
+        /// the clip so the report can point at it — "your avatar blinks" is only useful if the user
+        /// can go and look at the thing doing it.
+        /// </summary>
+        static bool AnimatedBlinkShape(BridgeContext ctx, VRCAvatarDescriptor vrc, out string drivenShape, out string drivenBy)
+        {
+            drivenShape = null;
+            drivenBy = null;
+            // The SOURCE controllers, off the descriptor. This pass runs long before AnimatorMerger,
+            // so ctx.MergedController is still null here — the first version of this check read it
+            // anyway, silently found nothing, and shipped a "fix" that changed nothing. What the
+            // avatar's layers animate is the same either way; the descriptor just holds them first.
+            var clips = new HashSet<AnimationClip>();
+            void Collect(VRCAvatarDescriptor.CustomAnimLayer[] layers)
+            {
+                if (layers == null)
+                {
+                    return;
+                }
+                foreach (var layer in layers)
+                {
+                    if (layer.animatorController == null)
+                    {
+                        continue;
+                    }
+                    foreach (var clip in layer.animatorController.animationClips)
+                    {
+                        if (clip != null)
+                        {
+                            clips.Add(clip);
+                        }
+                    }
+                }
+            }
+            Collect(vrc != null ? vrc.baseAnimationLayers : null);
+            Collect(vrc != null ? vrc.specialAnimationLayers : null);
+            if (ctx.MergedController != null)
+            {
+                foreach (var clip in ctx.MergedController.animationClips)
+                {
+                    if (clip != null)
+                    {
+                        clips.Add(clip);
+                    }
+                }
+            }
+
+            foreach (var clip in clips)
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    const string prefix = "blendShape.";
+                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    string shape = binding.propertyName.Substring(prefix.Length);
+                    // "blink" anywhere in the name, which covers vrc.Blink, Blink L/R, EyeBlink
+                    // and the handful of naming schemes avatars actually use. Deliberately loose:
+                    // a false positive costs the client's blink on an avatar that has its own,
+                    // while a false negative is two systems fighting.
+                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        drivenShape = shape;
+                        drivenBy = $"\"{clip.name}\" drives \"{shape}\"";
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        static bool TryWireBlinkFromMesh(BridgeContext ctx, VRCAvatarDescriptor vrc, CVRAvatar cvrAvatar)
         {
             var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
             if (mesh == null)
@@ -637,6 +710,20 @@ namespace AvatarBridge
             if (left == null && right == null && combined == null)
             {
                 return false;
+            }
+
+            // An avatar that already blinks itself gets its system REPLACED with ChilloutVR's
+            // native blink — but the decision is DEFERRED. This pass runs before the merge, and
+            // choosing the shape here by name picked "Blink" off an expression clip while the real
+            // receiver drove "vrc.Blink" (the mesh carries both), so the takeover missed. All this
+            // pass records is that a takeover is wanted; AnimatorMerger.ReplaceAnimatorBlink finds
+            // the layer whose only job is blinking, lets IT name the shape, strips it, and wires
+            // the native blink. Native blink stays off here so the two never overlap.
+            if (AnimatedBlinkShape(ctx, vrc, out _, out _))
+            {
+                cvrAvatar.useBlinkBlendshapes = false;
+                ctx.AnimatorBlinkPending = true;
+                return true;    // reported by the merge pass, which knows what it actually did
             }
 
             cvrAvatar.useBlinkBlendshapes = true;
