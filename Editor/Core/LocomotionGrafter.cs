@@ -41,6 +41,41 @@ namespace AvatarBridge
     {
         const string Category = "Animator";
 
+        /// <summary>
+        /// Clip -> loop-adjusted clone, per conversion. A grafted clip must carry the LOOP
+        /// SETTING of the slot it lands in: the CCK's walk cycles loop and its states rely on
+        /// that, while a custom clip straight off an avatar's FBX often doesn't — grafted as-is
+        /// it plays once and freezes on the last frame, which testers see as "animations don't
+        /// loop or finish". The source clip is never modified (it belongs to the source avatar);
+        /// a clone is, and the asset saver persists it inside the output controller.
+        /// </summary>
+        static readonly Dictionary<(AnimationClip clip, bool loop), AnimationClip> LoopClones
+            = new Dictionary<(AnimationClip, bool), AnimationClip>();
+
+        static AnimationClip LoopMatched(AnimationClip graft, Motion slotOriginal)
+        {
+            if (!(slotOriginal is AnimationClip original) || graft == null)
+            {
+                return graft;
+            }
+            bool wantLoop = AnimationUtility.GetAnimationClipSettings(original).loopTime;
+            if (AnimationUtility.GetAnimationClipSettings(graft).loopTime == wantLoop)
+            {
+                return graft;
+            }
+            if (LoopClones.TryGetValue((graft, wantLoop), out var cached))
+            {
+                return cached;
+            }
+            var clone = UnityEngine.Object.Instantiate(graft);
+            clone.name = graft.name;
+            var settings = AnimationUtility.GetAnimationClipSettings(clone);
+            settings.loopTime = wantLoop;
+            AnimationUtility.SetAnimationClipSettings(clone, settings);
+            LoopClones[(graft, wantLoop)] = clone;
+            return clone;
+        }
+
         /// <summary>Direction-and-speed identity of a locomotion blend-tree child.</summary>
         enum Slot
         {
@@ -54,6 +89,7 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master)
         {
+            LoopClones.Clear();
             var cvrLayer = master.layers.FirstOrDefault(l => l != null && l.name == "Locomotion/Emotes");
             if (cvrLayer == null || cvrLayer.stateMachine == null)
             {
@@ -64,15 +100,36 @@ namespace AvatarBridge
             var grafts = new List<string>();
             int proxiesSkipped = 0;
 
-            if (ctx.Settings.convertBaseLayer)
+            var baseController = ctx.Settings.convertBaseLayer
+                ? SourceController(ctx, VRCAvatarDescriptor.AnimLayerType.Base)
+                : null;
+            if (baseController != null)
             {
-                var baseController = SourceController(ctx, VRCAvatarDescriptor.AnimLayerType.Base);
-                if (baseController != null)
+                GraftStanceTrees(baseController, targets, grafts, ref proxiesSkipped);
+                GraftJumpAndFall(baseController, targets, grafts, ref proxiesSkipped);
+            }
+
+            // Flight and swim poses ride ChilloutVR's OWN movement modes: the client answers
+            // flight itself (world-permitting; keybind or double-jump; speed, sprint and world
+            // multipliers all its own), raises the core Flying bool, and the CCK's LocFlying
+            // state plays — so a VRChat "flight system" needs none of its speed logic converted,
+            // only its pose put where this platform will show it. Decompiled:
+            // BetterBetterCharacterController.ChangeFlight / HandleInputFlight, and
+            // AvatarAnimatorManager.Flying = IsFlying() || UseZeroGravityControls.
+            var poseSources = new List<AnimatorController>();
+            if (baseController != null)
+            {
+                poseSources.Add(baseController);
+            }
+            if (ctx.Settings.convertActionLayer)
+            {
+                var action = SourceController(ctx, VRCAvatarDescriptor.AnimLayerType.Action);
+                if (action != null)
                 {
-                    GraftStanceTrees(baseController, targets, grafts, ref proxiesSkipped);
-                    GraftJumpAndFall(baseController, targets, grafts, ref proxiesSkipped);
+                    poseSources.Add(action);
                 }
             }
+            GraftMovementModePoses(poseSources, targets, grafts, ref proxiesSkipped);
 
             // The Sitting SPECIAL layer is descriptor-level content like the visemes — there is
             // no merge toggle for it, and its one useful product here is the sit pose itself.
@@ -82,12 +139,17 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{grafts.Count} of the avatar's own locomotion animation(s) grafted into ChilloutVR's locomotion",
-                    $"{string.Join("; ", grafts)}. These played from VRChat's Base/Sitting playable layers, " +
-                    "which cannot run as separate layers here — merged above ChilloutVR's Locomotion/Emotes " +
-                    "they could only replace it, killing movement and stances. Instead the clips were moved " +
-                    "into the matching states and blend-tree positions of ChilloutVR's OWN locomotion layer, " +
-                    "matched by their velocity-space position rather than by name. The game still decides " +
-                    "when to walk, fall or sit; it now does so with this avatar's animations.");
+                    $"{string.Join("; ", grafts)}. These played from VRChat's Base/Action/Sitting playable " +
+                    "layers, which cannot run as separate layers here — merged above ChilloutVR's " +
+                    "Locomotion/Emotes they could only replace it, killing movement and stances. Instead the " +
+                    "clips were moved into the matching states and blend-tree positions of ChilloutVR's OWN " +
+                    "locomotion layer, matched by their velocity-space position rather than by name, and " +
+                    "each grafted clip's loop setting is made to match the slot it fills — a cycle authored " +
+                    "without looping would otherwise play once and freeze. The game still decides when to " +
+                    "walk, fall, fly or sit; it now does so with this avatar's animations. A flight pose on " +
+                    "LocFlying plays whenever ChilloutVR's own flight mode is active (keybind or double-jump, " +
+                    "where the world allows it) — speed and movement are the client's, so a VRChat flight " +
+                    "system's own speed logic is not needed and not converted.");
             }
             else if (proxiesSkipped > 0 && ctx.Settings.convertBaseLayer)
             {
@@ -349,10 +411,14 @@ namespace AvatarBridge
             bool replaced = false;
             for (int i = 0; i < children.Length; i++)
             {
-                if (SlotOf(children[i].position, maxMag, byDirection) == slot
-                    && children[i].motion != clip)
+                if (SlotOf(children[i].position, maxMag, byDirection) != slot)
                 {
-                    children[i].motion = clip;
+                    continue;
+                }
+                var use = LoopMatched(clip, children[i].motion);
+                if (children[i].motion != use)
+                {
+                    children[i].motion = use;
                     replaced = true;
                 }
             }
@@ -415,9 +481,10 @@ namespace AvatarBridge
                         proxiesSkipped++;
                         break; // the stock clip in the expected slot; later names are fallbacks
                     }
-                    if (cvrState.motion != clip)
+                    var use = LoopMatched(clip, cvrState.motion);
+                    if (cvrState.motion != use)
                     {
-                        cvrState.motion = clip;
+                        cvrState.motion = use;
                         EditorUtility.SetDirty(cvrState);
                         grafts.Add($"{cvrStateName} ← \"{clip.name}\"");
                     }
@@ -473,11 +540,70 @@ namespace AvatarBridge
             {
                 return;
             }
-            if (cvrSitting.motion != winners[0])
+            var use = LoopMatched(winners[0], cvrSitting.motion);
+            if (cvrSitting.motion != use)
             {
-                cvrSitting.motion = winners[0];
+                cvrSitting.motion = use;
                 EditorUtility.SetDirty(cvrSitting);
                 grafts.Add($"Sitting ← \"{winners[0].name}\"");
+            }
+        }
+
+        // -------------------------------------------------- flight & swim poses ----
+
+        /// <summary>
+        /// Puts a flight (or swim) pose on the state ChilloutVR's own movement mode plays.
+        /// VRChat has no flight, so avatars fake it with seat tricks and locomotion replacements
+        /// carrying their own speed logic; ChilloutVR flies natively — none of that machinery is
+        /// needed, only the pose, on LocFlying, where the client will show it whenever the
+        /// wearer actually flies.
+        /// </summary>
+        static void GraftMovementModePoses(List<AnimatorController> sources,
+            Dictionary<string, AnimatorState> targets, List<string> grafts, ref int proxiesSkipped)
+        {
+            var modes = new (string cvrState, string[] tokens)[]
+            {
+                ("LocFlying", new[] { "fly", "flight", "flying", "hover", "glide", "copter" }),
+                ("Swimming", new[] { "swim" }),
+            };
+            foreach (var (cvrStateName, tokens) in modes)
+            {
+                if (!targets.TryGetValue(cvrStateName, out var cvrState))
+                {
+                    continue;
+                }
+                foreach (var source in sources)
+                {
+                    AnimatorState found = null;
+                    foreach (var state in AllStates(source))
+                    {
+                        string name = state.name.ToLowerInvariant();
+                        if (!tokens.Any(t => name.Contains(t)) || !(state.motion is AnimationClip))
+                        {
+                            continue;
+                        }
+                        if (IsVrchatStock((AnimationClip)state.motion))
+                        {
+                            proxiesSkipped++;
+                            continue;
+                        }
+                        found = state;
+                        break;
+                    }
+                    if (found == null)
+                    {
+                        continue;
+                    }
+                    var clip = (AnimationClip)found.motion;
+                    var use = LoopMatched(clip, cvrState.motion);
+                    if (cvrState.motion != use)
+                    {
+                        cvrState.motion = use;
+                        EditorUtility.SetDirty(cvrState);
+                        grafts.Add($"{cvrStateName} ← \"{clip.name}\" (from \"{found.name}\")");
+                    }
+                    break;
+                }
             }
         }
 

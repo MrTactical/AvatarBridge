@@ -461,8 +461,10 @@ namespace AvatarBridge
                 "in the movement blend trees. The layer itself is masked off the body: merged in it would sit " +
                 "above ChilloutVR's locomotion and replace it rather than add to it, killing the movement " +
                 "sliders and stance buttons — so the structure stays ChilloutVR's while the animations become " +
-                "the avatar's. VRChat's proxy_* placeholder clips are skipped; those live in the VRChat " +
-                "client, and ChilloutVR's own animation set is this platform's version of them.",
+                "the avatar's, loop settings matched to each slot. A flight pose lands on ChilloutVR's own " +
+                "flight mode, which answers speed and movement itself. VRChat's proxy_* placeholder clips " +
+                "are skipped; those live in the VRChat client, and ChilloutVR's own animation set is this " +
+                "platform's version of them.",
                 settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));

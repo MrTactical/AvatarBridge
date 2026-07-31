@@ -688,6 +688,52 @@ namespace AvatarBridge
             reset.SetEnabled(live);
             scroll.Add(reset);
 
+            // ---- the avatar as OTHER players run it --------------------------------------
+            // Remote copies never receive "#" local parameters — ChilloutVR strips the "#"
+            // values from sync, and CVRParameterStream components are removed from remote
+            // copies outright, so on everyone else's client those parameters sit at their
+            // serialized defaults forever. An animator whose stability depends on a live local
+            // value can therefore behave differently for others: a layer that looks parked to
+            // the wearer can cycle between states for everyone else, which in game reads as an
+            // animation rapidly looping that the wearer cannot see at all.
+            var remote = new BridgeElements.Card("Remote view");
+            remote.Body.Add(BridgeElements.Hint(
+                "Snaps every \"#\" local parameter to its default — the value it holds forever " +
+                "on OTHER players' clients, which never receive local parameters or parameter " +
+                "streams. Watch the Animator layers readout after pressing: any layer that " +
+                "starts cycling or lands in a different state here is doing exactly that in " +
+                "game for everyone but you. Synced parameters are untouched; drive them above " +
+                "to reproduce what others see during a toggle."));
+            remote.Body.Add(new Button(() =>
+            {
+                var a = LiveAnimator();
+                if (a == null)
+                {
+                    return;
+                }
+                foreach (var parameter in a.parameters)
+                {
+                    if (!parameter.name.StartsWith("#"))
+                    {
+                        continue;
+                    }
+                    switch (parameter.type)
+                    {
+                        case AnimatorControllerParameterType.Bool:
+                            Drive(a, parameter.name, parameter.defaultBool ? 1f : 0f);
+                            break;
+                        case AnimatorControllerParameterType.Int:
+                            Drive(a, parameter.name, parameter.defaultInt);
+                            break;
+                        case AnimatorControllerParameterType.Float:
+                            Drive(a, parameter.name, parameter.defaultFloat);
+                            break;
+                    }
+                }
+            }) { text = "Snap \"#\" locals to their defaults  (how remote clients hold them)" });
+            remote.SetEnabled(live);
+            scroll.Add(remote);
+
             // ---- what the animator is ACTUALLY doing -------------------------------------
             // Pinned BELOW the scroll view, not inside it. The whole point of a live layer
             // readout is watching it react while a control above is being driven — a toggle
