@@ -3073,19 +3073,53 @@ namespace AvatarBridge
             var inert = LayerOffStates(source);
             inert.Add(idle.name);
 
-            int made = 0;
+            // Everything DOWNSTREAM of a weight-0 state is inert too. VRChat's fade-out behaviour
+            // marks the state where the layer stops mattering, and whatever runs after it — this
+            // avatar's "Restore Tracking (stand)" sits between the fade-out and the idle — ran
+            // invisibly at weight 0 in VRChat. At weight 1 those states animate their clips like
+            // any other, and one of them holding a pose while the machine waits out a transition
+            // is exactly the stuck half-crouch this exists to prevent. The graph already says
+            // which states those are: walk forward from every weight-0 state and stop only at a
+            // state VRChat turns the layer back ON in.
+            var raise = LayerOnStates(source);
+            var byName = new Dictionary<string, AnimatorState>();
             WalkMachines(machine, m =>
             {
                 foreach (var child in m.states)
                 {
-                    if (child.state != null && inert.Contains(child.state.name))
+                    if (child.state != null && !byName.ContainsKey(child.state.name))
                     {
-                        child.state.motion = null;   // FillEmptyMotionSlots supplies the placeholder
-                        child.state.writeDefaultValues = false;
-                        made++;
+                        byName[child.state.name] = child.state;
                     }
                 }
             });
+            var queue = new Queue<string>(inert);
+            while (queue.Count > 0)
+            {
+                if (!byName.TryGetValue(queue.Dequeue(), out var state))
+                {
+                    continue;
+                }
+                foreach (var transition in state.transitions)
+                {
+                    var next = transition != null ? transition.destinationState : null;
+                    if (next != null && !raise.Contains(next.name) && inert.Add(next.name))
+                    {
+                        queue.Enqueue(next.name);
+                    }
+                }
+            }
+
+            int made = 0;
+            foreach (var name in inert)
+            {
+                if (byName.TryGetValue(name, out var state))
+                {
+                    state.motion = null;   // FillEmptyMotionSlots supplies the placeholder
+                    state.writeDefaultValues = false;
+                    made++;
+                }
+            }
             neutralized = made;
             EditorUtility.SetDirty(master);
             return made > 0;
@@ -3108,6 +3142,15 @@ namespace AvatarBridge
         /// which is a great deal better than a heuristic about state names.
         /// </summary>
         static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: false);
+
+        /// <summary>States where VRChat turns the Action playable back ON — the stop condition for
+        /// the downstream walk in NeutralizeActionIdle, so a machine that re-enters its feature
+        /// after an exit doesn't get its feature states made inert by contagion.</summary>
+        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
+            => LayerWeightStates(source, on: true);
+
+        static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
         {
             var off = new HashSet<string>();
             if (source == null || source.stateMachine == null)
@@ -3134,14 +3177,14 @@ namespace AvatarBridge
                         // kept for systems built that way. Only the Action playable counts either
                         // way: a state may also drive FX or Gesture weights, and those say nothing
                         // about whether THIS layer has finished.
-                        bool endsAction =
+                        bool matches =
                             (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
                                 && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
-                                && playable.goalWeight <= 0.001f)
+                                && (on ? playable.goalWeight >= 0.999f : playable.goalWeight <= 0.001f))
                             || (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl animator
                                 && animator.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
-                                && animator.goalWeight <= 0.001f);
-                        if (endsAction)
+                                && (on ? animator.goalWeight >= 0.999f : animator.goalWeight <= 0.001f));
+                        if (matches)
                         {
                             off.Add(state.name);
                         }

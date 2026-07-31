@@ -1320,7 +1320,10 @@ running a `VRC Animator Layer Control` that fades the layer's weight to 0 — th
 statement "the layer stops contributing here". ChilloutVR can't run it, so at weight 1 the tail states
 (`Prepare Standing`, `BlendOut Stand`, `Restore Tracking (stand)`) kept animating forever and left one
 avatar stuck in a half-crouch on exiting vehicle mode. Rather than guess which states are the tail,
-the conversion now reads those behaviours while they still exist and makes exactly those states inert.
+the conversion now reads those behaviours while they still exist and makes those states inert — plus
+everything **downstream** of them (3.4.23): states after the fade-out point, like a
+`Restore Tracking` step, ran invisibly at weight 0 in VRChat and would animate here. The walk stops
+at any state VRChat turns the layer back on in, so a machine that re-enters its feature is unharmed.
 
 If locomotion still breaks — walking on the spot, a stuck pose — set that layer's weight back to 0 in
 the Animator window and report it.
