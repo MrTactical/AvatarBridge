@@ -3151,7 +3151,7 @@ namespace AvatarBridge
         /// Action weight (goalWeight 1) without passing one that fades it (goalWeight 0), read
         /// from the SOURCE layer's behaviours before they're stripped. Those are exactly the
         /// states VRChat ever showed. Entry: each source transition from outside the window into a
-        /// raise-state becomes an AnyState transition carrying the same conditions — the avatar's
+        /// raise-state becomes a transition FROM the locomotion resting state carrying the same conditions — the avatar's
         /// own arming logic, gestures and all. Exit: each transition from a window state to a
         /// fade-state becomes a transition to the locomotion layer's default state. Behaviours are
         /// NOT copied: the original layer stays merged at weight 0, where its parameter drivers
@@ -3313,6 +3313,7 @@ namespace AvatarBridge
                 // becomes an AnyState transition with the same conditions. Unconditional entries
                 // are skipped — an AnyState transition with no conditions would fire every frame.
                 int armed = 0;
+                var armedSignatures = new HashSet<string>();
                 void Arm(AnimatorStateTransition transition)
                 {
                     var dst = transition != null ? transition.destinationState : null;
@@ -3321,14 +3322,27 @@ namespace AvatarBridge
                     {
                         return;
                     }
-                    var any = locoMachine.AddAnyStateTransition(target);
-                    any.hasExitTime = false;
-                    any.hasFixedDuration = true;
-                    any.duration = 0.1f;
-                    any.canTransitionToSelf = false;
+                    // From the locomotion layer's RESTING state, never AnyState. AnyState re-fires
+                    // from INSIDE the window — canTransitionToSelf only blocks the entry state
+                    // re-entering itself, so with the arming parameter still set the machine looped
+                    // Transformation → Car_Idle → AnyState → Transformation, visibly flickering.
+                    // In the source graph re-entry was impossible POSITIONALLY: the arming
+                    // transition left a state the window never returns to. Arming from the resting
+                    // state reproduces that: once inside, nothing can re-fire until the pose has
+                    // handed back AND the conditions have gone false and true again.
+                    string signature = dst.name + "|" + string.Join(",",
+                        transition.conditions.Select(c => $"{c.parameter}{(int)c.mode}{c.threshold}"));
+                    if (!armedSignatures.Add(signature))
+                    {
+                        return;
+                    }
+                    var entry = locoDefault.AddTransition(target);
+                    entry.hasExitTime = false;
+                    entry.hasFixedDuration = true;
+                    entry.duration = 0.1f;
                     foreach (var condition in transition.conditions)
                     {
-                        any.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                        entry.AddCondition(condition.mode, condition.threshold, condition.parameter);
                     }
                     armed++;
                 }
