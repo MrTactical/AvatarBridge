@@ -399,7 +399,7 @@ namespace AvatarBridge
             {
                 WireDescriptorBlink(ctx, cvrAvatar, blinkShape, eyelidMesh);
             }
-            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, cvrAvatar))
+            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, vrc, cvrAvatar))
             {
                 // Reported inside.
             }
@@ -631,20 +631,50 @@ namespace AvatarBridge
         /// the clip so the report can point at it — "your avatar blinks" is only useful if the user
         /// can go and look at the thing doing it.
         /// </summary>
-        static bool AnimatedBlinkShape(BridgeContext ctx, out string drivenBy)
+        static bool AnimatedBlinkShape(BridgeContext ctx, VRCAvatarDescriptor vrc, out string drivenBy)
         {
             drivenBy = null;
-            var controller = ctx.MergedController;
-            if (controller == null)
+            // The SOURCE controllers, off the descriptor. This pass runs long before AnimatorMerger,
+            // so ctx.MergedController is still null here — the first version of this check read it
+            // anyway, silently found nothing, and shipped a "fix" that changed nothing. What the
+            // avatar's layers animate is the same either way; the descriptor just holds them first.
+            var clips = new HashSet<AnimationClip>();
+            void Collect(VRCAvatarDescriptor.CustomAnimLayer[] layers)
             {
-                return false;
-            }
-            foreach (var clip in controller.animationClips)
-            {
-                if (clip == null)
+                if (layers == null)
                 {
-                    continue;
+                    return;
                 }
+                foreach (var layer in layers)
+                {
+                    if (layer.animatorController == null)
+                    {
+                        continue;
+                    }
+                    foreach (var clip in layer.animatorController.animationClips)
+                    {
+                        if (clip != null)
+                        {
+                            clips.Add(clip);
+                        }
+                    }
+                }
+            }
+            Collect(vrc != null ? vrc.baseAnimationLayers : null);
+            Collect(vrc != null ? vrc.specialAnimationLayers : null);
+            if (ctx.MergedController != null)
+            {
+                foreach (var clip in ctx.MergedController.animationClips)
+                {
+                    if (clip != null)
+                    {
+                        clips.Add(clip);
+                    }
+                }
+            }
+
+            foreach (var clip in clips)
+            {
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
                     const string prefix = "blendShape.";
@@ -667,7 +697,7 @@ namespace AvatarBridge
             return false;
         }
 
-        static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)
+        static bool TryWireBlinkFromMesh(BridgeContext ctx, VRCAvatarDescriptor vrc, CVRAvatar cvrAvatar)
         {
             var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
             if (mesh == null)
@@ -689,7 +719,7 @@ namespace AvatarBridge
             // "vrc.Blink": the pupil vanished, the lids never moved, and the eyes started closed.
             //
             // The avatar's own system is the better authority — it was authored against this mesh.
-            if (AnimatedBlinkShape(ctx, out string drivenBy))
+            if (AnimatedBlinkShape(ctx, vrc, out string drivenBy))
             {
                 cvrAvatar.useBlinkBlendshapes = false;
                 ctx.Report.Converted(Category, "Blink left to the avatar's own animation",

@@ -2895,7 +2895,11 @@ namespace AvatarBridge
                 return;
             }
 
-            // Everything a parameter driver writes anywhere in the merged controller.
+            // Everything a parameter driver writes anywhere in the merged controller. The CCK
+            // AnimatorDriver, not the VRChat one: BehaviourPass has already converted every
+            // VRCAvatarParameterDriver by the time this runs, and the first version of this pass
+            // scanned for the VRChat type on the merged controller — zero matches, zero withdrawn,
+            // silently. The converted drivers are the same statements in the CCK's vocabulary.
             var driven = new HashSet<string>();
             foreach (var layer in master.layers)
             {
@@ -2909,16 +2913,16 @@ namespace AvatarBridge
                         }
                         foreach (var behaviour in child.state.behaviours)
                         {
-                            if (!(behaviour is VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver driver)
-                                || driver.parameters == null)
+                            if (!(behaviour is AnimatorDriver driver))
                             {
                                 continue;
                             }
-                            foreach (var task in driver.parameters)
+                            foreach (var task in (driver.EnterTasks ?? Enumerable.Empty<AnimatorDriverTask>())
+                                     .Concat(driver.ExitTasks ?? Enumerable.Empty<AnimatorDriverTask>()))
                             {
-                                if (!string.IsNullOrEmpty(task.name))
+                                if (task != null && !string.IsNullOrEmpty(task.targetName))
                                 {
-                                    driven.Add(task.name);
+                                    driven.Add(task.targetName);
                                 }
                             }
                         }
@@ -3121,11 +3125,23 @@ namespace AvatarBridge
                     }
                     foreach (var behaviour in state.behaviours)
                     {
-                        // Only the Action playable: a state may also drive FX or Gesture weights,
-                        // and those say nothing about whether THIS layer has finished.
-                        if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl control
-                            && control.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
-                            && control.goalWeight <= 0.001f)
+                        // BOTH behaviour types, because VRChat has two ways to say it and avatars
+                        // use the first. VRCPlayableLayerControl drives a whole playable's weight —
+                        // the standard way an Action system turns itself off, and the one the
+                        // avatar this was written for uses; checking only VRCAnimatorLayerControl
+                        // found nothing, made one state inert, and shipped a conversion that still
+                        // stuck. VRCAnimatorLayerControl drives one layer inside a playable and is
+                        // kept for systems built that way. Only the Action playable counts either
+                        // way: a state may also drive FX or Gesture weights, and those say nothing
+                        // about whether THIS layer has finished.
+                        bool endsAction =
+                            (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
+                                && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
+                                && playable.goalWeight <= 0.001f)
+                            || (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl animator
+                                && animator.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
+                                && animator.goalWeight <= 0.001f);
+                        if (endsAction)
                         {
                             off.Add(state.name);
                         }
