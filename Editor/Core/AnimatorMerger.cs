@@ -246,7 +246,7 @@ namespace AvatarBridge
                             // The POSES go where ChilloutVR keeps poses: inside its own
                             // locomotion layer. The clone stays merged at weight 0 so its
                             // parameter drivers keep firing on schedule.
-                            int moved = TransplantActionFeature(masterLayers, clone, srcLayer, ctx);
+                            int moved = TransplantActionFeature(master, masterLayers, clone, srcLayer, ctx);
                             if (moved > 0)
                             {
                                 actionMoved.Add($"\"{clone.name}\" (driven by {byWhat}, {moved} pose state(s))");
@@ -3358,7 +3358,7 @@ namespace AvatarBridge
             return found;
         }
 
-        static int TransplantActionFeature(List<AnimatorControllerLayer> masterLayers,
+        static int TransplantActionFeature(AnimatorController master, List<AnimatorControllerLayer> masterLayers,
             AnimatorControllerLayer clone, AnimatorControllerLayer source, BridgeContext ctx)
         {
             try
@@ -3419,12 +3419,13 @@ namespace AvatarBridge
                 {
                     var src = byName[name];
                     var copy = locoMachine.AddState($"[AB] {name}");
-                    // Pose states get the clip WITHOUT its baked movement: a VRChat feature that
-                    // moved the player did it by animating the body (VRChat allows nothing else),
-                    // and here that displaces the wearer's camera with no input. The pose stays;
-                    // ChilloutVR owns motion. See LocomotionGrafter.WithoutRootMotion.
+                    // Pose states get the clip without baked TRAVEL: a VRChat feature that moved
+                    // the player did it by animating the body (VRChat allows nothing else), and
+                    // here that displaces the wearer's camera with no input. Root motion that
+                    // returns home — a backflip's flip, a dance's sway — is kept: stripping it
+                    // broke the animations while removing nothing a player could feel.
                     copy.motion = src.motion is AnimationClip poseClip
-                        ? LocomotionGrafter.WithoutRootMotion(poseClip)
+                        ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true)
                         : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;
@@ -3471,6 +3472,7 @@ namespace AvatarBridge
                 // are skipped — an AnyState transition with no conditions would fire every frame.
                 int armed = 0;
                 var armedSignatures = new HashSet<string>();
+                var armedEntries = new List<(AnimatorStateTransition entry, AnimatorCondition[] conditions)>();
                 void Arm(AnimatorStateTransition transition)
                 {
                     var dst = transition != null ? transition.destinationState : null;
@@ -3501,6 +3503,7 @@ namespace AvatarBridge
                     {
                         entry.AddCondition(condition.mode, condition.threshold, condition.parameter);
                     }
+                    armedEntries.Add((entry, transition.conditions));
                     armed++;
                 }
                 WalkMachines(clone.stateMachine, m =>
@@ -3530,6 +3533,93 @@ namespace AvatarBridge
                     }
                     return 0;
                 }
+
+                // ---- edge-triggered arming ------------------------------------------------
+                // Arming on a LEVEL replays forever: a dropdown-style menu HOLDS its value, so
+                // the moment a played-once pose hands back to the resting state, its conditions
+                // are still true and it re-enters — Wave forever. VRChat never replays because
+                // its graph PARKS after an emote in a state whose only way back requires the
+                // value to return to zero: entry fires on the RISE of the conditions, once.
+                //
+                // Reproduced in parameter form. A "#" ready flag (local — every client computes
+                // its own from the synced inputs) gates every arming transition, and a weight-0
+                // memory layer manages it: its Ready state raises the flag; the instant any
+                // arming signature's conditions come true it moves to an Engaged state that
+                // drops the flag; it returns to Ready — re-raising the flag — only when those
+                // conditions have gone FALSE again. The window itself evaluates before the
+                // memory layer (lower index), so the one frame of flag-up is exactly enough to
+                // arm once per rise.
+                string readyName = "#AB_Ready_" + SanitizeParameterName(clone.name);
+                if (master.parameters.All(p => p.name != readyName))
+                {
+                    var withReady = master.parameters.ToList();
+                    withReady.Add(new AnimatorControllerParameter
+                    {
+                        name = readyName,
+                        type = AnimatorControllerParameterType.Float,
+                        defaultFloat = 1f
+                    });
+                    master.parameters = withReady.ToArray();
+                }
+                foreach (var (entry, _) in armedEntries)
+                {
+                    entry.AddCondition(AnimatorConditionMode.Greater, 0.5f, readyName);
+                }
+
+                AnimatorDriverTask SetReady(float value) => new AnimatorDriverTask
+                {
+                    targetType = AnimatorDriverTask.ParameterType.Float,
+                    targetName = readyName,
+                    op = AnimatorDriverTask.Operator.Set,
+                    aType = AnimatorDriverTask.SourceType.Static,
+                    aValue = value
+                };
+                var memory = new AnimatorStateMachine
+                {
+                    name = $"{clone.name} Arming",
+                    hideFlags = HideFlags.HideInHierarchy
+                };
+                var ready = memory.AddState("Ready");
+                ready.writeDefaultValues = false;
+                memory.defaultState = ready;
+                var readyDriver = ready.AddStateMachineBehaviour<AnimatorDriver>();
+                readyDriver.localOnly = false;
+                readyDriver.EnterTasks.Add(SetReady(1f));
+                int engagedCount = 0;
+                foreach (var (_, conditions) in armedEntries)
+                {
+                    var engaged = memory.AddState($"Engaged {++engagedCount}");
+                    engaged.writeDefaultValues = false;
+                    var engagedDriver = engaged.AddStateMachineBehaviour<AnimatorDriver>();
+                    engagedDriver.localOnly = false;
+                    engagedDriver.EnterTasks.Add(SetReady(0f));
+                    var hold = ready.AddTransition(engaged);
+                    hold.hasExitTime = false;
+                    hold.hasFixedDuration = true;
+                    hold.duration = 0f;
+                    foreach (var condition in conditions)
+                    {
+                        hold.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                    // The complement of (A AND B) is (!A OR !B): one release transition per
+                    // negated condition.
+                    foreach (var condition in conditions)
+                    {
+                        var release = engaged.AddTransition(ready);
+                        release.hasExitTime = false;
+                        release.hasFixedDuration = true;
+                        release.duration = 0f;
+                        var (mode, threshold) = InvertCondition(condition);
+                        release.AddCondition(mode, threshold, condition.parameter);
+                    }
+                }
+                masterLayers.Add(new AnimatorControllerLayer
+                {
+                    name = MakeUniqueLayerName(masterLayers, $"[AB] {clone.name} Arming"),
+                    defaultWeight = 0f, // drivers run regardless of weight; nothing to show
+                    stateMachine = memory
+                });
+
                 return copies.Count;
             }
             catch (Exception e)
@@ -3537,6 +3627,28 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, $"Could not move \"{clone.name}\"'s poses into the locomotion layer",
                     $"{e.GetType().Name}: {e.Message} — the layer stays at weight 0; its visible FX still work.");
                 return 0;
+            }
+        }
+
+        /// <summary>
+        /// The condition that is true exactly when the given one is false. Greater/Less get a
+        /// hair's-width shift so integers on the boundary land on the right side: the complement
+        /// of "&gt; 0" must accept 0 itself.
+        /// </summary>
+        static (AnimatorConditionMode mode, float threshold) InvertCondition(AnimatorCondition condition)
+        {
+            switch (condition.mode)
+            {
+                case AnimatorConditionMode.If: return (AnimatorConditionMode.IfNot, 0f);
+                case AnimatorConditionMode.IfNot: return (AnimatorConditionMode.If, 0f);
+                case AnimatorConditionMode.Greater:
+                    return (AnimatorConditionMode.Less, condition.threshold + 0.0001f);
+                case AnimatorConditionMode.Less:
+                    return (AnimatorConditionMode.Greater, condition.threshold - 0.0001f);
+                case AnimatorConditionMode.Equals:
+                    return (AnimatorConditionMode.NotEqual, condition.threshold);
+                default:
+                    return (AnimatorConditionMode.Equals, condition.threshold);
             }
         }
 

@@ -52,9 +52,9 @@ namespace AvatarBridge
         static readonly Dictionary<(AnimationClip clip, bool loop), AnimationClip> LoopClones
             = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
-        /// <summary>Clip -> root-motion-free clone (or itself when it carried none).</summary>
-        static readonly Dictionary<AnimationClip, AnimationClip> MotionStripped
-            = new Dictionary<AnimationClip, AnimationClip>();
+        /// <summary>(Clip, travellers-only?) -> root-motion-free clone (or itself when spared).</summary>
+        static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels), AnimationClip> MotionStripped
+            = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
         /// <summary>Names of clips that had movement stripped, for the report.</summary>
         static readonly List<string> StrippedNames = new List<string>();
@@ -81,14 +81,22 @@ namespace AvatarBridge
         /// first-person camera rides the head bone — so a clip that also displaces the body
         /// shoves the wearer's camera around with no input. That logic is not converted; the
         /// muscles keep the pose, the game keeps the movement.
+        ///
+        /// <paramref name="onlyIfTravels"/> spares clips whose root motion RETURNS HOME — a
+        /// backflip's flip IS root rotation and its dance cousins sway the whole body, all ending
+        /// where they began. Stripping those broke them visibly (a backflip "up to half, then
+        /// breaks") while removing nothing a player could feel. A clip whose root ENDS displaced
+        /// or turned is a mover — looped, it is a vehicle — and always loses the curves.
+        /// Locomotion tree seats pass false: there the capsule owns every metre, homebound or
+        /// not.
         /// </summary>
-        internal static AnimationClip WithoutRootMotion(AnimationClip clip)
+        internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false)
         {
             if (clip == null)
             {
                 return null;
             }
-            if (MotionStripped.TryGetValue(clip, out var done))
+            if (MotionStripped.TryGetValue((clip, onlyIfTravels), out var done))
             {
                 return done;
             }
@@ -100,9 +108,9 @@ namespace AvatarBridge
                     doomed.Add(binding);
                 }
             }
-            if (doomed.Count == 0)
+            if (doomed.Count == 0 || (onlyIfTravels && !Travels(clip, doomed)))
             {
-                MotionStripped[clip] = clip;
+                MotionStripped[(clip, onlyIfTravels)] = clip;
                 return clip;
             }
             var clone = UnityEngine.Object.Instantiate(clip);
@@ -111,9 +119,42 @@ namespace AvatarBridge
             {
                 AnimationUtility.SetEditorCurve(clone, binding, null);
             }
-            MotionStripped[clip] = clone;
+            MotionStripped[(clip, onlyIfTravels)] = clone;
             StrippedNames.Add(clip.name);
             return clone;
+        }
+
+        /// <summary>
+        /// Whether the clip's root ends somewhere other than it started: more than 5 cm of net
+        /// position, or any meaningful net rotation. Sampled from the curves' own first and last
+        /// values, so it needs no scene and no humanoid rig instantiated.
+        /// </summary>
+        static bool Travels(AnimationClip clip, List<EditorCurveBinding> rootBindings)
+        {
+            float positionDelta = 0f, rotationDelta = 0f;
+            foreach (var binding in rootBindings)
+            {
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve == null || curve.keys.Length == 0)
+                {
+                    continue;
+                }
+                float delta = Mathf.Abs(curve.keys[curve.keys.Length - 1].value - curve.keys[0].value);
+                string p = binding.propertyName;
+                bool position = p.StartsWith("RootT.", StringComparison.Ordinal)
+                    || p.StartsWith("MotionT.", StringComparison.Ordinal)
+                    || p.StartsWith("m_LocalPosition", StringComparison.Ordinal);
+                if (position)
+                {
+                    positionDelta = Mathf.Max(positionDelta, delta);
+                }
+                else
+                {
+                    rotationDelta = Mathf.Max(rotationDelta, delta);
+                }
+            }
+            // Rotation curves are quaternion components (0..1 scale); 0.1 is roughly 12 degrees.
+            return positionDelta > 0.05f || rotationDelta > 0.1f;
         }
 
         static bool IsRootMovement(EditorCurveBinding binding)
@@ -334,22 +375,16 @@ namespace AvatarBridge
                         GraftTree(sourceTree, cvrTree, cvrStateName, grafts, ref proxiesSkipped);
                         break; // first velocity tree per stance wins; duplicates are copies of it
                     }
-                    if (state.motion is AnimationClip pose)
+                    // Pose-style stance states (a single clip, no movement tree) are deliberately
+                    // NOT grafted, and a first version that grafted them proved why in game: they
+                    // are VR TRACKING poses — the headset lowers the player physically, so the
+                    // pose doesn't — and seated as a desktop crouch idle one sank the wearer
+                    // waist-deep into the floor. Only real velocity trees carry desktop
+                    // locomotion; anything else here means keep looking.
+                    if (state.motion is AnimationClip stock && IsVrchatStock(stock))
                     {
-                        if (!IsVrchatStock(pose))
-                        {
-                            // A pose-style stance (a single custom clip, no movement tree) still
-                            // has an authored idle — graft it into the tree's centre.
-                            if (ReplaceAt(cvrTree, Slot.Idle, pose))
-                            {
-                                grafts.Add($"{cvrStateName} idle ← \"{pose.name}\"");
-                            }
-                            break;
-                        }
                         proxiesSkipped++;
                     }
-                    // Anything else (a non-velocity tree, an empty state) is not this stance's
-                    // locomotion — keep looking at the remaining candidates.
                 }
             }
         }
@@ -587,7 +622,12 @@ namespace AvatarBridge
                         proxiesSkipped++;
                         break; // the stock clip in the expected slot; later names are fallbacks
                     }
-                    var use = Prepare(clip, cvrState.motion);
+                    // Deliberately NOT loop-matched: these are one-shot moments, and VRChat
+                    // played them once (exit-time transitions). The CCK's own JumpAir loops, and
+                    // matching a grafted wing-flap to that looped it forever on every hop —
+                    // played once it holds its last frame through a long fall, exactly as the
+                    // source did.
+                    var use = WithoutRootMotion(clip);
                     if (cvrState.motion != use)
                     {
                         cvrState.motion = use;
@@ -678,37 +718,64 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                // Scored, not first-match. A copter avatar's controllers are FULL of states whose
+                // names contain "copter" — and the first one found was "Copter to Robot", the
+                // un-transformation, which loop-matched into flight mode endlessly transforming.
+                // A movement-mode pose is a state you can SIT in: its clip loops, or its name
+                // says idle/hover; transition names ("to", "in", "out", "changing") are evidence
+                // against. Nothing scores? The CCK's own pose stays — a right default beats a
+                // wrong graft.
+                AnimatorState best = null;
+                int bestScore = 1; // require positive evidence, not just a token match
                 foreach (var source in sources)
                 {
-                    AnimatorState found = null;
                     foreach (var state in AllStates(source))
                     {
-                        string name = state.name.ToLowerInvariant();
-                        if (!tokens.Any(t => name.Contains(t)) || !(state.motion is AnimationClip))
+                        if (!(state.motion is AnimationClip candidate))
                         {
                             continue;
                         }
-                        if (IsVrchatStock((AnimationClip)state.motion))
+                        string name = (state.name + " " + candidate.name).ToLowerInvariant();
+                        if (!tokens.Any(t => name.Contains(t)))
+                        {
+                            continue;
+                        }
+                        if (IsVrchatStock(candidate))
                         {
                             proxiesSkipped++;
                             continue;
                         }
-                        found = state;
-                        break;
+                        int score = 0;
+                        if (AnimationUtility.GetAnimationClipSettings(candidate).loopTime)
+                        {
+                            score += 2;
+                        }
+                        if (new[] { "idle", "hover", "loop", "hold", "still" }.Any(t => name.Contains(t)))
+                        {
+                            score += 2;
+                        }
+                        if (new[] { " to ", ".to.", "transition", "changing", "enter", "exit",
+                                    " in ", " out ", "start", "end" }.Any(t => name.Contains(t)))
+                        {
+                            score -= 3;
+                        }
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            best = state;
+                        }
                     }
-                    if (found == null)
-                    {
-                        continue;
-                    }
-                    var clip = (AnimationClip)found.motion;
+                }
+                if (best != null)
+                {
+                    var clip = (AnimationClip)best.motion;
                     var use = Prepare(clip, cvrState.motion);
                     if (cvrState.motion != use)
                     {
                         cvrState.motion = use;
                         EditorUtility.SetDirty(cvrState);
-                        grafts.Add($"{cvrStateName} ← \"{clip.name}\" (from \"{found.name}\")");
+                        grafts.Add($"{cvrStateName} ← \"{clip.name}\" (from \"{best.name}\")");
                     }
-                    break;
                 }
             }
         }

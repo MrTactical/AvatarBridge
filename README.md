@@ -1345,10 +1345,16 @@ CVR's locomotion stays authoritative.
 sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in the
 movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
 whatever it's named. The structure stays ChilloutVR's, so movement and stances always answer; the
-art becomes the avatar's. Each grafted clip's **loop setting is matched to the slot it fills**
-(3.5.1) — a cycle authored without looping would otherwise play once and freeze — and a **flight
-pose lands on CVR's `LocFlying` state**: ChilloutVR flies natively, so a VRChat copter/flight
-system needs none of its speed machinery here, just its pose where the client will show it. One discovery made this precise: most VRChat avatars don't ship walking
+art becomes the avatar's. Each grafted movement cycle's **loop setting is matched to the slot it
+fills** (3.5.1) — a cycle authored without looping would otherwise play once and freeze — while
+jump and fall grafts play **once**, as their exit-time transitions always said (3.5.4: loop-matching
+a wing-flap fall made it flap forever on every hop). A **flight pose lands on CVR's `LocFlying`
+state**: ChilloutVR flies natively, so a VRChat copter/flight system needs none of its speed
+machinery here, just its pose where the client will show it. The pose is **scored, not
+name-matched** (3.5.4) — a state you can sit in: looping clip, idle/hover naming — after the first
+try grafted "Copter *to Robot*", the un-transformation, and flight mode transformed endlessly.
+Pose-style stance states (single-clip Standing/Crouching/Lying) are left alone: they are VR
+tracking poses, and one seated as a desktop crouch idle sank the wearer into the floor. One discovery made this precise: most VRChat avatars don't ship walking
 animations at all — their trees reference `proxy_*` placeholder clips that the VRChat *client*
 replaces at runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's
 own animation set is this platform's version of those placeholders, and the report says which of the
@@ -1376,11 +1382,28 @@ re-entry flag on merged AnyState transitions — except those conditioned on a T
 once per pulse is the intended use. The **Remote view** card in the CCK Animator Tester reproduces
 the remote valuation locally if you want to verify an avatar before uploading.
 
-Root motion is also stripped from grafted and transplanted animations (3.5.2): VRChat flight and
-vehicle systems move the player by animating the body, because VRChat allows nothing else.
-ChilloutVR moves the player itself and hangs the first-person camera on the head bone — the same
-baked movement here shoves the wearer around with no input, so it is removed; the pose stays, the
-game supplies the motion.
+Root motion is also stripped from animations that **travel** (3.5.2, refined in 3.5.3): VRChat
+flight and vehicle systems move the player by animating the body, because VRChat allows nothing
+else. ChilloutVR moves the player itself and hangs the first-person camera on the head bone — the
+same baked movement here shoves the wearer around with no input, so it is removed. The test is
+whether the clip's root **ends where it started**: a backflip's flip is root rotation and a dance
+sways the whole body, both returning home, and those keep their curves — stripping them broke the
+animations while removing nothing a player could feel. A clip that ends displaced is a mover, and
+looped, a vehicle; those lose the curves. Locomotion-tree grafts are always stripped — there the
+capsule owns every metre.
+
+### An emote replays forever instead of playing once
+
+**Reconvert on 3.5.3 or later.** Emotes live in menus that **hold** their value, and VRChat's
+Action graph is built for that: after a play-once emote it parks in a state whose only way back
+requires the value to return to zero, so an emote fires on the **rise** of its condition, once.
+The converted pose states are re-armed from the locomotion resting state instead — and arming on
+a *level* replays the emote every time the pose hands back, forever, as long as the menu holds
+the value. Conversion now reproduces the rise-only behaviour: a local ready flag gates every
+arming transition, dropped the moment a pose is armed and raised again only when its conditions
+have gone false — select the emote again (or re-select after None) and it plays again, exactly
+like VRChat. Hold-style emotes (dances, AFK poses) are unaffected; they loop until deselected, as
+their own exit conditions have always said.
 
 ### A menu control appears, moves, syncs — and does nothing
 
