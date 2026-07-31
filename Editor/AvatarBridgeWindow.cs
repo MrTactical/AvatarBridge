@@ -456,11 +456,13 @@ namespace AvatarBridge
                 settings.convertGestureLayer, v => settings.convertGestureLayer = v));
             b.Add(BridgeElements.Bind("Base / locomotion",
                 "Brings across what VRChat kept in its Base layer — object toggles, blendshapes, materials, " +
-                "parameters, additive motion. It can no longer break your locomotion: a Base layer that " +
-                "drives humanoid muscles is masked off the body, because merged in it would sit above " +
-                "ChilloutVR's own locomotion and replace it rather than add to it, taking the movement " +
-                "sliders and the stance buttons with it. True locomotion replacements don't convert either " +
-                "way — they need runtime layer-weight control ChilloutVR has no equivalent for.",
+                "parameters, additive motion — and GRAFTS the avatar's own walking, crouching, crawling, " +
+                "falling and stance animations into ChilloutVR's locomotion layer, matched by their position " +
+                "in the movement blend trees. The layer itself is masked off the body: merged in it would sit " +
+                "above ChilloutVR's locomotion and replace it rather than add to it, killing the movement " +
+                "sliders and stance buttons — so the structure stays ChilloutVR's while the animations become " +
+                "the avatar's. VRChat's proxy_* placeholder clips are skipped; those live in the VRChat " +
+                "client, and ChilloutVR's own animation set is this platform's version of them.",
                 settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));

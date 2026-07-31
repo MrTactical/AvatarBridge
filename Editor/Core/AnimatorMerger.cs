@@ -66,7 +66,12 @@ namespace AvatarBridge
         static readonly HashSet<string> StreamFedParameters = new HashSet<string>
         {
             "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
-            "Upright", "TrackingType"
+            "Upright", "TrackingType", "EyeHeightAsMeters"
+            // The rest of VRChat's scale family — ScaleFactor, ScaleFactorInverse,
+            // EyeHeightAsPercent, ScaleModified — is deliberately NOT here: FeedScaleParameters
+            // derives them from EyeHeightAsMeters by pure arithmetic, which every client can do
+            // for every copy. Local ("#") + recomputed beats synced by 97 bits with identical
+            // values, the same trade FeedVelocityMagnitude makes.
         };
 
         /// <summary>
@@ -115,12 +120,18 @@ namespace AvatarBridge
         // computed per-client, so syncing it would be waste — but it is NOT frozen anymore:
         // FeedVelocityMagnitude derives it from the native VelocityX/Y/Z every frame, and the
         // "nothing writes them in game" note below explicitly skips it.
+        //
+        // The scale family (EyeHeightAsMeters, ScaleFactor, ScaleFactorInverse,
+        // EyeHeightAsPercent, ScaleModified) left this list in 3.5.0: EyeHeightAsMeters is fed
+        // by a CVRParameterStream from the client's AvatarHeight — the calibrated avatar height
+        // in metres, the very number AvatarUpright divides by — and the other four are exact
+        // arithmetic on it (FeedScaleParameters), using the conversion-time viewpoint height as
+        // the baseline VRChat calls "default scale".
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
-            "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
-            "EyeHeightAsPercent", "IsAnimatorEnabled"
+            "IsAnimatorEnabled"
         };
 
         public static void Run(BridgeContext ctx)
@@ -317,6 +328,10 @@ namespace AvatarBridge
             RebuildAnalogFist(master, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
+            // After the stripper (keep-GoGo mode may have removed the CCK locomotion layer this
+            // grafts into), before anything renames parameters — it reads the SOURCE controllers
+            // off the descriptor, where VelocityX/VelocityZ still carry VRChat's names.
+            LocomotionGrafter.Run(ctx, master);
             StripExistingFaceTracking(master, vrcLayers, ctx);
             ReplaceAnimatorBlink(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
@@ -327,6 +342,9 @@ namespace AvatarBridge
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
+            // Before CreateParameterStreams: this declares EyeHeightAsMeters when only a derived
+            // scale parameter asked for it, and the stream pass has to see that declaration.
+            FeedScaleParameters(master, ctx);
             CreateParameterStreams(master, ctx);
             FeedVelocityMagnitude(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
@@ -4285,7 +4303,13 @@ namespace AvatarBridge
                 // parameters are read-only to streams anyway. VelocityMagnitude is different:
                 // the client does not compute it, so FeedVelocityMagnitude derives it in the
                 // animator from the native three.)
-                (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f)
+                (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f),
+
+                // ChilloutVR's AvatarHeight is the calibrated avatar height in metres — the same
+                // measure AvatarUpright divides by. It is the platform's closest reading of
+                // VRChat's EyeHeightAsMeters, and everything else in VRChat's scale family
+                // (ScaleFactor and friends) is derived from this one value by FeedScaleParameters.
+                (bare: "EyeHeightAsMeters", streamType: "AvatarHeight", app: "Override", lo: 0f, hi: 0f)
             };
             var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
             foreach (var param in master.parameters)
@@ -4327,7 +4351,7 @@ namespace AvatarBridge
                 { "Override", 0 }, { "Remap", 201 }, { "ClampRemap", 202 },
                 { "DeviceMode", 20 }, { "LocalPlayerMuted", 210 },
                 { "LocalPlayerFullBodyEnabled", 260 }, { "TriggerLeftValue", 270 },
-                { "TriggerRightValue", 280 }, { "AvatarUpright", 401 },
+                { "TriggerRightValue", 280 }, { "AvatarHeight", 400 }, { "AvatarUpright", 401 },
             };
             object ParseEnum(Type enumType, string name)
             {
@@ -4431,6 +4455,199 @@ namespace AvatarBridge
         /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
         /// sat half-dead.
         /// </summary>
+        /// <summary>
+        /// Makes VRChat's avatar-scale family live: ScaleFactor, ScaleFactorInverse,
+        /// EyeHeightAsPercent and ScaleModified, derived from EyeHeightAsMeters — which
+        /// CreateParameterStreams feeds from ChilloutVR's AvatarHeight, the calibrated avatar
+        /// height in metres that AvatarUpright divides by.
+        ///
+        /// The baseline ("what scale 1.0 means") is the avatar's viewpoint height at conversion
+        /// time — the same number VRChat uses for its default scale. Every derivation is exact
+        /// arithmetic run by a CCK AnimatorDriver each cycle:
+        ///
+        ///   ScaleFactor        = EyeHeightAsMeters / baseline
+        ///   ScaleFactorInverse = baseline / EyeHeightAsMeters
+        ///   EyeHeightAsPercent = (EyeHeightAsMeters − 0.2) / 4.8   (VRChat's 0.2–5 m range)
+        ///   ScaleModified      = |ScaleFactor − 1| &gt; 1 %
+        ///
+        /// Derived values are kept local ("#") and recomputed per client — the input syncs, the
+        /// arithmetic is deterministic, so every viewer computes identical values at zero extra
+        /// sync cost, exactly the FeedVelocityMagnitude trade. Only runs when the avatar
+        /// actually references one of the four; EyeHeightAsMeters alone needs no driver.
+        /// </summary>
+        static void FeedScaleParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var derived = new[] { "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsPercent", "ScaleModified" };
+            var present = new Dictionary<string, AnimatorControllerParameter>();
+            foreach (var p in master.parameters)
+            {
+                string bare = p.name.TrimStart('#');
+                if (derived.Contains(bare) && !present.ContainsKey(bare))
+                {
+                    present[bare] = p;
+                }
+            }
+            if (present.Count == 0)
+            {
+                return;
+            }
+
+            float baseline = ctx.CvrAvatar != null ? ctx.CvrAvatar.viewPosition.y : 0f;
+            if (baseline < 0.05f)
+            {
+                baseline = 1.6f; // no believable viewpoint to measure against; VRChat's default
+            }
+
+            var parameters = master.parameters.ToList();
+            void Ensure(string name)
+            {
+                if (parameters.All(p => p.name != name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Float,
+                        // The resting value, so the first frames before the stream fires read
+                        // "unscaled" rather than "0.05 m tall".
+                        defaultFloat = baseline
+                    });
+                }
+            }
+            const string Factor = "#ScaleFactorCalc";
+            const string Delta = "#ScaleDeltaCalc";
+            const string Shift = "#EyeHeightShiftCalc";
+            Ensure("EyeHeightAsMeters");
+            master.parameters = AppendScratch(parameters.ToArray(), Factor);
+
+            AnimatorDriverTask Task(string targetName, AnimatorDriverTask.ParameterType targetType,
+                AnimatorDriverTask.Operator op,
+                string aParam, float aStatic, string bParam, float bStatic)
+            {
+                var task = new AnimatorDriverTask
+                {
+                    targetType = targetType,
+                    targetName = targetName,
+                    op = op
+                };
+                if (aParam != null)
+                {
+                    task.aType = AnimatorDriverTask.SourceType.Parameter;
+                    task.aParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.aName = aParam;
+                }
+                else
+                {
+                    task.aType = AnimatorDriverTask.SourceType.Static;
+                    task.aValue = aStatic;
+                }
+                if (bParam != null)
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Parameter;
+                    task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.bName = bParam;
+                }
+                else
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Static;
+                    task.bValue = bStatic;
+                }
+                return task;
+            }
+
+            var tick = new AnimationClip { name = "Scale Feed Tick" };
+            tick.SetCurve("", typeof(Animator), Factor + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "Scale Feed",
+                hideFlags = HideFlags.HideInHierarchy
+            };
+            var state = machine.AddState("Recompute");
+            state.writeDefaultValues = false;
+            state.motion = tick;
+            machine.defaultState = state;
+            var loop = state.AddTransition(state);
+            loop.hasExitTime = true;
+            loop.exitTime = 1f;
+            loop.hasFixedDuration = true;
+            loop.duration = 0f;
+
+            var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+            driver.localOnly = false; // remotes recompute from the synced EyeHeightAsMeters
+            var tasks = driver.EnterTasks;
+            var Float = AnimatorDriverTask.ParameterType.Float;
+            tasks.Add(Task(Factor, Float, AnimatorDriverTask.Operator.Division,
+                "EyeHeightAsMeters", 0f, null, baseline));
+            if (present.TryGetValue("ScaleFactor", out var scaleFactor))
+            {
+                tasks.Add(Task(scaleFactor.name, Float, AnimatorDriverTask.Operator.Set,
+                    Factor, 0f, null, 0f));
+            }
+            if (present.TryGetValue("ScaleFactorInverse", out var inverse))
+            {
+                tasks.Add(Task(inverse.name, Float, AnimatorDriverTask.Operator.Division,
+                    null, baseline, "EyeHeightAsMeters", 0f));
+            }
+            if (present.TryGetValue("EyeHeightAsPercent", out var percent))
+            {
+                master.parameters = AppendScratch(master.parameters, Shift);
+                tasks.Add(Task(Shift, Float, AnimatorDriverTask.Operator.Subtraction,
+                    "EyeHeightAsMeters", 0f, null, 0.2f));
+                tasks.Add(Task(percent.name, Float, AnimatorDriverTask.Operator.Division,
+                    Shift, 0f, null, 4.8f));
+            }
+            if (present.TryGetValue("ScaleModified", out var modified))
+            {
+                master.parameters = AppendScratch(master.parameters, Delta);
+                // Squared distance from 1, compared against (1 %)² — an exact-equality check
+                // on a streamed float would flicker.
+                tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Subtraction,
+                    Factor, 0f, null, 1f));
+                tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Multiplication,
+                    Delta, 0f, Delta, 0f));
+                tasks.Add(Task(modified.name,
+                    modified.type == AnimatorControllerParameterType.Bool
+                        ? AnimatorDriverTask.ParameterType.Bool
+                        : Float,
+                    AnimatorDriverTask.Operator.MoreThan,
+                    Delta, 0f, null, 0.0001f));
+            }
+
+            var layers = master.layers.ToList();
+            layers.Add(new AnimatorControllerLayer
+            {
+                name = "Scale Feed",
+                defaultWeight = 1f,
+                stateMachine = machine
+            });
+            master.layers = layers.ToArray();
+
+            ctx.Report.Converted(Category,
+                $"VRChat's avatar-scale parameters are live — {string.Join(", ", present.Keys)}",
+                $"Derived from EyeHeightAsMeters, which a parameter stream feeds from ChilloutVR's " +
+                $"calibrated avatar height, against this avatar's converted viewpoint height of " +
+                $"{baseline:0.00} m as scale 1.0. A generated driver layer recomputes them each cycle, " +
+                "locally on every client — the input syncs, the arithmetic is deterministic, so remote " +
+                "viewers see the same values at no extra sync cost. ScaleModified flips at 1% off " +
+                "baseline. Scale-reactive gimmicks (VRCFury scale detectors and similar) run on these.");
+        }
+
+        static AnimatorControllerParameter[] AppendScratch(AnimatorControllerParameter[] parameters, string name)
+        {
+            if (parameters.Any(p => p.name == name))
+            {
+                return parameters;
+            }
+            var list = parameters.ToList();
+            list.Add(new AnimatorControllerParameter
+            {
+                name = name,
+                type = AnimatorControllerParameterType.Float,
+                defaultFloat = 0f
+            });
+            return list.ToArray();
+        }
+
         static void FeedVelocityMagnitude(AnimatorController master, BridgeContext ctx)
         {
             AnimatorControllerParameter target = null;

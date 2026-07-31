@@ -52,6 +52,9 @@ namespace AvatarBridge
         public string outputFolder = "Assets/AvatarBridgeOutput";
 
         [Header("Animator layers to merge")]
+        // Merges the layer masked off the humanoid body (it can only REPLACE CVR's locomotion,
+        // never supplement it) and grafts its custom walk/stance/fall animations into CVR's own
+        // locomotion layer by blend-tree position — see LocomotionGrafter.
         public bool convertBaseLayer = false;
         public bool convertAdditiveLayer = false;
         public bool convertGestureLayer = true;

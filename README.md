@@ -228,6 +228,8 @@ defines.
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
+| Base / Sitting locomotion animations | grafted into CVR's own `Locomotion/Emotes` layer | custom walk/crouch/crawl/fall/sit clips, matched by blend-tree position; VRChat `proxy_*` placeholders skipped — those live in the VRChat client, and CVR's animation set is their equivalent here |
+| VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
@@ -1331,6 +1333,16 @@ weight 1 it simply held the body still.
 `[Base]` layers are now masked off the humanoid rig, exactly like merged FX layers. Everything else
 in them still converts — object toggles, blendshapes, materials, parameters, additive motion — and
 CVR's locomotion stays authoritative.
+
+**And the animations themselves survive** (3.5.0): custom walking, crouching, crawling, falling and
+sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in the
+movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
+whatever it's named. The structure stays ChilloutVR's, so movement and stances always answer; the
+art becomes the avatar's. One discovery made this precise: most VRChat avatars don't ship walking
+animations at all — their trees reference `proxy_*` placeholder clips that the VRChat *client*
+replaces at runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's
+own animation set is this platform's version of those placeholders, and the report says which of the
+two cases your avatar is.
 
 **Genuine locomotion replacements can't be rescued this way**, and it's worth knowing why: they lean
 on runtime layer-weight control, which ChilloutVR has no equivalent for, so they don't run here
