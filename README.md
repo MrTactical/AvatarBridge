@@ -1315,17 +1315,19 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-**The live window is read from VRChat's own data** (3.4.24). VRChat's Action playable sits at weight
-0 *always*, except between the state whose behaviour raises it (`goalWeight 1`) and the state whose
-behaviour fades it back (`goalWeight 0`) — every state outside that window ran **invisibly**,
-including staging states *before* the raise. One avatar's `Prepare Standing` waits there for a
-gesture, and at a constant weight 1 it posed the whole body while waiting; in VRChat nobody ever saw
-it. So the conversion reads those behaviours while they still exist and keeps live only the states
-reachable from a raise without passing a fade; everything else — idle, staging, tail — is made
-inert. A layer with no raise behaviour at all stays at weight 0, since VRChat never showed it either.
+**The full-body pose part of such a feature is a platform wall** (3.4.25), and it was fought for
+before being called one. VRChat's Action playable sits at weight 0 and is raised *at runtime* by
+behaviours while a sequence plays — that runtime weight control is the piece ChilloutVR doesn't
+have, and without it there is no safe weight for the layer. At 0 its poses never show. At 1, Unity
+gives a layer no way to *yield*: an inert waiting state with Write Defaults off makes the layer hold
+the last muscles any state wrote (the avatar freezes mid-pose — observed directly, machine sitting
+in its waiting state with the pose stuck), and Write Defaults on would assert the rest pose over
+locomotion instead. 3.4.20–3.4.24 tried every state-level variant of this; each failed on that wall.
 
-If locomotion still breaks — walking on the spot, a stuck pose — set that layer's weight back to 0 in
-the Animator window and report it.
+So the layer merges at weight 0 and the report says exactly what that costs: the **visible** part of
+the feature — mesh swaps, materials, toggles — lives in FX layers and works; the full-body pose
+while the sequence plays is lost. Raising the weight by hand in the Animator window shows the poses
+but will freeze the body on whichever pose plays last.
 
 ### Two near-identical menu controls, and only one works
 
@@ -1342,7 +1344,7 @@ is untouched and still syncs.
 
 ### Your eyes stay open, start closed, or lose a pupil
 
-**Fixed in 3.4.24** — and the fix went through two wrong versions worth recording. An avatar that
+**Fixed in 3.4.25** — and the fix went through three wrong versions worth recording. An avatar that
 blinks **from its own animator** (VRCFury and similar, usually driving `vrc.Blink`) can't keep that
 system through conversion, and can't share the eyes with the native one either:
 
@@ -1355,12 +1357,18 @@ system through conversion, and can't share the eyes with the native one either:
   eyes shut from the first blink, pupil with them, on the body *and* on anything else built from the
   same mesh.
 
+- 3.4.24 picked the shape by name before looking at the layers — and on a mesh carrying both a
+  `Blink` shape and a `vrc.Blink` shape it wired the native blink to the wrong one while the real
+  driver kept running.
+
 The animator blink system only exists because **VRChat has no built-in blink. ChilloutVR does.** So
-the conversion now reads the exact shape the avatar's own blink clip drives — no guessing — wires
-ChilloutVR's native Eye Blink to it, and removes the animator layer that drove it. A layer is only
-removed when everything it does is blink (the only shape it ever *raises* is the blink shape, no
-objects, no materials); expression animations that close the eyes in a smile stay, and still win over
-the native blink while they play, exactly as they won over the animator blink.
+the conversion (3.4.25) finds the animator layer whose *only job is blinking* — every curve a
+blendshape, the only shape it ever raises matches "blink", no objects, no materials — lets **that
+layer name the shape**, removes it, wires ChilloutVR's native Eye Blink to the same shape, and zeroes
+the shape's live weight in case the old system left the eyes mid-blink. Expression animations that
+close the eyes in a smile raise other shapes, so they stay — and still win over the native blink
+while they play, exactly as they won over the animator blink. If no layer can be safely identified,
+nothing is removed, native blink stays off, and the report says so.
 
 ### An effect draws in one eye only in VR
 

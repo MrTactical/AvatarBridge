@@ -209,20 +209,25 @@ namespace AvatarBridge
                     if (actionAtRest)
                     {
                         // After the first-layer rule above, which would otherwise re-raise it.
-                        // ...unless the layer is a FEATURE rather than an emote player. See
-                        // ActionLayerDrivesOwnFeature: an Action layer whose transitions wait on
-                        // the avatar's own parameters is not doing what VRChat's Action layer is
-                        // for, and resting it at 0 kills the feature outright.
-                        if (ActionLayerDrivesOwnFeature(clone, out string byWhat)
-                            && NeutralizeActionIdle(clone, srcLayer, master, out int inert))
+                        //
+                        // ALWAYS weight 0, including for Action layers that carry a feature of the
+                        // avatar's own — and that "including" was fought for and lost, so record
+                        // the whole retreat. 3.4.20–3.4.24 tried to keep feature layers live at
+                        // weight 1 with their non-feature states made inert. Every variant failed
+                        // on the same wall: Unity gives a layer no way to YIELD. An inert state
+                        // with Write Defaults off makes the layer HOLD the last muscles any live
+                        // state wrote — the avatar froze mid-pose, confirmed by watching the stuck
+                        // machine sit in an inert state while the pose persisted — and Write
+                        // Defaults on would assert the rest pose over locomotion instead. VRChat
+                        // resolves this with runtime playable-weight control, which ChilloutVR
+                        // does not have. So the pose portion of such a feature is a platform wall,
+                        // and it is REPORTED as one rather than half-shipped: the FX portion (mesh
+                        // swaps, materials — the visible part) lives in other layers and works.
+                        clone.defaultWeight = 0f;
+                        actionLayersRested++;
+                        if (ActionLayerDrivesOwnFeature(clone, out string byWhat))
                         {
-                            clone.defaultWeight = 1f;
-                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat}, {inert} state(s) made inert)");
-                        }
-                        else
-                        {
-                            clone.defaultWeight = 0f;
-                            actionLayersRested++;
+                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
                         }
                     }
                     clone.avatarMask = ReplaceVrcMask(clone.avatarMask, ctx);
@@ -234,20 +239,18 @@ namespace AvatarBridge
 
             if (actionFeatures.Count > 0)
             {
-                ctx.Report.Converted(Category,
-                    $"{actionFeatures.Count} Action layer(s) kept LIVE — the avatar drives them itself",
-                    $"{string.Join("; ", actionFeatures)}. VRChat's Action layer is normally its emote " +
-                    "player, and this conversion rests it at weight 0 because ChilloutVR has no playable " +
-                    "layers to raise it. These ones wait on the avatar's OWN parameters, so resting them " +
-                    "would have killed a feature outright — a transforming avatar whose whole vehicle mode " +
-                    "lived in an Action layer converted perfectly and did nothing. Each is merged at weight " +
-                    "1 with its waiting state emptied and Write Defaults turned off, so the layer " +
-                    "contributes nothing until something drives it — the same net effect as VRChat's " +
-                    "weight 0 — and then animates at full weight. VRChat fades that weight in over about " +
-                    "half a second and ChilloutVR cannot, so expect the change to snap rather than ease. " +
-                    "IF LOCOMOTION BREAKS — you walk on the spot, or the pose sticks — set this layer's " +
-                    "weight back to 0 in the Animator window and tell me, because that means its waiting " +
-                    "state was not the only thing holding the body.");
+                ctx.Report.Approximated(Category,
+                    $"{actionFeatures.Count} Action layer(s) carry a feature this platform cannot pose",
+                    $"{string.Join("; ", actionFeatures)}. VRChat's Action playable sits at weight 0 and " +
+                    "is raised at runtime by behaviours while a sequence plays — that runtime weight " +
+                    "control is the one piece ChilloutVR does not have, and without it there is no safe " +
+                    "weight for such a layer: at 0 its full-body poses never show, at 1 Unity offers no " +
+                    "way for the layer to yield between sequences, so the avatar freezes in its last pose " +
+                    "(tried, at length; it is a wall, not a bug). The layer is merged at weight 0, so " +
+                    "everything OUTSIDE it still works — mesh swaps, materials and toggles live in FX " +
+                    "layers and carry the visible part of the feature. What is lost is the full-body pose " +
+                    "while the sequence plays. Raising the layer's weight by hand in the Animator window " +
+                    "shows the poses but WILL freeze the body on the pose it last played.");
             }
             if (actionLayersRested > 0)
             {
@@ -288,7 +291,7 @@ namespace AvatarBridge
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             StripExistingFaceTracking(master, vrcLayers, ctx);
-            StripAnimatorBlinkLayers(master, ctx);
+            ReplaceAnimatorBlink(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
             // Before RenamePass, so the menu entries' machineNames still line up with the
             // animator parameter names; and before CompactIntDropdowns, which needs the
@@ -2964,28 +2967,46 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Removes the animator layer(s) that BLINK the shape ChilloutVR's native blink has taken
-        /// over. Runs only when DescriptorConverter decided the takeover — see
-        /// <c>BridgeContext.AnimatorBlinkShape</c> for why the animator system cannot be kept.
+        /// Replaces an animator-driven blink with ChilloutVR's native Eye Blink. Runs when
+        /// DescriptorConverter found SOME blink-ish shape animated — see
+        /// <c>BridgeContext.AnimatorBlinkPending</c> — but the whole decision is made HERE, where
+        /// the merged layers can be inspected.
         ///
-        /// A layer is only stripped when everything it does is blink: every float curve across its
-        /// clips is a blendshape, the only shape it ever RAISES is the blink shape, and it moves no
-        /// objects and swaps no materials. A face-expression layer that happens to close the eyes
-        /// in a smile raises other shapes too, so it stays — expressions closing the eyes over the
-        /// native blink is exactly what they did over the animator blink. The weight-0 generator
-        /// layer that flips the trigger parameter is deliberately left alone: it animates nothing,
-        /// and stripping shared parameter machinery on a name-independent heuristic is how healthy
-        /// avatars get broken.
+        /// It has to be, and the first version proved it the hard way: the mesh this was written
+        /// for carries a shape named "Blink" AND one named "vrc.Blink". Deciding the shape first
+        /// (descriptor pass) and hunting its writers second (merge pass) picked "Blink" from an
+        /// expression clip, wired the native blink to it, found no strippable writer of it — and
+        /// the real receiver went on driving "vrc.Blink" to 100 forever. So: find the strippable
+        /// BLINK LAYER first, and let IT name the shape.
+        ///
+        /// A blink layer is one whose animation does nothing but blink: every float curve is a
+        /// blendshape, the ONLY shape it ever raises above zero matches /blink/i, no objects, no
+        /// materials. Expression layers raise other shapes and stay — an expression closing the
+        /// eyes over the native blink is exactly what it did over the animator blink. The weight-0
+        /// generator that flips the trigger parameter animates nothing and is left alone; its
+        /// pulses land on a parameter nothing reads any more.
+        ///
+        /// Why the animator system can't just be kept: its "eyes open" states are EMPTY in VRChat,
+        /// relying on Write Defaults to reopen the lids. Empty states crash Unity's graph builder,
+        /// so conversion must fill them; a state with a motion stops writing defaults; the first
+        /// blink then writes the shape to 100 and nothing ever writes it back. Eyes shut from the
+        /// first blink onward — measured on the mesh itself, resting weight 0 in the prefab and
+        /// 100 in the running scene.
         /// </summary>
-        static void StripAnimatorBlinkLayers(AnimatorController master, BridgeContext ctx)
+        static void ReplaceAnimatorBlink(AnimatorController master, BridgeContext ctx)
         {
-            if (string.IsNullOrEmpty(ctx.AnimatorBlinkShape))
+            if (!ctx.AnimatorBlinkPending || ctx.CvrAvatar == null || ctx.CvrAvatar.bodyMesh == null)
             {
                 return;
             }
-            string blinkProperty = "blendShape." + ctx.AnimatorBlinkShape;
+            var mesh = ctx.CvrAvatar.bodyMesh.sharedMesh;
+            if (mesh == null)
+            {
+                return;
+            }
 
             var stripped = new List<string>();
+            string blinkShape = null;
             var layers = master.layers.ToList();
             for (int i = layers.Count - 1; i >= 0; i--)
             {
@@ -2994,7 +3015,8 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                bool drivesBlink = false, onlyBlink = true;
+                string raised = null;      // the one shape this layer raises, if it qualifies
+                bool pureBlink = true, sawAnything = false;
                 WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
@@ -3004,52 +3026,85 @@ namespace AvatarBridge
                         {
                             if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0)
                             {
-                                onlyBlink = false;
+                                pureBlink = false;
                             }
                             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                             {
-                                if (binding.propertyName == blinkProperty)
-                                {
-                                    drivesBlink = true;
-                                    continue;
-                                }
+                                sawAnything = true;
                                 if (!binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
                                 {
-                                    onlyBlink = false;
+                                    pureBlink = false;
                                     continue;
                                 }
-                                // Another shape is fine only if the layer holds it at zero — the
-                                // receiver pattern resets its co-shapes; an expression raises them.
                                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                                if (curve != null && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                                if (curve == null || !curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
                                 {
-                                    onlyBlink = false;
+                                    continue; // held at zero: the receiver resetting a co-shape
+                                }
+                                string shape = binding.propertyName.Substring("blendShape.".Length);
+                                if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) < 0
+                                    || (raised != null && raised != shape))
+                                {
+                                    pureBlink = false; // raises a non-blink shape, or two shapes
+                                }
+                                else
+                                {
+                                    raised = shape;
                                 }
                             }
                         }
                     }
                 });
-                if (drivesBlink && onlyBlink)
+                if (pureBlink && sawAnything && raised != null && mesh.GetBlendShapeIndex(raised) >= 0)
                 {
+                    blinkShape = raised;
                     stripped.Add(layer.name);
                     layers.RemoveAt(i);
                 }
             }
-            if (stripped.Count == 0)
+
+            if (blinkShape == null)
             {
+                // Nothing safely strippable. Leave the avatar's own system in place and say so —
+                // adding the native blink on top would put two systems on one pair of eyes.
+                ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
+                    "This avatar blinks from its own animator, but no layer could be safely identified " +
+                    "as ONLY blinking, so nothing was removed and ChilloutVR's native blink stays off. " +
+                    "If the eyes stick closed in game, this is where to look: the animator blink relies " +
+                    "on empty-state Write Defaults behaviour that does not survive conversion.");
                 return;
             }
+
             master.layers = layers.ToArray();
             EditorUtility.SetDirty(master);
+
+            var cvrAvatar = ctx.CvrAvatar;
+            cvrAvatar.useBlinkBlendshapes = true;
+            if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
+            {
+                cvrAvatar.blinkBlendshape = new string[4];
+            }
+            cvrAvatar.blinkBlendshape[0] = blinkShape;
+            AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+            // The shape's live weight may be whatever the old system last wrote — the source scene
+            // arrives mid-blink if a previous session stuck it closed. Native blink owns it now,
+            // and its rest is open.
+            int index = mesh.GetBlendShapeIndex(blinkShape);
+            if (index >= 0)
+            {
+                cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+            }
+            EditorUtility.SetDirty(cvrAvatar);
+
             ctx.Report.Converted(Category,
-                $"{stripped.Count} animator blink layer(s) removed — ChilloutVR blinks natively now",
-                $"{string.Join(", ", stripped)} — these existed to blink \"{ctx.AnimatorBlinkShape}\" " +
-                "because VRChat has no built-in blink. Their \"eyes open\" states are EMPTY in VRChat " +
-                "and rely on Write Defaults reopening the lids, which does not survive conversion: " +
-                "empty states crash Unity's graph builder, the filler that prevents that is a motion, " +
-                "and a state with a motion stops writing defaults — so the first blink closed the eyes " +
-                "for good. ChilloutVR's native Eye Blink now drives the same shape instead. Expression " +
-                "animations that close the eyes are untouched and still win while they play.");
+                $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
+                $"{string.Join(", ", stripped)} — this system existed to blink \"{blinkShape}\" because " +
+                "VRChat has no built-in blink. Its \"eyes open\" states are EMPTY in VRChat and rely on " +
+                "Write Defaults reopening the lids, which does not survive conversion: empty states " +
+                "crash Unity's graph builder, the filler that prevents that is a motion, and a state " +
+                "with a motion stops writing defaults — so the first blink closed the eyes for good. " +
+                "ChilloutVR's native Eye Blink now drives the exact shape the removed layer drove. " +
+                "Expression animations that close the eyes are untouched and still win while they play.");
         }
 
         /// <summary>
@@ -3127,169 +3182,6 @@ namespace AvatarBridge
             byWhat = string.Join(", ", own.Take(4)) + (own.Count > 4 ? ", …" : "");
             return true;
         }
-
-        /// <summary>
-        /// Makes an Action layer's resting state contribute nothing, which is what lets the layer
-        /// be merged at weight 1 without holding the avatar still.
-        ///
-        /// VRChat's Action idle — "WaitForActionOrAFK" and friends — holds a PROXY clip, and on the
-        /// avatar this was written for that proxy was <c>proxy_stand_still</c>: 117 humanoid muscle
-        /// curves. Harmless in VRChat because the whole layer sits at weight 0 while it is the
-        /// current state; at weight 1 it pins the avatar standing and locomotion stops.
-        ///
-        /// So the idle is given the empty placeholder and Write Defaults OFF: while the layer waits
-        /// it writes nothing at all, exactly as a weight-0 layer would, and the moment a transition
-        /// carries it into a real Action state that state animates at full weight. The one thing not
-        /// reproduced is VRChat's ~0.5 s weight fade in and out, so a transformation snaps in where
-        /// VRChat would ease it.
-        ///
-        /// Returns false if the layer has no identifiable resting state, in which case the caller
-        /// leaves the weight at 0 — the safe answer, and the behaviour before this existed.
-        /// </summary>
-        static bool NeutralizeActionIdle(AnimatorControllerLayer layer, AnimatorControllerLayer source,
-            AnimatorController master, out int neutralized)
-        {
-            neutralized = 0;
-            var machine = layer.stateMachine;
-            var idle = machine != null ? machine.defaultState : null;
-            if (idle == null)
-            {
-                return false;
-            }
-
-            // The LIVE WINDOW, not the off-tail. Third attempt, and the shape of the two wrong
-            // ones is worth recording: VRChat's Action playable is at weight 0 ALWAYS, except
-            // between the state whose behaviour raises it (goalWeight 1) and the state whose
-            // behaviour fades it back (goalWeight 0). Every state OUTSIDE that window ran
-            // invisibly in VRChat — including states BEFORE the raise. This avatar's
-            // "Prepare Standing" sits between the idle and the raise, waiting for a gesture, and
-            // at a constant weight 1 it posed the whole body while it waited; in VRChat nobody
-            // ever saw it. Neutralising the idle (attempt one) and then the exit tail (attempt
-            // two) both left it live, because both asked "what turns the layer off?" when the
-            // right question is "what turns it ON, and how far does that reach?"
-            //
-            // live = every state reachable from a raise-state without passing through a
-            // fade-state. Everything else is made inert. No raise-state at all means the layer
-            // never became visible in VRChat, and the caller keeps it at weight 0.
-            var on = LayerOnStates(source);
-            var off = LayerOffStates(source);
-            var byName = new Dictionary<string, AnimatorState>();
-            WalkMachines(machine, m =>
-            {
-                foreach (var child in m.states)
-                {
-                    if (child.state != null && !byName.ContainsKey(child.state.name))
-                    {
-                        byName[child.state.name] = child.state;
-                    }
-                }
-            });
-            var live = new HashSet<string>(on.Where(byName.ContainsKey));
-            if (live.Count == 0)
-            {
-                return false;
-            }
-            var queue = new Queue<string>(live);
-            while (queue.Count > 0)
-            {
-                if (!byName.TryGetValue(queue.Dequeue(), out var state))
-                {
-                    continue;
-                }
-                foreach (var transition in state.transitions)
-                {
-                    var next = transition != null ? transition.destinationState : null;
-                    if (next != null && !off.Contains(next.name) && live.Add(next.name))
-                    {
-                        queue.Enqueue(next.name);
-                    }
-                }
-            }
-
-            int made = 0;
-            foreach (var pair in byName)
-            {
-                if (!live.Contains(pair.Key))
-                {
-                    pair.Value.motion = null;   // FillEmptyMotionSlots supplies the placeholder
-                    pair.Value.writeDefaultValues = false;
-                    made++;
-                }
-            }
-            neutralized = made;
-            EditorUtility.SetDirty(master);
-            return made > 0;
-        }
-
-        /// <summary>
-        /// The names of states that switch their own playable layer OFF, taken from the VRChat
-        /// behaviours attached to them.
-        ///
-        /// This is the piece that makes a live Action layer safe. VRChat's Action states end by
-        /// running a <c>VRC Animator Layer Control</c> that fades the Action layer's weight to 0 —
-        /// that behaviour IS the statement "the layer stops contributing here". ChilloutVR cannot
-        /// run it, and the conversion strips it, so at weight 1 the exit sequence keeps animating
-        /// the body forever: on the avatar this was written for, coming out of vehicle mode left it
-        /// stuck in a half-crouch, because "Prepare Standing", "BlendOut Stand" and "Restore
-        /// Tracking (stand)" ran with nothing left to turn them off.
-        ///
-        /// Rather than guess which states are the tail, this reads the behaviours while they still
-        /// exist and makes exactly those states inert. It is VRChat's own answer to the question,
-        /// which is a great deal better than a heuristic about state names.
-        /// </summary>
-        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: false);
-
-        /// <summary>States where VRChat turns the Action playable back ON — the stop condition for
-        /// the downstream walk in NeutralizeActionIdle, so a machine that re-enters its feature
-        /// after an exit doesn't get its feature states made inert by contagion.</summary>
-        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: true);
-
-        static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
-        {
-            var off = new HashSet<string>();
-            if (source == null || source.stateMachine == null)
-            {
-                return off;
-            }
-            WalkMachines(source.stateMachine, machine =>
-            {
-                foreach (var child in machine.states)
-                {
-                    var state = child.state;
-                    if (state == null || state.behaviours == null)
-                    {
-                        continue;
-                    }
-                    foreach (var behaviour in state.behaviours)
-                    {
-                        // BOTH behaviour types, because VRChat has two ways to say it and avatars
-                        // use the first. VRCPlayableLayerControl drives a whole playable's weight —
-                        // the standard way an Action system turns itself off, and the one the
-                        // avatar this was written for uses; checking only VRCAnimatorLayerControl
-                        // found nothing, made one state inert, and shipped a conversion that still
-                        // stuck. VRCAnimatorLayerControl drives one layer inside a playable and is
-                        // kept for systems built that way. Only the Action playable counts either
-                        // way: a state may also drive FX or Gesture weights, and those say nothing
-                        // about whether THIS layer has finished.
-                        bool matches =
-                            (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
-                                && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
-                                && (on ? playable.goalWeight >= 0.999f : playable.goalWeight <= 0.001f))
-                            || (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl animator
-                                && animator.playable == VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action
-                                && (on ? animator.goalWeight >= 0.999f : animator.goalWeight <= 0.001f));
-                        if (matches)
-                        {
-                            off.Add(state.name);
-                        }
-                    }
-                }
-            });
-            return off;
-        }
-
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>
         static bool MotionUsesParameter(Motion motion, string param)
         {

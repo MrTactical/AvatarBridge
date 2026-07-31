@@ -713,48 +713,17 @@ namespace AvatarBridge
             }
 
             // An avatar that already blinks itself gets its system REPLACED with ChilloutVR's
-            // native blink, wired to the exact shape its own animator drives.
-            //
-            // VRCFury and similar ship blink as animator layers — a weight-0 generator whose
-            // drivers flip a synced bool, and a receiver whose "eyes open" states are EMPTY with
-            // Write Defaults on, relying on Unity writing defaults to reopen the eyes. That empty
-            // state cannot survive conversion: empty states crash Unity's graph builder, so every
-            // one is filled with a placeholder clip, and a placeholder is a motion — the state
-            // stops writing defaults, the first blink writes the shape to 100, and nothing ever
-            // writes it back. Eyes closed from the first blink onwards, pupil gone with them.
-            //
-            // 3.4.22 tried "leave it to the avatar's system" and shipped exactly that. The system
-            // only exists because VRChat HAS no native blink; ChilloutVR does, and the receiver's
-            // own clip names the precise shape — no guessing between "Blink" and "vrc.Blink".
-            if (AnimatedBlinkShape(ctx, vrc, out string drivenShape, out string drivenBy))
+            // native blink — but the decision is DEFERRED. This pass runs before the merge, and
+            // choosing the shape here by name picked "Blink" off an expression clip while the real
+            // receiver drove "vrc.Blink" (the mesh carries both), so the takeover missed. All this
+            // pass records is that a takeover is wanted; AnimatorMerger.ReplaceAnimatorBlink finds
+            // the layer whose only job is blinking, lets IT name the shape, strips it, and wires
+            // the native blink. Native blink stays off here so the two never overlap.
+            if (AnimatedBlinkShape(ctx, vrc, out _, out _))
             {
-                if (mesh.GetBlendShapeIndex(drivenShape) >= 0)
-                {
-                    cvrAvatar.useBlinkBlendshapes = true;
-                    if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
-                    {
-                        cvrAvatar.blinkBlendshape = new string[4];
-                    }
-                    cvrAvatar.blinkBlendshape[0] = drivenShape;
-                    AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
-                    ctx.AnimatorBlinkShape = drivenShape;   // AnimatorMerger strips the driving layer
-                    ctx.Report.Converted(Category, "Blink converted to ChilloutVR's native blink",
-                        $"This avatar blinked from its own animator ({drivenBy}). That system relies on " +
-                        "empty animator states restoring the eyelids — a VRChat idiom that does not survive " +
-                        "conversion, and its failure mode is eyes that close on the first blink and never " +
-                        "reopen. It only exists because VRChat has no built-in blink; ChilloutVR does, so " +
-                        $"the native blink now drives \"{drivenShape}\" — the exact shape the avatar's own " +
-                        "clip named — and the animator layer that drove it is removed.");
-                    return true;
-                }
-                // The driven shape lives on some other mesh than the face mesh CVR blinks through.
-                // Native blink can't reach it, and adding a second system would fight the first.
                 cvrAvatar.useBlinkBlendshapes = false;
-                ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
-                    $"This avatar blinks from its own animator ({drivenBy}), but that shape is not on the " +
-                    $"face mesh (\"{cvrAvatar.bodyMesh.name}\"), so ChilloutVR's native blink cannot take it " +
-                    "over and was left off. If the eyes stick closed in game, this is where to look.");
-                return true;
+                ctx.AnimatorBlinkPending = true;
+                return true;    // reported by the merge pass, which knows what it actually did
             }
 
             cvrAvatar.useBlinkBlendshapes = true;
