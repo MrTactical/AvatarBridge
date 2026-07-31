@@ -145,6 +145,9 @@ namespace AvatarBridge
             // so they are supposed to run at full weight and drive the body.
             bool gogoDrivesLocomotion = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx);
             int actionLayersRested = 0;
+            // Action layers kept LIVE because the avatar drives them itself — see the weight
+            // decision below and the report entry at the end of the merge.
+            var actionFeatures = new List<string>();
 
             foreach (var (id, controller) in vrcControllers)
             {
@@ -206,8 +209,21 @@ namespace AvatarBridge
                     if (actionAtRest)
                     {
                         // After the first-layer rule above, which would otherwise re-raise it.
-                        clone.defaultWeight = 0f;
-                        actionLayersRested++;
+                        // ...unless the layer is a FEATURE rather than an emote player. See
+                        // ActionLayerDrivesOwnFeature: an Action layer whose transitions wait on
+                        // the avatar's own parameters is not doing what VRChat's Action layer is
+                        // for, and resting it at 0 kills the feature outright.
+                        if (ActionLayerDrivesOwnFeature(clone, out string byWhat)
+                            && NeutralizeActionIdle(clone, master))
+                        {
+                            clone.defaultWeight = 1f;
+                            actionFeatures.Add($"\"{clone.name}\" (driven by {byWhat})");
+                        }
+                        else
+                        {
+                            clone.defaultWeight = 0f;
+                            actionLayersRested++;
+                        }
                     }
                     clone.avatarMask = ReplaceVrcMask(clone.avatarMask, ctx);
                     masterLayers.Add(clone);
@@ -216,6 +232,23 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{id} layer merged", $"{controller.layers.Length} sub-layers");
             }
 
+            if (actionFeatures.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{actionFeatures.Count} Action layer(s) kept LIVE — the avatar drives them itself",
+                    $"{string.Join("; ", actionFeatures)}. VRChat's Action layer is normally its emote " +
+                    "player, and this conversion rests it at weight 0 because ChilloutVR has no playable " +
+                    "layers to raise it. These ones wait on the avatar's OWN parameters, so resting them " +
+                    "would have killed a feature outright — a transforming avatar whose whole vehicle mode " +
+                    "lived in an Action layer converted perfectly and did nothing. Each is merged at weight " +
+                    "1 with its waiting state emptied and Write Defaults turned off, so the layer " +
+                    "contributes nothing until something drives it — the same net effect as VRChat's " +
+                    "weight 0 — and then animates at full weight. VRChat fades that weight in over about " +
+                    "half a second and ChilloutVR cannot, so expect the change to snap rather than ease. " +
+                    "IF LOCOMOTION BREAKS — you walk on the spot, or the pose sticks — set this layer's " +
+                    "weight back to 0 in the Animator window and tell me, because that means its waiting " +
+                    "state was not the only thing holding the body.");
+            }
             if (actionLayersRested > 0)
             {
                 ctx.Report.Converted(Category,
@@ -2834,6 +2867,114 @@ namespace AvatarBridge
                 "name so none is blank. They are deliberately NOT declared as parameters: declaring them " +
                 "was tried and brought the crash back, twice measured. Nothing changes about how the " +
                 "avatar behaves — these fields were being read as garbage or not at all.");
+        }
+
+        /// <summary>
+        /// VRChat's built-ins that an Action layer legitimately waits on while doing nothing but
+        /// playing emotes. Anything OUTSIDE this set means the avatar is driving the layer itself.
+        /// </summary>
+        static readonly HashSet<string> EmotePlayerParameters = new HashSet<string>
+        {
+            "VRCEmote", "VRCFaceBlendH", "VRCFaceBlendV", "AFK", "Seated", "InStation",
+            "IsLocal", "Upright", "Grounded", "Supine", "Voice", "Sitting", "TrackingType",
+        };
+
+        /// <summary>
+        /// Whether an Action layer is a FEATURE the avatar drives, rather than VRChat's emote
+        /// player. The distinction decides whether the layer may be merged live.
+        ///
+        /// VRChat keeps the Action playable layer at weight 0 and raises it only while an emote
+        /// runs, so its idle state can hold a full-body clip and harm nothing. ChilloutVR has no
+        /// playable layers, so an Action layer merged at weight 1 asserts that idle over locomotion
+        /// — hence the blanket weight 0, which is right for emotes and fatal for anything else.
+        ///
+        /// "Anything else" is real and not rare: a transforming robot avatar put its entire
+        /// car-mode sequence in an Action layer gated on its own CarMode/TransformMode parameters.
+        /// Every parameter converted, the menu toggled them correctly, and nothing happened,
+        /// because the layer holding the animation could not reach any weight.
+        ///
+        /// The test is what the layer WAITS ON. A transition naming a parameter that isn't one of
+        /// VRChat's emote/state built-ins is the avatar asking for this layer on purpose.
+        /// </summary>
+        static bool ActionLayerDrivesOwnFeature(AnimatorControllerLayer layer, out string byWhat)
+        {
+            byWhat = null;
+            var own = new SortedSet<string>();
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                void Note(AnimatorTransitionBase transition)
+                {
+                    if (transition == null || transition.conditions == null)
+                    {
+                        return;
+                    }
+                    foreach (var condition in transition.conditions)
+                    {
+                        if (!string.IsNullOrEmpty(condition.parameter)
+                            && !EmotePlayerParameters.Contains(condition.parameter)
+                            && !condition.parameter.StartsWith("#", StringComparison.Ordinal))
+                        {
+                            own.Add(condition.parameter);
+                        }
+                    }
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        foreach (var transition in child.state.transitions)
+                        {
+                            Note(transition);
+                        }
+                    }
+                }
+                foreach (var transition in machine.anyStateTransitions)
+                {
+                    Note(transition);
+                }
+                foreach (var transition in machine.entryTransitions)
+                {
+                    Note(transition);
+                }
+            });
+            if (own.Count == 0)
+            {
+                return false;
+            }
+            byWhat = string.Join(", ", own.Take(4)) + (own.Count > 4 ? ", …" : "");
+            return true;
+        }
+
+        /// <summary>
+        /// Makes an Action layer's resting state contribute nothing, which is what lets the layer
+        /// be merged at weight 1 without holding the avatar still.
+        ///
+        /// VRChat's Action idle — "WaitForActionOrAFK" and friends — holds a PROXY clip, and on the
+        /// avatar this was written for that proxy was <c>proxy_stand_still</c>: 117 humanoid muscle
+        /// curves. Harmless in VRChat because the whole layer sits at weight 0 while it is the
+        /// current state; at weight 1 it pins the avatar standing and locomotion stops.
+        ///
+        /// So the idle is given the empty placeholder and Write Defaults OFF: while the layer waits
+        /// it writes nothing at all, exactly as a weight-0 layer would, and the moment a transition
+        /// carries it into a real Action state that state animates at full weight. The one thing not
+        /// reproduced is VRChat's ~0.5 s weight fade in and out, so a transformation snaps in where
+        /// VRChat would ease it.
+        ///
+        /// Returns false if the layer has no identifiable resting state, in which case the caller
+        /// leaves the weight at 0 — the safe answer, and the behaviour before this existed.
+        /// </summary>
+        static bool NeutralizeActionIdle(AnimatorControllerLayer layer, AnimatorController master)
+        {
+            var machine = layer.stateMachine;
+            var idle = machine != null ? machine.defaultState : null;
+            if (idle == null)
+            {
+                return false;
+            }
+            idle.motion = null;          // FillEmptyMotionSlots gives it the inert placeholder
+            idle.writeDefaultValues = false;
+            EditorUtility.SetDirty(master);
+            return true;
         }
 
         /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>

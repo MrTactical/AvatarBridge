@@ -1293,9 +1293,31 @@ Three things worth knowing:
 
 ### A menu control appears, moves, syncs — and does nothing
 
-Check the report for that control's name. Two known causes, both fixed, both worth naming if you
+Check the report for that control's name. Three known causes, all fixed, all worth naming if you
 still hit them: a prefab whose constraints drive your bones from proxy objects (see
-[above](#constraints-that-drive-another-object)), or a slider whose neutral is 0.5 being declared 0.
+[above](#constraints-that-drive-another-object)); a slider whose neutral is 0.5 being declared 0; or
+**a feature living in the Action layer** (fixed in 3.4.20).
+
+That last one is worth understanding, because it looks exactly like a dead parameter. VRChat's Action
+layer is its emote player: VRChat keeps it at weight **0** and raises it only while an emote runs, so
+its waiting state can hold a full-body clip and harm nothing. ChilloutVR has no playable layers to
+raise it, so conversions rest it at 0 too — otherwise that waiting state asserts a stand-still pose
+over your locomotion and you walk on the spot.
+
+Some avatars put a *feature* there anyway. One transforming robot kept its entire vehicle mode in an
+Action layer gated on its own `CarMode`/`TransformMode` parameters: every parameter converted, the
+menu toggled them correctly, and nothing happened, because the layer holding the animation could
+never reach any weight.
+
+An Action layer whose transitions wait on the avatar's **own** parameters — anything outside VRChat's
+`VRCEmote`/`AFK`/state built-ins — is now merged at **weight 1**, with its waiting state emptied and
+Write Defaults turned off so it contributes nothing until something drives it. That's the same net
+effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
+about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
+
+If locomotion breaks after this — walking on the spot, a stuck pose — set that layer's weight back to
+0 in the Animator window and report it: it means the waiting state wasn't the only thing holding the
+body.
 
 ### An effect draws in one eye only in VR
 
