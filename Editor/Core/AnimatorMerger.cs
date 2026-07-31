@@ -3105,33 +3105,160 @@ namespace AvatarBridge
             master.layers = layers.ToArray();
             EditorUtility.SetDirty(master);
 
+            // ChilloutVR's blink is NOT an animation layer, and that changes who wins.
+            // EyeMovementController.ProcessBlinking runs in LateUpdate and writes the weight
+            // straight onto the mesh, after the animator has finished — so whichever shape is
+            // handed to it, the client owns that shape outright, every frame. Pointing it at a
+            // shape an expression still animates does not lose an occasional frame; it flattens
+            // that expression for good, and the eyes simply stop closing on that gesture.
+            //
+            // Meshes that blink usually offer more than one way to do it — a separate L/R pair
+            // beside the combined shape, which is what a "for best blink use two" label on a mesh
+            // is telling authors. So when the removed layer's shape is contested, move the native
+            // blink onto a family nothing else drives: the eyes still blink, and the expression
+            // still closes them its own way.
+            var contested = RaisedFaceShapes(master, ctx.CvrAvatar);
+            string pairLeft = null, pairRight = null;
+            string chosen = blinkShape;
+            string movedTo = null;
+            if (contested.Contains(blinkShape))
+            {
+                AvatarFeatureDetect.DetectBlinkShapes(mesh, out string spareLeft, out string spareRight,
+                    out string spareCombined);
+                if (spareLeft != null && spareRight != null
+                    && !contested.Contains(spareLeft) && !contested.Contains(spareRight))
+                {
+                    pairLeft = spareLeft;
+                    pairRight = spareRight;
+                    movedTo = $"\"{spareLeft}\" / \"{spareRight}\"";
+                }
+                else if (spareCombined != null && spareCombined != blinkShape
+                    && !contested.Contains(spareCombined))
+                {
+                    chosen = spareCombined;
+                    movedTo = $"\"{spareCombined}\"";
+                }
+            }
+
             var cvrAvatar = ctx.CvrAvatar;
             cvrAvatar.useBlinkBlendshapes = true;
             if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
             {
                 cvrAvatar.blinkBlendshape = new string[4];
             }
-            cvrAvatar.blinkBlendshape[0] = blinkShape;
-            AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
-            // The shape's live weight may be whatever the old system last wrote — the source scene
-            // arrives mid-blink if a previous session stuck it closed. Native blink owns it now,
-            // and its rest is open.
-            int index = mesh.GetBlendShapeIndex(blinkShape);
-            if (index >= 0)
+            // Cleared first: Combined mode drives ALL FOUR slots at once, so a leftover name in a
+            // slot this conversion did not fill would be driven along with the blink.
+            for (int slot = 0; slot < cvrAvatar.blinkBlendshape.Length; slot++)
             {
-                cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+                cvrAvatar.blinkBlendshape[slot] = null;
+            }
+            if (pairLeft != null)
+            {
+                cvrAvatar.blinkBlendshape[0] = pairLeft;
+                cvrAvatar.blinkBlendshape[1] = pairRight;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
+            }
+            else
+            {
+                cvrAvatar.blinkBlendshape[0] = chosen;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+            }
+            // Live weights may be whatever the old system last wrote — the source scene arrives
+            // mid-blink if a previous session stuck it closed. Native blink owns these now, and
+            // its rest is open. The removed layer's own shape is zeroed too even when the blink
+            // moved off it, because nothing writes it until an expression does.
+            foreach (string shape in new[] { blinkShape, chosen, pairLeft, pairRight })
+            {
+                int index = string.IsNullOrEmpty(shape) ? -1 : mesh.GetBlendShapeIndex(shape);
+                if (index >= 0)
+                {
+                    cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+                }
             }
             EditorUtility.SetDirty(cvrAvatar);
 
-            ctx.Report.Converted(Category,
-                $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
-                $"{string.Join(", ", stripped)} — this system existed to blink \"{blinkShape}\" because " +
-                "VRChat has no built-in blink. Its \"eyes open\" states are EMPTY in VRChat and rely on " +
-                "Write Defaults reopening the lids, which does not survive conversion: empty states " +
-                "crash Unity's graph builder, the filler that prevents that is a motion, and a state " +
-                "with a motion stops writing defaults — so the first blink closed the eyes for good. " +
-                "ChilloutVR's native Eye Blink now drives the exact shape the removed layer drove. " +
-                "Expression animations that close the eyes are untouched and still win while they play.");
+            const string why =
+                "This system existed because VRChat has no built-in blink, and it cannot survive " +
+                "conversion: its \"eyes open\" states are EMPTY in VRChat and rely on Write Defaults " +
+                "reopening the lids. Empty states crash Unity's graph builder, the filler that " +
+                "prevents that is a motion, and a state with a motion stops writing defaults — so the " +
+                "first blink closed the eyes for good.";
+
+            if (movedTo != null)
+            {
+                ctx.Report.Converted(Category,
+                    $"Blink converted to ChilloutVR's native blink — {movedTo}, {stripped.Count} layer(s) removed",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} \"{blinkShape}\" is also " +
+                    "used by this avatar's expressions, and ChilloutVR writes its blink shape onto the mesh " +
+                    "every frame AFTER the animator — so aiming the native blink there would have flattened " +
+                    $"them, and the eyes would have stopped closing on those gestures. Wired to {movedTo} " +
+                    "instead, which nothing else animates, so both work.");
+            }
+            else if (contested.Contains(blinkShape))
+            {
+                ctx.Report.Warning(Category,
+                    $"Blink and expressions share \"{blinkShape}\"",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\", and ChilloutVR's native blink " +
+                    $"now drives it. {why} The catch: expressions on this avatar animate \"{blinkShape}\" " +
+                    "too, and ChilloutVR writes the blink shape onto the mesh every frame AFTER the " +
+                    "animator, so the blink wins and those expressions will not close the eyes. No other " +
+                    "blink shape on the mesh was free to move to. If you have a spare eyelid shape, point " +
+                    "Eye Blink Settings at it on the CVRAvatar.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category,
+                    $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} ChilloutVR's native Eye " +
+                    "Blink now drives the exact shape the removed layer drove, and nothing else animates it. " +
+                    "Expressions that close the eyes through a different shape are untouched.");
+            }
+        }
+
+        /// <summary>
+        /// Every blendshape name some surviving clip drives above zero on the avatar's face mesh.
+        ///
+        /// Held-at-zero curves deliberately do not count: a clip that only ever writes 0 to a
+        /// shape is asking for the same thing ChilloutVR's blink asks for between blinks, so
+        /// nothing is lost by sharing it. The path filter matters because avatars carry the same
+        /// shape names on several meshes — a "Blink" on a spare head is not competition for the
+        /// one the client will drive.
+        /// </summary>
+        static HashSet<string> RaisedFaceShapes(AnimatorController master, CVRAvatar cvrAvatar)
+        {
+            var raised = new HashSet<string>(StringComparer.Ordinal);
+            var face = cvrAvatar != null ? cvrAvatar.bodyMesh : null;
+            if (face == null)
+            {
+                return raised;
+            }
+            string facePath = face.transform.IsChildOf(cvrAvatar.transform)
+                ? AnimationUtility.CalculateTransformPath(face.transform, cvrAvatar.transform)
+                : null;
+
+            foreach (var clip in master.animationClips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    const string prefix = "blendShape.";
+                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal)
+                        || (facePath != null && binding.path != facePath))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve == null || !curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                    {
+                        continue;
+                    }
+                    raised.Add(binding.propertyName.Substring(prefix.Length));
+                }
+            }
+            return raised;
         }
 
         /// <summary>

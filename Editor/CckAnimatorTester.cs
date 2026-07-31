@@ -52,6 +52,25 @@ namespace AvatarBridge
         float _loudness = 1f;
         int _fingerprint;
         double _nextPoll;
+
+        // What the face card is currently asking for, and the mesh indices to write it through.
+        //
+        // Both have to be HELD, not written once, because ChilloutVR holds them: LipSyncManager
+        // and EyeMovementController.ProcessBlinking write these weights onto the mesh every frame,
+        // the latter from LateUpdate. A single write from a slider callback is erased by the very
+        // next animator evaluation whenever any clip in the controller touches the same shape —
+        // which is what "the blink slider does nothing" looks like, on an avatar whose blink was
+        // wired perfectly.
+        //
+        // Indices are cached the way the client caches them (InitializeBlinking) rather than
+        // resolved by name per frame, because this runs on the render path.
+        SkinnedMeshRenderer _faceMesh;
+        int[] _blinkIndexes = new int[0];
+        int[] _visemeIndexes = new int[0];
+        bool _blinkEnabled;
+        bool _visemesEnabled;
+        float _blink;
+        int _viseme;
         // Read in OnEnable, NEVER as a field initializer. An EditorWindow is a ScriptableObject,
         // and Unity forbids EditorPrefs there:
         //   "GetBool is not allowed to be called from a ScriptableObject constructor (or
@@ -71,6 +90,11 @@ namespace AvatarBridge
             // and a conversion swaps it wholesale — polling a cheap fingerprint keeps the card
             // true without the user having to know a refresh is a thing.
             EditorApplication.update += PollForChanges;
+            // onBeforeRender and not EditorApplication.update: it fires inside the player loop
+            // after LateUpdate and before anything is drawn, which is exactly where the client
+            // writes these weights. An editor-update write lands at an unspecified point around
+            // the frame and loses to the animator often enough to look broken.
+            Application.onBeforeRender += HoldFaceShapes;
         }
 
         /// <summary>
@@ -122,6 +146,7 @@ namespace AvatarBridge
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             Selection.selectionChanged -= Rebuild;
             EditorApplication.update -= PollForChanges;
+            Application.onBeforeRender -= HoldFaceShapes;
         }
 
         void OnPlayModeChanged(PlayModeStateChange _) => Rebuild();
@@ -133,6 +158,10 @@ namespace AvatarBridge
                 return;
             }
             _nextPoll = EditorApplication.timeSinceStartup + 0.5;
+            // Twice a second, not per frame: the Eye Blink and viseme fields are edited in the
+            // inspector while the tester is open, and the fingerprint below deliberately does not
+            // cover them.
+            CacheFaceShapes();
             if (ComputeFingerprint() != _fingerprint)
             {
                 Rebuild();
@@ -312,6 +341,7 @@ namespace AvatarBridge
         {
             // Stored up front so the poll doesn't immediately rebuild what was just built.
             _fingerprint = ComputeFingerprint();
+            CacheFaceShapes();
             rootVisualElement.Clear();
             try
             {
@@ -581,6 +611,11 @@ namespace AvatarBridge
             // visible mouth comes from the blendshapes — driving only the parameter looked
             // like "visemes don't work" to the first tester who tried.
             var face = new BridgeElements.Card("Face & emotes");
+            // The controls below are HELD on the mesh every frame, so the fields backing them have
+            // to start where the controls start.
+            _viseme = 0;
+            _loudness = 1f;
+            _blink = 0f;
             var viseme = new DropdownField("Viseme", new List<string>(VisemeNames), 0);
             viseme.RegisterValueChangedCallback(e =>
                 ApplyViseme(System.Array.IndexOf(VisemeNames, e.newValue), _loudness));
@@ -604,6 +639,11 @@ namespace AvatarBridge
                 Drive(a, "CancelEmote", 1f);
             }) { text = "Cancel" });
             face.Body.Add(emoteRow);
+            face.Body.Add(BridgeElements.Hint(
+                "Visemes and blink are held on the face mesh every frame, after the animator — the " +
+                "same place and order ChilloutVR writes them. So they beat any animation using the " +
+                "same blendshape, here and in game. An expression that stops closing the eyes while " +
+                "this window is open would do the same thing in game."));
             face.SetEnabled(live);
             scroll.Add(face);
 
@@ -675,41 +715,91 @@ namespace AvatarBridge
             var animator = LiveAnimator();
             Drive(animator, "VisemeIdx", index);
             Drive(animator, "VisemeLoudness", loudness);
-
-            var avatar = ResolveAvatar();
-            var mesh = avatar != null ? avatar.bodyMesh : null;
-            var shared = mesh != null ? mesh.sharedMesh : null;
-            if (shared == null || avatar.visemeBlendshapes == null)
-            {
-                return;
-            }
-            for (int i = 0; i < avatar.visemeBlendshapes.Length; i++)
-            {
-                string shapeName = avatar.visemeBlendshapes[i];
-                int shape = string.IsNullOrEmpty(shapeName) ? -1 : shared.GetBlendShapeIndex(shapeName);
-                if (shape >= 0)
-                {
-                    mesh.SetBlendShapeWeight(shape, i == index ? loudness * 100f : 0f);
-                }
-            }
+            _viseme = index;
+            _loudness = loudness;
+            HoldFaceShapes();
         }
 
         /// <summary>Blink, the same way — the client writes the blink blendshapes directly.</summary>
         void ApplyBlink(float amount)
         {
+            _blink = amount;
+            HoldFaceShapes();
+        }
+
+        /// <summary>
+        /// Resolves the face mesh and the blendshape indices the client would drive. Called from
+        /// the poll rather than the render path, because it costs a scene search and a string
+        /// lookup per shape.
+        /// </summary>
+        void CacheFaceShapes()
+        {
             var avatar = ResolveAvatar();
-            var mesh = avatar != null ? avatar.bodyMesh : null;
-            var shared = mesh != null ? mesh.sharedMesh : null;
-            if (shared == null || avatar.blinkBlendshape == null)
+            _faceMesh = avatar != null ? avatar.bodyMesh : null;
+            var shared = _faceMesh != null ? _faceMesh.sharedMesh : null;
+            if (shared == null)
+            {
+                _blinkIndexes = _visemeIndexes = new int[0];
+                _blinkEnabled = _visemesEnabled = false;
+                return;
+            }
+            _blinkEnabled = avatar.useBlinkBlendshapes;
+            _visemesEnabled = avatar.useVisemeLipsync
+                && avatar.visemeMode == CVRAvatar.CVRAvatarVisemeMode.Visemes;
+            _blinkIndexes = Indices(shared, avatar.blinkBlendshape);
+            _visemeIndexes = Indices(shared, avatar.visemeBlendshapes);
+        }
+
+        static int[] Indices(Mesh shared, string[] names)
+        {
+            if (names == null)
+            {
+                return new int[0];
+            }
+            var indices = new int[names.Length];
+            for (int i = 0; i < names.Length; i++)
+            {
+                indices[i] = string.IsNullOrEmpty(names[i]) ? -1 : shared.GetBlendShapeIndex(names[i]);
+            }
+            return indices;
+        }
+
+        /// <summary>
+        /// Writes the face card's current state onto the mesh, every frame, after the animator and
+        /// before the frame is drawn — which is where ChilloutVR writes it.
+        ///
+        /// This is not belt-and-braces. Any clip in the avatar's controller that touches one of
+        /// these shapes makes Unity's animator own it: a Write Defaults state with no curve for it
+        /// re-asserts the default value on every evaluation, so a one-shot write from a slider
+        /// callback is gone before the next repaint. Holding it here reproduces the game's real
+        /// behaviour, conflicts included — an expression that fights the blink loses here exactly
+        /// as it will in game.
+        /// </summary>
+        void HoldFaceShapes()
+        {
+            if (!EditorApplication.isPlaying || _faceMesh == null)
             {
                 return;
             }
-            foreach (var shapeName in avatar.blinkBlendshape)
+            if (_blinkEnabled)
             {
-                int shape = string.IsNullOrEmpty(shapeName) ? -1 : shared.GetBlendShapeIndex(shapeName);
-                if (shape >= 0)
+                foreach (int shape in _blinkIndexes)
                 {
-                    mesh.SetBlendShapeWeight(shape, amount * 100f);
+                    if (shape >= 0)
+                    {
+                        _faceMesh.SetBlendShapeWeight(shape, _blink * 100f);
+                    }
+                }
+            }
+            if (_visemesEnabled)
+            {
+                for (int i = 0; i < _visemeIndexes.Length; i++)
+                {
+                    if (_visemeIndexes[i] >= 0)
+                    {
+                        _faceMesh.SetBlendShapeWeight(_visemeIndexes[i],
+                            i == _viseme ? _loudness * 100f : 0f);
+                    }
                 }
             }
         }

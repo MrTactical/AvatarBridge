@@ -123,6 +123,13 @@ actually running.
   parameter list changes, and greys any entry whose parameter the controller doesn't declare,
   because driving those would do nothing in game either.
 
+  **Visemes and blink** are held on the face mesh **every frame, after the animator** — the same
+  place and order ChilloutVR writes them (3.4.32). Before that, each slider wrote once, and on any
+  avatar whose animator also touches the same blendshape the very next animator evaluation erased
+  it — the blink slider "did nothing" on avatars whose blink was wired perfectly. Holding the value
+  also reproduces the game's conflicts honestly: an animation fighting the blink loses here exactly
+  as it will in game.
+
   The **Face tracking** section drives every eye and Unified Expressions parameter the controller
   declares, grouped by region, with each slider's range read from the rig's own blend trees — so
   bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
@@ -1408,10 +1415,16 @@ The animator blink system only exists because **VRChat has no built-in blink. Ch
 the conversion (3.4.25) finds the animator layer whose *only job is blinking* — every curve a
 blendshape, the only shape it ever raises matches "blink", no objects, no materials — lets **that
 layer name the shape**, removes it, wires ChilloutVR's native Eye Blink to the same shape, and zeroes
-the shape's live weight in case the old system left the eyes mid-blink. Expression animations that
-close the eyes in a smile raise other shapes, so they stay — and still win over the native blink
-while they play, exactly as they won over the animator blink. If no layer can be safely identified,
-nothing is removed, native blink stays off, and the report says so.
+the shape's live weight in case the old system left the eyes mid-blink. If no layer can be safely
+identified, nothing is removed, native blink stays off, and the report says so.
+
+One refinement (3.4.32): ChilloutVR writes its blink weight onto the mesh **every frame, after the
+animator** — so whatever shape it's given, the client owns it outright, and an expression animating
+the same shape would silently stop closing the eyes. If the removed layer's shape is also used by
+surviving expression clips, the native blink is moved to a free shape family instead — a `Blink L` /
+`Blink R` pair or a spare combined shape that nothing animates — so the blink and the expressions
+both work. If no free shape exists, the blink keeps the contested shape and the report warns which
+expressions lose. Expressions that close the eyes through *other* shapes were never affected.
 
 ### An effect draws in one eye only in VR
 
