@@ -66,7 +66,12 @@ namespace AvatarBridge
         static readonly HashSet<string> StreamFedParameters = new HashSet<string>
         {
             "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
-            "Upright", "TrackingType"
+            "Upright", "TrackingType", "EyeHeightAsMeters"
+            // The rest of VRChat's scale family — ScaleFactor, ScaleFactorInverse,
+            // EyeHeightAsPercent, ScaleModified — is deliberately NOT here: FeedScaleParameters
+            // derives them from EyeHeightAsMeters by pure arithmetic, which every client can do
+            // for every copy. Local ("#") + recomputed beats synced by 97 bits with identical
+            // values, the same trade FeedVelocityMagnitude makes.
         };
 
         /// <summary>
@@ -115,12 +120,18 @@ namespace AvatarBridge
         // computed per-client, so syncing it would be waste — but it is NOT frozen anymore:
         // FeedVelocityMagnitude derives it from the native VelocityX/Y/Z every frame, and the
         // "nothing writes them in game" note below explicitly skips it.
+        //
+        // The scale family (EyeHeightAsMeters, ScaleFactor, ScaleFactorInverse,
+        // EyeHeightAsPercent, ScaleModified) left this list in 3.5.0: EyeHeightAsMeters is fed
+        // by a CVRParameterStream from the client's AvatarHeight — the calibrated avatar height
+        // in metres, the very number AvatarUpright divides by — and the other four are exact
+        // arithmetic on it (FeedScaleParameters), using the conversion-time viewpoint height as
+        // the baseline VRChat calls "default scale".
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
-            "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
-            "EyeHeightAsPercent", "IsAnimatorEnabled"
+            "IsAnimatorEnabled"
         };
 
         public static void Run(BridgeContext ctx)
@@ -136,6 +147,10 @@ namespace AvatarBridge
             {
                 CollectSerializedGuids(AssetDatabase.GetAssetPath(sourceController), _sourceControllerGuids);
             }
+
+            // Before the merge loop: the Action transplant below and LocomotionGrafter both
+            // prepare clips through the grafter's per-conversion clone caches.
+            LocomotionGrafter.ResetClones();
 
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
@@ -231,7 +246,7 @@ namespace AvatarBridge
                             // The POSES go where ChilloutVR keeps poses: inside its own
                             // locomotion layer. The clone stays merged at weight 0 so its
                             // parameter drivers keep firing on schedule.
-                            int moved = TransplantActionFeature(masterLayers, clone, srcLayer, ctx);
+                            int moved = TransplantActionFeature(master, masterLayers, clone, srcLayer, ctx);
                             if (moved > 0)
                             {
                                 actionMoved.Add($"\"{clone.name}\" (driven by {byWhat}, {moved} pose state(s))");
@@ -317,6 +332,10 @@ namespace AvatarBridge
             RebuildAnalogFist(master, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
+            // After the stripper (keep-GoGo mode may have removed the CCK locomotion layer this
+            // grafts into), before anything renames parameters — it reads the SOURCE controllers
+            // off the descriptor, where VelocityX/VelocityZ still carry VRChat's names.
+            LocomotionGrafter.Run(ctx, master);
             StripExistingFaceTracking(master, vrcLayers, ctx);
             ReplaceAnimatorBlink(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
@@ -327,12 +346,17 @@ namespace AvatarBridge
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
+            // Before CreateParameterStreams: this declares EyeHeightAsMeters when only a derived
+            // scale parameter asked for it, and the stream pass has to see that declaration.
+            FeedScaleParameters(master, ctx);
             CreateParameterStreams(master, ctx);
             FeedVelocityMagnitude(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
             FillEmptyStatesWithRestoreClips(master, ctx);
+            // AFTER the filler, whose motions are what turned this from harmless into a strobe.
+            SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -1658,7 +1682,12 @@ namespace AvatarBridge
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
-                if (ctx.Settings.preserveParameterSyncState && !preserved)
+                // Already-local names are left alone — the Action transplant declares its
+                // "#AB_Ready" flag and scratch cells BEFORE this pass runs, and prefixing them
+                // again made "##AB_Ready_…": still local, still consistent, but a name no reader
+                // of the tester or the report should ever have to puzzle over.
+                if (ctx.Settings.preserveParameterSyncState && !preserved
+                    && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     result = "#" + result;
                 }
@@ -3105,33 +3134,160 @@ namespace AvatarBridge
             master.layers = layers.ToArray();
             EditorUtility.SetDirty(master);
 
+            // ChilloutVR's blink is NOT an animation layer, and that changes who wins.
+            // EyeMovementController.ProcessBlinking runs in LateUpdate and writes the weight
+            // straight onto the mesh, after the animator has finished — so whichever shape is
+            // handed to it, the client owns that shape outright, every frame. Pointing it at a
+            // shape an expression still animates does not lose an occasional frame; it flattens
+            // that expression for good, and the eyes simply stop closing on that gesture.
+            //
+            // Meshes that blink usually offer more than one way to do it — a separate L/R pair
+            // beside the combined shape, which is what a "for best blink use two" label on a mesh
+            // is telling authors. So when the removed layer's shape is contested, move the native
+            // blink onto a family nothing else drives: the eyes still blink, and the expression
+            // still closes them its own way.
+            var contested = RaisedFaceShapes(master, ctx.CvrAvatar);
+            string pairLeft = null, pairRight = null;
+            string chosen = blinkShape;
+            string movedTo = null;
+            if (contested.Contains(blinkShape))
+            {
+                AvatarFeatureDetect.DetectBlinkShapes(mesh, out string spareLeft, out string spareRight,
+                    out string spareCombined);
+                if (spareLeft != null && spareRight != null
+                    && !contested.Contains(spareLeft) && !contested.Contains(spareRight))
+                {
+                    pairLeft = spareLeft;
+                    pairRight = spareRight;
+                    movedTo = $"\"{spareLeft}\" / \"{spareRight}\"";
+                }
+                else if (spareCombined != null && spareCombined != blinkShape
+                    && !contested.Contains(spareCombined))
+                {
+                    chosen = spareCombined;
+                    movedTo = $"\"{spareCombined}\"";
+                }
+            }
+
             var cvrAvatar = ctx.CvrAvatar;
             cvrAvatar.useBlinkBlendshapes = true;
             if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
             {
                 cvrAvatar.blinkBlendshape = new string[4];
             }
-            cvrAvatar.blinkBlendshape[0] = blinkShape;
-            AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
-            // The shape's live weight may be whatever the old system last wrote — the source scene
-            // arrives mid-blink if a previous session stuck it closed. Native blink owns it now,
-            // and its rest is open.
-            int index = mesh.GetBlendShapeIndex(blinkShape);
-            if (index >= 0)
+            // Cleared first: Combined mode drives ALL FOUR slots at once, so a leftover name in a
+            // slot this conversion did not fill would be driven along with the blink.
+            for (int slot = 0; slot < cvrAvatar.blinkBlendshape.Length; slot++)
             {
-                cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+                cvrAvatar.blinkBlendshape[slot] = null;
+            }
+            if (pairLeft != null)
+            {
+                cvrAvatar.blinkBlendshape[0] = pairLeft;
+                cvrAvatar.blinkBlendshape[1] = pairRight;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
+            }
+            else
+            {
+                cvrAvatar.blinkBlendshape[0] = chosen;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+            }
+            // Live weights may be whatever the old system last wrote — the source scene arrives
+            // mid-blink if a previous session stuck it closed. Native blink owns these now, and
+            // its rest is open. The removed layer's own shape is zeroed too even when the blink
+            // moved off it, because nothing writes it until an expression does.
+            foreach (string shape in new[] { blinkShape, chosen, pairLeft, pairRight })
+            {
+                int index = string.IsNullOrEmpty(shape) ? -1 : mesh.GetBlendShapeIndex(shape);
+                if (index >= 0)
+                {
+                    cvrAvatar.bodyMesh.SetBlendShapeWeight(index, 0f);
+                }
             }
             EditorUtility.SetDirty(cvrAvatar);
 
-            ctx.Report.Converted(Category,
-                $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
-                $"{string.Join(", ", stripped)} — this system existed to blink \"{blinkShape}\" because " +
-                "VRChat has no built-in blink. Its \"eyes open\" states are EMPTY in VRChat and rely on " +
-                "Write Defaults reopening the lids, which does not survive conversion: empty states " +
-                "crash Unity's graph builder, the filler that prevents that is a motion, and a state " +
-                "with a motion stops writing defaults — so the first blink closed the eyes for good. " +
-                "ChilloutVR's native Eye Blink now drives the exact shape the removed layer drove. " +
-                "Expression animations that close the eyes are untouched and still win while they play.");
+            const string why =
+                "This system existed because VRChat has no built-in blink, and it cannot survive " +
+                "conversion: its \"eyes open\" states are EMPTY in VRChat and rely on Write Defaults " +
+                "reopening the lids. Empty states crash Unity's graph builder, the filler that " +
+                "prevents that is a motion, and a state with a motion stops writing defaults — so the " +
+                "first blink closed the eyes for good.";
+
+            if (movedTo != null)
+            {
+                ctx.Report.Converted(Category,
+                    $"Blink converted to ChilloutVR's native blink — {movedTo}, {stripped.Count} layer(s) removed",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} \"{blinkShape}\" is also " +
+                    "used by this avatar's expressions, and ChilloutVR writes its blink shape onto the mesh " +
+                    "every frame AFTER the animator — so aiming the native blink there would have flattened " +
+                    $"them, and the eyes would have stopped closing on those gestures. Wired to {movedTo} " +
+                    "instead, which nothing else animates, so both work.");
+            }
+            else if (contested.Contains(blinkShape))
+            {
+                ctx.Report.Warning(Category,
+                    $"Blink and expressions share \"{blinkShape}\"",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\", and ChilloutVR's native blink " +
+                    $"now drives it. {why} The catch: expressions on this avatar animate \"{blinkShape}\" " +
+                    "too, and ChilloutVR writes the blink shape onto the mesh every frame AFTER the " +
+                    "animator, so the blink wins and those expressions will not close the eyes. No other " +
+                    "blink shape on the mesh was free to move to. If you have a spare eyelid shape, point " +
+                    "Eye Blink Settings at it on the CVRAvatar.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category,
+                    $"Blink converted to ChilloutVR's native blink — \"{blinkShape}\", {stripped.Count} layer(s) removed",
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} ChilloutVR's native Eye " +
+                    "Blink now drives the exact shape the removed layer drove, and nothing else animates it. " +
+                    "Expressions that close the eyes through a different shape are untouched.");
+            }
+        }
+
+        /// <summary>
+        /// Every blendshape name some surviving clip drives above zero on the avatar's face mesh.
+        ///
+        /// Held-at-zero curves deliberately do not count: a clip that only ever writes 0 to a
+        /// shape is asking for the same thing ChilloutVR's blink asks for between blinks, so
+        /// nothing is lost by sharing it. The path filter matters because avatars carry the same
+        /// shape names on several meshes — a "Blink" on a spare head is not competition for the
+        /// one the client will drive.
+        /// </summary>
+        static HashSet<string> RaisedFaceShapes(AnimatorController master, CVRAvatar cvrAvatar)
+        {
+            var raised = new HashSet<string>(StringComparer.Ordinal);
+            var face = cvrAvatar != null ? cvrAvatar.bodyMesh : null;
+            if (face == null)
+            {
+                return raised;
+            }
+            string facePath = face.transform.IsChildOf(cvrAvatar.transform)
+                ? AnimationUtility.CalculateTransformPath(face.transform, cvrAvatar.transform)
+                : null;
+
+            foreach (var clip in master.animationClips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    const string prefix = "blendShape.";
+                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal)
+                        || (facePath != null && binding.path != facePath))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve == null || !curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                    {
+                        continue;
+                    }
+                    raised.Add(binding.propertyName.Substring(prefix.Length));
+                }
+            }
+            return raised;
         }
 
         /// <summary>
@@ -3207,7 +3363,7 @@ namespace AvatarBridge
             return found;
         }
 
-        static int TransplantActionFeature(List<AnimatorControllerLayer> masterLayers,
+        static int TransplantActionFeature(AnimatorController master, List<AnimatorControllerLayer> masterLayers,
             AnimatorControllerLayer clone, AnimatorControllerLayer source, BridgeContext ctx)
         {
             try
@@ -3268,7 +3424,14 @@ namespace AvatarBridge
                 {
                     var src = byName[name];
                     var copy = locoMachine.AddState($"[AB] {name}");
-                    copy.motion = src.motion;
+                    // Pose states get the clip without baked TRAVEL: a VRChat feature that moved
+                    // the player did it by animating the body (VRChat allows nothing else), and
+                    // here that displaces the wearer's camera with no input. Root motion that
+                    // returns home — a backflip's flip, a dance's sway — is kept: stripping it
+                    // broke the animations while removing nothing a player could feel.
+                    copy.motion = src.motion is AnimationClip poseClip
+                        ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true)
+                        : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;
                     copies[name] = copy;
@@ -3314,6 +3477,7 @@ namespace AvatarBridge
                 // are skipped — an AnyState transition with no conditions would fire every frame.
                 int armed = 0;
                 var armedSignatures = new HashSet<string>();
+                var armedEntries = new List<(AnimatorStateTransition entry, AnimatorCondition[] conditions)>();
                 void Arm(AnimatorStateTransition transition)
                 {
                     var dst = transition != null ? transition.destinationState : null;
@@ -3344,6 +3508,7 @@ namespace AvatarBridge
                     {
                         entry.AddCondition(condition.mode, condition.threshold, condition.parameter);
                     }
+                    armedEntries.Add((entry, transition.conditions));
                     armed++;
                 }
                 WalkMachines(clone.stateMachine, m =>
@@ -3373,6 +3538,188 @@ namespace AvatarBridge
                     }
                     return 0;
                 }
+
+                // ---- edge-triggered arming ------------------------------------------------
+                // Arming on a LEVEL replays forever: a dropdown-style menu HOLDS its value, so
+                // the moment a played-once pose hands back to the resting state, its conditions
+                // are still true and it re-enters — Wave forever. VRChat never replays because
+                // its graph PARKS after an emote in a state whose only way back requires the
+                // value to return to zero: entry fires on the RISE of the conditions, once.
+                //
+                // Reproduced in parameter form. A "#" ready flag (local — every client computes
+                // its own from the synced inputs) gates every arming transition, and a weight-0
+                // memory layer manages it: its Ready state raises the flag; the instant any
+                // arming signature's conditions come true it moves to an Engaged state that
+                // drops the flag; it returns to Ready — re-raising the flag — only when those
+                // conditions have gone FALSE again. The window itself evaluates before the
+                // memory layer (lower index), so the one frame of flag-up is exactly enough to
+                // arm once per rise.
+                string readyName = "#AB_Ready_" + SanitizeParameterName(clone.name);
+                if (master.parameters.All(p => p.name != readyName))
+                {
+                    var withReady = master.parameters.ToList();
+                    withReady.Add(new AnimatorControllerParameter
+                    {
+                        name = readyName,
+                        type = AnimatorControllerParameterType.Float,
+                        defaultFloat = 1f
+                    });
+                    master.parameters = withReady.ToArray();
+                }
+                foreach (var (entry, _) in armedEntries)
+                {
+                    entry.AddCondition(AnimatorConditionMode.Greater, 0.5f, readyName);
+                }
+
+                AnimatorDriverTask Task(string targetName, AnimatorDriverTask.Operator op,
+                    string aParam, float aStatic, string bParam)
+                {
+                    var task = new AnimatorDriverTask
+                    {
+                        targetType = AnimatorDriverTask.ParameterType.Float,
+                        targetName = targetName,
+                        op = op
+                    };
+                    if (aParam != null)
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Parameter;
+                        task.aParamType = AnimatorDriverTask.ParameterType.Float;
+                        task.aName = aParam;
+                    }
+                    else
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Static;
+                        task.aValue = aStatic;
+                    }
+                    if (bParam != null)
+                    {
+                        task.bType = AnimatorDriverTask.SourceType.Parameter;
+                        task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                        task.bName = bParam;
+                    }
+                    return task;
+                }
+                string deltaName = readyName + "_delta";
+                string compareName = readyName + "_cmp";
+                var scratches = new List<string> { deltaName, compareName };
+                string PrevName(string parameter) => readyName + "_prev_" + SanitizeParameterName(parameter);
+
+                // The tick that gives Engaged states a length, so their exit-time self-loop
+                // re-runs the change check every cycle. Same idiom as the velocity feed.
+                var armingTick = new AnimationClip { name = "Arming Tick" };
+                armingTick.SetCurve("", typeof(Animator), compareName + "Tick",
+                    AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+                var memory = new AnimatorStateMachine
+                {
+                    name = $"{clone.name} Arming",
+                    hideFlags = HideFlags.HideInHierarchy
+                };
+                var ready = memory.AddState("Ready");
+                ready.writeDefaultValues = false;
+                ready.motion = armingTick;
+                memory.defaultState = ready;
+                var readyDriver = ready.AddStateMachineBehaviour<AnimatorDriver>();
+                readyDriver.localOnly = false;
+                readyDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 1f, null));
+                int engagedCount = 0;
+                foreach (var (_, conditions) in armedEntries)
+                {
+                    engagedCount++;
+                    var parameters = conditions.Select(c => c.parameter).Distinct().ToList();
+
+                    // Capture: drop the flag and remember the values that armed. A separate
+                    // state, because Engaged re-enters itself every tick to re-run its check —
+                    // capturing there would re-baseline every cycle and never see a change.
+                    var capture = memory.AddState($"Capture {engagedCount}");
+                    capture.writeDefaultValues = false;
+                    capture.motion = armingTick;
+                    var captureDriver = capture.AddStateMachineBehaviour<AnimatorDriver>();
+                    captureDriver.localOnly = false;
+                    captureDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                    foreach (var parameter in parameters)
+                    {
+                        scratches.Add(PrevName(parameter));
+                        captureDriver.EnterTasks.Add(Task(PrevName(parameter),
+                            AnimatorDriverTask.Operator.Set, parameter, 0f, null));
+                    }
+
+                    // Engaged: every cycle, delta = OR over parameters of (value != captured).
+                    var engaged = memory.AddState($"Engaged {engagedCount}");
+                    engaged.writeDefaultValues = false;
+                    engaged.motion = armingTick;
+                    var engagedDriver = engaged.AddStateMachineBehaviour<AnimatorDriver>();
+                    engagedDriver.localOnly = false;
+                    engagedDriver.EnterTasks.Add(Task(deltaName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                    foreach (var parameter in parameters)
+                    {
+                        engagedDriver.EnterTasks.Add(Task(compareName,
+                            AnimatorDriverTask.Operator.NotEqual, parameter, 0f, PrevName(parameter)));
+                        engagedDriver.EnterTasks.Add(Task(deltaName,
+                            AnimatorDriverTask.Operator.Addition, deltaName, 0f, compareName));
+                    }
+
+                    var hold = ready.AddTransition(capture);
+                    hold.hasExitTime = false;
+                    hold.hasFixedDuration = true;
+                    hold.duration = 0f;
+                    foreach (var condition in conditions)
+                    {
+                        hold.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                    }
+                    var settle = capture.AddTransition(engaged);
+                    settle.hasExitTime = true;
+                    settle.exitTime = 1f;
+                    settle.hasFixedDuration = true;
+                    settle.duration = 0f;
+                    var loop = engaged.AddTransition(engaged);
+                    loop.hasExitTime = true;
+                    loop.exitTime = 1f;
+                    loop.hasFixedDuration = true;
+                    loop.duration = 0f;
+
+                    // Release and re-raise the flag when the arming conditions have gone FALSE —
+                    // the complement of (A AND B) is (!A OR !B), one transition per negation —
+                    // OR when any armed parameter has CHANGED while they stayed true. The change
+                    // release is what lets a held menu switch straight from one emote to the
+                    // next: Wave -> Dab used to need a trip through None, because "0 < VRCEmote
+                    // < 9" never went false between them.
+                    foreach (var condition in conditions)
+                    {
+                        var release = engaged.AddTransition(ready);
+                        release.hasExitTime = false;
+                        release.hasFixedDuration = true;
+                        release.duration = 0f;
+                        var (mode, threshold) = InvertCondition(condition);
+                        release.AddCondition(mode, threshold, condition.parameter);
+                    }
+                    var changed = engaged.AddTransition(ready);
+                    changed.hasExitTime = false;
+                    changed.hasFixedDuration = true;
+                    changed.duration = 0f;
+                    changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
+                }
+                var withScratches = master.parameters.ToList();
+                foreach (var scratch in scratches.Distinct())
+                {
+                    if (withScratches.All(p => p.name != scratch))
+                    {
+                        withScratches.Add(new AnimatorControllerParameter
+                        {
+                            name = scratch,
+                            type = AnimatorControllerParameterType.Float,
+                            defaultFloat = 0f
+                        });
+                    }
+                }
+                master.parameters = withScratches.ToArray();
+                masterLayers.Add(new AnimatorControllerLayer
+                {
+                    name = MakeUniqueLayerName(masterLayers, $"[AB] {clone.name} Arming"),
+                    defaultWeight = 0f, // drivers run regardless of weight; nothing to show
+                    stateMachine = memory
+                });
+
                 return copies.Count;
             }
             catch (Exception e)
@@ -3380,6 +3727,28 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, $"Could not move \"{clone.name}\"'s poses into the locomotion layer",
                     $"{e.GetType().Name}: {e.Message} — the layer stays at weight 0; its visible FX still work.");
                 return 0;
+            }
+        }
+
+        /// <summary>
+        /// The condition that is true exactly when the given one is false. Greater/Less get a
+        /// hair's-width shift so integers on the boundary land on the right side: the complement
+        /// of "&gt; 0" must accept 0 itself.
+        /// </summary>
+        static (AnimatorConditionMode mode, float threshold) InvertCondition(AnimatorCondition condition)
+        {
+            switch (condition.mode)
+            {
+                case AnimatorConditionMode.If: return (AnimatorConditionMode.IfNot, 0f);
+                case AnimatorConditionMode.IfNot: return (AnimatorConditionMode.If, 0f);
+                case AnimatorConditionMode.Greater:
+                    return (AnimatorConditionMode.Less, condition.threshold + 0.0001f);
+                case AnimatorConditionMode.Less:
+                    return (AnimatorConditionMode.Greater, condition.threshold - 0.0001f);
+                case AnimatorConditionMode.Equals:
+                    return (AnimatorConditionMode.NotEqual, condition.threshold);
+                default:
+                    return (AnimatorConditionMode.Equals, condition.threshold);
             }
         }
 
@@ -4158,7 +4527,13 @@ namespace AvatarBridge
                 // parameters are read-only to streams anyway. VelocityMagnitude is different:
                 // the client does not compute it, so FeedVelocityMagnitude derives it in the
                 // animator from the native three.)
-                (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f)
+                (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f),
+
+                // ChilloutVR's AvatarHeight is the calibrated avatar height in metres — the same
+                // measure AvatarUpright divides by. It is the platform's closest reading of
+                // VRChat's EyeHeightAsMeters, and everything else in VRChat's scale family
+                // (ScaleFactor and friends) is derived from this one value by FeedScaleParameters.
+                (bare: "EyeHeightAsMeters", streamType: "AvatarHeight", app: "Override", lo: 0f, hi: 0f)
             };
             var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
             foreach (var param in master.parameters)
@@ -4200,7 +4575,7 @@ namespace AvatarBridge
                 { "Override", 0 }, { "Remap", 201 }, { "ClampRemap", 202 },
                 { "DeviceMode", 20 }, { "LocalPlayerMuted", 210 },
                 { "LocalPlayerFullBodyEnabled", 260 }, { "TriggerLeftValue", 270 },
-                { "TriggerRightValue", 280 }, { "AvatarUpright", 401 },
+                { "TriggerRightValue", 280 }, { "AvatarHeight", 400 }, { "AvatarUpright", 401 },
             };
             object ParseEnum(Type enumType, string name)
             {
@@ -4304,6 +4679,261 @@ namespace AvatarBridge
         /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
         /// sat half-dead.
         /// </summary>
+        /// <summary>
+        /// Disables "Can Transition To Self" on merged AnyState transitions whose conditions
+        /// carry no Trigger — because with only level conditions, that flag means "re-enter the
+        /// destination EVERY FRAME the conditions hold", restarting its motion each time.
+        ///
+        /// Unity defaults the flag to on and authors rarely touch it, so nearly every avatar
+        /// carries dozens of these. VRChat never shows the problem: the states involved are
+        /// mostly EMPTY there (behaviour-only gates), and restarting nothing looks like nothing.
+        /// Conversion must fill empty states (they crash Unity's graph builder), and a filled
+        /// state restarted every frame strobes its clip — reported as animations rapidly
+        /// flickering, characteristically on OTHER players' screens: remote copies hold "#"
+        /// local parameters at their defaults forever, so a condition the wearer's live values
+        /// keep false can sit permanently true for everyone else.
+        ///
+        /// A transition conditioned on a Trigger is the one legitimate re-entry idiom — fire
+        /// once per pulse — and is left alone. The CCK's own protected layers are not touched.
+        /// </summary>
+        static void SuppressAnyStateSelfRestarts(AnimatorController master, BridgeContext ctx)
+        {
+            var triggers = new HashSet<string>(master.parameters
+                .Where(p => p.type == AnimatorControllerParameterType.Trigger)
+                .Select(p => p.name));
+            int flipped = 0;
+            foreach (var layer in master.layers)
+            {
+                if (layer == null || layer.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var transition in machine.anyStateTransitions)
+                    {
+                        if (transition == null || !transition.canTransitionToSelf
+                            || transition.conditions.Any(c => triggers.Contains(c.parameter)))
+                        {
+                            continue;
+                        }
+                        transition.canTransitionToSelf = false;
+                        EditorUtility.SetDirty(transition);
+                        flipped++;
+                    }
+                });
+            }
+            if (flipped == 0)
+            {
+                return;
+            }
+            EditorUtility.SetDirty(master);
+            ctx.Report.Converted(Category,
+                $"{flipped} AnyState transition(s) stopped restarting their own state every frame",
+                "These carried Unity's default \"Can Transition To Self\", which with ordinary " +
+                "conditions means the destination re-enters EVERY FRAME the conditions hold, " +
+                "restarting its animation each time. VRChat hid it — the states were mostly empty " +
+                "there — but conversion must fill empty states, and a filled state restarted every " +
+                "frame strobes: animations rapidly flicker, often only on OTHER players' screens, " +
+                "because remote copies hold \"#\" local parameters at defaults that can keep such a " +
+                "condition permanently true. Each state now enters once and plays normally; " +
+                "transitions conditioned on a Trigger keep the flag, as pulse-retriggering is the " +
+                "one thing it is for.");
+        }
+
+        /// <summary>
+        /// Makes VRChat's avatar-scale family live: ScaleFactor, ScaleFactorInverse,
+        /// EyeHeightAsPercent and ScaleModified, derived from EyeHeightAsMeters — which
+        /// CreateParameterStreams feeds from ChilloutVR's AvatarHeight, the calibrated avatar
+        /// height in metres that AvatarUpright divides by.
+        ///
+        /// The baseline ("what scale 1.0 means") is the avatar's viewpoint height at conversion
+        /// time — the same number VRChat uses for its default scale. Every derivation is exact
+        /// arithmetic run by a CCK AnimatorDriver each cycle:
+        ///
+        ///   ScaleFactor        = EyeHeightAsMeters / baseline
+        ///   ScaleFactorInverse = baseline / EyeHeightAsMeters
+        ///   EyeHeightAsPercent = (EyeHeightAsMeters − 0.2) / 4.8   (VRChat's 0.2–5 m range)
+        ///   ScaleModified      = |ScaleFactor − 1| &gt; 1 %
+        ///
+        /// Derived values are kept local ("#") and recomputed per client — the input syncs, the
+        /// arithmetic is deterministic, so every viewer computes identical values at zero extra
+        /// sync cost, exactly the FeedVelocityMagnitude trade. Only runs when the avatar
+        /// actually references one of the four; EyeHeightAsMeters alone needs no driver.
+        /// </summary>
+        static void FeedScaleParameters(AnimatorController master, BridgeContext ctx)
+        {
+            var derived = new[] { "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsPercent", "ScaleModified" };
+            var present = new Dictionary<string, AnimatorControllerParameter>();
+            foreach (var p in master.parameters)
+            {
+                string bare = p.name.TrimStart('#');
+                if (derived.Contains(bare) && !present.ContainsKey(bare))
+                {
+                    present[bare] = p;
+                }
+            }
+            if (present.Count == 0)
+            {
+                return;
+            }
+
+            float baseline = ctx.CvrAvatar != null ? ctx.CvrAvatar.viewPosition.y : 0f;
+            if (baseline < 0.05f)
+            {
+                baseline = 1.6f; // no believable viewpoint to measure against; VRChat's default
+            }
+
+            var parameters = master.parameters.ToList();
+            void Ensure(string name)
+            {
+                if (parameters.All(p => p.name != name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Float,
+                        // The resting value, so the first frames before the stream fires read
+                        // "unscaled" rather than "0.05 m tall".
+                        defaultFloat = baseline
+                    });
+                }
+            }
+            const string Factor = "#ScaleFactorCalc";
+            const string Delta = "#ScaleDeltaCalc";
+            const string Shift = "#EyeHeightShiftCalc";
+            Ensure("EyeHeightAsMeters");
+            master.parameters = AppendScratch(parameters.ToArray(), Factor);
+
+            AnimatorDriverTask Task(string targetName, AnimatorDriverTask.ParameterType targetType,
+                AnimatorDriverTask.Operator op,
+                string aParam, float aStatic, string bParam, float bStatic)
+            {
+                var task = new AnimatorDriverTask
+                {
+                    targetType = targetType,
+                    targetName = targetName,
+                    op = op
+                };
+                if (aParam != null)
+                {
+                    task.aType = AnimatorDriverTask.SourceType.Parameter;
+                    task.aParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.aName = aParam;
+                }
+                else
+                {
+                    task.aType = AnimatorDriverTask.SourceType.Static;
+                    task.aValue = aStatic;
+                }
+                if (bParam != null)
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Parameter;
+                    task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.bName = bParam;
+                }
+                else
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Static;
+                    task.bValue = bStatic;
+                }
+                return task;
+            }
+
+            var tick = new AnimationClip { name = "Scale Feed Tick" };
+            tick.SetCurve("", typeof(Animator), Factor + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "Scale Feed",
+                hideFlags = HideFlags.HideInHierarchy
+            };
+            var state = machine.AddState("Recompute");
+            state.writeDefaultValues = false;
+            state.motion = tick;
+            machine.defaultState = state;
+            var loop = state.AddTransition(state);
+            loop.hasExitTime = true;
+            loop.exitTime = 1f;
+            loop.hasFixedDuration = true;
+            loop.duration = 0f;
+
+            var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+            driver.localOnly = false; // remotes recompute from the synced EyeHeightAsMeters
+            var tasks = driver.EnterTasks;
+            var Float = AnimatorDriverTask.ParameterType.Float;
+            tasks.Add(Task(Factor, Float, AnimatorDriverTask.Operator.Division,
+                "EyeHeightAsMeters", 0f, null, baseline));
+            if (present.TryGetValue("ScaleFactor", out var scaleFactor))
+            {
+                tasks.Add(Task(scaleFactor.name, Float, AnimatorDriverTask.Operator.Set,
+                    Factor, 0f, null, 0f));
+            }
+            if (present.TryGetValue("ScaleFactorInverse", out var inverse))
+            {
+                tasks.Add(Task(inverse.name, Float, AnimatorDriverTask.Operator.Division,
+                    null, baseline, "EyeHeightAsMeters", 0f));
+            }
+            if (present.TryGetValue("EyeHeightAsPercent", out var percent))
+            {
+                master.parameters = AppendScratch(master.parameters, Shift);
+                tasks.Add(Task(Shift, Float, AnimatorDriverTask.Operator.Subtraction,
+                    "EyeHeightAsMeters", 0f, null, 0.2f));
+                tasks.Add(Task(percent.name, Float, AnimatorDriverTask.Operator.Division,
+                    Shift, 0f, null, 4.8f));
+            }
+            if (present.TryGetValue("ScaleModified", out var modified))
+            {
+                master.parameters = AppendScratch(master.parameters, Delta);
+                // Squared distance from 1, compared against (1 %)² — an exact-equality check
+                // on a streamed float would flicker.
+                tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Subtraction,
+                    Factor, 0f, null, 1f));
+                tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Multiplication,
+                    Delta, 0f, Delta, 0f));
+                tasks.Add(Task(modified.name,
+                    modified.type == AnimatorControllerParameterType.Bool
+                        ? AnimatorDriverTask.ParameterType.Bool
+                        : Float,
+                    AnimatorDriverTask.Operator.MoreThan,
+                    Delta, 0f, null, 0.0001f));
+            }
+
+            var layers = master.layers.ToList();
+            layers.Add(new AnimatorControllerLayer
+            {
+                name = "Scale Feed",
+                defaultWeight = 1f,
+                stateMachine = machine
+            });
+            master.layers = layers.ToArray();
+
+            ctx.Report.Converted(Category,
+                $"VRChat's avatar-scale parameters are live — {string.Join(", ", present.Keys)}",
+                $"Derived from EyeHeightAsMeters, which a parameter stream feeds from ChilloutVR's " +
+                $"calibrated avatar height, against this avatar's converted viewpoint height of " +
+                $"{baseline:0.00} m as scale 1.0. A generated driver layer recomputes them each cycle, " +
+                "locally on every client — the input syncs, the arithmetic is deterministic, so remote " +
+                "viewers see the same values at no extra sync cost. ScaleModified flips at 1% off " +
+                "baseline. Scale-reactive gimmicks (VRCFury scale detectors and similar) run on these.");
+        }
+
+        static AnimatorControllerParameter[] AppendScratch(AnimatorControllerParameter[] parameters, string name)
+        {
+            if (parameters.Any(p => p.name == name))
+            {
+                return parameters;
+            }
+            var list = parameters.ToList();
+            list.Add(new AnimatorControllerParameter
+            {
+                name = name,
+                type = AnimatorControllerParameterType.Float,
+                defaultFloat = 0f
+            });
+            return list.ToArray();
+        }
+
         static void FeedVelocityMagnitude(AnimatorController master, BridgeContext ctx)
         {
             AnimatorControllerParameter target = null;
@@ -4931,6 +5561,7 @@ namespace AvatarBridge
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;
+            var maskedBaseBody = new SortedSet<string>();
 
             foreach (var layer in layers)
             {
@@ -4939,9 +5570,35 @@ namespace AvatarBridge
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
-                if (body)
+                // A [Base] layer is masked even when it DOES animate the body, which is the one
+                // exception to "deliberate body animation is left alone".
+                //
+                // In VRChat the Base playable is the bottom of the stack — the thing that provides
+                // the body pose. ChilloutVR's equivalent is its own Locomotion/Emotes layer, and
+                // that layer is not optional: the stance buttons and movement sliders are answered
+                // there and nowhere else. A merged [Base] layer lands ABOVE it on Override at
+                // weight 1, so it cannot supplement CVR's locomotion — only replace it, and only
+                // with whatever VRChat's Base happened to be doing.
+                //
+                // That is rarely locomotion. On the avatar that forced this, the [Base] layer was
+                // a calibration utility whose three states are "measure me", "Preview" and
+                // "reinitialize"; unmasked at weight 1 it held the body in a measurement pose,
+                // movement animated nothing, and Airborne/Flying/Sitting/Swimming did nothing
+                // because the layer answering them had been overridden. Genuine locomotion
+                // REPLACEMENTS fare no better: they lean on runtime layer-weight control, which
+                // ChilloutVR has no equivalent for, so they cannot run here either way.
+                //
+                // Masked, the layer keeps everything it can actually deliver — object toggles,
+                // blendshapes, materials, parameters, additive floating — and CVR's locomotion
+                // stays authoritative. Enabling "Base / locomotion" can no longer break an avatar.
+                bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
+                if (body && !baseLayer)
                 {
                     continue; // deliberate body animation; reported separately
+                }
+                if (body)
+                {
+                    maskedBaseBody.Add(layer.name);
                 }
                 // Finger curves get NO special treatment — they are blocked with the rest.
                 //
@@ -4980,6 +5637,23 @@ namespace AvatarBridge
                       "finger in VRChat either, and letting them through here would overwrite your hand " +
                       "gestures, since merged layers sit above the hand-pose layers."
                     : ""));
+
+            if (maskedBaseBody.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{maskedBaseBody.Count} \"Base / locomotion\" layer(s) blocked from driving the body",
+                    $"{string.Join(", ", maskedBaseBody)} — these animate humanoid muscles, and merged into one " +
+                    "ChilloutVR controller they land ABOVE the client's own Locomotion/Emotes layer on Override " +
+                    "at full weight. They cannot add to CVR's locomotion from there, only replace it — and CVR's " +
+                    "layer is where the movement sliders and the Airborne / Flying / Sitting / Swimming stances " +
+                    "are answered, so letting them through costs you all of it. What VRChat put in Base is " +
+                    "usually not locomotion anyway (one avatar's was a calibration utility that simply held the " +
+                    "body still), and true locomotion REPLACEMENTS depend on runtime layer-weight control that " +
+                    "ChilloutVR has no equivalent for, so they cannot run here regardless. Everything else in " +
+                    "these layers is untouched: object toggles, blendshapes, materials, parameters and additive " +
+                    "motion all still convert. If you specifically want one driving your body, clear its Mask in " +
+                    "the Animator window — and expect the stances to stop responding.");
+            }
         }
 
         /// <summary>
@@ -5630,8 +6304,22 @@ namespace AvatarBridge
                             || layer.name.StartsWith("[Action]"));
                     if (!gogoReplacement)
                     {
+                        bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
                         ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
-                            "It can override CVR's locomotion/pose. Review it; lower its weight or delete it if movement breaks.");
+                            baseLayer
+                                ? "It sits ABOVE ChilloutVR's own Locomotion/Emotes layer and drives the same " +
+                                  "muscles, so it does not add to CVR's locomotion — it REPLACES it. That is " +
+                                  "what \"Base / locomotion\" means, and it is the right choice only if this " +
+                                  "avatar's own locomotion system runs correctly here. If it does not, the " +
+                                  "symptoms are unmistakable: the movement sliders animate nothing, and the " +
+                                  "Airborne / Flying / Sitting / Swimming stances do nothing, because the layer " +
+                                  "that answers them has been overridden. VRChat locomotion replacements often " +
+                                  "depend on runtime layer-weight control and on parameters ChilloutVR feeds " +
+                                  "differently, neither of which converts. THE FIX IS ONE CLICK: turn OFF " +
+                                  "\"Base / locomotion\" in Animator layers to convert and convert again — " +
+                                  "ChilloutVR's own locomotion is complete and needs nothing from VRChat."
+                                : "It can override CVR's locomotion/pose. Review it; lower its weight or delete " +
+                                  "it if movement breaks.");
                     }
                 }
             }

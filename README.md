@@ -123,6 +123,13 @@ actually running.
   parameter list changes, and greys any entry whose parameter the controller doesn't declare,
   because driving those would do nothing in game either.
 
+  **Visemes and blink** are held on the face mesh **every frame, after the animator** — the same
+  place and order ChilloutVR writes them (3.4.32). Before that, each slider wrote once, and on any
+  avatar whose animator also touches the same blendshape the very next animator evaluation erased
+  it — the blink slider "did nothing" on avatars whose blink was wired perfectly. Holding the value
+  also reproduces the game's conflicts honestly: an animation fighting the blink loses here exactly
+  as it will in game.
+
   The **Face tracking** section drives every eye and Unified Expressions parameter the controller
   declares, grouped by region, with each slider's range read from the rig's own blend trees — so
   bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
@@ -130,6 +137,12 @@ actually running.
   writes blendshapes straight from the headset, with no animator in the loop — so the section shows
   a slider per **mapped blendshape** instead (3.1.0), writing the mesh the same way the client will.
   Before that it showed a single lone toggle and looked broken while being perfectly correct.
+
+  The **Remote view** card (3.5.1) snaps every `#` local parameter to its default — the value it
+  holds forever on other players' clients, which never receive local parameters or parameter
+  streams. A layer that starts cycling or lands in a different state after pressing it is doing
+  exactly that in game for everyone but the wearer — the cause of "an animation loops rapidly for
+  others but looks fine to me".
 
   The **Animator layers** readout is pinned to the bottom of the window so it stays visible while
   you drive the controls above it, and shows every layer's weight, avatar mask and currently
@@ -221,6 +234,9 @@ defines.
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
+| Base / Action / Sitting locomotion animations | grafted into CVR's own `Locomotion/Emotes` layer | custom walk/crouch/crawl/fall/sit clips, matched by blend-tree position, loop settings matched to the slot; VRChat `proxy_*` placeholders skipped — those live in the VRChat client, and CVR's animation set is their equivalent here |
+| VRChat flight / copter systems | pose grafted onto CVR's `LocFlying` state | ChilloutVR flies natively (keybind or double-jump where the world allows), so the VRChat system's speed logic isn't needed — the avatar's flight pose plays whenever the wearer actually flies |
+| VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
@@ -1310,6 +1326,88 @@ Three things worth knowing:
   *Before 3.4.10 a hat-grab layer's gate was given the "hat on the head" animation, which asserted
   the hat visible from above its own toggle.*
 
+### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
+
+**Reconvert on 3.4.31 or later** — enabling "Base / locomotion" can no longer cause this.
+
+Merged into one ChilloutVR controller, a `[Base]` layer lands **above** the client's own
+`Locomotion/Emotes` layer on Override at full weight. From there it can't *add* to CVR's locomotion,
+only replace it — and CVR's layer is where the movement sliders and every stance button are answered,
+so letting it through costs you all of them. One avatar's `[Base]` layer turned out to be a
+calibration utility (states literally named `measure me`, `Preview`, `reinitialize`); unmasked at
+weight 1 it simply held the body still.
+
+`[Base]` layers are now masked off the humanoid rig, exactly like merged FX layers. Everything else
+in them still converts — object toggles, blendshapes, materials, parameters, additive motion — and
+CVR's locomotion stays authoritative.
+
+**And the animations themselves survive** (3.5.0): custom walking, crouching, crawling, falling and
+sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in the
+movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
+whatever it's named. The structure stays ChilloutVR's, so movement and stances always answer; the
+art becomes the avatar's. Each grafted movement cycle's **loop setting is matched to the slot it
+fills** (3.5.1) — a cycle authored without looping would otherwise play once and freeze — while
+jump and fall grafts play **once**, as their exit-time transitions always said (3.5.4: loop-matching
+a wing-flap fall made it flap forever on every hop). A **flight pose lands on CVR's `LocFlying`
+state**: ChilloutVR flies natively, so a VRChat copter/flight system needs none of its speed
+machinery here, just its pose where the client will show it. The pose is **scored, not
+name-matched** (3.5.4) — a state you can sit in: looping clip, idle/hover naming — after the first
+try grafted "Copter *to Robot*", the un-transformation, and flight mode transformed endlessly.
+Pose-style stance states (single-clip Standing/Crouching/Lying) are left alone: they are VR
+tracking poses, and one seated as a desktop crouch idle sank the wearer into the floor. One discovery made this precise: most VRChat avatars don't ship walking
+animations at all — their trees reference `proxy_*` placeholder clips that the VRChat *client*
+replaces at runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's
+own animation set is this platform's version of those placeholders, and the report says which of the
+two cases your avatar is.
+
+**Genuine locomotion replacements can't be rescued this way**, and it's worth knowing why: they lean
+on runtime layer-weight control, which ChilloutVR has no equivalent for, so they don't run here
+whether masked or not. Nothing is lost by blocking them. If you want one driving your body anyway,
+clear its Mask in the Animator window — and expect the stances to stop responding.
+
+### An animation flickers rapidly — often only on other players' screens
+
+**Reconvert on 3.5.2 or later.** Unity's AnyState transitions default to "Can Transition To Self",
+which with ordinary conditions means the destination state re-enters **every frame** the conditions
+hold, restarting its animation each time. Nearly every avatar carries dozens of these and VRChat
+never shows it, because the states involved are mostly *empty* there — restarting nothing looks
+like nothing. Conversion has to fill empty states (they crash Unity's graph builder), and a filled
+state restarted every frame strobes its clip.
+
+The "only other people see it" shape is the same mechanism plus networking: remote copies of your
+avatar hold every `#` local parameter at its default forever (local parameters never sync, and
+parameter streams are stripped from remote copies), so a re-entry condition your live values keep
+false can sit permanently true on everyone else's client. The conversion now disables the self
+re-entry flag on merged AnyState transitions — except those conditioned on a Trigger, where firing
+once per pulse is the intended use. The **Remote view** card in the CCK Animator Tester reproduces
+the remote valuation locally if you want to verify an avatar before uploading.
+
+Root motion is also stripped from animations that **travel** (3.5.2, refined in 3.5.3): VRChat
+flight and vehicle systems move the player by animating the body, because VRChat allows nothing
+else. ChilloutVR moves the player itself and hangs the first-person camera on the head bone — the
+same baked movement here shoves the wearer around with no input, so it is removed. The test is
+whether the clip's root **ends where it started**: a backflip's flip is root rotation and a dance
+sways the whole body, both returning home, and those keep their curves — stripping them broke the
+animations while removing nothing a player could feel. A clip that ends displaced is a mover, and
+looped, a vehicle; those have each root curve **flattened to its starting value** (3.5.5) — held,
+never deleted, because the same curve carries the body's baseline height and deleting it sank the
+wearer waist-deep into the floor. Locomotion-tree grafts are always flattened — there the capsule
+owns every metre.
+
+### An emote replays forever instead of playing once
+
+**Reconvert on 3.5.3 or later.** Emotes live in menus that **hold** their value, and VRChat's
+Action graph is built for that: after a play-once emote it parks in a state whose only way back
+requires the value to return to zero, so an emote fires on the **rise** of its condition, once.
+The converted pose states are re-armed from the locomotion resting state instead — and arming on
+a *level* replays the emote every time the pose hands back, forever, as long as the menu holds
+the value. Conversion now reproduces the rise-only behaviour: a local ready flag gates every
+arming transition, dropped the moment a pose is armed and raised again when its conditions have
+gone false **or the armed value has changed** (3.5.5) — so switching straight from one emote to
+the next plays the new one, no trip through None required, and re-selecting an emote replays it.
+Hold-style emotes (dances, AFK poses) are unaffected; they loop until deselected, as their own
+exit conditions have always said.
+
 ### A menu control appears, moves, syncs — and does nothing
 
 Check the report for that control's name. Three known causes, all fixed, all worth naming if you
@@ -1388,10 +1486,16 @@ The animator blink system only exists because **VRChat has no built-in blink. Ch
 the conversion (3.4.25) finds the animator layer whose *only job is blinking* — every curve a
 blendshape, the only shape it ever raises matches "blink", no objects, no materials — lets **that
 layer name the shape**, removes it, wires ChilloutVR's native Eye Blink to the same shape, and zeroes
-the shape's live weight in case the old system left the eyes mid-blink. Expression animations that
-close the eyes in a smile raise other shapes, so they stay — and still win over the native blink
-while they play, exactly as they won over the animator blink. If no layer can be safely identified,
-nothing is removed, native blink stays off, and the report says so.
+the shape's live weight in case the old system left the eyes mid-blink. If no layer can be safely
+identified, nothing is removed, native blink stays off, and the report says so.
+
+One refinement (3.4.32): ChilloutVR writes its blink weight onto the mesh **every frame, after the
+animator** — so whatever shape it's given, the client owns it outright, and an expression animating
+the same shape would silently stop closing the eyes. If the removed layer's shape is also used by
+surviving expression clips, the native blink is moved to a free shape family instead — a `Blink L` /
+`Blink R` pair or a spare combined shape that nothing animates — so the blink and the expressions
+both work. If no free shape exists, the blink keeps the contested shape and the report warns which
+expressions lose. Expressions that close the eyes through *other* shapes were never affected.
 
 ### An effect draws in one eye only in VR
 
