@@ -1315,15 +1315,14 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-**The exit sequence is handled from VRChat's own data** (3.4.22). VRChat's Action states finish by
-running a `VRC Animator Layer Control` that fades the layer's weight to 0 — that behaviour *is* the
-statement "the layer stops contributing here". ChilloutVR can't run it, so at weight 1 the tail states
-(`Prepare Standing`, `BlendOut Stand`, `Restore Tracking (stand)`) kept animating forever and left one
-avatar stuck in a half-crouch on exiting vehicle mode. Rather than guess which states are the tail,
-the conversion now reads those behaviours while they still exist and makes those states inert — plus
-everything **downstream** of them (3.4.23): states after the fade-out point, like a
-`Restore Tracking` step, ran invisibly at weight 0 in VRChat and would animate here. The walk stops
-at any state VRChat turns the layer back on in, so a machine that re-enters its feature is unharmed.
+**The live window is read from VRChat's own data** (3.4.24). VRChat's Action playable sits at weight
+0 *always*, except between the state whose behaviour raises it (`goalWeight 1`) and the state whose
+behaviour fades it back (`goalWeight 0`) — every state outside that window ran **invisibly**,
+including staging states *before* the raise. One avatar's `Prepare Standing` waits there for a
+gesture, and at a constant weight 1 it posed the whole body while waiting; in VRChat nobody ever saw
+it. So the conversion reads those behaviours while they still exist and keeps live only the states
+reachable from a raise without passing a fade; everything else — idle, staging, tail — is made
+inert. A layer with no raise behaviour at all stays at weight 0, since VRChat never showed it either.
 
 If locomotion still breaks — walking on the spot, a stuck pose — set that layer's weight back to 0 in
 the Animator window and report it.
@@ -1343,19 +1342,25 @@ is untouched and still syncs.
 
 ### Your eyes stay open, start closed, or lose a pupil
 
-**Fixed in 3.4.22.** If the VRChat descriptor names no eyelid blendshape, conversions detect one by
-name and switch on ChilloutVR's native Eye Blink. But a descriptor names none for two very different
-reasons: the avatar has no blink at all, or **it blinks from its own animator** — VRCFury and similar
-ship exactly that, driving their own shape (usually `vrc.Blink`).
+**Fixed in 3.4.24** — and the fix went through two wrong versions worth recording. An avatar that
+blinks **from its own animator** (VRCFury and similar, usually driving `vrc.Blink`) can't keep that
+system through conversion, and can't share the eyes with the native one either:
 
-In the second case, switching on the native blink puts two systems on one pair of eyes, and the
-auto-detection has to guess which of several blink-ish shapes is the eyelid. One avatar had the client
-driving `Blink` while its animator drove `vrc.Blink`: the pupil vanished, the lids never moved, and the
-eyes started closed.
+- 3.4.21 enabled native blink *alongside* it, guessing `Blink` while the animator drove `vrc.Blink` —
+  two systems, wrong shape, pupil gone.
+- 3.4.22 left blink entirely to the avatar's system. That system's "eyes open" states are **empty**
+  in VRChat, relying on Write Defaults to reopen the lids — and empty states can't survive
+  conversion, because they crash Unity's graph builder and get a filler clip. A state with a motion
+  stops writing defaults, so the first blink wrote the shape to 100 and nothing ever wrote it back:
+  eyes shut from the first blink, pupil with them, on the body *and* on anything else built from the
+  same mesh.
 
-Native blink is now left off when any converted layer already animates a blink shape — the avatar's
-own system was authored against that mesh and is the better authority. Tick Eye Blink Settings on the
-`CVRAvatar` if you'd rather have the client's and can disable the avatar's own.
+The animator blink system only exists because **VRChat has no built-in blink. ChilloutVR does.** So
+the conversion now reads the exact shape the avatar's own blink clip drives — no guessing — wires
+ChilloutVR's native Eye Blink to it, and removes the animator layer that drove it. A layer is only
+removed when everything it does is blink (the only shape it ever *raises* is the blink shape, no
+objects, no materials); expression animations that close the eyes in a smile stay, and still win over
+the native blink while they play, exactly as they won over the animator blink.
 
 ### An effect draws in one eye only in VR
 

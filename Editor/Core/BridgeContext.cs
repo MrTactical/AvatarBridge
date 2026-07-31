@@ -84,6 +84,15 @@ namespace AvatarBridge
         /// </summary>
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 
+        /// <summary>
+        /// The blendshape the avatar's OWN animator blinks with (e.g. "vrc.Blink"), when the
+        /// conversion decided to replace that system with ChilloutVR's native blink. Set by
+        /// DescriptorConverter, read by AnimatorMerger, which strips the animator layer that
+        /// drives the shape — two blink systems on one pair of eyes fight, and the animator one
+        /// depends on empty-state semantics that don't survive conversion.
+        /// </summary>
+        public string AnimatorBlinkShape;
+
         public Animator TargetAnimator => Target != null ? Target.GetComponent<Animator>() : null;
 
         public string PathInTarget(Transform child) => RelativePath(Target.transform, child);

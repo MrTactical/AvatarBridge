@@ -288,6 +288,7 @@ namespace AvatarBridge
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
             StripExistingFaceTracking(master, vrcLayers, ctx);
+            StripAnimatorBlinkLayers(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
             // Before RenamePass, so the menu entries' machineNames still line up with the
             // animator parameter names; and before CompactIntDropdowns, which needs the
@@ -2963,6 +2964,95 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Removes the animator layer(s) that BLINK the shape ChilloutVR's native blink has taken
+        /// over. Runs only when DescriptorConverter decided the takeover — see
+        /// <c>BridgeContext.AnimatorBlinkShape</c> for why the animator system cannot be kept.
+        ///
+        /// A layer is only stripped when everything it does is blink: every float curve across its
+        /// clips is a blendshape, the only shape it ever RAISES is the blink shape, and it moves no
+        /// objects and swaps no materials. A face-expression layer that happens to close the eyes
+        /// in a smile raises other shapes too, so it stays — expressions closing the eyes over the
+        /// native blink is exactly what they did over the animator blink. The weight-0 generator
+        /// layer that flips the trigger parameter is deliberately left alone: it animates nothing,
+        /// and stripping shared parameter machinery on a name-independent heuristic is how healthy
+        /// avatars get broken.
+        /// </summary>
+        static void StripAnimatorBlinkLayers(AnimatorController master, BridgeContext ctx)
+        {
+            if (string.IsNullOrEmpty(ctx.AnimatorBlinkShape))
+            {
+                return;
+            }
+            string blinkProperty = "blendShape." + ctx.AnimatorBlinkShape;
+
+            var stripped = new List<string>();
+            var layers = master.layers.ToList();
+            for (int i = layers.Count - 1; i >= 0; i--)
+            {
+                var layer = layers[i];
+                if (layer == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                bool drivesBlink = false, onlyBlink = true;
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var motion = child.state != null ? child.state.motion : null;
+                        foreach (var clip in CollectClips(motion))
+                        {
+                            if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0)
+                            {
+                                onlyBlink = false;
+                            }
+                            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                            {
+                                if (binding.propertyName == blinkProperty)
+                                {
+                                    drivesBlink = true;
+                                    continue;
+                                }
+                                if (!binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                                {
+                                    onlyBlink = false;
+                                    continue;
+                                }
+                                // Another shape is fine only if the layer holds it at zero — the
+                                // receiver pattern resets its co-shapes; an expression raises them.
+                                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                                if (curve != null && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                                {
+                                    onlyBlink = false;
+                                }
+                            }
+                        }
+                    }
+                });
+                if (drivesBlink && onlyBlink)
+                {
+                    stripped.Add(layer.name);
+                    layers.RemoveAt(i);
+                }
+            }
+            if (stripped.Count == 0)
+            {
+                return;
+            }
+            master.layers = layers.ToArray();
+            EditorUtility.SetDirty(master);
+            ctx.Report.Converted(Category,
+                $"{stripped.Count} animator blink layer(s) removed — ChilloutVR blinks natively now",
+                $"{string.Join(", ", stripped)} — these existed to blink \"{ctx.AnimatorBlinkShape}\" " +
+                "because VRChat has no built-in blink. Their \"eyes open\" states are EMPTY in VRChat " +
+                "and rely on Write Defaults reopening the lids, which does not survive conversion: " +
+                "empty states crash Unity's graph builder, the filler that prevents that is a motion, " +
+                "and a state with a motion stops writing defaults — so the first blink closed the eyes " +
+                "for good. ChilloutVR's native Eye Blink now drives the same shape instead. Expression " +
+                "animations that close the eyes are untouched and still win while they play.");
+        }
+
+        /// <summary>
         /// VRChat's built-ins that an Action layer legitimately waits on while doing nothing but
         /// playing emotes. Anything OUTSIDE this set means the avatar is driving the layer itself.
         /// </summary>
@@ -3067,21 +3157,22 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Every state VRChat would have faded the layer out from, read from VRChat's own data
-            // before it is stripped — see LayerOffStates. Plus the resting state, which VRChat
-            // reaches with the layer already at 0.
-            var inert = LayerOffStates(source);
-            inert.Add(idle.name);
-
-            // Everything DOWNSTREAM of a weight-0 state is inert too. VRChat's fade-out behaviour
-            // marks the state where the layer stops mattering, and whatever runs after it — this
-            // avatar's "Restore Tracking (stand)" sits between the fade-out and the idle — ran
-            // invisibly at weight 0 in VRChat. At weight 1 those states animate their clips like
-            // any other, and one of them holding a pose while the machine waits out a transition
-            // is exactly the stuck half-crouch this exists to prevent. The graph already says
-            // which states those are: walk forward from every weight-0 state and stop only at a
-            // state VRChat turns the layer back ON in.
-            var raise = LayerOnStates(source);
+            // The LIVE WINDOW, not the off-tail. Third attempt, and the shape of the two wrong
+            // ones is worth recording: VRChat's Action playable is at weight 0 ALWAYS, except
+            // between the state whose behaviour raises it (goalWeight 1) and the state whose
+            // behaviour fades it back (goalWeight 0). Every state OUTSIDE that window ran
+            // invisibly in VRChat — including states BEFORE the raise. This avatar's
+            // "Prepare Standing" sits between the idle and the raise, waiting for a gesture, and
+            // at a constant weight 1 it posed the whole body while it waited; in VRChat nobody
+            // ever saw it. Neutralising the idle (attempt one) and then the exit tail (attempt
+            // two) both left it live, because both asked "what turns the layer off?" when the
+            // right question is "what turns it ON, and how far does that reach?"
+            //
+            // live = every state reachable from a raise-state without passing through a
+            // fade-state. Everything else is made inert. No raise-state at all means the layer
+            // never became visible in VRChat, and the caller keeps it at weight 0.
+            var on = LayerOnStates(source);
+            var off = LayerOffStates(source);
             var byName = new Dictionary<string, AnimatorState>();
             WalkMachines(machine, m =>
             {
@@ -3093,7 +3184,12 @@ namespace AvatarBridge
                     }
                 }
             });
-            var queue = new Queue<string>(inert);
+            var live = new HashSet<string>(on.Where(byName.ContainsKey));
+            if (live.Count == 0)
+            {
+                return false;
+            }
+            var queue = new Queue<string>(live);
             while (queue.Count > 0)
             {
                 if (!byName.TryGetValue(queue.Dequeue(), out var state))
@@ -3103,7 +3199,7 @@ namespace AvatarBridge
                 foreach (var transition in state.transitions)
                 {
                     var next = transition != null ? transition.destinationState : null;
-                    if (next != null && !raise.Contains(next.name) && inert.Add(next.name))
+                    if (next != null && !off.Contains(next.name) && live.Add(next.name))
                     {
                         queue.Enqueue(next.name);
                     }
@@ -3111,12 +3207,12 @@ namespace AvatarBridge
             }
 
             int made = 0;
-            foreach (var name in inert)
+            foreach (var pair in byName)
             {
-                if (byName.TryGetValue(name, out var state))
+                if (!live.Contains(pair.Key))
                 {
-                    state.motion = null;   // FillEmptyMotionSlots supplies the placeholder
-                    state.writeDefaultValues = false;
+                    pair.Value.motion = null;   // FillEmptyMotionSlots supplies the placeholder
+                    pair.Value.writeDefaultValues = false;
                     made++;
                 }
             }
