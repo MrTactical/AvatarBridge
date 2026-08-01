@@ -81,18 +81,37 @@ namespace AvatarBridge.Regression
             "/!BRANWEN/",              // Branwen                 — material shader will not load
         };
 
-        // The quick set: one avatar per failure mode we have actually shipped a bug in.
-        // Kar = toggle layers, the 3.5.6/3.5.7/3.5.8 self-restart arc. Hyenid = a custom
-        // locomotion/action rig, the 3.5.0-3.5.5 graft and root-motion arc. (Rotormantid was the
-        // obvious second pick and is not usable: its scene has been converted in place and no
-        // longer holds a VRChat descriptor.)
+        // The quick set: every avatar that has taught us something, so a fix can be checked in
+        // five minutes instead of forty. Each line says what it is watching, because a canary
+        // nobody can explain gets deleted by the next person who finds it slow.
         //
-        // Grow this list as bugs teach us which avatars are load-bearing. The full run covers
-        // every scene regardless; this is only for the tight loop while working.
+        // The CONTROL matters as much as the targets. Sally_PC_SPS is the same avatar as the two
+        // broken Sallys with a healthy source value, and it is here precisely because it should
+        // NOT change — the prefab-override revert was invisible on it, so if it starts moving,
+        // the revert was masking something else as well.
+        //
+        // The full run still covers every scene; this is only the tight loop while working.
         static readonly string[] QuickSet =
         {
+            // 3.5.12 — controller assignment reverted by the prefab system. Broken pair...
+            "Assets/SallyShopkeeper/Sally_PC.unity",
+            "Assets/SallyShopkeeper/Sally_Quest.unity",
+            // ...and the control that was silently reverting too, and must stay unchanged.
+            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",
+
+            // 3.5.10 — Action transplant armed at load. Oscillated between pose and idle...
+            "Assets/lemur/lumar_ROUND_setup_release.unity",
+            // ...and walked up its stages into a pose nobody chose.
+            "Assets/Rytu_assets/Rytu_setup.unity",
+
+            // 3.5.9 — crash guard read a GUID out of a "Missing Prefab" object NAME and refused
+            // to assign a perfectly good controller. Both carry such a placeholder.
+            "Assets/BHFBunny/BHFBUNNY.unity",
+            "Assets/Bimbo Base.unity",              // avatar inside is "Sultry Snake"
+
+            // 3.5.6 -> 3.5.8 — the AnyState self-restart arc, four attempts. Toggle layers here
+            // are the most sensitive thing in the corpus to a change in transition handling.
             "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity",
-            "Assets/Hyenid/REDUX 2.unity",
         };
 
         [MenuItem("Tools/AvatarBridge Dev/Regression — run quick set")]
@@ -119,13 +138,22 @@ namespace AvatarBridge.Regression
                 return;
             }
             Directory.CreateDirectory(BaselineDir);
+            int existing = Directory.GetFiles(BaselineDir, "*.txt").Length;
             int n = 0;
             foreach (var file in Directory.GetFiles(CurrentDir, "*.txt"))
             {
                 File.Copy(file, Path.Combine(BaselineDir, Path.GetFileName(file)), true);
                 n++;
             }
-            Debug.Log($"[Regression] accepted {n} digest(s) as the new baseline.");
+
+            // Copy, never wipe: accepting after a QUICK run must update those avatars and leave
+            // the other forty-odd baselines alone. Said out loud all the same, because "accepted
+            // 8" after a quick run and "accepted 49" after a full one look identical at a glance
+            // and mean very different things about what is now pinned.
+            string note = existing > n
+                ? $" ({existing - n} other baseline(s) left untouched — this was a partial run)"
+                : "";
+            Debug.Log($"[Regression] accepted {n} digest(s) as the new baseline{note}.");
         }
 
         /// <summary>Batch entry: Unity.exe -batchmode -quit -executeMethod
