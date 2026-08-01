@@ -1,0 +1,527 @@
+// AvatarBridge regression harness — DEVELOPMENT ONLY, never shipped in the .unitypackage.
+//
+// Why this exists: the AnyState self-restart suppressor took four attempts (3.5.2 -> 3.5.6 ->
+// 3.5.7 -> 3.5.8) and root-motion stripping took three (3.5.2 -> 3.5.4 -> 3.5.5). Every wrong
+// attempt was correct reasoning about the avatar in front of us that silently broke a different
+// avatar. Nothing caught that except wearing each one in game, one at a time, after release.
+//
+// So: convert every avatar in the project, reduce each result to a deterministic text digest,
+// and diff those against the last accepted run. A change that was not intended shows up as a
+// line of text before the headset goes on.
+//
+// The digest is deliberately NOT the .controller YAML — that is full of GUIDs, node positions
+// and creation-order noise, and a diff of it is unreadable. This describes behaviour only:
+// layers, states, transitions, conditions, motions by name, parameters, and the CVR-side
+// components. If two runs differ here, something the avatar actually DOES has changed.
+//
+// Canonical copy lives in D:\AvatarBridge\Tools\Regression\ (version-controlled with the tool,
+// pruned from the package build). Deployed into the test project's Assets/Editor/ to run.
+
+#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using ABI.CCK.Components;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using VRC.SDK3.Avatars.Components;
+
+namespace AvatarBridge.Regression
+{
+    public static class RegressionRunner
+    {
+        // Digests live beside the tool, not in the Unity project: they are the tool's test data,
+        // and they must survive a delete-and-reimport of Assets/AvatarBridge.
+        const string Root = "D:/AvatarBridge/Regression";
+        static string BaselineDir => Root + "/Baseline";
+        static string CurrentDir => Root + "/Current";
+
+        // Scenes that are not avatars, or are our own output. Matched as path substrings.
+        static readonly string[] Excluded =
+        {
+            "/AvatarBridgeOutput/", "/CVR.CCK/", "/MagicaCloth2/", "/UnityTechnologies/",
+            "/Samples/", "/Scenes/SampleScene", "/MISC/",
+        };
+
+        // The quick set: one avatar per failure mode we have actually shipped a bug in.
+        // Kar = toggle layers, the 3.5.6/3.5.7/3.5.8 self-restart arc. Hyenid = a custom
+        // locomotion/action rig, the 3.5.0-3.5.5 graft and root-motion arc. (Rotormantid was the
+        // obvious second pick and is not usable: its scene has been converted in place and no
+        // longer holds a VRChat descriptor.)
+        //
+        // Grow this list as bugs teach us which avatars are load-bearing. The full run covers
+        // every scene regardless; this is only for the tight loop while working.
+        static readonly string[] QuickSet =
+        {
+            "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity",
+            "Assets/Hyenid/REDUX 2.unity",
+        };
+
+        [MenuItem("Tools/AvatarBridge Dev/Regression — run quick set")]
+        public static void RunQuick() => Run(QuickSet, "quick");
+
+        [MenuItem("Tools/AvatarBridge Dev/Regression — run all scenes")]
+        public static void RunAll() => Run(AllAvatarScenes(), "all");
+
+        [MenuItem("Tools/AvatarBridge Dev/Regression — accept current as baseline")]
+        public static void AcceptCurrent()
+        {
+            if (!Directory.Exists(CurrentDir))
+            {
+                Debug.LogError("[Regression] nothing in Current/ to accept — run first.");
+                return;
+            }
+            Directory.CreateDirectory(BaselineDir);
+            int n = 0;
+            foreach (var file in Directory.GetFiles(CurrentDir, "*.txt"))
+            {
+                File.Copy(file, Path.Combine(BaselineDir, Path.GetFileName(file)), true);
+                n++;
+            }
+            Debug.Log($"[Regression] accepted {n} digest(s) as the new baseline.");
+        }
+
+        /// <summary>Batch entry: Unity.exe -batchmode -quit -executeMethod
+        /// AvatarBridge.Regression.RegressionRunner.RunAllBatch</summary>
+        public static void RunAllBatch()
+        {
+            int changed = Run(AllAvatarScenes(), "all");
+            EditorApplication.Exit(changed == 0 ? 0 : 1);
+        }
+
+        public static void RunQuickBatch()
+        {
+            int changed = Run(QuickSet, "quick");
+            EditorApplication.Exit(changed == 0 ? 0 : 1);
+        }
+
+        static string[] AllAvatarScenes()
+        {
+            return AssetDatabase.FindAssets("t:Scene")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(p => !string.IsNullOrEmpty(p) && p.StartsWith("Assets/", StringComparison.Ordinal))
+                .Where(p => !Excluded.Any(x => p.Replace('\\', '/').Contains(x)))
+                .OrderBy(p => p, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        static int Run(IEnumerable<string> scenes, string label)
+        {
+            // Every number in a digest is formatted the same way regardless of the machine's
+            // locale, for the same reason BridgeConverter pins the culture: a digest written on
+            // a comma-decimal machine must diff cleanly against one written on a point-decimal
+            // machine, or the baseline is worthless the moment anyone else runs it.
+            var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+            System.Threading.Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
+
+            Directory.CreateDirectory(CurrentDir);
+            var changes = new List<string>();
+            var missing = new List<string>();
+            int ran = 0, failed = 0;
+            var started = DateTime.Now;
+
+            try
+            {
+                foreach (var scenePath in scenes)
+                {
+                    string name = Path.GetFileNameWithoutExtension(scenePath);
+                    string digest;
+                    try
+                    {
+                        digest = ConvertAndDigest(scenePath);
+                        if (digest == null) continue;   // no avatar in this scene
+                    }
+                    catch (Exception e)
+                    {
+                        // A thrown conversion is itself a result worth recording and diffing —
+                        // "started throwing" and "stopped throwing" are both regressions.
+                        digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
+                        failed++;
+                    }
+
+                    ran++;
+                    string file = Safe(name) + ".txt";
+                    File.WriteAllText(Path.Combine(CurrentDir, file), digest);
+
+                    string baseline = Path.Combine(BaselineDir, file);
+                    if (!File.Exists(baseline)) { missing.Add(name); continue; }
+                    string before = File.ReadAllText(baseline);
+                    if (before != digest) changes.Add($"{name}  ({DiffSummary(before, digest)})");
+                }
+            }
+            finally
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"[Regression/{label}] {ran} avatar(s) in {(DateTime.Now - started).TotalSeconds:F0}s" +
+                          (failed > 0 ? $", {failed} threw" : ""));
+            if (missing.Count > 0)
+                sb.AppendLine($"  no baseline yet ({missing.Count}): {string.Join(", ", missing)}");
+            if (changes.Count == 0)
+                sb.AppendLine(missing.Count > 0 ? "  nothing else changed." : "  no changes.");
+            else
+            {
+                sb.AppendLine($"  CHANGED ({changes.Count}):");
+                foreach (var c in changes) sb.AppendLine("    " + c);
+                sb.AppendLine($"  compare: {CurrentDir} vs {BaselineDir}");
+            }
+            Debug.Log(sb.ToString());
+            return changes.Count;
+        }
+
+        static string DiffSummary(string before, string after)
+        {
+            var a = before.Split('\n');
+            var b = after.Split('\n');
+            var removed = new HashSet<string>(a);
+            removed.ExceptWith(b);
+            var added = new HashSet<string>(b);
+            added.ExceptWith(a);
+            return $"-{removed.Count} +{added.Count}";
+        }
+
+        static string Safe(string s)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
+            return s;
+        }
+
+        // ---------------------------------------------------------------- conversion
+
+        static string ConvertAndDigest(string scenePath)
+        {
+            // OpenScene from script discards unsaved changes without prompting — which is what we
+            // want, and what makes this safe to run in batchmode. The conversion mutates the
+            // scene heavily and none of it is ever saved back.
+            var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+
+            VRCAvatarDescriptor descriptor = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                // Inactive included: plenty of avatars ship with the descriptor object disabled,
+                // and a text search of the scene file misses prefab-instanced ones entirely.
+                descriptor = root.GetComponentInChildren<VRCAvatarDescriptor>(true);
+                if (descriptor != null) break;
+            }
+            if (descriptor == null) return null;
+
+            var report = BridgeConverter.Convert(descriptor, new BridgeSettings());
+            var target = Selection.activeGameObject;   // BridgeConverter sets this to ctx.Target
+
+            var sb = new StringBuilder();
+            sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
+            sb.Append("scene: ").Append(scenePath).Append('\n');
+            sb.Append("bridge: ").Append(BridgeDefines.Version).Append('\n');
+            // Deliberately no timestamp and no Unity version: both change without the conversion
+            // changing, and every line in here has to earn its place in a diff.
+            sb.Append('\n');
+
+            AppendReport(sb, report);
+            AppendCvrSide(sb, target);
+            return sb.ToString();
+        }
+
+        static void AppendReport(StringBuilder sb, BridgeReport report)
+        {
+            sb.Append("[report]\n");
+            sb.Append($"converted={report.CountOf(ReportStatus.Converted)} ")
+              .Append($"approximated={report.CountOf(ReportStatus.Approximated)} ")
+              .Append($"skipped={report.CountOf(ReportStatus.Skipped)} ")
+              .Append($"warnings={report.CountOf(ReportStatus.Warning)} ")
+              .Append($"errors={report.CountOf(ReportStatus.Error)}\n");
+
+            // Only errors and warnings are listed line by line. The Converted entries number in
+            // the thousands on a big avatar (one per cloth chain, parameter and menu control) and
+            // their exact wording churns constantly; the counts above catch a change in volume,
+            // which is the part that matters.
+            var notable = report.Entries
+                .Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning)
+                .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {e.Detail}")
+                .OrderBy(s => s, StringComparer.Ordinal);
+            foreach (var line in notable) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
+        static void AppendCvrSide(StringBuilder sb, GameObject target)
+        {
+            if (target == null) { sb.Append("[cvr]\nNO TARGET — conversion produced nothing\n"); return; }
+
+            var avatar = target.GetComponent<CVRAvatar>();
+            if (avatar == null) { sb.Append("[cvr]\nNO CVRAvatar on target\n"); return; }
+
+            sb.Append("[cvravatar]\n");
+            sb.Append("  viewPosition: ").Append(V3(avatar.viewPosition)).Append('\n');
+            sb.Append("  useBlinkBlendshapes: ").Append(avatar.useBlinkBlendshapes).Append('\n');
+            sb.Append("  blinkBlendshape: ").Append(Join(avatar.blinkBlendshape)).Append('\n');
+            sb.Append("  useVisemeLipsync: ").Append(avatar.useVisemeLipsync).Append('\n');
+            sb.Append("  visemeMode: ").Append(avatar.visemeMode).Append('\n');
+            sb.Append("  visemeBlendshapes: ").Append(Join(avatar.visemeBlendshapes)).Append('\n');
+            sb.Append("  bodyMesh: ").Append(avatar.bodyMesh != null ? avatar.bodyMesh.name : "<none>").Append('\n');
+            sb.Append('\n');
+
+            AppendAas(sb, avatar);
+            AppendComponents(sb, target);
+            AppendControllers(sb, avatar, target);
+        }
+
+        static void AppendAas(StringBuilder sb, CVRAvatar avatar)
+        {
+            sb.Append("[advanced avatar settings]\n");
+            var entries = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            if (entries == null || entries.Count == 0) { sb.Append("  <none>\n\n"); return; }
+
+            // Sorted by machineName: the list order is menu order, which is worth seeing, but it
+            // is also the single noisiest thing in the whole digest because any pass that appends
+            // an entry shifts everything after it. Order changes show up as a separate line.
+            foreach (var e in entries.OrderBy(x => x.machineName, StringComparer.Ordinal))
+            {
+                sb.Append("  ").Append(e.machineName)
+                  .Append(" | ").Append(e.type)
+                  .Append(" | \"").Append(e.name).Append("\"\n");
+            }
+            sb.Append("  order: ").Append(string.Join(",", entries.Select(x => x.machineName))).Append('\n');
+            sb.Append('\n');
+        }
+
+        static void AppendComponents(StringBuilder sb, GameObject target)
+        {
+            sb.Append("[components]\n");
+            // Type name and count only. Which cloth got which damping value belongs in a physics
+            // digest, not this one — this is here to catch a pass that stops emitting a component
+            // type altogether, which is how several regressions presented.
+            var counts = target.GetComponentsInChildren<Component>(true)
+                .Where(c => c != null)
+                .Select(c => c.GetType().FullName)
+                .Where(n => n.StartsWith("ABI.CCK", StringComparison.Ordinal)
+                         || n.StartsWith("MagicaCloth", StringComparison.Ordinal)
+                         || n.StartsWith("VRC.", StringComparison.Ordinal))
+                .GroupBy(n => n)
+                .OrderBy(g => g.Key, StringComparer.Ordinal);
+            foreach (var g in counts) sb.Append("  ").Append(g.Count().ToString("D3")).Append("  ").Append(g.Key).Append('\n');
+            sb.Append('\n');
+        }
+
+        static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
+        {
+            // Two things to capture, and the graft lives in the second: the merged controller
+            // itself, and the override pairs CVR uses to replace its stock locomotion clips.
+            var animator = target.GetComponent<Animator>();
+            var seen = new HashSet<AnimatorController>();
+
+            foreach (var rac in new RuntimeAnimatorController[] {
+                         animator != null ? animator.runtimeAnimatorController : null,
+                         avatar.overrides })
+            {
+                if (rac == null) continue;
+
+                if (rac is AnimatorOverrideController ovr)
+                {
+                    sb.Append("[overrides] ").Append(ovr.name).Append('\n');
+                    var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+                    ovr.GetOverrides(pairs);
+                    foreach (var p in pairs.OrderBy(p => p.Key != null ? p.Key.name : "", StringComparer.Ordinal))
+                    {
+                        sb.Append("  ").Append(p.Key != null ? p.Key.name : "<null>")
+                          .Append(" -> ").Append(p.Value != null ? p.Value.name : "<unchanged>").Append('\n');
+                    }
+                    sb.Append('\n');
+
+                    if (ovr.runtimeAnimatorController is AnimatorController baseAc && seen.Add(baseAc))
+                        AppendController(sb, baseAc);
+                }
+                else if (rac is AnimatorController ac && seen.Add(ac))
+                {
+                    AppendController(sb, ac);
+                }
+            }
+        }
+
+        static void AppendController(StringBuilder sb, AnimatorController ac)
+        {
+            sb.Append("[controller] ").Append(ac.name).Append('\n');
+
+            sb.Append("  parameters:\n");
+            foreach (var p in ac.parameters.OrderBy(p => p.name, StringComparer.Ordinal))
+            {
+                string def;
+                switch (p.type)
+                {
+                    case AnimatorControllerParameterType.Bool: def = p.defaultBool.ToString(); break;
+                    case AnimatorControllerParameterType.Int: def = p.defaultInt.ToString(); break;
+                    case AnimatorControllerParameterType.Float: def = F(p.defaultFloat); break;
+                    default: def = "-"; break;   // Trigger
+                }
+                sb.Append("    ").Append(p.type).Append(' ').Append(p.name).Append(" = ").Append(def).Append('\n');
+            }
+
+            for (int i = 0; i < ac.layers.Length; i++)
+            {
+                var layer = ac.layers[i];
+                // Layer INDEX is not sorted away: order is behaviour here. A layer that moves
+                // changes which one wins, and that has to be visible.
+                sb.Append("  layer ").Append(i).Append(": ").Append(layer.name)
+                  .Append(" w=").Append(F(layer.defaultWeight))
+                  .Append(" blend=").Append(layer.blendingMode)
+                  .Append(" mask=").Append(layer.avatarMask != null ? layer.avatarMask.name : "<none>")
+                  .Append(" ikPass=").Append(layer.iKPass)
+                  .Append('\n');
+                AppendStateMachine(sb, layer.stateMachine, "    ", "");
+            }
+            sb.Append('\n');
+        }
+
+        static void AppendStateMachine(StringBuilder sb, AnimatorStateMachine sm, string indent, string prefix)
+        {
+            if (sm == null) { sb.Append(indent).Append("<null state machine>\n"); return; }
+
+            sb.Append(indent).Append("default: ")
+              .Append(sm.defaultState != null ? sm.defaultState.name : "<none>").Append('\n');
+
+            // AnyState transitions first and separately: this is where the self-restart bugs
+            // lived, so canTransitionToSelf gets its own visible field on every line.
+            foreach (var t in sm.anyStateTransitions
+                         .OrderBy(t => Dest(t), StringComparer.Ordinal)
+                         .ThenBy(t => Conds(t), StringComparer.Ordinal))
+            {
+                sb.Append(indent).Append("any -> ").Append(Dest(t))
+                  .Append(" self=").Append(t.canTransitionToSelf)
+                  .Append(' ').Append(Timing(t))
+                  .Append(' ').Append(Conds(t)).Append('\n');
+            }
+
+            // States sorted by name. Unity's array order is creation order, which shifts whenever
+            // a pass adds a state earlier in its loop — a diff of that tells you nothing.
+            foreach (var cs in sm.states.OrderBy(s => s.state.name, StringComparer.Ordinal))
+            {
+                var st = cs.state;
+                sb.Append(indent).Append("state ").Append(prefix).Append(st.name)
+                  .Append(" wd=").Append(st.writeDefaultValues)
+                  .Append(" speed=").Append(F(st.speed))
+                  .Append(st.mirror ? " mirror" : "")
+                  .Append(" motion=").Append(MotionOf(st.motion)).Append('\n');
+
+                var behaviours = st.behaviours
+                    .Where(b => b != null)
+                    .Select(b => b.GetType().Name)
+                    .OrderBy(n => n, StringComparer.Ordinal)
+                    .ToList();
+                if (behaviours.Count > 0)
+                    sb.Append(indent).Append("  behaviours: ").Append(string.Join(",", behaviours)).Append('\n');
+
+                foreach (var t in st.transitions
+                             .OrderBy(t => Dest(t), StringComparer.Ordinal)
+                             .ThenBy(t => Conds(t), StringComparer.Ordinal))
+                {
+                    sb.Append(indent).Append("  -> ").Append(Dest(t))
+                      .Append(' ').Append(Timing(t))
+                      .Append(' ').Append(Conds(t)).Append('\n');
+                }
+            }
+
+            // Sub-state machines, recursed so a graft nested one level down is still described.
+            foreach (var child in sm.stateMachines.OrderBy(c => c.stateMachine.name, StringComparer.Ordinal))
+            {
+                sb.Append(indent).Append("submachine ").Append(child.stateMachine.name).Append('\n');
+                AppendStateMachine(sb, child.stateMachine, indent + "  ", prefix + child.stateMachine.name + "/");
+            }
+        }
+
+        static string Dest(AnimatorStateTransition t)
+        {
+            if (t.destinationState != null) return t.destinationState.name;
+            if (t.destinationStateMachine != null) return t.destinationStateMachine.name + "/*";
+            if (t.isExit) return "<exit>";
+            return "<none>";
+        }
+
+        static string Timing(AnimatorStateTransition t)
+        {
+            var sb = new StringBuilder();
+            sb.Append("exit=").Append(t.hasExitTime);
+            if (t.hasExitTime) sb.Append('@').Append(F(t.exitTime));
+            sb.Append(" dur=").Append(F(t.duration));
+            if (t.offset != 0f) sb.Append(" off=").Append(F(t.offset));
+            if (t.mute) sb.Append(" MUTED");
+            if (t.orderedInterruption) sb.Append(" ordered");
+            if (t.interruptionSource != TransitionInterruptionSource.None)
+                sb.Append(" interrupt=").Append(t.interruptionSource);
+            return sb.ToString();
+        }
+
+        static string Conds(AnimatorStateTransition t)
+        {
+            if (t.conditions == null || t.conditions.Length == 0) return "[]";
+            var parts = t.conditions
+                .Select(c => $"{c.parameter} {c.mode} {F(c.threshold)}")
+                .OrderBy(s => s, StringComparer.Ordinal);
+            return "[" + string.Join(" && ", parts) + "]";
+        }
+
+        static string MotionOf(Motion motion)
+        {
+            if (motion == null) return "<none>";
+
+            if (motion is BlendTree tree)
+            {
+                var sb = new StringBuilder();
+                sb.Append("tree:").Append(tree.blendType).Append('(').Append(tree.blendParameter);
+                if (tree.blendType != BlendTreeType.Simple1D && tree.blendType != BlendTreeType.Direct)
+                    sb.Append(',').Append(tree.blendParameterY);
+                sb.Append(")[");
+                // Children in declared order: for a 1D tree that IS the threshold ordering, and
+                // for the locomotion graft the position of a clip in the tree is the whole point.
+                sb.Append(string.Join(" ", tree.children.Select(c =>
+                {
+                    string at = tree.blendType == BlendTreeType.Simple1D
+                        ? F(c.threshold)
+                        : tree.blendType == BlendTreeType.Direct
+                            ? c.directBlendParameter
+                            : V2(c.position);
+                    string scale = Math.Abs(c.timeScale - 1f) > 1e-4f ? "x" + F(c.timeScale) : "";
+                    return $"{at}{scale}=>{MotionOf(c.motion)}";
+                })));
+                sb.Append(']');
+                return sb.ToString();
+            }
+
+            if (motion is AnimationClip clip)
+            {
+                // Length and loop flag both matter and both have been the bug: 3.5.1 shipped
+                // grafted clips that carried their FBX loop settings, and 3.5.4 shipped a wing
+                // flap loop-matched to a state that never ended.
+                return $"clip:{clip.name}(len={F(clip.length)},loop={clip.isLooping})";
+            }
+
+            return motion.GetType().Name + ":" + motion.name;
+        }
+
+        // ---------------------------------------------------------------- formatting
+
+        // Fixed precision, invariant, and negative zero folded away — Unity hands back -0 for
+        // plenty of computed values and it flips sign between runs for no reason at all.
+        static string F(float f)
+        {
+            if (float.IsNaN(f)) return "NaN";
+            if (float.IsInfinity(f)) return f > 0 ? "+Inf" : "-Inf";
+            if (Mathf.Abs(f) < 1e-5f) return "0";
+            return f.ToString("0.####", CultureInfo.InvariantCulture);
+        }
+
+        static string V2(Vector2 v) => $"({F(v.x)},{F(v.y)})";
+        static string V3(Vector3 v) => $"({F(v.x)},{F(v.y)},{F(v.z)})";
+
+        static string Join(string[] a)
+        {
+            if (a == null || a.Length == 0) return "<none>";
+            return string.Join(",", a.Select(s => string.IsNullOrEmpty(s) ? "-" : s));
+        }
+    }
+}
+#endif
