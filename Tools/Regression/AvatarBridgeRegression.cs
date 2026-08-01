@@ -150,9 +150,16 @@ namespace AvatarBridge.Regression
                     "-executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch");
             }
 
+            // Start from empty. A digest left behind by a previous, differently-scoped run is
+            // indistinguishable from one this run produced, and would be compared and reported
+            // as though it were current.
+            if (Directory.Exists(CurrentDir))
+                foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
             Directory.CreateDirectory(CurrentDir);
+
             var changes = new List<string>();
             var missing = new List<string>();
+            var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int ran = 0, failed = 0;
             var started = DateTime.Now;
 
@@ -176,7 +183,12 @@ namespace AvatarBridge.Regression
                     }
 
                     ran++;
-                    string file = Safe(name) + ".txt";
+                    string file = DigestName(scenePath);
+                    // Belt and braces on the naming rule below: if two scenes ever collide again
+                    // the run must say so, not silently cover one of them.
+                    if (!written.Add(file))
+                        Debug.LogError($"[Regression] digest name collision on '{file}' — " +
+                                       $"'{scenePath}' has overwritten an earlier scene's digest.");
                     File.WriteAllText(Path.Combine(CurrentDir, file), digest);
 
                     string baseline = Path.Combine(BaselineDir, file);
@@ -216,6 +228,22 @@ namespace AvatarBridge.Regression
             var added = new HashSet<string>(b);
             added.ExceptWith(a);
             return $"-{removed.Count} +{added.Count}";
+        }
+
+        /// <summary>
+        /// Digest filename from the scene's full path, not its basename.
+        ///
+        /// The first full run converted 56 avatars and left 51 files: this project has "OPEN ME",
+        /// "OPENME", "OpenMe" and "Open_Me" scenes in four different folders, and Windows compares
+        /// filenames case-insensitively, so five digests silently overwrote each other. Coverage
+        /// vanished without a word — the worst thing a test harness can do.
+        /// </summary>
+        static string DigestName(string scenePath)
+        {
+            var rel = scenePath.Replace('\\', '/');
+            if (rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = rel.Substring(7);
+            if (rel.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) rel = rel.Substring(0, rel.Length - 6);
+            return Safe(rel.Replace('/', '~')) + ".txt";
         }
 
         static string Safe(string s)
