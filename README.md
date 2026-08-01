@@ -1414,6 +1414,15 @@ Write Defaults turned off so it contributes nothing until something drives it. T
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
+The feature stays **disarmed until one of its own parameters actually changes**, and this matters
+more than it sounds. VRChat's Action layer is silent at weight 0, so the conditions inside it are
+free to be permanently true — plenty are. Copied into ChilloutVR's always-on locomotion layer, a
+condition like that would fire the moment the avatar loaded: two inflation rigs did exactly that,
+one flickering between its pose and idle forever, the other walking up its stages at load and
+parking in a pose its owner never chose. The arming now snapshots the values the avatar woke up
+with and only engages once one of them moves, so the feature waits for you rather than for the
+avatar to exist.
+
 **The full-body poses move into ChilloutVR's own locomotion layer** — the one place on this
 platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime
 while a sequence plays; ChilloutVR has no runtime weight control, and a *separate* layer has no way

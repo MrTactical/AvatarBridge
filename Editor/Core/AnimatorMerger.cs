@@ -3591,8 +3591,10 @@ namespace AvatarBridge
                     withReady.Add(new AnimatorControllerParameter
                     {
                         name = readyName,
+                        // DISARMED at load. See the "Rest" prologue below: this used to default
+                        // to 1, which assumed the arming conditions are false at rest.
                         type = AnimatorControllerParameterType.Float,
-                        defaultFloat = 1f
+                        defaultFloat = 0f
                     });
                     master.parameters = withReady.ToArray();
                 }
@@ -3729,6 +3731,79 @@ namespace AvatarBridge
                     changed.duration = 0f;
                     changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
                 }
+                // ---- disarmed until something actually changes ----------------------------
+                // The ready flag used to default to 1, which assumes the arming conditions are
+                // FALSE when the avatar loads. Plenty are not. A VRChat Action layer sits at
+                // WEIGHT 0 until its feature raises it, so conditions inside it are free to be
+                // permanently true — nothing plays, because the whole layer is silent. This
+                // transplant reproduces the transitions but not the weight gate, so the same
+                // condition fires the instant the avatar loads in CVR's always-on locomotion
+                // layer.
+                //
+                // Two ways that presented, both found by the regression corpus: an inflation rig
+                // whose window exit was ALSO true at rest ping-ponged between the pose and
+                // LocIdle forever, and a second one whose states chain on exit time walked up
+                // its stages at load and parked there — a bicycle pose nobody asked for.
+                //
+                // So the machine starts DISARMED, snapshots the values it woke up with, and arms
+                // only once one of them departs from that snapshot: a real user action, rather
+                // than the mere fact of the avatar existing. Everything after the first arm is
+                // unchanged — Engaged still releases on conditions-false or value-change.
+                var restParameters = armedEntries
+                    .SelectMany(e => e.Item2.Select(c => c.parameter))
+                    .Distinct()
+                    .ToList();
+
+                var rest = memory.AddState("Rest");
+                rest.writeDefaultValues = false;
+                rest.motion = armingTick;
+                var restDriver = rest.AddStateMachineBehaviour<AnimatorDriver>();
+                restDriver.localOnly = false;
+                restDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                foreach (var parameter in restParameters)
+                {
+                    scratches.Add(PrevName(parameter));
+                    restDriver.EnterTasks.Add(Task(PrevName(parameter),
+                        AnimatorDriverTask.Operator.Set, parameter, 0f, null));
+                }
+
+                // Same split as Capture/Engaged, and for the same reason: a state's enter tasks
+                // run once, so the snapshot and the comparison cannot live in one state or the
+                // baseline would be rewritten every tick and never register a change.
+                var watch = memory.AddState("Rest Watch");
+                watch.writeDefaultValues = false;
+                watch.motion = armingTick;
+                var watchDriver = watch.AddStateMachineBehaviour<AnimatorDriver>();
+                watchDriver.localOnly = false;
+                watchDriver.EnterTasks.Add(Task(deltaName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                foreach (var parameter in restParameters)
+                {
+                    watchDriver.EnterTasks.Add(Task(compareName,
+                        AnimatorDriverTask.Operator.NotEqual, parameter, 0f, PrevName(parameter)));
+                    watchDriver.EnterTasks.Add(Task(deltaName,
+                        AnimatorDriverTask.Operator.Addition, deltaName, 0f, compareName));
+                }
+
+                memory.defaultState = rest;
+
+                var settleRest = rest.AddTransition(watch);
+                settleRest.hasExitTime = true;
+                settleRest.exitTime = 1f;
+                settleRest.hasFixedDuration = true;
+                settleRest.duration = 0f;
+
+                var watchLoop = watch.AddTransition(watch);
+                watchLoop.hasExitTime = true;
+                watchLoop.exitTime = 1f;
+                watchLoop.hasFixedDuration = true;
+                watchLoop.duration = 0f;
+
+                var wake = watch.AddTransition(ready);
+                wake.hasExitTime = false;
+                wake.hasFixedDuration = true;
+                wake.duration = 0f;
+                wake.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
+
                 var withScratches = master.parameters.ToList();
                 foreach (var scratch in scratches.Distinct())
                 {
