@@ -271,7 +271,8 @@ namespace AvatarBridge.Regression
             }
             if (descriptor == null) return null;
 
-            var report = BridgeConverter.Convert(descriptor, new BridgeSettings());
+            var settings = CorpusSettings();
+            var report = BridgeConverter.Convert(descriptor, settings);
             var target = Selection.activeGameObject;   // BridgeConverter sets this to ctx.Target
 
             var sb = new StringBuilder();
@@ -282,9 +283,90 @@ namespace AvatarBridge.Regression
             // changing, and every line in here has to earn its place in a diff.
             sb.Append('\n');
 
+            AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// The profile the corpus converts with. Deliberately NOT `new BridgeSettings()`.
+        ///
+        /// Two reasons every field is written out rather than only the ones that differ from the
+        /// defaults. First, coverage: seven options are off by default, which means the locomotion
+        /// grafter, the Action transplanter, native contacts and the SPI shader patcher — the code
+        /// that shipped nine versions in one day — were never once exercised by the corpus.
+        /// Turning them on puts 56 avatars through them. Second, and more important, PINNING: if a
+        /// default in BridgeSettings is ever changed, an implicit corpus would silently change
+        /// meaning and every digest would diff at once, looking exactly like a catastrophic
+        /// regression. Stated in full, a defaults change moves the shipped product and leaves the
+        /// corpus alone, which is what you want when you are trying to read a diff.
+        ///
+        /// This is NOT what a typical user gets. A digest change says "something moved with
+        /// everything switched on", not "the default experience changed". For finding regressions
+        /// that is the better trade; just don't read these digests as the out-of-the-box result.
+        /// </summary>
+        static BridgeSettings CorpusSettings() => new BridgeSettings
+        {
+            cloneAvatar = true,
+            outputFolder = "Assets/AvatarBridgeOutput",
+
+            // All five layers. Base, Additive and Action are off by default.
+            convertBaseLayer = true,
+            convertAdditiveLayer = true,
+            convertGestureLayer = true,
+            convertActionLayer = true,
+            convertFxLayer = true,
+
+            toggleStyle = ToggleStyle.AnimatorLayers,
+            preserveParameterSyncState = true,
+            exposeMenulessSyncedParameters = true,
+
+            physicsTarget = PhysicsTarget.MagicaCloth2,
+            deleteConvertedPhysBones = true,
+            grabbyBonesSupport = true,
+            useMagicaPresets = true,
+            fitToPhysBone = true,
+            derivePhysicsFromPhysBone = true,
+            capParticleRadius = true,
+            // The two that invent physics the author never made — on here for coverage.
+            autoAssignNearbyColliders = true,
+            addPhysicsToRiggedStyles = true,
+            // Left off deliberately: both wreck specific avatars rather than exercising a path.
+            transferAngleLimits = false,
+            convertToePhysBones = false,
+
+            stripGogoLoco = true,
+            stripSpsSystems = true,
+            extraStripKeywords = "",
+            stripDeadMaterialAnimation = true,
+
+            convertContacts = true,
+            createDefaultColliderPointers = true,
+            useNativeContacts = true,      // BETA — talks to a component internal to the game
+            patchNonSpiShaders = true,     // BETA — writes patched shader copies
+
+            convertConstraints = true,
+            convertHeadChop = true,
+            convertSpatialAudio = true,
+            wireBlinkBlendshapes = true,
+            addAvatarScaler = true,
+            faceTrackingMode = FaceTrackingMode.Native,
+        };
+
+        static void AppendSettings(StringBuilder sb, BridgeSettings s)
+        {
+            // In the digest so a profile change is LOUD. Change CorpusSettings and all 56 digests
+            // diff on these lines — which is correct, because all 56 conversions changed meaning.
+            // Without this the same event would show up as unexplained churn deep in the animator
+            // sections, and cost an afternoon.
+            sb.Append("[settings]\n");
+            foreach (var f in typeof(BridgeSettings).GetFields()
+                         .OrderBy(f => f.Name, StringComparer.Ordinal))
+            {
+                sb.Append("  ").Append(f.Name).Append('=').Append(f.GetValue(s)).Append('\n');
+            }
+            sb.Append('\n');
         }
 
         static void AppendReport(StringBuilder sb, BridgeReport report)
