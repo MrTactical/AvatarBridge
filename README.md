@@ -975,6 +975,13 @@ uploaded. All three are repaired during conversion and counted in the report:
   assigned. The broken references usually come from a VRCFury or Modular Avatar bake that errored
   partway: build a test copy of the source avatar and fix what errors there, then convert again.
 
+  A **missing prefab in the scene** does not count, and used to. Unity names the placeholder
+  `SFX (Missing Prefab with guid: …)`, that name lands in every animation path targeting the
+  object, and the check read the GUID out of the name as though it were a reference — so an
+  avatar with one broken prefab under an SPS socket lost its whole controller. Only real
+  references are counted now; a missing prefab is still worth fixing, but it no longer costs you
+  the Animator.
+
 If your avatar's controller has none of these, the Animator is wired up exactly as before.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
@@ -1076,6 +1083,13 @@ now, the same client path every stock avatar runs.
 project without those folders every missing clip resolves to None and plays as stillness, with no
 error anywhere. "Works on the author's PC, frozen on someone else's" is that one's signature. Every
 referenced clip and mask is copied into the output's `RehomedAssets` now.
+
+*Before 3.5.13*, reconverting the same avatar **added another copy of every rescued asset**
+rather than replacing the last one — `Angry.anim`, `Angry 1.anim`, `Angry 2.anim`, on and on. The
+controller used the newest and the rest were orphans nobody referenced: one test avatar had
+reached 22 copies of a single clip and 554 `.anim` files in one output folder. Names are now
+reused between runs, so the folder stays the size of one conversion. **Delete the output folder
+once and convert again** to clear what earlier versions left behind.
 
 </details>
 
@@ -1406,6 +1420,15 @@ An Action layer whose transitions wait on the avatar's **own** parameters — an
 Write Defaults turned off so it contributes nothing until something drives it. That's the same net
 effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
 about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
+
+The feature stays **disarmed until one of its own parameters actually changes**, and this matters
+more than it sounds. VRChat's Action layer is silent at weight 0, so the conditions inside it are
+free to be permanently true — plenty are. Copied into ChilloutVR's always-on locomotion layer, a
+condition like that would fire the moment the avatar loaded: two inflation rigs did exactly that,
+one flickering between its pose and idle forever, the other walking up its stages at load and
+parking in a pose its owner never chose. The arming now snapshots the values the avatar woke up
+with and only engages once one of them moves, so the feature waits for you rather than for the
+avatar to exist.
 
 **The full-body poses move into ChilloutVR's own locomotion layer** — the one place on this
 platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime

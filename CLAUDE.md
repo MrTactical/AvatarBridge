@@ -65,8 +65,24 @@ removing a download is safe, and why the "never delete an old package" rule belo
 
 ## Standing project rules (summary — details in auto-memory)
 
-- **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead. The build
-  script refuses to overwrite an existing `.unitypackage`, and old packages are never deleted.
+- **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead.
+  `Tools/build-package.sh` refuses to overwrite an existing `.unitypackage`, and old packages are
+  never deleted.
+- **Two build modes, and BOTH are labelled** — never infer contents from a missing suffix.
+  `Tools/build-package.sh` → `AvatarBridge-<v>-public.unitypackage` (**public**: `Tools/`,
+  `Regression/`, `docs` and this file pruned — what ships).
+  `Tools/build-package.sh --dev` → `AvatarBridge-<v>-dev.unitypackage` (**dev**: the harness,
+  scene cleanup and test-scene builder remapped into `Editor/DevTools/`, because Unity only
+  compiles a script as an editor script when `Editor` is in its path). **Never release a `-dev`
+  package.** The version guard checks all three possible names for a version, so a suffixed build
+  can never reuse a number already shipped unsuffixed; a `-dev` build may be rebuilt over itself,
+  since it never ships. The ~300 packages built before 2026-08-01 have no suffix, are all public
+  (`Tools/` did not exist yet), and keep their names — those are the names GitHub released, and
+  re-uploading a renamed asset would misstate the release history.
+- `Tools/Regression/AvatarBridgeRegression.cs` is the regression harness; it runs from the test
+  project's `Assets/Editor/` and its digests live in the gitignored `Regression/`. Dev-package
+  metas are synthesized at build time from an md5 of the destination path, so they are stable
+  across rebuilds and no `.meta` needs committing.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
   `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC.
 - **All work lands on the `dev` branch** (created 2026-07-28 from v2.50.6). Commit there and

@@ -448,7 +448,23 @@ namespace AvatarBridge
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
-            if (animator != null)
+            if (animator == null)
+            {
+                // Was a SILENT skip until 3.5.11, and five avatars in the regression corpus paid
+                // for it: Frenni, both Sallys, Stylized Tasque Manager and Tachy shipped prefabs
+                // whose Animator still held the controller inherited from the clone source — a
+                // VRCFury temp asset Fury deletes on its next build, so the Inspector reads
+                // "Missing (Runtime Animator Controller)" — and not one word of it reached the
+                // report. An avatar losing its animator is not something to find out by eye.
+                ctx.Report.Error(Category, "No Animator found to assign the controller to",
+                    "The converted avatar has no Animator component on its root, so the merged " +
+                    "controller could not be linked to one. ChilloutVR still loads the avatar — it " +
+                    "reads CVRAvatar's own controller fields, which are set — but nothing will " +
+                    "animate in the editor, and any Animator left on the object keeps whatever it " +
+                    "inherited, which is usually a build-time asset that no longer exists. Add an " +
+                    "Animator to the avatar root and convert again.");
+            }
+            else
             {
                 // The override, not the base. ChilloutVR does this itself on load — AssetFilter
                 // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
@@ -493,7 +509,144 @@ namespace AvatarBridge
                 }
                 else
                 {
+                    // Cleared first, then set. Not superstition — it is the one thing the
+                    // evidence actually supports.
+                    //
+                    // Sally_PC and Sally_Quest refused this assignment for four versions while
+                    // three theories about WHY were wrong in turn. The diagnostic build settled
+                    // the facts: the override controller is persisted and valid, its base
+                    // resolves, the Animator is enabled on an active object, and the component is
+                    // on neither a prefab asset nor a prefab instance — so both earlier "fixes"
+                    // were no-ops on this avatar. The assignment simply produced null.
+                    //
+                    // What those two have that the working avatars do not: no VRCFury. Everything
+                    // that converts correctly here is baked by Fury, which builds its own target;
+                    // without it the target is an Object.Instantiate clone, and the clone inherits
+                    // the source's Animator complete with its DEAD controller reference. Writing
+                    // null was already known to stick — the saved prefab came out {fileID: 0} —
+                    // while overwriting the dead reference in place did not, which is a component
+                    // whose native rebind failed and will not take a new controller until the
+                    // broken one is let go of.
+                    animator.runtimeAnimatorController = null;
                     animator.runtimeAnimatorController = overrides;
+
+                    // Register the change as a prefab-instance override, or it does not survive.
+                    //
+                    // Avatars are almost always prefab INSTANCES, and a plain property set on an
+                    // instance is not automatically recorded as an override. SaveConvertedPrefab
+                    // then calls SaveAsPrefabAssetAndConnect, which reconnects the object and
+                    // reverts anything unrecorded to the prefab's own value — so the controller
+                    // this line just assigned quietly went back to whatever the source prefab
+                    // had.
+                    //
+                    // Invisible on most avatars, because the value it reverts TO is a live
+                    // controller and everything looks fine. Sally_PC and Sally_Quest are the
+                    // case where it is not: their source prefabs' Animator override points at a
+                    // controller that no longer exists, so the revert handed the conversion a
+                    // dangling reference. Sally_PC_SPS, same avatar, healthy source value,
+                    // reverted just as hard and nobody could tell.
+                    if (PrefabUtility.IsPartOfPrefabInstance(animator))
+                    {
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
+                    }
+
+                    // Read it back. This is not paranoia: Sally_PC and Sally_Quest reached this
+                    // line, ran it, and still shipped prefabs whose Animator held the SOURCE
+                    // avatar's controller — a GUID that resolves to nothing, inherited through the
+                    // clone from a scene where it was already dead. The assignment did not take,
+                    // nothing threw, and no error reached the report, so the avatar simply arrived
+                    // without an animator and the only way anyone found out was by clicking on it.
+                    //
+                    // A dangling reference is worse than an empty one, too: it reads as null to
+                    // script while the serialized GUID survives into the prefab, so it looks fine
+                    // to every check that asks the object what it has. If it would not stick, it
+                    // gets cleared — an empty slot is honest and cannot crash the graph builder —
+                    // and the report says so.
+                    if (animator.runtimeAnimatorController != overrides)
+                    {
+                        // The Inspector's path, not the API's. Five attempts went through the
+                        // C# setter — plain, recorded as a prefab override, after an unpack,
+                        // cleared-then-set, and after a forced synchronous import — and on two
+                        // avatars every one of them silently stored null while the very same
+                        // asset dragged into the very same slot BY HAND worked at once. The
+                        // Inspector does not call the setter: dragging writes the serialized
+                        // m_Controller property through a SerializedObject. The maintainer
+                        // proved that path works on these exact avatars; this does the same
+                        // thing programmatically.
+                        //
+                        // It is also consistent with every measurement: the serialized field
+                        // held the source's dead GUID for weeks and holds our null happily —
+                        // serialization never refused anything. Whatever rejects the controller
+                        // lives in the native setter, so the repair simply does not go through
+                        // it. The prefab is saved from serialized data, and the native side
+                        // binds from it on the next load, exactly as it does after a manual
+                        // drag.
+                        var serialized = new SerializedObject(animator);
+                        serialized.FindProperty("m_Controller").objectReferenceValue = overrides;
+                        serialized.ApplyModifiedPropertiesWithoutUndo();
+                        if (PrefabUtility.IsPartOfPrefabInstance(animator))
+                        {
+                            PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
+                        }
+
+                        // And make the native side notice. The serialized write alone leaves the
+                        // component in a half-state for the rest of the session: the Inspector
+                        // slot shows the controller, the prefab saves it, and the Animator's
+                        // native binding still holds nothing — Clip Count: 0, no preview, until
+                        // a scene reload rebinds from serialized data. Rebind() forces that
+                        // rebuild now. Safe here for the same reason the assignment was: this
+                        // path only runs on a controller the crash guard already cleared.
+                        animator.Rebind();
+                        ctx.Report.Approximated(Category,
+                            "Controller linked through the serialized property",
+                            "Unity's Animator API refused this assignment (it stores null, " +
+                            "silently, for reasons it does not report), so the reference was " +
+                            "written the way the Inspector writes it instead, and the Animator " +
+                            "rebound to pick it up. The saved prefab carries the correct " +
+                            "controller either way.");
+                    }
+
+                    // Judged on the SERIALIZED value, not the getter. The getter answers from
+                    // the native binding, which can lag a serialized write within the same
+                    // editor frame — and the serialized value is the one that reaches the
+                    // prefab and the one ChilloutVR loads.
+                    var verify = new SerializedObject(animator);
+                    var heldReference = verify.FindProperty("m_Controller").objectReferenceValue;
+                    if (heldReference != overrides)
+                    {
+                        // What the read-back actually saw. Three mechanism theories have now been
+                        // wrong about this — the prefab-override revert, then the prefab
+                        // connection, then a dangling sub-asset reference — each plausible, each
+                        // disproved only after a build and a run. The check knows the answer at
+                        // the moment it fails and was throwing it away; the next failure carries
+                        // it into the report instead.
+                        var getterHeld = animator.runtimeAnimatorController;
+                        string evidence =
+                            $"[serialized={(heldReference == null ? "null" : heldReference.name)}" +
+                            $"; getter={(getterHeld == null ? "null" : getterHeld.name + " (" + getterHeld.GetType().Name + ")")}" +
+                            $"; wanted={(overrides == null ? "null" : overrides.name)}" +
+                            $"; wantedPath=\"{AssetDatabase.GetAssetPath(overrides)}\"" +
+                            $"; wantedPersisted={EditorUtility.IsPersistent(overrides)}" +
+                            $"; animatorOnPrefabAsset={PrefabUtility.IsPartOfPrefabAsset(animator)}" +
+                            $"; animatorOnPrefabInstance={PrefabUtility.IsPartOfPrefabInstance(animator)}" +
+                            $"; animatorEnabled={animator.enabled}" +
+                            $"; objectActive={animator.gameObject.activeInHierarchy}] ";
+
+                        // Cleared through the same serialized path the repair used — the API
+                        // setter has proven it cannot be trusted on this component.
+                        verify.FindProperty("m_Controller").objectReferenceValue = null;
+                        verify.ApplyModifiedPropertiesWithoutUndo();
+                        ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
+                            evidence +
+                            "The merged controller was assigned and did not stick — the Animator kept " +
+                            "a reference of its own instead, usually one inherited from the source " +
+                            "avatar that already pointed at a deleted asset. The slot has been cleared " +
+                            "rather than left holding a dead reference, which reads as empty to scripts " +
+                            "while still being serialized into the prefab. ChilloutVR is unaffected: it " +
+                            "reads CVRAvatar's controller fields on load, and those are set correctly. " +
+                            "Check the SOURCE avatar's Animator — if its controller shows as Missing " +
+                            "there, fix it there and convert again.");
+                    }
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
@@ -704,6 +857,36 @@ namespace AvatarBridge
         /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
         /// once — a text scan of one .controller.
         /// </summary>
+        /// <summary>
+        /// The GUIDs a serialized file genuinely REFERENCES, as opposed to ones that merely
+        /// appear somewhere in its text.
+        ///
+        /// Unity writes an external object reference as the whole triple
+        /// <c>{fileID: N, guid: G, type: N}</c>, and nothing else takes that shape, so matching
+        /// the triple is exact. Scanning for a bare "guid: &lt;32 hex&gt;" is not — and the
+        /// difference is not academic. Unity names a broken prefab instance
+        /// <c>SFX (Missing Prefab with guid: ea09b303…)</c>, that NAME then appears in every
+        /// animation curve path and avatar mask entry targeting the object, and a bare scan reads
+        /// it as a reference to a deleted asset.
+        ///
+        /// It cost two avatars their entire animator controller. BHFBunny and Sultry Snake each
+        /// carry one such placeholder under an SPS socket; the crash guard below read the name out
+        /// of a curve path, concluded the controller pointed at something deleted, and refused to
+        /// assign it — leaving a converted avatar with no controller at all. On Sultry Snake the
+        /// bare scan found 613 GUIDs where only 599 were references.
+        ///
+        /// Narrowing the match does not weaken the guard: a genuinely missing asset is still
+        /// written as the full triple, so it still matches.
+        /// </summary>
+        internal static IEnumerable<string> ReferencedGuids(string yaml)
+        {
+            foreach (Match match in Regex.Matches(
+                         yaml, @"\{fileID:\s*-?\d+,\s*guid:\s*([0-9a-f]{32}),\s*type:\s*-?\d+\}"))
+            {
+                yield return match.Groups[1].Value;
+            }
+        }
+
         internal static bool ControllerWouldCrashUnity(RuntimeAnimatorController controller)
         {
             try
@@ -725,9 +908,9 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    foreach (Match match in Regex.Matches(File.ReadAllText(absolute), "guid: ([0-9a-f]{32})"))
+                    foreach (string guid in ReferencedGuids(File.ReadAllText(absolute)))
                     {
-                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(match.Groups[1].Value)))
+                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(guid)))
                         {
                             return true;
                         }
@@ -3561,8 +3744,10 @@ namespace AvatarBridge
                     withReady.Add(new AnimatorControllerParameter
                     {
                         name = readyName,
+                        // DISARMED at load. See the "Rest" prologue below: this used to default
+                        // to 1, which assumed the arming conditions are false at rest.
                         type = AnimatorControllerParameterType.Float,
-                        defaultFloat = 1f
+                        defaultFloat = 0f
                     });
                     master.parameters = withReady.ToArray();
                 }
@@ -3699,6 +3884,79 @@ namespace AvatarBridge
                     changed.duration = 0f;
                     changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
                 }
+                // ---- disarmed until something actually changes ----------------------------
+                // The ready flag used to default to 1, which assumes the arming conditions are
+                // FALSE when the avatar loads. Plenty are not. A VRChat Action layer sits at
+                // WEIGHT 0 until its feature raises it, so conditions inside it are free to be
+                // permanently true — nothing plays, because the whole layer is silent. This
+                // transplant reproduces the transitions but not the weight gate, so the same
+                // condition fires the instant the avatar loads in CVR's always-on locomotion
+                // layer.
+                //
+                // Two ways that presented, both found by the regression corpus: an inflation rig
+                // whose window exit was ALSO true at rest ping-ponged between the pose and
+                // LocIdle forever, and a second one whose states chain on exit time walked up
+                // its stages at load and parked there — a bicycle pose nobody asked for.
+                //
+                // So the machine starts DISARMED, snapshots the values it woke up with, and arms
+                // only once one of them departs from that snapshot: a real user action, rather
+                // than the mere fact of the avatar existing. Everything after the first arm is
+                // unchanged — Engaged still releases on conditions-false or value-change.
+                var restParameters = armedEntries
+                    .SelectMany(e => e.Item2.Select(c => c.parameter))
+                    .Distinct()
+                    .ToList();
+
+                var rest = memory.AddState("Rest");
+                rest.writeDefaultValues = false;
+                rest.motion = armingTick;
+                var restDriver = rest.AddStateMachineBehaviour<AnimatorDriver>();
+                restDriver.localOnly = false;
+                restDriver.EnterTasks.Add(Task(readyName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                foreach (var parameter in restParameters)
+                {
+                    scratches.Add(PrevName(parameter));
+                    restDriver.EnterTasks.Add(Task(PrevName(parameter),
+                        AnimatorDriverTask.Operator.Set, parameter, 0f, null));
+                }
+
+                // Same split as Capture/Engaged, and for the same reason: a state's enter tasks
+                // run once, so the snapshot and the comparison cannot live in one state or the
+                // baseline would be rewritten every tick and never register a change.
+                var watch = memory.AddState("Rest Watch");
+                watch.writeDefaultValues = false;
+                watch.motion = armingTick;
+                var watchDriver = watch.AddStateMachineBehaviour<AnimatorDriver>();
+                watchDriver.localOnly = false;
+                watchDriver.EnterTasks.Add(Task(deltaName, AnimatorDriverTask.Operator.Set, null, 0f, null));
+                foreach (var parameter in restParameters)
+                {
+                    watchDriver.EnterTasks.Add(Task(compareName,
+                        AnimatorDriverTask.Operator.NotEqual, parameter, 0f, PrevName(parameter)));
+                    watchDriver.EnterTasks.Add(Task(deltaName,
+                        AnimatorDriverTask.Operator.Addition, deltaName, 0f, compareName));
+                }
+
+                memory.defaultState = rest;
+
+                var settleRest = rest.AddTransition(watch);
+                settleRest.hasExitTime = true;
+                settleRest.exitTime = 1f;
+                settleRest.hasFixedDuration = true;
+                settleRest.duration = 0f;
+
+                var watchLoop = watch.AddTransition(watch);
+                watchLoop.hasExitTime = true;
+                watchLoop.exitTime = 1f;
+                watchLoop.hasFixedDuration = true;
+                watchLoop.duration = 0f;
+
+                var wake = watch.AddTransition(ready);
+                wake.hasExitTime = false;
+                wake.hasFixedDuration = true;
+                wake.duration = 0f;
+                wake.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
+
                 var withScratches = master.parameters.ToList();
                 foreach (var scratch in scratches.Distinct())
                 {
@@ -5190,7 +5448,7 @@ namespace AvatarBridge
             UnityEngine.Object copy = value;
             if (AssetDatabase.IsMainAsset(value))
             {
-                string target = AssetDatabase.GenerateUniqueAssetPath(
+                string target = OutputAssetPaths.Claim(
                     dir + "/" + System.IO.Path.GetFileName(source));
                 if (AssetDatabase.CopyAsset(source, target))
                 {
@@ -5207,7 +5465,7 @@ namespace AvatarBridge
                 string extension = value is Material ? ".mat"
                                  : value is AnimationClip ? ".anim"
                                  : ".asset";
-                string target = AssetDatabase.GenerateUniqueAssetPath(
+                string target = OutputAssetPaths.Claim(
                     dir + "/" + SanitizeFileName(value.name) + extension);
                 AssetDatabase.CreateAsset(clone, target);
                 copy = clone;

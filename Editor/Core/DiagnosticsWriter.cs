@@ -503,10 +503,11 @@ namespace AvatarBridge
 
             string body = File.ReadAllText(Path.GetFullPath(Path.Combine(Application.dataPath, "..", path)));
             var counts = new Dictionary<string, int>();
-            foreach (System.Text.RegularExpressions.Match match in
-                     System.Text.RegularExpressions.Regex.Matches(body, "guid: ([0-9a-f]{32})"))
+            // Shares AnimatorMerger's reference matcher deliberately. When these two disagreed,
+            // the report said an avatar's controller was fine while the crash guard refused to
+            // assign it — two answers to one question, from two copies of the same scan.
+            foreach (string guid in AnimatorMerger.ReferencedGuids(body))
             {
-                string guid = match.Groups[1].Value;
                 counts[guid] = counts.TryGetValue(guid, out int n) ? n + 1 : 1;
             }
 

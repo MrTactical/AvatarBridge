@@ -138,7 +138,7 @@ namespace AvatarBridge
                     return clip;
                 }
                 AnimationClip copy = null;
-                string dst = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(clip.name)}.anim");
+                string dst = OutputAssetPaths.Claim($"{dir}/{SafeName(clip.name)}.anim");
                 // A standalone .anim copies byte-perfectly; a clip living inside an FBX or
                 // another controller has to be materialized into its own asset instead.
                 if (AssetDatabase.IsMainAsset(clip)
@@ -205,7 +205,7 @@ namespace AvatarBridge
             }
             AvatarMask copy = null;
             string src = AssetDatabase.GetAssetPath(mask);
-            string dst = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mask.name)}.mask");
+            string dst = OutputAssetPaths.Claim($"{dir}/{SafeName(mask.name)}.mask");
             if (AssetDatabase.IsMainAsset(mask)
                 && src.EndsWith(".mask", StringComparison.OrdinalIgnoreCase)
                 && AssetDatabase.CopyAsset(src, dst))
