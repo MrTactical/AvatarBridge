@@ -871,6 +871,14 @@ Bipeds are unaffected by any of it.
   grafted onto another style's simulated bones must not have that chain switched off with the
   base style's mesh, so a hidden style's cloth may keep simulating (invisible, harmless). The
   report counts the re-wired curves.
+
+  **If the chain wasn't converted, there is nothing to re-wire to.** Avatars commonly pause a
+  PhysBone while a body part resizes — an "EarsChanging" or "BreastChanging" toggle switching the
+  chain off and back on. When that chain was skipped (a constraint driving one of its bones is the
+  usual reason), the curve has no cloth to point at and dies with the VRC components, while the
+  menu entry, parameter and animator layer all convert perfectly — so the control looks right and
+  does nothing. The report now warns for each one and names the clip and the PhysBone path, so it
+  lines up with the *Skipped* entry above it that says why the chain wasn't simulated.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.

@@ -6752,6 +6752,18 @@ namespace AvatarBridge
             int curvesAdded = 0, clipsTouched = 0;
             var physicslessStyles = new HashSet<Transform>();
 
+            // PhysBone on/off curves with nowhere to land: the chain they name produced no
+            // physics, so there is no component to retarget them at. The curve then points at a
+            // VRCPhysBone that gets deleted with the rest of the VRC components, and the toggle
+            // that drives it does nothing at all — silently, because every OTHER part of it
+            // converts perfectly. The menu entry appears, the parameter syncs, the layer plays.
+            //
+            // Found via a tester whose ear, butt and tail scaling toggles "did nothing": all
+            // three chains had been skipped earlier for constraint conflicts, each with its own
+            // report entry saying so — but nothing connected those skips to the toggles that
+            // depended on them, so the two facts sat in the same report and never met.
+            var strandedToggles = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
             bool ChainInSubtree(Transform container)
             {
                 foreach (var chain in chains)
@@ -6864,6 +6876,11 @@ namespace AvatarBridge
                         continue;
                     }
 
+                    // Recorded before the search, cleared by a match below. A PhysBone curve that
+                    // finds no chain is the stranded case; object toggles are not, because an
+                    // object toggle still does its own job whether or not physics rode along.
+                    bool physBoneRetargeted = false;
+
                     bool anyChainInSubtree = false;
                     foreach (var chain in chains)
                     {
@@ -6903,6 +6920,7 @@ namespace AvatarBridge
                             target = EditorCurveBinding.FloatCurve(
                                 AnimationUtility.CalculateTransformPath(host, root),
                                 chain.Physics.GetType(), "m_Enabled");
+                            physBoneRetargeted = true;
                         }
                         bool alreadyDriven = false;
                         foreach (var have in existing)
@@ -6944,6 +6962,20 @@ namespace AvatarBridge
                         }
                         additions[target] = curve;
                     }
+
+                    // Nothing to retarget at, so this curve dies with the VRC components. Both
+                    // facts are needed to make it actionable: which clip, and which PhysBone
+                    // object — the physics section's skip entry for that same path says WHY it
+                    // was not converted.
+                    if (physBoneToggle && !physBoneRetargeted)
+                    {
+                        if (!strandedToggles.TryGetValue(binding.path, out var clipNames))
+                        {
+                            strandedToggles[binding.path] = clipNames = new SortedSet<string>(StringComparer.Ordinal);
+                        }
+                        clipNames.Add(clip.name);
+                    }
+
                     if (objectToggle && !anyChainInSubtree)
                     {
                         var activation = AnimationUtility.GetEditorCurve(clip, binding);
@@ -7102,6 +7134,26 @@ namespace AvatarBridge
                     "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
                     "have that chain switched off with the base style's mesh, so a hidden style's " +
                     "cloth may keep simulating — invisible, and harmless.");
+            }
+
+            if (strandedToggles.Count > 0)
+            {
+                var lines = strandedToggles
+                    .Select(entry => $"\"{entry.Key}\" (in {string.Join(", ", entry.Value)})")
+                    .ToList();
+                ctx.Report.Warning(Category,
+                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted — " +
+                    "those controls will do nothing",
+                    string.Join("; ", lines) + " — these clips turn a VRChat PhysBone on or off, " +
+                    "which is how avatars pause a chain while a body part is resized. The chain " +
+                    "they name produced no physics here, so there is no cloth component to switch " +
+                    "instead, and the curve dies with the VRC components. Everything else about " +
+                    "the control converts — menu entry, parameter, animator layer — so it looks " +
+                    "correct and does nothing, which is the worst way for this to present. " +
+                    "The PhysBones -> MagicaCloth2 section above has a Skipped entry for each of " +
+                    "these paths saying WHY it wasn't converted (a constraint driving a bone in " +
+                    "the chain is the usual reason); fix that and the toggle starts working. If " +
+                    "the chain was never meant to be simulated, remove the control instead.");
             }
         }
 
