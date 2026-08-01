@@ -68,10 +68,19 @@ removing a download is safe, and why the "never delete an old package" rule belo
 - **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead.
   `Tools/build-package.sh` refuses to overwrite an existing `.unitypackage`, and old packages are
   never deleted.
-- **`Tools/` and `Regression/` never ship** — the build script prunes them alongside `docs` and
-  this file, so neither needs a `.meta`. `Tools/Regression/AvatarBridgeRegression.cs` is the
-  regression harness; it is copied into the test project's `Assets/Editor/` to run, and its
-  digests live in the gitignored `Regression/`.
+- **Two build modes, and the filename is the marker.**
+  `Tools/build-package.sh` → `AvatarBridge-<v>.unitypackage` (**public**: `Tools/`, `Regression/`,
+  `docs` and this file pruned — what ships).
+  `Tools/build-package.sh --dev` → `AvatarBridge-<v>-dev.unitypackage` (**dev**: the harness,
+  scene cleanup and test-scene builder remapped into `Editor/DevTools/`, because Unity only
+  compiles a script as an editor script when `Editor` is in its path). **Never release a `-dev`
+  package.** Only the dev side is suffixed: the never-reuse-a-version guard works by checking
+  whether the public filename exists, so renaming public packages would blind it — and every
+  package built before 2026-08-01 predates `Tools/` and is already clean.
+- `Tools/Regression/AvatarBridgeRegression.cs` is the regression harness; it runs from the test
+  project's `Assets/Editor/` and its digests live in the gitignored `Regression/`. Dev-package
+  metas are synthesized at build time from an md5 of the destination path, so they are stable
+  across rebuilds and no `.meta` needs committing.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
   `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC.
 - **All work lands on the `dev` branch** (created 2026-07-28 from v2.50.6). Commit there and

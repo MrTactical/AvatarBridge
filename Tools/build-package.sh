@@ -5,6 +5,21 @@
 #
 # Lived in a session scratchpad until 2026-08-01, where it would have evaporated with the
 # session. It is build tooling; it belongs with the code it builds.
+#
+# Usage:
+#   build-package.sh            PUBLIC build  -> AvatarBridge-<version>.unitypackage
+#   build-package.sh --dev      DEV build     -> AvatarBridge-<version>-dev.unitypackage
+#
+# A public package is what ships: Tools/ and Regression/ are pruned, so it carries no regression
+# harness, no scene cleanup, no test-scene builder and no menu items a user should never see.
+#
+# A dev package carries those, remapped under Editor/DevTools/ so Unity compiles them as editor
+# scripts. NEVER upload a "-dev" package to a release.
+#
+# The suffix is the marker, and only the dev side gets one, deliberately: the "never reuse a
+# shipped version" guard below works by checking whether the public filename already exists, so
+# renaming public packages — including the ~300 already built, every one of which predates Tools/
+# and is therefore already clean — would blind the one rule this project has never broken.
 set -euo pipefail
 
 REPO="D:/AvatarBridge"
@@ -12,9 +27,16 @@ ROOT_GUID="979cbf9a9a344ae7ad3f8b3bb3381da0"   # the "Assets/AvatarBridge" folde
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
+MODE="public"
+if [ "${1:-}" = "--dev" ]; then MODE="dev"; fi
+
 VERSION="$(sed -n 's/.*public const string Version = "\(.*\)".*/\1/p' "$REPO/Editor/BridgeDefines.cs")"
 if [ -z "$VERSION" ]; then echo "could not read Version from BridgeDefines.cs" >&2; exit 1; fi
-OUT="$REPO/AvatarBridge-$VERSION.unitypackage"
+if [ "$MODE" = "dev" ]; then
+  OUT="$REPO/AvatarBridge-$VERSION-dev.unitypackage"
+else
+  OUT="$REPO/AvatarBridge-$VERSION.unitypackage"
+fi
 
 if [ -e "$OUT" ]; then
   echo "REFUSING: $OUT already exists — bump the version, never reuse one that shipped." >&2
@@ -78,9 +100,65 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 
+# ---- dev extras -------------------------------------------------------------------------
+# Remapped from Tools/Regression/ to Editor/DevTools/, because Unity only compiles a script as
+# an editor script when an "Editor" folder is somewhere in its path — dropped at Tools/ it would
+# land in the runtime assembly and fail on every UnityEditor reference it makes.
+#
+# Metas are synthesized rather than committed: these files never ship publicly, so a .meta in the
+# repo would be dead weight that the public build has to remember to prune. The GUID is an md5 of
+# the destination path, so it is stable across rebuilds — reimporting a newer dev package updates
+# the script in place instead of leaving a duplicate behind.
+if [ "$MODE" = "dev" ]; then
+  devguid() { printf '%s' "$1" | md5sum | cut -c1-32; }
+
+  for folder in "Editor/DevTools"; do
+    g="$(devguid "folder:$folder")"
+    mkdir -p "$STAGE/$g"
+    cat > "$STAGE/$g/asset.meta" <<EOF
+fileFormatVersion: 2
+guid: $g
+folderAsset: yes
+DefaultImporter:
+  externalObjects: {}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+EOF
+    printf '%s' "Assets/AvatarBridge/$folder" > "$STAGE/$g/pathname"
+    count=$((count+1))
+  done
+
+  for src in "$REPO"/Tools/Regression/*.cs; do
+    [ -e "$src" ] || continue
+    base="$(basename "$src")"
+    dest="Editor/DevTools/$base"
+    g="$(devguid "$dest")"
+    mkdir -p "$STAGE/$g"
+    cat > "$STAGE/$g/asset.meta" <<EOF
+fileFormatVersion: 2
+guid: $g
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+EOF
+    printf '%s' "Assets/AvatarBridge/$dest" > "$STAGE/$g/pathname"
+    cp "$src" "$STAGE/$g/asset"
+    count=$((count+1))
+    echo "  + dev: $dest"
+  done
+fi
+
 # --force-local: a Windows "D:/..." path otherwise reads as a remote host to tar.
 tar --force-local -czf "$OUT" -C "$STAGE" .
 echo "built $OUT"
 echo "  version : $VERSION"
+echo "  mode    : $MODE$([ "$MODE" = dev ] && echo '   *** DEV TOOLS INCLUDED — DO NOT RELEASE ***')"
 echo "  assets  : $count (+1 root folder)"
 echo "  bytes   : $(stat -c%s "$OUT")"
