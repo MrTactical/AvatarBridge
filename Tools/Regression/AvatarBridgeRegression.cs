@@ -241,9 +241,17 @@ namespace AvatarBridge.Regression
             // the thousands on a big avatar (one per cloth chain, parameter and menu control) and
             // their exact wording churns constantly; the counts above catch a change in volume,
             // which is the part that matters.
+            //
+            // Detail is TRUNCATED, and that is the whole point. These are documentation
+            // paragraphs — the Kar digest had thirteen of them, the longest 1239 characters. They
+            // get reworded whenever a message is improved, which is often and which changes
+            // nothing about the conversion. Left whole, the first docs edit would light up every
+            // avatar in the corpus as "changed" and the diff would stop being worth reading.
+            // Category and Subject carry the behaviour; the opening of Detail is kept only to
+            // tell two entries apart.
             var notable = report.Entries
                 .Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning)
-                .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {e.Detail}")
+                .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
                 .OrderBy(s => s, StringComparer.Ordinal);
             foreach (var line in notable) sb.Append(line).Append('\n');
             sb.Append('\n');
@@ -512,6 +520,24 @@ namespace AvatarBridge.Regression
             if (float.IsInfinity(f)) return f > 0 ? "+Inf" : "-Inf";
             if (Mathf.Abs(f) < 1e-5f) return "0";
             return f.ToString("0.####", CultureInfo.InvariantCulture);
+        }
+
+        // One line, no runaway prose. Newlines collapse because the digest is diffed line by
+        // line and a multi-line Detail would smear one entry across several of them.
+        static string Brief(string detail)
+        {
+            if (string.IsNullOrEmpty(detail)) return "";
+            var s = new StringBuilder(detail.Length);
+            bool space = false;
+            foreach (char c in detail)
+            {
+                if (char.IsWhiteSpace(c)) { space = true; continue; }
+                if (space && s.Length > 0) s.Append(' ');
+                space = false;
+                s.Append(c);
+            }
+            var flat = s.ToString();
+            return flat.Length <= 70 ? flat : flat.Substring(0, 70) + "…";
         }
 
         static string V2(Vector2 v) => $"({F(v.x)},{F(v.y)})";
