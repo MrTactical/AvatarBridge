@@ -520,6 +520,7 @@ namespace AvatarBridge
                 // Edges that fire at defaults, plus which of them re-evaluate the same frame.
                 var edges = new Dictionary<AnimatorState, List<AnimatorState>>();
                 var instantEdge = new HashSet<(AnimatorState, AnimatorState)>();
+                var anyStateTargets = new List<AnimatorState>();
                 string selfLoop = null;
 
                 Walk(layer.stateMachine, machine =>
@@ -529,6 +530,10 @@ namespace AvatarBridge
                     foreach (var t in machine.anyStateTransitions)
                     {
                         if (t == null || !FiresAtDefaults(t, out bool anyInstant)) continue;
+                        if (t.destinationState != null)
+                        {
+                            anyStateTargets.Add(t.destinationState);
+                        }
                         if (anyInstant && t.canTransitionToSelf && t.destinationState != null && selfLoop == null)
                         {
                             selfLoop = t.destinationState.name;
@@ -554,6 +559,42 @@ namespace AvatarBridge
                         }
                     }
                 });
+
+                // A cycle only matters if the layer can REACH it at these values. VRCFury parks
+                // its generated layers in a "Remote Trap" state whose only exit tests IsLocal —
+                // false on a remote copy, so the layer never leaves and the busy little cycle of
+                // driver states behind it never runs. Fury is defending against this exact bug,
+                // and without a reachability check the defence reads as the bug: the trap was
+                // three of the first ten hits, all of them wrong.
+                var reachable = new HashSet<AnimatorState>();
+                var queue = new Queue<AnimatorState>();
+                void Reach(AnimatorState s)
+                {
+                    if (s != null && reachable.Add(s))
+                    {
+                        queue.Enqueue(s);
+                    }
+                }
+                Reach(layer.stateMachine.defaultState);
+                foreach (var s in anyStateTargets)
+                {
+                    Reach(s);   // AnyState ignores where the layer currently is
+                }
+                while (queue.Count > 0)
+                {
+                    var at = queue.Dequeue();
+                    if (edges.TryGetValue(at, out var outs))
+                    {
+                        foreach (var to in outs) Reach(to);
+                    }
+                }
+                foreach (var key in edges.Keys.ToList())
+                {
+                    if (!reachable.Contains(key))
+                    {
+                        edges.Remove(key);
+                    }
+                }
 
                 string found = selfLoop;
                 if (found == null && edges.Count > 0)
