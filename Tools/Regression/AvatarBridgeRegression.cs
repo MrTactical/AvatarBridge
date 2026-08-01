@@ -65,6 +65,20 @@ namespace AvatarBridge.Regression
         {
             "/AvatarBridgeOutput/", "/CVR.CCK/", "/MagicaCloth2/", "/UnityTechnologies/",
             "/Samples/", "/Scenes/SampleScene", "/MISC/",
+
+            // Avatars VRCFury cannot bake. Their conversions start from a half-built avatar, so
+            // their digests describe Fury's failure rather than ours and every diff on them is
+            // noise. None of the three causes is fixable from this side: four carry a GoGo Loco
+            // whose menu names a parameter its own params file does not declare, two are missing
+            // a Wholesome/SPS package the avatar expects, and Branwen has a material whose shader
+            // will not load. Put them back the moment the avatars themselves are repaired —
+            // that is the only reason this list is spelt out rather than filtered by symptom.
+            "/CowRobot/",              // CowBotNSFW + CowBotSFW  — GoGo Loco menu/params mismatch
+            "/0.Kimmi/",               // Kimmi                   — same
+            "/hypsi/",                 // hypsi                   — same
+            "/!Arlo/",                 // Arlo                    — missing Wholesome/SPS package
+            "/Satin Snake",            // Satin Snake             — same
+            "/!BRANWEN/",              // Branwen                 — material shader will not load
         };
 
         // The quick set: one avatar per failure mode we have actually shipped a bug in.
@@ -590,6 +604,22 @@ namespace AvatarBridge.Regression
 
         static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
+            // EVERY Animator in the hierarchy, not just the root's — and its controller reported
+            // as null when it is null. The digest used to read only the root and silently skip a
+            // null, which is exactly how five avatars shipped with a broken or absent Animator
+            // controller and produced no diff at all: a dangling asset reference deserialises to
+            // null, and skipping nulls made "broken" and "fine" render identically. A test that
+            // cannot see a failure is not testing for it.
+            sb.Append("[animators]\n");
+            foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StringComparer.Ordinal))
+            {
+                var rac = a.runtimeAnimatorController;
+                sb.Append("  ").Append(HierarchyPath(target, a)).Append(" -> ")
+                  .Append(rac == null ? "NULL (no controller — broken or unassigned)" : rac.name)
+                  .Append('\n');
+            }
+            sb.Append('\n');
+
             // Two things to capture, and the graft lives in the second: the merged controller
             // itself, and the override pairs CVR uses to replace its stock locomotion clips.
             var animator = target.GetComponent<Animator>();
@@ -810,6 +840,16 @@ namespace AvatarBridge.Regression
             }
             var flat = s.ToString();
             return flat.Length <= 70 ? flat : flat.Substring(0, 70) + "…";
+        }
+
+        /// <summary>Hierarchy path of a component relative to the avatar root, "&lt;root&gt;" for the root itself.</summary>
+        static string HierarchyPath(GameObject root, Component c)
+        {
+            if (c == null || c.transform == root.transform) return "<root>";
+            var parts = new List<string>();
+            for (var t = c.transform; t != null && t != root.transform; t = t.parent) parts.Add(t.name);
+            parts.Reverse();
+            return string.Join("/", parts);
         }
 
         static string V2(Vector2 v) => $"({F(v.x)},{F(v.y)})";

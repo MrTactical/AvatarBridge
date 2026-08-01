@@ -448,7 +448,23 @@ namespace AvatarBridge
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
-            if (animator != null)
+            if (animator == null)
+            {
+                // Was a SILENT skip until 3.5.11, and five avatars in the regression corpus paid
+                // for it: Frenni, both Sallys, Stylized Tasque Manager and Tachy shipped prefabs
+                // whose Animator still held the controller inherited from the clone source — a
+                // VRCFury temp asset Fury deletes on its next build, so the Inspector reads
+                // "Missing (Runtime Animator Controller)" — and not one word of it reached the
+                // report. An avatar losing its animator is not something to find out by eye.
+                ctx.Report.Error(Category, "No Animator found to assign the controller to",
+                    "The converted avatar has no Animator component on its root, so the merged " +
+                    "controller could not be linked to one. ChilloutVR still loads the avatar — it " +
+                    "reads CVRAvatar's own controller fields, which are set — but nothing will " +
+                    "animate in the editor, and any Animator left on the object keeps whatever it " +
+                    "inherited, which is usually a build-time asset that no longer exists. Add an " +
+                    "Animator to the avatar root and convert again.");
+            }
+            else
             {
                 // The override, not the base. ChilloutVR does this itself on load — AssetFilter
                 // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
