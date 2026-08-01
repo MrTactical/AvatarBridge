@@ -6,3 +6,8 @@ desktop.ini
 
 *.unitypackage
 
+# Regression digests. Deliberately NOT committed: they describe the internals of paid
+# avatars (layer, parameter and clip names) and this repo is public. They are local test
+# data — losing them costs one re-run and an "accept current as baseline".
+Regression/
+
