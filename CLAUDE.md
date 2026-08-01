@@ -68,15 +68,17 @@ removing a download is safe, and why the "never delete an old package" rule belo
 - **Never reuse a shipped version number** (`Editor/BridgeDefines.cs`); bump instead.
   `Tools/build-package.sh` refuses to overwrite an existing `.unitypackage`, and old packages are
   never deleted.
-- **Two build modes, and the filename is the marker.**
-  `Tools/build-package.sh` → `AvatarBridge-<v>.unitypackage` (**public**: `Tools/`, `Regression/`,
-  `docs` and this file pruned — what ships).
+- **Two build modes, and BOTH are labelled** — never infer contents from a missing suffix.
+  `Tools/build-package.sh` → `AvatarBridge-<v>-public.unitypackage` (**public**: `Tools/`,
+  `Regression/`, `docs` and this file pruned — what ships).
   `Tools/build-package.sh --dev` → `AvatarBridge-<v>-dev.unitypackage` (**dev**: the harness,
   scene cleanup and test-scene builder remapped into `Editor/DevTools/`, because Unity only
   compiles a script as an editor script when `Editor` is in its path). **Never release a `-dev`
-  package.** Only the dev side is suffixed: the never-reuse-a-version guard works by checking
-  whether the public filename exists, so renaming public packages would blind it — and every
-  package built before 2026-08-01 predates `Tools/` and is already clean.
+  package.** The version guard checks all three possible names for a version, so a suffixed build
+  can never reuse a number already shipped unsuffixed; a `-dev` build may be rebuilt over itself,
+  since it never ships. The ~300 packages built before 2026-08-01 have no suffix, are all public
+  (`Tools/` did not exist yet), and keep their names — those are the names GitHub released, and
+  re-uploading a renamed asset would misstate the release history.
 - `Tools/Regression/AvatarBridgeRegression.cs` is the regression harness; it runs from the test
   project's `Assets/Editor/` and its digests live in the gitignored `Regression/`. Dev-package
   metas are synthesized at build time from an md5 of the destination path, so they are stable

@@ -7,8 +7,13 @@
 # session. It is build tooling; it belongs with the code it builds.
 #
 # Usage:
-#   build-package.sh            PUBLIC build  -> AvatarBridge-<version>.unitypackage
+#   build-package.sh            PUBLIC build  -> AvatarBridge-<version>-public.unitypackage
 #   build-package.sh --dev      DEV build     -> AvatarBridge-<version>-dev.unitypackage
+#
+# Both sides are labelled, so a package's contents are never inferred from the ABSENCE of a
+# suffix. Packages built before 2026-08-01 have no suffix and are all public — Tools/ did not
+# exist yet, so nothing dev could have been in them. They keep their names because those names
+# are what GitHub released; re-uploading a renamed asset would misstate the release history.
 #
 # A public package is what ships: Tools/ and Regression/ are pruned, so it carries no regression
 # harness, no scene cleanup, no test-scene builder and no menu items a user should never see.
@@ -35,13 +40,27 @@ if [ -z "$VERSION" ]; then echo "could not read Version from BridgeDefines.cs" >
 if [ "$MODE" = "dev" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-dev.unitypackage"
 else
-  OUT="$REPO/AvatarBridge-$VERSION.unitypackage"
+  OUT="$REPO/AvatarBridge-$VERSION-public.unitypackage"
 fi
 
-if [ -e "$OUT" ]; then
-  echo "REFUSING: $OUT already exists — bump the version, never reuse one that shipped." >&2
-  exit 1
-fi
+# The guard checks EVERY name this version could occupy, not just the one about to be written.
+# Suffixes were added on 2026-08-01; before that a public package had no suffix at all, and ~300
+# of those exist. Checking only "$OUT" would have let a suffixed build silently reuse a version
+# already shipped unsuffixed, which is the one rule this project has never broken.
+for taken in "$REPO/AvatarBridge-$VERSION.unitypackage" \
+             "$REPO/AvatarBridge-$VERSION-public.unitypackage" \
+             "$REPO/AvatarBridge-$VERSION-dev.unitypackage"; do
+  # A dev build may be rebuilt over itself: it never ships, so nothing depends on it being
+  # immutable, and forbidding it would mean burning a version number per test build.
+  if [ "$taken" = "$REPO/AvatarBridge-$VERSION-dev.unitypackage" ] && [ "$MODE" = "dev" ]; then
+    continue
+  fi
+  if [ -e "$taken" ]; then
+    echo "REFUSING: $taken already exists — bump the version, never reuse one that shipped." >&2
+    exit 1
+  fi
+done
+rm -f "$OUT"
 
 guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
 
