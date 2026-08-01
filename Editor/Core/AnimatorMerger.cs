@@ -564,33 +564,46 @@ namespace AvatarBridge
                     // and the report says so.
                     if (animator.runtimeAnimatorController != overrides)
                     {
-                        // Second attempt, with the prefab connection out of the way.
+                        // The Inspector's path, not the API's. Five attempts went through the
+                        // C# setter — plain, recorded as a prefab override, after an unpack,
+                        // cleared-then-set, and after a forced synchronous import — and on two
+                        // avatars every one of them silently stored null while the very same
+                        // asset dragged into the very same slot BY HAND worked at once. The
+                        // Inspector does not call the setter: dragging writes the serialized
+                        // m_Controller property through a SerializedObject. The maintainer
+                        // proved that path works on these exact avatars; this does the same
+                        // thing programmatically.
                         //
-                        // Recording the modification is not enough on every avatar: Sally_PC and
-                        // Sally_Quest are instances whose Animator override already points at a
-                        // DELETED controller, and on those the assignment refused to hold even
-                        // immediately after being made. Sally_PC_SPS — same avatar, same rig,
-                        // source value alive — took it first time, which is what says the
-                        // connection is the problem rather than the value.
-                        //
-                        // Unpacking costs nothing here and arguably should always have happened:
-                        // the converted avatar is saved as its OWN prefab a few passes later, so
-                        // a live link back to the VRChat source is not something anyone wants —
-                        // it means edits to the source avatar reach into finished conversions.
-                        // Done only on the failing path so the other forty-eight avatars in the
-                        // corpus keep converting exactly as they did.
-                        var instanceRoot = PrefabUtility.IsPartOfPrefabInstance(animator)
-                            ? PrefabUtility.GetOutermostPrefabInstanceRoot(animator.gameObject)
-                            : null;
-                        if (instanceRoot != null)
+                        // It is also consistent with every measurement: the serialized field
+                        // held the source's dead GUID for weeks and holds our null happily —
+                        // serialization never refused anything. Whatever rejects the controller
+                        // lives in the native setter, so the repair simply does not go through
+                        // it. The prefab is saved from serialized data, and the native side
+                        // binds from it on the next load, exactly as it does after a manual
+                        // drag.
+                        var serialized = new SerializedObject(animator);
+                        serialized.FindProperty("m_Controller").objectReferenceValue = overrides;
+                        serialized.ApplyModifiedPropertiesWithoutUndo();
+                        if (PrefabUtility.IsPartOfPrefabInstance(animator))
                         {
-                            PrefabUtility.UnpackPrefabInstance(instanceRoot,
-                                PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-                            animator.runtimeAnimatorController = overrides;
+                            PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
                         }
+                        ctx.Report.Approximated(Category,
+                            "Controller linked through the serialized property",
+                            "Unity's Animator API refused this assignment (it stores null, " +
+                            "silently, for reasons it does not report), so the reference was " +
+                            "written the way the Inspector writes it instead. The saved prefab " +
+                            "carries the correct controller; the editor may not preview this " +
+                            "avatar until the scene is reloaded.");
                     }
 
-                    if (animator.runtimeAnimatorController != overrides)
+                    // Judged on the SERIALIZED value, not the getter. The getter answers from
+                    // the native binding, which can lag a serialized write within the same
+                    // editor frame — and the serialized value is the one that reaches the
+                    // prefab and the one ChilloutVR loads.
+                    var verify = new SerializedObject(animator);
+                    var heldReference = verify.FindProperty("m_Controller").objectReferenceValue;
+                    if (heldReference != overrides)
                     {
                         // What the read-back actually saw. Three mechanism theories have now been
                         // wrong about this — the prefab-override revert, then the prefab
@@ -598,9 +611,10 @@ namespace AvatarBridge
                         // disproved only after a build and a run. The check knows the answer at
                         // the moment it fails and was throwing it away; the next failure carries
                         // it into the report instead.
-                        var held = animator.runtimeAnimatorController;
+                        var getterHeld = animator.runtimeAnimatorController;
                         string evidence =
-                            $"[held={(held == null ? "null" : held.name + " (" + held.GetType().Name + ")")}" +
+                            $"[serialized={(heldReference == null ? "null" : heldReference.name)}" +
+                            $"; getter={(getterHeld == null ? "null" : getterHeld.name + " (" + getterHeld.GetType().Name + ")")}" +
                             $"; wanted={(overrides == null ? "null" : overrides.name)}" +
                             $"; wantedPath=\"{AssetDatabase.GetAssetPath(overrides)}\"" +
                             $"; wantedPersisted={EditorUtility.IsPersistent(overrides)}" +
@@ -609,7 +623,10 @@ namespace AvatarBridge
                             $"; animatorEnabled={animator.enabled}" +
                             $"; objectActive={animator.gameObject.activeInHierarchy}] ";
 
-                        animator.runtimeAnimatorController = null;
+                        // Cleared through the same serialized path the repair used — the API
+                        // setter has proven it cannot be trusted on this component.
+                        verify.FindProperty("m_Controller").objectReferenceValue = null;
+                        verify.ApplyModifiedPropertiesWithoutUndo();
                         ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
                             evidence +
                             "The merged controller was assigned and did not stick — the Animator kept " +

@@ -653,13 +653,26 @@ namespace AvatarBridge.Regression
             // controller and produced no diff at all: a dangling asset reference deserialises to
             // null, and skipping nulls made "broken" and "fine" render identically. A test that
             // cannot see a failure is not testing for it.
+            // Judged on the SERIALIZED m_Controller, not the C# getter. The Sally investigation
+            // established that the two can disagree: the getter answers from the native binding,
+            // which both lags serialized writes and lies outright on a component whose rebind
+            // failed — while the serialized value is what the prefab saves and what ChilloutVR
+            // loads. When they disagree, both are printed, because a disagreement is itself a
+            // finding worth diffing.
             sb.Append("[animators]\n");
             foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StringComparer.Ordinal))
             {
-                var rac = a.runtimeAnimatorController;
+                var serialized = new SerializedObject(a)
+                    .FindProperty("m_Controller").objectReferenceValue as RuntimeAnimatorController;
+                var getter = a.runtimeAnimatorController;
                 sb.Append("  ").Append(HierarchyPath(target, a)).Append(" -> ")
-                  .Append(rac == null ? "NULL (no controller — broken or unassigned)" : rac.name)
-                  .Append('\n');
+                  .Append(serialized == null ? "NULL (no controller — broken or unassigned)" : serialized.name);
+                if (getter != serialized)
+                {
+                    sb.Append("  [getter disagrees: ")
+                      .Append(getter == null ? "null" : getter.name).Append(']');
+                }
+                sb.Append('\n');
             }
             sb.Append('\n');
 
