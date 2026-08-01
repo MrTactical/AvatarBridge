@@ -588,13 +588,22 @@ namespace AvatarBridge
                         {
                             PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
                         }
+
+                        // And make the native side notice. The serialized write alone leaves the
+                        // component in a half-state for the rest of the session: the Inspector
+                        // slot shows the controller, the prefab saves it, and the Animator's
+                        // native binding still holds nothing — Clip Count: 0, no preview, until
+                        // a scene reload rebinds from serialized data. Rebind() forces that
+                        // rebuild now. Safe here for the same reason the assignment was: this
+                        // path only runs on a controller the crash guard already cleared.
+                        animator.Rebind();
                         ctx.Report.Approximated(Category,
                             "Controller linked through the serialized property",
                             "Unity's Animator API refused this assignment (it stores null, " +
                             "silently, for reasons it does not report), so the reference was " +
-                            "written the way the Inspector writes it instead. The saved prefab " +
-                            "carries the correct controller; the editor may not preview this " +
-                            "avatar until the scene is reloaded.");
+                            "written the way the Inspector writes it instead, and the Animator " +
+                            "rebound to pick it up. The saved prefab carries the correct " +
+                            "controller either way.");
                     }
 
                     // Judged on the SERIALIZED value, not the getter. The getter answers from
