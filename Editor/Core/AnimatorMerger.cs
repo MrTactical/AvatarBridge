@@ -2365,16 +2365,22 @@ namespace AvatarBridge
                     if (transition == null) continue;
                     var conditions = transition.conditions;
                     bool changed = false;
+                    // Rebuilt rather than edited in place, because a tautology has to be able to
+                    // leave: "> -0.001" on a bool constrains nothing, and keeping it as If states
+                    // the opposite of what it said.
+                    var kept = new List<AnimatorCondition>(conditions.Length);
                     for (int i = 0; i < conditions.Length; i++)
                     {
                         if (!types.TryGetValue(conditions[i].parameter, out var type))
                         {
+                            kept.Add(conditions[i]);
                             continue;
                         }
                         var mode = conditions[i].mode;
                         float threshold = conditions[i].threshold;
                         var newMode = mode;
                         float newThreshold = threshold;
+                        bool drop = false, impossible = false;
 
                         switch (type)
                         {
@@ -2386,9 +2392,26 @@ namespace AvatarBridge
                                     case AnimatorConditionMode.If:
                                     case AnimatorConditionMode.IfNot:
                                         break;
+                                    // Greater/Less are read AGAINST THE THRESHOLD, not assumed to
+                                    // mean ">0.5" and "<0.5". A bool only ever reads 0 or 1, so a
+                                    // comparison outside that range is a tautology, and turning
+                                    // one into If/IfNot asserts something the author never wrote.
+                                    //
+                                    // VRCFury writes its remote branches as the band
+                                    // "IsLocal Greater -0.001 && IsLocal Less 0.001" — float for
+                                    // "IsLocal is 0", i.e. this is someone else's copy. Read
+                                    // blindly, the first half became If and the second IfNot, so
+                                    // every NonLocal state Fury generated became unreachable on
+                                    // every copy: the local branch then ran for remote viewers,
+                                    // which is precisely the effect authors use these states to
+                                    // avoid. Fifteen transitions on one avatar.
                                     case AnimatorConditionMode.Greater:
+                                        if (threshold < 0f) { drop = true; break; }          // > -0.001: always
+                                        if (threshold >= 1f) { impossible = true; break; }   // > 1: never
                                         newMode = AnimatorConditionMode.If; newThreshold = 0f; break;
                                     case AnimatorConditionMode.Less:
+                                        if (threshold > 1f) { drop = true; break; }          // < 2: always
+                                        if (threshold <= 0f) { impossible = true; break; }   // < 0: never
                                         newMode = AnimatorConditionMode.IfNot; newThreshold = 0f; break;
                                     case AnimatorConditionMode.Equals:
                                         newMode = threshold != 0f ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
@@ -2429,18 +2452,51 @@ namespace AvatarBridge
                                 break;
                         }
 
-                        if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
+                        if (drop)
                         {
-                            conditions[i].mode = newMode;
-                            conditions[i].threshold = newThreshold;
+                            // Constrains nothing: the transition keeps its other conditions and
+                            // fires on those alone, which is what the float band meant.
                             changed = true;
                             touched.Add(conditions[i].parameter);
                             fixedCount++;
+                            continue;
                         }
+
+                        var rebuilt = conditions[i];
+                        if (impossible)
+                        {
+                            // Genuinely unsatisfiable — "> 1" or "< 0" on a value that is only
+                            // ever 0 or 1. Kept as a contradictory pair, which is the honest
+                            // reading: this transition can never fire. Distinct from the band
+                            // above, which CAN.
+                            kept.Add(new AnimatorCondition
+                            {
+                                parameter = rebuilt.parameter,
+                                mode = AnimatorConditionMode.If,
+                                threshold = 0f
+                            });
+                            rebuilt.mode = AnimatorConditionMode.IfNot;
+                            rebuilt.threshold = 0f;
+                            kept.Add(rebuilt);
+                            changed = true;
+                            touched.Add(rebuilt.parameter);
+                            fixedCount++;
+                            continue;
+                        }
+
+                        if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
+                        {
+                            rebuilt.mode = newMode;
+                            rebuilt.threshold = newThreshold;
+                            changed = true;
+                            touched.Add(rebuilt.parameter);
+                            fixedCount++;
+                        }
+                        kept.Add(rebuilt);
                     }
                     if (changed)
                     {
-                        transition.conditions = conditions;
+                        transition.conditions = kept.ToArray();
                     }
                 }
             }
@@ -2465,7 +2521,12 @@ namespace AvatarBridge
                     $"A merge/inject left conditions using a comparison the parameter type can't express " +
                     $"(e.g. a bool-style If on a Float): {string.Join(", ", touched.OrderBy(n => n))}. " +
                     "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
-                    "what leaves face-tracking's RemoteModeActive local/remote gate dead.");
+                    "what leaves face-tracking's RemoteModeActive local/remote gate dead. Comparisons are " +
+                    "read against their THRESHOLD: on a parameter that only ever reads 0 or 1, \"greater " +
+                    "than -0.001\" constrains nothing and is removed rather than turned into \"is true\". " +
+                    "VRCFury writes its remote branches as exactly that band, and reading it the other way " +
+                    "made every one of them unreachable — so the local branch played for other players, " +
+                    "which is what those branches exist to prevent.");
             }
         }
 

@@ -1316,6 +1316,14 @@ Two fixes, either works:
 The CCK Animator Tester's **Remote view** card reproduces the whole thing locally by snapping
 parameters to their defaults.
 
+**One cause of this was the conversion's own, and is fixed in 3.5.26.** VRCFury writes the
+"this is someone else's copy" test as a float band — `IsLocal > -0.001 && IsLocal < 0.001` — and
+retyping that parameter to a bool used to read each half separately, producing "is true AND is
+false". Every remote branch Fury generated became unreachable, so the *local* branch played for
+everyone else: exactly what those branches exist to prevent. If you converted on an earlier
+version and other people report your avatar behaving oddly while it looks right to you,
+**reconvert**.
+
 ### A toggle switches on but never back off
 
 **Reconvert on a current release.**
