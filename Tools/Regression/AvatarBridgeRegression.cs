@@ -44,6 +44,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge.Regression
@@ -322,6 +323,7 @@ namespace AvatarBridge.Regression
             // want, and what makes this safe to run in batchmode. The conversion mutates the
             // scene heavily and none of it is ever saved back.
             var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            var reset = ResetScene(scene);
 
             VRCAvatarDescriptor descriptor = null;
             foreach (var root in scene.GetRootGameObjects())
@@ -333,8 +335,20 @@ namespace AvatarBridge.Regression
             }
             if (descriptor == null) return null;
 
+            // Re-activate the source and everything above it. A conversion deactivates the avatar
+            // it cloned from, so any scene saved after a conversion holds its source switched OFF
+            // — and converting a deactivated avatar is not what a user does. Found by noticing the
+            // original greyed out in the hierarchy next to a leftover conversion.
+            for (var t = descriptor.transform; t != null; t = t.parent)
+            {
+                if (t.gameObject.activeSelf) continue;
+                t.gameObject.SetActive(true);
+                reset.reactivated++;
+            }
+
             var settings = CorpusSettings();
             var report = BridgeConverter.Convert(descriptor, settings);
+            reset.avatar = descriptor.gameObject.name;
             var target = Selection.activeGameObject;   // BridgeConverter sets this to ctx.Target
 
             var sb = new StringBuilder();
@@ -345,10 +359,65 @@ namespace AvatarBridge.Regression
             // changing, and every line in here has to earn its place in a diff.
             sb.Append('\n');
 
+            AppendReset(sb, reset);
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
             return sb.ToString();
+        }
+
+        class SceneReset
+        {
+            public int leftovers;      // previous conversions deleted out of the scene
+            public int reactivated;    // objects switched back on above and including the source
+            public string avatar = "";
+        }
+
+        /// <summary>
+        /// Puts the scene back to how it was BEFORE anyone ever converted in it.
+        ///
+        /// Converting leaves two marks on a scene, and both persist if it is then saved: the
+        /// converted avatar is added, and the SOURCE is switched off (BridgeConverter deactivates
+        /// whatever it cloned from). A corpus run over scenes in that state is not measuring what
+        /// a user does — it converts a deactivated avatar alongside a stale copy of its own
+        /// previous output, whose asset references have since been regenerated and now dangle.
+        /// 29 of the 48 controller references across these scenes were already broken that way.
+        ///
+        /// Nothing is saved back, so this is a per-run, in-memory reset: the scene files on disk
+        /// are untouched and every run starts from the same place regardless of what state they
+        /// were left in. That is the property the corpus actually needs — it makes the input
+        /// deterministic without asking anyone to hand-clean 34 scenes.
+        ///
+        /// A leftover is identified by carrying a CVRAvatar and NO VRChat descriptor, which is
+        /// exactly what conversion produces: it deletes the VRC components from its output. An
+        /// avatar carrying both is someone's genuine work-in-progress and is left alone.
+        /// </summary>
+        static SceneReset ResetScene(Scene scene)
+        {
+            var result = new SceneReset();
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                foreach (var cvr in root.GetComponentsInChildren<CVRAvatar>(true))
+                {
+                    // Null-checked because destroying a parent takes its children with it, and
+                    // this array was captured before any of that happened.
+                    if (cvr == null || cvr.GetComponent<VRCAvatarDescriptor>() != null) continue;
+                    UnityEngine.Object.DestroyImmediate(cvr.gameObject);
+                    result.leftovers++;
+                }
+            }
+            return result;
+        }
+
+        static void AppendReset(StringBuilder sb, SceneReset reset)
+        {
+            // In the digest because it describes the INPUT. If a scene is later cleaned up by
+            // hand these numbers change, the digest diffs, and the cause is named on the line —
+            // rather than surfacing as unexplained movement somewhere in the animator sections.
+            sb.Append("[scene reset]\n");
+            sb.Append("  leftover conversions removed: ").Append(reset.leftovers).Append('\n');
+            sb.Append("  objects re-activated: ").Append(reset.reactivated).Append('\n');
+            sb.Append('\n');
         }
 
         /// <summary>
