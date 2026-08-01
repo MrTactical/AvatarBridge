@@ -91,26 +91,42 @@ namespace AvatarBridge.Regression
         // the revert was masking something else as well.
         //
         // The full run still covers every scene; this is only the tight loop while working.
-        // NARROWED to the three Sallys while the "controller will not stay assigned" bug is being
-        // chased — about two minutes a run instead of six, and every one of the three is directly
-        // relevant. Two fail, one succeeds, and they are otherwise the same avatar; that contrast
-        // is the whole investigation.
+        // The quick set: every avatar that has taught us something, so a fix can be checked in
+        // six minutes instead of forty. Each line says what it is watching, because a canary
+        // nobody can explain gets deleted by the next person who finds it slow.
         //
-        // PUT THE OTHERS BACK when it is fixed. The full list is one git revert away, and a quick
-        // set that only covers the bug currently in hand stops being a regression check at all —
-        // the wider set is what noticed that six other avatars kept working while this one was
-        // being poked at.
+        // It was briefly narrowed to the three Sallys while that bug was chased, and narrowing it
+        // was a mistake worth not repeating: a quick set covering only the bug currently in hand
+        // is not a regression check. The wider set is what showed six other avatars still
+        // converting correctly through four failed attempts at the Sally one — which is the only
+        // reason those attempts could be made confidently.
         //
-        //   "Assets/lemur/lumar_ROUND_setup_release.unity"                       3.5.10 Action arming
-        //   "Assets/Rytu_assets/Rytu_setup.unity"                                3.5.10 Action arming
-        //   "Assets/BHFBunny/BHFBUNNY.unity"                                     3.5.9  crash guard
-        //   "Assets/Bimbo Base.unity"                                            3.5.9  crash guard
-        //   "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity"    3.5.6-8 self-restart
+        // The CONTROL matters as much as the targets. Sally_PC_SPS is the same avatar as the two
+        // broken Sallys with a healthy source value, and it is here precisely because it should
+        // NOT change.
         static readonly string[] QuickSet =
         {
-            "Assets/SallyShopkeeper/Sally_PC.unity",       // fails
-            "Assets/SallyShopkeeper/Sally_Quest.unity",    // fails
-            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",   // succeeds — the control
+            // STILL FAILING as of 3.5.16 — the Animator link is null while every CVR-side field
+            // is correct, so these convert and work in game but do not preview in the editor.
+            // Four fixes have missed; the next step is a live experiment, not another guess.
+            "Assets/SallyShopkeeper/Sally_PC.unity",
+            "Assets/SallyShopkeeper/Sally_Quest.unity",
+            // The control: same avatar, healthy source value, must stay correct.
+            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",
+
+            // 3.5.10 — Action transplant armed at load. Oscillated between pose and idle...
+            "Assets/lemur/lumar_ROUND_setup_release.unity",
+            // ...and walked up its stages into a pose nobody chose.
+            "Assets/Rytu_assets/Rytu_setup.unity",
+
+            // 3.5.9 — crash guard read a GUID out of a "Missing Prefab" object NAME and refused
+            // to assign a perfectly good controller. Both carry such a placeholder.
+            "Assets/BHFBunny/BHFBUNNY.unity",
+            "Assets/Bimbo Base.unity",              // avatar inside is "Sultry Snake"
+
+            // 3.5.6 -> 3.5.8 — the AnyState self-restart arc, four attempts. Toggle layers here
+            // are the most sensitive thing in the corpus to a change in transition handling.
+            "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity",
         };
 
         [MenuItem("Tools/AvatarBridge Dev/Regression — run quick set")]
