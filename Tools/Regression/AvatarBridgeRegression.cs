@@ -16,6 +16,21 @@
 //
 // Canonical copy lives in D:\AvatarBridge\Tools\Regression\ (version-controlled with the tool,
 // pruned from the package build). Deployed into the test project's Assets/Editor/ to run.
+//
+// RUN IT HEADLESS for anything past the quick set:
+//   Unity.exe -batchmode -quit -projectPath "<project>" \
+//     -executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch
+//
+// Not for speed — for determinism. Two of the modals that interrupt an interactive run come
+// from VRCFury and the VRCSDK, and one of them, "VRCFury has detected a (likely) broken mix of
+// Write Defaults", CHANGES THE AVATAR depending on which button is pressed. WD on/off per layer
+// is exactly what AnimatorMerger reasons about, so answering Auto-Fix one run and Skip the next
+// moves the digest for reasons that have nothing to do with our code, and the baseline becomes
+// noise. Batchmode answers every dialog the same way (the first button, i.e. Auto-Fix) without
+// a human in the loop, which is the only way a corpus stays comparable.
+//
+// If you do run interactively: always Auto-Fix, and never "Skip and stop asking" — that one
+// persists, silently, and then the editor and headless runs disagree forever after.
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
@@ -118,6 +133,22 @@ namespace AvatarBridge.Regression
             // machine, or the baseline is worthless the moment anyone else runs it.
             var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
             System.Threading.Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
+
+            // A big interactive run is a trap, and it is not our dialogs that spring it:
+            // VRCFury pops a modal on a failed bake and the VRCSDK pops another when its
+            // preprocess hook reports that failure, so a full corpus run stops dead on the first
+            // avatar with a broken Fury component and waits for a click. Batchmode makes
+            // EditorUtility.DisplayDialog return immediately instead of blocking, which is the
+            // only reason RunAllBatch exists.
+            if (!Application.isBatchMode && scenes.Count() > 4)
+            {
+                Debug.LogWarning(
+                    "[Regression] running " + scenes.Count() + " scenes interactively — VRCFury and " +
+                    "the VRCSDK will block on modal dialogs for any avatar that fails to bake. " +
+                    "Close Unity and run headless instead:\n" +
+                    "  Unity.exe -batchmode -quit -projectPath \"<project>\" " +
+                    "-executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch");
+            }
 
             Directory.CreateDirectory(CurrentDir);
             var changes = new List<string>();
