@@ -975,6 +975,13 @@ uploaded. All three are repaired during conversion and counted in the report:
   assigned. The broken references usually come from a VRCFury or Modular Avatar bake that errored
   partway: build a test copy of the source avatar and fix what errors there, then convert again.
 
+  A **missing prefab in the scene** does not count, and used to. Unity names the placeholder
+  `SFX (Missing Prefab with guid: …)`, that name lands in every animation path targeting the
+  object, and the check read the GUID out of the name as though it were a reference — so an
+  avatar with one broken prefab under an SPS socket lost its whole controller. Only real
+  references are counted now; a missing prefab is still worth fixing, but it no longer costs you
+  the Animator.
+
 If your avatar's controller has none of these, the Animator is wired up exactly as before.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there

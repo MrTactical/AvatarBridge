@@ -704,6 +704,36 @@ namespace AvatarBridge
         /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
         /// once — a text scan of one .controller.
         /// </summary>
+        /// <summary>
+        /// The GUIDs a serialized file genuinely REFERENCES, as opposed to ones that merely
+        /// appear somewhere in its text.
+        ///
+        /// Unity writes an external object reference as the whole triple
+        /// <c>{fileID: N, guid: G, type: N}</c>, and nothing else takes that shape, so matching
+        /// the triple is exact. Scanning for a bare "guid: &lt;32 hex&gt;" is not — and the
+        /// difference is not academic. Unity names a broken prefab instance
+        /// <c>SFX (Missing Prefab with guid: ea09b303…)</c>, that NAME then appears in every
+        /// animation curve path and avatar mask entry targeting the object, and a bare scan reads
+        /// it as a reference to a deleted asset.
+        ///
+        /// It cost two avatars their entire animator controller. BHFBunny and Sultry Snake each
+        /// carry one such placeholder under an SPS socket; the crash guard below read the name out
+        /// of a curve path, concluded the controller pointed at something deleted, and refused to
+        /// assign it — leaving a converted avatar with no controller at all. On Sultry Snake the
+        /// bare scan found 613 GUIDs where only 599 were references.
+        ///
+        /// Narrowing the match does not weaken the guard: a genuinely missing asset is still
+        /// written as the full triple, so it still matches.
+        /// </summary>
+        internal static IEnumerable<string> ReferencedGuids(string yaml)
+        {
+            foreach (Match match in Regex.Matches(
+                         yaml, @"\{fileID:\s*-?\d+,\s*guid:\s*([0-9a-f]{32}),\s*type:\s*-?\d+\}"))
+            {
+                yield return match.Groups[1].Value;
+            }
+        }
+
         internal static bool ControllerWouldCrashUnity(RuntimeAnimatorController controller)
         {
             try
@@ -725,9 +755,9 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    foreach (Match match in Regex.Matches(File.ReadAllText(absolute), "guid: ([0-9a-f]{32})"))
+                    foreach (string guid in ReferencedGuids(File.ReadAllText(absolute)))
                     {
-                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(match.Groups[1].Value)))
+                        if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(guid)))
                         {
                             return true;
                         }
