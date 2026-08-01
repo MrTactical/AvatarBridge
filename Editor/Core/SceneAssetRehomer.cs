@@ -103,7 +103,7 @@ namespace AvatarBridge
             }
             var copy = UnityEngine.Object.Instantiate(mesh);
             copy.name = mesh.name;
-            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mesh.name)}.asset"));
+            AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{SafeName(mesh.name)}.asset"));
             map[mesh] = copy;
             return copy;
         }
@@ -147,7 +147,7 @@ namespace AvatarBridge
             {
                 copy.shader = RehomeShader(copy.shader, dir, shaderMap);
             }
-            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(mat.name)}.mat"));
+            AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{SafeName(mat.name)}.mat"));
             matMap[mat] = copy;
             return copy;
         }
@@ -169,7 +169,7 @@ namespace AvatarBridge
                 map[shader] = shader;
                 return shader;
             }
-            string dst = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(shader.name)}.shader");
+            string dst = OutputAssetPaths.Claim($"{dir}/{SafeName(shader.name)}.shader");
             Shader copy = AssetDatabase.CopyAsset(src, dst)
                 ? AssetDatabase.LoadAssetAtPath<Shader>(dst)
                 : shader;

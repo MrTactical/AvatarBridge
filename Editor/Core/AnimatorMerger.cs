@@ -5357,7 +5357,7 @@ namespace AvatarBridge
             UnityEngine.Object copy = value;
             if (AssetDatabase.IsMainAsset(value))
             {
-                string target = AssetDatabase.GenerateUniqueAssetPath(
+                string target = OutputAssetPaths.Claim(
                     dir + "/" + System.IO.Path.GetFileName(source));
                 if (AssetDatabase.CopyAsset(source, target))
                 {
@@ -5374,7 +5374,7 @@ namespace AvatarBridge
                 string extension = value is Material ? ".mat"
                                  : value is AnimationClip ? ".anim"
                                  : ".asset";
-                string target = AssetDatabase.GenerateUniqueAssetPath(
+                string target = OutputAssetPaths.Claim(
                     dir + "/" + SanitizeFileName(value.name) + extension);
                 AssetDatabase.CreateAsset(clone, target);
                 copy = clone;

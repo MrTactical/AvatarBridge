@@ -1084,6 +1084,13 @@ project without those folders every missing clip resolves to None and plays as s
 error anywhere. "Works on the author's PC, frozen on someone else's" is that one's signature. Every
 referenced clip and mask is copied into the output's `RehomedAssets` now.
 
+*Before 3.5.13*, reconverting the same avatar **added another copy of every rescued asset**
+rather than replacing the last one — `Angry.anim`, `Angry 1.anim`, `Angry 2.anim`, on and on. The
+controller used the newest and the rest were orphans nobody referenced: one test avatar had
+reached 22 copies of a single clip and 554 `.anim` files in one output folder. Names are now
+reused between runs, so the folder stays the size of one conversion. **Delete the output folder
+once and convert again** to clear what earlier versions left behind.
+
 </details>
 
 ### The viewpoint or voice position is nowhere near the head

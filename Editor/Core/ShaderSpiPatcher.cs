@@ -611,7 +611,7 @@ namespace AvatarBridge
             copy.shader = patchedShader;
             Directory.CreateDirectory(dir);
             // CreateAsset renames the object after the file, so the path decides the final name.
-            string path = AssetDatabase.GenerateUniqueAssetPath(dir + "/" + original.name + "_SPI.mat");
+            string path = OutputAssetPaths.Claim(dir + "/" + original.name + "_SPI.mat");
             AssetDatabase.CreateAsset(copy, path);
             clones[original] = copy;
             return copy;

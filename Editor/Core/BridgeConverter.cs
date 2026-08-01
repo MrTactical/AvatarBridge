@@ -31,6 +31,11 @@ namespace AvatarBridge
             };
 
             AnimatorMerger.ResetMaskCache();
+            // Per conversion, not per session: names must be stable run-over-run so reconverting
+            // replaces the previous output instead of parking a numbered copy beside it, while
+            // still colliding within one run, where two source controllers really can each bring
+            // their own "Angry".
+            OutputAssetPaths.Reset();
 
             // Format numbers the same way for everybody, for the length of the conversion.
             //
