@@ -509,6 +509,25 @@ namespace AvatarBridge
                 }
                 else
                 {
+                    // Cleared first, then set. Not superstition — it is the one thing the
+                    // evidence actually supports.
+                    //
+                    // Sally_PC and Sally_Quest refused this assignment for four versions while
+                    // three theories about WHY were wrong in turn. The diagnostic build settled
+                    // the facts: the override controller is persisted and valid, its base
+                    // resolves, the Animator is enabled on an active object, and the component is
+                    // on neither a prefab asset nor a prefab instance — so both earlier "fixes"
+                    // were no-ops on this avatar. The assignment simply produced null.
+                    //
+                    // What those two have that the working avatars do not: no VRCFury. Everything
+                    // that converts correctly here is baked by Fury, which builds its own target;
+                    // without it the target is an Object.Instantiate clone, and the clone inherits
+                    // the source's Animator complete with its DEAD controller reference. Writing
+                    // null was already known to stick — the saved prefab came out {fileID: 0} —
+                    // while overwriting the dead reference in place did not, which is a component
+                    // whose native rebind failed and will not take a new controller until the
+                    // broken one is let go of.
+                    animator.runtimeAnimatorController = null;
                     animator.runtimeAnimatorController = overrides;
 
                     // Register the change as a prefab-instance override, or it does not survive.
