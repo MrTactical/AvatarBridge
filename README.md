@@ -1291,6 +1291,31 @@ parameter syncs, the layer sits at weight 1, the clip plays, and both the CCK De
 tester's own **Animator layers** readout confirm it. The report names the property and the renderer
 so you don't have to work back from the animator.
 
+### Other people see my avatar flickering, cycling colours or thrashing — I don't
+
+Look for **"layer(s) may thrash on OTHER players' screens right after the avatar loads"** in the
+report. It names the layer and the state it gets stuck re-entering.
+
+Remote copies of your avatar do not start with your parameter values. Everything sits at its
+**serialized default** until your values replicate — seconds after load, and longer for anything
+you never touch. A layer your own copy never moves, because your live value parks it, can at those
+defaults satisfy a loop of transitions and re-enter a state every frame. Anything it drives —
+colours, outlines, blendshapes, toggles — cycles or flickers for as long as that lasts.
+
+**You cannot see this and cannot reproduce it by looking**: your copy is correct the whole time,
+and your copy is what Unity previews. It presents as a rare bug that fixes itself after half a
+minute, reported by other people.
+
+Two fixes, either works:
+
+- **Change the parameter's default** to a value that parks the layer — usually the resting
+  position of whatever it drives. This is the better one: it also makes the avatar look right
+  during the seconds before your values arrive.
+- **Give the looping transition an exit time**, so it cannot fire twice in one frame.
+
+The CCK Animator Tester's **Remote view** card reproduces the whole thing locally by snapping
+parameters to their defaults.
+
 ### A toggle switches on but never back off
 
 **Reconvert on a current release.**
