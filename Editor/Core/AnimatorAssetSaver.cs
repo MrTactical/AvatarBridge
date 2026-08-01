@@ -80,11 +80,35 @@ namespace AvatarBridge
             {
                 AssetDatabase.CreateAsset(overrides, assetPath);
                 AssetDatabase.SaveAssets();
-                return overrides;
+                return Imported(assetPath, overrides);
             }
             EditorUtility.CopySerialized(overrides, existing);
             AssetDatabase.SaveAssets();
-            return existing;
+            return Imported(assetPath, existing);
+        }
+
+        /// <summary>
+        /// Forces the just-written asset through the importer and hands back what came out.
+        ///
+        /// Without this, SaveOverride returned the in-memory object of an asset Unity had not
+        /// imported yet, and assigning THAT to an Animator silently stored null — the component
+        /// ended up with no controller, no exception, nothing in any log. Sally_PC and Sally_Quest
+        /// hit it every run for five versions while three theories about prefab reversion and one
+        /// about a stale native rebind were all wrong; what finally named it was noticing that
+        /// dragging the very same asset into the very same slot BY HAND worked perfectly. The
+        /// asset was never the problem. Its readiness was.
+        ///
+        /// Whether an avatar hits this comes down to whether anything happened to flush the
+        /// importer first — which is why the VRCFury-baked avatars in the corpus were all fine and
+        /// the two without it were not, and why it looked avatar-specific rather than temporal.
+        ///
+        /// AnimatorMerger already does exactly this when rescuing assets into RehomedAssets; the
+        /// saver simply never did.
+        /// </summary>
+        static AnimatorOverrideController Imported(string assetPath, AnimatorOverrideController fallback)
+        {
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+            return AssetDatabase.LoadAssetAtPath<AnimatorOverrideController>(assetPath) ?? fallback;
         }
 
         /// <summary>Embeds every reachable in-memory sub-object into the asset.</summary>
