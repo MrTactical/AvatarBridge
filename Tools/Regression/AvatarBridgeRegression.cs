@@ -234,6 +234,12 @@ namespace AvatarBridge.Regression
             }
             Directory.CreateDirectory(CurrentDir);
 
+            // Which build produced this run, kept OUT of the compared digests (see BuildDigest).
+            // Not a .txt, so neither the comparison nor Accept picks it up.
+            File.WriteAllText(CurrentDir + "/_run.info",
+                $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
+                $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+
             var changes = new List<string>();
             var missing = new List<string>();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -411,9 +417,12 @@ namespace AvatarBridge.Regression
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
             sb.Append("scene: ").Append(scenePath).Append('\n');
-            sb.Append("bridge: ").Append(BridgeDefines.Version).Append('\n');
-            // Deliberately no timestamp and no Unity version: both change without the conversion
-            // changing, and every line in here has to earn its place in a diff.
+            // Deliberately no timestamp, no Unity version and NO AVATARBRIDGE VERSION: all three
+            // change without the conversion changing, and every line in here has to earn its
+            // place in a diff. The version was in here until 3.5.21 and was the worst of them —
+            // it differs on literally every avatar after any release, so the first diff after a
+            // bump reported all forty-nine as changed and buried whatever really moved. It is
+            // written once per run to Current/_run.info instead, which nothing compares.
             sb.Append('\n');
 
             AppendReset(sb, reset);
