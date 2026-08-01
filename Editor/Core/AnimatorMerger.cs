@@ -3306,11 +3306,50 @@ namespace AvatarBridge
             {
                 // Nothing safely strippable. Leave the avatar's own system in place and say so —
                 // adding the native blink on top would put two systems on one pair of eyes.
+                //
+                // But FILL THE SHAPE SLOTS anyway. They are inert while the tickbox is off, and
+                // leaving them empty made the recovery worse than the problem: a tester whose eyes
+                // never blinked had to work out for themselves which of nine blink-ish shapes on a
+                // 239-shape mesh the client wanted, when detection had already picked them. Now the
+                // fix is the one tick the report names, and the shapes are already in place.
+                AvatarFeatureDetect.DetectBlinkShapes(mesh, out string fbLeft, out string fbRight,
+                    out string fbCombined);
+                string prefilled = null;
+                if (fbLeft != null || fbRight != null || fbCombined != null)
+                {
+                    if (ctx.CvrAvatar.blinkBlendshape == null || ctx.CvrAvatar.blinkBlendshape.Length < 4)
+                    {
+                        ctx.CvrAvatar.blinkBlendshape = new string[4];
+                    }
+                    if (fbLeft != null && fbRight != null)
+                    {
+                        ctx.CvrAvatar.blinkBlendshape[0] = fbLeft;
+                        ctx.CvrAvatar.blinkBlendshape[1] = fbRight;
+                        prefilled = $"\"{fbLeft}\" / \"{fbRight}\"";
+                    }
+                    else
+                    {
+                        var single = fbCombined ?? fbLeft ?? fbRight;
+                        ctx.CvrAvatar.blinkBlendshape[0] = single;
+                        prefilled = $"\"{single}\"";
+                    }
+                    EditorUtility.SetDirty(ctx.CvrAvatar);
+                }
+
                 ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
                     "This avatar blinks from its own animator, but no layer could be safely identified " +
                     "as ONLY blinking, so nothing was removed and ChilloutVR's native blink stays off. " +
                     "If the eyes stick closed in game, this is where to look: the animator blink relies " +
-                    "on empty-state Write Defaults behaviour that does not survive conversion.");
+                    "on empty-state Write Defaults behaviour that does not survive conversion. " +
+                    (prefilled != null
+                        ? $"The blink shapes are already filled in on the CVRAvatar ({prefilled}), so the " +
+                          "fix is one tick: turn ON \"Use Blink Blendshapes\". Only do that if the eyes " +
+                          "DON'T blink in game — with both systems running, the client's blink overwrites " +
+                          "that shape every frame in LateUpdate and any expression using it stops closing " +
+                          "the eyes."
+                        : "No blink-ish blendshape could be found on the body mesh either, so the shape " +
+                          "slots are empty; naming one on the CVRAvatar and ticking \"Use Blink " +
+                          "Blendshapes\" is the manual fix."));
                 return;
             }
 

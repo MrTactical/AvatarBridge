@@ -1504,7 +1504,12 @@ the conversion finds the animator layer whose *only job is blinking* — every c
 the only shape it ever raises matches "blink", no objects, no materials — lets **that layer name
 the shape**, removes it, wires ChilloutVR's native Eye Blink, and zeroes the shape's live weight in
 case the old system left the eyes mid-blink. If no layer can be safely identified, nothing is
-removed, native blink stays off, and the report says so.
+removed and native blink stays off — but **the shape slots on the `CVRAvatar` are filled in
+anyway**, so if the eyes turn out not to blink in game the fix is one tick of *Use Blink
+Blendshapes* rather than hunting for the right shape among the dozens a face mesh carries. The
+report names the shapes it pre-filled. Only tick it if the eyes **don't** blink: with both systems
+running, the client's blink owns that shape every frame and any expression using it stops closing
+the eyes.
 
 One subtlety: ChilloutVR writes its blink weight onto the mesh **every frame, after the animator**
 — whatever shape it's given, the client owns outright, and an expression animating the same shape
