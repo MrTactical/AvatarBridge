@@ -545,6 +545,34 @@ namespace AvatarBridge
                     // and the report says so.
                     if (animator.runtimeAnimatorController != overrides)
                     {
+                        // Second attempt, with the prefab connection out of the way.
+                        //
+                        // Recording the modification is not enough on every avatar: Sally_PC and
+                        // Sally_Quest are instances whose Animator override already points at a
+                        // DELETED controller, and on those the assignment refused to hold even
+                        // immediately after being made. Sally_PC_SPS — same avatar, same rig,
+                        // source value alive — took it first time, which is what says the
+                        // connection is the problem rather than the value.
+                        //
+                        // Unpacking costs nothing here and arguably should always have happened:
+                        // the converted avatar is saved as its OWN prefab a few passes later, so
+                        // a live link back to the VRChat source is not something anyone wants —
+                        // it means edits to the source avatar reach into finished conversions.
+                        // Done only on the failing path so the other forty-eight avatars in the
+                        // corpus keep converting exactly as they did.
+                        var instanceRoot = PrefabUtility.IsPartOfPrefabInstance(animator)
+                            ? PrefabUtility.GetOutermostPrefabInstanceRoot(animator.gameObject)
+                            : null;
+                        if (instanceRoot != null)
+                        {
+                            PrefabUtility.UnpackPrefabInstance(instanceRoot,
+                                PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                            animator.runtimeAnimatorController = overrides;
+                        }
+                    }
+
+                    if (animator.runtimeAnimatorController != overrides)
+                    {
                         animator.runtimeAnimatorController = null;
                         ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
                             "The merged controller was assigned and did not stick — the Animator kept " +
