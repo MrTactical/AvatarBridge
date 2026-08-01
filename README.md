@@ -1203,6 +1203,27 @@ check them with the gizmo and drag either one if you want it elsewhere.
 Whatever the cause, the CVRAvatar inspector's own **Auto** buttons place both exactly where the
 conversion aims to, so they're always a safe manual fix.
 
+### The report says VRCFury errored, or that files are missing
+
+**"VRCFury reported N error(s) during its own build"** is *Fury's own message*, quoted verbatim —
+so Fury **is** installed and it **did** run. The fault is in what it was asked to build. The usual
+form is *"You're missing some files needed for this VRCFury asset"* followed by paths: a VRCFury
+component on the avatar references a package this project doesn't have. The folder in the path
+names it — `Assets/GoGo/GoLoco/…` is GoGo Loco, and so on.
+
+The report also lists, *before* the bake, **"N VRCFury component(s) reference assets that aren't
+in this project"**, naming the object each broken component sits on — Fury's message says which
+files, this says which component wants them.
+
+Either **install the package**, or **delete that VRCFury component** if you don't want the
+feature — then convert again. Converting past it loses whatever that component would have built,
+and anything animating paths it would have created stays dead (a marker or prop that "worked in
+VRChat" and does nothing here is usually this).
+
+Fury wraps each feature so a failure shows a dialog and the build *continues* — which is why a
+bake can "succeed" with half the avatar missing. That's why this is an **Error** and why the
+report says not to upload the result.
+
 ### A toggle switches on, the layer plays — and nothing changes on screen
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**,

@@ -61,6 +61,8 @@ namespace AvatarBridge
                 return null;
             }
 
+            ReportBrokenFuryReferences(source.gameObject, report);
+
             var bakeMethod = FindBakeMethod(out string methodDescription);
             if (bakeMethod == null)
             {
@@ -78,7 +80,11 @@ namespace AvatarBridge
             // result, and a conversion report reading "Errors: 0" while every toggle was dead.
             // Listen to the log during the bake and count what Fury swallowed.
             int furyErrors = 0;
-            string firstFuryError = null;
+            // Every DISTINCT message, not just the first. A tester's report said "2 error(s)" and
+            // quoted one of them, cut off mid-path at "…/ControllersWD/GoLocoB" — so the filename
+            // Fury was asking for was unreadable and the second failure was invisible. Fury names
+            // the missing file, and that name IS the fix, so it has to survive into the report.
+            var furyMessages = new List<string>();
             void OnLog(string condition, string stackTrace, LogType type)
             {
                 if (type != LogType.Exception && type != LogType.Error)
@@ -89,9 +95,9 @@ namespace AvatarBridge
                     || (condition != null && condition.Contains("VRCFury")))
                 {
                     furyErrors++;
-                    if (firstFuryError == null)
+                    if (condition != null && !furyMessages.Contains(condition))
                     {
-                        firstFuryError = condition;
+                        furyMessages.Add(condition);
                     }
                 }
             }
@@ -124,12 +130,23 @@ namespace AvatarBridge
 
             if (furyErrors > 0)
             {
+                var quoted = string.Join(" | ", furyMessages
+                    .Take(4)
+                    .Select(m => "\"" + Truncate(Flatten(m), 400) + "\""));
+                if (furyMessages.Count > 4)
+                {
+                    quoted += $" | (+{furyMessages.Count - 4} more — see the Console)";
+                }
                 report.Error(Category, $"VRCFury reported {furyErrors} error(s) during its own build",
-                    $"First: \"{Truncate(firstFuryError, 200)}\". Fury catches each failing feature, shows a " +
-                    "dialog and continues, so the bake \"completed\" — but the features that failed are " +
-                    "missing or half-built, and everything derived from them will misbehave. Run VRCFury > " +
-                    "Build a Test Copy on the original avatar, fix or remove what errors there, then " +
-                    "convert again. This conversion continued so you can inspect it, but do not upload it.");
+                    quoted + " — this is VRCFury's OWN message, which means Fury ran: the fault is in " +
+                    "what it was asked to build, not in Fury being absent. When it names files under a " +
+                    "folder you don't have, that package isn't installed in this project — install it, " +
+                    "or delete the VRCFury component asking for it. Fury catches each failing feature, " +
+                    "shows a dialog and continues, so the bake \"completed\" — but the features that " +
+                    "failed are missing or half-built, and everything derived from them will misbehave. " +
+                    "Run VRCFury > Build a Test Copy on the original avatar, fix or remove what errors " +
+                    "there, then convert again. This conversion continued so you can inspect it, but do " +
+                    "not upload it.");
             }
 
             GameObject baked = directResult;
@@ -151,6 +168,69 @@ namespace AvatarBridge
             report.Converted(Category, "Avatar baked with VRCFury before conversion", $"via {methodDescription}");
             return baked;
         }
+
+        /// <summary>
+        /// Names the VRCFury components pointing at assets this project doesn't have, BEFORE the
+        /// bake runs on them.
+        ///
+        /// Fury's own failure says which FILES are missing but never which component wants them,
+        /// and it arrives as a modal dialog mid-bake — so the reader gets a path and no way back
+        /// to the thing that asked for it. A tester hit exactly this and read the message as
+        /// "VRCFury is not installed", when Fury was installed and running: the missing package
+        /// was GoGo Loco, which the erroring component referenced.
+        ///
+        /// A missing asset keeps its GUID in the serialized data, so the property still holds an
+        /// instance ID that resolves to nothing — that mismatch is the whole test. The GUID can't
+        /// be turned back into a path (nothing in the project has it), which is why this reports
+        /// the OBJECT and leaves the filenames to Fury's own message.
+        /// </summary>
+        static void ReportBrokenFuryReferences(GameObject avatar, BridgeReport report)
+        {
+            var broken = new List<string>();
+            foreach (var component in avatar.GetComponentsInChildren<Component>(true))
+            {
+                if (!IsFuryComponent(component))
+                {
+                    continue;
+                }
+                int missing = 0;
+                var so = new SerializedObject(component);
+                var it = so.GetIterator();
+                while (it.Next(true))
+                {
+                    if (it.propertyType == SerializedPropertyType.ObjectReference
+                        && it.objectReferenceInstanceIDValue != 0
+                        && it.objectReferenceValue == null)
+                    {
+                        missing++;
+                    }
+                }
+                if (missing > 0)
+                {
+                    string path = AnimationUtility.CalculateTransformPath(
+                        component.transform, avatar.transform);
+                    broken.Add($"\"{(string.IsNullOrEmpty(path) ? avatar.name : path)}\" " +
+                        $"({component.GetType().Name}, {missing} missing reference(s))");
+                }
+            }
+
+            if (broken.Count > 0)
+            {
+                report.Warning(Category,
+                    $"{broken.Count} VRCFury component(s) reference assets that aren't in this project",
+                    string.Join("; ", broken) + " — each points at a file this project doesn't have, " +
+                    "which is what makes Fury's own build fail with \"you're missing some files needed " +
+                    "for this VRCFury asset\". That error means Fury RAN and could not find what the " +
+                    "component asked for; it does not mean VRCFury is missing. Install the package the " +
+                    "component came from (Fury's message names the files, so the folder tells you which " +
+                    "package), or delete that component if you don't want the feature — then convert " +
+                    "again. Converting past this loses whatever the component would have built, and " +
+                    "anything animating paths it would have created stays dead.");
+            }
+        }
+
+        static string Flatten(string s) =>
+            s == null ? "" : s.Replace("\r", " ").Replace("\n", " ").Trim();
 
         static List<GameObject> GetSceneRoots()
         {
