@@ -461,6 +461,28 @@ namespace AvatarBridge
             // so an unknown never manufactures a loop that isn't there.
             bool Satisfied(AnimatorCondition c)
             {
+                // A serialized default only describes a parameter NOTHING drives. ChilloutVR
+                // drives its core parameters on every copy, remote ones included, so reading
+                // their defaults here describes no machine that exists.
+                //
+                // IsLocal is the one with an answer rather than an unknown: this check is about
+                // the remote copy, and on a remote copy IsLocal is FALSE by definition. Reading
+                // its declared default (1, the resting value given for the WEARER) inverted every
+                // local/remote gate on the avatar and turned VRCFury's Remote Trap — a state that
+                // exists to hold a layer still on remotes — into a reported thrash. Three of the
+                // first five hits were that mistake.
+                string bare = c.parameter.TrimStart('#');
+                if (bare == "IsLocal")
+                {
+                    return c.mode == AnimatorConditionMode.IfNot;
+                }
+                // Swimming and AFK join the core set here: the client writes both, which is the
+                // only property that matters for this check, even though it does not mark them
+                // core (they still cost sync bits, which is why ClientCoreParameters omits them).
+                if (ClientCoreParameters.Contains(bare) || bare == "Swimming" || bare == "AFK")
+                {
+                    return false;   // client-driven and live; unknowable here, so never a loop
+                }
                 if (!defaults.TryGetValue(c.parameter, out var p))
                 {
                     return false;
