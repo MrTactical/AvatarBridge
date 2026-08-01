@@ -185,6 +185,40 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(changed == 0 ? 0 : 1);
         }
 
+        /// <summary>
+        /// Batch entry for an ARBITRARY subset, listed one scene path per line in the file named
+        /// by AVATARBRIDGE_SUBSET. For chasing a handful of avatars a check just fired on without
+        /// paying forty minutes for the other forty-five — the quick set is a fixed list of
+        /// canaries and cannot answer "re-run exactly these".
+        ///
+        /// Like the quick set, this writes only the avatars it ran; Accept copies rather than
+        /// wipes, so the untouched baselines survive.
+        /// </summary>
+        public static void RunSubsetBatch()
+        {
+            string listFile = Environment.GetEnvironmentVariable("AVATARBRIDGE_SUBSET");
+            if (string.IsNullOrEmpty(listFile) || !File.Exists(listFile))
+            {
+                Debug.LogError("[Regression] AVATARBRIDGE_SUBSET must name a file of scene paths, one per line.");
+                EditorApplication.Exit(2);
+                return;
+            }
+            var scenes = File.ReadAllLines(listFile)
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0 && !l.StartsWith("#", StringComparison.Ordinal))
+                .ToArray();
+            var missing = scenes.Where(s => AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(s) == null).ToArray();
+            if (missing.Length > 0)
+            {
+                Debug.LogError("[Regression] subset lists scene(s) that do not exist: "
+                               + string.Join(", ", missing));
+                EditorApplication.Exit(2);
+                return;
+            }
+            int changed = Run(scenes, $"subset({scenes.Length})");
+            EditorApplication.Exit(changed == 0 ? 0 : 1);
+        }
+
         static string[] AllAvatarScenes()
         {
             return AssetDatabase.FindAssets("t:Scene")
@@ -450,6 +484,35 @@ namespace AvatarBridge.Regression
         /// Two distinct ids can collapse to one string here. That is acceptable: they collapse
         /// identically in both runs being compared, so a real difference still shows.
         /// </summary>
+        /// <summary>
+        /// Parameter names a state-machine behaviour writes, read reflectively so this works
+        /// whatever the installed CCK calls its task list. Sorted and de-duplicated: the digest
+        /// is a diff surface, and driver task order is not meaningful.
+        /// </summary>
+        static List<string> DriverTargets(StateMachineBehaviour behaviour)
+        {
+            var found = new SortedSet<string>(StringComparer.Ordinal);
+            var type = behaviour.GetType();
+            foreach (var listName in new[] { "EnterTasks", "ExitTasks", "UpdateTasks" })
+            {
+                var field = type.GetField(listName);
+                if (field == null || !(field.GetValue(behaviour) is System.Collections.IEnumerable tasks))
+                {
+                    continue;
+                }
+                foreach (var task in tasks)
+                {
+                    if (task == null) continue;
+                    var target = task.GetType().GetField("targetName");
+                    if (target?.GetValue(task) is string name && !string.IsNullOrEmpty(name))
+                    {
+                        found.Add(name);
+                    }
+                }
+            }
+            return found.ToList();
+        }
+
         static string Stable(string s)
         {
             if (string.IsNullOrEmpty(s))
@@ -812,9 +875,20 @@ namespace AvatarBridge.Regression
                   .Append(st.mirror ? " mirror" : "")
                   .Append(" motion=").Append(MotionOf(st.motion)).Append('\n');
 
+                // Drivers get their WRITES named, not just their type. "behaviours:
+                // AnimatorDriver" says a state changes something and refuses to say what, which
+                // is the one fact needed to judge a transition cycle: a driver inside the cycle
+                // that writes a parameter the cycle's own conditions read can break the loop, and
+                // without the target names the digest cannot tell a real loop from a self-
+                // limiting one. Cost this exact question a night on Umbreon's emission layer.
                 var behaviours = st.behaviours
                     .Where(b => b != null)
-                    .Select(b => b.GetType().Name)
+                    .Select(b =>
+                    {
+                        string name = b.GetType().Name;
+                        var writes = DriverTargets(b);
+                        return writes.Count > 0 ? $"{name}(writes {string.Join("/", writes)})" : name;
+                    })
                     .OrderBy(n => n, StringComparer.Ordinal)
                     .ToList();
                 if (behaviours.Count > 0)
