@@ -429,7 +429,37 @@ namespace AvatarBridge.Regression
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
-            return sb.ToString();
+            return Stable(sb.ToString());
+        }
+
+        /// <summary>
+        /// Removes VRCFury's per-bake salt from generated names.
+        ///
+        /// Fury numbers the parameters and objects it generates with a value that changes on
+        /// EVERY bake — "#VF_146434155_True" one run, "#VF_353841827_True" the next, and
+        /// "[VF871] Blowjob" becoming "[VF895] Blowjob". Nothing about the avatar has changed.
+        /// Left alone this made 23 of 49 digests differ on every run, which is not a regression
+        /// signal — it is a coin toss with a diff attached, and it would have buried the one real
+        /// change this corpus was run to find.
+        ///
+        /// The salt is also why the ORDER moved: the parameter list sorts by name, so a new
+        /// number re-sorts the list. Callers sort on Stable() for that reason; this pass then
+        /// cleans the text itself, which catches the same ids inside paths, conditions and layer
+        /// names without having to find every place one can appear.
+        ///
+        /// Two distinct ids can collapse to one string here. That is acceptable: they collapse
+        /// identically in both runs being compared, so a real difference still shows.
+        /// </summary>
+        static string Stable(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                return s;
+            }
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"VF_\d+_", "VF_#_");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\[VF\d+\]", "[VF#]");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\bVF\d+_", "VF#_");
+            return s;
         }
 
         class SceneReset
@@ -701,7 +731,7 @@ namespace AvatarBridge.Regression
                     sb.Append("[overrides] ").Append(ovr.name).Append('\n');
                     var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
                     ovr.GetOverrides(pairs);
-                    foreach (var p in pairs.OrderBy(p => p.Key != null ? p.Key.name : "", StringComparer.Ordinal))
+                    foreach (var p in pairs.OrderBy(p => Stable(p.Key != null ? p.Key.name : ""), StringComparer.Ordinal))
                     {
                         sb.Append("  ").Append(p.Key != null ? p.Key.name : "<null>")
                           .Append(" -> ").Append(p.Value != null ? p.Value.name : "<unchanged>").Append('\n');
@@ -723,7 +753,7 @@ namespace AvatarBridge.Regression
             sb.Append("[controller] ").Append(ac.name).Append('\n');
 
             sb.Append("  parameters:\n");
-            foreach (var p in ac.parameters.OrderBy(p => p.name, StringComparer.Ordinal))
+            foreach (var p in ac.parameters.OrderBy(p => Stable(p.name), StringComparer.Ordinal))
             {
                 string def;
                 switch (p.type)
