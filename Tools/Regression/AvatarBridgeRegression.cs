@@ -55,6 +55,9 @@ namespace AvatarBridge.Regression
         const string Root = "D:/AvatarBridge/Regression";
         static string BaselineDir => Root + "/Baseline";
         static string CurrentDir => Root + "/Current";
+        // Written when a run is cancelled. A partial Current/ looks exactly like a complete one,
+        // and accepting it would silently shrink the corpus to however far the run got.
+        static string PartialMarker => CurrentDir + "/PARTIAL-DO-NOT-ACCEPT";
 
         // Scenes that are not avatars, or are our own output. Matched as path substrings.
         static readonly string[] Excluded =
@@ -91,6 +94,15 @@ namespace AvatarBridge.Regression
                 Debug.LogError("[Regression] nothing in Current/ to accept — run first.");
                 return;
             }
+            if (File.Exists(PartialMarker))
+            {
+                Debug.LogError("[Regression] REFUSING: the last run was cancelled, so Current/ is " +
+                               "partial. Accepting it would shrink the corpus to however far that " +
+                               "run got, and every avatar after the cancel would read as \"no " +
+                               "baseline yet\" from then on. Re-run first.\n" +
+                               File.ReadAllText(PartialMarker));
+                return;
+            }
             Directory.CreateDirectory(BaselineDir);
             int n = 0;
             foreach (var file in Directory.GetFiles(CurrentDir, "*.txt"))
@@ -125,8 +137,12 @@ namespace AvatarBridge.Regression
                 .ToArray();
         }
 
-        static int Run(IEnumerable<string> scenes, string label)
+        static int Run(IEnumerable<string> sceneSource, string label)
         {
+            // Materialised once: the count is wanted up front for the progress bar and the
+            // interactive warning, and AssetDatabase queries should not be re-run per use.
+            var scenes = sceneSource.ToList();
+
             // Every number in a digest is formatted the same way regardless of the machine's
             // locale, for the same reason BridgeConverter pins the culture: a digest written on
             // a comma-decimal machine must diff cleanly against one written on a point-decimal
@@ -140,10 +156,10 @@ namespace AvatarBridge.Regression
             // avatar with a broken Fury component and waits for a click. Batchmode makes
             // EditorUtility.DisplayDialog return immediately instead of blocking, which is the
             // only reason RunAllBatch exists.
-            if (!Application.isBatchMode && scenes.Count() > 4)
+            if (!Application.isBatchMode && scenes.Count > 4)
             {
                 Debug.LogWarning(
-                    "[Regression] running " + scenes.Count() + " scenes interactively — VRCFury and " +
+                    "[Regression] running " + scenes.Count + " scenes interactively — VRCFury and " +
                     "the VRCSDK will block on modal dialogs for any avatar that fails to bake. " +
                     "Close Unity and run headless instead:\n" +
                     "  Unity.exe -batchmode -quit -projectPath \"<project>\" " +
@@ -154,20 +170,49 @@ namespace AvatarBridge.Regression
             // indistinguishable from one this run produced, and would be compared and reported
             // as though it were current.
             if (Directory.Exists(CurrentDir))
+            {
                 foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
+                if (File.Exists(PartialMarker)) File.Delete(PartialMarker);
+            }
             Directory.CreateDirectory(CurrentDir);
 
             var changes = new List<string>();
             var missing = new List<string>();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int ran = 0, failed = 0;
+            bool cancelled = false;
             var started = DateTime.Now;
 
             try
             {
-                foreach (var scenePath in scenes)
+                for (int i = 0; i < scenes.Count; i++)
                 {
+                    var scenePath = scenes[i];
                     string name = Path.GetFileNameWithoutExtension(scenePath);
+
+                    // Progress is per avatar, not smoother, because a conversion is one long
+                    // blocking call — pretending otherwise would be a lie drawn at 60fps. It is a
+                    // no-op in batchmode, so the headless path is unaffected.
+                    //
+                    // Cancelable on purpose: a full corpus run is half an hour, and a run you
+                    // cannot abort is its own trap. Cancelling is handled honestly below rather
+                    // than leaving a half-finished Current/ that looks complete.
+                    if (!Application.isBatchMode)
+                    {
+                        var elapsed = DateTime.Now - started;
+                        string eta = i > 0
+                            ? $", ~{TimeSpan.FromTicks(elapsed.Ticks / i * (scenes.Count - i)):mm\\:ss} left"
+                            : "";
+                        if (EditorUtility.DisplayCancelableProgressBar(
+                                $"AvatarBridge regression — {i + 1}/{scenes.Count}",
+                                $"{name}   ({elapsed:mm\\:ss} elapsed{eta})",
+                                (float)i / scenes.Count))
+                        {
+                            cancelled = true;
+                            break;
+                        }
+                    }
+
                     string digest;
                     try
                     {
@@ -200,6 +245,7 @@ namespace AvatarBridge.Regression
             finally
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
+                if (!Application.isBatchMode) EditorUtility.ClearProgressBar();
             }
 
             var sb = new StringBuilder();
@@ -215,6 +261,22 @@ namespace AvatarBridge.Regression
                 foreach (var c in changes) sb.AppendLine("    " + c);
                 sb.AppendLine($"  compare: {CurrentDir} vs {BaselineDir}");
             }
+
+            if (cancelled)
+            {
+                // Said loudly and last. Current/ now holds a partial set that is indistinguishable
+                // from a complete one by looking at it, and accepting it as a baseline would
+                // quietly shrink the corpus to however far the run got — every avatar after the
+                // cancel would read as "no baseline yet" forever after, and nobody would notice.
+                File.WriteAllText(PartialMarker,
+                    $"Cancelled after {ran} of {scenes.Count} scenes at {DateTime.Now:yyyy-MM-dd HH:mm}.\n" +
+                    "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+                sb.AppendLine($"  CANCELLED after {ran} of {scenes.Count} — Current/ is PARTIAL. " +
+                              "Do not accept it as a baseline; re-run.");
+                Debug.LogError(sb.ToString());
+                return changes.Count;
+            }
+
             Debug.Log(sb.ToString());
             return changes.Count;
         }
