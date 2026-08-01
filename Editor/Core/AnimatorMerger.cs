@@ -510,6 +510,52 @@ namespace AvatarBridge
                 else
                 {
                     animator.runtimeAnimatorController = overrides;
+
+                    // Register the change as a prefab-instance override, or it does not survive.
+                    //
+                    // Avatars are almost always prefab INSTANCES, and a plain property set on an
+                    // instance is not automatically recorded as an override. SaveConvertedPrefab
+                    // then calls SaveAsPrefabAssetAndConnect, which reconnects the object and
+                    // reverts anything unrecorded to the prefab's own value — so the controller
+                    // this line just assigned quietly went back to whatever the source prefab
+                    // had.
+                    //
+                    // Invisible on most avatars, because the value it reverts TO is a live
+                    // controller and everything looks fine. Sally_PC and Sally_Quest are the
+                    // case where it is not: their source prefabs' Animator override points at a
+                    // controller that no longer exists, so the revert handed the conversion a
+                    // dangling reference. Sally_PC_SPS, same avatar, healthy source value,
+                    // reverted just as hard and nobody could tell.
+                    if (PrefabUtility.IsPartOfPrefabInstance(animator))
+                    {
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
+                    }
+
+                    // Read it back. This is not paranoia: Sally_PC and Sally_Quest reached this
+                    // line, ran it, and still shipped prefabs whose Animator held the SOURCE
+                    // avatar's controller — a GUID that resolves to nothing, inherited through the
+                    // clone from a scene where it was already dead. The assignment did not take,
+                    // nothing threw, and no error reached the report, so the avatar simply arrived
+                    // without an animator and the only way anyone found out was by clicking on it.
+                    //
+                    // A dangling reference is worse than an empty one, too: it reads as null to
+                    // script while the serialized GUID survives into the prefab, so it looks fine
+                    // to every check that asks the object what it has. If it would not stick, it
+                    // gets cleared — an empty slot is honest and cannot crash the graph builder —
+                    // and the report says so.
+                    if (animator.runtimeAnimatorController != overrides)
+                    {
+                        animator.runtimeAnimatorController = null;
+                        ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
+                            "The merged controller was assigned and did not stick — the Animator kept " +
+                            "a reference of its own instead, usually one inherited from the source " +
+                            "avatar that already pointed at a deleted asset. The slot has been cleared " +
+                            "rather than left holding a dead reference, which reads as empty to scripts " +
+                            "while still being serialized into the prefab. ChilloutVR is unaffected: it " +
+                            "reads CVRAvatar's controller fields on load, and those are set correctly. " +
+                            "Check the SOURCE avatar's Animator — if its controller shows as Missing " +
+                            "there, fix it there and convert again.");
+                    }
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
