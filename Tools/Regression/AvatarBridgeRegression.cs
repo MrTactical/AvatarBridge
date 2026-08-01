@@ -91,27 +91,26 @@ namespace AvatarBridge.Regression
         // the revert was masking something else as well.
         //
         // The full run still covers every scene; this is only the tight loop while working.
+        // NARROWED to the three Sallys while the "controller will not stay assigned" bug is being
+        // chased — about two minutes a run instead of six, and every one of the three is directly
+        // relevant. Two fail, one succeeds, and they are otherwise the same avatar; that contrast
+        // is the whole investigation.
+        //
+        // PUT THE OTHERS BACK when it is fixed. The full list is one git revert away, and a quick
+        // set that only covers the bug currently in hand stops being a regression check at all —
+        // the wider set is what noticed that six other avatars kept working while this one was
+        // being poked at.
+        //
+        //   "Assets/lemur/lumar_ROUND_setup_release.unity"                       3.5.10 Action arming
+        //   "Assets/Rytu_assets/Rytu_setup.unity"                                3.5.10 Action arming
+        //   "Assets/BHFBunny/BHFBUNNY.unity"                                     3.5.9  crash guard
+        //   "Assets/Bimbo Base.unity"                                            3.5.9  crash guard
+        //   "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity"    3.5.6-8 self-restart
         static readonly string[] QuickSet =
         {
-            // 3.5.12 — controller assignment reverted by the prefab system. Broken pair...
-            "Assets/SallyShopkeeper/Sally_PC.unity",
-            "Assets/SallyShopkeeper/Sally_Quest.unity",
-            // ...and the control that was silently reverting too, and must stay unchanged.
-            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",
-
-            // 3.5.10 — Action transplant armed at load. Oscillated between pose and idle...
-            "Assets/lemur/lumar_ROUND_setup_release.unity",
-            // ...and walked up its stages into a pose nobody chose.
-            "Assets/Rytu_assets/Rytu_setup.unity",
-
-            // 3.5.9 — crash guard read a GUID out of a "Missing Prefab" object NAME and refused
-            // to assign a perfectly good controller. Both carry such a placeholder.
-            "Assets/BHFBunny/BHFBUNNY.unity",
-            "Assets/Bimbo Base.unity",              // avatar inside is "Sultry Snake"
-
-            // 3.5.6 -> 3.5.8 — the AnyState self-restart arc, four attempts. Toggle layers here
-            // are the most sensitive thing in the corpus to a change in transition handling.
-            "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity",
+            "Assets/SallyShopkeeper/Sally_PC.unity",       // fails
+            "Assets/SallyShopkeeper/Sally_Quest.unity",    // fails
+            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",   // succeeds — the control
         };
 
         [MenuItem("Tools/AvatarBridge Dev/Regression — run quick set")]
