@@ -573,8 +573,26 @@ namespace AvatarBridge
 
                     if (animator.runtimeAnimatorController != overrides)
                     {
+                        // What the read-back actually saw. Three mechanism theories have now been
+                        // wrong about this — the prefab-override revert, then the prefab
+                        // connection, then a dangling sub-asset reference — each plausible, each
+                        // disproved only after a build and a run. The check knows the answer at
+                        // the moment it fails and was throwing it away; the next failure carries
+                        // it into the report instead.
+                        var held = animator.runtimeAnimatorController;
+                        string evidence =
+                            $"[held={(held == null ? "null" : held.name + " (" + held.GetType().Name + ")")}" +
+                            $"; wanted={(overrides == null ? "null" : overrides.name)}" +
+                            $"; wantedPath=\"{AssetDatabase.GetAssetPath(overrides)}\"" +
+                            $"; wantedPersisted={EditorUtility.IsPersistent(overrides)}" +
+                            $"; animatorOnPrefabAsset={PrefabUtility.IsPartOfPrefabAsset(animator)}" +
+                            $"; animatorOnPrefabInstance={PrefabUtility.IsPartOfPrefabInstance(animator)}" +
+                            $"; animatorEnabled={animator.enabled}" +
+                            $"; objectActive={animator.gameObject.activeInHierarchy}] ";
+
                         animator.runtimeAnimatorController = null;
                         ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
+                            evidence +
                             "The merged controller was assigned and did not stick — the Animator kept " +
                             "a reference of its own instead, usually one inherited from the source " +
                             "avatar that already pointed at a deleted asset. The slot has been cleared " +
