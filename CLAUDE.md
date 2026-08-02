@@ -39,7 +39,9 @@ release. The format, set by v2.68.4:
   not "complementary AnyState transition pair into a driver-bearing state".
 - **Everything technical inside `<details><summary>Technical detail</summary>`**, so the page
   stays scannable and the curious can still dig.
-- **Title**: the two or three headline fixes in plain words.
+- **Title**: `v<version> - <headline>` — the version comes FIRST, then the two or three headline
+  fixes in plain words. The releases page is a scannable list; a prose-only title makes the reader
+  cross-reference the tag column to see whether they already have it.
 
 Nobody reads a wall of text, and a changelog that isn't read may as well not exist. The same
 applies to report entries — say what broke and what to do, and put the mechanism somewhere
