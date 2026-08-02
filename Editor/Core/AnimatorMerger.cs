@@ -4000,7 +4000,7 @@ namespace AvatarBridge
                     // in game and keeping it only made editor and game disagree.
                     copy.motion = src.motion is AnimationClip poseClip
                         ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true,
-                            keepVertical: true)
+                            keepPose: true)
                         : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;

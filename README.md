@@ -765,6 +765,29 @@ table [above](#options) and isn't repeated here.
 
 ## Known limitations
 
+### Transforming avatars: desktop-only turn
+
+**An avatar that folds its whole body into something else — a biped into a car — converts with one
+limitation, and it is a platform difference rather than a conversion fault.**
+
+What works everywhere: the **descent**. A sequence that lowers the body to the floor comes down
+smoothly through the animation instead of snapping at the end.
+
+What works on **desktop only**: the **turn**. Rotating from upright to lying flat plays on desktop
+and does not in VR — there the body stays upright through the sequence and the final orientation
+arrives in one frame at the end. The end pose is correct on both; only the transition differs.
+
+Why, since it looks like a bug worth reporting: ChilloutVR's character controller owns the player
+capsule and keeps it upright, so an animation cannot turn the root. The rotation is therefore moved
+into the **bones** — Unity's own "bake into pose", the same mechanism that makes the descent work —
+which is the only form the client will show. In VR the IK solver is then driving those same bones
+against the animation and wins. Three routes were tried and measured on a real avatar worn in game:
+the raw root curve (does nothing), Body Control at weight 0 (frees limbs from IK but never hands
+over the root), and the bake (works on desktop, loses to IK in VR).
+
+Nothing on the conversion side can settle this — it needs the client to yield the body, which is
+what VRChat's Action layer weight did and ChilloutVR has no equivalent for.
+
 ### Quadruped / FinalIK avatars
 
 **Quadruped support is real but partial, and how much you get depends on how yours was built.**
@@ -1593,14 +1616,11 @@ changing its own height, not travelling: flattened, one transforming avatar held
 for its whole transition and snapped to the floor at the end. For these poses only, the vertical
 is kept; travel across the floor still goes, so nothing walks you anywhere you didn't ask to go.
 
-**What still can't be converted: a pose that turns the whole body over.** The same transforming
-avatar also rotates from upright to lying flat, and that half still snaps to its final orientation
-at the end of the sequence in game. It isn't a missing curve — keeping the rotation was tried, and
-it made the transform play correctly in the Unity editor while changing nothing in ChilloutVR,
-because the client's character controller keeps the player capsule upright and root orientation
-simply isn't the animator's to set there. Fixing it for real means baking the rotation into the
-bones rather than the root, which is future work; until then the end pose is correct and the turn
-itself is instant.
+**A pose that turns the whole body over is [limited](#transforming-avatars-desktop-only-turn).** The
+same transforming avatar also rotates from upright to lying flat, and that half is carried across —
+the rotation is moved out of root motion and into the bones, which is the only form ChilloutVR
+shows. It plays on desktop. **In VR the body stays upright and the turn snaps at the end**, because
+the IK solver is driving the body there and wins against the animation.
 
 ### Two near-identical menu controls, and only one works
 
