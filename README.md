@@ -136,47 +136,15 @@ actually running.
   error. (The CCK's own clips stay referenced — uploading requires the CCK, so they're always
   present.)
 - **A play-mode tester that drives avatars the way the game does** — *Tools → Avatar Bridge → CCK
-  Animator Tester*: gestures, stances, visemes, emotes, face tracking and the avatar's whole
-  Advanced Settings menu, plus a live Animator-layers readout. VRChat's Gesture Manager can't do
-  this — it needs the VRC descriptor, which conversion removes.
-  <details><summary>What it drives, and how faithfully</summary>
-
-  Locomotion is offered as the **exclusive stances the game can actually produce** — standing,
-  crouching, prone, airborne, flying, sitting, swimming — with Upright coupled to stance the way VR
-  height is. Menu controls are coerced by declared type exactly like the client, and the card
-  follows the controller on the avatar's Animator: it refreshes when the controller or its
-  parameter list changes, and greys any entry whose parameter the controller doesn't declare,
-  because driving those would do nothing in game either.
-
-  **Visemes and blink** are held on the face mesh **every frame, after the animator** — the same
-  place and order ChilloutVR writes them, so they beat any animation using the same blendshape
-  here exactly as they will in game. An expression that fights the blink loses honestly, in the
-  editor, before you upload.
-
-  The **Face tracking** section drives every eye and Unified Expressions parameter the controller
-  declares, grouped by region, with each slider's range read from the rig's own blend trees — so
-  bipolar shapes (JawX, SmileFrown, the tongue axes) get their full −1…1 travel instead of half.
-  On an avatar converted to **native** `CVRFaceTracking` there are no such parameters — the client
-  writes blendshapes straight from the headset, with no animator in the loop — so the section shows
-  a slider per **mapped blendshape** instead, writing the mesh the same way the client will.
-
-  The **Remote view** card snaps every `#` local parameter to its default — the value it
-  holds forever on other players' clients, which never receive local parameters or parameter
-  streams. A layer that starts cycling or lands in a different state after pressing it is doing
-  exactly that in game for everyone but the wearer — the cause of "an animation loops rapidly for
-  others but looks fine to me".
-
-  The **Animator layers** readout is pinned to the bottom of the window so it stays visible while
-  you drive the controls above it, and shows every layer's weight, avatar mask and currently
-  playing clips — the same view ChilloutVR's in-game CCK Debugger gives, plus the mask column it
-  can't show. Any layer sitting above the hand-pose layers that could overwrite your gestures is
-  marked.
-  </details>
+  Animator Tester*: gestures, stances, visemes, emotes, face tracking and the whole Advanced
+  Settings menu, plus a live Animator-layers readout with weights, masks and playing clips. Its
+  **Remote view** card snaps every `#` local parameter to its default — what other players' clients
+  hold forever — so you can see remote-only flickering before you upload. VRChat's Gesture Manager
+  can't do any of this: it needs the VRC descriptor, which conversion removes.
 - **Animations that can't possibly work get named** — a locked Poiyomi shader silently deletes any
   property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
   VRChat as much as here. The report [lists every one](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
-  with the renderer it belongs to, so the fix is a minute in Poiyomi's inspector instead of a day
-  in the animator.
+  with its renderer.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
 
@@ -335,43 +303,30 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
-**Rotation offsets are measured, not copied.** Copying VRChat's `RotationOffset` field
-trusts that both engines apply it in the same space, and that held until a constraint crossed two
-very differently oriented bones — a car avatar's windshield pupils mirror its face eye bones through
-rotation constraints, and the copied offset left them rotated 77° edge-on, invisible. VRC constraints
-evaluate in the editor, so at conversion time the scene pose *is* VRChat's solver output; for an
-active, full-weight, single-source rotation constraint the offset is now derived from that pose
-directly, with no cross-engine assumption. Multi-source or inactive constraints still copy the field.
-
-**An unfollowable local-space constraint yields to its animation.** VRChat constraints can
-solve in the source's *local* space; Unity's only solve in world space, and when the constrained bone
-can't be re-parented to bridge that (it skins the mesh), the converted constraint is wrong whenever
-the two parent chains move apart. If a clip in the controller *also* poses that bone, the wrong
-constraint overrides the right animation — constraints evaluate after animators. So in exactly that
-case the constraint is now **disabled** and the animation stands. The avatar that forced the choice:
-windshield pupils mirroring the face eye bones folded 77° edge-on the moment the body folded into a
-car, while the car animation had them keyed perfectly all along. What's lost is only the live follow
-— the pupils sit where the author posed them instead of tracking eye movement. Bones nothing
-animates keep the world-space follow, which is the behaviour the walking quadruped shipped with.
+**Rotation offsets are measured, not copied.** VRC constraints evaluate in the editor, so at
+conversion time the scene pose *is* VRChat's solver output — the offset is derived from that
+directly rather than trusting both engines to apply the field in the same space. (Multi-source or
+inactive constraints still copy it.) One car avatar's windshield pupils came out 77° edge-on before
+this.
 
 **Solving in local space is repaired where it can be.** VRChat's constraints can read the source's
-**local** rotation instead of its world one, and that's the default in the SDK's own inspector.
-Unity's constraints only ever solve in world space, and ChilloutVR ships no equivalent — its
-constraint types are Unity's own.
+**local** rotation — the SDK's own default — and Unity's only ever solve in world space.
 
-Most of the time this costs nothing: where the constrained object and its source hang off the same
-parent, that parent's rotation appears on both sides and cancels, so the two spaces agree exactly.
-It matters when the source sits in a **different chain** — and there the parents can be *made* to
-agree, by moving the constrained bone under the source's own parent. That isn't an approximation:
-it turns the one constraint Unity can't express into one it can, and it cascades, because once a
-chain's root pair matches every pair below it matches too. This is what makes
-[quadrupeds](#quadruped--finalik-avatars) work.
+Usually this costs nothing: where object and source share a parent, its rotation cancels on both
+sides. It matters when the source sits in a **different chain**, and there the parents can be *made*
+to agree by moving the constrained bone under the source's own parent. That's not an approximation —
+it turns a constraint Unity can't express into one it can, and it cascades down the chain. This is
+what makes [quadrupeds](#quadruped--finalik-avatars) work.
 
-Moving a bone is only safe when nothing depends on where it *is*, so it happens only when the relay
-is rotation-only, **no mesh skins to the bone**, **no animation addresses it** (curves are matched
-by path, and a moved bone would silently stop being animated), and **nothing involved is mirrored**
-— a negative scale flips handedness, which no re-parenting can carry across. Every move is named in
-the report, and anything failing a check is left alone and reported instead.
+Moving a bone is only safe when nothing depends on where it *is*: rotation-only relay, no mesh
+skinned to it, no animation addressing it (curves match by path), and nothing mirrored. Every move is
+named in the report; anything failing a check is left alone and reported.
+
+**Where it can't be repaired, the constraint yields to its animation.** If the bone skins the mesh
+and so can't be moved, the converted constraint is wrong whenever the two parent chains diverge — and
+since constraints evaluate *after* animators, a wrong constraint overrides a right animation. So when
+a clip also poses that bone, the constraint is **disabled** and the animation stands. What's lost is
+only the live follow. Bones nothing animates keep the world-space follow.
 
 ⚠️ **A mirrored parent is lossy whatever happens.** VRChat's solver corrects a constraint's result
 when the parent's scale has a negative axis; Unity's constraints don't, and ChilloutVR ships no type
@@ -505,49 +460,33 @@ be able to set it off.
 
 **Contacts are per-client by design** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer, and this is confirmed in game: every client simulates every avatar's contacts itself.
-
-> ⚠️ Experimental — this talks to a component internal to the game, not the CCK, so any ChilloutVR
-> update can break it, possibly for good. Treat it as a bonus, not something the avatar depends
-> on. (The window shows the same note while the option is on.)
-
-AvatarBridge's generated declarations are verified **field-for-field against the decompiled game
-client** — the only layout that matters, since the client is what reads the uploaded avatar. The
-author's public repository is a diverged work-in-progress: **don't import it into a conversion
-project** while it disagrees with the game (its current layout drops fields the shipped client
-still reads, including the content-type flag that lets other players' hands trigger receivers).
-Its MIT-licensed custom inspector is adapted into the generated declarations, so contact
-components get proper foldouts and per-receiver-type help text in the editor.
+developer. Every client simulates every avatar's contacts itself, so **detection costs no sync at
+all**. Whether the parameter a receiver drives replicates its value is that parameter's own sync
+declaration, unchanged.
 
 **How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
-a record of each component's assembly, namespace and class name, which every player's client
-resolves against its own assemblies at load. The contact implementation already ships *inside the
-ChilloutVR client*; it is the CCK that provides no way to author it. So AvatarBridge generates
-matching declarations into `AvatarBridge/Runtime` on import — same identity, same field layout,
-verified against the decompiled client — and the game's own implementation is what runs. Nothing
-here reimplements contacts in Unity, and nothing is bundled into the avatar; the declarations are
-removed automatically if a future CCK ships the real thing.
+each component's assembly, namespace and class name, resolved against the player's own assemblies at
+load. The contact implementation already ships *inside the ChilloutVR client*; the CCK simply
+provides no way to author it. AvatarBridge generates matching declarations into
+`AvatarBridge/Runtime`, verified **field-for-field against the decompiled client**, and the game's
+own implementation runs. Nothing is reimplemented and nothing extra is bundled into the avatar.
 
-That is also why sync works out differently from the `CVRPointer` + trigger emulation other
-converters use. Emulation needs the network to agree on *collision events*; here every client
-already simulates every avatar's contacts locally, so **detection** costs no sync at all. Whether
-the parameter a receiver drives replicates its *value* is that parameter's own sync declaration —
-unchanged, and exactly as everywhere else.
-
-> ✅ **Confirmed in a live ChilloutVR instance:** validation clean, avatar uploaded, contacts
-> triggered by other players, and CVR's own runtime gizmos drawing the components — proof the
-> game's real implementation is running against declarations generated here.
+> ✅ **Confirmed in a live instance:** validation clean, uploaded, contacts triggered by other
+> players, CVR's own runtime gizmos drawing the components.
 >
-> **Still off by default** — chiefly because of the note above, beyond just breadth of testing.
-> Turn it on deliberately and test in game; the conversion falls back to the legacy path by
-> itself if anything is wrong.
+> ⚠️ **Experimental, and off by default.** This talks to a component internal to the game rather
+> than the CCK, so any ChilloutVR update can break it, possibly for good. The conversion falls back
+> to the legacy path by itself if anything is wrong.
 
-> ⚠️ **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene
-> before converting again.** Unity manufactures a placeholder script for a dangling component
-> reference, and that placeholder then captures every *new* component of the same class — one bad
-> conversion quietly poisons the next. AvatarBridge detects this and refuses rather than producing
-> another broken avatar; *Tools → Avatar Bridge → Diagnose native contacts* shows what Unity is
-> holding.
+Two practical notes:
+
+- **Don't import the author's public repository** into a conversion project. It's a diverged
+  work-in-progress whose current layout drops fields the shipped client still reads — including the
+  flag that lets other players' hands trigger receivers.
+- **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene**
+  before converting again. Unity manufactures a placeholder script for a dangling reference, and it
+  then captures every new component of that class — one bad conversion poisons the next. AvatarBridge
+  detects this and refuses; *Tools → Avatar Bridge → Diagnose native contacts* shows what Unity holds.
 
 ## Shaders that only draw into one eye
 
@@ -580,42 +519,32 @@ vertex stage to edit, and locked or generated shaders aren't worth attempting.
 Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a patched
 copy into `RehomedAssets`, adds the stereo macros, and points this avatar's materials at the copy.
 
-- **Your original shader and material are never modified** — both are copied, so other avatars
-  sharing them are unaffected. (Those shaders usually aren't yours.)
-- **A copy that doesn't compile is thrown away**, so the worst case is a line in the report rather
-  than wrong pixels.
-- **Screen-grab effects are fixed too.** A `GrabPass` texture is a texture *array* under
-  instancing — one slice per eye — so lens, refraction and heat-haze shaders that read it with
-  `tex2D` show one eye the other eye's view no matter how many macros they have. Those reads are
-  rewritten to the screen-space macros, same as `_CameraDepthTexture`.
-- **Shaders needing more than the derivable fixes get a recipe** — written by hand once, kept in
-  AvatarBridge's recipe list, and applied to *your* copy on every later conversion. Each recipe is
-  pinned to a fingerprint of the exact shader version it was written for: an updated or edited
-  shader doesn't match and is refused rather than guessed at. Nothing is redistributed — the
-  recipe is the edit, not the shader, and your original file is never touched. Hit one that has
-  no recipe yet? Open an issue and it can be added for everyone.
-- **Not everything can be patched.** Surface shaders have no vertex stage to edit, and structs in
-  a shared include can't always be edited from one file. Those are listed for hand-fixing instead.
-- **Every shader gets a verdict in the report** — patched, couldn't be patched, or *already
-  speaks single-pass instanced and was left untouched*. Locked and generated shaders (Poiyomi
-  lock-in and SPS live at `Hidden/Locked/…`) are read and checked like any other; modern Poiyomi
-  declares the full macro set, so these normally land in the already-correct list rather than
-  needing anything.
-- **There's nothing to undo.** The macros are mode-agnostic — real instancing code under CVR,
-  nothing under VRChat or on desktop. The patched copy stays correct everywhere.
+- **Your originals are never modified** — shader and material are both copied, so other avatars
+  sharing them are unaffected.
+- **A copy that doesn't compile is thrown away**, so the worst case is a report line rather than
+  wrong pixels.
+- **Screen-grab and depth reads are fixed too.** Both are texture *arrays* under instancing — one
+  slice per eye — so lens, refraction and soft-particle shaders take the wrong slice however many
+  macros they have. Those reads are rewritten to the screen-space macros. **This is why passing the
+  CCK's check isn't the same as being correct**: it looks for four macros, and a shader can have all
+  four and still be broken.
+- **Shaders needing more than the derivable fixes get a recipe** — written by hand once and applied
+  to your copy on later conversions, pinned to a fingerprint of the exact shader version so an
+  edited shader is refused rather than guessed at. Nothing is redistributed; the recipe is the edit,
+  not the shader. Hit one with no recipe? Open an issue.
+- **Not everything can be patched.** Surface shaders have no vertex stage, and structs in a shared
+  include can't always be edited from one file. Those are listed for hand-fixing.
+- **Every shader gets a verdict in the report** — patched, couldn't be, or already correct. Modern
+  Poiyomi declares the full macro set, so locked shaders normally land in the last group.
+- **There's nothing to undo.** The macros are mode-agnostic: real instancing code under CVR, nothing
+  under VRChat or desktop.
 
-> ✅ **Confirmed in game:** a soft-particle effect the CCK flagged as non-SPI was patched, validated,
-> uploaded, and renders correctly **in both eyes**.
+> ✅ **Confirmed in game:** a soft-particle effect the CCK flagged was patched, uploaded, and renders
+> correctly in both eyes.
 >
 > **Still off by default**, on one avatar's evidence. Compilation is all that can be checked
 > automatically — whether it *looks* right is a judgement no editor script can make, so turn it on
 > deliberately and **check the effect in both eyes**.
-
-> Passing the CCK's check isn't the same as being correct. It looks for four macros; a shader can
-> have all four and still be broken, because both the depth texture and any `GrabPass` are texture
-> *arrays* under instancing — a soft-particle shader reading `_CameraDepthTexture` through
-> `sampler2D`/`tex2Dproj`, or a glass/refraction shader reading its grab texture through `tex2D`,
-> takes the wrong slice however many macros are present. AvatarBridge rewrites both.
 
 ## Parameter types
 
@@ -820,79 +749,36 @@ the avatar, however well it measured, and it's re-placed from the eye markers th
 body. A marker already on the body is never touched, so avatars that are correct — including the
 other two quadrupeds — can't be disturbed. Naming only nominates candidates; geometry decides.
 
-**A constraint-relay quadruped walks in game** — confirmed by wearing one, which is the only test
-that counts. Getting there took several separate fixes, and the walls below are still standing.
+**A constraint-relay quadruped walks in game** — confirmed by wearing one. Most of it converts: on
+the avatar this was worked out from, 51 of 59 relays needed nothing at all. **"Base / locomotion" is
+safe to leave on**, quadruped or not.
 
-**"Base / locomotion" is safe to leave on, quadruped or not.** Merged `[Base]` layers are masked
-off the humanoid rig — they can only *replace* ChilloutVR's locomotion, never add to it — so
-ChilloutVR alone drives the decoy biped and the relays carry it onto the animal, while any custom
-locomotion clips are [grafted](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing)
-into CVR's own layer.
-
-**Most quadrupeds are a hidden humanoid rig.** The model carries a second, invisible biped skeleton
-— bones named like `HipsHuman`, `thighHuman.L`, `HeadHuman` — and Unity's humanoid map points only
-at *those*. Nothing the engine solves ever touches a bone that deforms the mesh. Constraints then
-relay that decoy onto the real skeleton, bone by bone: the torso rides the biped hips, the neck
-chain *is* the biped spine, the front legs are the biped's legs. It's an elegant trick and it needs
-no FinalIK at all, so ChilloutVR has nothing to delete.
-
-Most of that converts. On the avatar this was worked out from, 51 of 59 relays needed nothing at
-all. **Two things break the rest, and the report names both:**
+Four things break the rest, and the report names each:
 
 - **Relays that solve in [local space](#constraints-that-drive-another-object)** — typically the
-  hind legs copying the humanoid legs' articulation, so one walk cycle moves four legs. Where the
-  copied bone can be moved under the same parent as the bone it copies, that is repaired exactly;
-  where it can't, it's reported.
-- **Mirrored bones.** A hind rig is usually the front rig *mirrored* — which is why its relays
-  cross left to right — and a mirrored bone carries a negative scale. VRChat's solver corrects a
-  constraint result for that; **Unity's constraints have no such step and ChilloutVR ships no type
-  that does**, so those relays land reflected. Nothing on this side can fix it: Unity's constraint
-  computes and writes its own rotation with no hook in between. Un-mirroring the bones and
-  re-rigging is the only cure, and that's a job for your 3D package.
-- **PhysBones on a relayed bone.** A constraint writes that bone every frame; a cloth
-  solver integrates it from its own last state. Together they feed each other until the transform
-  goes **NaN**, and the chain hangs broken with nothing to see in the animator. VRChat survives it
-  because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone don't. Those
-  chains are skipped now and listed in the report. **Unity's own constraints count too** —
-  the loop is engine-level and doesn't care which component writes the rotation. An earlier version only looked
-  for VRChat's, so a quadruped base built entirely on Unity constraints went straight past it with a
-  tail cloth simulating three constraint-driven bones.
-- **Both markers on the decoy.** ChilloutVR parents the viewpoint and voice position to the
-  humanoid Head bone, which on these rigs is part of the decoy — so the camera ends up inside the
-  animal's skull. Both are measured on the relayed bones instead; see
-  [the viewpoint troubleshooting](#the-viewpoint-or-voice-position-is-nowhere-near-the-head).
-- **Toggles that switch a constraint on and off.** This one isn't quadruped-specific, it
-  just bites hardest here. An animation curve carries the component **type** and the **serialized
-  property name**, and conversion changes both — a clip still saying `VRCParentConstraint.IsActive`
-  plays as silence, with nothing to see in the animator. That's how limb locks, sit/lay-down/loaf
-  poses and flight modes work on any constraint-driven avatar: release the relay so an animation can
-  take the bones over. Curves are repointed at the Unity constraint now
-  (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`). **`FreezeToWorld`
-  has no Unity or ChilloutVR equivalent** and is dropped — a toggle relying on it will change the
-  constraint but won't pin anything in world space.
-- **First-person head hiding aimed at the decoy.** ChilloutVR hides your own head by adding
-  an `FPRExclusion` to the humanoid Head bone. That bone skins nothing here, so nothing was hidden
-  and the view filled with the inside of the animal's head. One is added to the head you can see
-  instead — your camera only; everyone else sees the whole avatar. Delete it if you'd rather not.
+  hind legs, so one walk cycle moves four legs. Repaired where the copied bone can be moved under
+  the same parent; reported where it can't.
+- ⚠️ **Mirrored bones — the common build, and unfixable here.** A hind rig is usually the front rig
+  mirrored, and a mirrored bone carries a negative scale. VRChat's solver corrects for that; Unity's
+  constraints have no such step and ChilloutVR ships no type that does, so those relays land
+  reflected. Un-mirroring and re-rigging is the only cure — a job for your 3D package. If your quad
+  has a **"biped" mode**, try it: it usually stops using the mirrored hind rig and often converts
+  cleanly.
+- **PhysBones on a relayed bone** feed the constraint their own output until the transform goes NaN.
+  Those chains are skipped and listed. Unity's own constraints count too — the loop is engine-level.
+- **Both markers, and first-person head hiding, aimed at the decoy.** ChilloutVR hangs the viewpoint,
+  voice position and `FPRExclusion` off the humanoid Head bone, which here skins nothing. All three
+  are measured on the relayed bones you can actually see instead.
 
-⚠️ **A mirrored hind rig still doesn't work**, and that's the common build — the front half moves,
-the back half lands reflected. The report names the exact bones. Both quadrupeds dissected here that
-use VRC constraints hit it in the same place, and it looks the same on each: the hind limbs are the
-humanoid legs relayed *in local space* and *mirrored*, so they fail both walls at once —
+Also worth knowing, though not quadruped-specific: **toggles that switch a constraint on and off**
+are how limb locks, sit/loaf poses and flight modes work on these avatars. Curves are repointed at
+the Unity constraint (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`).
+**`FreezeToWorld` has no equivalent** and is dropped.
 
-```
-LOCAL_INVERSE_CNST_UpperLeg_L  ←  HOOMAN_UpperLeg_L      (local space, mirrored parent)
-LOCAL_INVERSE_CNST_LowerLeg_L  ←  HOOMAN_LowerLeg_L
-LOCAL_INVERSE_CNST_Foot_L      ←  HOOMAN_Foot_L
-```
-
-If your quad has a **"biped" mode**, try it — it usually stops using the mirrored hind rig entirely
-and is often the configuration that converts cleanly.
-
-**Honest summary: this is limited support, not full support.** One rig style walks; one converts
-almost perfectly; one mostly doesn't. Nothing here is a silent failure — the report and
-`Diagnostics.md` name which family you have, which bones fail, and why — but a quadruped still needs
-testing in game before you trust it, and some will need author-side changes no converter can make.
+**Honest summary: limited support, not full support.** One rig style walks, one converts almost
+perfectly, one mostly doesn't. Nothing fails silently — the report names which family you have and
+which bones fail — but a quadruped needs testing in game, and some need author-side changes no
+converter can make.
 
 **A minority are FinalIK quadrupeds**, and those have a second, unrelated problem:
 
@@ -976,693 +862,324 @@ Bipeds are unaffected by any of it.
 Symptoms that have actually come up. **Read `ConversionReport.md` first** — most of these name
 themselves in it.
 
+Many entries below say *reconvert on a current release*. That is the whole fix: the cause was in
+the converter and is repaired, and your source avatar was never touched.
+
 ### Nothing compiles — `'ImageDownloader' does not contain a definition for 'GetImage'`
 
-The project has the **legacy `.unitypackage` VRChat SDK** installed (an `Assets/VRCSDK` folder)
-instead of the Creator Companion / VPM one. The old SDK ships an `ImageDownloader` class in the
-global namespace; C# resolves names through enclosing namespaces — global included — *before*
-`using` directives, so it shadows the CCK's own `ImageDownloader` and the CCK stops compiling.
-That takes the whole editor assembly down, AvatarBridge included, before any of it runs.
+The project has the **legacy `.unitypackage` VRChat SDK** (an `Assets/VRCSDK` folder). Its global
+`ImageDownloader` shadows the CCK's, and the CCK stops compiling — taking the whole editor assembly
+with it.
 
-**Install the SDK through the [Creator Companion](https://vcc.docs.vrchat.com/) (or ALCOM)
-instead** — the VPM packages keep VRChat's types in their own assemblies, where they can't shadow
-anything. This collision exists between the CCK and the legacy SDK with no AvatarBridge in the
-project at all, and the legacy SDK is deprecated by VRChat anyway.
+**Install the SDK through the [Creator Companion](https://vcc.docs.vrchat.com/) or ALCOM instead.**
+The collision exists between the CCK and the legacy SDK with no AvatarBridge involved.
 
 ### Nothing compiles — Poiyomi's `AbiAutoAnchor.cs` / `AbiAutoLock.cs`: `'ABI' could not be found`
 
-Some Poiyomi versions ship ChilloutVR helper scripts that reference the CCK **directly**, inside
-Poiyomi's own `ThryExternal` assembly. The CCK sets `CVR_CCK_EXISTS` project-wide, which
-activates those scripts — but an assembly-definition assembly can never reference
-`Assembly-CSharp`, where the Assets-installed CCK's types live, so they cannot compile no matter
-what you do. (Other Poiyomi versions use reflection there and are fine.)
+Some Poiyomi versions ship CCK helper scripts inside an assembly that can never reference the
+Assets-installed CCK, so they cannot compile.
 
-**Fix: delete the two files** — `…/ThryEditor/External/Editor/AbiAutoAnchor.cs` and
-`AbiAutoLock.cs`. They are optional CCK upload conveniences (auto-anchor override, auto-lock on
-upload); nothing in conversion or the CCK's own upload needs them. A Poiyomi update may bring
-them back — delete again, or update to a version whose ABI scripts start with `using System;`
-(reflection-based) instead of `using ABI…`.
+**Delete both files** (`…/ThryEditor/External/Editor/`). They're optional upload conveniences;
+nothing in conversion needs them. A Poiyomi update may restore them — delete again.
 
 ### The avatar stands in a bent rest pose, only the head and hands follow me
 
-The "bicycle pose". **Reconvert on a current release** — merged layers are always
-masked off the humanoid rig (it used to be an Advanced option, confirmed in game and now
-mandatory).
+The "bicycle pose". **Reconvert on a current release.**
 
-VRChat keeps FX on its own playable layer, so an FX layer there physically can't write humanoid
-muscles. ChilloutVR runs one controller, so nothing stops a merged layer doing exactly that and
-fighting locomotion for the body every frame. The masking restores VRChat's separation; layers
-that animate the body on purpose are left alone, and object toggles, blendshapes and material
-animation are untouched. If you see this pose on a 2.62.0+ conversion, report it — the report
-names every layer that could write muscles.
+Merged layers are always masked off the humanoid rig now. VRChat keeps FX on its own playable layer
+where it physically can't write muscles; ChilloutVR runs one controller, so an unmasked merged layer
+fights locomotion for the body. Layers that animate the body on purpose are left alone.
 
 ### A bone chain hangs broken, or MagicaCloth throws in the Scene view
 
 **Reconvert on a current release.** A chain whose bones are also driven by a **constraint** is no
 longer simulated, and the report says which and why.
 
-A constraint writes its bone's rotation every frame from somewhere else; a cloth solver integrates
-that bone from its own previous state. Run both on one bone and each is fed the other's output —
-the integration diverges, and within seconds the transform is **NaN**. NaN never recovers and
-spreads down the hierarchy, so the chain hangs in a pose nothing explains, identically at rest, in
-play mode and in game. MagicaCloth's own Scene-view gizmo can throw a `NullReferenceException` from
-inside Burst while sorting those points, which is the same problem seen from a different angle.
-
-VRChat tolerates the overlap because PhysBones re-read the constraint's result each frame.
-MagicaCloth2 and DynamicBone don't, and nothing here can reorder them. The constraint fully
-determines that bone's rotation anyway, so the physics had nothing to add — remove the constraint if
-you want the chain simulated instead.
+A constraint writes the bone every frame; a cloth solver integrates it from its own last state. Run
+both and each is fed the other's output until the transform goes **NaN**, which never recovers.
+VRChat tolerates it because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone
+don't. Remove the constraint if you want the chain simulated.
 
 ### A chain moves differently in game than in Unity
 
-Expected — **Unity can't preview cloth.** Nothing steps the solver in edit mode, and in play mode
-the avatar is standing still while in game it walks, turns and head-tracks constantly. Shaking the
-root is not a valid test: MagicaCloth2's speed limits make a chain follow rigidly the moment they're
-exceeded, so a fast shake looks still whatever the settings say. Judge physics in game.
+Expected — **Unity can't preview cloth.** Nothing steps the solver in edit mode, and in play mode the
+avatar stands still while in game it walks and head-tracks constantly. Shaking the root isn't a valid
+test either: MagicaCloth2's speed limits make a chain follow rigidly once exceeded. Judge physics in
+game.
 
 ### Unity crashes when you press Convert
 
-**Update to the current release and try again** — the known causes are all repaired, from every
-direction: converting, selecting the avatar, entering play mode, and uploading.
+**Update to the current release and try again.** Unity's playable-graph builder segfaults instead of
+logging on three kinds of controller damage, all now repaired during conversion and counted in the
+report: empty motion slots (given a placeholder clip), blend-tree parameter fields naming nothing
+(renamed to inert `#` names), and controllers referencing assets that resolve to nothing (checked
+before assignment).
 
-Unity's playable-graph builder **segfaults instead of logging** on three kinds of controller
-damage, and the CCK's uploader builds that graph too, so an avatar in this state couldn't even be
-uploaded. All three are repaired during conversion and counted in the report:
-
-- **A motion slot with nothing in it** — an empty animator state, or a blend tree child whose
-  asset is gone. Every empty slot gets a placeholder clip; nothing is lost (the slot animated
-  nothing) and every blend threshold stays where the author put it.
-- **A blend tree parameter field naming nothing.** Unity binds *every* such field when it builds
-  a graph — including the ones a Direct tree never reads and the Y axis a 1D tree ignores — and
-  `Blend`, `Value` and `Smooth Amount` are Unity's own defaults left behind on trees that stopped
-  using them, so they arrive on plenty of avatars through no fault of yours. Worst is a field
-  that's **blank**. Each is renamed to a single `#`-prefixed name (deliberately *not* declared as
-  a parameter — declaring them brings the crash back, twice measured); those fields were being
-  read as garbage or not at all, so nothing about the avatar changes.
-- **A controller referencing assets that resolve to nothing.** The controller is checked before
-  it's assigned — assignment alone triggers a full graph build — and one that would crash is not
-  assigned. The broken references usually come from a VRCFury or Modular Avatar bake that errored
-  partway: build a test copy of the source avatar and fix what errors there, then convert again.
-
-  A **missing prefab in the scene** does not count, and used to. Unity names the placeholder
-  `SFX (Missing Prefab with guid: …)`, that name lands in every animation path targeting the
-  object, and the check read the GUID out of the name as though it were a reference — so an
-  avatar with one broken prefab under an SPS socket lost its whole controller. Only real
-  references are counted now; a missing prefab is still worth fixing, but it no longer costs you
-  the Animator.
-
-If your avatar's controller has none of these, the Animator is wired up exactly as before.
+Broken references usually come from a VRCFury or Modular Avatar bake that errored partway — build a
+test copy of the source avatar, fix what errors there, then convert again.
 
 ### The console floods in Play mode — "Statemachine for layer is missing" or "Parameter type does not match"
 
-**Reconvert on 3.5.29 or later.** Both are noise rather than damage — nothing is lost and the scene
-is fine — but they can run to tens of thousands of lines in a single play session, and the second
-one hides a real fault.
-
-- **"Statemachine for layer '…' is missing"** — Unity stores a layer's state machine as a reference
-  to an *asset*, so a layer copied between controllers keeps pointing at the original file. If that
-  controller is stripped (GoGo Loco is the common case) or simply absent, the layer is left with
-  nothing behind it. It can never play anything, so conversion now removes it and the report names
-  each one.
-- **"Parameter type 'Hash …' does not match"** — a ChilloutVR animator driver reads parameters as
-  well as writing them, and each operand remembers which type to read. If a parameter's type
-  changed during conversion, the read could be left pointing at the old one; Unity then logs the
-  mismatch and hands the driver a **0**, so it calculates from a value it should never have seen.
-  Reads are now kept in step with writes.
+**Reconvert on 3.5.29 or later.** Both are noise rather than damage, but can run to tens of thousands
+of lines per session, and the second hides a real fault — a driver reading a parameter as the wrong
+type is handed a **0** and calculates from it.
 
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
-**Reconvert on a current release.** Two historical causes, both long repaired:
+**Reconvert on a current release.**
 
-- Reconverting used to replace the saved controller by copying raw bytes over the file — which
-  keeps the GUID but **destroys the native object and every sub-asset**, leaving everything that
-  still held them (the Animator window, tester tools, anything alive with domain reload off)
-  holding corpses; pressing Play then re-awoke Animators against them (`Assertion failed:
-  'MecanimDataWasBuilt()'`, then a SIGSEGV in `GenerateGraph`). Reconverting now **mutates the
-  existing controller in place**, like a hand edit: same file, same GUID, same native object.
-- The placeholder clip for empty states used to have **no curves at all**, and Mecanim sizes its
-  binding array from the curve count — the source of `'mem->m_ConstantClipValueCount >= 0'`
-  assertions, menu controls swapping places, and white skin under Unity's "Enter Play Mode
-  Options". The placeholder now animates one inert value on a dedicated `AvatarBridge_EmptySlot`
-  object, so the conversion no longer cares about that editor setting.
+If it persists, check **Enter Play Mode Options** (Edit → Project Settings → Editor) — turning it off
+and reopening the scene clears the stale-state class of crash immediately, and the report warns
+whenever it's on.
 
-If you see either symptom on a current conversion, "Enter Play Mode Options" (Edit → Project
-Settings → Editor) deserves the first look — turning it off and reopening the scene clears the
-stale-state class of crash immediately, and the report warns whenever it's on.
+### Converted avatars broke after updating AvatarBridge — missing controllers, pink particles
 
-### Converted avatars broke after updating AvatarBridge — Missing controllers, pink particles
+Only affects conversions made before 2.59.0, which were written inside the tool's own folder — so
+deleting it to update erased them.
 
-Only affects conversions made before 2.59.0, which were written **inside the tool's own folder**
-(`Assets/AvatarBridge/Output`) — so deleting that folder to update the `.unitypackage` erased them
-with it. **Check the Windows Recycle Bin first:** Unity trashes deleted assets rather than
-destroying them, and restoring the folder relinks everything, because the `.meta` files carry the
-GUIDs the scene points at. Otherwise reconvert — the source avatars were never touched.
-
-Output has landed in the sibling `Assets/AvatarBridgeOutput` since 2.59.0, where the update flow
-can't reach it, and anything left in the old location is moved there automatically with its GUIDs
-intact.
+**Check the Recycle Bin first:** Unity trashes deleted assets rather than destroying them, and
+restoring the folder relinks everything. Otherwise reconvert. Output has landed in the sibling
+`Assets/AvatarBridgeOutput` since 2.59.0, where updates can't reach it.
 
 ### A hat or held item drifts off when I resize myself
 
 **Reconvert on 3.4.7 or later**, with the avatar scaler on.
 
-A `ParentConstraint` holds its target a fixed distance from its source, and that distance is in
-**metres** — Unity rotates it by the source bone but never scales it. So with the height slider the
-body moved and the offset didn't: shrink and the prop hung off you, grow and it sank inside you. One
-cowboy hat sat 13–18 cm out.
+A `ParentConstraint` offset is in **metres** and never scales, so the body moved and the offset
+didn't. Each offset is now handed to the hierarchy instead — a small empty parented to the source
+bone, inheriting the avatar's scale. Nothing moves at default size.
 
-From 3.4.7 each offset is handed to the hierarchy instead. A small empty named
-`AvatarBridge_ScaleRelay_<prop>` is parented to the source bone at exactly the point the offset was
-already producing, and the constraint is re-pointed at it with a zero offset. Being a real child, it
-inherits the avatar's scale, so the gap grows and shrinks with you. Nothing moves at the default
-size, and no animation, layer or curve is involved.
-
-Four cases are deliberately left as they were, and the report names each one:
+Four cases are deliberately left alone, and the report names each:
 
 | Left alone | Why |
 |---|---|
-| Offsets an animation drives | Zeroing an offset a curve is driving would hand the prop to an animation that no longer matches it |
-| Sources inside a cloth or dynamic-bone chain | A new child of a simulated bone becomes a new particle and changes how the chain moves |
+| Offsets an animation drives | Zeroing one a curve is driving hands the prop to an animation that no longer matches |
+| Sources inside a cloth or dynamic-bone chain | A new child of a simulated bone becomes a new particle |
 | Sources outside the avatar | An offset from a world anchor is meant to be in metres |
-| Unlocked constraints | Unity re-derives their offsets from the live transform and would write the old one straight back |
-
-For those, nudge the offset by hand for the size you actually use, or leave the slider near default.
+| Unlocked constraints | Unity re-derives their offsets and writes the old one back |
 
 ### Something is bright magenta
 
-A material or shader the avatar points at no longer exists. Almost always VRCFury's temp folder,
-which Fury deletes on its next build — so this typically appears *after* a later bake, on an avatar
-that converted fine. Convert again on the current version; if it persists, that's worth an issue.
+A material or shader the avatar points at no longer exists — almost always VRCFury's temp folder,
+which Fury deletes on its next build. So it appears *after* a later bake, on an avatar that converted
+fine. **Convert again**; if it persists, that's worth an issue.
 
 ### A mesh renders white, washed out, or loses its eyes
 
-Different from magenta and worth reporting separately. The material survived but its **textures**
-didn't — the same VRCFury temp problem one level deeper. Convert again on the current version.
+Same VRCFury temp problem one level deeper: the material survived, its **textures** didn't. **Convert
+again**, and report separately from magenta.
 
 ### Gestures freeze in game, or on another PC
 
 **Reconvert on a current release.**
 
-Before 2.71.0, a merged FX layer carrying finger curves was narrowed to a hands-only mask instead of
-being blocked. Merged layers sit **above** ChilloutVR's `LeftHand`/`RightHand` layers, so on
-Override at full weight they overwrote the pose the gesture had just played — even material-swap
-layers with no finger animation of their own, purely by writing defaults into channels the mask let
-through. The signature is unmistakable and maddening: the in-game CCK Debugger reports `LeftHand —
-Layer Weight: 1.00, Playing Clips: 1.00 Thumbs Up` while your fingers sit in their rest pose. The
-animator is correct; something above it is winning. Those curves never moved a finger in VRChat
-either — its FX playable layer can't drive humanoid muscles — so they're blocked with the rest now,
-and a final audit strips fingers from any mask left above the hand layers.
+Not a conversion problem, and worth checking first: on Index-type controllers ChilloutVR only
+registers gestures while *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its
+settings. With both off, no avatar gestures work — stock or converted.
 
-Also worth knowing, and not a conversion problem: on Index-type controllers ChilloutVR only
-registers gestures at all while *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled
-in its settings. With both off, no avatar gestures work, stock or converted.
-
-<details><summary>Two older causes, both fixed long before that</summary>
-
-*Before 2.62.0*, gesture conditions selected poses via the integer `GestureLeftIdx`/`RightIdx`
-parameters — which ChilloutVR's own stock avatar animator never uses, and which the game doesn't
-reliably feed. Fingers worked in the editor tester (which drives them directly) and froze in game.
-Conversions condition on the `GestureLeft`/`GestureRight` floats with the CCK's own threshold bands
-now, the same client path every stock avatar runs.
-
-*Before 2.61.0*, the controller referenced its clips wherever the source avatar kept them; in a
-project without those folders every missing clip resolves to None and plays as stillness, with no
-error anywhere. "Works on the author's PC, frozen on someone else's" is that one's signature. Every
-referenced clip and mask is copied into the output's `RehomedAssets` now.
-
-*Before 3.5.13*, reconverting the same avatar **added another copy of every rescued asset**
-rather than replacing the last one — `Angry.anim`, `Angry 1.anim`, `Angry 2.anim`, on and on. The
-controller used the newest and the rest were orphans nobody referenced: one test avatar had
-reached 22 copies of a single clip and 554 `.anim` files in one output folder. Names are now
-reused between runs, so the folder stays the size of one conversion. **Delete the output folder
-once and convert again** to clear what earlier versions left behind.
-
-</details>
+If you converted before 3.5.13, **delete the output folder once and convert again**: reconverting
+used to stack duplicate copies of every rescued asset rather than replacing them.
 
 ### The viewpoint or voice position is nowhere near the head
 
-**Reconvert on a current release.**
+**Reconvert on a current release.** The **Auto** buttons on the CVRAvatar inspector are always a safe
+manual fix, and place both where the conversion aims to.
 
-**The viewpoint comes from your avatar's VRChat descriptor** — the position its author placed by eye
-and shipped, copied across unchanged. The CCK's *Auto* button instead reads the humanoid **eye
-bones**, and on rigs where those bones aren't where the eyes are it is confidently wrong: one robot
-avatar's eye mapping sat 6 cm off-centre and 9 cm behind its face, while the author's own value
-matched the hand-corrected position exactly on X and to half a millimetre on Z. Auto is still used
-when the descriptor has no viewpoint set, and the report says which was used and how far apart they
-were.
+The viewpoint comes from your avatar's VRChat descriptor — the value its author placed and shipped —
+rather than the CCK's *Auto*, which reads humanoid eye bones and is confidently wrong on rigs where
+those aren't where the eyes are. Auto is used when the descriptor has none, and the report says which
+was used and how far apart they were. An authored value is only overridden when the rig proves it
+wrong: further from the head than the rig's own proportions allow, or above the eyes by more than the
+avatar's own interpupillary distance.
 
-**Eye bones are found by name when the rig doesn't map them**, and that search knows Blender's
-`.L`/`.R` suffix (`eye.L`, `eye.R`) as well as `LeftEye`-style names — Blender exports that
-suffix by default, so it covers most anthro avatars. It also looks **anywhere on the avatar**, not
-only under the head bone: rigs park eye bones outside the head all the time when something
-else needs to drive them, and one taur base keeps its pair in a cloned spine chain under a node
-named `Head.children.go.here`. A match is only accepted if it lands within the same distance of the
-head that this rig's proportions already allow, so a stray bone elsewhere on the body is refused.
-Without this the viewpoint fell through to a blind head-offset estimate and sat 14 cm low, on the
-muzzle.
+**On a [quadruped](#quadruped--finalik-avatars) neither value is looking at your avatar** — both
+markers hang off the humanoid Head bone, which is part of the hidden decoy rig. Where the avatar
+relays both humanoid **eye** bones, the conversion follows those constraints to the visible head and
+measures there instead. Requiring eyes is deliberate: a constraint sourced from the humanoid head
+alone can be a puppet *input* rather than a face being reproduced, and one taur base put its viewpoint
+at the hips that way.
 
-**Unless the authored value is provably in the wrong place.** A viewpoint isn't a matter
-of taste — it's where your eyes go — so if it lands further from the head bone than the rig's own
-proportions allow *and* Auto lands within them, Auto wins and the report says so. One taur base
-shipped its viewpoint at the avatar's **hips**, 0.6 m from its head; the old rule copied it faithfully
-and then warned about the value it had just chosen.
-
-The conversion checks its own answer — it re-draws each position the way the CCK's inspector will
-and measures it against the head bone — so the report tells you when a placement is wrong instead
-of leaving it for the first person who hears your voice coming from ten metres away. Putting the
-avatar at the top of the scene hierarchy before converting avoids the scale cases entirely, and the
-CVRAvatar inspector's own **Auto** buttons are always a safe manual fix.
-
-**On a quadruped, neither the author's viewpoint nor Auto is looking at your avatar**. Those
-rigs are a [hidden humanoid decoy](#quadruped--finalik-avatars), and ChilloutVR hangs both
-markers off the humanoid **Head** bone — which is part of the decoy, not part of the animal. On the
-dragon this was found on, the shipped viewpoint sat **0.57 m** from the dragon's eyes, inside its
-skull: looking up was fine, looking down filled the screen with the inside of its own mouth. Auto
-was no better — it reads the decoy's eye bones and lands half a metre out too.
-
-The relay constraints say where the real bones are, so the conversion follows them: a constraint
-whose **source** is the humanoid head or an eye bone is driving that bone's visible counterpart, and
-both markers are measured there instead.
-
-**This only fires when your avatar relays both humanoid EYE bones**, and that requirement
-is doing real work. A taur base kept tripping earlier versions: its constraint sourced from the
-humanoid head drives a hip clone, because that's its head-puppet feature — the head as an *input*
-that swings the body, not a bone being reproduced somewhere visible. The result was a viewpoint
-placed at the avatar's hips. Nothing about the rig separated the two cases (that base has a genuine
-stand-in skeleton too), and nor did distance — the dragon's real head sits 0.46 m from its humanoid
-head, the taur's hip clone 0.50 m. Relayed eyes do: an eye bone exists to aim eyeballs, so a
-constraint driven from one is reproducing a face, and a puppet input never has them.
-
-A decoy rig that maps no eye bones therefore keeps the author's own viewpoint. An
-unhelpful viewpoint beats one confidently placed at your hips.
-
-It still can't be perfect, because the markers ride the humanoid Head bone whatever happens — so
-check them with the gizmo and drag either one if you want it elsewhere.
-
-<details><summary>Three older causes, all fixed</summary>
-
-- **A viewpoint above the eyes.** The author's VRChat viewpoint is preferred over the CCK's
-  Auto placement, and it's overridden only when the rig itself proves it wrong. That check measured
-  against the **hips** — and hips get mis-mapped as readily as jaws: one avatar pointed them at the
-  armature root on the floor, which stretched the tolerance to 0.89 m and would have accepted a
-  viewpoint anywhere in its upper half. Its authored value sat 10 cm above the eye bones, on the brow.
-  A viewpoint is now also rejected when it sits above the eye midpoint by more than the avatar's own
-  **interpupillary distance** — a yardstick that comes from the two bones being compared, so no other
-  slot has to be mapped correctly, and that scales with the avatar (about 6 cm on a human, far outside
-  where anyone places a viewpoint deliberately). *Below* the eyes is deliberately left alone: down a
-  muzzle or inside a helmet is a real choice.
-- **A "jaw" bone that isn't a jaw.** The humanoid **Jaw** slot is optional and nothing
-  validates it, so riggers fill it with whatever was nearest — one avatar mapped it to a bone called
-  `fronthair1`, 21 cm *above* the head bone and a centimetre above the viewpoint, and the voice duly
-  came out of the top of its head. A mapped Jaw is now checked before it's believed: it must sit
-  **below the eyes** (a jaw hinges under them — the head bone is a bad reference, since a jaw is
-  legitimately level with the base of the skull) and within a quarter of the rig's own hips-to-head
-  span of the head bone. Failing either, the jaw is ignored and the voice is measured from an
-  open-mouth viseme instead — the vertices that shape moves *are* the mouth — falling back to the head
-  bone only if there's no viseme either. The rejected bone is named in the report and flagged in
-  `Diagnostics.md`. Nothing is retargeted — that would move geometry — so fix it in the model's Rig
-  tab if you want jaw-flap animation as well. A bone's local
-  axes are whatever the rigger chose — on one robot avatar the head bone's forward pointed at the
-  sky, so "6 cm in front of the head" placed the voice 6 cm *above the eyes*. Offsets use the avatar
-  root's orientation now, the one transform whose forward is really forward.
-- **Scaled bones.** With no jaw bone the voice position sits a few centimetres in front of
-  the head, and that offset used to be applied through the head bone's own transform — which
-  multiplies it by the **bone's** scale. Rigs derived from Second Life routinely carry ~100× bone
-  scales, turning a 6 cm nudge into 6 m. The offset is sized from the avatar's own hips-to-head span
-  and applied by rotation only now, so bone scale can't reach it. The viewpoint was never affected:
-  it's a midpoint between two eye-bone *positions*, with no offset to inflate.
-- **Scaled parents.** ChilloutVR stores both positions as an offset carrying the avatar's
-  own **`localScale`** — what the CCK's inspector reads and writes. Earlier conversions used the
-  avatar's *world* scale, identical until the avatar sits under a parent with a scale on it, at
-  which point they diverge by the parent's factor.
-
-</details>
-
-Whatever the cause, the CVRAvatar inspector's own **Auto** buttons place both exactly where the
-conversion aims to, so they're always a safe manual fix.
+Putting the avatar at the top of the scene hierarchy before converting avoids the scale cases
+entirely.
 
 ### The report says VRCFury errored, or that files are missing
 
-**"VRCFury reported N error(s) during its own build"** is *Fury's own message*, quoted verbatim —
-so Fury **is** installed and it **did** run. The fault is in what it was asked to build. The usual
-form is *"You're missing some files needed for this VRCFury asset"* followed by paths: a VRCFury
-component on the avatar references a package this project doesn't have. The folder in the path
-names it — `Assets/GoGo/GoLoco/…` is GoGo Loco, and so on.
+**"VRCFury reported N error(s) during its own build"** is *Fury's own message, quoted verbatim* — so
+Fury **is** installed and it **did** run. The fault is in what it was asked to build. The usual form
+is *"You're missing some files needed for this VRCFury asset"* followed by paths; the folder in the
+path names the package.
 
-The report also lists, *before* the bake, **"N VRCFury component(s) reference assets that aren't
-in this project"**, naming the object each broken component sits on — Fury's message says which
-files, this says which component wants them.
+The report also lists, before the bake, **"N VRCFury component(s) reference assets that aren't in this
+project"** — Fury's message says which files, this says which component wants them.
 
-Either **install the package**, or **delete that VRCFury component** if you don't want the
-feature — then convert again. Converting past it loses whatever that component would have built,
-and anything animating paths it would have created stays dead (a marker or prop that "worked in
-VRChat" and does nothing here is usually this).
-
-Fury wraps each feature so a failure shows a dialog and the build *continues* — which is why a
-bake can "succeed" with half the avatar missing. That's why this is an **Error** and why the
-report says not to upload the result.
+**Either install the package, or delete that VRCFury component**, then convert again. Fury wraps each
+feature so a failure shows a dialog and the build *continues* — which is why a bake can "succeed" with
+half the avatar missing, and why this is an Error that says not to upload.
 
 ### A toggle switches on, the layer plays — and nothing changes on screen
 
-If the report says **"animated material property(ies) don't exist on the shader they target"**,
-this is it, and **it is not the conversion**: the same animation does nothing in VRChat either.
+If the report says **"animated material property(ies) don't exist on the shader they target"**, this
+is **not the conversion** — the same animation does nothing in VRChat either.
 
-**Two report lines cover the other version of this** — a clip whose curves address objects that
-aren't on the avatar — and they are split apart, because they mean opposite things:
+Two report lines cover the other version, and they mean opposite things:
 
-- **"animate paths that were ALREADY missing in VRChat"** is not a problem. Every dead path is now
-  checked against the avatar *as it arrived*, and these weren't there either — so the curves were
-  silent in VRChat exactly as they will be here, and nothing was lost. Usually the clip belongs to a
-  feature that variant isn't configured for. It used to be reported as a warning, which made healthy
-  conversions look alarming: one quadruped base tripped it 44 times, all harmless.
-- **"LOST paths that existed before conversion"** is the real one. Those objects were on the avatar
-  when it arrived and aren't now, so the feature worked in VRChat and won't here. A stripped system
-  (GoGo, SPS) taking objects a clip still references is the usual innocent cause — turn that strip
-  off and convert again to check. Anything else is worth reporting as a bug.
-
-**Clips that switch a constraint on and off get the same treatment**, because the same three
-outcomes mean three different things:
-
-- **"repointed at the Unity constraints"** — working. The type and property names change during
-  conversion, and these followed. Some also had to follow their constraint to a different object,
-  because a VRC constraint using `Target Transform` is rebuilt *on the thing it drives*.
-- **"drove a constraint that was never built"** — **check your bake, not the conversion.** The object
-  is on the avatar but has no constraint and never did, so there was nothing to convert. VRCFury and
-  Modular Avatar generate constraints *during the bake*, and a bake that errors partway generates
-  some sets and not others — one quadruped had its ear, tongue, wrist and toe constraints built and
-  its finger set missing, leaving 140 curves addressing things that never existed. Build a test copy
-  of the **source** avatar on its own and confirm it completes without errors.
-- **"drove a constraint on an object that is now GONE"** — the object itself vanished during
-  conversion. A stripped system is the innocent cause; anything else is a bug worth reporting.
-
-**Locked (optimised) Poiyomi/Thry shaders bake any property that wasn't flagged animated *at lock
-time* into the shader as a fixed value and delete the property.** Writing to it afterwards goes
-nowhere. Flagging it later sets `_<Name>Animated` on the *material*, but that changes nothing until
-the material is **unlocked and locked again** — so a material can claim a property is animated while
-its shader genuinely has no such property.
-
-**Fix it in Poiyomi's own material inspector**, and only there: unlock the material, right-click the
-property, mark it animated, then lock again. Flags are per material, so if only some of the
-avatar's materials carry one, only those respond.
-
-It has to be Poiyomi's UI because marking a property animated *also enables the shader section it
-belongs to*. Poiyomi is modular: a disabled section is compiled out of the locked shader
-completely, and no flag on a property inside it will bring it back. AvatarBridge briefly shipped a
-command that automated the unlock/flag/re-lock, and it was withdrawn in 2.83.0 for exactly this —
-it set the flags correctly and the properties still didn't appear, because their sections were off,
-while the rebuild changed how the avatar looked. Only Poiyomi knows which section each property
-needs.
-
-**Some of them will never work again, and the report says which.** It splits the list in two:
-
-| the report says | what it means |
+| The report says | What it means |
 |---|---|
-| **Worth fixing** | Nothing has flagged the property yet. Unlock → mark animated → lock, then convert again. |
-| **Probably not fixable** | The material *already* carries the animated flag and the property still isn't in the shader. Someone has done that fix and it didn't take — the section is off, or the animation predates the installed Poiyomi. Re-locking again changes nothing. |
+| animate paths that were **already missing in VRChat** | Not a problem. Silent there too; nothing was lost |
+| **LOST** paths that existed before conversion | Real. A stripped system (GoGo, SPS) is the innocent cause — turn that strip off and check. Anything else is a bug |
 
-The second group is worth knowing about before you spend an evening on it. Those controls are
-[removed from the converted avatar](#what-gets-converted) by default rather than shipped as menu
-entries that do nothing.
+Clips that switch a **constraint** on and off split the same three ways: *repointed at the Unity
+constraints* (working), *drove a constraint that was never built* (check your bake — a partial
+VRCFury/MA bake generates some constraint sets and not others), and *drove a constraint on an object
+that is now gone* (a stripped system, or a bug).
 
-Everything upstream looks healthy while this is happening, which is what makes it expensive — the
-parameter syncs, the layer sits at weight 1, the clip plays, and both the CCK Debugger and the
-tester's own **Animator layers** readout confirm it. The report names the property and the renderer
-so you don't have to work back from the animator.
+**Locked Poiyomi/Thry shaders** bake any property not flagged animated *at lock time* into the shader
+and delete it, so writing to it goes nowhere. **Fix it in Poiyomi's own material inspector** — unlock,
+right-click the property, mark animated, lock again. It has to be Poiyomi's UI because that also
+re-enables the shader *section* the property belongs to; a disabled section is compiled out entirely
+and no flag will bring it back.
+
+The report splits these in two: **worth fixing** (nothing has flagged it yet) and **probably not
+fixable** (the material already carries the flag and the property still isn't in the shader — the
+section is off, or the animation predates the installed Poiyomi). The second group is worth knowing
+before you spend an evening on it.
 
 ### Other people see my avatar flickering, cycling colours or thrashing — I don't
 
 Look for **"layer(s) may thrash on OTHER players' screens right after the avatar loads"** in the
-report. It names the layer and the state it gets stuck re-entering.
+report — it names the layer and the state.
 
-Remote copies of your avatar do not start with your parameter values. Everything sits at its
-**serialized default** until your values replicate — seconds after load, and longer for anything
-you never touch. A layer your own copy never moves, because your live value parks it, can at those
-defaults satisfy a loop of transitions and re-enter a state every frame. Anything it drives —
-colours, outlines, blendshapes, toggles — cycles or flickers for as long as that lasts.
-
-**You cannot see this and cannot reproduce it by looking**: your copy is correct the whole time,
-and your copy is what Unity previews. It presents as a rare bug that fixes itself after half a
-minute, reported by other people.
+Remote copies don't start with your parameter values; everything sits at its **serialized default**
+until they replicate. A layer your own copy never moves can, at those defaults, satisfy a loop of
+transitions and re-enter a state every frame. **You cannot see this or reproduce it by looking** —
+your copy is correct, and your copy is what Unity previews.
 
 Two fixes, either works:
 
-- **Change the parameter's default** to a value that parks the layer — usually the resting
-  position of whatever it drives. This is the better one: it also makes the avatar look right
-  during the seconds before your values arrive.
-- **Give the looping transition an exit time**, so it cannot fire twice in one frame.
+- **Change the parameter's default** to a value that parks the layer. Better, because it also makes
+  the avatar look right during the seconds before your values arrive.
+- **Give the looping transition an exit time**, so it can't fire twice in one frame.
 
-The CCK Animator Tester's **Remote view** card reproduces the whole thing locally by snapping
-parameters to their defaults.
-
-**One cause of this was the conversion's own, and is fixed in 3.5.26.** VRCFury writes the
-"this is someone else's copy" test as a float band — `IsLocal > -0.001 && IsLocal < 0.001` — and
-retyping that parameter to a bool used to read each half separately, producing "is true AND is
-false". Every remote branch Fury generated became unreachable, so the *local* branch played for
-everyone else: exactly what those branches exist to prevent. If you converted on an earlier
-version and other people report your avatar behaving oddly while it looks right to you,
-**reconvert**.
+The CCK Animator Tester's **Remote view** card reproduces it locally. One cause was the conversion's
+own and is fixed in 3.5.26 — if you converted earlier, reconvert.
 
 ### A toggle switches on but never back off
 
 **Reconvert on a current release.**
 
-VRChat's usual toggle is two animator states: one holding the clip that changes something, and one
-holding **nothing at all**, whose job is to put it back. That empty state works because VRChat's
-Write Defaults writes each property's captured default — the off direction is an implicit rule
-rather than animation. Converted, there is nothing in the off state to undo the change, so the
-toggle switches on and stays on. Every toggle on such an avatar behaves the same way, because
-they're all built the same way.
-
-Conversions now give that off state a real animation. **If your avatar already has a clip that does
-the job it uses yours** — the "on" half of a pair that was simply never wired into the empty state.
-Only when there's nothing suitable is one generated, by **measuring** the property off your avatar:
-whatever it is at conversion time — the object active, the blendshape at rest, the material as
-authored — becomes an explicit curve. Either way the toggle restores by animating, which behaves
-the same on any platform. The report says which layers reused an existing clip and which got a new
-one.
+VRChat's usual toggle is one state holding a clip and one holding **nothing**, relying on Write
+Defaults to undo it. Converted, there's nothing in the off state to restore. Conversions now give it a
+real animation — reusing your own clip where one exists, otherwise measuring the property off your
+avatar as it is at conversion time.
 
 Three things worth knowing:
 
-- **Whatever is true at conversion time is what "off" now means.** If a toggle should rest in its
-  other position, set the avatar up that way before converting.
-- **Where several layers animate one thing, only the lowest restores it.** A dress toggle and a
-  shirt toggle that both move the shirt is the usual case: if the dress layer restored the shirt it
-  would assert it from above and the shirt could never come off; if neither did, it could never go
-  back on. The lower layer owns it, the higher stays silent, and both toggles work. The report
-  counts what was left to a lower layer.
-- **Only two-state toggles are filled.** VRChat's idiom is exactly one empty "off" state and
-  one state holding the clip, and that shape is the only one where a snapshot of your avatar belongs
-  in the empty half. Bigger layers are machines whose empty states are structural — a chest slider's
-  `Reset/Pause`, a local/remote gate — and filling those *changes how the avatar looks*: one snapshot
-  pinned seven chest blendshapes to zero and flattened the model the moment the layer rested there.
-  Those layers are now left exactly as VRChat had them, and the report names each one.
-- **Not every empty state is an off state.** Some exist to *choose* — the local/remote gate
-  VRChat avatars put at the top of a layer, whose transitions split on `IsLocal` so the wearer's
-  controls drive one branch and a synced dropdown drives the other. The layer only passes through
-  it, so handing it values makes it hold them for as long as it sits there — and if the gate's
-  condition never resolves, forever. Those are now recognised by their transitions covering every
-  value of a parameter, and left empty. The report counts them.
-
-  *Before this rule a hat-grab layer's gate was given the "hat on the head" animation, which asserted
-  the hat visible from above its own toggle.*
+- **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
+- **Where several layers animate one thing, only the lowest restores it** — otherwise a dress toggle
+  would assert the shirt from above and it could never come off.
+- **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
+  (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 
 ### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
 
 **Reconvert on 3.5.8 or later** — enabling "Base / locomotion" can no longer cause this.
 
-Merged into one ChilloutVR controller, a `[Base]` layer lands **above** the client's own
-`Locomotion/Emotes` layer on Override at full weight. From there it can't *add* to CVR's locomotion,
-only replace it — and CVR's layer is where the movement sliders and every stance button are answered,
-so letting it through costs you all of them. One avatar's `[Base]` layer turned out to be a
-calibration utility (states literally named `measure me`, `Preview`, `reinitialize`); unmasked at
-weight 1 it simply held the body still.
+A merged `[Base]` layer lands **above** ChilloutVR's own `Locomotion/Emotes` on Override at full
+weight, where it can only replace that layer, not add to it — and CVR's layer is where the movement
+sliders and stance buttons are answered. `[Base]` layers are now masked off the humanoid rig; object
+toggles, blendshapes, materials and parameters in them still convert.
 
-`[Base]` layers are now masked off the humanoid rig, exactly like merged FX layers. Everything else
-in them still converts — object toggles, blendshapes, materials, parameters, additive motion — and
-CVR's locomotion stays authoritative.
+**The animations themselves survive.** Custom walk, crouch, crawl, fall and sit clips are grafted into
+ChilloutVR's own locomotion layer, matched by their **position in the movement blend trees** rather
+than by name. Loop settings are matched to the slot; jump and fall grafts play once; a flight pose
+lands on CVR's `LocFlying` state, since ChilloutVR flies natively and needs the pose, not the speed
+machinery.
 
-**And the animations themselves survive**: custom walking, crouching, crawling, falling and
-sitting clips are grafted into ChilloutVR's *own* locomotion layer, matched by their position in
-the movement blend trees — a clip at the forward-run position lands at CVR's forward-run position,
-whatever it's named. The structure stays ChilloutVR's, so movement and stances always answer; the
-art becomes the avatar's. Each grafted movement cycle's **loop setting is matched to the slot it
-fills** (a cycle authored without looping would otherwise play once and freeze), while jump and
-fall grafts play **once**, as their exit-time transitions always said. A **flight pose lands on
-CVR's `LocFlying` state**: ChilloutVR flies natively, so a VRChat copter or flight system needs
-none of its speed machinery here, just its pose where the client will show it — and that pose is
-**scored, not name-matched**: a state you can sit in, judged by looping clip and idle/hover naming
-rather than by the first name containing "fly". Pose-style stance states (single-clip
-Standing/Crouching/Lying) are left alone: they are VR tracking poses, and one seated as a desktop
-crouch idle sinks the wearer into the floor.
-
-One discovery made all of this precise: **most VRChat avatars don't ship walking animations at
-all** — their trees reference `proxy_*` placeholder clips that the VRChat *client* replaces at
-runtime. The real walk was never in the avatar, so there's nothing to carry; ChilloutVR's own
-animation set is this platform's version of those placeholders, and the report says which of the
-two cases your avatar is.
-
-**Genuine locomotion replacements can't be rescued this way**, and it's worth knowing why: they lean
-on runtime layer-weight control, which ChilloutVR has no equivalent for, so they don't run here
-whether masked or not. Nothing is lost by blocking them. If you want one driving your body anyway,
-clear its Mask in the Animator window — and expect the stances to stop responding.
+Worth knowing: **most VRChat avatars don't ship walking animations at all** — their trees reference
+`proxy_*` placeholders the VRChat *client* replaces at runtime. ChilloutVR's own animation set is this
+platform's equivalent, and the report says which case your avatar is. Genuine locomotion replacements
+lean on runtime layer-weight control, which ChilloutVR has no equivalent for, so they can't be rescued.
 
 ### An animation flickers rapidly — often only on other players' screens
 
 **Reconvert on 3.5.8 or later.** Unity's AnyState transitions default to "Can Transition To Self",
-which with ordinary conditions means the destination state re-enters **every frame** the conditions
-hold, restarting its animation each time. Nearly every avatar carries dozens of these and VRChat
-never shows it, because the states involved are mostly *empty* there — restarting nothing looks
-like nothing. Conversion has to fill empty states (they crash Unity's graph builder), and a filled
-state restarted every frame strobes its clip.
+re-entering the destination **every frame** the conditions hold. VRChat never shows it because those
+states are mostly *empty* there; conversion has to fill empty states, and a filled state restarted
+every frame strobes.
 
-The "only other people see it" shape is the same mechanism plus networking: remote copies of your
-avatar hold every `#` local parameter at its default forever (local parameters never sync, and
-parameter streams are stripped from remote copies), so a re-entry condition your live values keep
-false can sit permanently true on everyone else's client. The conversion now disables the self
-re-entry flag on merged AnyState transitions — but **only where the restart carries no meaning**.
-A state with a real animated clip keeps the flag *and* the pinned-at-first-frame
-look its author shipped with. A state with an **exit-time transition out** keeps it too, because
-there the restart is load-bearing: every re-entry resets the clock so the timed exit never fires —
-that is the entire mechanism holding the state, and one avatar's every clothing toggle was built
-exactly this way (AnyState-with-self in, exit-time out); clearing the flag set them all cycling
-on/off at clip length. Transitions conditioned on a Trigger always keep the flag, as firing once
-per pulse is the intended use. What still loses the flag is the case the fix exists for: a
-still-holding state with no timed exit, restarted every frame — the filler-filled gate states that
-strobed for remote viewers. The **Remote view** card in the CCK Animator Tester reproduces the remote valuation
-locally if you want to verify an avatar before uploading.
+The "only other people see it" shape adds networking: remote copies hold every `#` local parameter at
+its default forever, so a re-entry condition your live values keep false can sit permanently true for
+everyone else.
 
-Root motion is also stripped from animations that **travel**: VRChat flight and vehicle systems
-move the player by animating the body, because VRChat allows nothing else. ChilloutVR moves the
-player itself and hangs the first-person camera on the head bone — the same baked movement here
-shoves the wearer around with no input, so it is removed. The test is whether the clip's root
-**ends where it started**: a backflip's flip is root rotation and a dance sways the whole body,
-both returning home, and those keep their curves — stripping them broke the animations while
-removing nothing a player could feel. A clip that ends displaced is a mover, and looped, a
-vehicle; those have each root curve **flattened to its starting value** — held, never deleted,
-because the same curve carries the body's baseline height and deleting it sank the wearer
-waist-deep into the floor. Locomotion-tree grafts are always flattened — there the capsule owns
-every metre.
+Self re-entry is now disabled on merged AnyState transitions **only where the restart carries no
+meaning**. States with a real clip keep it, and so do states with an **exit-time transition out** —
+there the restart resets the clock so the timed exit never fires, which is the entire mechanism
+holding the state.
+
+**Root motion is stripped from animations that travel.** VRChat moves the player by animating the
+body because it allows nothing else; ChilloutVR moves the player itself, so the same baked movement
+shoves the wearer around with no input. The test is whether the clip's root **ends where it started** —
+a backflip's flip and a dance's sway return home and keep their curves. A clip that ends displaced has
+each root curve **flattened to its starting value**, never deleted, because the same curve carries the
+body's baseline height.
 
 ### An emote replays forever instead of playing once
 
-**Reconvert on 3.5.5 or later.** Emotes live in menus that **hold** their value, and VRChat's
-Action graph is built for that: after a play-once emote it parks in a state whose only way back
-requires the value to return to zero, so an emote fires on the **rise** of its condition, once.
-The converted pose states are re-armed from the locomotion resting state instead — and arming on
-a *level* replays the emote every time the pose hands back, forever, as long as the menu holds
-the value. Conversion reproduces the rise-only behaviour: a local ready flag gates every arming
-transition, dropped the moment a pose is armed and raised again when its conditions have gone
-false **or the armed value has changed** — so switching straight from one emote to the next plays
-the new one, no trip through None required, and re-selecting an emote replays it. Hold-style
-emotes (dances, AFK poses) are unaffected; they loop until deselected, as their own exit
-conditions have always said.
+**Reconvert on 3.5.5 or later.** Emote menus **hold** their value, and VRChat's Action graph fires on
+the **rise** of a condition, once. Converted poses are re-armed from the locomotion resting state
+instead, so arming on a *level* replays forever. A local ready flag now gates every arming transition,
+so an emote fires once, switching straight to another plays the new one, and re-selecting replays it.
+Hold-style emotes (dances, AFK poses) are unaffected.
 
 ### A menu control appears, moves, syncs — and does nothing
 
-Check the report for that control's name. Three known causes, all fixed, all worth naming if you
-still hit them: a prefab whose constraints drive your bones from proxy objects (see
-[above](#constraints-that-drive-another-object)); a slider whose neutral is 0.5 being declared 0; or
-**a feature living in the Action layer**.
+Check the report for that control's name. The interesting cause is **a feature living in the Action
+layer**.
 
-That last one is worth understanding, because it looks exactly like a dead parameter. VRChat's Action
-layer is its emote player: VRChat keeps it at weight **0** and raises it only while an emote runs, so
-its waiting state can hold a full-body clip and harm nothing. ChilloutVR has no playable layers to
-raise it, so conversions rest it at 0 too — otherwise that waiting state asserts a stand-still pose
-over your locomotion and you walk on the spot.
+VRChat keeps Action at weight **0** and raises it only while an emote runs, so its waiting state can
+hold a full-body clip harmlessly. ChilloutVR has no playable layers to raise, so conversions rest it
+at 0 too — otherwise that waiting state asserts a stand-still pose over your locomotion.
 
-Some avatars put a *feature* there anyway. One transforming robot kept its entire vehicle mode in an
-Action layer gated on its own `CarMode`/`TransformMode` parameters: every parameter converted, the
-menu toggled them correctly, and nothing happened, because the layer holding the animation could
-never reach any weight.
+Some avatars put a *feature* there anyway. An Action layer whose transitions wait on the avatar's
+**own** parameters is now merged at **weight 1**, with its waiting state emptied and Write Defaults
+off so it contributes nothing until something drives it. VRChat fades that weight in over about half a
+second and ChilloutVR can't, so expect the change to **snap rather than ease**.
 
-An Action layer whose transitions wait on the avatar's **own** parameters — anything outside VRChat's
-`VRCEmote`/`AFK`/state built-ins — is now merged at **weight 1**, with its waiting state emptied and
-Write Defaults turned off so it contributes nothing until something drives it. That's the same net
-effect as VRChat's weight 0, and then it animates at full weight. VRChat fades that weight in over
-about half a second and ChilloutVR can't, so expect the change to **snap rather than ease**.
+The feature stays **disarmed until one of its own parameters actually changes**. Conditions that are
+permanently true are free inside a weight-0 layer and plenty are; copied into an always-on layer they
+would fire the moment the avatar loaded.
 
-The feature stays **disarmed until one of its own parameters actually changes**, and this matters
-more than it sounds. VRChat's Action layer is silent at weight 0, so the conditions inside it are
-free to be permanently true — plenty are. Copied into ChilloutVR's always-on locomotion layer, a
-condition like that would fire the moment the avatar loaded: two inflation rigs did exactly that,
-one flickering between its pose and idle forever, the other walking up its stages at load and
-parking in a pose its owner never chose. The arming now snapshots the values the avatar woke up
-with and only engages once one of them moves, so the feature waits for you rather than for the
-avatar to exist.
+**Full-body poses move into ChilloutVR's own locomotion layer** — the one place on this platform a
+pose can both assert and let go. What moves is the **live window**: the states between the behaviour
+that raises the Action weight and the one that fades it, read from VRChat's own behaviours. The
+original layer stays merged at weight 0 so its parameter drivers keep firing.
 
-**The full-body poses move into ChilloutVR's own locomotion layer** — the one place on this
-platform a pose can both assert and let go. VRChat raises the Action playable's weight at runtime
-while a sequence plays; ChilloutVR has no runtime weight control, and a *separate* layer has no way
-to yield — inert states with Write Defaults off hold the last written muscles (the avatar freezes
-mid-pose; observed directly), Write Defaults on asserts rest pose over locomotion. Five versions of
-state surgery hit that wall. Inside the locomotion layer it doesn't exist: when the pose states
-aren't active, locomotion's own states are, still writing muscles every frame — handing back *is*
-yielding.
-
-What moves is the **live window** — the states between the behaviour that raises the Action weight
-and the one that fades it, read from VRChat's own behaviours before they're stripped; exactly the
-states VRChat ever showed. The avatar's arming conditions (parameters, gestures) carry over as the
-entry conditions, and the original layer stays merged at weight 0 so its parameter drivers keep
-firing on schedule. Not carried over: VRChat's half-second weight fades — entering and leaving the
-pose blends over a fixed quarter second. When no live window can be identified, the layer stays at
-weight 0 and the report says exactly what that costs.
-
-**A moved pose keeps its own height.** Movement baked into animations is normally flattened,
-because in ChilloutVR [the client owns where you
-are](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) and a clip that
-shoves you about with no input is exactly what that flattening exists to stop. But an authored
-full-body sequence lowering the whole body — a biped folding down into a car — is the avatar
-changing its own height, not travelling: flattened, one transforming avatar held standing height
-for its whole transition and snapped to the floor at the end. For these poses only, the vertical
-is kept; travel across the floor still goes, so nothing walks you anywhere you didn't ask to go.
-
-**A pose that turns the whole body over is [limited](#transforming-avatars-desktop-only-turn).** The
-same transforming avatar also rotates from upright to lying flat, and that half is carried across —
-the rotation is moved out of root motion and into the bones, which is the only form ChilloutVR
-shows. It plays on desktop. **In VR the body stays upright and the turn snaps at the end**, because
-the IK solver is driving the body there and wins against the animation.
+A moved pose keeps its own **height** and its **orientation**, both moved into the bones rather than
+the root, since ChilloutVR discards root motion. Travel across the floor still goes. The turn is
+[desktop-only](#transforming-avatars-desktop-only-turn).
 
 ### Two near-identical menu controls, and only one works
 
-**Reconvert on a current release.** ChilloutVR syncs straight from the animator, so a synced parameter with no menu
-control still needs somewhere to live — conversions create one. That guess is wrong when the avatar
-*writes* the parameter itself from a parameter driver: the new control then sits in your menu fighting
-the animator, right next to the control that really works. One transforming avatar shipped a `Car Mode`
-entry (the author's, driving `TransformMode`) directly above a `CarMode` one (ours, driving what the
-Action layer sets for itself).
-
-Invented controls are now withdrawn once the merged animator shows a driver writing that parameter.
-Only controls this tool added are eligible — anything the author put in the menu stays. The parameter
-is untouched and still syncs.
+**Reconvert on a current release.** A synced parameter with no menu control gets one created — the
+wrong guess when the avatar *writes* that parameter itself from a driver, leaving an invented control
+next to the one that really works. Invented controls are now withdrawn once a driver is found writing
+that parameter. Anything the author put in the menu stays.
 
 ### Your eyes stay open, start closed, or lose a pupil
 
-**Reconvert on a current release.** An avatar that blinks **from its own animator** (VRCFury and
-similar, usually driving `vrc.Blink`) can't keep that system through conversion: its "eyes open"
-states are *empty* in VRChat, relying on Write Defaults to reopen the lids, and empty states can't
-survive conversion — they crash Unity's graph builder and get a filler clip, at which point the
-first blink closes the eyes for good. It can't share the eyes with the native blink either — two
-systems, one pair of eyelids.
+**Reconvert on a current release.**
 
-The animator blink system only exists because **VRChat has no built-in blink. ChilloutVR does.** So
-the conversion finds the animator layer whose *only job is blinking* — every curve a blendshape,
-the only shape it ever raises matches "blink", no objects, no materials — lets **that layer name
-the shape**, removes it, wires ChilloutVR's native Eye Blink, and zeroes the shape's live weight in
-case the old system left the eyes mid-blink. If no layer can be safely identified, nothing is
-removed and native blink stays off — but **the shape slots on the `CVRAvatar` are filled in
-anyway**, so if the eyes turn out not to blink in game the fix is one tick of *Use Blink
-Blendshapes* rather than hunting for the right shape among the dozens a face mesh carries. The
-report names the shapes it pre-filled. Only tick it if the eyes **don't** blink: with both systems
-running, the client's blink owns that shape every frame and any expression using it stops closing
-the eyes.
+An avatar that blinks from its own animator can't keep that system: its "eyes open" states are *empty*
+in VRChat, and empty states can't survive conversion. It exists only because **VRChat has no built-in
+blink and ChilloutVR does** — so the conversion finds the layer whose only job is blinking, removes
+it, and wires ChilloutVR's native Eye Blink.
 
-One subtlety: ChilloutVR writes its blink weight onto the mesh **every frame, after the animator**
-— whatever shape it's given, the client owns outright, and an expression animating the same shape
-would silently stop closing the eyes. If the removed layer's shape is also used by surviving
-expression clips, the native blink is moved to a free shape family instead — a `Blink L` /
-`Blink R` pair or a spare combined shape nothing animates — so the blink and the expressions both
-work. If no free shape exists, the blink keeps the contested shape and the report warns which
-expressions lose.
+If no layer can be safely identified nothing is removed and native blink stays off, but **the shape
+slots are filled in anyway** — so if the eyes don't blink in game the fix is one tick of *Use Blink
+Blendshapes*. Only tick it if they **don't** blink: the client writes its blink weight every frame
+after the animator, so with both systems running any expression using that shape stops closing the
+eyes. Where the removed layer's shape is also used by surviving expressions, the native blink is moved
+to a free shape pair instead.
 
 ### An effect draws in one eye only in VR
 
@@ -1671,14 +1188,12 @@ Expected, and not caused by converting — see
 
 ### There's no "Convert a VRChat avatar" tab
 
-The VRChat Avatars SDK isn't installed. Without it a VRChat avatar's components can't be read at
-all, so only [Setup mode](#setup-mode) is offered.
+The VRChat Avatars SDK isn't installed, so only [Setup mode](#setup-mode) is offered.
 
 ### Uploading fails with "Failed to generate new object ID"
 
-Not AvatarBridge — that's the CCK. ChilloutVR's API refused to allocate a content slot, usually
-because of the account's private upload limit. The real message is in `Player.log` or the Unity
-console just above the exception.
+Not AvatarBridge — that's the CCK. ChilloutVR's API refused a content slot, usually the account's
+private upload limit. The real message is in `Player.log` or the console just above the exception.
 
 ### One extra recompile after importing
 
