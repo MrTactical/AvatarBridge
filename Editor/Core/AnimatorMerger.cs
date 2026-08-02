@@ -353,6 +353,7 @@ namespace AvatarBridge
             FeedVelocityMagnitude(master, ctx);
             RehomeVolatileAssets(master, vrcLayers, ctx);
             DeduplicateLayers(master, ctx);
+            DropStateMachinelessLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
             FillEmptyStatesWithRestoreClips(master, ctx);
             // AFTER the filler, whose motions are what turned this from harmless into a strobe.
@@ -2167,6 +2168,47 @@ namespace AvatarBridge
         /// exact "works in Unity, breaks in game" shape, and it hid driver faults from the CCK
         /// Animator Tester as well.
         /// </summary>
+        /// <summary>
+        /// Removes layers that have no state machine at all.
+        ///
+        /// A layer can arrive this way when its state machine lived in a DIFFERENT asset. Unity
+        /// stores <c>m_StateMachine</c> as a cross-file reference, so copying a layer between
+        /// controllers keeps it pointing at the original file — and when that file is stripped
+        /// (or simply absent), the layer survives with nothing behind it.
+        ///
+        /// Found on an avatar whose "Flying" and "Flying Scale" layers borrowed their state
+        /// machines from GoGo Loco's own controller. Removing GoGo took the machines with it and
+        /// left two husks, which Unity complains about on EVERY evaluation: a tester's play-mode
+        /// log carried 534 "Statemachine for layer is missing" lines per avatar. The layer cannot
+        /// do anything without a state machine, so nothing is lost by dropping it — and it is
+        /// dropped here, late, rather than trusted to the strip pass, because the reference can
+        /// break for reasons that have nothing to do with stripping.
+        /// </summary>
+        static void DropStateMachinelessLayers(AnimatorController master, BridgeContext ctx)
+        {
+            var layers = master.layers;
+            var kept = layers.Where(l => l != null && l.stateMachine != null).ToArray();
+            if (kept.Length == layers.Length)
+            {
+                return;
+            }
+            var dropped = layers.Where(l => l == null || l.stateMachine == null)
+                                .Select(l => l == null ? "<null layer>" : $"\"{l.name}\"")
+                                .ToList();
+            master.layers = kept;
+            EditorUtility.SetDirty(master);
+            ctx.Report.Converted(Category,
+                $"Removed {dropped.Count} animator layer(s) with no state machine",
+                string.Join(", ", dropped) + " — these layers had nothing behind them. Unity keeps " +
+                "a layer's state machine as a reference to an asset, which can point at a DIFFERENT " +
+                "controller when the layer was copied between avatars; if that controller is " +
+                "stripped or missing, the layer is left empty. An empty layer can never play " +
+                "anything, and Unity logs \"Statemachine for layer is missing\" every time it " +
+                "evaluates one — hundreds of lines per second in play mode. Nothing is lost by " +
+                "removing them, but if a feature you expected is gone, this names the layer it " +
+                "would have been in.");
+        }
+
         static void SyncDriverParameterTypes(AnimatorController master, BridgeContext ctx)
         {
             var types = new Dictionary<string, AnimatorControllerParameterType>();
@@ -2177,6 +2219,47 @@ namespace AvatarBridge
 
             int corrected = 0;
             var names = new List<string>();
+
+            AnimatorDriverTask.ParameterType Want(AnimatorControllerParameterType t)
+            {
+                switch (t)
+                {
+                    case AnimatorControllerParameterType.Int: return AnimatorDriverTask.ParameterType.Int;
+                    case AnimatorControllerParameterType.Bool: return AnimatorDriverTask.ParameterType.Bool;
+                    case AnimatorControllerParameterType.Trigger: return AnimatorDriverTask.ParameterType.Trigger;
+                    default: return AnimatorDriverTask.ParameterType.Float;
+                }
+            }
+
+            // A driver READS as well as writes. Each operand carries its own a/b/cParamType, and
+            // AnimatorDriverTask.GetSourceValue switches on it to pick GetBool / GetFloat /
+            // GetInteger. Those are stamped from TypeOf() when the task is built, which is BEFORE
+            // ParameterTypeInference may retype the parameter — so a retype left the read side
+            // pointing at the old type while the write side was corrected below.
+            //
+            // Unity logs "Parameter type 'Hash NNN' does not match." and returns 0 for the read,
+            // once per driver execution: a tester's play-mode log carried 19,760 of them. The
+            // driver then computes from a zero it should never have seen.
+            void FixSource(string name, ref AnimatorDriverTask.ParameterType paramType,
+                           AnimatorDriverTask.SourceType source)
+            {
+                if (source != AnimatorDriverTask.SourceType.Parameter || string.IsNullOrEmpty(name)
+                    || !types.TryGetValue(name, out var t))
+                {
+                    return;   // static/random operands read nothing; unknown names aren't ours to guess
+                }
+                var want = Want(t);
+                if (paramType != want)
+                {
+                    paramType = want;
+                    corrected++;
+                    if (names.Count < 6 && !names.Contains(name))
+                    {
+                        names.Add(name);
+                    }
+                }
+            }
+
             void FixTasks(List<AnimatorDriverTask> tasks)
             {
                 if (tasks == null)
@@ -2185,6 +2268,12 @@ namespace AvatarBridge
                 }
                 foreach (var task in tasks)
                 {
+                    if (task != null)
+                    {
+                        FixSource(task.aName, ref task.aParamType, task.aType);
+                        FixSource(task.bName, ref task.bParamType, task.bType);
+                        FixSource(task.cName, ref task.cParamType, task.cType);
+                    }
                     if (task == null || string.IsNullOrEmpty(task.targetName) ||
                         !types.TryGetValue(task.targetName, out var type))
                     {
