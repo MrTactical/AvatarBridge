@@ -122,6 +122,23 @@ namespace AvatarBridge
                 sdata.animationPoseRatio = 1f;
             }
 
+            // Same trade as animationPoseRatio above: the source data already answers this, so
+            // answering it here beats printing an instruction.
+            //
+            // VRChat's Multi Child Type 'Ignore' PINS a branching root — the root itself is not
+            // simulated, only the branches below it. MagicaCloth2's nearest control is
+            // rootRotation, whose own documentation reads "0.0=does not rotate, 0.5=middle,
+            // 1.0=child-based" and which defaults to 0.5. Left at the default, a pinned root got
+            // half the rotation of its children, so a chain VRChat held still swung in ChilloutVR
+            // — reported on an avatar whose rear visibly rotated on its own with no input.
+            //
+            // Presets do not carry rootRotation ("[NG] Export/Import with Presets" in MagicaCloth2's
+            // own source), so this survives preset application in either order.
+            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
+            {
+                sdata.rootRotation = 0f;
+            }
+
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
@@ -543,8 +560,9 @@ namespace AvatarBridge
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
             {
                 ctx.Report.Approximated(Category, data.Root.name, data.MultiChildTypeName == "Ignore"
-                    ? "Multi Child Type 'Ignore' pins a branching root in VRChat. If this root swings when it " +
-                      "shouldn't, set Root Rotation to 0 on this cloth."
+                    ? "Multi Child Type 'Ignore' pins a branching root in VRChat, so Root Rotation is set to 0 " +
+                      "here — MagicaCloth2 defaults it to 0.5, which would let a root VRChat held still rotate " +
+                      "halfway with its children. Raise it on the cloth if you want this root to follow them."
                     : $"Multi Child Type '{data.MultiChildTypeName}' has no MagicaCloth2 equivalent — every " +
                       "branch off this root simulates independently, where VRChat blended them.");
             }

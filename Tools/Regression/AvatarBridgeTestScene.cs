@@ -30,7 +30,7 @@ namespace AvatarBridge.Regression
         const string ScenePath = OutputFolder + "/_AllConverted.unity";
 
         // Generous, because avatars are not one size. Rows wrap past this width.
-        const float Padding = 1.5f;
+        const float Padding = 5f;
         const float RowWidthLimit = 60f;
 
         [MenuItem("Tools/AvatarBridge Dev/Scenes — build \"all converted\" test scene")]
