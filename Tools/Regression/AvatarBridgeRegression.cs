@@ -185,6 +185,40 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(changed == 0 ? 0 : 1);
         }
 
+        /// <summary>
+        /// Batch entry for an ARBITRARY subset, listed one scene path per line in the file named
+        /// by AVATARBRIDGE_SUBSET. For chasing a handful of avatars a check just fired on without
+        /// paying forty minutes for the other forty-five — the quick set is a fixed list of
+        /// canaries and cannot answer "re-run exactly these".
+        ///
+        /// Like the quick set, this writes only the avatars it ran; Accept copies rather than
+        /// wipes, so the untouched baselines survive.
+        /// </summary>
+        public static void RunSubsetBatch()
+        {
+            string listFile = Environment.GetEnvironmentVariable("AVATARBRIDGE_SUBSET");
+            if (string.IsNullOrEmpty(listFile) || !File.Exists(listFile))
+            {
+                Debug.LogError("[Regression] AVATARBRIDGE_SUBSET must name a file of scene paths, one per line.");
+                EditorApplication.Exit(2);
+                return;
+            }
+            var scenes = File.ReadAllLines(listFile)
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0 && !l.StartsWith("#", StringComparison.Ordinal))
+                .ToArray();
+            var missing = scenes.Where(s => AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(s) == null).ToArray();
+            if (missing.Length > 0)
+            {
+                Debug.LogError("[Regression] subset lists scene(s) that do not exist: "
+                               + string.Join(", ", missing));
+                EditorApplication.Exit(2);
+                return;
+            }
+            int changed = Run(scenes, $"subset({scenes.Length})");
+            EditorApplication.Exit(changed == 0 ? 0 : 1);
+        }
+
         static string[] AllAvatarScenes()
         {
             return AssetDatabase.FindAssets("t:Scene")
@@ -233,6 +267,12 @@ namespace AvatarBridge.Regression
                 if (File.Exists(PartialMarker)) File.Delete(PartialMarker);
             }
             Directory.CreateDirectory(CurrentDir);
+
+            // Which build produced this run, kept OUT of the compared digests (see BuildDigest).
+            // Not a .txt, so neither the comparison nor Accept picks it up.
+            File.WriteAllText(CurrentDir + "/_run.info",
+                $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
+                $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
 
             var changes = new List<string>();
             var missing = new List<string>();
@@ -411,16 +451,78 @@ namespace AvatarBridge.Regression
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
             sb.Append("scene: ").Append(scenePath).Append('\n');
-            sb.Append("bridge: ").Append(BridgeDefines.Version).Append('\n');
-            // Deliberately no timestamp and no Unity version: both change without the conversion
-            // changing, and every line in here has to earn its place in a diff.
+            // Deliberately no timestamp, no Unity version and NO AVATARBRIDGE VERSION: all three
+            // change without the conversion changing, and every line in here has to earn its
+            // place in a diff. The version was in here until 3.5.21 and was the worst of them —
+            // it differs on literally every avatar after any release, so the first diff after a
+            // bump reported all forty-nine as changed and buried whatever really moved. It is
+            // written once per run to Current/_run.info instead, which nothing compares.
             sb.Append('\n');
 
             AppendReset(sb, reset);
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
-            return sb.ToString();
+            return Stable(sb.ToString());
+        }
+
+        /// <summary>
+        /// Removes VRCFury's per-bake salt from generated names.
+        ///
+        /// Fury numbers the parameters and objects it generates with a value that changes on
+        /// EVERY bake — "#VF_146434155_True" one run, "#VF_353841827_True" the next, and
+        /// "[VF871] Blowjob" becoming "[VF895] Blowjob". Nothing about the avatar has changed.
+        /// Left alone this made 23 of 49 digests differ on every run, which is not a regression
+        /// signal — it is a coin toss with a diff attached, and it would have buried the one real
+        /// change this corpus was run to find.
+        ///
+        /// The salt is also why the ORDER moved: the parameter list sorts by name, so a new
+        /// number re-sorts the list. Callers sort on Stable() for that reason; this pass then
+        /// cleans the text itself, which catches the same ids inside paths, conditions and layer
+        /// names without having to find every place one can appear.
+        ///
+        /// Two distinct ids can collapse to one string here. That is acceptable: they collapse
+        /// identically in both runs being compared, so a real difference still shows.
+        /// </summary>
+        /// <summary>
+        /// Parameter names a state-machine behaviour writes, read reflectively so this works
+        /// whatever the installed CCK calls its task list. Sorted and de-duplicated: the digest
+        /// is a diff surface, and driver task order is not meaningful.
+        /// </summary>
+        static List<string> DriverTargets(StateMachineBehaviour behaviour)
+        {
+            var found = new SortedSet<string>(StringComparer.Ordinal);
+            var type = behaviour.GetType();
+            foreach (var listName in new[] { "EnterTasks", "ExitTasks", "UpdateTasks" })
+            {
+                var field = type.GetField(listName);
+                if (field == null || !(field.GetValue(behaviour) is System.Collections.IEnumerable tasks))
+                {
+                    continue;
+                }
+                foreach (var task in tasks)
+                {
+                    if (task == null) continue;
+                    var target = task.GetType().GetField("targetName");
+                    if (target?.GetValue(task) is string name && !string.IsNullOrEmpty(name))
+                    {
+                        found.Add(name);
+                    }
+                }
+            }
+            return found.ToList();
+        }
+
+        static string Stable(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                return s;
+            }
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"VF_\d+_", "VF_#_");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\[VF\d+\]", "[VF#]");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\bVF\d+_", "VF#_");
+            return s;
         }
 
         class SceneReset
@@ -692,7 +794,7 @@ namespace AvatarBridge.Regression
                     sb.Append("[overrides] ").Append(ovr.name).Append('\n');
                     var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
                     ovr.GetOverrides(pairs);
-                    foreach (var p in pairs.OrderBy(p => p.Key != null ? p.Key.name : "", StringComparer.Ordinal))
+                    foreach (var p in pairs.OrderBy(p => Stable(p.Key != null ? p.Key.name : ""), StringComparer.Ordinal))
                     {
                         sb.Append("  ").Append(p.Key != null ? p.Key.name : "<null>")
                           .Append(" -> ").Append(p.Value != null ? p.Value.name : "<unchanged>").Append('\n');
@@ -714,7 +816,7 @@ namespace AvatarBridge.Regression
             sb.Append("[controller] ").Append(ac.name).Append('\n');
 
             sb.Append("  parameters:\n");
-            foreach (var p in ac.parameters.OrderBy(p => p.name, StringComparer.Ordinal))
+            foreach (var p in ac.parameters.OrderBy(p => Stable(p.name), StringComparer.Ordinal))
             {
                 string def;
                 switch (p.type)
@@ -773,9 +875,20 @@ namespace AvatarBridge.Regression
                   .Append(st.mirror ? " mirror" : "")
                   .Append(" motion=").Append(MotionOf(st.motion)).Append('\n');
 
+                // Drivers get their WRITES named, not just their type. "behaviours:
+                // AnimatorDriver" says a state changes something and refuses to say what, which
+                // is the one fact needed to judge a transition cycle: a driver inside the cycle
+                // that writes a parameter the cycle's own conditions read can break the loop, and
+                // without the target names the digest cannot tell a real loop from a self-
+                // limiting one. Cost this exact question a night on Umbreon's emission layer.
                 var behaviours = st.behaviours
                     .Where(b => b != null)
-                    .Select(b => b.GetType().Name)
+                    .Select(b =>
+                    {
+                        string name = b.GetType().Name;
+                        var writes = DriverTargets(b);
+                        return writes.Count > 0 ? $"{name}(writes {string.Join("/", writes)})" : name;
+                    })
                     .OrderBy(n => n, StringComparer.Ordinal)
                     .ToList();
                 if (behaviours.Count > 0)

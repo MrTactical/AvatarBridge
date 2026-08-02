@@ -871,6 +871,14 @@ Bipeds are unaffected by any of it.
   grafted onto another style's simulated bones must not have that chain switched off with the
   base style's mesh, so a hidden style's cloth may keep simulating (invisible, harmless). The
   report counts the re-wired curves.
+
+  **If the chain wasn't converted, there is nothing to re-wire to.** Avatars commonly pause a
+  PhysBone while a body part resizes — an "EarsChanging" or "BreastChanging" toggle switching the
+  chain off and back on. When that chain was skipped (a constraint driving one of its bones is the
+  usual reason), the curve has no cloth to point at and dies with the VRC components, while the
+  menu entry, parameter and animator layer all convert perfectly — so the control looks right and
+  does nothing. The report now warns for each one and names the clip and the PhysBone path, so it
+  lines up with the *Skipped* entry above it that says why the chain wasn't simulated.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.
@@ -1195,6 +1203,27 @@ check them with the gizmo and drag either one if you want it elsewhere.
 Whatever the cause, the CVRAvatar inspector's own **Auto** buttons place both exactly where the
 conversion aims to, so they're always a safe manual fix.
 
+### The report says VRCFury errored, or that files are missing
+
+**"VRCFury reported N error(s) during its own build"** is *Fury's own message*, quoted verbatim —
+so Fury **is** installed and it **did** run. The fault is in what it was asked to build. The usual
+form is *"You're missing some files needed for this VRCFury asset"* followed by paths: a VRCFury
+component on the avatar references a package this project doesn't have. The folder in the path
+names it — `Assets/GoGo/GoLoco/…` is GoGo Loco, and so on.
+
+The report also lists, *before* the bake, **"N VRCFury component(s) reference assets that aren't
+in this project"**, naming the object each broken component sits on — Fury's message says which
+files, this says which component wants them.
+
+Either **install the package**, or **delete that VRCFury component** if you don't want the
+feature — then convert again. Converting past it loses whatever that component would have built,
+and anything animating paths it would have created stays dead (a marker or prop that "worked in
+VRChat" and does nothing here is usually this).
+
+Fury wraps each feature so a failure shows a dialog and the build *continues* — which is why a
+bake can "succeed" with half the avatar missing. That's why this is an **Error** and why the
+report says not to upload the result.
+
 ### A toggle switches on, the layer plays — and nothing changes on screen
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**,
@@ -1261,6 +1290,39 @@ Everything upstream looks healthy while this is happening, which is what makes i
 parameter syncs, the layer sits at weight 1, the clip plays, and both the CCK Debugger and the
 tester's own **Animator layers** readout confirm it. The report names the property and the renderer
 so you don't have to work back from the animator.
+
+### Other people see my avatar flickering, cycling colours or thrashing — I don't
+
+Look for **"layer(s) may thrash on OTHER players' screens right after the avatar loads"** in the
+report. It names the layer and the state it gets stuck re-entering.
+
+Remote copies of your avatar do not start with your parameter values. Everything sits at its
+**serialized default** until your values replicate — seconds after load, and longer for anything
+you never touch. A layer your own copy never moves, because your live value parks it, can at those
+defaults satisfy a loop of transitions and re-enter a state every frame. Anything it drives —
+colours, outlines, blendshapes, toggles — cycles or flickers for as long as that lasts.
+
+**You cannot see this and cannot reproduce it by looking**: your copy is correct the whole time,
+and your copy is what Unity previews. It presents as a rare bug that fixes itself after half a
+minute, reported by other people.
+
+Two fixes, either works:
+
+- **Change the parameter's default** to a value that parks the layer — usually the resting
+  position of whatever it drives. This is the better one: it also makes the avatar look right
+  during the seconds before your values arrive.
+- **Give the looping transition an exit time**, so it cannot fire twice in one frame.
+
+The CCK Animator Tester's **Remote view** card reproduces the whole thing locally by snapping
+parameters to their defaults.
+
+**One cause of this was the conversion's own, and is fixed in 3.5.26.** VRCFury writes the
+"this is someone else's copy" test as a float band — `IsLocal > -0.001 && IsLocal < 0.001` — and
+retyping that parameter to a bool used to read each half separately, producing "is true AND is
+false". Every remote branch Fury generated became unreachable, so the *local* branch played for
+everyone else: exactly what those branches exist to prevent. If you converted on an earlier
+version and other people report your avatar behaving oddly while it looks right to you,
+**reconvert**.
 
 ### A toggle switches on but never back off
 
@@ -1475,7 +1537,12 @@ the conversion finds the animator layer whose *only job is blinking* — every c
 the only shape it ever raises matches "blink", no objects, no materials — lets **that layer name
 the shape**, removes it, wires ChilloutVR's native Eye Blink, and zeroes the shape's live weight in
 case the old system left the eyes mid-blink. If no layer can be safely identified, nothing is
-removed, native blink stays off, and the report says so.
+removed and native blink stays off — but **the shape slots on the `CVRAvatar` are filled in
+anyway**, so if the eyes turn out not to blink in game the fix is one tick of *Use Blink
+Blendshapes* rather than hunting for the right shape among the dozens a face mesh carries. The
+report names the shapes it pre-filled. Only tick it if the eyes **don't** blink: with both systems
+running, the client's blink owns that shape every frame and any expression using it stops closing
+the eyes.
 
 One subtlety: ChilloutVR writes its blink weight onto the mesh **every frame, after the animator**
 — whatever shape it's given, the client owns outright, and an expression animating the same shape

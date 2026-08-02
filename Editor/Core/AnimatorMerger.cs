@@ -2356,25 +2356,34 @@ namespace AvatarBridge
             }
 
             int fixedCount = 0;
+            int deadDropped = 0;
             var touched = new HashSet<string>();
 
-            void Reconcile(AnimatorTransitionBase[] transitions)
+            T[] Reconcile<T>(T[] transitions) where T : AnimatorTransitionBase
             {
+                var survivors = new List<T>(transitions.Length);
                 foreach (var transition in transitions)
                 {
                     if (transition == null) continue;
                     var conditions = transition.conditions;
                     bool changed = false;
+                    // Rebuilt rather than edited in place, because a tautology has to be able to
+                    // leave: "> -0.001" on a bool constrains nothing, and keeping it as If states
+                    // the opposite of what it said.
+                    var kept = new List<AnimatorCondition>(conditions.Length);
+                    bool dead = false;
                     for (int i = 0; i < conditions.Length; i++)
                     {
                         if (!types.TryGetValue(conditions[i].parameter, out var type))
                         {
+                            kept.Add(conditions[i]);
                             continue;
                         }
                         var mode = conditions[i].mode;
                         float threshold = conditions[i].threshold;
                         var newMode = mode;
                         float newThreshold = threshold;
+                        bool drop = false, impossible = false;
 
                         switch (type)
                         {
@@ -2386,9 +2395,26 @@ namespace AvatarBridge
                                     case AnimatorConditionMode.If:
                                     case AnimatorConditionMode.IfNot:
                                         break;
+                                    // Greater/Less are read AGAINST THE THRESHOLD, not assumed to
+                                    // mean ">0.5" and "<0.5". A bool only ever reads 0 or 1, so a
+                                    // comparison outside that range is a tautology, and turning
+                                    // one into If/IfNot asserts something the author never wrote.
+                                    //
+                                    // VRCFury writes its remote branches as the band
+                                    // "IsLocal Greater -0.001 && IsLocal Less 0.001" — float for
+                                    // "IsLocal is 0", i.e. this is someone else's copy. Read
+                                    // blindly, the first half became If and the second IfNot, so
+                                    // every NonLocal state Fury generated became unreachable on
+                                    // every copy: the local branch then ran for remote viewers,
+                                    // which is precisely the effect authors use these states to
+                                    // avoid. Fifteen transitions on one avatar.
                                     case AnimatorConditionMode.Greater:
+                                        if (threshold < 0f) { drop = true; break; }          // > -0.001: always
+                                        if (threshold >= 1f) { impossible = true; break; }   // > 1: never
                                         newMode = AnimatorConditionMode.If; newThreshold = 0f; break;
                                     case AnimatorConditionMode.Less:
+                                        if (threshold > 1f) { drop = true; break; }          // < 2: always
+                                        if (threshold <= 0f) { impossible = true; break; }   // < 0: never
                                         newMode = AnimatorConditionMode.IfNot; newThreshold = 0f; break;
                                     case AnimatorConditionMode.Equals:
                                         newMode = threshold != 0f ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot;
@@ -2429,43 +2455,92 @@ namespace AvatarBridge
                                 break;
                         }
 
-                        if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
+                        if (drop)
                         {
-                            conditions[i].mode = newMode;
-                            conditions[i].threshold = newThreshold;
+                            // Constrains nothing: the transition keeps its other conditions and
+                            // fires on those alone, which is what the float band meant.
                             changed = true;
                             touched.Add(conditions[i].parameter);
                             fixedCount++;
+                            continue;
                         }
+
+                        var rebuilt = conditions[i];
+                        if (impossible)
+                        {
+                            // Genuinely unsatisfiable — "> 1" or "< 0" on a value that is only
+                            // ever 0 or 1. The whole transition goes, matching what
+                            // ParameterTypeInference already does with an unreachable one.
+                            //
+                            // It is not junk in the source: VRCFury expresses "IsLocal is not 0"
+                            // as an OR, and Unity ANDs conditions within a transition, so an OR
+                            // needs two — one testing "< -0.001" and one "> 0.001". Only the
+                            // second can ever fire for a 0/1 value; the first is the negative
+                            // half of a range a bool never reaches. Dropping it leaves the live
+                            // twin doing the work.
+                            //
+                            // Writing it as a contradictory If+IfNot pair instead (3.5.26) was
+                            // correct at runtime and awful to read: it looked identical to the
+                            // real bug 3.5.26 fixed, and cost a night of re-diagnosis.
+                            dead = true;
+                            break;
+                        }
+
+                        if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
+                        {
+                            rebuilt.mode = newMode;
+                            rebuilt.threshold = newThreshold;
+                            changed = true;
+                            touched.Add(rebuilt.parameter);
+                            fixedCount++;
+                        }
+                        kept.Add(rebuilt);
+                    }
+                    if (dead)
+                    {
+                        deadDropped++;
+                        touched.Add("(unreachable transition removed)");
+                        continue;
                     }
                     if (changed)
                     {
-                        transition.conditions = conditions;
+                        transition.conditions = kept.ToArray();
                     }
+                    survivors.Add(transition);
                 }
+                return survivors.ToArray();
             }
 
             foreach (var layer in master.layers)
             {
                 WalkMachines(layer.stateMachine, machine =>
                 {
-                    Reconcile(machine.anyStateTransitions);
-                    Reconcile(machine.entryTransitions);
+                    machine.anyStateTransitions = Reconcile(machine.anyStateTransitions);
+                    machine.entryTransitions = Reconcile(machine.entryTransitions);
                     foreach (var child in machine.states)
                     {
-                        Reconcile(child.state.transitions);
+                        child.state.transitions = Reconcile(child.state.transitions);
                     }
                 });
             }
 
-            if (fixedCount > 0)
+            if (fixedCount > 0 || deadDropped > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Reconciled {fixedCount} transition condition(s) to their parameter's type",
+                    $"Reconciled {fixedCount} transition condition(s) to their parameter's type"
+                    + (deadDropped > 0 ? $", and removed {deadDropped} transition(s) that could never fire" : ""),
                     $"A merge/inject left conditions using a comparison the parameter type can't express " +
                     $"(e.g. a bool-style If on a Float): {string.Join(", ", touched.OrderBy(n => n))}. " +
                     "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
-                    "what leaves face-tracking's RemoteModeActive local/remote gate dead.");
+                    "what leaves face-tracking's RemoteModeActive local/remote gate dead. Comparisons are " +
+                    "read against their THRESHOLD: on a parameter that only ever reads 0 or 1, \"greater " +
+                    "than -0.001\" constrains nothing and is removed rather than turned into \"is true\". " +
+                    "VRCFury writes its remote branches as exactly that band, and reading it the other way " +
+                    "made every one of them unreachable — so the local branch played for other players, " +
+                    "which is what those branches exist to prevent. A comparison that is unsatisfiable " +
+                    "instead (\"< -0.001\" on the same parameter) takes its transition with it: Fury " +
+                    "spells \"is not 0\" as two transitions, one per side of the range, and only the " +
+                    "positive one can ever fire here. Its twin still does the work.");
             }
         }
 
@@ -3306,11 +3381,50 @@ namespace AvatarBridge
             {
                 // Nothing safely strippable. Leave the avatar's own system in place and say so —
                 // adding the native blink on top would put two systems on one pair of eyes.
+                //
+                // But FILL THE SHAPE SLOTS anyway. They are inert while the tickbox is off, and
+                // leaving them empty made the recovery worse than the problem: a tester whose eyes
+                // never blinked had to work out for themselves which of nine blink-ish shapes on a
+                // 239-shape mesh the client wanted, when detection had already picked them. Now the
+                // fix is the one tick the report names, and the shapes are already in place.
+                AvatarFeatureDetect.DetectBlinkShapes(mesh, out string fbLeft, out string fbRight,
+                    out string fbCombined);
+                string prefilled = null;
+                if (fbLeft != null || fbRight != null || fbCombined != null)
+                {
+                    if (ctx.CvrAvatar.blinkBlendshape == null || ctx.CvrAvatar.blinkBlendshape.Length < 4)
+                    {
+                        ctx.CvrAvatar.blinkBlendshape = new string[4];
+                    }
+                    if (fbLeft != null && fbRight != null)
+                    {
+                        ctx.CvrAvatar.blinkBlendshape[0] = fbLeft;
+                        ctx.CvrAvatar.blinkBlendshape[1] = fbRight;
+                        prefilled = $"\"{fbLeft}\" / \"{fbRight}\"";
+                    }
+                    else
+                    {
+                        var single = fbCombined ?? fbLeft ?? fbRight;
+                        ctx.CvrAvatar.blinkBlendshape[0] = single;
+                        prefilled = $"\"{single}\"";
+                    }
+                    EditorUtility.SetDirty(ctx.CvrAvatar);
+                }
+
                 ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
                     "This avatar blinks from its own animator, but no layer could be safely identified " +
                     "as ONLY blinking, so nothing was removed and ChilloutVR's native blink stays off. " +
                     "If the eyes stick closed in game, this is where to look: the animator blink relies " +
-                    "on empty-state Write Defaults behaviour that does not survive conversion.");
+                    "on empty-state Write Defaults behaviour that does not survive conversion. " +
+                    (prefilled != null
+                        ? $"The blink shapes are already filled in on the CVRAvatar ({prefilled}), so the " +
+                          "fix is one tick: turn ON \"Use Blink Blendshapes\". Only do that if the eyes " +
+                          "DON'T blink in game — with both systems running, the client's blink overwrites " +
+                          "that shape every frame in LateUpdate and any expression using it stops closing " +
+                          "the eyes."
+                        : "No blink-ish blendshape could be found on the body mesh either, so the shape " +
+                          "slots are empty; naming one on the CVRAvatar and ticking \"Use Blink " +
+                          "Blendshapes\" is the manual fix."));
                 return;
             }
 
@@ -6752,6 +6866,18 @@ namespace AvatarBridge
             int curvesAdded = 0, clipsTouched = 0;
             var physicslessStyles = new HashSet<Transform>();
 
+            // PhysBone on/off curves with nowhere to land: the chain they name produced no
+            // physics, so there is no component to retarget them at. The curve then points at a
+            // VRCPhysBone that gets deleted with the rest of the VRC components, and the toggle
+            // that drives it does nothing at all — silently, because every OTHER part of it
+            // converts perfectly. The menu entry appears, the parameter syncs, the layer plays.
+            //
+            // Found via a tester whose ear, butt and tail scaling toggles "did nothing": all
+            // three chains had been skipped earlier for constraint conflicts, each with its own
+            // report entry saying so — but nothing connected those skips to the toggles that
+            // depended on them, so the two facts sat in the same report and never met.
+            var strandedToggles = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
             bool ChainInSubtree(Transform container)
             {
                 foreach (var chain in chains)
@@ -6864,6 +6990,11 @@ namespace AvatarBridge
                         continue;
                     }
 
+                    // Recorded before the search, cleared by a match below. A PhysBone curve that
+                    // finds no chain is the stranded case; object toggles are not, because an
+                    // object toggle still does its own job whether or not physics rode along.
+                    bool physBoneRetargeted = false;
+
                     bool anyChainInSubtree = false;
                     foreach (var chain in chains)
                     {
@@ -6903,6 +7034,7 @@ namespace AvatarBridge
                             target = EditorCurveBinding.FloatCurve(
                                 AnimationUtility.CalculateTransformPath(host, root),
                                 chain.Physics.GetType(), "m_Enabled");
+                            physBoneRetargeted = true;
                         }
                         bool alreadyDriven = false;
                         foreach (var have in existing)
@@ -6944,6 +7076,20 @@ namespace AvatarBridge
                         }
                         additions[target] = curve;
                     }
+
+                    // Nothing to retarget at, so this curve dies with the VRC components. Both
+                    // facts are needed to make it actionable: which clip, and which PhysBone
+                    // object — the physics section's skip entry for that same path says WHY it
+                    // was not converted.
+                    if (physBoneToggle && !physBoneRetargeted)
+                    {
+                        if (!strandedToggles.TryGetValue(binding.path, out var clipNames))
+                        {
+                            strandedToggles[binding.path] = clipNames = new SortedSet<string>(StringComparer.Ordinal);
+                        }
+                        clipNames.Add(clip.name);
+                    }
+
                     if (objectToggle && !anyChainInSubtree)
                     {
                         var activation = AnimationUtility.GetEditorCurve(clip, binding);
@@ -7102,6 +7248,26 @@ namespace AvatarBridge
                     "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
                     "have that chain switched off with the base style's mesh, so a hidden style's " +
                     "cloth may keep simulating — invisible, and harmless.");
+            }
+
+            if (strandedToggles.Count > 0)
+            {
+                var lines = strandedToggles
+                    .Select(entry => $"\"{entry.Key}\" (in {string.Join(", ", entry.Value)})")
+                    .ToList();
+                ctx.Report.Warning(Category,
+                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted — " +
+                    "those controls will do nothing",
+                    string.Join("; ", lines) + " — these clips turn a VRChat PhysBone on or off, " +
+                    "which is how avatars pause a chain while a body part is resized. The chain " +
+                    "they name produced no physics here, so there is no cloth component to switch " +
+                    "instead, and the curve dies with the VRC components. Everything else about " +
+                    "the control converts — menu entry, parameter, animator layer — so it looks " +
+                    "correct and does nothing, which is the worst way for this to present. " +
+                    "The PhysBones -> MagicaCloth2 section above has a Skipped entry for each of " +
+                    "these paths saying WHY it wasn't converted (a constraint driving a bone in " +
+                    "the chain is the usual reason); fix that and the toggle starts working. If " +
+                    "the chain was never meant to be simulated, remove the control instead.");
             }
         }
 

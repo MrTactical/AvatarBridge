@@ -45,6 +45,7 @@ namespace AvatarBridge
             }
             var usage = CollectUsage(master);
             Validate(ctx, master, usage);
+            CheckRemoteDefaultLoops(ctx, master);
             ctx.Report.Appendix = BuildAppendix(ctx, master, usage);
         }
 
@@ -424,6 +425,276 @@ namespace AvatarBridge
                 });
             }
             return map;
+        }
+
+        /// <summary>
+        /// Finds layers that re-enter a state every frame once every parameter is at its
+        /// SERIALIZED DEFAULT — the state a remote copy of the avatar is in.
+        ///
+        /// Remote copies differ from the wearer's in ways that all point the same direction: "#"
+        /// local parameters never sync and sit at their defaults forever, CVRParameterStream is
+        /// stripped from remote copies, localOnly drivers don't run, and at load NOTHING has
+        /// replicated yet — so for the first seconds every parameter reads its default. A layer
+        /// the wearer never sees move, because their live value parks it, can at those defaults
+        /// satisfy a loop of transitions and thrash.
+        ///
+        /// Reported by a tester as a body cycling through every colour with a pulsing outline,
+        /// for about thirty seconds after putting the avatar on, visible ONLY to other people —
+        /// two material properties driven by one runaway layer, ending the moment the real values
+        /// replicated. The wearer's own hue slider never moved, which is exactly why this is worth
+        /// a static check: the author cannot see it, cannot reproduce it, and the avatar is
+        /// correct on their screen the entire time.
+        ///
+        /// Only INSTANT re-entry counts. A cycle whose transitions all wait on exit time is an
+        /// animation sequence playing in order, which is what sequences are for; a cycle where
+        /// some transition fires with no exit time re-evaluates the same frame and never settles.
+        /// </summary>
+        static void CheckRemoteDefaultLoops(BridgeContext ctx, AnimatorController master)
+        {
+            var defaults = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            foreach (var p in master.parameters)
+            {
+                defaults[p.name] = p;
+            }
+
+            // A condition that cannot be judged (parameter missing) is treated as NOT satisfied,
+            // so an unknown never manufactures a loop that isn't there.
+            bool Satisfied(AnimatorCondition c)
+            {
+                // A serialized default only describes a parameter NOTHING drives. ChilloutVR
+                // drives its core parameters on every copy, remote ones included, so reading
+                // their defaults here describes no machine that exists.
+                //
+                // IsLocal is the one with an answer rather than an unknown: this check is about
+                // the remote copy, and on a remote copy IsLocal is FALSE by definition. Reading
+                // its declared default (1, the resting value given for the WEARER) inverted every
+                // local/remote gate on the avatar and turned VRCFury's Remote Trap — a state that
+                // exists to hold a layer still on remotes — into a reported thrash. Three of the
+                // first five hits were that mistake.
+                string bare = c.parameter.TrimStart('#');
+                if (bare == "IsLocal")
+                {
+                    return c.mode == AnimatorConditionMode.IfNot;
+                }
+                // Swimming and AFK join the core set here: the client writes both, which is the
+                // only property that matters for this check, even though it does not mark them
+                // core (they still cost sync bits, which is why ClientCoreParameters omits them).
+                if (ClientCoreParameters.Contains(bare) || bare == "Swimming" || bare == "AFK")
+                {
+                    return false;   // client-driven and live; unknowable here, so never a loop
+                }
+                if (!defaults.TryGetValue(c.parameter, out var p))
+                {
+                    return false;
+                }
+                switch (p.type)
+                {
+                    case AnimatorControllerParameterType.Bool:
+                        return c.mode == AnimatorConditionMode.If ? p.defaultBool : !p.defaultBool;
+                    case AnimatorControllerParameterType.Trigger:
+                        return false;   // needs a set, which nothing does at defaults
+                    case AnimatorControllerParameterType.Int:
+                        switch (c.mode)
+                        {
+                            case AnimatorConditionMode.Greater:  return p.defaultInt > c.threshold;
+                            case AnimatorConditionMode.Less:     return p.defaultInt < c.threshold;
+                            case AnimatorConditionMode.Equals:   return p.defaultInt == (int)c.threshold;
+                            case AnimatorConditionMode.NotEqual: return p.defaultInt != (int)c.threshold;
+                            default: return false;
+                        }
+                    case AnimatorControllerParameterType.Float:
+                        switch (c.mode)
+                        {
+                            case AnimatorConditionMode.Greater: return p.defaultFloat > c.threshold;
+                            case AnimatorConditionMode.Less:    return p.defaultFloat < c.threshold;
+                            default: return false;
+                        }
+                    default:
+                        return false;
+                }
+            }
+
+            bool FiresAtDefaults(AnimatorStateTransition t, out bool instant)
+            {
+                instant = !t.hasExitTime || t.exitTime <= 0.01f;
+                if (t.destinationState == null && t.destinationStateMachine == null)
+                {
+                    return false;   // exit transitions leave the machine; not a loop edge here
+                }
+                foreach (var c in t.conditions)
+                {
+                    if (!Satisfied(c))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            var looping = new List<string>();
+            foreach (var layer in master.layers)
+            {
+                if (layer == null || layer.stateMachine == null)
+                {
+                    continue;
+                }
+
+                // Edges that fire at defaults, plus which of them re-evaluate the same frame.
+                var edges = new Dictionary<AnimatorState, List<AnimatorState>>();
+                var instantEdge = new HashSet<(AnimatorState, AnimatorState)>();
+                var anyStateTargets = new List<AnimatorState>();
+                string selfLoop = null;
+
+                Walk(layer.stateMachine, machine =>
+                {
+                    // AnyState re-entering a state it is already in, with nothing to stop it, is
+                    // the classic form and needs no cycle search.
+                    foreach (var t in machine.anyStateTransitions)
+                    {
+                        if (t == null || !FiresAtDefaults(t, out bool anyInstant)) continue;
+                        if (t.destinationState != null)
+                        {
+                            anyStateTargets.Add(t.destinationState);
+                        }
+                        if (anyInstant && t.canTransitionToSelf && t.destinationState != null && selfLoop == null)
+                        {
+                            selfLoop = t.destinationState.name;
+                        }
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        var from = child.state;
+                        if (from == null) continue;
+                        foreach (var t in from.transitions)
+                        {
+                            if (t == null || t.destinationState == null) continue;
+                            if (!FiresAtDefaults(t, out bool inst)) continue;
+                            if (!edges.TryGetValue(from, out var to))
+                            {
+                                edges[from] = to = new List<AnimatorState>();
+                            }
+                            to.Add(t.destinationState);
+                            if (inst)
+                            {
+                                instantEdge.Add((from, t.destinationState));
+                            }
+                        }
+                    }
+                });
+
+                // A cycle only matters if the layer can REACH it at these values. VRCFury parks
+                // its generated layers in a "Remote Trap" state whose only exit tests IsLocal —
+                // false on a remote copy, so the layer never leaves and the busy little cycle of
+                // driver states behind it never runs. Fury is defending against this exact bug,
+                // and without a reachability check the defence reads as the bug: the trap was
+                // three of the first ten hits, all of them wrong.
+                var reachable = new HashSet<AnimatorState>();
+                var queue = new Queue<AnimatorState>();
+                void Reach(AnimatorState s)
+                {
+                    if (s != null && reachable.Add(s))
+                    {
+                        queue.Enqueue(s);
+                    }
+                }
+                Reach(layer.stateMachine.defaultState);
+                foreach (var s in anyStateTargets)
+                {
+                    Reach(s);   // AnyState ignores where the layer currently is
+                }
+                while (queue.Count > 0)
+                {
+                    var at = queue.Dequeue();
+                    if (edges.TryGetValue(at, out var outs))
+                    {
+                        foreach (var to in outs) Reach(to);
+                    }
+                }
+                foreach (var key in edges.Keys.ToList())
+                {
+                    if (!reachable.Contains(key))
+                    {
+                        edges.Remove(key);
+                    }
+                }
+
+                string found = selfLoop;
+                if (found == null && edges.Count > 0)
+                {
+                    // Depth-first cycle search. A cycle only counts if at least one of its edges
+                    // is instant — otherwise every step waits for a clip to finish and the layer
+                    // is a sequence, not a thrash.
+                    var state = new Dictionary<AnimatorState, int>();   // 0 unseen, 1 on stack, 2 done
+                    var stack = new List<AnimatorState>();
+                    bool Visit(AnimatorState node)
+                    {
+                        state[node] = 1;
+                        stack.Add(node);
+                        if (edges.TryGetValue(node, out var next))
+                        {
+                            foreach (var to in next)
+                            {
+                                state.TryGetValue(to, out int mark);
+                                if (mark == 1)
+                                {
+                                    int at = stack.IndexOf(to);
+                                    // Cannot be -1 while the mark says "on stack", but a throw
+                                    // here would abort a conversion over a diagnostic.
+                                    for (int i = at < 0 ? stack.Count : at; i < stack.Count; i++)
+                                    {
+                                        var a = stack[i];
+                                        var b = i + 1 < stack.Count ? stack[i + 1] : to;
+                                        if (instantEdge.Contains((a, b)))
+                                        {
+                                            found = to.name;
+                                            return true;
+                                        }
+                                    }
+                                }
+                                else if (mark == 0 && Visit(to))
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                        state[node] = 2;
+                        stack.RemoveAt(stack.Count - 1);
+                        return false;
+                    }
+                    foreach (var node in edges.Keys.ToList())
+                    {
+                        if (found != null) break;
+                        state.TryGetValue(node, out int mark);
+                        if (mark == 0)
+                        {
+                            Visit(node);
+                        }
+                    }
+                }
+
+                if (found != null)
+                {
+                    looping.Add($"\"{layer.name}\" (at \"{found}\")");
+                }
+            }
+
+            if (looping.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{looping.Count} layer(s) may thrash on OTHER players' screens right after the " +
+                    "avatar loads",
+                    string.Join("; ", looping) + " — with every parameter at its default, these layers " +
+                    "re-enter a state on the same frame instead of settling, so anything they drive " +
+                    "(colours, blendshapes, toggles, outlines) flickers or cycles. YOU WILL NOT SEE " +
+                    "THIS: on your own copy your live parameter values park the layer, and it is your " +
+                    "copy the Unity editor previews. Remote copies start at the serialized defaults " +
+                    "and stay there until your values replicate — seconds after load, longer for a " +
+                    "value you never touch — which is why this looks like a rare bug that fixes " +
+                    "itself. Set the DEFAULT of the parameters these layers read to a value that " +
+                    "parks them (usually the resting position of whatever they drive), or give the " +
+                    "looping transition an exit time so it cannot fire twice in a frame. The CCK " +
+                    "Animator Tester's Remote view card reproduces this locally.");
+            }
         }
 
         static void Walk(AnimatorStateMachine machine, System.Action<AnimatorStateMachine> visit)
