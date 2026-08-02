@@ -464,6 +464,14 @@ developer. Every client simulates every avatar's contacts itself, so **detection
 all**. Whether the parameter a receiver drives replicates its value is that parameter's own sync
 declaration, unchanged.
 
+**Animated contact switches follow their contact** — on the legacy path and the native one. VRChat
+avatars animate a contact's enabled flag to switch it off ("disable head pats" is built this way);
+that component is deleted by conversion, so the curve used to play as silence while its menu entry,
+parameter and layer all converted. Those curves now toggle the converted contact's own object, the
+form the client honours everywhere (read from the decompiled `ContactBase`, which registers in
+`OnEnable` and de-registers in `OnDisable`). Curves animating a contact's shape or filters have no
+equivalent and are removed with a report line naming each.
+
 **How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
 each component's assembly, namespace and class name, resolved against the player's own assemblies at
 load. The contact implementation already ships *inside the ChilloutVR client*; the CCK simply
@@ -763,7 +771,8 @@ Four things break the rest, and the report names each:
 
 Also worth knowing, though not quadruped-specific: **toggles that switch a constraint on and off**
 are how limb locks, sit/loaf poses and flight modes work on these avatars. Curves are repointed at
-the Unity constraint (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`).
+the Unity constraint (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`,
+and **per-source weights** — which is how a prop is handed from one hand to the other).
 **`FreezeToWorld` has no equivalent** and is dropped.
 
 **Honest summary: limited support, not full support.** One rig style walks, one converts almost

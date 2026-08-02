@@ -70,7 +70,7 @@ namespace AvatarBridge
         const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
 
         /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
-        const string StubVersion = "6";
+        const string StubVersion = "7";
         const string VersionTag = "// AvatarBridge generated contact declaration, revision " + StubVersion;
 
         /// <summary>
@@ -409,9 +409,17 @@ namespace NAK.Contacts
         public Color gizmoColor = Color.green;
 
 #if UNITY_EDITOR
-        // Editor-only, and the one exception to these files having no behaviour. The client draws
-        // these in game from its own copy; without something here a contact is invisible in the
-        // scene view and there is no way to see or size the volume just authored.
+        // Empty on purpose, and load-bearing twice over. Unity only draws a MonoBehaviour's
+        // enabled checkbox when the script has an enable-able message, so without this the
+        // inspector showed no way to switch a contact off — reported by a tester comparing it
+        // against the VRChat component. And the checkbox is honest: the client's own ContactBase
+        // registers in OnEnable and de-registers in OnDisable (decompiled), so enabled state
+        // genuinely controls the contact in game.
+        private void OnEnable() { }
+
+        // Editor-only, and the other exception to these files having no behaviour. The client
+        // draws these in game from its own copy; without something here a contact is invisible in
+        // the scene view and there is no way to see or size the volume just authored.
         private void OnDrawGizmos()
         {
             if (!drawGizmos) return;

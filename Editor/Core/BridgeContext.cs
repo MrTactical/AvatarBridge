@@ -67,6 +67,16 @@ namespace AvatarBridge
         public List<string> ParameterOrder = new List<string>();
 
         /// <summary>
+        /// Where each VRC contact's replacement ended up, for curve repointing after the merge.
+        /// Key: the ORIGINAL component's animator path plus whether it was a sender — exactly what
+        /// an m_Enabled curve binding carries. Value: the generated host object path(s); a sender
+        /// with several tags becomes several pointer objects on the legacy path, so one enable
+        /// curve fans out. Filled by ContactsConverter, consumed by RepointContactEnableCurves.
+        /// </summary>
+        public Dictionary<(string path, bool sender), List<string>> ContactHosts =
+            new Dictionary<(string, bool), List<string>>();
+
+        /// <summary>
         /// Renames the animator merge must apply verbatim, decided before it runs.
         ///
         /// ChilloutVR's Joystick2D control doesn't take two parameter names — it derives them,

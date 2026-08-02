@@ -82,6 +82,9 @@ namespace AvatarBridge
                 // After self-containment, because it edits clips: every one it touches is now
                 // the conversion's own copy, never the source avatar's.
                 AnimatorMerger.StripDeadMaterialCurves(ctx);
+                // Same rule: this rewrites contact m_Enabled curves at the converted contacts'
+                // host objects, and must never write into a source clip.
+                ContactsConverter.RepointContactEnableCurves(ctx);
                 // And only then judge the saved file's references — auditing any earlier
                 // flags things the self-container is about to fix.
                 AnimatorMerger.AuditSerializedReferences(ctx);

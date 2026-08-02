@@ -474,14 +474,34 @@ namespace AvatarBridge
                 case "Enabled":
                 case "m_Enabled": return "m_Enabled";
             }
-            // Per-source weights: Sources.Array.data[2].Weight -> m_Sources.Array.data[2].weight
-            const string prefix = "Sources.Array.data[";
-            const string suffix = "].Weight";
-            if (vrcProperty.StartsWith(prefix, StringComparison.Ordinal) &&
+            // Per-source weights. The spelling that actually occurs in the wild is
+            // "Sources.source0.Weight": VRC's source list is not a plain array — it is a class
+            // with sixteen FIXED FIELDS named source0..source15, which is precisely what makes
+            // the weights animatable in VRChat. A census of every clip in the 50-avatar test
+            // project found ~400 curves in this spelling (prop hand-offs between hands, eye
+            // puppets, dance props) and ZERO in the "Sources.Array.data[N].Weight" form this
+            // mapper matched before — that form never occurs, so every one of those curves was
+            // being dropped as unmappable.
+            const string fieldPrefix = "Sources.source";
+            const string suffix = ".Weight";
+            if (vrcProperty.StartsWith(fieldPrefix, StringComparison.Ordinal) &&
                 vrcProperty.EndsWith(suffix, StringComparison.Ordinal))
             {
+                string index = vrcProperty.Substring(fieldPrefix.Length,
+                    vrcProperty.Length - fieldPrefix.Length - suffix.Length);
+                if (int.TryParse(index, out _))
+                {
+                    return $"m_Sources.Array.data[{index}].weight";
+                }
+            }
+            // The array spelling, kept in case any serialization path ever produces it.
+            const string prefix = "Sources.Array.data[";
+            const string arraySuffix = "].Weight";
+            if (vrcProperty.StartsWith(prefix, StringComparison.Ordinal) &&
+                vrcProperty.EndsWith(arraySuffix, StringComparison.Ordinal))
+            {
                 string index = vrcProperty.Substring(prefix.Length,
-                    vrcProperty.Length - prefix.Length - suffix.Length);
+                    vrcProperty.Length - prefix.Length - arraySuffix.Length);
                 return $"m_Sources.Array.data[{index}].weight";
             }
             return null;
