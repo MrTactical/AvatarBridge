@@ -992,6 +992,23 @@ uploaded. All three are repaired during conversion and counted in the report:
 
 If your avatar's controller has none of these, the Animator is wired up exactly as before.
 
+### The console floods in Play mode — "Statemachine for layer is missing" or "Parameter type does not match"
+
+**Reconvert on 3.5.29 or later.** Both are noise rather than damage — nothing is lost and the scene
+is fine — but they can run to tens of thousands of lines in a single play session, and the second
+one hides a real fault.
+
+- **"Statemachine for layer '…' is missing"** — Unity stores a layer's state machine as a reference
+  to an *asset*, so a layer copied between controllers keeps pointing at the original file. If that
+  controller is stripped (GoGo Loco is the common case) or simply absent, the layer is left with
+  nothing behind it. It can never play anything, so conversion now removes it and the report names
+  each one.
+- **"Parameter type 'Hash …' does not match"** — a ChilloutVR animator driver reads parameters as
+  well as writing them, and each operand remembers which type to read. If a parameter's type
+  changed during conversion, the read could be left pointing at the old one; Unity then logs the
+  mismatch and hands the driver a **0**, so it calculates from a value it should never have seen.
+  Reads are now kept in step with writes.
+
 ### Unity crashes when you press Play, or the avatar renders with the wrong materials there
 
 **Reconvert on a current release.** Two historical causes, both long repaired:
