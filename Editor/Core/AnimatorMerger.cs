@@ -2356,10 +2356,12 @@ namespace AvatarBridge
             }
 
             int fixedCount = 0;
+            int deadDropped = 0;
             var touched = new HashSet<string>();
 
-            void Reconcile(AnimatorTransitionBase[] transitions)
+            T[] Reconcile<T>(T[] transitions) where T : AnimatorTransitionBase
             {
+                var survivors = new List<T>(transitions.Length);
                 foreach (var transition in transitions)
                 {
                     if (transition == null) continue;
@@ -2369,6 +2371,7 @@ namespace AvatarBridge
                     // leave: "> -0.001" on a bool constrains nothing, and keeping it as If states
                     // the opposite of what it said.
                     var kept = new List<AnimatorCondition>(conditions.Length);
+                    bool dead = false;
                     for (int i = 0; i < conditions.Length; i++)
                     {
                         if (!types.TryGetValue(conditions[i].parameter, out var type))
@@ -2466,22 +2469,21 @@ namespace AvatarBridge
                         if (impossible)
                         {
                             // Genuinely unsatisfiable — "> 1" or "< 0" on a value that is only
-                            // ever 0 or 1. Kept as a contradictory pair, which is the honest
-                            // reading: this transition can never fire. Distinct from the band
-                            // above, which CAN.
-                            kept.Add(new AnimatorCondition
-                            {
-                                parameter = rebuilt.parameter,
-                                mode = AnimatorConditionMode.If,
-                                threshold = 0f
-                            });
-                            rebuilt.mode = AnimatorConditionMode.IfNot;
-                            rebuilt.threshold = 0f;
-                            kept.Add(rebuilt);
-                            changed = true;
-                            touched.Add(rebuilt.parameter);
-                            fixedCount++;
-                            continue;
+                            // ever 0 or 1. The whole transition goes, matching what
+                            // ParameterTypeInference already does with an unreachable one.
+                            //
+                            // It is not junk in the source: VRCFury expresses "IsLocal is not 0"
+                            // as an OR, and Unity ANDs conditions within a transition, so an OR
+                            // needs two — one testing "< -0.001" and one "> 0.001". Only the
+                            // second can ever fire for a 0/1 value; the first is the negative
+                            // half of a range a bool never reaches. Dropping it leaves the live
+                            // twin doing the work.
+                            //
+                            // Writing it as a contradictory If+IfNot pair instead (3.5.26) was
+                            // correct at runtime and awful to read: it looked identical to the
+                            // real bug 3.5.26 fixed, and cost a night of re-diagnosis.
+                            dead = true;
+                            break;
                         }
 
                         if (newMode != mode || !Mathf.Approximately(newThreshold, threshold))
@@ -2494,30 +2496,39 @@ namespace AvatarBridge
                         }
                         kept.Add(rebuilt);
                     }
+                    if (dead)
+                    {
+                        deadDropped++;
+                        touched.Add("(unreachable transition removed)");
+                        continue;
+                    }
                     if (changed)
                     {
                         transition.conditions = kept.ToArray();
                     }
+                    survivors.Add(transition);
                 }
+                return survivors.ToArray();
             }
 
             foreach (var layer in master.layers)
             {
                 WalkMachines(layer.stateMachine, machine =>
                 {
-                    Reconcile(machine.anyStateTransitions);
-                    Reconcile(machine.entryTransitions);
+                    machine.anyStateTransitions = Reconcile(machine.anyStateTransitions);
+                    machine.entryTransitions = Reconcile(machine.entryTransitions);
                     foreach (var child in machine.states)
                     {
-                        Reconcile(child.state.transitions);
+                        child.state.transitions = Reconcile(child.state.transitions);
                     }
                 });
             }
 
-            if (fixedCount > 0)
+            if (fixedCount > 0 || deadDropped > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Reconciled {fixedCount} transition condition(s) to their parameter's type",
+                    $"Reconciled {fixedCount} transition condition(s) to their parameter's type"
+                    + (deadDropped > 0 ? $", and removed {deadDropped} transition(s) that could never fire" : ""),
                     $"A merge/inject left conditions using a comparison the parameter type can't express " +
                     $"(e.g. a bool-style If on a Float): {string.Join(", ", touched.OrderBy(n => n))}. " +
                     "ChilloutVR rejects those transitions outright, so the states never switch — this is " +
@@ -2526,7 +2537,10 @@ namespace AvatarBridge
                     "than -0.001\" constrains nothing and is removed rather than turned into \"is true\". " +
                     "VRCFury writes its remote branches as exactly that band, and reading it the other way " +
                     "made every one of them unreachable — so the local branch played for other players, " +
-                    "which is what those branches exist to prevent.");
+                    "which is what those branches exist to prevent. A comparison that is unsatisfiable " +
+                    "instead (\"< -0.001\" on the same parameter) takes its transition with it: Fury " +
+                    "spells \"is not 0\" as two transitions, one per side of the range, and only the " +
+                    "positive one can ever fire here. Its twin still does the work.");
             }
         }
 

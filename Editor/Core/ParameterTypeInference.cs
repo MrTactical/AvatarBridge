@@ -289,12 +289,24 @@ namespace AvatarBridge
                             // A bool only ever reads 0 or 1.
                             switch (condition.mode)
                             {
+                                // Both ends of the range matter. "Unsatisfiable" was handled here
+                                // from the start; TAUTOLOGY was not, and it is the one VRCFury
+                                // actually writes: its remote branches are the band
+                                // "IsLocal Greater -0.001 && IsLocal Less 0.001", meaning the
+                                // value is 0. Turning "> -0.001" into "is true" made the pair say
+                                // "true AND false", so every NonLocal state Fury generated became
+                                // unreachable and the LOCAL branch played for remote viewers.
+                                // Same misreading fixed in AnimatorMerger.ReconcileConditionModes
+                                // in 3.5.26; this is the other retyping path, and the transitions
+                                // that reach it are the ones that were still floats there.
                                 case AnimatorConditionMode.Greater:
                                     if (condition.threshold >= 1f) { unreachable = true; }
+                                    else if (condition.threshold < 0f) { touched = true; continue; }
                                     else { condition.mode = AnimatorConditionMode.If; }
                                     break;
                                 case AnimatorConditionMode.Less:
                                     if (condition.threshold <= 0f) { unreachable = true; }
+                                    else if (condition.threshold > 1f) { touched = true; continue; }
                                     else { condition.mode = AnimatorConditionMode.IfNot; }
                                     break;
                                 case AnimatorConditionMode.Equals:
