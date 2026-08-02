@@ -29,6 +29,93 @@ namespace AvatarBridge
             }
             NormalizeSkinnedBounds(ctx);
             SanitizeAudioSources(ctx);
+            GroundAnimationPoseRatio(ctx);
+        }
+
+        /// <summary>
+        /// Clears MagicaCloth2's <c>animationPoseRatio</c> on chains that nothing actually animates.
+        ///
+        /// The ratio picks what the cloth RESTORES TOWARD: 0 the bind pose, 1 the animated pose
+        /// ("復元を基本姿勢で行うかアニメーション後の姿勢で行うかの判定" in MagicaCloth2's own
+        /// distance constraint). The physics pass sets it to 1 whenever the source PhysBone had
+        /// "Is Animated" ticked, so a chest slider that scales its bones wins over the cloth
+        /// instead of fighting it.
+        ///
+        /// But "Is Animated" is the AUTHOR'S CLAIM, not evidence. When nothing drives those bones
+        /// — the author ticked it speculatively, or the animation belonged to a system this
+        /// conversion stripped — the "animated pose" is just wherever the transform currently
+        /// sits, which is what the cloth itself wrote last frame. The restore target then chases
+        /// its own output, no restoring force exists, and the chain rotates freely forever.
+        ///
+        /// Reported as a rear that span on its own, with the tell that made it obvious: playing
+        /// ANY animation stopped it dead, and stopping the animation started it again. That is
+        /// this loop being broken by an authoritative pose and then handed back to itself.
+        ///
+        /// Runs after the merge because only the FINAL controller knows what survived. Reflection
+        /// rather than a direct reference so this file needs no MagicaCloth2 define.
+        /// </summary>
+        static void GroundAnimationPoseRatio(BridgeContext ctx)
+        {
+            if (ctx.ConvertedPhysicsChains == null || ctx.ConvertedPhysicsChains.Count == 0
+                || ctx.MergedController == null || ctx.Target == null)
+            {
+                return;
+            }
+
+            // Every transform path any surviving clip animates.
+            var animated = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip == null) continue;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    animated.Add(binding.path);
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    animated.Add(binding.path);
+                }
+            }
+
+            var grounded = new List<string>();
+            foreach (var chain in ctx.ConvertedPhysicsChains)
+            {
+                if (chain.Physics == null || chain.Root == null) continue;
+                var sdata = chain.Physics.GetType().GetProperty("SerializeData")?.GetValue(chain.Physics);
+                var field = sdata?.GetType().GetField("animationPoseRatio");
+                if (field == null || !(field.GetValue(sdata) is float ratio) || ratio <= 0.001f)
+                {
+                    continue;
+                }
+
+                // Animated if the chain root, or anything under it, carries a curve.
+                string root = BridgeContext.RelativePath(ctx.Target.transform, chain.Root);
+                bool drives = animated.Any(p => p == root
+                    || (p.Length > root.Length && p.StartsWith(root, System.StringComparison.Ordinal)
+                        && p[root.Length] == '/'));
+                if (drives)
+                {
+                    continue;
+                }
+
+                field.SetValue(sdata, 0f);
+                EditorUtility.SetDirty(chain.Physics);
+                grounded.Add(chain.Root.name);
+            }
+
+            if (grounded.Count > 0)
+            {
+                ctx.Report.Converted("PhysBones -> MagicaCloth2",
+                    $"{grounded.Count} cloth chain(s) settled back to their built pose — nothing animates them",
+                    string.Join(", ", grounded) + " — their source PhysBone had \"Is Animated\" ticked, which " +
+                    "makes the cloth restore toward the ANIMATED pose instead of the pose the avatar was built " +
+                    "in. That is right when something drives those bones; here nothing in the converted " +
+                    "animator does, so the \"animated pose\" would just be wherever the cloth itself last put " +
+                    "them — a target chasing its own output, which leaves the chain free to rotate forever " +
+                    "with nothing pulling it back. The tell is that playing any animation stops it dead. If a " +
+                    "slider is supposed to move these bones and no longer does, that animation did not survive " +
+                    "conversion, and this line names the chain to check.");
+            }
         }
 
         /// <summary>
@@ -114,10 +201,30 @@ namespace AvatarBridge
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var bounds = renderer.localBounds;
+
+                // localBounds is expressed in the ROOT BONE's space, but the floor is a real
+                // measurement in metres — so the two are only comparable when that bone sits at
+                // scale 1. Convert the floor into this renderer's own units before using it.
+                //
+                // Without this, the same "1.5" meant 1.5 m on an ordinary rig, 1.5 cm on a bone
+                // scaled to 0.01, and 150 m on one scaled to 100 (Second Life conversions run
+                // around 100x) — so the box was alternately too small to stop the culling it
+                // exists to prevent, or absurdly large. Reported as "1.5 is sometimes too small
+                // or too big", which is exactly what a unit mismatch looks like from outside.
+                var boneScale = (renderer.rootBone != null ? renderer.rootBone : renderer.transform).lossyScale;
+                float Local(float axis)
+                {
+                    // A zero or degenerate axis carries no usable ratio; fall back to the metre
+                    // value rather than dividing by ~0 and producing an infinite box.
+                    float s = Mathf.Abs(axis);
+                    return s > 1e-4f ? floor / s : floor;
+                }
+                var localFloor = new Vector3(Local(boneScale.x), Local(boneScale.y), Local(boneScale.z));
+
                 var extents = new Vector3(
-                    Mathf.Max(bounds.extents.x, floor),
-                    Mathf.Max(bounds.extents.y, floor),
-                    Mathf.Max(bounds.extents.z, floor));
+                    Mathf.Max(bounds.extents.x, localFloor.x),
+                    Mathf.Max(bounds.extents.y, localFloor.y),
+                    Mathf.Max(bounds.extents.z, localFloor.z));
                 if (bounds.center == Vector3.zero && bounds.extents == extents)
                 {
                     continue;

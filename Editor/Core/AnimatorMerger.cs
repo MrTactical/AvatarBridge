@@ -355,6 +355,12 @@ namespace AvatarBridge
             DeduplicateLayers(master, ctx);
             DropStateMachinelessLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
+            // BEFORE the empty-state filler, deliberately. The two passes have mutually exclusive
+            // preconditions — this one needs BOTH states to hold clips, the filler needs one to be
+            // empty — so running this first makes it impossible for it to re-process the filler's
+            // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
+            // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
+            RestorePartialOffStates(master, ctx);
             FillEmptyStatesWithRestoreClips(master, ctx);
             // AFTER the filler, whose motions are what turned this from harmless into a strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
@@ -2207,6 +2213,178 @@ namespace AvatarBridge
                 "evaluates one — hundreds of lines per second in play mode. Nothing is lost by " +
                 "removing them, but if a feature you expected is gone, this names the layer it " +
                 "would have been in.");
+        }
+
+        /// <summary>
+        /// Tops up an "off" state that restores SOME of what its sibling animates, but not all.
+        ///
+        /// FillEmptyStatesWithRestoreClips only considers states with no motion at all, and stays
+        /// that way deliberately — its comment records two bugs from being more eager. But an off
+        /// state can under-restore while still holding a clip, and then it is invisible to that
+        /// pass: on the avatar that found this, a two-state contact layer's "Stop" clip toggled an
+        /// AudioSource off and nothing else, while its "Play" clip ALSO rotated a bone. With Write
+        /// Defaults off, every trigger left that rotation exactly where the clip stopped, and each
+        /// retrigger stacked on the last — a bone that drifted further from rest every time it was
+        /// touched, with nothing able to put it back.
+        ///
+        /// The rule here is narrower than the empty-state one rather than looser, which is what
+        /// makes it safe: the layer must have exactly two states, BOTH must hold clips, and one
+        /// clip's bindings must be a STRICT SUBSET of the other's. That combination is positive
+        /// evidence of an off state — it already turns something off — so the only question is
+        /// what it forgot. Only the forgotten bindings are added; its own curves are copied over
+        /// untouched.
+        /// </summary>
+        static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx)
+        {
+            var topped = new List<string>();
+            int curvesAdded = 0;
+
+            // Which layer owns each property. A binding two layers animate belongs to NEITHER for
+            // restoring purposes: if both restore it they fight, and the loser's toggle stops
+            // working. FillEmptyStatesWithRestoreClips applies the same rule, which is why its
+            // restore clips legitimately omit shared bindings — without this, the pass below saw
+            // those omissions as an off state "forgetting" them and topped the clip back up,
+            // producing "Toggle Cat Tail restore restore" and undoing the arbitration.
+            var owner = new Dictionary<EditorCurveBinding, int>();
+            var contested = new HashSet<EditorCurveBinding>();
+            for (int i = 0; i < master.layers.Length; i++)
+            {
+                var l = master.layers[i];
+                if (l?.stateMachine == null) continue;
+                var here = new HashSet<EditorCurveBinding>();
+                WalkMachines(l.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state?.motion is AnimationClip c)
+                        {
+                            foreach (var binding in AnimationUtility.GetCurveBindings(c)) here.Add(binding);
+                        }
+                    }
+                });
+                foreach (var binding in here)
+                {
+                    if (owner.TryGetValue(binding, out int first) && first != i) contested.Add(binding);
+                    else owner[binding] = i;
+                }
+            }
+
+            for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
+            {
+                var layer = master.layers[layerIndex];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+
+                var states = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null) states.Add(child.state);
+                    }
+                });
+                if (states.Count != 2)
+                {
+                    continue;   // anything larger is a machine, not a toggle — same reasoning as above
+                }
+                if (!(states[0].motion is AnimationClip a) || !(states[1].motion is AnimationClip b))
+                {
+                    continue;   // an empty half is the other pass's job
+                }
+
+                var setA = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(a));
+                var setB = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(b));
+
+                AnimatorState offState; AnimationClip offClip; HashSet<EditorCurveBinding> missing;
+                if (setA.Count > setB.Count && setB.IsProperSubsetOf(setA))
+                {
+                    offState = states[1]; offClip = b; missing = new HashSet<EditorCurveBinding>(setA); missing.ExceptWith(setB);
+                }
+                else if (setB.Count > setA.Count && setA.IsProperSubsetOf(setB))
+                {
+                    offState = states[0]; offClip = a; missing = new HashSet<EditorCurveBinding>(setB); missing.ExceptWith(setA);
+                }
+                else
+                {
+                    continue;   // neither is a subset: two different jobs, not on/off
+                }
+
+                var filled = new AnimationClip { name = SanitizeFileName($"{offClip.name} restore") };
+                foreach (var binding in AnimationUtility.GetCurveBindings(offClip))
+                {
+                    AnimationUtility.SetEditorCurve(filled, binding, AnimationUtility.GetEditorCurve(offClip, binding));
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(offClip))
+                {
+                    AnimationUtility.SetObjectReferenceCurve(filled, binding,
+                        AnimationUtility.GetObjectReferenceCurve(offClip, binding));
+                }
+
+                int added = 0;
+                foreach (var binding in missing)
+                {
+                    if (binding.type == typeof(Animator))
+                    {
+                        continue;   // parameters, not properties — nothing to restore on the avatar
+                    }
+                    if (contested.Contains(binding) || !owner.TryGetValue(binding, out int owns)
+                        || owns != layerIndex)
+                    {
+                        continue;   // another layer animates it too — arbitration belongs to them
+                    }
+                    if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                    {
+                        continue;   // property not present on this avatar; leave it alone
+                    }
+                    AnimationUtility.SetEditorCurve(filled, binding, AnimationCurve.Constant(0f, 0f, value));
+                    added++;
+                }
+                if (added == 0)
+                {
+                    continue;
+                }
+
+                // Same home and claiming rule as every other generated clip, so reconversion
+                // replaces it instead of stacking "restore 2", "restore 3", ...
+                string target = OutputAssetPaths.Claim(
+                    $"{ctx.OutputDir}/RehomedAssets/{SanitizeFileName(filled.name)}.anim");
+                var folder = System.IO.Path.GetDirectoryName(target).Replace('\\', '/');
+                if (!AssetDatabase.IsValidFolder(folder))
+                {
+                    System.IO.Directory.CreateDirectory(folder);
+                    AssetDatabase.Refresh();
+                }
+                // Delete anything already at the path FIRST, exactly as the empty-state filler
+                // does. CreateAsset over an existing asset replaces the object, and every other
+                // state still referencing the old one is left with a null motion — which the
+                // placeholder pass then papers over with an empty clip. On one avatar that cost
+                // four states their animation, one per layer this pass touched.
+                if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
+                {
+                    AssetDatabase.DeleteAsset(target);
+                }
+                AssetDatabase.CreateAsset(filled, target);
+                offState.motion = filled;
+                EditorUtility.SetDirty(offState);
+                curvesAdded += added;
+                topped.Add($"\"{layer.name}\" ({added})");
+            }
+
+            if (topped.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{topped.Count} \"off\" state(s) topped up to restore everything their layer animates",
+                    string.Join(", ", topped) + $" — {curvesAdded} propert(ies) in total. These states " +
+                    "already switched something off, but their clip left out properties the layer's OTHER " +
+                    "state animates. With Write Defaults off nothing puts those back, so each trigger left " +
+                    "them wherever the animation stopped and the next one stacked on top — a bone that " +
+                    "drifts further from rest every time the control is used. Each off state now also holds " +
+                    "the value the property has on this avatar right now, so it returns properly. If one of " +
+                    "these should rest somewhere else, set that up before converting: whatever is true at " +
+                    "conversion time is what \"off\" now means.");
+            }
         }
 
         static void SyncDriverParameterTypes(AnimatorController master, BridgeContext ctx)

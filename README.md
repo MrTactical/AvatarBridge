@@ -705,6 +705,64 @@ match, so every SDK update would quietly change the output. The DynamicBone stub
 around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 </details>
 
+## Options reference
+
+Every setting in the window, with the default it ships with. Labels match the window verbatim; the
+tooltip on each control says the same thing at more length. Per-chain physics tuning has its own
+table [above](#options) and isn't repeated here.
+
+**Convert tab**
+
+| setting | default | what it does |
+|---|---|---|
+| **Work on a clone (recommended)** | on | Converts a copy and leaves your original untouched. Turning it off edits the avatar in the scene |
+| **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
+| **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
+
+**Physics**
+
+| setting | default | what it does |
+|---|---|---|
+| **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback |
+| **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both, which uploads but simulates nothing |
+| **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
+
+**Face tracking**
+
+| setting | default | what it does |
+|---|---|---|
+| **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
+
+**Extras**
+
+| setting | default | what it does |
+|---|---|---|
+| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
+
+**Advanced options**
+
+| setting | default | what it does |
+|---|---|---|
+| **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
+| **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
+| **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
+| **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
+| **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
+| **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom |
+| **Base / locomotion** | off | Brings across what VRChat kept in Base — toggles, blendshapes, materials, additive motion — and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion |
+| **Additive** | off | VRChat's additive layer, usually breathing |
+| **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
+| **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
+| **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything |
+| **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
+| **Convert contact senders/receivers** | on | VRChat contacts become pointers and triggers, or [native contacts](#native-contacts) below |
+| **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
+| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, tags verbatim — instead of approximating with pointers and triggers. Talks to a component internal to the game |
+| **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added |
+| **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
+| **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
+| **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
+
 ## Known limitations
 
 ### Quadruped / FinalIK avatars
