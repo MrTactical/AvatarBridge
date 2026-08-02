@@ -53,8 +53,8 @@ namespace AvatarBridge
             = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
         /// <summary>(Clip, travellers-only?) -> root-motion-free clone (or itself when spared).</summary>
-        static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels), AnimationClip> MotionStripped
-            = new Dictionary<(AnimationClip, bool), AnimationClip>();
+        static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels, bool keepVertical), AnimationClip> MotionStripped
+            = new Dictionary<(AnimationClip, bool, bool), AnimationClip>();
 
         /// <summary>Names of clips that had movement stripped, for the report.</summary>
         static readonly List<string> StrippedNames = new List<string>();
@@ -90,27 +90,50 @@ namespace AvatarBridge
         /// Locomotion tree seats pass false: there the capsule owns every metre, homebound or
         /// not.
         /// </summary>
-        internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false)
+        internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false,
+            bool keepVertical = false)
         {
             if (clip == null)
             {
                 return null;
             }
-            if (MotionStripped.TryGetValue((clip, onlyIfTravels), out var done))
+            if (MotionStripped.TryGetValue((clip, onlyIfTravels, keepVertical), out var done))
             {
                 return done;
             }
             var doomed = new List<EditorCurveBinding>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
-                if (IsRootMovement(binding))
+                if (!IsRootMovement(binding))
                 {
-                    doomed.Add(binding);
+                    continue;
                 }
+                // An authored full-body pose owns its own HEIGHT; only travel across the floor
+                // belongs to the game. A transforming avatar lowers itself to the ground, and the
+                // descent IS the animation — flattened, RootT.y held standing height for the whole
+                // clip and the body snapped down at the end. Y is baked into the pose by the
+                // clip's own import settings, so this survives in game too.
+                //
+                // ROTATION is deliberately NOT kept, though the same avatar also turns from
+                // upright to flat. Keeping RootQ fixed it in the editor and did nothing in game:
+                // ChilloutVR's character controller owns the capsule and the capsule is always
+                // upright, so root orientation is not the animator's to set there. Preserving the
+                // curve only made editor and game disagree. The real cure is baking the root
+                // rotation into the hips so it becomes pose, not root motion — future work,
+                // written up in Regression/subset.txt.
+                //
+                // Only Action-transplanted poses ask for this. Everywhere else a clip that ends
+                // displaced still loses everything, because it would move the wearer with no
+                // input.
+                if (keepVertical && IsVertical(binding))
+                {
+                    continue;
+                }
+                doomed.Add(binding);
             }
             if (doomed.Count == 0 || (onlyIfTravels && !Travels(clip, doomed)))
             {
-                MotionStripped[(clip, onlyIfTravels)] = clip;
+                MotionStripped[(clip, onlyIfTravels, keepVertical)] = clip;
                 return clip;
             }
             var clone = UnityEngine.Object.Instantiate(clip);
@@ -127,7 +150,7 @@ namespace AvatarBridge
                 AnimationUtility.SetEditorCurve(clone, binding,
                     AnimationCurve.Constant(0f, Mathf.Max(clip.length, 1f / 60f), first));
             }
-            MotionStripped[(clip, onlyIfTravels)] = clone;
+            MotionStripped[(clip, onlyIfTravels, keepVertical)] = clone;
             StrippedNames.Add(clip.name);
             return clone;
         }
@@ -184,6 +207,21 @@ namespace AvatarBridge
                     || p.StartsWith("MotionQ.", StringComparison.Ordinal);
             }
             return false;
+        }
+
+        /// <summary>
+        /// Whether this root curve is the body's own HEIGHT rather than travel across the floor.
+        /// Only the Y of a position curve: X and Z are the movement ChilloutVR owns, and rotation
+        /// is never kept — the client's capsule is always upright, so a root rotation curve does
+        /// nothing in game (see the comment in WithoutRootMotion).
+        /// </summary>
+        static bool IsVertical(EditorCurveBinding binding)
+        {
+            string p = binding.propertyName;
+            return p.EndsWith(".y", StringComparison.Ordinal)
+                   && (p.StartsWith("RootT.", StringComparison.Ordinal)
+                       || p.StartsWith("MotionT.", StringComparison.Ordinal)
+                       || p.StartsWith("m_LocalPosition.", StringComparison.Ordinal));
         }
 
         /// <summary>Full preparation for a locomotion seat: movement stripped, loop matched.</summary>

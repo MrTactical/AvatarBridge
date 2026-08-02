@@ -1580,10 +1580,27 @@ What moves is the **live window** — the states between the behaviour that rais
 and the one that fades it, read from VRChat's own behaviours before they're stripped; exactly the
 states VRChat ever showed. The avatar's arming conditions (parameters, gestures) carry over as the
 entry conditions, and the original layer stays merged at weight 0 so its parameter drivers keep
-firing on schedule. Not carried over: VRChat's tracking control (IK cut-off during sequences) and
-its half-second weight fades — entering and leaving the pose blends over a fixed quarter second.
-When no live window can be identified, the layer stays at weight 0 and the report says exactly what
-that costs.
+firing on schedule. Not carried over: VRChat's half-second weight fades — entering and leaving the
+pose blends over a fixed quarter second. When no live window can be identified, the layer stays at
+weight 0 and the report says exactly what that costs.
+
+**A moved pose keeps its own height.** Movement baked into animations is normally flattened,
+because in ChilloutVR [the client owns where you
+are](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) and a clip that
+shoves you about with no input is exactly what that flattening exists to stop. But an authored
+full-body sequence lowering the whole body — a biped folding down into a car — is the avatar
+changing its own height, not travelling: flattened, one transforming avatar held standing height
+for its whole transition and snapped to the floor at the end. For these poses only, the vertical
+is kept; travel across the floor still goes, so nothing walks you anywhere you didn't ask to go.
+
+**What still can't be converted: a pose that turns the whole body over.** The same transforming
+avatar also rotates from upright to lying flat, and that half still snaps to its final orientation
+at the end of the sequence in game. It isn't a missing curve — keeping the rotation was tried, and
+it made the transform play correctly in the Unity editor while changing nothing in ChilloutVR,
+because the client's character controller keeps the player capsule upright and root orientation
+simply isn't the animator's to set there. Fixing it for real means baking the rotation into the
+bones rather than the root, which is future work; until then the end pose is correct and the turn
+itself is instant.
 
 ### Two near-identical menu controls, and only one works
 
