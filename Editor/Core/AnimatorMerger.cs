@@ -3993,8 +3993,14 @@ namespace AvatarBridge
                     // here that displaces the wearer's camera with no input. Root motion that
                     // returns home — a backflip's flip, a dance's sway — is kept: stripping it
                     // broke the animations while removing nothing a player could feel.
+                    // keepVertical: a transformation lowering the body to the floor is the avatar
+                    // changing its own HEIGHT, not travelling — flattening that left it standing
+                    // through the whole transition and snapping down at the end. Rotation is NOT
+                    // kept: the client's capsule is always upright, so a RootQ curve does nothing
+                    // in game and keeping it only made editor and game disagree.
                     copy.motion = src.motion is AnimationClip poseClip
-                        ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true)
+                        ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true,
+                            keepPose: true)
                         : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;

@@ -53,8 +53,8 @@ namespace AvatarBridge
             = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
         /// <summary>(Clip, travellers-only?) -> root-motion-free clone (or itself when spared).</summary>
-        static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels), AnimationClip> MotionStripped
-            = new Dictionary<(AnimationClip, bool), AnimationClip>();
+        static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels, bool keepPose), AnimationClip> MotionStripped
+            = new Dictionary<(AnimationClip, bool, bool), AnimationClip>();
 
         /// <summary>Names of clips that had movement stripped, for the report.</summary>
         static readonly List<string> StrippedNames = new List<string>();
@@ -90,31 +90,66 @@ namespace AvatarBridge
         /// Locomotion tree seats pass false: there the capsule owns every metre, homebound or
         /// not.
         /// </summary>
-        internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false)
+        internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false,
+            bool keepPose = false)
         {
             if (clip == null)
             {
                 return null;
             }
-            if (MotionStripped.TryGetValue((clip, onlyIfTravels), out var done))
+            if (MotionStripped.TryGetValue((clip, onlyIfTravels, keepPose), out var done))
             {
                 return done;
             }
             var doomed = new List<EditorCurveBinding>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
-                if (IsRootMovement(binding))
+                if (!IsRootMovement(binding))
                 {
-                    doomed.Add(binding);
+                    continue;
                 }
+                // An authored full-body pose owns its own HEIGHT and ORIENTATION; only travel
+                // across the floor belongs to the game. A transforming avatar folding down into a
+                // car lowers itself AND turns from upright to flat, and both are the animation.
+                //
+                // These survive because the clone is ALSO told to bake them into the pose (see
+                // BakeIntoPose below), which is what puts them in the bones instead of the root.
+                // That distinction is the whole bug: ChilloutVR's character controller keeps the
+                // player capsule upright and discards root motion, so a curve left as root motion
+                // plays in the editor and does nothing worn — measured both ways on the avatar
+                // that reported it. Height already worked only because its clip happened to carry
+                // the position-Y bake flag; the orientation flag was unset, so the turn died.
+                //
+                // Only Action-transplanted poses ask for this. Everywhere else a clip that ends
+                // displaced still loses everything, because it would move the wearer with no
+                // input.
+                if (keepPose && (IsVertical(binding) || IsRotation(binding)))
+                {
+                    continue;
+                }
+                doomed.Add(binding);
             }
             if (doomed.Count == 0 || (onlyIfTravels && !Travels(clip, doomed)))
             {
-                MotionStripped[(clip, onlyIfTravels)] = clip;
+                // Nothing to strip — but a kept pose may still need its curves moved into the
+                // bones, and that needs a clone: the source clip belongs to the source avatar.
+                if (keepPose && NeedsBake(clip))
+                {
+                    var poseOnly = UnityEngine.Object.Instantiate(clip);
+                    poseOnly.name = clip.name;
+                    BakeIntoPose(poseOnly);
+                    MotionStripped[(clip, onlyIfTravels, keepPose)] = poseOnly;
+                    return poseOnly;
+                }
+                MotionStripped[(clip, onlyIfTravels, keepPose)] = clip;
                 return clip;
             }
             var clone = UnityEngine.Object.Instantiate(clip);
             clone.name = clip.name;
+            if (keepPose)
+            {
+                BakeIntoPose(clone);
+            }
             foreach (var binding in doomed)
             {
                 // FLATTENED to the first key's value, never deleted: a root curve carries the
@@ -127,7 +162,7 @@ namespace AvatarBridge
                 AnimationUtility.SetEditorCurve(clone, binding,
                     AnimationCurve.Constant(0f, Mathf.Max(clip.length, 1f / 60f), first));
             }
-            MotionStripped[(clip, onlyIfTravels)] = clone;
+            MotionStripped[(clip, onlyIfTravels, keepPose)] = clone;
             StrippedNames.Add(clip.name);
             return clone;
         }
@@ -184,6 +219,71 @@ namespace AvatarBridge
                     || p.StartsWith("MotionQ.", StringComparison.Ordinal);
             }
             return false;
+        }
+
+        /// <summary>
+        /// Whether a kept pose still has root movement Unity would apply to the TRANSFORM rather
+        /// than to the bones. Both flags are usually already set on height (which is why the
+        /// descent worked all along) and usually unset on orientation.
+        /// </summary>
+        static bool NeedsBake(AnimationClip clip)
+        {
+            var s = AnimationUtility.GetAnimationClipSettings(clip);
+            return !s.loopBlendOrientation || !s.loopBlendPositionY;
+        }
+
+        /// <summary>
+        /// Moves a clip's root height and orientation OUT of root motion and INTO the pose.
+        ///
+        /// This is the whole fix for a transforming avatar, and it is Unity's own mechanism —
+        /// the "Bake Into Pose" toggles an FBX importer exposes, reachable at runtime through
+        /// AnimationClipSettings. Baked, the animation system writes the movement through the
+        /// bones; unbaked, it hands it to the root transform. ChilloutVR's client owns the root
+        /// (the capsule stays upright and where the player put it) and simply discards it, so
+        /// only the baked form is visible in game.
+        ///
+        /// Height was already baked on the avatar that found this and orientation was not, which
+        /// is exactly why the descent survived conversion and the turn did not — and why keeping
+        /// the rotation curve alone fixed the editor and changed nothing worn.
+        ///
+        /// keepOriginal* pins the reference to the clip's own start rather than the body's
+        /// current transform, so the pose describes the same movement it always did.
+        /// </summary>
+        static void BakeIntoPose(AnimationClip clip)
+        {
+            var s = AnimationUtility.GetAnimationClipSettings(clip);
+            s.loopBlendOrientation = true;
+            s.keepOriginalOrientation = true;
+            s.loopBlendPositionY = true;
+            s.keepOriginalPositionY = true;
+            AnimationUtility.SetAnimationClipSettings(clip, s);
+        }
+
+        /// <summary>
+        /// Whether this root curve is the body's own HEIGHT rather than travel across the floor.
+        /// Only the Y of a position curve: X and Z are the movement ChilloutVR owns, and rotation
+        /// is never kept — the client's capsule is always upright, so a root rotation curve does
+        /// nothing in game (see the comment in WithoutRootMotion).
+        /// </summary>
+        /// <summary>
+        /// Whether this root curve is the body's ORIENTATION — the humanoid quaternion channels,
+        /// and a generic Transform rotation on the avatar root.
+        /// </summary>
+        static bool IsRotation(EditorCurveBinding binding)
+        {
+            string p = binding.propertyName;
+            return p.StartsWith("RootQ.", StringComparison.Ordinal)
+                   || p.StartsWith("MotionQ.", StringComparison.Ordinal)
+                   || p.StartsWith("m_LocalRotation.", StringComparison.Ordinal);
+        }
+
+        static bool IsVertical(EditorCurveBinding binding)
+        {
+            string p = binding.propertyName;
+            return p.EndsWith(".y", StringComparison.Ordinal)
+                   && (p.StartsWith("RootT.", StringComparison.Ordinal)
+                       || p.StartsWith("MotionT.", StringComparison.Ordinal)
+                       || p.StartsWith("m_LocalPosition.", StringComparison.Ordinal));
         }
 
         /// <summary>Full preparation for a locomotion seat: movement stripped, loop matched.</summary>

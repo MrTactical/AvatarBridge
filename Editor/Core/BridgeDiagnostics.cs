@@ -46,6 +46,7 @@ namespace AvatarBridge
             var usage = CollectUsage(master);
             Validate(ctx, master, usage);
             CheckRemoteDefaultLoops(ctx, master);
+            CheckStuckStates(ctx, master);
             ctx.Report.Appendix = BuildAppendix(ctx, master, usage);
         }
 
@@ -785,6 +786,170 @@ namespace AvatarBridge
         /// <summary>
         /// Names the components ChilloutVR will delete the moment this avatar loads.
         /// </summary>
+        /// <summary>
+        /// States the avatar can enter and then never leave.
+        ///
+        /// A gesture that switches an expression on and never hands it back, a toggle that sticks:
+        /// from the wearer's side it reads as "the animation played and got stuck", and it is
+        /// invisible in the editor because entering the state works perfectly. What is broken is
+        /// the way OUT.
+        ///
+        /// Reported only when a state HAS exit transitions and every one of them is
+        /// unsatisfiable — someone plainly intended an exit and it cannot fire. A state with no
+        /// outgoing transitions at all is deliberately terminal on plenty of avatars (a one-shot
+        /// layer parked on its last pose), so flagging those would bury the real finding. The
+        /// remote-thrash check earlier in this file fired on ten of fifty avatars before it was
+        /// narrowed the same way; a detector nobody trusts is worse than none.
+        ///
+        /// Exit time is an escape by itself — a transition with hasExitTime leaves on the clock
+        /// regardless of conditions — so any of those clears the state immediately.
+        /// </summary>
+        /// <summary>
+        /// Test seam for <see cref="CheckStuckStates"/>. It returned clean on all fifty corpus
+        /// avatars, which proves nothing on its own — a check that never fires looks identical to
+        /// a healthy corpus. StuckStateDetectorTest drives known-answer controllers through this.
+        /// </summary>
+        internal static void RunStuckStateCheckForTest(BridgeContext ctx, AnimatorController master)
+            => CheckStuckStates(ctx, master);
+
+        static void CheckStuckStates(BridgeContext ctx, AnimatorController master)
+        {
+            var declared = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            foreach (var p in master.parameters)
+            {
+                declared[p.name] = p;
+            }
+
+            var stuck = new List<string>();
+            foreach (var layer in master.layers)
+            {
+                if (layer == null || layer.stateMachine == null)
+                {
+                    continue;
+                }
+                var machines = new List<AnimatorStateMachine>();
+                CollectMachines(layer.stateMachine, machines);
+
+                foreach (var machine in machines)
+                {
+                    // AnyState reaches every state in its machine, so it is an escape route from
+                    // all of them — except where it only targets the state we are standing in.
+                    var anyEscapes = machine.anyStateTransitions ?? new AnimatorStateTransition[0];
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null)
+                        {
+                            continue;
+                        }
+                        var own = state.transitions ?? new AnimatorStateTransition[0];
+                        if (own.Length == 0)
+                        {
+                            continue; // deliberately terminal, not a defect
+                        }
+                        bool escapable =
+                            own.Any(t => t != null && (t.hasExitTime || CanEverFire(t, declared)))
+                            || anyEscapes.Any(t => t != null && t.destinationState != state
+                                                   && (t.hasExitTime || CanEverFire(t, declared)));
+                        if (!escapable)
+                        {
+                            stuck.Add($"\"{layer.name}\" → \"{state.name}\"");
+                        }
+                    }
+                }
+            }
+
+            if (stuck.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning("Animator",
+                $"{stuck.Count} state(s) can be entered but never left",
+                string.Join("; ", stuck.Take(8)) + (stuck.Count > 8 ? ", …" : "") +
+                " — each of these has a transition out that can never fire, so whatever the state " +
+                "switches on stays on for the rest of the session. The usual way to meet this is a " +
+                "gesture or toggle that turns something on and won't turn it back off. Entering " +
+                "works, which is why it looks fine in the editor: only the way out is broken. " +
+                "Check the conditions on that state's outgoing transitions against the ones that " +
+                "let it in — a band that lets you in on \"greater than\" and asks for \"greater " +
+                "than\" again to leave is the common shape.");
+        }
+
+        /// <summary>
+        /// Whether any parameter values could satisfy this transition at once. Contradictions
+        /// within one transition are what make an exit dead: "Greater 3.9 AND Less 3.9" is
+        /// enterable-looking and unsatisfiable.
+        /// </summary>
+        static bool CanEverFire(AnimatorStateTransition transition,
+            Dictionary<string, AnimatorControllerParameter> declared)
+        {
+            var conditions = transition.conditions;
+            if (conditions == null || conditions.Length == 0)
+            {
+                return true; // unconditional
+            }
+            foreach (var group in conditions.GroupBy(c => c.parameter, StringComparer.Ordinal))
+            {
+                if (string.IsNullOrEmpty(group.Key) || !declared.TryGetValue(group.Key, out var p))
+                {
+                    // Undeclared parameters are already reported by Validate; judging them here
+                    // would double up and could only guess.
+                    continue;
+                }
+                if (p.type == AnimatorControllerParameterType.Bool
+                    || p.type == AnimatorControllerParameterType.Trigger)
+                {
+                    bool wantsTrue = group.Any(c => c.mode == AnimatorConditionMode.If);
+                    bool wantsFalse = group.Any(c => c.mode == AnimatorConditionMode.IfNot);
+                    if (wantsTrue && wantsFalse)
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+
+                // Numeric: intersect every bound and see whether anything survives.
+                float low = float.NegativeInfinity, high = float.PositiveInfinity;
+                foreach (var c in group)
+                {
+                    switch (c.mode)
+                    {
+                        case AnimatorConditionMode.Greater: low = Mathf.Max(low, c.threshold); break;
+                        case AnimatorConditionMode.Less: high = Mathf.Min(high, c.threshold); break;
+                        case AnimatorConditionMode.Equals:
+                            low = Mathf.Max(low, c.threshold);
+                            high = Mathf.Min(high, c.threshold);
+                            break;
+                    }
+                }
+                if (low > high)
+                {
+                    return false;
+                }
+                // Greater/Less are strict, so a band that collapses to a single point is empty
+                // unless an Equals put it there.
+                if (Mathf.Approximately(low, high)
+                    && !group.Any(c => c.mode == AnimatorConditionMode.Equals))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static void CollectMachines(AnimatorStateMachine machine, List<AnimatorStateMachine> into)
+        {
+            if (machine == null || into.Contains(machine))
+            {
+                return;
+            }
+            into.Add(machine);
+            foreach (var child in machine.stateMachines)
+            {
+                CollectMachines(child.stateMachine, into);
+            }
+        }
+
         static void CheckComponentWhitelist(BridgeContext ctx)
         {
             var doomed = new Dictionary<string, int>();

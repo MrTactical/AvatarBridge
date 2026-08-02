@@ -765,6 +765,29 @@ table [above](#options) and isn't repeated here.
 
 ## Known limitations
 
+### Transforming avatars: desktop-only turn
+
+**An avatar that folds its whole body into something else — a biped into a car — converts with one
+limitation, and it is a platform difference rather than a conversion fault.**
+
+What works everywhere: the **descent**. A sequence that lowers the body to the floor comes down
+smoothly through the animation instead of snapping at the end.
+
+What works on **desktop only**: the **turn**. Rotating from upright to lying flat plays on desktop
+and does not in VR — there the body stays upright through the sequence and the final orientation
+arrives in one frame at the end. The end pose is correct on both; only the transition differs.
+
+Why, since it looks like a bug worth reporting: ChilloutVR's character controller owns the player
+capsule and keeps it upright, so an animation cannot turn the root. The rotation is therefore moved
+into the **bones** — Unity's own "bake into pose", the same mechanism that makes the descent work —
+which is the only form the client will show. In VR the IK solver is then driving those same bones
+against the animation and wins. Three routes were tried and measured on a real avatar worn in game:
+the raw root curve (does nothing), Body Control at weight 0 (frees limbs from IK but never hands
+over the root), and the bake (works on desktop, loses to IK in VR).
+
+Nothing on the conversion side can settle this — it needs the client to yield the body, which is
+what VRChat's Action layer weight did and ChilloutVR has no equivalent for.
+
 ### Quadruped / FinalIK avatars
 
 **Quadruped support is real but partial, and how much you get depends on how yours was built.**
@@ -1580,10 +1603,24 @@ What moves is the **live window** — the states between the behaviour that rais
 and the one that fades it, read from VRChat's own behaviours before they're stripped; exactly the
 states VRChat ever showed. The avatar's arming conditions (parameters, gestures) carry over as the
 entry conditions, and the original layer stays merged at weight 0 so its parameter drivers keep
-firing on schedule. Not carried over: VRChat's tracking control (IK cut-off during sequences) and
-its half-second weight fades — entering and leaving the pose blends over a fixed quarter second.
-When no live window can be identified, the layer stays at weight 0 and the report says exactly what
-that costs.
+firing on schedule. Not carried over: VRChat's half-second weight fades — entering and leaving the
+pose blends over a fixed quarter second. When no live window can be identified, the layer stays at
+weight 0 and the report says exactly what that costs.
+
+**A moved pose keeps its own height.** Movement baked into animations is normally flattened,
+because in ChilloutVR [the client owns where you
+are](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) and a clip that
+shoves you about with no input is exactly what that flattening exists to stop. But an authored
+full-body sequence lowering the whole body — a biped folding down into a car — is the avatar
+changing its own height, not travelling: flattened, one transforming avatar held standing height
+for its whole transition and snapped to the floor at the end. For these poses only, the vertical
+is kept; travel across the floor still goes, so nothing walks you anywhere you didn't ask to go.
+
+**A pose that turns the whole body over is [limited](#transforming-avatars-desktop-only-turn).** The
+same transforming avatar also rotates from upright to lying flat, and that half is carried across —
+the rotation is moved out of root motion and into the bones, which is the only form ChilloutVR
+shows. It plays on desktop. **In VR the body stays upright and the turn snaps at the end**, because
+the IK solver is driving the body there and wins against the animation.
 
 ### Two near-identical menu controls, and only one works
 
