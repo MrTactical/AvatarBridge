@@ -599,23 +599,14 @@ Converted from VRChat with AvatarBridge
 github.com/MrTactical/AvatarBridge
 ```
 
-Two buttons on the report:
+Two buttons on the report — **Fill CCK description** (types it into the Content Manager's Description
+box; open the Control Panel's **Builder** tab first, and it won't overwrite anything you've already
+written) and **Copy description**. Either way it's saved as `Description.txt` beside the report.
 
-- **Fill CCK description** — types it into the Content Manager's Description box. Open the CCK
-  Control Panel on the **Builder** tab with your avatar selected first. It won't touch the box if
-  you've already written something there.
-- **Copy description** — puts it on the clipboard to place yourself.
-
-Either way it's saved as `Description.txt` beside the report.
-
-**Every line is counted from the finished avatar**, so no two are alike — and each claim is checked
-against what was *built*, not what you asked for. Face tracking is only mentioned if the component
-is really there; the height slider only if its control reached the menu. This text goes into a
-public listing under your name, so a line it can't verify is a line it doesn't print.
-
-It's also built to fit: ChilloutVR's box holds **256 characters**, and ~90 of those are left free
-for your own words. The generated part is meant to be the footer of your description, not the whole
-of it.
+**Every claim is checked against what was built**, not what you asked for — face tracking is only
+mentioned if the component is really there. This goes into a public listing under your name, so a
+line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-character box with
+~90 left free for your own words: it's meant to be the footer of your description, not all of it.
 
 ## Setup mode
 
@@ -831,21 +822,11 @@ Bipeds are unaffected by any of it.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
   only one is left driving the chain — two solvers on the same bones jitter rather than blend.
   Nothing is deleted, so switching variant is one checkbox; the report names the one kept.
-- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the
-  original PhysBone's object (or animated the component on/off) are re-wired to switch the
-  generated MagicaCloth/DynamicBone too — a chain belonging to a style that was inactive at
-  conversion time wakes up when its style does. Only *activations* are mirrored: an add-on style
-  grafted onto another style's simulated bones must not have that chain switched off with the
-  base style's mesh, so a hidden style's cloth may keep simulating (invisible, harmless). The
-  report counts the re-wired curves.
-
-  **If the chain wasn't converted, there is nothing to re-wire to.** Avatars commonly pause a
-  PhysBone while a body part resizes — an "EarsChanging" or "BreastChanging" toggle switching the
-  chain off and back on. When that chain was skipped (a constraint driving one of its bones is the
-  usual reason), the curve has no cloth to point at and dies with the VRC components, while the
-  menu entry, parameter and animator layer all convert perfectly — so the control looks right and
-  does nothing. The report now warns for each one and names the clip and the PhysBone path, so it
-  lines up with the *Skipped* entry above it that says why the chain wasn't simulated.
+- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the original
+  PhysBone's object are re-wired to switch the generated cloth too. Only *activations* are mirrored,
+  so a hidden style's cloth may keep simulating — invisible and harmless. **If the chain wasn't
+  converted there's nothing to re-wire to**, and the control will look right and do nothing; the
+  report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.
