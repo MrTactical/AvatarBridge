@@ -464,6 +464,12 @@ developer. Every client simulates every avatar's contacts itself, so **detection
 all**. Whether the parameter a receiver drives replicates its value is that parameter's own sync
 declaration, unchanged.
 
+**Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
+override when one is set — the component itself often lives somewhere central while the shape
+follows a bone, which is how head-pat receivers and VRCFury-baked contacts are built (about a
+quarter of all contacts measured in the wild). Converted contacts are parented at that anchor on
+both paths, so they follow the same bone they did in VRChat.
+
 **Animated contact switches follow their contact** — on the legacy path and the native one. VRChat
 avatars animate a contact's enabled flag to switch it off ("disable head pats" is built this way);
 that component is deleted by conversion, so the curve used to play as silence while its menu entry,

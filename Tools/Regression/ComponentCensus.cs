@@ -68,6 +68,26 @@ namespace AvatarBridge.Regression
                             e.scenes.Add(sceneName);
                         }
                         tally[t.Name] = e;
+
+                        // Contacts anchor their shape at rootTransform when it is set. The legacy
+                        // conversion path used to ignore that, so how often the anchor actually
+                        // differs from the component's own object decides how much that mattered.
+                        if (c is VRC.Dynamics.ContactBase contactBase
+                            && contactBase.rootTransform != null
+                            && contactBase.rootTransform != c.transform)
+                        {
+                            string key = t.Name + " [rootTransform elsewhere]";
+                            if (!tally.TryGetValue(key, out var re))
+                            {
+                                re = (0, new HashSet<string>());
+                            }
+                            re.count++;
+                            if (re.scenes.Count < 5)
+                            {
+                                re.scenes.Add(sceneName);
+                            }
+                            tally[key] = re;
+                        }
                     }
                     // State behaviours live in controllers, not on objects — walk those too.
                     foreach (var animator in root.GetComponentsInChildren<Animator>(true))

@@ -73,7 +73,7 @@ namespace AvatarBridge
 
             foreach (var tag in sender.collisionTags.Distinct())
             {
-                var contactObject = CreateContactObject(sender.gameObject, "CVRPointer_" + tag,
+                var contactObject = CreateContactObject(AnchorOf(sender), "CVRPointer_" + tag,
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
@@ -194,7 +194,7 @@ namespace AvatarBridge
                 return;
             }
 
-            var contactObject = CreateContactObject(receiver.gameObject, "CVRTrigger_" + receiver.parameter,
+            var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
             RecordHost(ctx, receiver, isSender: false, contactObject);
 
@@ -553,6 +553,29 @@ namespace AvatarBridge
             return go;
         }
 
+
+        /// <summary>
+        /// The object a VRC contact's shape is actually anchored to. VRChat positions the shape
+        /// relative to <c>rootTransform</c> when it is set — the component itself often lives
+        /// somewhere central (VRCFury bakes them that way; hand-authored head-pat receivers do it
+        /// too) while the shape rides a bone. The native path always honoured this; the legacy
+        /// path used to parent under the component's own object, so any contact using the
+        /// override converted mis-anchored and did not follow its bone. Found by a completion
+        /// verification pass, wild frequency measured by ComponentCensus.
+        ///
+        /// One VRChat behaviour is knowingly NOT reproduced by anchoring here: disabling the
+        /// COMPONENT's GameObject disables the contact in VRChat even when the shape rides a
+        /// different bone. Animated enable curves are repointed at the host and still work; a raw
+        /// object toggle of the component's (now different) object no longer reaches it. The
+        /// native path has always had the same trade, and a shape that follows its bone is the
+        /// half testers actually see.
+        /// </summary>
+        static GameObject AnchorOf(VRC.Dynamics.ContactBase contact)
+        {
+            return contact.rootTransform != null
+                ? contact.rootTransform.gameObject
+                : contact.gameObject;
+        }
 
         /// <summary>
         /// Remembers where a VRC contact's replacement landed, keyed by the ORIGINAL component's
