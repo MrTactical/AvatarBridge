@@ -82,6 +82,17 @@ namespace AvatarBridge
                 // After self-containment, because it edits clips: every one it touches is now
                 // the conversion's own copy, never the source avatar's.
                 AnimatorMerger.StripDeadMaterialCurves(ctx);
+                // Same rule: this rewrites contact m_Enabled curves at the converted contacts'
+                // host objects, and must never write into a source clip.
+                ContactsConverter.RepointContactEnableCurves(ctx);
+                // And the collider twin — clothing that switches its own collision.
+                PhysBoneConverter.RepointColliderEnableCurves(ctx);
+                // Reads the final clip list and writes to PARTICLE COMPONENTS, not to clips, so it
+                // is safe either side of self-containment — but it wants the finished controller.
+                MiscConverter.EnableAnimatedParticleEmitters(ctx);
+                // Animated PhysBone PARAMETERS (radius, gravity…) have no retarget on the Magica
+                // path — measured, not assumed — so they are named as lost and removed.
+                PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
                 // And only then judge the saved file's references — auditing any earlier
                 // flags things the self-container is about to fix.
                 AnimatorMerger.AuditSerializedReferences(ctx);

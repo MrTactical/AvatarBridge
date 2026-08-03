@@ -226,6 +226,7 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted("PhysBone colliders", parent.name, shape + " -> DynamicBone collider");
+            PhysBoneConverter.RecordColliderHost(ctx, pbCollider, go);
             cache[pbCollider] = collider;
             return collider;
         }

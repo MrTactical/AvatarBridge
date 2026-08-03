@@ -17,6 +17,164 @@ namespace AvatarBridge
     /// </summary>
     public static class MiscConverter
     {
+        /// <summary>
+        /// Turns ON a particle emitter that was authored OFF and switched on only by animation.
+        ///
+        /// Reported in the wild: a headpat effect nobody but the wearer could see, on an avatar
+        /// whose nose-boop effect — same contact, same kind of tree, same everything — worked for
+        /// everyone. The two were built differently, and that was the whole difference:
+        ///
+        ///   nose boop  clips animate ONLY m_IsActive; the emitter is enabled in the prefab
+        ///   headpat    clips animate m_IsActive AND EmissionModule.enabled; emitter authored OFF
+        ///
+        /// Switching a GameObject on is something every client's animator does. Animating a
+        /// ParticleSystem MODULE property is not the same kind of write, and where it fails to
+        /// land the object dutifully activates and emits nothing — invisible, while looking
+        /// perfectly correct on the rare occasion it does show.
+        ///
+        /// So this removes the dependency rather than chasing it: where a clip animates emission
+        /// on an object whose emitter is authored off, AND the same clip already drives that
+        /// object's m_IsActive, the emitter is enabled for good and the object's own active state
+        /// gates the effect — exactly the shape that already works.
+        ///
+        /// THE m_IsActive REQUIREMENT IS THE SAFETY, not a convenience. An emitter enabled on an
+        /// object that nothing switches off would simply run forever. Requiring the clip to drive
+        /// m_IsActive means there is already something turning it off; the measured avatar's
+        /// "Headpat OFF" sets m_IsActive 0 and the object rests inactive, so nothing emits at rest.
+        ///
+        /// Only EMISSION is touched. Other modules were left alone deliberately: emission off is
+        /// the one that means "nothing comes out at all", and the rest are refinements whose
+        /// failure is visible but not fatal. They are counted and reported instead of guessed at.
+        /// </summary>
+        public static void EnableAnimatedParticleEmitters(BridgeContext ctx)
+        {
+            var controller = ctx.MergedController;
+            if (controller == null || ctx.Target == null)
+            {
+                return;
+            }
+
+            // Which paths each clip drives m_IsActive on — the gate that makes enabling safe.
+            var enabled = new List<string>();
+            var otherModules = new SortedSet<string>();
+            var seen = new HashSet<ParticleSystem>();
+
+            foreach (var clip in controller.animationClips.Distinct())
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                var togglesActive = new HashSet<string>(bindings
+                    .Where(b => b.type == typeof(GameObject) && b.propertyName == "m_IsActive")
+                    .Select(b => b.path));
+
+                foreach (var binding in bindings)
+                {
+                    if (binding.type != typeof(ParticleSystem)
+                        || !binding.propertyName.EndsWith("Module.enabled", System.StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var child = ctx.Target.transform.Find(binding.path);
+                    var system = child != null ? child.GetComponent<ParticleSystem>() : null;
+                    if (system == null)
+                    {
+                        continue;
+                    }
+                    if (binding.propertyName != "EmissionModule.enabled")
+                    {
+                        otherModules.Add($"{binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+                    var emission = system.emission;
+                    if (emission.enabled || !togglesActive.Contains(binding.path) || !seen.Add(system))
+                    {
+                        continue;
+                    }
+                    emission.enabled = true;
+                    EditorUtility.SetDirty(system);
+                    enabled.Add(binding.path);
+                }
+            }
+
+            if (enabled.Count > 0)
+            {
+                ctx.Report.Converted("Particles",
+                    $"{enabled.Count} particle emitter(s) switched on so remote players can see them",
+                    $"{string.Join(", ", enabled.Take(6))}{(enabled.Count > 6 ? ", …" : "")} — these " +
+                    "effects were authored with the emitter OFF and turned on by animating the particle " +
+                    "system's emission module. Switching a GameObject on is something every client does; " +
+                    "animating a particle MODULE is not the same kind of write, and where it doesn't land " +
+                    "the object turns on and emits nothing — the effect is invisible to everyone but you. " +
+                    "The emitter is now on permanently and the object's own on/off animation gates the " +
+                    "effect instead, which is how the effects that already worked were built. Nothing " +
+                    "plays at rest, because the same clip switches the object off.");
+            }
+            ReportDefaultParticleMaterials(ctx);
+            if (otherModules.Count > 0)
+            {
+                ctx.Report.Skipped("Particles",
+                    $"{otherModules.Count} animated particle module(s) left as they are",
+                    $"{string.Join(", ", otherModules.Take(6))}{(otherModules.Count > 6 ? ", …" : "")} — " +
+                    "these animate a particle system module other than emission. If the effect looks " +
+                    "wrong to other players but right to you, this is the first thing to suspect: " +
+                    "rebuild it so the object's own on/off state drives the effect instead.");
+            }
+        }
+
+        /// <summary>
+        /// Names particle systems rendering on Unity's built-in default material.
+        ///
+        /// "Blank coloured squares" is what that looks like in game, and it is invisible in the
+        /// editor unless someone thinks to click the renderer. Reported in the wild on an avatar
+        /// whose nose-boop effect drew as plain quads: its "Buffer Particle" pointed at Unity's
+        /// Default-ParticleSystem, and it had done so in the SOURCE avatar all along — conversion
+        /// carried across exactly what was there. Establishing that took a hunt through GUIDs that
+        /// one line of report would have answered.
+        ///
+        /// So this accuses nobody and fixes nothing: it says which systems are on the default
+        /// material, so the author can decide whether that was intended. A missing material counts
+        /// too — same symptom, same question.
+        ///
+        /// Matched by NAME rather than by asset path, deliberately. The rehoming pass has already
+        /// copied the material into this conversion's own folder by the time this runs, so the
+        /// built-in path is gone; "Default-ParticleSystem" is Unity's fixed name for it and
+        /// survives the copy.
+        /// </summary>
+        static void ReportDefaultParticleMaterials(BridgeContext ctx)
+        {
+            if (ctx.Target == null)
+            {
+                return;
+            }
+            var plain = new SortedSet<string>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<ParticleSystemRenderer>(true))
+            {
+                var material = renderer.sharedMaterial;
+                if (material != null && material.name != "Default-ParticleSystem")
+                {
+                    continue;
+                }
+                plain.Add($"{ctx.PathInTarget(renderer.transform)}" +
+                          (material == null ? " (no material at all)" : ""));
+            }
+            if (plain.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning("Particles",
+                $"{plain.Count} particle system(s) are using Unity's default material",
+                $"{string.Join(", ", plain.Take(6))}{(plain.Count > 6 ? ", …" : "")} — they draw as " +
+                "plain untinted squares rather than whatever the effect is supposed to look like. " +
+                "This is how the avatar was already built: conversion copies the material across " +
+                "unchanged, and one on Unity's default was on Unity's default in VRChat too. It is " +
+                "worth checking because the editor gives no hint — the effect only looks wrong once " +
+                "somebody sees it in game. If a system is only there to spawn another one and is " +
+                "never meant to be visible, turn its Renderer off rather than leaving it drawing.");
+        }
+
         public static void Run(BridgeContext ctx)
         {
             if (ctx.Settings.convertHeadChop)
@@ -245,12 +403,15 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>Test seam — HeadChopCurveTest asserts the per-type m_Enabled polarity.</summary>
+        internal static void ConvertHeadChopsForTest(BridgeContext ctx) => ConvertHeadChops(ctx);
+
         static void ConvertHeadChops(BridgeContext ctx)
         {
             const string category = "Head chop";
             // Path of each VRC Head Chop GameObject -> the FPRExclusion transforms made from it,
             // so animations that toggled the head chop can be re-pointed at the exclusions.
-            var pathToExclusions = new Dictionary<string, List<Transform>>();
+            var pathToExclusions = new Dictionary<string, List<(Transform t, bool shownWhenActive)>>();
 
             var headChops = ctx.Target.GetComponentsInChildren<VRCHeadChop>(true);
             foreach (var headChop in headChops)
@@ -285,9 +446,9 @@ namespace AvatarBridge
                     {
                         if (!pathToExclusions.TryGetValue(headChopPath, out var list))
                         {
-                            pathToExclusions[headChopPath] = list = new List<Transform>();
+                            pathToExclusions[headChopPath] = list = new List<(Transform, bool)>();
                         }
-                        list.Add(go.transform);
+                        list.Add((go.transform, isShown));
                     }
                 }
             }
@@ -311,7 +472,7 @@ namespace AvatarBridge
         /// the driving clips and rebind the head-chop curves onto each FPRExclusion's isShown —
         /// scale factor maps straight across (1→shown, 0→hidden); a `m_Enabled` curve is inverted.
         /// </summary>
-        static void RewriteHeadChopAnimations(BridgeContext ctx, Dictionary<string, List<Transform>> map)
+        static void RewriteHeadChopAnimations(BridgeContext ctx, Dictionary<string, List<(Transform t, bool shownWhenActive)>> map)
         {
             var controller = ctx.MergedController;
             if (controller == null || map.Count == 0)
@@ -438,7 +599,7 @@ namespace AvatarBridge
         }
 
         static void RewriteHeadChopMachine(BridgeContext ctx, AnimatorStateMachine machine,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (machine == null)
@@ -458,7 +619,7 @@ namespace AvatarBridge
         }
 
         static Motion RewriteHeadChopMotion(BridgeContext ctx, Motion motion,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (motion is BlendTree tree)
@@ -482,7 +643,7 @@ namespace AvatarBridge
         }
 
         static AnimationClip RewriteHeadChopClip(BridgeContext ctx, AnimationClip clip,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (clip == null)
@@ -494,7 +655,7 @@ namespace AvatarBridge
                 return done;
             }
             var hits = AnimationUtility.GetCurveBindings(clip)
-                .Where(b => b.type == typeof(VRCHeadChop) && map.ContainsKey(b.path))
+                .Where(b => b.type == typeof(VRCHeadChop))
                 .ToArray();
             if (hits.Length == 0)
             {
@@ -509,9 +670,27 @@ namespace AvatarBridge
             {
                 var curve = AnimationUtility.GetEditorCurve(clone, b);
                 AnimationUtility.SetEditorCurve(clone, b, null); // drop the (dead) head-chop binding
-                var mapped = b.propertyName == "m_Enabled" ? Invert(curve) : curve;
-                foreach (var fpr in map[b.path])
+                if (!map.TryGetValue(b.path, out var exclusions))
                 {
+                    // The chop this drove produced no exclusion (every target bone skipped, or a
+                    // fractional scale factor). Silently dead until now — say so instead.
+                    ctx.Report.Warning("Head chop",
+                        $"\"{clip.name}\" animated a head chop that was not converted",
+                        $"{b.path} ({b.propertyName}) — the head chop there was skipped, so this " +
+                        "animation has nothing to drive and was removed.");
+                    continue;
+                }
+                foreach (var (fpr, shownWhenActive) in exclusions)
+                {
+                    // Polarity is PER EXCLUSION, not global. A hiding chop (scale 0) is INACTIVE
+                    // by default, so enabling it hides: m_Enabled inverts into isShown. A showing
+                    // chop (scale 1, the keep-my-accessory-visible-in-first-person idiom) is the
+                    // opposite: enabling it SHOWS, so m_Enabled maps straight across — the old
+                    // unconditional inversion played those exactly backwards. Scale-factor curves
+                    // mirror isShown directly for both types (1 = shown, 0 = hidden).
+                    var mapped = b.propertyName == "m_Enabled" && !shownWhenActive
+                        ? Invert(curve)
+                        : curve;
                     var nb = new EditorCurveBinding
                     {
                         path = ctx.PathInTarget(fpr),
@@ -565,6 +744,25 @@ namespace AvatarBridge
         public static void DeleteVrcComponents(BridgeContext ctx)
         {
             const string category = "Cleanup";
+
+            // Seats get a named goodbye before the generic sweep eats them. VRCStation is the
+            // sit-on-me chair — 102 across the wild census — and the decompiled client's avatar
+            // whitelist has no seat type at all, so this is a platform gap, not a conversion
+            // gap: the honest ceiling is saying so. Counted HERE, after the strips, so GoGo
+            // Loco's own stations (most of the wild count) vanish with GoGo instead of alarming
+            // anyone. Uses the SDKBase type so SDK2-era stations are caught too.
+            var stations = ctx.Target.GetComponentsInChildren<VRC.SDKBase.VRCStation>(true);
+            if (stations.Length > 0)
+            {
+                var paths = stations.Take(4).Select(s => ctx.PathInTarget(s.transform));
+                ctx.Report.Skipped(category,
+                    $"{stations.Length} seat(s) removed — ChilloutVR avatars cannot host seats",
+                    string.Join("; ", paths) + (stations.Length > 4 ? "; …" : "") +
+                    " — VRChat's VRCStation lets other players sit on an avatar. ChilloutVR has " +
+                    "no seat type on its avatar component whitelist (verified against the " +
+                    "client), so there is nothing to convert these into: anyone used to sitting " +
+                    "on this avatar can't here. Everything else about the object stays.");
+            }
 
             var pipeline = ctx.Target.GetComponent(typeof(VRC.Core.PipelineManager));
             if (pipeline != null)

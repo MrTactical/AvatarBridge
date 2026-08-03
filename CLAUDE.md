@@ -86,7 +86,10 @@ removing a download is safe, and why the "never delete an old package" rule belo
   metas are synthesized at build time from an md5 of the destination path, so they are stable
   across rebuilds and no `.meta` needs committing.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
-  `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC.
+  `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC. **The plain config must include
+  `Tools/Regression/*.cs`** — those files only compile in Unity when a test is actually deployed
+  and executed, so one left behind by a design change rots silently (RootVerticalTest shipped
+  calling a parameter that no longer existed, caught only by a later verification pass).
 - **All work lands on the `dev` branch** (created 2026-07-28 from v2.50.6). Commit there and
   push `dev` freely — it is the visible work-in-progress. **`main` only moves when the
   maintainer explicitly says to batch it**: merges to main, tags and releases each require

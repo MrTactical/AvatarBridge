@@ -73,10 +73,11 @@ namespace AvatarBridge
 
             foreach (var tag in sender.collisionTags.Distinct())
             {
-                var contactObject = CreateContactObject(sender.gameObject, "CVRPointer_" + tag,
+                var contactObject = CreateContactObject(AnchorOf(sender), "CVRPointer_" + tag,
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
+                RecordHost(ctx, sender, isSender: true, contactObject);
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
                 $"Sender -> CVRPointer ({string.Join(", ", sender.collisionTags)})");
@@ -193,8 +194,9 @@ namespace AvatarBridge
                 return;
             }
 
-            var contactObject = CreateContactObject(receiver.gameObject, "CVRTrigger_" + receiver.parameter,
+            var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
+            RecordHost(ctx, receiver, isSender: false, contactObject);
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             trigger.useAdvancedTrigger = true;
@@ -461,6 +463,7 @@ namespace AvatarBridge
             }
 
             var host = NativeContactObject(sender.rootTransform, sender.transform, "Contact_Sender");
+            RecordHost(ctx, sender, isSender: true, host);
             var contact = host.AddComponent(FindType(NakSender));
             ApplyShape(contact, sender.shapeType, sender.radius, sender.height, sender.position, sender.rotation);
             var tags = sender.collisionTags.Distinct().ToArray();
@@ -485,6 +488,7 @@ namespace AvatarBridge
             // receiver.
             var host = NativeContactObject(receiver.rootTransform, receiver.transform,
                 "Contact_" + receiver.parameter);
+            RecordHost(ctx, receiver, isSender: false, host);
 
             var receiverType = FindType(NakReceiver);
             var contact = host.AddComponent(receiverType);
@@ -549,6 +553,178 @@ namespace AvatarBridge
             return go;
         }
 
+
+        /// <summary>
+        /// The object a VRC contact's shape is actually anchored to. VRChat positions the shape
+        /// relative to <c>rootTransform</c> when it is set — the component itself often lives
+        /// somewhere central (VRCFury bakes them that way; hand-authored head-pat receivers do it
+        /// too) while the shape rides a bone. The native path always honoured this; the legacy
+        /// path used to parent under the component's own object, so any contact using the
+        /// override converted mis-anchored and did not follow its bone. Found by a completion
+        /// verification pass, wild frequency measured by ComponentCensus.
+        ///
+        /// One VRChat behaviour is knowingly NOT reproduced by anchoring here: disabling the
+        /// COMPONENT's GameObject disables the contact in VRChat even when the shape rides a
+        /// different bone. Animated enable curves are repointed at the host and still work; a raw
+        /// object toggle of the component's (now different) object no longer reaches it. The
+        /// native path has always had the same trade, and a shape that follows its bone is the
+        /// half testers actually see.
+        /// </summary>
+        static GameObject AnchorOf(VRC.Dynamics.ContactBase contact)
+        {
+            return contact.rootTransform != null
+                ? contact.rootTransform.gameObject
+                : contact.gameObject;
+        }
+
+        /// <summary>
+        /// Remembers where a VRC contact's replacement landed, keyed by the ORIGINAL component's
+        /// animator path — which is exactly what an m_Enabled curve binding carries. The path is
+        /// captured here, before the VRC component is destroyed.
+        /// </summary>
+        static void RecordHost(BridgeContext ctx, Component original, bool isSender, GameObject host)
+        {
+            string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
+            string hostPath = BridgeContext.RelativePath(ctx.Target.transform, host.transform);
+            var key = (originalPath, isSender);
+            if (!ctx.ContactHosts.TryGetValue(key, out var hosts))
+            {
+                ctx.ContactHosts[key] = hosts = new List<string>();
+            }
+            hosts.Add(hostPath);
+        }
+
+        /// <summary>
+        /// Rewires animated contact on/off switches at the converted contacts. Runs after the
+        /// animator merge, from BridgeConverter, exactly like the constraint-curve repoint.
+        ///
+        /// VRChat avatars animate <c>VRCContactReceiver.m_Enabled</c> to switch a contact off —
+        /// "disable head pats" is built this way. Conversion deletes that component, and a curve
+        /// still addressing it plays as silence: the menu entry converts, the parameter syncs, the
+        /// layer plays, and the contact never turns off. Found by a tester reading the converted
+        /// inspector against the VRChat one.
+        ///
+        /// The retarget is the generated host object's ACTIVE state, not the new component's
+        /// enabled flag, and the choice is from the decompiled client, both paths:
+        ///   - Native: NAK.Contacts.ContactBase registers in OnEnable and de-registers in
+        ///     OnDisable, so object active works — and it also carries
+        ///     OnDidApplyAnimationProperties, so these components are BUILT to be animated.
+        ///   - Legacy: TriggerToContact.Create DISABLES the CVRAdvancedAvatarSettingsTrigger
+        ///     wrapper the moment it builds the backing contact, so animating the wrapper's
+        ///     enabled flag does nothing — but the backing contact is created on the wrapper's
+        ///     own GameObject, so deactivating the object disables it properly.
+        /// Every replacement lives on a generated host object of its own, which is what makes one
+        /// rule serve both paths. A legacy sender with several tags became several pointer
+        /// objects, so one enable curve fans out to each.
+        /// </summary>
+        internal static void RepointContactEnableCurves(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null || ctx.ContactHosts.Count == 0)
+            {
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            int repointed = 0;
+            var dropped = new SortedSet<string>();
+            foreach (var clip in clips)
+            {
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    bool sender = binding.type == typeof(VRCContactSender);
+                    bool receiver = binding.type == typeof(VRCContactReceiver);
+                    if (!sender && !receiver)
+                    {
+                        continue;
+                    }
+                    var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                    // Whatever happens below, the original binding goes: its component is deleted,
+                    // so leaving it means a curve that silently does nothing.
+                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
+
+                    if (!ctx.ContactHosts.TryGetValue((binding.path, sender), out var hosts))
+                    {
+                        // The contact this drove was skipped rather than converted.
+                        dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+
+                    bool native = ctx.Settings != null && ctx.Settings.useNativeContacts;
+                    var nakType = native ? FindType(sender ? NakSender : NakReceiver) : null;
+                    string prop = binding.propertyName;
+
+                    // What each property maps to differs by path, and each verdict is from the
+                    // shipped client rather than hope:
+                    //   m_Enabled     -> host object active, both paths (ContactBase and the
+                    //                    legacy backing contact both register in OnEnable).
+                    //   position.xyz  -> legacy: the host TRANSFORM carries the offset, so the
+                    //                    curve maps 1:1 onto m_LocalPosition. Native: the host
+                    //                    sits at identity and the offset lives in the component's
+                    //                    localPosition FIELD — animating that works because
+                    //                    ContactBase carries OnDidApplyAnimationProperties.
+                    //   allowSelf/allowOthers/localOnly -> native only, same field animation.
+                    //                    Legacy bakes them into the backing contact at Create and
+                    //                    never looks again, so those drop with the warning.
+                    UnityEditor.EditorCurveBinding? target = null;
+                    if (prop == "m_Enabled")
+                    {
+                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(GameObject), "m_IsActive");
+                    }
+                    else if (prop.StartsWith("position.", System.StringComparison.Ordinal))
+                    {
+                        string axis = prop.Substring("position.".Length);
+                        target = native && nakType != null
+                            ? UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, "localPosition." + axis)
+                            : UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(Transform), "m_LocalPosition." + axis);
+                    }
+                    else if (native && nakType != null
+                             && (prop == "allowSelf" || prop == "allowOthers" || prop == "localOnly"))
+                    {
+                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, prop);
+                    }
+
+                    if (target == null)
+                    {
+                        dropped.Add($"\"{clip.name}\" -> {binding.path} ({prop})");
+                        continue;
+                    }
+                    foreach (var hostPath in hosts)
+                    {
+                        var tb = target.Value;
+                        tb.path = hostPath;
+                        UnityEditor.AnimationUtility.SetEditorCurve(clip, tb, curve);
+                    }
+                    repointed++;
+                }
+            }
+
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category, $"{repointed} contact animation(s) rewired",
+                    "Curves that switched a VRChat contact on and off now toggle the converted " +
+                    "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
+                    "body part) now drive the converted contact's offset — the forms ChilloutVR " +
+                    "honours on each path. Without this the toggle's menu entry, parameter and " +
+                    "layer all convert and the contact just never switches or moves.");
+            }
+            if (dropped.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
+                    string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
+                    " — each animated something with no equivalent on the converted contact " +
+                    "(a shape radius, or a filter on the pointer/trigger path, which bakes its " +
+                    "filters once at load), or a contact that was not converted. The curve was " +
+                    "removed rather than left silently addressing a deleted component.");
+            }
+        }
 
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)

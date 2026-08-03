@@ -266,6 +266,14 @@ path. The strip removes GoGo's Base/Additive/Action layers *whole* — a locomot
 left half-alive overrides CVR's locomotion with dead animation, which is worse than either
 extreme.
 
+**GoGo installed through a VRCFury prefab is stripped too, from 3.5.40.** Installed by hand it
+names its layers "GoGo Loco …"; installed through Fury it names them after its parameters, as
+`Go/Beyond`. Earlier versions matched only the first spelling, so on a Fury avatar the layer
+outlived a strip that had already disabled its parameters — and it was not idle. It sat at full
+weight on Override and read ChilloutVR's *own* `Sitting`, `Grounded` and `AFK`, so sitting on a
+chair in game played GoGo's seat animation over ChilloutVR's station pose. If your seats look
+wrong on a Fury avatar, reconvert.
+
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
 ChilloutVR has 3200 bits and syncs straight from the animator, so carried across it costs a
@@ -463,6 +471,20 @@ be able to set it off.
 developer. Every client simulates every avatar's contacts itself, so **detection costs no sync at
 all**. Whether the parameter a receiver drives replicates its value is that parameter's own sync
 declaration, unchanged.
+
+**Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
+override when one is set — the component itself often lives somewhere central while the shape
+follows a bone, which is how head-pat receivers and VRCFury-baked contacts are built (about a
+quarter of all contacts measured in the wild). Converted contacts are parented at that anchor on
+both paths, so they follow the same bone they did in VRChat.
+
+**Animated contact switches follow their contact** — on the legacy path and the native one. VRChat
+avatars animate a contact's enabled flag to switch it off ("disable head pats" is built this way);
+that component is deleted by conversion, so the curve used to play as silence while its menu entry,
+parameter and layer all converted. Those curves now toggle the converted contact's own object, the
+form the client honours everywhere (read from the decompiled `ContactBase`, which registers in
+`OnEnable` and de-registers in `OnDisable`). Curves animating a contact's shape or filters have no
+equivalent and are removed with a report line naming each.
 
 **How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
 each component's assembly, namespace and class name, resolved against the player's own assemblies at
@@ -763,7 +785,8 @@ Four things break the rest, and the report names each:
 
 Also worth knowing, though not quadruped-specific: **toggles that switch a constraint on and off**
 are how limb locks, sit/loaf poses and flight modes work on these avatars. Curves are repointed at
-the Unity constraint (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`).
+the Unity constraint (`IsActive` → `m_Active`, `GlobalWeight` → `m_Weight`, `Locked` → `m_IsLocked`,
+and **per-source weights** — which is how a prop is handed from one hand to the other).
 **`FreezeToWorld` has no equivalent** and is dropped.
 
 **Honest summary: limited support, not full support.** One rig style walks, one converts almost
@@ -827,6 +850,12 @@ Bipeds are unaffected by any of it.
   so a hidden style's cloth may keep simulating — invisible and harmless. **If the chain wasn't
   converted there's nothing to re-wire to**, and the control will look right and do nothing; the
   report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
+  **Collider switches follow too**: a dress that disables the leg colliders that would clip it
+  animates the converted collider's own object now, a form both MagicaCloth2 and DynamicBone honour.
+  What can't follow is animation of **live physics values** — a size slider growing a chain's
+  radius, gravity changing with an outfit — because MagicaCloth2's parameters cannot be driven by
+  animation at all. The chain keeps its converted values, the rest of the animation plays, and the
+  report names each lost parameter.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.
@@ -1053,13 +1082,59 @@ Defaults to undo it. Converted, there's nothing in the off state to restore. Con
 real animation — reusing your own clip where one exists, otherwise measuring the property off your
 avatar as it is at conversion time.
 
-Three things worth knowing:
+**VRCFury toggles are repaired too, from 3.5.37.** Fury rewrites whole toggle layers into blend
+trees, which moves the empty "off" half one level down out of reach of the repair above — so on a
+Fury avatar the wardrobe could still be one-way while everything else went both ways. Those are now
+filled as well. If your toggles stick on and you converted before 3.5.37, reconvert.
+
+Four things worth knowing:
 
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
 - **Where several layers animate one thing, only the lowest restores it** — otherwise a dress toggle
   would assert the shirt from above and it could never come off.
+- **Two toggles inside one Fury tree that move the same thing are both left alone.** Separate layers
+  let the top one win, but toggles blended into a single tree *add up*, so a restore there would
+  fight rather than defer — an "all clothing off" preset overlapping the individual garments is the
+  usual case. Those garments keep VRChat's behaviour; the report names them.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
+
+### A particle effect only you can see
+
+**Reconvert on 3.5.38 or later.**
+
+Effects are built two ways, and only one of them travels. If the clip switches the effect's
+**GameObject** on and off, everyone sees it — that's an ordinary animation every client plays. If
+the emitter is left **off** in the prefab and the clip switches on the particle system's *emission
+module* instead, the object turns on for other players and emits nothing. It looks perfect to you
+and is invisible to everyone else.
+
+Conversion now switches those emitters on permanently and lets the object's own on/off animation
+gate the effect — the way the effects that already worked are built. Nothing plays at rest, because
+the same clip that turns the object on also turns it off. The report names each one.
+
+Animated particle modules **other than emission** are left alone and reported. If an effect looks
+wrong to other players but right to you, that's the first thing to check.
+
+### A particle effect draws as plain coloured squares
+
+That's Unity's **default particle material** — the one a particle system gets when nobody assigns
+it one. It was already that way in your avatar; conversion copies materials across unchanged, so a
+system on the default in VRChat is on the default here too.
+
+The report names each one, because the editor gives no hint and the effect only looks wrong once
+somebody sees it in game. Assign it a real material, or — if the system exists only to spawn
+another one and was never meant to be seen — turn its **Renderer** off.
+
+### A limb-lock, sit or flight toggle does nothing, and the report mentions protected clips
+
+Those toggles are driven by curves that switch a **constraint** on and off, and conversion normally
+repoints them at the Unity constraint it built. It will not do that to an animation file that lives
+outside the conversion's own output folder — those are your originals, and rewriting them would
+repair the conversion by damaging the avatar in VRChat.
+
+Avatars built with **VRCFury or Modular Avatar are unaffected**: their bake hands the converter
+copies to work on. If you see this warning, convert from a baked copy of the avatar.
 
 ### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
 

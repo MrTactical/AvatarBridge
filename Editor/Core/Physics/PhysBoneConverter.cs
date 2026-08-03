@@ -15,6 +15,181 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones";
 
+        /// <summary>
+        /// Remembers where a VRC collider's replacement landed, keyed by the ORIGINAL component's
+        /// animator path — which is what an m_Enabled curve binding carries. Called by both solver
+        /// writers at collider creation, before the VRC component is deleted.
+        /// </summary>
+        internal static void RecordColliderHost(BridgeContext ctx, Component original, GameObject host)
+        {
+            string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
+            string hostPath = BridgeContext.RelativePath(ctx.Target.transform, host.transform);
+            if (!ctx.PhysicsColliderHosts.TryGetValue(originalPath, out var hosts))
+            {
+                ctx.PhysicsColliderHosts[originalPath] = hosts = new List<string>();
+            }
+            hosts.Add(hostPath);
+        }
+
+        /// <summary>
+        /// Rewires animated collider on/off switches at the converted colliders. Runs after
+        /// self-containment, from BridgeConverter, exactly like the contact-curve repoint.
+        ///
+        /// Avatars animate <c>VRCPhysBoneCollider.m_Enabled</c> so clothing can switch its own
+        /// collision — a dress toggle disabling the leg colliders that would clip it (28 curves
+        /// across the wild census: DressOn, CPB_Clipping_ON/OFF, CPB_Interaction_OFF). The
+        /// component is deleted by conversion, so those curves played as silence.
+        ///
+        /// The retarget is the generated collider's own host object, verified against BOTH
+        /// shipped solvers: MagicaCloth2's ColliderComponent routes OnEnable/OnDisable through
+        /// MagicaManager.Collider.EnableCollider, and ChilloutVR's jobs-rewritten
+        /// DynamicBoneColliderBase routes the same pair through SetColliderState — so a
+        /// GameObject active toggle reaches each identically.
+        /// </summary>
+        internal static void RepointColliderEnableCurves(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null || ctx.PhysicsColliderHosts.Count == 0)
+            {
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            int repointed = 0;
+            var dropped = new SortedSet<string>();
+            foreach (var clip in clips)
+            {
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(VRCPhysBoneCollider))
+                    {
+                        continue;
+                    }
+                    var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                    // The original binding goes either way: its component is deleted, so leaving
+                    // it means a curve that silently does nothing.
+                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
+
+                    if (binding.propertyName != "m_Enabled"
+                        || !ctx.PhysicsColliderHosts.TryGetValue(binding.path, out var hosts))
+                    {
+                        // A shape property (radius, height — no animatable equivalent written),
+                        // or a collider that was skipped rather than converted.
+                        dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+                    foreach (var hostPath in hosts)
+                    {
+                        UnityEditor.AnimationUtility.SetEditorCurve(clip,
+                            UnityEditor.EditorCurveBinding.FloatCurve(hostPath, typeof(GameObject), "m_IsActive"),
+                            curve);
+                    }
+                    repointed++;
+                }
+            }
+
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category, $"{repointed} collider on/off animation(s) rewired",
+                    "Curves that enabled or disabled a VRChat PhysBone collider now toggle the " +
+                    "converted collider's own object instead — the form both MagicaCloth2 and " +
+                    "DynamicBone honour. The usual author intent is clothing switching its own " +
+                    "collision, a dress disabling the colliders that would clip it.");
+            }
+            if (dropped.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"{dropped.Count} collider-animating curve(s) could not be carried",
+                    string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
+                    " — each animated something on a VRC collider that has no equivalent on the " +
+                    "converted one, or a collider that was not converted (skipped, or its chain " +
+                    "was). The curve was removed rather than left silently addressing a deleted " +
+                    "component.");
+            }
+        }
+
+        /// <summary>
+        /// Names every animated PhysBone PARAMETER an avatar loses, and removes the dead curves.
+        ///
+        /// Avatars animate live physics values — radius with a size slider ("Boobs Bigger"),
+        /// gravity, pull, immobile while a part resizes; ~110 curves across the wild census. The
+        /// component is deleted by conversion and the path-based clip audit cannot see it (the
+        /// OBJECT still exists), so until now these vanished with no trace.
+        ///
+        /// No retarget exists on the default path, and that is a measured fact, not a shrug:
+        /// MagicaCloth2 has no animation hook — its parameters only re-apply through the
+        /// SetParameterChange() API, which nothing animation-driven ever calls, and a helper
+        /// component would be deleted by ChilloutVR's avatar whitelist. The shipped DynamicBone
+        /// DOES carry OnDidApplyAnimationProperties, so a DynamicBone-target conversion could
+        /// genuinely accept some of these (radius maps 1:1); recorded as future work rather than
+        /// half-shipped, since Magica is the default and the value mappings are nonlinear.
+        ///
+        /// m_Enabled is deliberately not reported here: chain toggles are RewirePhysicsToggles'
+        /// job (mirrored onto the generated cloth, stranded ones already warned). The dead VRC
+        /// binding is still removed.
+        /// </summary>
+        internal static void ReportAnimatedPhysBoneProperties(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            var lost = new SortedDictionary<string, SortedSet<string>>(); // property -> clips
+            int removed = 0;
+            foreach (var clip in clips)
+            {
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(VRCPhysBone))
+                    {
+                        continue;
+                    }
+                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
+                    removed++;
+                    if (binding.propertyName == "m_Enabled")
+                    {
+                        continue; // chain toggles: RewirePhysicsToggles' job, not a loss
+                    }
+                    if (!lost.TryGetValue(binding.propertyName, out var names))
+                    {
+                        lost[binding.propertyName] = names = new SortedSet<string>();
+                    }
+                    if (names.Count < 4)
+                    {
+                        names.Add(clip.name);
+                    }
+                }
+            }
+
+            if (lost.Count > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
+                    string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
+                    " — these animated LIVE physics values (a size slider growing a chain's radius, " +
+                    "gravity or stiffness changing with an outfit). MagicaCloth2's parameters cannot " +
+                    "be driven by animation, so the chain keeps the converted values it was built " +
+                    "with; the rest of each animation still plays. If one of these mattered, say so " +
+                    "in an issue — a DynamicBone-target conversion could support some of them.");
+            }
+        }
+
         public static void Run(BridgeContext ctx)
         {
             var physBones = ctx.Target.GetComponentsInChildren<VRCPhysBone>(true);

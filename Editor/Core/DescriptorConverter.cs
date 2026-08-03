@@ -385,6 +385,15 @@ namespace AvatarBridge
             else if (TryDetectVisemes(ctx, cvrAvatar, targetFace))
             {
                 // Reported inside.
+                if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.VisemeParameterOnly)
+                {
+                    ctx.Report.Approximated(Category, "Visemes were parameter-driven in VRChat",
+                        "This avatar drove its visemes from its own animator (\"Viseme Parameter " +
+                        "Only\"), a system that has no feed here. ChilloutVR's native visemes were " +
+                        "wired to the same blendshapes instead — the client writes them every " +
+                        "frame after the animator, so lip sync works and the old animator system " +
+                        "simply loses the shapes it can no longer reach.");
+                }
             }
             else
             {
@@ -394,6 +403,17 @@ namespace AvatarBridge
             }
 
             // --- Blinking ------------------------------------------------------------
+            if (vrc.customEyeLookSettings.eyelidType == VRCAvatarDescriptor.EyelidType.Bones)
+            {
+                // Names the CAUSE before the fallback runs — the eventual "none found" warning
+                // otherwise reads like the avatar has no blink at all, when it blinks fine in
+                // VRChat with bones.
+                ctx.Report.Approximated(Category, "Eyelids are bone-driven",
+                    "This avatar blinks by rotating eyelid BONES, which ChilloutVR's blink cannot " +
+                    "drive — its native blink is blendshape-only. Blink blendshapes are searched " +
+                    "for on the face mesh instead; if none exist, the eyes will not blink here, " +
+                    "and the fix is authoring a blink blendshape.");
+            }
             string blinkShape = GetBlinkBlendshapeName(vrc, sourceFace, out Mesh eyelidMesh);
             if (!string.IsNullOrEmpty(blinkShape))
             {

@@ -211,6 +211,58 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ layers ----
 
+        /// <summary>
+        /// Just the layer-removal half, for the known-answer test. Run() continues into menu
+        /// entries, orphaned components and parameter pruning, which need a CVRAvatar and a
+        /// descriptor the test has no reason to build — and none of which decide which LAYERS go.
+        /// </summary>
+        internal static void RemoveLayersForTest(BridgeContext ctx, AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers)
+        {
+            var paramPrefixes = new List<string>(StrippedParameterPrefixes(ctx));
+            var layerHints = new List<string>();
+            if (ctx.Settings.stripGogoLoco)
+            {
+                layerHints.AddRange(GogoNameHints);
+            }
+            if (ctx.Settings.stripSpsSystems)
+            {
+                layerHints.AddRange(SpsLayerHints);
+            }
+            bool IsStrippedParam(string name) =>
+                !string.IsNullOrEmpty(name) &&
+                paramPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+            RemoveLayers(ctx, master, vrcLayers, layerHints, new HashSet<string>(), IsStrippedParam);
+        }
+
+        /// <summary>
+        /// A layer named after GoGo Loco's PARAMETER family — "Go/Beyond", "[VF80] Go/Locomotion".
+        ///
+        /// The word hints above ("gogo", "go loco", "goloco") are how GoGo names itself when a user
+        /// installs it by hand. Installed through a VRCFury prefab it names its layers after its
+        /// parameters instead, and "Go/Beyond" contains none of those three words — so the layer
+        /// survived a strip that had already neutered its parameters. Measured on 9 of 53 corpus
+        /// avatars, and it is not harmless: the survivor sits at weight 1 on Override and its
+        /// transitions read ChilloutVR's OWN parameters — Sitting, Grounded, AFK, IsLocal, VRMode —
+        /// so sitting on a chair in game played GoGo's seat clip over ChilloutVR's station pose.
+        /// Reported from the headset before this check existed.
+        ///
+        /// Matched only where "go/" STARTS a word, so "Go/Beyond" and "[VF80] Go/Locomotion" hit
+        /// while "Cargo/Rack" does not. The looser spelling would be a substring test, and this
+        /// list's other entries carry a comment about exactly that kind of false positive.
+        /// </summary>
+        static bool NamesGogoParameterFamily(string lowerName)
+        {
+            for (int at = 0; (at = lowerName.IndexOf("go/", at, StringComparison.Ordinal)) >= 0; at += 3)
+            {
+                if (at == 0 || !char.IsLetterOrDigit(lowerName[at - 1]))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         static void RemoveLayers(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers, List<string> layerHints,
             HashSet<string> strippedFuryIds, Func<string, bool> isStripped)
@@ -220,6 +272,7 @@ namespace AvatarBridge
             {
                 string lower = layer.name.ToLowerInvariant();
                 bool nameHit = layerHints.Any(lower.Contains) ||
+                               (ctx.Settings.stripGogoLoco && NamesGogoParameterFamily(lower)) ||
                                strippedFuryIds.Any(id => layer.name.Contains($"[VF{id}]"));
 
                 var refs = CollectParameterRefs(layer.stateMachine);

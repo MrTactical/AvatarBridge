@@ -856,6 +856,7 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted("PhysBone colliders", PathOf(pbCollider.transform), shape + " -> Magica collider");
+            PhysBoneConverter.RecordColliderHost(ctx, pbCollider, go);
             cache[pbCollider] = collider;
             return collider;
         }
