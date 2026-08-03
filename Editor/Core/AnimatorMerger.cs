@@ -151,6 +151,10 @@ namespace AvatarBridge
             // Before the merge loop: the Action transplant below and LocomotionGrafter both
             // prepare clips through the grafter's per-conversion clone caches.
             LocomotionGrafter.ResetClones();
+            DroppedPlayAudio.Clear();
+            DroppedPlayAudioCount = 0;
+            DroppedPoseSpace.Clear();
+            DroppedPoseSpaceCount = 0;
 
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
@@ -1482,7 +1486,36 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category, pair.Key, $"{pair.Value}x removed (no ChilloutVR equivalent).");
             }
+
+            if (DroppedPlayAudioCount > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{DroppedPlayAudioCount} animator-driven audio player(s) removed",
+                    string.Join("; ", DroppedPlayAudio) + (DroppedPlayAudioCount > DroppedPlayAudio.Count ? "; …" : "") +
+                    " — VRChat plays these from the animator state itself (music toggles, sound " +
+                    "effects), and ChilloutVR has no equivalent state behaviour. The AudioSource " +
+                    "each one pointed at is still on the avatar, so the sound can be wired by " +
+                    "hand: a toggle animating the AudioSource's enabled flag with Play On Awake " +
+                    "set plays and stops it, and ChilloutVR's own CVRAudioDriver can switch " +
+                    "between clips from an animated index.");
+            }
+            if (DroppedPoseSpaceCount > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{DroppedPoseSpaceCount} viewpoint shift(s) during poses removed",
+                    string.Join(", ", DroppedPoseSpace) +
+                    " — VRChat moved the wearer's viewpoint (usually down to the hips) while " +
+                    "these poses played, so crawling didn't leave the camera at standing height. " +
+                    "ChilloutVR has no hook for that: the pose still plays, the camera stays on " +
+                    "the head.");
+            }
         }
+
+        /// <summary>Inventory of dropped VRCAnimatorPlayAudio behaviours, reset per Run.</summary>
+        static readonly List<string> DroppedPlayAudio = new List<string>();
+        static int DroppedPlayAudioCount;
+        static readonly List<string> DroppedPoseSpace = new List<string>();
+        static int DroppedPoseSpaceCount;
 
         static StateMachineBehaviour[] ConvertBehaviours(AnimatorController master, StateMachineBehaviour[] behaviours,
             AnimatorState state, BridgeContext ctx, Dictionary<string, int> skipped, BodyControlStats bodyStats)
@@ -1522,6 +1555,34 @@ namespace AvatarBridge
                 {
                     AddBodyTask(ref bodyControl, result, BodyControlTask.BodyMask.Locomotion,
                         locomotion.disableLocomotion ? 0f : 1f, bodyStats);
+                    UnityEngine.Object.DestroyImmediate(behaviour, true);
+                }
+                else if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio playAudio)
+                {
+                    // Animator-driven audio — music toggles, SFX on states; 86 across the wild
+                    // census, so it deserves its own inventory instead of a bare type count. No
+                    // conversion yet: the honest play/stop approximation (AudioSource enable
+                    // window) interacts with Write Defaults — leaving the state stops the WRITES,
+                    // not the audio — so it needs the off-state restore machinery and its own
+                    // design. The AudioSource itself survives conversion untouched.
+                    if (DroppedPlayAudio.Count < 6)
+                    {
+                        string clips = playAudio.Clips == null ? "no clips"
+                            : string.Join(", ", playAudio.Clips.Where(c => c != null).Select(c => c.name).Take(3));
+                        DroppedPlayAudio.Add(
+                            $"state \"{state?.name ?? "(machine)"}\" ← \"{playAudio.SourcePath}\" ({clips}"
+                            + (playAudio.Loop ? ", looping" : "") + ")");
+                    }
+                    DroppedPlayAudioCount++;
+                    UnityEngine.Object.DestroyImmediate(behaviour, true);
+                }
+                else if (behaviour.GetType().Name == "VRCAnimatorTemporaryPoseSpace")
+                {
+                    if (DroppedPoseSpace.Count < 4 && state != null)
+                    {
+                        DroppedPoseSpace.Add(state.name);
+                    }
+                    DroppedPoseSpaceCount++;
                     UnityEngine.Object.DestroyImmediate(behaviour, true);
                 }
                 else if (behaviour.GetType().Name.StartsWith("VRC"))

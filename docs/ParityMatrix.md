@@ -49,8 +49,8 @@ so nothing here is fully silent — the question is feature vs report.
 | VRCAnimatorLocomotionControl | 31 | converted | → BodyControl Locomotion mask |
 | VRCAnimatorTrackingControl | 24 | converted | → BodyControl; eyes/mouth/fingers have no CVR mask, reported |
 | VRCPlayableLayerControl | 11 | converted | Action transplant |
-| **VRCAnimatorPlayAudio** | **86** | **reported, featureless** | animator-driven audio (music toggles, SFX). lumar (corpus) and CowBot carry it. Candidate approximation: generate enable/clip curves against a real AudioSource, or CVRAudioDriver. Task #29 |
-| VRCAnimatorTemporaryPoseSpace | 2 | reported, featureless | viewpoint-to-hips during a pose; no client hook — report line should say what it would have done. Task #29 |
+| VRCAnimatorPlayAudio | 86+ | reported richly | own inventory naming state, source path, clips, looping (#29, done — lumar names 22). Approximation deliberately deferred: the enable-window play/stop trick interacts with Write Defaults and needs the off-state restore machinery; hand-wiring hint in the report (AudioSource Play On Awake, CVRAudioDriver animated index) |
+| VRCAnimatorTemporaryPoseSpace | 100+ per GoGo avatar | reported | says what it did — viewpoint to hips while crawling etc. (#29, done). The census read 2 because it walked Animator slots, not descriptor layers: BEHAVIOUR COUNTS IN THE CENSUS ARE FLOORS, the reports are the truth |
 
 ## Descriptor, field level (complete 2026-08-03)
 
@@ -58,10 +58,10 @@ so nothing here is fully silent — the question is feature vs report.
 |---|---|---|
 | ViewPosition | converted | with believability checks + quad rescue |
 | lipSync = VisemeBlendShape / JawFlapBone / JawFlapBlendShape | converted | |
-| lipSync = VisemeParameterOnly / Default | approximated | both fall to the name-match auto-detect, Warning when nothing found. Right for Default (that IS auto-detect in VRChat). For ParameterOnly the avatar drives visemes from its own animator, so wiring native visemes on the same shapes contests them — the client writes per-frame and wins, same as blink. Report-line upgrade in task #29 |
+| lipSync = VisemeParameterOnly / Default | approximated | both fall to the name-match auto-detect, Warning when nothing found. Right for Default (that IS auto-detect in VRChat). For ParameterOnly the avatar drives visemes from its own animator, so wiring native visemes on the same shapes contests them — the client writes per-frame and wins, same as blink. Report entry live (#29): "Visemes were parameter-driven in VRChat", firing on both GoGo demo corpus avatars |
 | customEyeLookSettings: eyes (bones, rotations) | converted | gaze limits measured from poses; signed-euler client contract |
 | eyelids = Blendshapes | converted | |
-| eyelids = Bones / Rotations | reported, cause unnamed | `GetBlinkBlendshapeName` returns null → auto-detect fallback → "Blink blendshape: none found" Warning. Bone-driven eyelids themselves are unconvertible (CVR blink is blendshape-only); the Warning should NAME the eyelid mode as the reason — task #29 |
+| eyelids = Bones / Rotations | reported, cause unnamed | `GetBlinkBlendshapeName` returns null → auto-detect fallback → "Blink blendshape: none found" Warning. Bone-driven eyelids themselves are unconvertible (CVR blink is blendshape-only); the cause is now named first: "Eyelids are bone-driven" Approximated entry (#29); no corpus avatar uses the mode, placement code-verified |
 | collider_* (head, torso, both hands, both feet, all 8 fingers) | converted | per-collider radius/height/position/rotation honoured; `State.Disabled` skipped; L/R enumerated separately so the mirrored flag has nothing to do |
 | portraitCameraPositionOffset | absent-in-effect | VRChat website thumbnail camera; CVR takes its own capture |
 | expressionParameters / expressionsMenu | converted | all control types incl. puppets |
