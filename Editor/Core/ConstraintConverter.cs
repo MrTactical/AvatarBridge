@@ -304,22 +304,7 @@ namespace AvatarBridge
 
             foreach (var clip in clips)
             {
-                // NEVER write into the avatar author's own asset. This pass rewrites curves in
-                // place, and it runs BEFORE AnimationSelfContainer has copied anything into the
-                // output folder — so unlike every other clip-editing pass, which BridgeConverter
-                // deliberately orders after self-containment, the clips here can still be the
-                // source avatar's files on disk.
-                //
-                // Nothing has ever been damaged, and the reason is luck rather than design:
-                // VRCFury and Modular Avatar bake to a test copy first and their clips are either
-                // in memory or under a generated folder. An avatar with NEITHER installed has no
-                // such step, and stripping its VRC constraint bindings would break the VRChat
-                // original, not just the conversion — the one failure this tool must never have.
-                if (!SafeToRewrite(clip, ctx, out string sourcePath))
-                {
-                    protectedSources.Add(sourcePath);
-                    continue;
-                }
+                bool mayRewrite = SafeToRewrite(clip, ctx, out string sourcePath);
                 // GetCurveBindings hands back a copy, so rewriting inside the loop is safe.
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
@@ -327,6 +312,28 @@ namespace AvatarBridge
                         || !binding.type.Name.StartsWith("VRC", StringComparison.Ordinal)
                         || !binding.type.Name.EndsWith("Constraint", StringComparison.Ordinal))
                     {
+                        continue;
+                    }
+                    // NEVER write into the avatar author's own asset. This pass rewrites curves in
+                    // place, and it runs BEFORE AnimationSelfContainer has copied anything into the
+                    // output folder — so unlike every other clip-editing pass, which BridgeConverter
+                    // deliberately orders after self-containment, the clips here can still be the
+                    // source avatar's files on disk.
+                    //
+                    // Nothing has ever been damaged, and the reason is luck rather than design:
+                    // VRCFury and Modular Avatar bake to a test copy first and their clips are
+                    // either in memory or under a generated folder. An avatar with NEITHER has no
+                    // such step, and stripping its VRC constraint bindings would break the VRChat
+                    // original, not just the conversion — the one failure this tool must never have.
+                    //
+                    // Checked HERE rather than per clip, deliberately. Asked per clip it fired on
+                    // every animation the avatar owns whether or not it had a constraint curve in
+                    // it — 110 of them on one corpus avatar, including AvatarBridge's own shipped
+                    // clips — which is a guard that reports constantly and protects nothing anyone
+                    // can act on. It should speak only when it actually had work to refuse.
+                    if (!mayRewrite)
+                    {
+                        protectedSources.Add(sourcePath);
                         continue;
                     }
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
