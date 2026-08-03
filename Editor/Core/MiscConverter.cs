@@ -245,12 +245,15 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>Test seam — HeadChopCurveTest asserts the per-type m_Enabled polarity.</summary>
+        internal static void ConvertHeadChopsForTest(BridgeContext ctx) => ConvertHeadChops(ctx);
+
         static void ConvertHeadChops(BridgeContext ctx)
         {
             const string category = "Head chop";
             // Path of each VRC Head Chop GameObject -> the FPRExclusion transforms made from it,
             // so animations that toggled the head chop can be re-pointed at the exclusions.
-            var pathToExclusions = new Dictionary<string, List<Transform>>();
+            var pathToExclusions = new Dictionary<string, List<(Transform t, bool shownWhenActive)>>();
 
             var headChops = ctx.Target.GetComponentsInChildren<VRCHeadChop>(true);
             foreach (var headChop in headChops)
@@ -285,9 +288,9 @@ namespace AvatarBridge
                     {
                         if (!pathToExclusions.TryGetValue(headChopPath, out var list))
                         {
-                            pathToExclusions[headChopPath] = list = new List<Transform>();
+                            pathToExclusions[headChopPath] = list = new List<(Transform, bool)>();
                         }
-                        list.Add(go.transform);
+                        list.Add((go.transform, isShown));
                     }
                 }
             }
@@ -311,7 +314,7 @@ namespace AvatarBridge
         /// the driving clips and rebind the head-chop curves onto each FPRExclusion's isShown —
         /// scale factor maps straight across (1→shown, 0→hidden); a `m_Enabled` curve is inverted.
         /// </summary>
-        static void RewriteHeadChopAnimations(BridgeContext ctx, Dictionary<string, List<Transform>> map)
+        static void RewriteHeadChopAnimations(BridgeContext ctx, Dictionary<string, List<(Transform t, bool shownWhenActive)>> map)
         {
             var controller = ctx.MergedController;
             if (controller == null || map.Count == 0)
@@ -438,7 +441,7 @@ namespace AvatarBridge
         }
 
         static void RewriteHeadChopMachine(BridgeContext ctx, AnimatorStateMachine machine,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (machine == null)
@@ -458,7 +461,7 @@ namespace AvatarBridge
         }
 
         static Motion RewriteHeadChopMotion(BridgeContext ctx, Motion motion,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (motion is BlendTree tree)
@@ -482,7 +485,7 @@ namespace AvatarBridge
         }
 
         static AnimationClip RewriteHeadChopClip(BridgeContext ctx, AnimationClip clip,
-            Dictionary<string, List<Transform>> map, Dictionary<AnimationClip, AnimationClip> cache,
+            Dictionary<string, List<(Transform t, bool shownWhenActive)>> map, Dictionary<AnimationClip, AnimationClip> cache,
             HashSet<Transform> animated)
         {
             if (clip == null)
@@ -494,7 +497,7 @@ namespace AvatarBridge
                 return done;
             }
             var hits = AnimationUtility.GetCurveBindings(clip)
-                .Where(b => b.type == typeof(VRCHeadChop) && map.ContainsKey(b.path))
+                .Where(b => b.type == typeof(VRCHeadChop))
                 .ToArray();
             if (hits.Length == 0)
             {
@@ -509,9 +512,27 @@ namespace AvatarBridge
             {
                 var curve = AnimationUtility.GetEditorCurve(clone, b);
                 AnimationUtility.SetEditorCurve(clone, b, null); // drop the (dead) head-chop binding
-                var mapped = b.propertyName == "m_Enabled" ? Invert(curve) : curve;
-                foreach (var fpr in map[b.path])
+                if (!map.TryGetValue(b.path, out var exclusions))
                 {
+                    // The chop this drove produced no exclusion (every target bone skipped, or a
+                    // fractional scale factor). Silently dead until now — say so instead.
+                    ctx.Report.Warning("Head chop",
+                        $"\"{clip.name}\" animated a head chop that was not converted",
+                        $"{b.path} ({b.propertyName}) — the head chop there was skipped, so this " +
+                        "animation has nothing to drive and was removed.");
+                    continue;
+                }
+                foreach (var (fpr, shownWhenActive) in exclusions)
+                {
+                    // Polarity is PER EXCLUSION, not global. A hiding chop (scale 0) is INACTIVE
+                    // by default, so enabling it hides: m_Enabled inverts into isShown. A showing
+                    // chop (scale 1, the keep-my-accessory-visible-in-first-person idiom) is the
+                    // opposite: enabling it SHOWS, so m_Enabled maps straight across — the old
+                    // unconditional inversion played those exactly backwards. Scale-factor curves
+                    // mirror isShown directly for both types (1 = shown, 0 = hidden).
+                    var mapped = b.propertyName == "m_Enabled" && !shownWhenActive
+                        ? Invert(curve)
+                        : curve;
                     var nb = new EditorCurveBinding
                     {
                         path = ctx.PathInTarget(fpr),

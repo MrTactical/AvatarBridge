@@ -30,7 +30,7 @@ Classification:
 | VRCLookAtConstraint | 2 | converted | |
 | **VRCStation** | **102** | **SILENT → make reported** | sit-on-me chairs. No seat type exists on the client's avatar whitelist — avatar seats are a ChilloutVR platform gap, so the honest ceiling is a report line. Much of the count is GoGo Loco's own stations (stripped with GoGo) — the report should say when a kept one is dropped. Task #28 |
 | VRCSpatialAudioSource | 91 | converted | → AudioSource + VRChat-parity clamps |
-| VRCHeadChop | 17 | converted | → FPRExclusion; animated `globalScaleFactor` ×25 + `m_Enabled` ×10 — task #17. Per-bone scale factors and `applyCondition` not audited field-level yet |
+| VRCHeadChop | 17 | converted | → FPRExclusion; animated curves were already rewired onto isShown — #17 fixed the m_Enabled POLARITY for showing-type chops (was inverted unconditionally, backwards for the keep-visible idiom) and made curves on skipped chops loud. applyCondition still unaudited field-level |
 | VRCPerPlatformOverrides | 5 | absent-in-effect | upload-time platform switching; nothing to convert, sweep-deleted |
 | VRCImpostorSettings / VRCImpostorEnvironment | 0 | absent | VRChat-service impostor hints |
 | VRCRaycast / VRCRaycastHandler | 0 | absent | |
