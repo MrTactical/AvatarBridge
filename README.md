@@ -1116,6 +1116,16 @@ the same clip that turns the object on also turns it off. The report names each 
 Animated particle modules **other than emission** are left alone and reported. If an effect looks
 wrong to other players but right to you, that's the first thing to check.
 
+### A particle effect draws as plain coloured squares
+
+That's Unity's **default particle material** — the one a particle system gets when nobody assigns
+it one. It was already that way in your avatar; conversion copies materials across unchanged, so a
+system on the default in VRChat is on the default here too.
+
+The report names each one, because the editor gives no hint and the effect only looks wrong once
+somebody sees it in game. Assign it a real material, or — if the system exists only to spawn
+another one and was never meant to be seen — turn its **Renderer** off.
+
 ### A limb-lock, sit or flight toggle does nothing, and the report mentions protected clips
 
 Those toggles are driven by curves that switch a **constraint** on and off, and conversion normally

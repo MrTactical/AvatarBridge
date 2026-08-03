@@ -112,6 +112,7 @@ namespace AvatarBridge
                     "effect instead, which is how the effects that already worked were built. Nothing " +
                     "plays at rest, because the same clip switches the object off.");
             }
+            ReportDefaultParticleMaterials(ctx);
             if (otherModules.Count > 0)
             {
                 ctx.Report.Skipped("Particles",
@@ -121,6 +122,57 @@ namespace AvatarBridge
                     "wrong to other players but right to you, this is the first thing to suspect: " +
                     "rebuild it so the object's own on/off state drives the effect instead.");
             }
+        }
+
+        /// <summary>
+        /// Names particle systems rendering on Unity's built-in default material.
+        ///
+        /// "Blank coloured squares" is what that looks like in game, and it is invisible in the
+        /// editor unless someone thinks to click the renderer. Reported in the wild on an avatar
+        /// whose nose-boop effect drew as plain quads: its "Buffer Particle" pointed at Unity's
+        /// Default-ParticleSystem, and it had done so in the SOURCE avatar all along — conversion
+        /// carried across exactly what was there. Establishing that took a hunt through GUIDs that
+        /// one line of report would have answered.
+        ///
+        /// So this accuses nobody and fixes nothing: it says which systems are on the default
+        /// material, so the author can decide whether that was intended. A missing material counts
+        /// too — same symptom, same question.
+        ///
+        /// Matched by NAME rather than by asset path, deliberately. The rehoming pass has already
+        /// copied the material into this conversion's own folder by the time this runs, so the
+        /// built-in path is gone; "Default-ParticleSystem" is Unity's fixed name for it and
+        /// survives the copy.
+        /// </summary>
+        static void ReportDefaultParticleMaterials(BridgeContext ctx)
+        {
+            if (ctx.Target == null)
+            {
+                return;
+            }
+            var plain = new SortedSet<string>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<ParticleSystemRenderer>(true))
+            {
+                var material = renderer.sharedMaterial;
+                if (material != null && material.name != "Default-ParticleSystem")
+                {
+                    continue;
+                }
+                plain.Add($"{ctx.PathInTarget(renderer.transform)}" +
+                          (material == null ? " (no material at all)" : ""));
+            }
+            if (plain.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning("Particles",
+                $"{plain.Count} particle system(s) are using Unity's default material",
+                $"{string.Join(", ", plain.Take(6))}{(plain.Count > 6 ? ", …" : "")} — they draw as " +
+                "plain untinted squares rather than whatever the effect is supposed to look like. " +
+                "This is how the avatar was already built: conversion copies the material across " +
+                "unchanged, and one on Unity's default was on Unity's default in VRChat too. It is " +
+                "worth checking because the editor gives no hint — the effect only looks wrong once " +
+                "somebody sees it in game. If a system is only there to spawn another one and is " +
+                "never meant to be visible, turn its Renderer off rather than leaving it drawing.");
         }
 
         public static void Run(BridgeContext ctx)
