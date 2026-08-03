@@ -844,6 +844,10 @@ Bipeds are unaffected by any of it.
   report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
   **Collider switches follow too**: a dress that disables the leg colliders that would clip it
   animates the converted collider's own object now, a form both MagicaCloth2 and DynamicBone honour.
+  What can't follow is animation of **live physics values** — a size slider growing a chain's
+  radius, gravity changing with an outfit — because MagicaCloth2's parameters cannot be driven by
+  animation at all. The chain keeps its converted values, the rest of the animation plays, and the
+  report names each lost parameter.
 - **Dropdowns sometimes keep `(unused)` entries.** CVR selects options by *position*, so gaps need
   padding. Normally removed by renumbering, but that's unsafe when the value is used as a quantity
   or passed to a driver — the report says which applied.

@@ -63,6 +63,30 @@ namespace AvatarBridge.Regression
                                             && e.Detail != null && e.Detail.Contains("Armature/Skipped")));
 
             AssetDatabase.DeleteAsset(path);
+
+            // ---- Animated PhysBone PARAMETERS: reported as lost, removed; m_Enabled silent ----
+            AssetDatabase.DeleteAsset(path);
+            controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            clip = new AnimationClip { name = "Boobs Bigger" };
+            AnimationUtility.SetEditorCurve(clip,
+                new EditorCurveBinding { path = "Chest", type = typeof(VRCPhysBone), propertyName = "radius" }, on);
+            AnimationUtility.SetEditorCurve(clip,
+                new EditorCurveBinding { path = "Chest", type = typeof(VRCPhysBone), propertyName = "m_Enabled" }, on);
+            controller.AddMotion(clip);
+
+            ctx = new BridgeContext { MergedController = controller, Report = new BridgeReport() };
+            PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
+
+            fail += Check("param: every VRCPhysBone binding removed",
+                !AnimationUtility.GetCurveBindings(clip).Any(b => b.type == typeof(VRCPhysBone)));
+            fail += Check("param: radius reported as lost, clip named",
+                ctx.Report.Entries.Any(e => e.Status == ReportStatus.Skipped
+                                            && e.Detail != null && e.Detail.Contains("radius")
+                                            && e.Detail.Contains("Boobs Bigger")));
+            fail += Check("param: m_Enabled NOT reported (RewirePhysicsToggles' job)",
+                !ctx.Report.Entries.Any(e => e.Detail != null && e.Detail.Contains("m_Enabled")));
+
+            AssetDatabase.DeleteAsset(path);
             Debug.Log(fail == 0
                 ? "[PhysColliderCurveTest] PASS — mapped curves rewired, unmapped dropped loudly, none left dead."
                 : $"[PhysColliderCurveTest] FAIL — {fail} case(s) wrong.");

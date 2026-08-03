@@ -114,6 +114,82 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>
+        /// Names every animated PhysBone PARAMETER an avatar loses, and removes the dead curves.
+        ///
+        /// Avatars animate live physics values — radius with a size slider ("Boobs Bigger"),
+        /// gravity, pull, immobile while a part resizes; ~110 curves across the wild census. The
+        /// component is deleted by conversion and the path-based clip audit cannot see it (the
+        /// OBJECT still exists), so until now these vanished with no trace.
+        ///
+        /// No retarget exists on the default path, and that is a measured fact, not a shrug:
+        /// MagicaCloth2 has no animation hook — its parameters only re-apply through the
+        /// SetParameterChange() API, which nothing animation-driven ever calls, and a helper
+        /// component would be deleted by ChilloutVR's avatar whitelist. The shipped DynamicBone
+        /// DOES carry OnDidApplyAnimationProperties, so a DynamicBone-target conversion could
+        /// genuinely accept some of these (radius maps 1:1); recorded as future work rather than
+        /// half-shipped, since Magica is the default and the value mappings are nonlinear.
+        ///
+        /// m_Enabled is deliberately not reported here: chain toggles are RewirePhysicsToggles'
+        /// job (mirrored onto the generated cloth, stranded ones already warned). The dead VRC
+        /// binding is still removed.
+        /// </summary>
+        internal static void ReportAnimatedPhysBoneProperties(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            var lost = new SortedDictionary<string, SortedSet<string>>(); // property -> clips
+            int removed = 0;
+            foreach (var clip in clips)
+            {
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(VRCPhysBone))
+                    {
+                        continue;
+                    }
+                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
+                    removed++;
+                    if (binding.propertyName == "m_Enabled")
+                    {
+                        continue; // chain toggles: RewirePhysicsToggles' job, not a loss
+                    }
+                    if (!lost.TryGetValue(binding.propertyName, out var names))
+                    {
+                        lost[binding.propertyName] = names = new SortedSet<string>();
+                    }
+                    if (names.Count < 4)
+                    {
+                        names.Add(clip.name);
+                    }
+                }
+            }
+
+            if (lost.Count > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
+                    string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
+                    " — these animated LIVE physics values (a size slider growing a chain's radius, " +
+                    "gravity or stiffness changing with an outfit). MagicaCloth2's parameters cannot " +
+                    "be driven by animation, so the chain keeps the converted values it was built " +
+                    "with; the rest of each animation still plays. If one of these mattered, say so " +
+                    "in an issue — a DynamicBone-target conversion could support some of them.");
+            }
+        }
+
         public static void Run(BridgeContext ctx)
         {
             var physBones = ctx.Target.GetComponentsInChildren<VRCPhysBone>(true);

@@ -87,6 +87,9 @@ namespace AvatarBridge
                 ContactsConverter.RepointContactEnableCurves(ctx);
                 // And the collider twin — clothing that switches its own collision.
                 PhysBoneConverter.RepointColliderEnableCurves(ctx);
+                // Animated PhysBone PARAMETERS (radius, gravity…) have no retarget on the Magica
+                // path — measured, not assumed — so they are named as lost and removed.
+                PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
                 // And only then judge the saved file's references — auditing any earlier
                 // flags things the self-container is about to fix.
                 AnimatorMerger.AuditSerializedReferences(ctx);

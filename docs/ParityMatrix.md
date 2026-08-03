@@ -21,7 +21,7 @@ Classification:
 | type | wild n | verdict | notes |
 |---|---|---|---|
 | VRCAvatarDescriptor | 93 | converted | field-level rows below |
-| VRCPhysBone | 1531 | converted | → MagicaCloth2/DynamicBone; animated property curves are the gap (tasks #15, #16) |
+| VRCPhysBone | 1531 | converted | → MagicaCloth2/DynamicBone; animated parameter curves reported-as-lost with each named (#16, done; MC2 cannot be animation-driven — measured); m_Enabled chain toggles were already rewired |
 | VRCPhysBoneCollider | 449 | converted | animated `m_Enabled` ×28 repointed at the generated collider host (task #15, done) |
 | VRCContactReceiver | 447 | converted | enable curves fixed 3.5.36; `position.xyz`/`allowSelf` curves — task #19 |
 | VRCContactSender | 165 | converted | as above |
