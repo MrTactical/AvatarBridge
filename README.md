@@ -266,6 +266,14 @@ path. The strip removes GoGo's Base/Additive/Action layers *whole* — a locomot
 left half-alive overrides CVR's locomotion with dead animation, which is worse than either
 extreme.
 
+**GoGo installed through a VRCFury prefab is stripped too, from 3.5.40.** Installed by hand it
+names its layers "GoGo Loco …"; installed through Fury it names them after its parameters, as
+`Go/Beyond`. Earlier versions matched only the first spelling, so on a Fury avatar the layer
+outlived a strip that had already disabled its parameters — and it was not idle. It sat at full
+weight on Override and read ChilloutVR's *own* `Sitting`, `Grounded` and `AFK`, so sitting on a
+chair in game played GoGo's seat animation over ChilloutVR's station pose. If your seats look
+wrong on a Fury avatar, reconvert.
+
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
 ChilloutVR has 3200 bits and syncs straight from the animator, so carried across it costs a
