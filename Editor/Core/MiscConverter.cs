@@ -587,6 +587,25 @@ namespace AvatarBridge
         {
             const string category = "Cleanup";
 
+            // Seats get a named goodbye before the generic sweep eats them. VRCStation is the
+            // sit-on-me chair — 102 across the wild census — and the decompiled client's avatar
+            // whitelist has no seat type at all, so this is a platform gap, not a conversion
+            // gap: the honest ceiling is saying so. Counted HERE, after the strips, so GoGo
+            // Loco's own stations (most of the wild count) vanish with GoGo instead of alarming
+            // anyone. Uses the SDKBase type so SDK2-era stations are caught too.
+            var stations = ctx.Target.GetComponentsInChildren<VRC.SDKBase.VRCStation>(true);
+            if (stations.Length > 0)
+            {
+                var paths = stations.Take(4).Select(s => ctx.PathInTarget(s.transform));
+                ctx.Report.Skipped(category,
+                    $"{stations.Length} seat(s) removed — ChilloutVR avatars cannot host seats",
+                    string.Join("; ", paths) + (stations.Length > 4 ? "; …" : "") +
+                    " — VRChat's VRCStation lets other players sit on an avatar. ChilloutVR has " +
+                    "no seat type on its avatar component whitelist (verified against the " +
+                    "client), so there is nothing to convert these into: anyone used to sitting " +
+                    "on this avatar can't here. Everything else about the object stays.");
+            }
+
             var pipeline = ctx.Target.GetComponent(typeof(VRC.Core.PipelineManager));
             if (pipeline != null)
             {
