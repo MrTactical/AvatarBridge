@@ -85,6 +85,8 @@ namespace AvatarBridge
                 // Same rule: this rewrites contact m_Enabled curves at the converted contacts'
                 // host objects, and must never write into a source clip.
                 ContactsConverter.RepointContactEnableCurves(ctx);
+                // And the collider twin — clothing that switches its own collision.
+                PhysBoneConverter.RepointColliderEnableCurves(ctx);
                 // And only then judge the saved file's references — auditing any earlier
                 // flags things the self-container is about to fix.
                 AnimatorMerger.AuditSerializedReferences(ctx);

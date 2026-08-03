@@ -15,6 +15,105 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones";
 
+        /// <summary>
+        /// Remembers where a VRC collider's replacement landed, keyed by the ORIGINAL component's
+        /// animator path — which is what an m_Enabled curve binding carries. Called by both solver
+        /// writers at collider creation, before the VRC component is deleted.
+        /// </summary>
+        internal static void RecordColliderHost(BridgeContext ctx, Component original, GameObject host)
+        {
+            string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
+            string hostPath = BridgeContext.RelativePath(ctx.Target.transform, host.transform);
+            if (!ctx.PhysicsColliderHosts.TryGetValue(originalPath, out var hosts))
+            {
+                ctx.PhysicsColliderHosts[originalPath] = hosts = new List<string>();
+            }
+            hosts.Add(hostPath);
+        }
+
+        /// <summary>
+        /// Rewires animated collider on/off switches at the converted colliders. Runs after
+        /// self-containment, from BridgeConverter, exactly like the contact-curve repoint.
+        ///
+        /// Avatars animate <c>VRCPhysBoneCollider.m_Enabled</c> so clothing can switch its own
+        /// collision — a dress toggle disabling the leg colliders that would clip it (28 curves
+        /// across the wild census: DressOn, CPB_Clipping_ON/OFF, CPB_Interaction_OFF). The
+        /// component is deleted by conversion, so those curves played as silence.
+        ///
+        /// The retarget is the generated collider's own host object, verified against BOTH
+        /// shipped solvers: MagicaCloth2's ColliderComponent routes OnEnable/OnDisable through
+        /// MagicaManager.Collider.EnableCollider, and ChilloutVR's jobs-rewritten
+        /// DynamicBoneColliderBase routes the same pair through SetColliderState — so a
+        /// GameObject active toggle reaches each identically.
+        /// </summary>
+        internal static void RepointColliderEnableCurves(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null || ctx.PhysicsColliderHosts.Count == 0)
+            {
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            int repointed = 0;
+            var dropped = new SortedSet<string>();
+            foreach (var clip in clips)
+            {
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(VRCPhysBoneCollider))
+                    {
+                        continue;
+                    }
+                    var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                    // The original binding goes either way: its component is deleted, so leaving
+                    // it means a curve that silently does nothing.
+                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
+
+                    if (binding.propertyName != "m_Enabled"
+                        || !ctx.PhysicsColliderHosts.TryGetValue(binding.path, out var hosts))
+                    {
+                        // A shape property (radius, height — no animatable equivalent written),
+                        // or a collider that was skipped rather than converted.
+                        dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+                    foreach (var hostPath in hosts)
+                    {
+                        UnityEditor.AnimationUtility.SetEditorCurve(clip,
+                            UnityEditor.EditorCurveBinding.FloatCurve(hostPath, typeof(GameObject), "m_IsActive"),
+                            curve);
+                    }
+                    repointed++;
+                }
+            }
+
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category, $"{repointed} collider on/off animation(s) rewired",
+                    "Curves that enabled or disabled a VRChat PhysBone collider now toggle the " +
+                    "converted collider's own object instead — the form both MagicaCloth2 and " +
+                    "DynamicBone honour. The usual author intent is clothing switching its own " +
+                    "collision, a dress disabling the colliders that would clip it.");
+            }
+            if (dropped.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"{dropped.Count} collider-animating curve(s) could not be carried",
+                    string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
+                    " — each animated something on a VRC collider that has no equivalent on the " +
+                    "converted one, or a collider that was not converted (skipped, or its chain " +
+                    "was). The curve was removed rather than left silently addressing a deleted " +
+                    "component.");
+            }
+        }
+
         public static void Run(BridgeContext ctx)
         {
             var physBones = ctx.Target.GetComponentsInChildren<VRCPhysBone>(true);

@@ -22,7 +22,7 @@ Classification:
 |---|---|---|---|
 | VRCAvatarDescriptor | 93 | converted | field-level rows below |
 | VRCPhysBone | 1531 | converted | → MagicaCloth2/DynamicBone; animated property curves are the gap (tasks #15, #16) |
-| VRCPhysBoneCollider | 449 | converted | animated `m_Enabled` ×28 unhandled — task #15 |
+| VRCPhysBoneCollider | 449 | converted | animated `m_Enabled` ×28 repointed at the generated collider host (task #15, done) |
 | VRCContactReceiver | 447 | converted | enable curves fixed 3.5.36; `position.xyz`/`allowSelf` curves — task #19 |
 | VRCContactSender | 165 | converted | as above |
 | VRCRotation/Parent/Scale/Position Constraint | 195/144/68/29 | converted | source-weight curve spelling fixed 3.5.36; `FreezeToWorld` reported-dropped |

@@ -77,6 +77,15 @@ namespace AvatarBridge
             new Dictionary<(string, bool), List<string>>();
 
         /// <summary>
+        /// Where each VRCPhysBoneCollider's replacement landed, for curve repointing after the
+        /// merge — the collider twin of <see cref="ContactHosts"/>. Key: the ORIGINAL component's
+        /// animator path, which is what an m_Enabled curve binding carries. Both solver writers
+        /// fill it; PhysBoneConverter.RepointColliderEnableCurves consumes it.
+        /// </summary>
+        public Dictionary<string, List<string>> PhysicsColliderHosts =
+            new Dictionary<string, List<string>>();
+
+        /// <summary>
         /// Renames the animator merge must apply verbatim, decided before it runs.
         ///
         /// ChilloutVR's Joystick2D control doesn't take two parameter names — it derives them,
