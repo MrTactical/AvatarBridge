@@ -260,14 +260,9 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Whether this root curve is the body's own HEIGHT rather than travel across the floor.
-        /// Only the Y of a position curve: X and Z are the movement ChilloutVR owns, and rotation
-        /// is never kept — the client's capsule is always upright, so a root rotation curve does
-        /// nothing in game (see the comment in WithoutRootMotion).
-        /// </summary>
-        /// <summary>
         /// Whether this root curve is the body's ORIENTATION — the humanoid quaternion channels,
-        /// and a generic Transform rotation on the avatar root.
+        /// and a generic Transform rotation on the avatar root. Kept — and baked into the pose —
+        /// for transplanted Action poses, alongside height.
         /// </summary>
         static bool IsRotation(EditorCurveBinding binding)
         {
@@ -277,6 +272,10 @@ namespace AvatarBridge
                    || p.StartsWith("m_LocalRotation.", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Whether this root curve is the body's own HEIGHT rather than travel across the floor.
+        /// Only the Y of a position curve: X and Z are the movement ChilloutVR owns.
+        /// </summary>
         static bool IsVertical(EditorCurveBinding binding)
         {
             string p = binding.propertyName;
