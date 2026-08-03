@@ -365,7 +365,16 @@ namespace AvatarBridge
             // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
             // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
             RestorePartialOffStates(master, ctx);
-            FillEmptyStatesWithRestoreClips(master, ctx);
+            // One shared name registry, so the two restore passes cannot overwrite each other's
+            // clips: both write "<thing> restore.anim" into one folder, and a nativized toggle
+            // layer and the tree Fury built from that same toggle are named alike often enough.
+            var restoreClipPaths = new HashSet<string>();
+            FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
+            // AFTER the state pass, which sweeps stale " restore" clips out of the output folder
+            // using only ITS OWN keep list — run the other way round, that sweep would delete the
+            // tree clips written moments earlier. Both run BEFORE FillEmptyMotionSlots, so the off
+            // halves they repair are still genuine holes rather than placeholders.
+            FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
             // AFTER the filler, whose motions are what turned this from harmless into a strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
@@ -6579,25 +6588,26 @@ namespace AvatarBridge
         /// silent about everything it was already silent about, and layers keep their
         /// independence.
         /// </summary>
-        static void FillEmptyStatesWithRestoreClips(AnimatorController master, BridgeContext ctx)
+        /// <param name="writtenPaths">
+        /// Deterministic file names, so reconverting REPLACES last time's restore clips instead of
+        /// parking a numbered copy beside them. One avatar had 200 of them.
+        ///
+        /// SHARED with the blend tree pass rather than local, because both write " restore" clips
+        /// into one folder and both name them after the thing they restore. A nativized toggle
+        /// layer and the tree Fury built from that same toggle carry the same name often enough
+        /// that the second pass would otherwise overwrite the first pass's clip.
+        /// </param>
+        static void FillEmptyStatesWithRestoreClips(AnimatorController master, BridgeContext ctx,
+            HashSet<string> writtenPaths)
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
             int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
             var names = new List<string>();
-            // Deterministic file names, so reconverting REPLACES last time's restore clips instead
-            // of parking a numbered copy beside them. One avatar had 200 of them.
-            var writtenPaths = new HashSet<string>();
             var keptClips = new HashSet<string>();
             // Layers whose empty states are structural rather than a toggle.s off half.
             var notToggles = new SortedSet<string>();
 
-            // Every clip the avatar already has, so an authored one can be preferred over a
-            // generated one.
-            var allClips = new HashSet<AnimationClip>();
-            // The LOWEST layer index that animates each property — its rightful owner. See the
-            // check below for why depth rather than exclusivity.
-            var owner = new Dictionary<EditorCurveBinding, int>();
             // Snapshot ONCE. master.layers hands back a fresh array of fresh wrappers on every
             // access, so an index looked up against one call is meaningless against another —
             // Array.IndexOf(master.layers, layer) never matches and quietly returns -1, which
@@ -6613,29 +6623,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            int layerIndex = -1;
-            foreach (var candidate in layers)
-            {
-                layerIndex++;
-                var floatsHere = new HashSet<EditorCurveBinding>();
-                var objectsHere = new HashSet<EditorCurveBinding>();
-                WalkMachines(candidate.stateMachine, machine =>
-                {
-                    foreach (var child in machine.states)
-                    {
-                        var motion = child.state != null ? child.state.motion : null;
-                        CollectClips(motion, allClips);
-                        CollectBindings(motion, floatsHere, objectsHere);
-                    }
-                });
-                foreach (var binding in floatsHere.Concat(objectsHere))
-                {
-                    if (!owner.ContainsKey(binding))
-                    {
-                        owner[binding] = layerIndex;
-                    }
-                }
-            }
+            BuildRestoreOwnership(layers, out var owner, out var allClips);
 
             // Every layer of the finished controller except the ones that must not be touched —
             // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
@@ -6877,6 +6865,404 @@ namespace AvatarBridge
                       "reset/pause, a local/remote gate — and filling those changes how the avatar looks. " +
                       "They behave exactly as they did in VRChat."
                     : ""));
+        }
+
+        /// <summary>
+        /// Which layer OWNS each animated property, and every clip the controller already holds.
+        ///
+        /// Ownership is by DEPTH: the lowest layer index that animates a property owns it, and only
+        /// the owner may restore it. Shared by both restore passes — the animator-state one and the
+        /// blend tree one — because a property written from a state in one layer and from a tree in
+        /// another layer poses exactly the same conflict, and answering it two different ways would
+        /// let both of them restore it.
+        /// </summary>
+        static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
+            out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips)
+        {
+            // Locals rather than the out params directly: a lambda may not touch an out parameter,
+            // and the walk below is a lambda.
+            var owners = new Dictionary<EditorCurveBinding, int>();
+            // Every clip the avatar already has, so an authored one can be preferred over a
+            // generated one.
+            var clips = new HashSet<AnimationClip>();
+            int layerIndex = -1;
+            foreach (var candidate in layers)
+            {
+                layerIndex++;
+                var floatsHere = new HashSet<EditorCurveBinding>();
+                var objectsHere = new HashSet<EditorCurveBinding>();
+                WalkMachines(candidate.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var motion = child.state != null ? child.state.motion : null;
+                        CollectClips(motion, clips);
+                        CollectBindings(motion, floatsHere, objectsHere);
+                    }
+                });
+                foreach (var binding in floatsHere.Concat(objectsHere))
+                {
+                    if (!owners.ContainsKey(binding))
+                    {
+                        owners[binding] = layerIndex;
+                    }
+                }
+            }
+            owner = owners;
+            allClips = clips;
+        }
+
+        /// <summary>A 1D blend tree shaped like a toggle: one child animates, the other is empty.</summary>
+        struct ToggleTree
+        {
+            public BlendTree Tree;
+            public int EmptyIndex;
+            public HashSet<EditorCurveBinding> Floats;
+            public HashSet<EditorCurveBinding> Objects;
+        }
+
+        /// <summary>
+        /// The blend tree half of the off-state restore, for toggles VRCFury turned into trees.
+        ///
+        /// FillEmptyStatesWithRestoreClips repairs the toggle whose off half is an empty animator
+        /// STATE. VRCFury's LayerToTreeService rewrites whole toggle layers into 1D blend trees
+        /// nested under one Direct tree, and then the off half is an empty CHILD instead — the same
+        /// idiom with the same defect, and invisible to a pass that only reads <c>state.motion</c>.
+        /// Measured on the avatar that reported it: 53 of its 94 empty motion slots were tree
+        /// children, its wardrobe toggles switched on and never off in game, and the state pass
+        /// found exactly one layer to work on.
+        ///
+        /// The shape accepted here is the tree spelling of the two-state toggle and nothing else: a
+        /// 1D tree, exactly two children, exactly one of which animates nothing. 1D trees NORMALISE,
+        /// so the empty child plays at full weight when the parameter sits at its threshold — which
+        /// is what makes a snapshot placed there restore the property rather than merely dilute it.
+        /// Fury's Direct parent weights each toggle by a constant-1 parameter (Toggle_Weight), so
+        /// the subtree runs at full strength.
+        ///
+        /// ONE EXTRA RULE the state pass does not need. A Direct tree SUMS its children rather than
+        /// choosing between them, so two sibling toggles animating one property would fight the
+        /// moment both assert: the toggle switched ON writes 0, the other's restore writes 1, and
+        /// the sum reads as on. So a property is restored only where exactly ONE toggle in the layer
+        /// animates it, and nothing else in that layer does. A wardrobe with an "all clothing off"
+        /// preset overlapping four garment toggles is the ordinary case — those four keep VRChat's
+        /// behaviour rather than put the preset at risk.
+        /// </summary>
+        static void FillEmptyTreeSlotsWithRestoreClips(AnimatorController master, BridgeContext ctx,
+            HashSet<string> writtenPaths)
+        {
+            string dir = $"{ctx.OutputDir}/RehomedAssets";
+            int filled = 0, reused = 0, candidateCount = 0;
+            var names = new List<string>();
+            var contested = new SortedSet<string>();
+
+            var layers = master.layers;
+            var indexByName = new Dictionary<string, int>();
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (!indexByName.ContainsKey(layers[i].name))
+                {
+                    indexByName[layers[i].name] = i;
+                }
+            }
+            BuildRestoreOwnership(layers, out var owner, out var allClips);
+
+            foreach (var layer in layers)
+            {
+                if (IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
+
+                var candidates = new List<ToggleTree>();
+                var seen = new HashSet<BlendTree>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            CollectToggleTrees(child.state.motion, seen, candidates);
+                        }
+                    }
+                });
+                if (candidates.Count == 0)
+                {
+                    continue;
+                }
+                candidateCount += candidates.Count;
+
+                // How many toggles in this layer animate each property, and what the REST of the
+                // layer animates outside them. Both have to say "only me" before anything moves.
+                var usage = new Dictionary<EditorCurveBinding, int>();
+                foreach (var candidate in candidates)
+                {
+                    foreach (var binding in candidate.Floats.Concat(candidate.Objects))
+                    {
+                        usage.TryGetValue(binding, out int n);
+                        usage[binding] = n + 1;
+                    }
+                }
+                var outside = new HashSet<EditorCurveBinding>();
+                var toggleTrees = new HashSet<BlendTree>(candidates.Select(c => c.Tree));
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            CollectOutsideToggles(child.state.motion, toggleTrees, outside);
+                        }
+                    }
+                });
+
+                foreach (var candidate in candidates)
+                {
+                    string label = ToggleTreeLabel(candidate.Tree, layer.name);
+                    bool Owns(EditorCurveBinding binding)
+                    {
+                        if (usage.TryGetValue(binding, out int users) && users > 1)
+                        {
+                            return false;
+                        }
+                        if (outside.Contains(binding))
+                        {
+                            return false;
+                        }
+                        // Unknown binding: nobody else claims it, so this layer may restore it.
+                        return !owner.TryGetValue(binding, out int lowest) || lowest == here;
+                    }
+
+                    var clip = new AnimationClip { name = SanitizeFileName($"{label} restore") };
+                    int curves = 0, shared = 0;
+                    foreach (var binding in candidate.Floats)
+                    {
+                        // Fury's AAP trees animate animator PARAMETERS rather than the avatar, and
+                        // share this exact two-child shape. Snapshotting one would pin a value the
+                        // math behind it exists to compute — and humanoid muscles are masked off
+                        // these layers anyway.
+                        if (binding.type == typeof(Animator))
+                        {
+                            continue;
+                        }
+                        if (!Owns(binding))
+                        {
+                            shared++;
+                            continue;
+                        }
+                        if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0f, 0f, value));
+                        curves++;
+                    }
+                    foreach (var binding in candidate.Objects)
+                    {
+                        if (!Owns(binding))
+                        {
+                            shared++;
+                            continue;
+                        }
+                        if (!AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetObjectReferenceCurve(clip, binding,
+                            new[] { new ObjectReferenceKeyframe { time = 0f, value = value } });
+                        curves++;
+                    }
+                    if (shared > 0)
+                    {
+                        contested.Add(label);
+                    }
+                    if (curves == 0)
+                    {
+                        UnityEngine.Object.DestroyImmediate(clip);
+                        continue;
+                    }
+
+                    // Prefer the avatar's OWN animation over a generated one, exactly as the state
+                    // pass does — theirs may carry curves and timing a snapshot cannot know about.
+                    Motion restore;
+                    var existing = FindEquivalentClip(clip, allClips);
+                    if (existing != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(clip);
+                        restore = existing;
+                        reused++;
+                    }
+                    else
+                    {
+                        if (!AssetDatabase.IsValidFolder(dir))
+                        {
+                            System.IO.Directory.CreateDirectory(dir);
+                            AssetDatabase.Refresh();
+                        }
+                        string path = $"{dir}/{clip.name}.anim";
+                        for (int n = 2; !writtenPaths.Add(path); n++)
+                        {
+                            path = $"{dir}/{clip.name} {n}.anim";
+                        }
+                        if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+                        {
+                            AssetDatabase.DeleteAsset(path);
+                        }
+                        AssetDatabase.CreateAsset(clip, path);
+                        restore = clip;
+                    }
+
+                    // children is a copy; the setter is what writes it back.
+                    var kids = candidate.Tree.children;
+                    kids[candidate.EmptyIndex].motion = restore;
+                    candidate.Tree.children = kids;
+                    filled++;
+                    names.Add(label);
+                }
+            }
+
+            if (filled == 0)
+            {
+                if (candidateCount > 0)
+                {
+                    ctx.Report.Warning(Category,
+                        $"{candidateCount} blend-tree toggle(s) were left without a restore animation",
+                        "Each is a toggle VRCFury turned into a blend tree whose \"off\" half animates " +
+                        "nothing, so its off direction depends on Write Defaults putting the property " +
+                        "back. If any of these switch on and never off again, that is why. Nothing was " +
+                        "filled because every property they animate is claimed by something else — " +
+                        "another toggle in the same tree, or a lower layer that restores it instead.");
+                }
+                return;
+            }
+            EditorUtility.SetDirty(master);
+            AssetDatabase.SaveAssets();
+            ctx.Report.Converted(Category,
+                $"{filled} blend-tree toggle(s) given a restore animation for their \"off\" half",
+                $"{string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", …" : "")}" +
+                (reused > 0
+                    ? $" — {reused} of them reuse an animation the avatar ALREADY had; the rest were generated. "
+                    : " — ") +
+                "VRCFury rewrites toggle layers into blend trees, and the \"off\" half of each one is " +
+                "an empty slot that asserts nothing — the same idiom as VRChat's empty off STATE, one " +
+                "level down where the off-state repair could not see it. A toggle built that way can " +
+                "switch on and never off again. Each off half now plays a clip holding the value the " +
+                "property has on this avatar right now, so it restores by animating. If a toggle " +
+                "should rest in its OTHER position, set that up on the avatar before converting: " +
+                "whatever is true at conversion time is what \"off\" now means." +
+                (contested.Count > 0
+                    ? $"\n\nToggles with at least one property left to nobody ({contested.Count}): " +
+                      $"{string.Join(", ", contested.Take(6))}{(contested.Count > 6 ? ", …" : "")}. " +
+                      "Something else in the same layer animates those properties too — an \"all " +
+                      "clothing off\" preset overlapping the individual garments is the usual case. " +
+                      "Unlike separate layers, toggles blended into one tree ADD UP instead of the " +
+                      "top one winning, so restoring there would fight the preset rather than defer " +
+                      "to it: the garment switched ON would read as on again. Those properties keep " +
+                      "the behaviour they had in VRChat, and a toggle listed here may still have had " +
+                      "its other properties restored."
+                    : ""));
+        }
+
+        internal static void FillEmptyTreeSlotsWithRestoreClipsForTest(AnimatorController master,
+            BridgeContext ctx) => FillEmptyTreeSlotsWithRestoreClips(master, ctx, new HashSet<string>());
+
+        /// <summary>
+        /// Every toggle-shaped 1D tree reachable from a motion. A tree that qualifies is NOT
+        /// descended into: it is taken as the toggle, and whatever its ON half contains belongs to
+        /// that toggle rather than being a toggle of its own.
+        /// </summary>
+        static void CollectToggleTrees(Motion motion, HashSet<BlendTree> seen, List<ToggleTree> into)
+        {
+            if (!(motion is BlendTree tree) || !seen.Add(tree))
+            {
+                return;
+            }
+            var children = tree.children;
+            if (tree.blendType == BlendTreeType.Simple1D && children.Length == 2)
+            {
+                int empty = -1, holds = -1;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    if (children[i].motion == null || IsCurveless(children[i].motion, null))
+                    {
+                        // Both halves empty: there is no ON clip to read a property list off, and
+                        // the toggle animates nothing in either direction. Nothing to restore.
+                        if (empty >= 0)
+                        {
+                            empty = -1;
+                            break;
+                        }
+                        empty = i;
+                    }
+                    else
+                    {
+                        holds = i;
+                    }
+                }
+                if (empty >= 0 && holds >= 0)
+                {
+                    var floats = new HashSet<EditorCurveBinding>();
+                    var objects = new HashSet<EditorCurveBinding>();
+                    CollectBindings(children[holds].motion, floats, objects);
+                    if (floats.Count > 0 || objects.Count > 0)
+                    {
+                        into.Add(new ToggleTree
+                        {
+                            Tree = tree,
+                            EmptyIndex = empty,
+                            Floats = floats,
+                            Objects = objects,
+                        });
+                        return;
+                    }
+                }
+            }
+            foreach (var child in children)
+            {
+                CollectToggleTrees(child.motion, seen, into);
+            }
+        }
+
+        /// <summary>
+        /// What a layer animates OUTSIDE the toggles found in it — the trees themselves are stepped
+        /// over, so what is left is everything with a claim on a property that no single toggle can
+        /// answer for.
+        /// </summary>
+        static void CollectOutsideToggles(Motion motion, HashSet<BlendTree> toggles,
+            HashSet<EditorCurveBinding> into)
+        {
+            if (motion is BlendTree tree)
+            {
+                if (toggles.Contains(tree))
+                {
+                    return;
+                }
+                foreach (var child in tree.children)
+                {
+                    CollectOutsideToggles(child.motion, toggles, into);
+                }
+                return;
+            }
+            var floats = new HashSet<EditorCurveBinding>();
+            var objects = new HashSet<EditorCurveBinding>();
+            CollectBindings(motion, floats, objects);
+            into.UnionWith(floats);
+            into.UnionWith(objects);
+        }
+
+        /// <summary>
+        /// What to call a toggle tree in the report and on disk. Fury names them after the toggle,
+        /// which is what a reader recognises; length is capped because some carry a whole object
+        /// path and the file name has a project path in front of it.
+        /// </summary>
+        static string ToggleTreeLabel(BlendTree tree, string layerName)
+        {
+            string name = tree != null ? tree.name : null;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = layerName;
+            }
+            return name.Length > 60 ? name.Substring(0, 60).TrimEnd() : name;
         }
 
         /// <summary>

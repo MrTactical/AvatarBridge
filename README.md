@@ -1074,11 +1074,20 @@ Defaults to undo it. Converted, there's nothing in the off state to restore. Con
 real animation — reusing your own clip where one exists, otherwise measuring the property off your
 avatar as it is at conversion time.
 
-Three things worth knowing:
+**VRCFury toggles are repaired too, from 3.5.37.** Fury rewrites whole toggle layers into blend
+trees, which moves the empty "off" half one level down out of reach of the repair above — so on a
+Fury avatar the wardrobe could still be one-way while everything else went both ways. Those are now
+filled as well. If your toggles stick on and you converted before 3.5.37, reconvert.
+
+Four things worth knowing:
 
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
 - **Where several layers animate one thing, only the lowest restores it** — otherwise a dress toggle
   would assert the shirt from above and it could never come off.
+- **Two toggles inside one Fury tree that move the same thing are both left alone.** Separate layers
+  let the top one win, but toggles blended into a single tree *add up*, so a restore there would
+  fight rather than defer — an "all clothing off" preset overlapping the individual garments is the
+  usual case. Those garments keep VRChat's behaviour; the report names them.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 
