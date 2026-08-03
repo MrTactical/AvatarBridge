@@ -234,6 +234,36 @@ namespace AvatarBridge
         /// already reports dropping it, and a curve driving it is dropped here for the same
         /// reason rather than left pointing at nothing.
         /// </summary>
+        /// <summary>
+        /// Whether a clip may be rewritten in place: it must be OURS, not the avatar author's.
+        ///
+        /// Three things qualify. A clip with no asset path at all lives inside a controller we
+        /// built or in memory. A clip already inside this conversion's output folder is a copy we
+        /// made. And a clip under a bake's generated folder belongs to VRCFury or Modular Avatar's
+        /// throwaway test copy, which is regenerated on every bake and owned by nobody.
+        ///
+        /// Everything else is the avatar as its author keeps it, and is off limits.
+        /// </summary>
+        static bool SafeToRewrite(AnimationClip clip, BridgeContext ctx, out string sourcePath)
+        {
+            sourcePath = AssetDatabase.GetAssetPath(clip);
+            if (string.IsNullOrEmpty(sourcePath))
+            {
+                return true;
+            }
+            string path = sourcePath.Replace('\\', '/');
+            string output = (ctx.OutputDir ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+            if (output.Length > 0 && path.StartsWith(output + "/", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            // NDMF writes Modular Avatar's and VRCFury's bake output here; "GeneratedAssets" is
+            // the older spelling. Both are rebuilt from scratch on every bake.
+            return path.Contains("__Generated")
+                   || path.Contains("GeneratedAssets")
+                   || path.Contains("/VRCFury/Generated");
+        }
+
         static void RepointConstraintCurves(BridgeContext ctx)
         {
             var clips = new HashSet<AnimationClip>();
@@ -270,8 +300,26 @@ namespace AvatarBridge
             var neverBuilt = new SortedSet<string>();  // the object is there, but never had a constraint
             var movedByBake = new SortedSet<string>(); // the object exists under a different parent
 
+            var protectedSources = new SortedSet<string>();
+
             foreach (var clip in clips)
             {
+                // NEVER write into the avatar author's own asset. This pass rewrites curves in
+                // place, and it runs BEFORE AnimationSelfContainer has copied anything into the
+                // output folder — so unlike every other clip-editing pass, which BridgeConverter
+                // deliberately orders after self-containment, the clips here can still be the
+                // source avatar's files on disk.
+                //
+                // Nothing has ever been damaged, and the reason is luck rather than design:
+                // VRCFury and Modular Avatar bake to a test copy first and their clips are either
+                // in memory or under a generated folder. An avatar with NEITHER installed has no
+                // such step, and stripping its VRC constraint bindings would break the VRChat
+                // original, not just the conversion — the one failure this tool must never have.
+                if (!SafeToRewrite(clip, ctx, out string sourcePath))
+                {
+                    protectedSources.Add(sourcePath);
+                    continue;
+                }
                 // GetCurveBindings hands back a copy, so rewriting inside the loop is safe.
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
@@ -348,6 +396,20 @@ namespace AvatarBridge
                 }
             }
 
+            if (protectedSources.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{protectedSources.Count} clip(s) left untouched to protect your original files",
+                    $"{string.Join(", ", System.Linq.Enumerable.Take(protectedSources, 6))}" +
+                    $"{(protectedSources.Count > 6 ? ", …" : "")} — these animate a VRChat constraint " +
+                    "and live OUTSIDE this conversion's output folder, so they are the avatar's own " +
+                    "assets rather than copies. Rewriting them would have repaired the conversion by " +
+                    "damaging the VRChat original, which is never the right trade. The cost is that " +
+                    "whatever those curves switched — limb lock, sit, lay-down, flight toggles are the " +
+                    "usual ones — will not work here. Avatars built with VRCFury or Modular Avatar are " +
+                    "unaffected, because their bake already hands us copies; if you see this, the fix " +
+                    "is to let the converter work from a baked copy of the avatar.");
+            }
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,

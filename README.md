@@ -1091,6 +1091,33 @@ Four things worth knowing:
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 
+### A particle effect only you can see
+
+**Reconvert on 3.5.38 or later.**
+
+Effects are built two ways, and only one of them travels. If the clip switches the effect's
+**GameObject** on and off, everyone sees it — that's an ordinary animation every client plays. If
+the emitter is left **off** in the prefab and the clip switches on the particle system's *emission
+module* instead, the object turns on for other players and emits nothing. It looks perfect to you
+and is invisible to everyone else.
+
+Conversion now switches those emitters on permanently and lets the object's own on/off animation
+gate the effect — the way the effects that already worked are built. Nothing plays at rest, because
+the same clip that turns the object on also turns it off. The report names each one.
+
+Animated particle modules **other than emission** are left alone and reported. If an effect looks
+wrong to other players but right to you, that's the first thing to check.
+
+### A limb-lock, sit or flight toggle does nothing, and the report mentions protected clips
+
+Those toggles are driven by curves that switch a **constraint** on and off, and conversion normally
+repoints them at the Unity constraint it built. It will not do that to an animation file that lives
+outside the conversion's own output folder — those are your originals, and rewriting them would
+repair the conversion by damaging the avatar in VRChat.
+
+Avatars built with **VRCFury or Modular Avatar are unaffected**: their bake hands the converter
+copies to work on. If you see this warning, convert from a baked copy of the avatar.
+
 ### Movement doesn't animate, and Airborne / Flying / Sitting / Swimming do nothing
 
 **Reconvert on 3.5.8 or later** — enabling "Base / locomotion" can no longer cause this.

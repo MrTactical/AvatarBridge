@@ -17,6 +17,112 @@ namespace AvatarBridge
     /// </summary>
     public static class MiscConverter
     {
+        /// <summary>
+        /// Turns ON a particle emitter that was authored OFF and switched on only by animation.
+        ///
+        /// Reported in the wild: a headpat effect nobody but the wearer could see, on an avatar
+        /// whose nose-boop effect — same contact, same kind of tree, same everything — worked for
+        /// everyone. The two were built differently, and that was the whole difference:
+        ///
+        ///   nose boop  clips animate ONLY m_IsActive; the emitter is enabled in the prefab
+        ///   headpat    clips animate m_IsActive AND EmissionModule.enabled; emitter authored OFF
+        ///
+        /// Switching a GameObject on is something every client's animator does. Animating a
+        /// ParticleSystem MODULE property is not the same kind of write, and where it fails to
+        /// land the object dutifully activates and emits nothing — invisible, while looking
+        /// perfectly correct on the rare occasion it does show.
+        ///
+        /// So this removes the dependency rather than chasing it: where a clip animates emission
+        /// on an object whose emitter is authored off, AND the same clip already drives that
+        /// object's m_IsActive, the emitter is enabled for good and the object's own active state
+        /// gates the effect — exactly the shape that already works.
+        ///
+        /// THE m_IsActive REQUIREMENT IS THE SAFETY, not a convenience. An emitter enabled on an
+        /// object that nothing switches off would simply run forever. Requiring the clip to drive
+        /// m_IsActive means there is already something turning it off; the measured avatar's
+        /// "Headpat OFF" sets m_IsActive 0 and the object rests inactive, so nothing emits at rest.
+        ///
+        /// Only EMISSION is touched. Other modules were left alone deliberately: emission off is
+        /// the one that means "nothing comes out at all", and the rest are refinements whose
+        /// failure is visible but not fatal. They are counted and reported instead of guessed at.
+        /// </summary>
+        public static void EnableAnimatedParticleEmitters(BridgeContext ctx)
+        {
+            var controller = ctx.MergedController;
+            if (controller == null || ctx.Target == null)
+            {
+                return;
+            }
+
+            // Which paths each clip drives m_IsActive on — the gate that makes enabling safe.
+            var enabled = new List<string>();
+            var otherModules = new SortedSet<string>();
+            var seen = new HashSet<ParticleSystem>();
+
+            foreach (var clip in controller.animationClips.Distinct())
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                var togglesActive = new HashSet<string>(bindings
+                    .Where(b => b.type == typeof(GameObject) && b.propertyName == "m_IsActive")
+                    .Select(b => b.path));
+
+                foreach (var binding in bindings)
+                {
+                    if (binding.type != typeof(ParticleSystem)
+                        || !binding.propertyName.EndsWith("Module.enabled", System.StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var child = ctx.Target.transform.Find(binding.path);
+                    var system = child != null ? child.GetComponent<ParticleSystem>() : null;
+                    if (system == null)
+                    {
+                        continue;
+                    }
+                    if (binding.propertyName != "EmissionModule.enabled")
+                    {
+                        otherModules.Add($"{binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+                    var emission = system.emission;
+                    if (emission.enabled || !togglesActive.Contains(binding.path) || !seen.Add(system))
+                    {
+                        continue;
+                    }
+                    emission.enabled = true;
+                    EditorUtility.SetDirty(system);
+                    enabled.Add(binding.path);
+                }
+            }
+
+            if (enabled.Count > 0)
+            {
+                ctx.Report.Converted("Particles",
+                    $"{enabled.Count} particle emitter(s) switched on so remote players can see them",
+                    $"{string.Join(", ", enabled.Take(6))}{(enabled.Count > 6 ? ", …" : "")} — these " +
+                    "effects were authored with the emitter OFF and turned on by animating the particle " +
+                    "system's emission module. Switching a GameObject on is something every client does; " +
+                    "animating a particle MODULE is not the same kind of write, and where it doesn't land " +
+                    "the object turns on and emits nothing — the effect is invisible to everyone but you. " +
+                    "The emitter is now on permanently and the object's own on/off animation gates the " +
+                    "effect instead, which is how the effects that already worked were built. Nothing " +
+                    "plays at rest, because the same clip switches the object off.");
+            }
+            if (otherModules.Count > 0)
+            {
+                ctx.Report.Skipped("Particles",
+                    $"{otherModules.Count} animated particle module(s) left as they are",
+                    $"{string.Join(", ", otherModules.Take(6))}{(otherModules.Count > 6 ? ", …" : "")} — " +
+                    "these animate a particle system module other than emission. If the effect looks " +
+                    "wrong to other players but right to you, this is the first thing to suspect: " +
+                    "rebuild it so the object's own on/off state drives the effect instead.");
+            }
+        }
+
         public static void Run(BridgeContext ctx)
         {
             if (ctx.Settings.convertHeadChop)
