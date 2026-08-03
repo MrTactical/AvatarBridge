@@ -650,19 +650,57 @@ namespace AvatarBridge
                     // so leaving it means a curve that silently does nothing.
                     UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
 
-                    if (binding.propertyName != "m_Enabled"
-                        || !ctx.ContactHosts.TryGetValue((binding.path, sender), out var hosts))
+                    if (!ctx.ContactHosts.TryGetValue((binding.path, sender), out var hosts))
                     {
-                        // A shape or filter property (nothing to drive it on the CVR side), or a
-                        // contact that was skipped rather than converted.
+                        // The contact this drove was skipped rather than converted.
                         dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
+                        continue;
+                    }
+
+                    bool native = ctx.Settings != null && ctx.Settings.useNativeContacts;
+                    var nakType = native ? FindType(sender ? NakSender : NakReceiver) : null;
+                    string prop = binding.propertyName;
+
+                    // What each property maps to differs by path, and each verdict is from the
+                    // shipped client rather than hope:
+                    //   m_Enabled     -> host object active, both paths (ContactBase and the
+                    //                    legacy backing contact both register in OnEnable).
+                    //   position.xyz  -> legacy: the host TRANSFORM carries the offset, so the
+                    //                    curve maps 1:1 onto m_LocalPosition. Native: the host
+                    //                    sits at identity and the offset lives in the component's
+                    //                    localPosition FIELD — animating that works because
+                    //                    ContactBase carries OnDidApplyAnimationProperties.
+                    //   allowSelf/allowOthers/localOnly -> native only, same field animation.
+                    //                    Legacy bakes them into the backing contact at Create and
+                    //                    never looks again, so those drop with the warning.
+                    UnityEditor.EditorCurveBinding? target = null;
+                    if (prop == "m_Enabled")
+                    {
+                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(GameObject), "m_IsActive");
+                    }
+                    else if (prop.StartsWith("position.", System.StringComparison.Ordinal))
+                    {
+                        string axis = prop.Substring("position.".Length);
+                        target = native && nakType != null
+                            ? UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, "localPosition." + axis)
+                            : UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(Transform), "m_LocalPosition." + axis);
+                    }
+                    else if (native && nakType != null
+                             && (prop == "allowSelf" || prop == "allowOthers" || prop == "localOnly"))
+                    {
+                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, prop);
+                    }
+
+                    if (target == null)
+                    {
+                        dropped.Add($"\"{clip.name}\" -> {binding.path} ({prop})");
                         continue;
                     }
                     foreach (var hostPath in hosts)
                     {
-                        UnityEditor.AnimationUtility.SetEditorCurve(clip,
-                            UnityEditor.EditorCurveBinding.FloatCurve(hostPath, typeof(GameObject), "m_IsActive"),
-                            curve);
+                        var tb = target.Value;
+                        tb.path = hostPath;
+                        UnityEditor.AnimationUtility.SetEditorCurve(clip, tb, curve);
                     }
                     repointed++;
                 }
@@ -670,20 +708,21 @@ namespace AvatarBridge
 
             if (repointed > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed} contact on/off animation(s) rewired",
-                    "Curves that enabled or disabled a VRChat contact now toggle the converted " +
-                    "contact's own object instead — the form ChilloutVR honours on both the " +
-                    "pointer/trigger path and the native one. Without this the toggle's menu " +
-                    "entry, parameter and layer all convert and the contact just never switches.");
+                ctx.Report.Converted(Category, $"{repointed} contact animation(s) rewired",
+                    "Curves that switched a VRChat contact on and off now toggle the converted " +
+                    "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
+                    "body part) now drive the converted contact's offset — the forms ChilloutVR " +
+                    "honours on each path. Without this the toggle's menu entry, parameter and " +
+                    "layer all convert and the contact just never switches or moves.");
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
-                    " — each animated something on a VRC contact that has no equivalent on the " +
-                    "converted one (a shape or filter property), or a contact that was not " +
-                    "converted. The curve was removed rather than left silently addressing a " +
-                    "deleted component.");
+                    " — each animated something with no equivalent on the converted contact " +
+                    "(a shape radius, or a filter on the pointer/trigger path, which bakes its " +
+                    "filters once at load), or a contact that was not converted. The curve was " +
+                    "removed rather than left silently addressing a deleted component.");
             }
         }
 

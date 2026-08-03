@@ -23,7 +23,7 @@ Classification:
 | VRCAvatarDescriptor | 93 | converted | field-level rows below |
 | VRCPhysBone | 1531 | converted | → MagicaCloth2/DynamicBone; animated parameter curves reported-as-lost with each named (#16, done; MC2 cannot be animation-driven — measured); m_Enabled chain toggles were already rewired |
 | VRCPhysBoneCollider | 449 | converted | animated `m_Enabled` ×28 repointed at the generated collider host (task #15, done) |
-| VRCContactReceiver | 447 | converted | enable curves fixed 3.5.36; `position.xyz`/`allowSelf` curves — task #19 |
+| VRCContactReceiver | 447 | converted | enable curves fixed 3.5.36; position curves follow the contact on both paths and filter curves on native (#19, done — legacy filters bake at Create and drop loudly) |
 | VRCContactSender | 165 | converted | as above |
 | VRCRotation/Parent/Scale/Position Constraint | 195/144/68/29 | converted | source-weight curve spelling fixed 3.5.36; `FreezeToWorld` reported-dropped |
 | VRCAimConstraint | 5 | converted | |
