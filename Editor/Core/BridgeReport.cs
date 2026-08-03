@@ -23,6 +23,40 @@ namespace AvatarBridge
     }
 
     /// <summary>
+    /// Orders report samples so the SAME example is shown every time the same avatar converts.
+    ///
+    /// Report details usually show a handful of entries out of many ("e.g. these six of 172"),
+    /// taken from a SortedSet so the choice is at least ordered. That is not enough on its own:
+    /// VRCFury stamps its generated objects with a component id — "[VF397] Assjob" — and it
+    /// assigns those ids fresh on every bake. Sorting on the raw string therefore reorders the
+    /// set whenever Fury renumbers, and a different example surfaces although nothing about the
+    /// avatar changed. The regression harness redacts "[VF397]" to "[VF#]" before comparing, so
+    /// the digest shows two identical-looking lines naming different paths — a diff that costs a
+    /// reader real attention and means nothing. It happened twice in one day.
+    ///
+    /// So ordering ignores those ids: two strings differing only by a Fury number sort as equal
+    /// text and fall back to a plain comparison, which keeps the set stable and total.
+    /// </summary>
+    public sealed class StableSampleOrder : IComparer<string>
+    {
+        public static readonly StableSampleOrder Instance = new StableSampleOrder();
+
+        static readonly System.Text.RegularExpressions.Regex FuryIds =
+            new System.Text.RegularExpressions.Regex(@"\[VF\d+\]|\bVF\d+_|VF_\d+_",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        public static string Key(string value) =>
+            string.IsNullOrEmpty(value) ? value : FuryIds.Replace(value, "#");
+
+        public int Compare(string x, string y)
+        {
+            int byKey = string.CompareOrdinal(Key(x), Key(y));
+            // Never return 0 for different strings: a SortedSet would silently discard one.
+            return byKey != 0 ? byKey : string.CompareOrdinal(x, y);
+        }
+    }
+
+    /// <summary>
     /// Collects everything that happened during a conversion so the user gets a single
     /// honest summary of what carried over, what was approximated and what was lost.
     /// </summary>

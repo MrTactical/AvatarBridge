@@ -1116,6 +1116,20 @@ the same clip that turns the object on also turns it off. The report names each 
 Animated particle modules **other than emission** are left alone and reported. If an effect looks
 wrong to other players but right to you, that's the first thing to check.
 
+### "VRCFury is installed but did not compile" — conversion refuses to start
+
+**From 3.5.42**, conversion stops before doing anything if the project has VRCFury, Modular Avatar
+or NDMF installed but Unity never compiled it. That happens when an avatar or prop
+`.unitypackage` ships its own bundled copy and overwrites yours — usually leaving the folder
+in place but stripped of its `package.json`, which Unity needs to load a package at all.
+
+It stops rather than warns because the result would be **silently wrong rather than visibly
+broken**: with no baker loaded, every component it owns reads as though it isn't there, so the
+avatar converts "successfully" and quietly comes out missing everything that package builds.
+
+Reinstall the named package through the VRChat Creator Companion, let Unity finish compiling,
+and convert again. Nothing is changed by the refused run.
+
 ### A particle effect draws as plain coloured squares
 
 That's Unity's **default particle material** — the one a particle system gets when nobody assigns

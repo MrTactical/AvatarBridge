@@ -52,6 +52,16 @@ namespace AvatarBridge
             try
             {
                 PrepareOutputFolder(ctx);
+                // Before anything is built or written: if the project has a baker installed that
+                // did not compile, every component it owns reads as absent and the conversion
+                // comes out quietly gutted. Stop here rather than spend the run producing it.
+                if (!BridgePreflight.Check(ctx))
+                {
+                    report.Error("Conversion", "Stopped before converting",
+                        "The problem above would have made this conversion silently wrong rather " +
+                        "than visibly broken, which is worse. Nothing was changed.");
+                    return report;
+                }
                 PrepareTarget(ctx);
                 WarnMissingScripts(ctx);
                 // Delete the VRChat-only systems first, so nothing downstream wastes effort

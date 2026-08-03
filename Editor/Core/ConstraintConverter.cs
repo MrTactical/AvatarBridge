@@ -295,12 +295,12 @@ namespace AvatarBridge
             }
 
             int repointed = 0, followed = 0;
-            var dropped = new SortedSet<string>();
-            var lost = new SortedSet<string>();        // the object is gone: something here removed it
-            var neverBuilt = new SortedSet<string>();  // the object is there, but never had a constraint
-            var movedByBake = new SortedSet<string>(); // the object exists under a different parent
+            var dropped = new SortedSet<string>(StableSampleOrder.Instance);
+            var lost = new SortedSet<string>(StableSampleOrder.Instance);        // the object is gone: something here removed it
+            var neverBuilt = new SortedSet<string>(StableSampleOrder.Instance);  // the object is there, but never had a constraint
+            var movedByBake = new SortedSet<string>(StableSampleOrder.Instance); // the object exists under a different parent
 
-            var protectedSources = new SortedSet<string>();
+            var protectedSources = new SortedSet<string>(StableSampleOrder.Instance);
 
             foreach (var clip in clips)
             {

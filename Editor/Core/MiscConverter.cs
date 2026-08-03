@@ -56,7 +56,7 @@ namespace AvatarBridge
 
             // Which paths each clip drives m_IsActive on — the gate that makes enabling safe.
             var enabled = new List<string>();
-            var otherModules = new SortedSet<string>();
+            var otherModules = new SortedSet<string>(StableSampleOrder.Instance);
             var seen = new HashSet<ParticleSystem>();
 
             foreach (var clip in controller.animationClips.Distinct())
@@ -149,7 +149,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var plain = new SortedSet<string>();
+            var plain = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var renderer in ctx.Target.GetComponentsInChildren<ParticleSystemRenderer>(true))
             {
                 var material = renderer.sharedMaterial;

@@ -3412,7 +3412,7 @@ namespace AvatarBridge
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
             var added = new List<AnimatorControllerParameter>();
-            var repointed = new SortedSet<string>();
+            var repointed = new SortedSet<string>(StableSampleOrder.Instance);
             var map = new Dictionary<string, string>();
             var seen = new HashSet<BlendTree>();
 
@@ -3589,7 +3589,7 @@ namespace AvatarBridge
                 return;
             }
 
-            var withdrawn = new SortedSet<string>();
+            var withdrawn = new SortedSet<string>(StableSampleOrder.Instance);
             for (int i = settings.Count - 1; i >= 0; i--)
             {
                 var entry = settings[i];
@@ -4497,7 +4497,7 @@ namespace AvatarBridge
         static bool ActionLayerDrivesOwnFeature(AnimatorControllerLayer layer, out string byWhat)
         {
             byWhat = null;
-            var own = new SortedSet<string>();
+            var own = new SortedSet<string>(StableSampleOrder.Instance);
             WalkMachines(layer.stateMachine, machine =>
             {
                 void Note(AnimatorTransitionBase transition)
@@ -6360,7 +6360,7 @@ namespace AvatarBridge
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;
-            var maskedBaseBody = new SortedSet<string>();
+            var maskedBaseBody = new SortedSet<string>(StableSampleOrder.Instance);
 
             foreach (var layer in layers)
             {
@@ -6606,7 +6606,7 @@ namespace AvatarBridge
             var names = new List<string>();
             var keptClips = new HashSet<string>();
             // Layers whose empty states are structural rather than a toggle.s off half.
-            var notToggles = new SortedSet<string>();
+            var notToggles = new SortedSet<string>(StableSampleOrder.Instance);
 
             // Snapshot ONCE. master.layers hands back a fresh array of fresh wrappers on every
             // access, so an index looked up against one call is meaningless against another —
@@ -6953,7 +6953,7 @@ namespace AvatarBridge
             string dir = $"{ctx.OutputDir}/RehomedAssets";
             int filled = 0, reused = 0, candidateCount = 0;
             var names = new List<string>();
-            var contested = new SortedSet<string>();
+            var contested = new SortedSet<string>(StableSampleOrder.Instance);
 
             var layers = master.layers;
             var indexByName = new Dictionary<string, int>();

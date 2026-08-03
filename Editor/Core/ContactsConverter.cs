@@ -634,7 +634,7 @@ namespace AvatarBridge
             }
 
             int repointed = 0;
-            var dropped = new SortedSet<string>();
+            var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
