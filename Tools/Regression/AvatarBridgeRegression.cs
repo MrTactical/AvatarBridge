@@ -68,17 +68,26 @@ namespace AvatarBridge.Regression
 
             // Avatars VRCFury cannot bake. Their conversions start from a half-built avatar, so
             // their digests describe Fury's failure rather than ours and every diff on them is
-            // noise. None of the three causes is fixable from this side: four carry a GoGo Loco
-            // whose menu names a parameter its own params file does not declare, two are missing
-            // a Wholesome/SPS package the avatar expects, and Branwen has a material whose shader
-            // will not load. Put them back the moment the avatars themselves are repaired —
-            // that is the only reason this list is spelt out rather than filtered by symptom.
-            "/CowRobot/",              // CowBotNSFW + CowBotSFW  — GoGo Loco menu/params mismatch
-            "/0.Kimmi/",               // Kimmi                   — same
-            "/hypsi/",                 // hypsi                   — same
-            "/!Arlo/",                 // Arlo                    — missing Wholesome/SPS package
-            "/Satin Snake",            // Satin Snake             — same
-            "/!BRANWEN/",              // Branwen                 — material shader will not load
+            // noise. Put each back the moment the avatar itself is repaired — that is the only
+            // reason this list is spelt out per avatar rather than filtered by symptom.
+            //
+            // RE-TESTED 2026-08-03 by running all seven through RunSubsetBatch, which bypasses this
+            // list. CowBotNSFW and CowBotSFW now bake with zero Fury build errors and were removed
+            // from it. Two of the remaining reasons had gone stale and are corrected below: nothing
+            // here is inherited, each is what the avatar's own report said on that run.
+            //
+            // "NO VALID ANIMATIONS" layers are NOT a reason to exclude — Saavi and Roxxie both
+            // carry one and convert perfectly. The criterion is a VRCFury BUILD error.
+            "/0.Kimmi/",     // Kimmi   — Fury wants GoLocoBaseWD.controller, GoLocoActionWD.controller
+                             //           and GoBeyondParameters.asset; the GoGo package now in the
+                             //           project has none of them (it replaced a custom build that did)
+            "/hypsi/",       // hypsi   — its "GogoLoco All (VRCFury)" prefab is missing outright after
+                             //           that same GoGo swap, so it converts as a 23-entry shell
+            "/!Arlo/",       // Arlo    — missing Wholesome SPS Configurator 2.0.11 (AAC_SFX.controller)
+            "/Satin Snake",  // Satin Snake — same Wholesome package
+            "/!BRANWEN/",    // Branwen — NOT the shader, that reason was stale: Fury wants Dismay PCS
+                             //           "#GENERATED/Thotty 2025 Amour/", the per-avatar folder the PCS
+                             //           tool writes at setup. Same cause as BHFBunny/Bimbo/OPEN ME
         };
 
         // The quick set: every avatar that has taught us something, so a fix can be checked in
