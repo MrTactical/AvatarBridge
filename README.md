@@ -1124,12 +1124,16 @@ while the library, which can never play, restored nothing. One avatar shipped it
 that way: every toggle switched off and never back on. Libraries no longer take part in deciding
 who restores a property.
 
-**And from 3.5.49, nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
+**And from 3.5.50, nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
 property back to its default when no animation writes it; **ChilloutVR's does not** — measured in
 game, and it is why avatars that behave in VRChat come back one-way here. The layer that owns a
 property now asserts its value from *every* state it can rest in, so the game is never asked to
-fill a gap. Sliders, pass-through gates and muscle curves are deliberately excluded — each of
-those has been a shipped bug before.
+fill a gap. Anything a blend tree drives anywhere is left to the tree — a constant assertion
+from a plain state would fight a parameter-driven value — and sliders, pass-through gates and
+muscle curves are excluded too; each of those has been a shipped bug before. The conversion then
+**audits itself**: any property that could still fall back to the runtime is named in the report
+as a warning, state by state, so this whole class of failure is caught at conversion time rather
+than discovered in game.
 
 Four things worth knowing:
 

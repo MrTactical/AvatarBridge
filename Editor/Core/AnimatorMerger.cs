@@ -2505,7 +2505,7 @@ namespace AvatarBridge
         /// </summary>
         static void AssertOwnedBindingsEverywhere(AnimatorController master, BridgeContext ctx)
         {
-            BuildRestoreOwnership(master.layers, out var owner, out _);
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
 
             int curvesAddedTotal = 0;
             var touched = new List<string>();
@@ -2519,12 +2519,10 @@ namespace AvatarBridge
                 }
                 var onlyPlayable = LibraryDefaultState(layer);
 
-                // What this layer animates from plain clip states, and separately what its blend
-                // trees animate — the latter is excluded from assertions wholesale (slider rule).
+                // What this layer animates from plain clip states. Tree-driven bindings are
+                // exempt globally — ownership never contains them (see BuildRestoreOwnership).
                 var stateFloats = new HashSet<EditorCurveBinding>();
                 var stateObjects = new HashSet<EditorCurveBinding>();
-                var treeFloats = new HashSet<EditorCurveBinding>();
-                var treeObjects = new HashSet<EditorCurveBinding>();
                 var states = new List<AnimatorState>();
                 WalkMachines(layer.stateMachine, machine =>
                 {
@@ -2541,17 +2539,13 @@ namespace AvatarBridge
                             foreach (var b in AnimationUtility.GetCurveBindings(clip)) stateFloats.Add(b);
                             foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip)) stateObjects.Add(b);
                         }
-                        else if (state.motion != null)
-                        {
-                            CollectBindings(state.motion, treeFloats, treeObjects);
-                        }
                     }
                 });
 
                 var ownedFloats = stateFloats.Where(b => b.type != typeof(Animator)
-                    && !treeFloats.Contains(b)
+                    && !treeDriven.Contains(b)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
-                var ownedObjects = stateObjects.Where(b => !treeObjects.Contains(b)
+                var ownedObjects = stateObjects.Where(b => !treeDriven.Contains(b)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
                 if (ownedFloats.Count == 0 && ownedObjects.Count == 0)
                 {
@@ -2658,7 +2652,99 @@ namespace AvatarBridge
                     "is true at conversion time is what those values are — set the avatar up the " +
                     "way it should rest before converting.");
             }
+
+            ReportNoWdCoverage(master, ctx);
         }
+
+        /// <summary>
+        /// The audit for everything above: after every restore pass has run, is any owned
+        /// property still able to fall back to the runtime?
+        ///
+        /// This exists because the chain it checks was broken four separate ways on one avatar
+        /// — curveless states invisible to the filler, a dead library owning the wardrobe, tree
+        /// claims orphaning bindings, owners silent at rest — and each was found by hand, from a
+        /// game report, days apart. The checker asks the finished controller the one question
+        /// all of those reduce to, with the same helpers the passes themselves use, so it cannot
+        /// drift from them. A violation here lands in the report as a warning, which the
+        /// regression corpus records in full — so this entire class of bug now fails loudly at
+        /// conversion time instead of quietly in game.
+        /// </summary>
+        static void ReportNoWdCoverage(AnimatorController master, BridgeContext ctx)
+        {
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
+
+            var violations = new SortedSet<string>(StableSampleOrder.Instance);
+            int violationCount = 0;
+
+            for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
+            {
+                var layer = master.layers[layerIndex];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                var onlyPlayable = LibraryDefaultState(layer);
+
+                var owned = new List<EditorCurveBinding>();
+                foreach (var pair in owner)
+                {
+                    if (pair.Value == layerIndex && pair.Key.type != typeof(Animator)
+                        && !treeDriven.Contains(pair.Key))
+                    {
+                        owned.Add(pair.Key);
+                    }
+                }
+                if (owned.Count == 0)
+                {
+                    continue;
+                }
+
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null || (onlyPlayable != null && state != onlyPlayable)
+                            || IsPassThroughState(state))
+                        {
+                            continue;
+                        }
+                        // A tree state asserts its whole union continuously; count it as covering
+                        // whatever it animates.
+                        var asserts = new HashSet<EditorCurveBinding>();
+                        CollectBindings(state.motion, asserts, asserts);
+                        bool empty = state.motion == null || IsCurveless(state.motion, null);
+                        foreach (var binding in owned)
+                        {
+                            if (!empty && asserts.Contains(binding))
+                            {
+                                continue;
+                            }
+                            violationCount++;
+                            violations.Add($"{layer.name}/{state.name}: {binding.path}:{PrettyProperty(binding)}"
+                                + (empty ? " (state asserts nothing)" : ""));
+                        }
+                    }
+                });
+            }
+
+            if (violationCount > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{violationCount} propert(ies) can still fall back to the runtime",
+                    $"{string.Join("; ", violations.Take(6))}{(violations.Count > 6 ? "; …" : "")} — " +
+                    "each is owned by a layer that stays silent about it in the named state. " +
+                    "VRChat's runtime fills that silence with the property's default; ChilloutVR's " +
+                    "does not, so if a toggle over one of these switches off and never back on in " +
+                    "game, this is why. Please report the avatar — the passes that close these " +
+                    "gaps believed they had.");
+            }
+        }
+
+        /// <summary>"blendShape.X" reads better than nothing, but strip nothing else — the report
+        /// line is how a violation gets found again.</summary>
+        static string PrettyProperty(EditorCurveBinding binding) =>
+            string.IsNullOrEmpty(binding.propertyName) ? "(property)" : binding.propertyName;
 
         static void SyncDriverParameterTypes(AnimatorController master, BridgeContext ctx)
         {
@@ -6866,7 +6952,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven);
 
             // Every layer of the finished controller except the ones that must not be touched —
             // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
@@ -6958,6 +7044,12 @@ namespace AvatarBridge
                 int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
+                    // A blend tree drives this somewhere: leave it to the tree. A constant
+                    // assertion from any plain state fights a parameter-driven value.
+                    if (treeDriven.Contains(binding))
+                    {
+                        return false;
+                    }
                     // Unknown binding: nobody else claims it, so this layer may restore it.
                     return !owner.TryGetValue(binding, out int lowest) || lowest == here;
                 }
@@ -7157,7 +7249,8 @@ namespace AvatarBridge
         /// let both of them restore it.
         /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
-            out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips)
+            out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
+            out HashSet<EditorCurveBinding> treeDriven)
         {
             // Locals rather than the out params directly: a lambda may not touch an out parameter,
             // and the walk below is a lambda.
@@ -7165,6 +7258,15 @@ namespace AvatarBridge
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
             var clips = new HashSet<AnimationClip>();
+            // Bindings that any BLEND TREE anywhere animates. Ownership is awarded from plain
+            // clip states only, and tree-driven bindings are exempt from state restores entirely:
+            // a tree's curves are parameter-driven and continuously blended, so a constant
+            // assertion from any plain state — above OR below — fights the tree whenever it is
+            // live. The measured case: a low gesture layer's weight trees touched hundreds of
+            // bindings, claimed ownership of all of them, was rightly refused permission to
+            // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
+            // — nobody restored anything, and the whole avatar was one-way in game.
+            var trees = new HashSet<EditorCurveBinding>();
             int layerIndex = -1;
             foreach (var candidate in layers)
             {
@@ -7186,6 +7288,12 @@ namespace AvatarBridge
                     {
                         var motion = child.state != null ? child.state.motion : null;
                         CollectClips(motion, clips);
+                        if (motion is BlendTree)
+                        {
+                            // Trees feed the exemption set, never ownership — see above.
+                            CollectBindings(motion, trees, trees);
+                            continue;
+                        }
                         if (onlyPlayable == null || child.state == onlyPlayable)
                         {
                             CollectBindings(motion, floatsHere, objectsHere);
@@ -7202,6 +7310,7 @@ namespace AvatarBridge
             }
             owner = owners;
             allClips = clips;
+            treeDriven = trees;
         }
 
         /// <summary>
@@ -7302,7 +7411,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out _);
 
             foreach (var layer in layers)
             {
