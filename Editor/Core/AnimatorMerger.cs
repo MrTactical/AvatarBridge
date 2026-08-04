@@ -8645,7 +8645,7 @@ namespace AvatarBridge
             string List(IEnumerable<string> names) =>
                 string.Join(", ", names.Take(6)) + (names.Count() > 6 ? ", …" : "");
 
-            var worst = dead.OrderByDescending(p => p.Value.count).Take(6)
+            var worst = dead.OrderByDescending(p => p.Value.count).ThenBy(p => p.Key, StringComparer.Ordinal).Take(6)
                 .Select(p => $"{p.Key} ({p.Value.count} renderer(s), e.g. \"{p.Value.path}\")");
             bool anyLocked = locked.Count > 0;
             ctx.Report.Warning(Category,
@@ -8876,7 +8876,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(master);
             AssetDatabase.SaveAssets();
 
-            var worst = byProperty.OrderByDescending(p => p.Value).Take(6)
+            var worst = byProperty.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Take(6)
                 .Select(p => $"{p.Key} ({p.Value})");
             ctx.Report.Converted(Category,
                 $"Removed {curvesRemoved} animation curve(s) that could never have done anything",

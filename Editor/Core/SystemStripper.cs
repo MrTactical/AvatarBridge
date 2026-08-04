@@ -736,11 +736,28 @@ namespace AvatarBridge
         /// So: drop its layers, drop the mirrors and slots, and put the real names into
         /// PreserveParameters so they sync natively — instantly, and at no cost worth counting.
         /// </summary>
+        internal static void StripParameterCompressorForTest(BridgeContext ctx, AnimatorController master,
+            List<AnimatorControllerLayer> vrcLayers) => StripParameterCompressor(ctx, master, vrcLayers);
+
         static void StripParameterCompressor(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
-            var slots = new System.Text.RegularExpressions.Regex(@"^VF\d+_Sync(Index|DataNum|Data)\d*$");
+            // VRCFury names its rotation slots by the TYPE they carry: SyncDataBool0, SyncDataFloat3,
+            // SyncDataInt2, alongside the SyncIndex0/1 that says which parameter is in the window.
+            // The old pattern demanded digits straight after "Data", so it matched SyncData0 and
+            // SyncDataNum0 and missed every SyncDataBool/Float/Int — on a real avatar that meant 2
+            // of ~28 slots were seen.
+            //
+            // That went unnoticed because the pass ALSO finds "mirrors" (VF<n>_<RealName> shadowing
+            // a declared parameter), and a normal compressed avatar has dozens, so detection
+            // succeeded on their strength alone. It only bites when an avatar has slots and NO
+            // mirrors: then both lists are empty, the pass returns early, PreserveParameters never
+            // learns the real names, and preserveParameterSyncState faithfully copies the
+            // compressor's "not synced" flags onto EVERY parameter — reported in the wild as
+            // "all parameters became local", 131 of 170 including the entire wardrobe.
+            var slots = new System.Text.RegularExpressions.Regex(
+                @"^VF\d+_Sync(Index|Data(Bool|Float|Int|Num)?)\d*$");
             var mirror = new System.Text.RegularExpressions.Regex(@"^VF\d+_(.+)$");
 
             // Look at referenced names as well as declared ones. The compressor's mirrors are
@@ -800,6 +817,30 @@ namespace AvatarBridge
             foreach (string real in mirrors.Values.Distinct())
             {
                 ctx.PreserveParameters.Add(real);
+            }
+
+            // Mirrors are not always there. An avatar can carry the compressor with slots and no
+            // mirrors at all, and preserving from mirrors alone then preserves NOTHING — the
+            // compressor is stripped, the rename pass is told nothing, and every parameter takes
+            // the local "#" on the strength of a flag whose only author was the thing we just
+            // removed. Reported in the wild as "all parameters became local": 131 of 170,
+            // including every clothing toggle, so nobody but the wearer saw the avatar change.
+            //
+            // So when the compressor is detected at all, every DECLARED parameter that is not one
+            // of its own artefacts is treated as really synced. "Not synced" is not trustworthy
+            // evidence on a compressed avatar — de-syncing them is what the compressor does — and
+            // ChilloutVR has 3200 bits, so restoring sync to a parameter the author truly wanted
+            // local costs 32 bits, while getting it wrong the other way costs the feature.
+            //
+            // VF-prefixed names are excluded: those are VRCFury's own working values, and they
+            // shadow nothing the user ever asked to sync.
+            var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
+            foreach (var p in master.parameters)
+            {
+                if (!string.IsNullOrEmpty(p.name) && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name))
+                {
+                    ctx.PreserveParameters.Add(p.name);
+                }
             }
 
             ctx.Report.Converted(Category,

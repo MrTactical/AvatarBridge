@@ -970,7 +970,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var listed = doomed.OrderByDescending(p => p.Value).Select(p => $"{p.Key} ×{p.Value}");
+            var listed = doomed.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} ×{p.Value}");
             ctx.Report.Error(Category, $"{doomed.Values.Sum()} component(s) ChilloutVR will delete on load",
                 $"{Join(listed)} — ChilloutVR filters every component on an avatar against a fixed list and " +
                 "destroys anything not on it. There is no warning in game and nothing looks wrong in the " +
