@@ -20,6 +20,14 @@ namespace AvatarBridge.Regression
     ///
     /// Opens every scene under Assets (excluding output), tallies component types under every
     /// root, and never saves anything.
+    ///
+    /// COUNTS HERE ARE AUTHORED, PRE-BAKE, and behaviour counts were once badly wrong: reading
+    /// only Animator slots missed the descriptor's own layer lists, where a VRChat avatar actually
+    /// keeps Base/Additive/Gesture/Action/FX. That reported VRCAnimatorTemporaryPoseSpace as 2 in
+    /// the wild while a single GoGo-based avatar's conversion report found over a hundred, and the
+    /// parity matrix used the small number to judge the feature not worth building. Fixed — but
+    /// the lesson generalises: when an instrument and the reports disagree, THE REPORTS WIN. They
+    /// count what a pass actually met; this counts what a scene appears to hold.
     /// </summary>
     public static class ComponentCensus
     {
@@ -43,6 +51,9 @@ namespace AvatarBridge.Regression
                 catch { continue; }
                 opened++;
                 string sceneName = System.IO.Path.GetFileNameWithoutExtension(path);
+                // Per scene: one avatar's Base layer and its Animator slot are frequently the same
+                // asset, and a shared controller counted once per reference would inflate.
+                var seenControllers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var root in scene.GetRootGameObjects())
                 {
@@ -89,16 +100,26 @@ namespace AvatarBridge.Regression
                             tally[key] = re;
                         }
                     }
-                    // State behaviours live in controllers, not on objects — walk those too.
-                    foreach (var animator in root.GetComponentsInChildren<Animator>(true))
+                    // State behaviours live in CONTROLLERS, not on objects. Which controllers is
+                    // the whole question, and getting it wrong is why this instrument lied.
+                    //
+                    // It used to read only animator.runtimeAnimatorController. A VRChat avatar
+                    // barely uses that: its five real layers — Base, Additive, Gesture, Action, FX
+                    // — hang off the DESCRIPTOR's baseAnimationLayers, and the sitting/TPose/IKPose
+                    // ones off specialAnimationLayers. The Animator slot is often empty or holds
+                    // one of them at most. So the census reported VRCAnimatorTemporaryPoseSpace as
+                    // 2 occurrences in the wild while conversion reports were finding 100+ on a
+                    // SINGLE GoGo-based avatar, and the parity matrix used the wrong number to
+                    // decide the feature was not worth building.
+                    foreach (var controller in ControllersOn(root))
                     {
-                        var rac = animator.runtimeAnimatorController;
-                        if (rac == null)
+                        string assetPath = AssetDatabase.GetAssetPath(controller);
+                        if (string.IsNullOrEmpty(assetPath) || !seenControllers.Add(assetPath))
                         {
-                            continue;
+                            continue; // the descriptor and the Animator often name the same asset
                         }
-                        foreach (var behaviour in AssetDatabase.LoadAllAssetsAtPath(
-                                     AssetDatabase.GetAssetPath(rac)).OfType<StateMachineBehaviour>())
+                        foreach (var behaviour in AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                                     .OfType<StateMachineBehaviour>())
                         {
                             var t = behaviour.GetType();
                             string ns = t.Namespace ?? "";
@@ -130,6 +151,52 @@ namespace AvatarBridge.Regression
             if (Application.isBatchMode)
             {
                 EditorApplication.Exit(0);
+            }
+        }
+
+        /// <summary>
+        /// Every animator controller an avatar under this root actually uses: the Animator slots
+        /// AND the descriptor's own layer lists, which is where a VRChat avatar really keeps them.
+        ///
+        /// These are the AUTHORED controllers, before VRCFury or Modular Avatar bake. That is the
+        /// right question for "what do avatar authors put on avatars", which is what this census
+        /// answers. It is NOT the same as what conversion sees — a bake generates layers and
+        /// behaviours of its own — and the honest source for post-bake numbers is the conversion
+        /// reports, which count what each pass actually met. Where the two disagree, the reports
+        /// win; see docs/ParityMatrix.md.
+        /// </summary>
+        static IEnumerable<RuntimeAnimatorController> ControllersOn(GameObject root)
+        {
+            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
+            {
+                if (animator.runtimeAnimatorController != null)
+                {
+                    yield return animator.runtimeAnimatorController;
+                }
+            }
+            foreach (var descriptor in root
+                         .GetComponentsInChildren<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true))
+            {
+                if (descriptor.baseAnimationLayers != null)
+                {
+                    foreach (var layer in descriptor.baseAnimationLayers)
+                    {
+                        if (!layer.isDefault && layer.animatorController != null)
+                        {
+                            yield return layer.animatorController;
+                        }
+                    }
+                }
+                if (descriptor.specialAnimationLayers != null)
+                {
+                    foreach (var layer in descriptor.specialAnimationLayers)
+                    {
+                        if (!layer.isDefault && layer.animatorController != null)
+                        {
+                            yield return layer.animatorController;
+                        }
+                    }
+                }
             }
         }
     }
