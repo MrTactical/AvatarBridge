@@ -1207,6 +1207,13 @@ The report names each one, because the editor gives no hint and the effect only 
 somebody sees it in game. Assign it a real material, or — if the system exists only to spawn
 another one and was never meant to be seen — turn its **Renderer** off.
 
+**If it used to have a picture and now draws as white squares, that was a bug of ours, fixed in
+3.5.47 — reconvert.** VRCFury bakes generated textures as sub-assets of a single file in its temp
+folder and deletes that folder on its next build. Conversion rescued the material and its shader
+out of there but left the *textures* pointing in, so the pictures died with the folder while
+everything else survived. It was never particle-specific; particles are just where a missing
+texture is unmistakable rather than merely wrong.
+
 ### A limb-lock, sit or flight toggle does nothing, and the report mentions protected clips
 
 Those toggles are driven by curves that switch a **constraint** on and off, and conversion normally
