@@ -2675,6 +2675,7 @@ namespace AvatarBridge
 
             var violations = new SortedSet<string>(StableSampleOrder.Instance);
             int violationCount = 0;
+            int deadCount = 0;
 
             for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
             {
@@ -2688,11 +2689,23 @@ namespace AvatarBridge
                 var owned = new List<EditorCurveBinding>();
                 foreach (var pair in owner)
                 {
-                    if (pair.Value == layerIndex && pair.Key.type != typeof(Animator)
-                        && !treeDriven.Contains(pair.Key))
+                    if (pair.Value != layerIndex || pair.Key.type == typeof(Animator)
+                        || treeDriven.Contains(pair.Key))
                     {
-                        owned.Add(pair.Key);
+                        continue;
                     }
+                    // A binding that no longer resolves on the avatar is a toggle over a ghost —
+                    // its object went with a stripped system (SPS sockets, deleted physbone
+                    // hosts). Nothing can restore it and nothing in game shows it either way, so
+                    // it is not a coverage gap. The first run of this checker reported 136
+                    // violations on one avatar and every visible one was this.
+                    if (!AnimationUtility.GetFloatValue(ctx.Target, pair.Key, out _)
+                        && !AnimationUtility.GetObjectReferenceValue(ctx.Target, pair.Key, out _))
+                    {
+                        deadCount++;
+                        continue;
+                    }
+                    owned.Add(pair.Key);
                 }
                 if (owned.Count == 0)
                 {
@@ -2738,6 +2751,14 @@ namespace AvatarBridge
                     "does not, so if a toggle over one of these switches off and never back on in " +
                     "game, this is why. Please report the avatar — the passes that close these " +
                     "gaps believed they had.");
+            }
+            if (deadCount > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{deadCount} animated propert(ies) point at objects that were removed",
+                    "Their toggles controlled systems this conversion stripped — SPS sockets, " +
+                    "deleted physics hosts — so the animation now points at nothing, and nothing " +
+                    "shows in game either way. Not a coverage gap; there is nothing left to restore.");
             }
         }
 
