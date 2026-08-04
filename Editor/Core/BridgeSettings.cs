@@ -33,6 +33,19 @@ namespace AvatarBridge
 
     /// <summary>
     /// All user-facing conversion options. Serialized so the editor window remembers them.
+    ///
+    /// A new setting has to land on one side of a line the window draws. If the avatar or the
+    /// project decides it — a count, a blendshape naming scheme, whether a package is installed —
+    /// it belongs in the window's "Automated options" card, and AvatarAdvisor should be taught to
+    /// measure it, because a setting hidden behind that warning with nothing setting it is just a
+    /// setting nobody will ever find. If the answer lives in the author's intent, in your workflow,
+    /// or in how the result looks when you wear it, it belongs in "Manual options" and the advisor
+    /// may report the evidence but must never apply it.
+    ///
+    /// The [Header] groupings below organise this file by subject and no longer line up with the
+    /// window's two cards. They are decoration for anyone reading the class — the window builds
+    /// its own layout in code, and JsonUtility serializes by field name, so neither the UI nor a
+    /// saved settings blob is affected by where a field sits under them.
     /// </summary>
     [Serializable]
     public class BridgeSettings

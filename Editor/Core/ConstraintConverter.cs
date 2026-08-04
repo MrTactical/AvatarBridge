@@ -33,6 +33,17 @@ namespace AvatarBridge
         /// </summary>
         static Dictionary<string, string> relocated = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Every VRChat constraint this pass converts, matched by type name because the SDK
+        /// versions that predate VRC constraints don't ship the types to compile against.
+        /// This gates <see cref="Run"/>'s loop, so it is the one list — see the comment there.
+        /// </summary>
+        internal static readonly string[] VrcConstraintTypeNames =
+        {
+            "VRCParentConstraint", "VRCPositionConstraint", "VRCRotationConstraint",
+            "VRCScaleConstraint", "VRCAimConstraint", "VRCLookAtConstraint"
+        };
+
         public static void Run(BridgeContext ctx)
         {
             if (!ctx.Settings.convertConstraints)
@@ -49,6 +60,10 @@ namespace AvatarBridge
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
             reparented = AlignLocalSpaceRelays(ctx);
+            // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
+            // beside it as a list someone has to remember to update: AvatarAdvisor counts what
+            // this pass would convert, and a name in one place but not the other would have it
+            // promising a conversion that never happens (or staying quiet about one that does).
             var realigned = reparented;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
@@ -57,6 +72,10 @@ namespace AvatarBridge
                     continue;
                 }
                 string typeName = component.GetType().Name;
+                if (Array.IndexOf(VrcConstraintTypeNames, typeName) < 0)
+                {
+                    continue;
+                }
                 bool ok;
                 try
                 {
@@ -68,7 +87,7 @@ namespace AvatarBridge
                         case "VRCScaleConstraint": ok = ConvertScale(ctx, component); break;
                         case "VRCAimConstraint": ok = ConvertAim(ctx, component); break;
                         case "VRCLookAtConstraint": ok = ConvertLookAt(ctx, component); break;
-                        default: continue;
+                        default: continue;   // unreachable: the guard above already filtered
                     }
                 }
                 catch (Exception e)

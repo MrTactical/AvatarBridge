@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEditor.Animations;
 using UnityEngine;
 using ABI.CCK.Components;
+using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
@@ -59,9 +60,17 @@ namespace AvatarBridge
         /// avatar it belongs to whatever emote system the author built, and that is not ours to
         /// condemn under a GoGo switch.
         /// </summary>
-        internal static bool AvatarUsesGogo(BridgeContext ctx)
+        internal static bool AvatarUsesGogo(BridgeContext ctx) =>
+            AvatarUsesGogo(ctx != null ? ctx.SourceDescriptor : null);
+
+        /// <summary>
+        /// The same question asked of a descriptor alone, for AvatarAdvisor: it runs before any
+        /// BridgeContext exists, and a separate "is this GoGo?" test in the advisor would be one
+        /// more place for the two to disagree about what the conversion is going to do.
+        /// </summary>
+        internal static bool AvatarUsesGogo(VRCAvatarDescriptor descriptor)
         {
-            var vrcParams = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+            var vrcParams = descriptor != null ? descriptor.expressionParameters : null;
             if (vrcParams == null || vrcParams.parameters == null)
             {
                 return false;

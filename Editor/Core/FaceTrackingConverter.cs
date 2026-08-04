@@ -74,52 +74,11 @@ namespace AvatarBridge
                 return;
             }
 
-            var legacyShapes = ReadShapeList("LegacyShapeNames", LegacyFallback);
-            var unifiedShapes = ReadShapeList("UnifiedShapeNames", UnifiedFallback);
+            bool detected = DetectShapes(ctx.Target,
+                ctx.CvrAvatar != null ? ctx.CvrAvatar.bodyMesh : null,
+                out var bestMesh, out bool bestIsUnified, out int bestScore);
 
-            SkinnedMeshRenderer bestMesh = null;
-            bool bestIsUnified = false;
-            int bestScore = 0;
-
-            foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0 || IsDebugMesh(smr))
-                {
-                    continue;
-                }
-                var shapeNames = ShapeNames(smr.sharedMesh);
-                int legacyScore = CountMatches(shapeNames, legacyShapes);
-                int unifiedScore = CountMatches(shapeNames, unifiedShapes);
-
-                bool isUnified = unifiedScore >= legacyScore;
-                int score = Mathf.Max(legacyScore, unifiedScore);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestMesh = smr;
-                    bestIsUnified = isUnified;
-                }
-            }
-
-            // The descriptor already named the face mesh, and it outranks any score: a scoring
-            // contest is only needed when nothing authoritative is available. Applied when the
-            // named mesh carries face-tracking shapes at all, so an avatar whose visemes and FT
-            // live on different meshes still resolves by score.
-            var named = ctx.CvrAvatar != null ? ctx.CvrAvatar.bodyMesh : null;
-            if (named != null && named != bestMesh && named.sharedMesh != null && !IsDebugMesh(named))
-            {
-                var namedShapes = ShapeNames(named.sharedMesh);
-                int namedLegacy = CountMatches(namedShapes, legacyShapes);
-                int namedUnified = CountMatches(namedShapes, unifiedShapes);
-                if (Mathf.Max(namedLegacy, namedUnified) >= DetectionThreshold)
-                {
-                    bestMesh = named;
-                    bestIsUnified = namedUnified >= namedLegacy;
-                    bestScore = Mathf.Max(namedLegacy, namedUnified);
-                }
-            }
-
-            if (bestMesh == null || bestScore < DetectionThreshold)
+            if (!detected)
             {
                 ctx.Report.Converted(Category, "No face-tracking blendshapes detected",
                     "Avatar isn't set up for face tracking, or uses an unrecognised shape naming scheme.");
@@ -146,6 +105,68 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Native CVR face tracking set up on \"{bestMesh.name}\"",
                 $"{mode} mode; {mapped} blendshapes auto-mapped. Review them on the CVRFaceTracking component.");
+        }
+
+        /// <summary>
+        /// Which mesh carries face-tracking blendshapes, and in whose naming scheme.
+        ///
+        /// Split out of Run so AvatarAdvisor can ask the question before a conversion exists.
+        /// The advisor recommending a face-tracking mode from its own shape list would be a
+        /// second opinion that drifts from this one the first time either changes — the point
+        /// of a recommendation is that the conversion then does what it said it would.
+        ///
+        /// <paramref name="named"/> is the mesh the CCK descriptor already names, which outranks
+        /// any score; it is null before conversion, where only the scoring pass is available.
+        /// Returns false when nothing reaches DetectionThreshold.
+        /// </summary>
+        internal static bool DetectShapes(GameObject root, SkinnedMeshRenderer named,
+            out SkinnedMeshRenderer mesh, out bool unified, out int score)
+        {
+            var legacyShapes = ReadShapeList("LegacyShapeNames", LegacyFallback);
+            var unifiedShapes = ReadShapeList("UnifiedShapeNames", UnifiedFallback);
+
+            mesh = null;
+            unified = false;
+            score = 0;
+
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0 || IsDebugMesh(smr))
+                {
+                    continue;
+                }
+                var shapeNames = ShapeNames(smr.sharedMesh);
+                int legacyScore = CountMatches(shapeNames, legacyShapes);
+                int unifiedScore = CountMatches(shapeNames, unifiedShapes);
+
+                bool isUnified = unifiedScore >= legacyScore;
+                int best = Mathf.Max(legacyScore, unifiedScore);
+                if (best > score)
+                {
+                    score = best;
+                    mesh = smr;
+                    unified = isUnified;
+                }
+            }
+
+            // The descriptor already named the face mesh, and it outranks any score: a scoring
+            // contest is only needed when nothing authoritative is available. Applied when the
+            // named mesh carries face-tracking shapes at all, so an avatar whose visemes and FT
+            // live on different meshes still resolves by score.
+            if (named != null && named != mesh && named.sharedMesh != null && !IsDebugMesh(named))
+            {
+                var namedShapes = ShapeNames(named.sharedMesh);
+                int namedLegacy = CountMatches(namedShapes, legacyShapes);
+                int namedUnified = CountMatches(namedShapes, unifiedShapes);
+                if (Mathf.Max(namedLegacy, namedUnified) >= DetectionThreshold)
+                {
+                    mesh = named;
+                    unified = namedUnified >= namedLegacy;
+                    score = Mathf.Max(namedLegacy, namedUnified);
+                }
+            }
+
+            return mesh != null && score >= DetectionThreshold;
         }
 
         static List<string> ShapeNames(Mesh mesh)

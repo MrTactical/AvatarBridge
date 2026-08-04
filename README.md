@@ -68,6 +68,7 @@ mid-2026:
 | | AvatarBridge | vrc3cvr (Narazaka) |
 |---|---|---|
 | Menus, parameters, gestures | ✅ | ✅ |
+| The settings picked *from your avatar* rather than from its documentation | ✅ [Analyse](#analyse-this-avatar) measures and offers each one | — |
 | PhysBones → DynamicBone | ✅ built in | via the external [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) |
 | PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
@@ -101,6 +102,12 @@ actually running.
 
 ## Highlights
 
+- **It reads your avatar and picks the settings for you.** Press
+  [**Analyse this avatar**](#analyse-this-avatar) and it measures what's actually there
+  — PhysBones, face-tracking blendshapes, shaders that lose an eye in VR, the layers the avatar
+  built itself — then offers each setting those decide. What it *can't* measure is kept separately
+  and never ticked for you, so the options you're asked to think about are only the ones that
+  genuinely need thinking about.
 - **VRCFury & Modular Avatar avatars work.** Fury's own builder (or NDMF's bake) runs first, so
   toggles, linked clothing and merged armatures survive — and Fury's VRChat-only sync workarounds
   are removed rather than carried across.
@@ -201,9 +208,13 @@ defines.
 **Tools → Avatar Bridge → VRChat to ChilloutVR Converter**, then:
 
 1. **Pick the avatar** in your scene.
-2. **Check the options** — physics target, face tracking mode, height scaler. Defaults suit most
-   avatars.
-3. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
+2. **Press "Analyse this avatar"** (greyed out until step 1). It reads the avatar and offers the
+   settings its own contents decide — physics target, face tracking mode, which layers to merge —
+   each with an **Apply**. Nothing changes until you press one.
+3. **Look at Manual options** — the handful of things the avatar can't tell you. Leaving them all
+   alone converts fine. Everything else lives in **Automated options**, folded away because the
+   analysis sets it.
+4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
    folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
    the report, then test in game.
 
@@ -653,57 +664,74 @@ Every setting in the window, with the default it ships with. Labels match the wi
 tooltip on each control says the same thing at more length. Per-chain physics tuning has its own
 table [above](#options) and isn't repeated here.
 
-**Convert tab**
+### Analyse this avatar
+
+The button above both option cards, greyed out until an avatar is picked. It reads the avatar as it
+sits in the scene — PhysBones, blendshapes, shaders, parameters and layers — and lists what it found
+against the settings those decide, each row with its own **Apply**. Nothing changes until you press
+one. Each check asks the converter's own question through the converter's own code, so a
+recommendation and the conversion that follows can't disagree.
+
+| row | means |
+|---|---|
+| **Recommended** | Measured, and the current setting doesn't match. **Apply all** takes these |
+| **Blocked** | The setting can't do what it says — a missing package, usually. Fix attached where there is one |
+| **Your call** | Nothing in the avatar answers this. Never included in **Apply all**; the button is a shortcut for a decision you've made, not one made for you |
+| **Already set** | Measured, and the current setting is right |
+| **Not needed** | Nothing on this avatar for the setting to act on, whichever way it's set |
+
+On a VRCFury or Modular Avatar setup it says so first: the scan runs *before* the bake, so every
+count is a floor and a zero means "none yet", not "none". That's also why it won't recommend
+switching physics off on a baked avatar whose hair and clothing haven't arrived yet.
+
+### Manual options — what the avatar can't tell you
+
+The card that stays open. Every row is a departure from the source avatar, a judgement about the
+author's intent, a choice about how *you* finish the avatar, or something only wearing it can
+settle. Leaving all of them alone converts fine.
+
+| setting | default | what it does |
+|---|---|---|
+| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, tags verbatim — instead of approximating with pointers and triggers. Talks to a component internal to the game |
+| **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
+| **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
+| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
+| **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
+| **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
+
+Four more manual rows appear under **Physics** in the same card when the target is MagicaCloth2 —
+**Convert toe PhysBones**, **Add physics to toggled rigs that have none**, **Transfer angle limits**
+and **Auto-assign nearby colliders**. They're described in the [physics table](#options) above and
+not repeated here.
+
+### Automated options — set from the avatar
+
+Folded away behind a warning, because each of these has a right answer the avatar already gives and
+Analyse sets them to match. Open it to override a measurement deliberately, not to browse.
 
 | setting | default | what it does |
 |---|---|---|
 | **Work on a clone (recommended)** | on | Converts a copy and leaves your original untouched. Turning it off edits the avatar in the scene |
-| **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
-| **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
-
-**Physics**
-
-| setting | default | what it does |
-|---|---|---|
-| **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback |
+| **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback. Analyse checks which is actually installed |
 | **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both, which uploads but simulates nothing |
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
-
-**Face tracking**
-
-| setting | default | what it does |
-|---|---|---|
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
-
-**Extras**
-
-| setting | default | what it does |
-|---|---|---|
-| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
-
-**Advanced options**
-
-| setting | default | what it does |
-|---|---|---|
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
-| **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom |
-| **Base / locomotion** | off | Brings across what VRChat kept in Base — toggles, blendshapes, materials, additive motion — and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion |
+| **Base / locomotion** | off | Brings across what VRChat kept in Base — toggles, blendshapes, materials, additive motion — and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo |
 | **Additive** | off | VRChat's additive layer, usually breathing |
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
-| **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything |
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
 | **Convert contact senders/receivers** | on | VRChat contacts become pointers and triggers, or [native contacts](#native-contacts) below |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
-| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, tags verbatim — instead of approximating with pointers and triggers. Talks to a component internal to the game |
-| **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added |
 | **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
+| **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
 
 ## Known limitations
 
