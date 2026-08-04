@@ -118,10 +118,12 @@ actually running.
   and many others are built.
 - **Readable output** — clothing toggles come out as one `Toggle <name>` layer each, on real
   `bool` parameters.
-- **Toggles that go both ways** — VRChat's standard toggle leaves its "off" state empty and lets
-  Write Defaults undo the change. Nothing carries that rule across, so those toggles used to switch
-  on and stay on. The off direction is now [real animation](#a-toggle-switches-on-but-never-back-off),
-  reusing your avatar's own clip where it has one.
+- **Toggles that go both ways** — VRChat's runtime quietly restores any property no animation is
+  writing (Write Defaults); ChilloutVR's does not, which is why avatars that behave perfectly in
+  VRChat used to come back one-way. Nothing is
+  [left to that rule](#a-toggle-switches-on-but-never-back-off) any more: every direction is real
+  animation, reusing your avatar's own clips where they exist, and the conversion **audits
+  itself** — anything still able to fall back to the runtime is named in the report.
 - **Your avatar's own locomotion crosses over** — custom walking, crouching, crawling, falling and
   sitting animations are grafted into ChilloutVR's locomotion layer, matched by blend-tree
   position; emotes move into the one layer that can both pose the body and hand it back; a flight
@@ -1115,25 +1117,20 @@ trees, which moves the empty "off" half one level down out of reach of the repai
 Fury avatar the wardrobe could still be one-way while everything else went both ways. Those are now
 filled as well. If your toggles stick on and you converted before 3.5.37, reconvert.
 
-**Two more spellings of the same idiom are caught from 3.5.48.** Fury sometimes leaves the empty
-half holding a shared clip with *no curves in it* rather than nothing at all — same meaning,
-invisible to the repair until now. And an **animation library** — a layer full of states with no
-transitions, where authors park clips for easy previewing — used to *count as animating* everything
-it held, so every real toggle sharing those clips was refused a restore as "owned by a lower layer"
-while the library, which can never play, restored nothing. One avatar shipped its entire wardrobe
-that way: every toggle switched off and never back on. Libraries no longer take part in deciding
-who restores a property.
-
-**And from 3.5.50, nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
+**From 3.6.0, nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
 property back to its default when no animation writes it; **ChilloutVR's does not** — measured in
-game, and it is why avatars that behave in VRChat come back one-way here. The layer that owns a
-property now asserts its value from *every* state it can rest in, so the game is never asked to
-fill a gap. Anything a blend tree drives anywhere is left to the tree — a constant assertion
-from a plain state would fight a parameter-driven value — and sliders, pass-through gates and
-muscle curves are excluded too; each of those has been a shipped bug before. The conversion then
-**audits itself**: any property that could still fall back to the runtime is named in the report
-as a warning, state by state, so this whole class of failure is caught at conversion time rather
-than discovered in game.
+game, and it is why avatars that behave perfectly in VRChat came back one-way here. The layer
+that owns a property now asserts its value from *every* state it can rest in, so the game is
+never asked to fill a gap. Two spellings of the empty-off idiom that used to slip through are
+caught as well: Fury parking a shared clip with *no curves in it* rather than nothing at all, and
+an **animation library** — a layer full of states with no transitions, where authors park clips
+for easy previewing — counting as animating everything it held, which refused every real toggle a
+restore while the library, which can never play, restored nothing. Anything a blend tree drives
+is left to the tree — a constant assertion from a plain state would fight a parameter-driven
+value — and sliders, pass-through gates and muscle curves are excluded too; each of those has
+been a shipped bug before. The conversion then **audits itself**: any property that could still
+fall back to the runtime is named in the report as a warning, state by state, so this whole class
+of failure is caught at conversion time rather than discovered in game.
 
 Four things worth knowing:
 
@@ -1149,7 +1146,7 @@ Four things worth knowing:
 
 ### Gestures play the wrong pose, or a hand sits in a fist at rest
 
-**Reconvert on 3.5.44 or later.**
+**Reconvert on 3.6.0 or later.**
 
 Some avatars keep a *second* copy of their hand-pose layers in the FX playable — layers literally
 called "Left Hand" and "Right Hand" alongside the real ones in the Gesture playable. In VRChat that
@@ -1205,7 +1202,7 @@ wrong to other players but right to you, that's the first thing to check.
 
 ### "VRCFury is installed but did not compile" — conversion refuses to start
 
-**From 3.5.42**, conversion stops before doing anything if the project has VRCFury, Modular Avatar
+**From 3.6.0**, conversion stops before doing anything if the project has VRCFury, Modular Avatar
 or NDMF installed but Unity never compiled it. That happens when an avatar or prop
 `.unitypackage` ships its own bundled copy and overwrites yours — usually leaving the folder
 in place but stripped of its `package.json`, which Unity needs to load a package at all.
@@ -1228,7 +1225,7 @@ somebody sees it in game. Assign it a real material, or — if the system exists
 another one and was never meant to be seen — turn its **Renderer** off.
 
 **If it used to have a picture and now draws as white squares, that was a bug of ours, fixed in
-3.5.47 — reconvert.** VRCFury bakes generated textures as sub-assets of a single file in its temp
+3.6.0 — reconvert.** VRCFury bakes generated textures as sub-assets of a single file in its temp
 folder and deletes that folder on its next build. Conversion rescued the material and its shader
 out of there but left the *textures* pointing in, so the pictures died with the folder while
 everything else survived. It was never particle-specific; particles are just where a missing
