@@ -85,6 +85,13 @@ removing a download is safe, and why the "never delete an old package" rule belo
   project's `Assets/Editor/` and its digests live in the gitignored `Regression/`. Dev-package
   metas are synthesized at build time from an md5 of the destination path, so they are stable
   across rebuilds and no `.meta` needs committing.
+- **`Tools/Regression/ToggleSweep.cs` drives every toggle and reports what doesn't come back.**
+  Reading the generated controller is not enough — a stuck wardrobe toggle was chased through
+  blend-tree shapes, layer indices, Write Defaults and ownership rules, and *every* static
+  explanation was wrong; the sweep found the real failures on its first run. Reach for it before
+  theorising about any "toggle doesn't work" report. Menu item, or `ToggleSweep.RunBatch` with
+  `AVATARBRIDGE_SWEEP_SCENE`. **Batch Unity cannot open a project that is already open in the
+  GUI** — it dies in `HandleProjectAlreadyOpenInAnotherInstance`, which reads as a crash.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
   `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC. **The plain config must include
   `Tools/Regression/*.cs`** — those files only compile in Unity when a test is actually deployed
