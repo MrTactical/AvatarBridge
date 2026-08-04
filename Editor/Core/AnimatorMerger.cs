@@ -382,7 +382,7 @@ namespace AvatarBridge
             AvatarScalerInjector.Inject(master, ctx);
             // After every layer that will exist, exists: the stack order it checks is the one
             // the game will run.
-            AuditHandPoseConflicts(master, convertingGestureLayer, ctx);
+            AuditHandPoseConflicts(master, ctx);
             // Run last: after every merge and injection, make sure no transition conditions
             // it on a parameter using a comparison its final type can't express (e.g. a
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
@@ -6484,12 +6484,28 @@ namespace AvatarBridge
         /// WITH one is skipped by it, and injected layers never pass through it at all. So this
         /// checks the finished stack rather than trusting the passes that built it.
         /// </summary>
-        static void AuditHandPoseConflicts(AnimatorController master, bool convertingGestureLayer, BridgeContext ctx)
+        internal static void AuditHandPoseConflictsForTest(AnimatorController master, BridgeContext ctx)
+            => AuditHandPoseConflicts(master, ctx);
+
+        static void AuditHandPoseConflicts(AnimatorController master, BridgeContext ctx)
         {
-            if (convertingGestureLayer)
-            {
-                return; // the avatar's own gesture layers ARE the hand pose — nothing to protect
-            }
+            // This used to return early when the gesture layer was being converted, reasoning that
+            // "the avatar's own gesture layers ARE the hand pose, so there is nothing to protect".
+            // That confuses the SOURCE of the pose with its SAFETY. The promoted LeftHand/RightHand
+            // layers are indeed the avatar's own — and something merged in above them can still
+            // overwrite the fingers they just posed.
+            //
+            // Reported from the wild on two avatars whose FX layer ALSO carried layers called
+            // "Left Hand" and "Right Hand". Both copies survived: the promoted pair at 2 and 3, the
+            // FX duplicates at 5 and 6, all unmasked and all at weight 1, so the FX pair won. On one
+            // of them the winning copy had no Idle state at all and a fist band starting at -0.9,
+            // which parks the hand in a fist at rest — reported as "gestures are just wrong, with
+            // the wrong thresholds". The promoted layer's own bands were correct throughout.
+            //
+            // It cannot happen in VRChat, which is why an avatar can ship like this and look fine:
+            // the FX playable layer there cannot drive humanoid muscles at all, so those FX hand
+            // layers never touched a finger. Merging everything into one controller hands them
+            // muscles they never had.
             var layers = master.layers;
             int handTop = -1;
             for (int i = 0; i < layers.Length; i++)
@@ -6511,25 +6527,38 @@ namespace AvatarBridge
             {
                 var layer = layers[i];
                 var mask = layer.avatarMask;
-                // A null mask is MaskMergedLayers' business, not this one's — flagging those
-                // here would fire on every injected layer we write ourselves.
-                if (mask == null || layer.defaultWeight <= 0f
-                    || layer.blendingMode != AnimatorLayerBlendingMode.Override)
+                if (layer.defaultWeight <= 0f || layer.blendingMode != AnimatorLayerBlendingMode.Override)
                 {
                     continue;
                 }
-                if (!mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
+                if (mask != null
+                    && !mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
                     && !mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers))
                 {
-                    continue;
+                    continue; // already cannot reach fingers
                 }
-                InspectLayerCurves(layer, out bool body, out _);
+                InspectLayerCurves(layer, out bool body, out bool fingers);
                 if (body)
                 {
                     // A layer that deliberately drives the body — a kept GoGo locomotion
                     // replacement, say. Silently stripping its fingers would be us overruling
                     // the author, so this one is the user's call.
                     warned.Add(layer.name);
+                    continue;
+                }
+                if (mask == null)
+                {
+                    // No mask at all, so nothing to edit — and this is the case that mattered.
+                    // Only act when the layer really animates fingers: giving a mask to a layer
+                    // that has none is a bigger intervention than editing one, and for a layer
+                    // with no finger curves it would change nothing anyway.
+                    if (!fingers)
+                    {
+                        continue;
+                    }
+                    layer.avatarMask = GetNoFingersMask(ctx);
+                    repaired.Add(layer.name);
+                    changed = true;
                     continue;
                 }
                 var stripped = new AvatarMask { name = mask.name + "_NoFingers" };
@@ -6561,11 +6590,16 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{repaired.Count} layer(s) above the hand-pose layers stopped from overwriting gestures",
                     $"{string.Join(", ", repaired.Take(6))}{(repaired.Count > 6 ? ", …" : "")} — each sat " +
-                    "above ChilloutVR's LeftHand/RightHand layers with a mask that let it write finger " +
-                    "muscles, which on Override at full weight replaces whatever pose the gesture just " +
-                    "played. Fingers were removed from their masks; everything else those layers animate " +
-                    "is untouched. This is what makes a gesture look \"dead\" in game while the CCK " +
-                    "Debugger shows the right clip playing at weight 1.");
+                    "above the LeftHand/RightHand layers and could write finger muscles, which on " +
+                    "Override at full weight replaces whatever pose the gesture just played. Fingers " +
+                    "are now masked off them; everything else those layers animate is untouched. " +
+                    "This is what makes a gesture look \"dead\" in game while the CCK Debugger shows " +
+                    "the right clip playing at weight 1 — and when the offender is a COPY of the " +
+                    "avatar's own hand layers that VRChat kept in its FX playable, the symptom is " +
+                    "stranger still: gestures that work but land on the wrong pose, or a hand stuck " +
+                    "in a fist at rest, because the copy that won was never the one driving fingers " +
+                    "in VRChat. FX cannot touch humanoid muscles there; merged into one ChilloutVR " +
+                    "controller it can.");
             }
             if (warned.Count > 0)
             {
@@ -9187,7 +9221,7 @@ namespace AvatarBridge
             }
         }
 
-        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask, _fingersOnlyMask;
+        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask, _fingersOnlyMask, _noFingersMask;
 
         static AvatarMask GetHandsOnlyMask() =>
             _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
@@ -9217,6 +9251,32 @@ namespace AvatarBridge
             return _fingersOnlyMask != null ? _fingersOnlyMask
                 : _fingersOnlyMask = BuildRigMask("AvatarBridge_FingersOnly", ctx,
                     AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+        }
+
+        /// <summary>
+        /// Everything EXCEPT fingers, for a layer that would otherwise overwrite a hand pose.
+        ///
+        /// Needed for layers that arrive with no mask at all. The hand-pose audit could only ever
+        /// edit an existing mask, so an unmasked layer sailed through it — and unmasked is exactly
+        /// what a merged FX layer full of finger curves ends up as, because MaskMergedLayers reads
+        /// muscle curves as deliberate body animation and leaves it alone.
+        /// </summary>
+        static AvatarMask GetNoFingersMask(BridgeContext ctx)
+        {
+            if (_noFingersMask != null)
+            {
+                return _noFingersMask;
+            }
+            var parts = new List<AvatarMaskBodyPart>();
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            {
+                var part = (AvatarMaskBodyPart)i;
+                if (part != AvatarMaskBodyPart.LeftFingers && part != AvatarMaskBodyPart.RightFingers)
+                {
+                    parts.Add(part);
+                }
+            }
+            return _noFingersMask = BuildRigMask("AvatarBridge_NoFingers", ctx, parts.ToArray());
         }
 
         static AvatarMask BuildRigMask(string name, BridgeContext ctx, params AvatarMaskBodyPart[] activeParts)
@@ -9280,7 +9340,7 @@ namespace AvatarBridge
         public static void ResetMaskCache()
         {
             _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
-            _noMuscleMask = _fingersOnlyMask = null;
+            _noMuscleMask = _fingersOnlyMask = _noFingersMask = null;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)

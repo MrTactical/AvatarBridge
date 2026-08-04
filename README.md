@@ -1099,6 +1099,25 @@ Four things worth knowing:
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 
+### Gestures play the wrong pose, or a hand sits in a fist at rest
+
+**Reconvert on 3.5.44 or later.**
+
+Some avatars keep a *second* copy of their hand-pose layers in the FX playable — layers literally
+called "Left Hand" and "Right Hand" alongside the real ones in the Gesture playable. In VRChat that
+copy is harmless, because the FX layer there **cannot drive humanoid muscles at all**, so it never
+touches a finger.
+
+Converted, everything lands in one animator, where it can. The copy sits above the real hand layers
+and wins — so gestures land on whatever *that* copy says. On one reported avatar the copy had no
+neutral state and a fist band starting below zero, which parked the hand in a fist at rest and made
+every threshold look wrong. The real layer had been correct all along.
+
+Conversion now masks fingers off any layer above the hand-pose layers that would otherwise write
+them, and names each one in the report. Layers that deliberately animate the **body** are left
+alone and warned about instead — silently overruling those would be the converter second-guessing
+the author.
+
 ### An emote's hand pose is wrong, or follows your gesture
 
 The dance plays, the body is right, and the hands hold whatever gesture your controller is
