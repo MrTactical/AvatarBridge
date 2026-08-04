@@ -99,7 +99,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
-            RepointConstraintCurves(ctx);
+            // NOT here any more. This rewrites curves in place, and at this point in the pipeline
+            // the clips are still the avatar author's own files — see RepointCurvesOnOurCopies.
             ReportLocalSpace(ctx, localSpaceRelays);
             ReportMirrored(ctx, mirrored);
             ReportDisabledLocalSpace(ctx, disabledLocalSpace);
@@ -234,6 +235,19 @@ namespace AvatarBridge
         /// already reports dropping it, and a curve driving it is dropped here for the same
         /// reason rather than left pointing at nothing.
         /// </summary>
+        /// <summary>
+        /// Repoints the curves that switch constraints on and off, AFTER AnimationSelfContainer has
+        /// copied every clip into this conversion's own folder.
+        ///
+        /// Split out of Run for that reason alone. Run creates the Unity constraints and populates
+        /// the relocation map; this rewrites clips, which may only happen once the clips are ours.
+        /// Run used to do both, which meant it edited the source avatar's animations — and a
+        /// package's, in one real project — because it sits nine passes before self-containment.
+        /// The SafeToRewrite guard inside still stands as a net, but the ordering is now the actual
+        /// protection rather than the apology for its absence.
+        /// </summary>
+        public static void RepointCurvesOnOurCopies(BridgeContext ctx) => RepointConstraintCurves(ctx);
+
         /// <summary>
         /// Whether a clip may be rewritten in place: it must be OURS, not the avatar author's.
         ///
