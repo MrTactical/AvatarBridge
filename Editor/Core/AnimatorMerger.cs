@@ -2734,8 +2734,12 @@ namespace AvatarBridge
                                 continue;
                             }
                             violationCount++;
+                            // The filler's own account of this layer, so a violation arrives
+                            // explaining itself instead of costing a reconversion round-trip.
+                            string verdict = restoreVerdicts.TryGetValue(layer.name, out string why)
+                                ? why : "filler never reached this layer";
                             violations.Add($"{layer.name}/{state.name}: {binding.path}:{PrettyProperty(binding)}"
-                                + (empty ? " (state asserts nothing)" : ""));
+                                + (empty ? " (state asserts nothing)" : "") + $" [filler: {verdict}]");
                         }
                     }
                 });
@@ -6910,6 +6914,13 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Why the empty-state filler did what it did, per layer, for the coverage checker to
+        /// print beside a violation. A violation without its refusal reason cost three
+        /// reconversion round-trips on one avatar; with it, the fix is named in the report.
+        /// </summary>
+        static readonly Dictionary<string, string> restoreVerdicts = new Dictionary<string, string>();
+
+        /// <summary>
         /// Gives every empty "off" state a real clip that restores what its layer animates.
         ///
         /// The VRChat idiom for a toggle is two states: one holding the clip that changes
@@ -6946,6 +6957,7 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
+            restoreVerdicts.Clear();
             int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
             // Bindings that named something this avatar no longer has. Counted because the two
             // skips below used to be silent, and when EVERY binding took one of them the pass
@@ -7027,6 +7039,9 @@ namespace AvatarBridge
                 });
                 if (empties.Count == 0 || (bindings.Count == 0 && objectBindings.Count == 0))
                 {
+                    restoreVerdicts[layer.name] = empties.Count == 0
+                        ? "no empty state to fill (every state already holds a motion, or is a router)"
+                        : "empty state found, but the layer animates nothing to restore";
                     continue;
                 }
                 // ONLY the two-state toggle. VRChat's idiom is exactly one empty "off" state and
@@ -7044,6 +7059,7 @@ namespace AvatarBridge
                 // rescues. Erring the other way changes what the avatar looks like.
                 if (stateCount != 2)
                 {
+                    restoreVerdicts[layer.name] = $"not a two-state toggle ({stateCount} states)";
                     notToggles.Add($"{layer.name} ({stateCount} states)");
                     continue;
                 }
@@ -7120,9 +7136,14 @@ namespace AvatarBridge
                 sharedSkipped += shared;
                 if (curves == 0)
                 {
+                    restoreVerdicts[layer.name] =
+                        $"candidate refused in full: {shared} propert(ies) owned elsewhere or " +
+                        "tree-driven, the rest unresolved or parameter-typed";
                     UnityEngine.Object.DestroyImmediate(clip);
                     continue;
                 }
+                restoreVerdicts[layer.name] = $"filled ({curves} curve(s))"
+                    + (shared > 0 ? $", {shared} refused as owned elsewhere or tree-driven" : "");
 
                 // Prefer the avatar's OWN animation. If the author already ships a clip that
                 // sets these same properties to these same values — the "on" half of a pair
@@ -7139,6 +7160,7 @@ namespace AvatarBridge
                         filled++;
                     }
                     layersTouched++;
+                    restoreVerdicts[layer.name] = $"filled by reusing the avatar's own \"{existing.name}\"";
                     names.Add($"{layer.name} (reused \"{existing.name}\")");
                     reused++;
                     continue;
