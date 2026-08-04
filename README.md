@@ -1115,6 +1115,15 @@ trees, which moves the empty "off" half one level down out of reach of the repai
 Fury avatar the wardrobe could still be one-way while everything else went both ways. Those are now
 filled as well. If your toggles stick on and you converted before 3.5.37, reconvert.
 
+**Two more spellings of the same idiom are caught from 3.5.48.** Fury sometimes leaves the empty
+half holding a shared clip with *no curves in it* rather than nothing at all — same meaning,
+invisible to the repair until now. And an **animation library** — a layer full of states with no
+transitions, where authors park clips for easy previewing — used to *count as animating* everything
+it held, so every real toggle sharing those clips was refused a restore as "owned by a lower layer"
+while the library, which can never play, restored nothing. One avatar shipped its entire wardrobe
+that way: every toggle switched off and never back on. Libraries no longer take part in deciding
+who restores a property.
+
 Four things worth knowing:
 
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.

@@ -2335,11 +2335,15 @@ namespace AvatarBridge
                 var l = master.layers[i];
                 if (l?.stateMachine == null) continue;
                 var here = new HashSet<EditorCurveBinding>();
+                // Same reachability rule as BuildRestoreOwnership: a library layer's orphan
+                // states can never play, so they own nothing — see LibraryDefaultState.
+                var onlyPlayable = LibraryDefaultState(l);
                 WalkMachines(l.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
-                        if (child.state?.motion is AnimationClip c)
+                        if (child.state?.motion is AnimationClip c
+                            && (onlyPlayable == null || child.state == onlyPlayable))
                         {
                             foreach (var binding in AnimationUtility.GetCurveBindings(c)) here.Add(binding);
                         }
@@ -6704,7 +6708,14 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        if (state.motion == null)
+                        // A curve-less clip IS an empty state. VRCFury does not leave its empty
+                        // toggle halves null — it parks a shared clip with no curves in them —
+                        // and the tree collector has accepted that spelling since the day it was
+                        // written, while this one demanded null. On a Fury avatar whose toggles
+                        // are state pairs, that asymmetry made every single one invisible here:
+                        // 'found candidates and produced nothing' with the candidates being only
+                        // the states some later strip had genuinely nulled.
+                        if (state.motion == null || IsCurveless(state.motion, null))
                         {
                             // An empty state is only an "off" state if the layer can REST in it.
                             // A router can't be rested in and must not be given values to assert.
@@ -6974,13 +6985,25 @@ namespace AvatarBridge
                 layerIndex++;
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
+                // Ownership only counts states Unity can actually reach. A library layer (see
+                // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
+                // states at layer 4, each holding one toggle's clip, awarded every property to
+                // a layer that can never play — so every live toggle above it was refused as
+                // "owned by a lower layer", the library restored nothing, and every toggle on
+                // the avatar switched off and never back on in game. Clips are still collected
+                // from everywhere: a library is exactly where an authored clip worth reusing
+                // by FindEquivalentClip lives.
+                var onlyPlayable = LibraryDefaultState(candidate);
                 WalkMachines(candidate.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
                         var motion = child.state != null ? child.state.motion : null;
                         CollectClips(motion, clips);
-                        CollectBindings(motion, floatsHere, objectsHere);
+                        if (onlyPlayable == null || child.state == onlyPlayable)
+                        {
+                            CollectBindings(motion, floatsHere, objectsHere);
+                        }
                     }
                 });
                 foreach (var binding in floatsHere.Concat(objectsHere))
@@ -6993,6 +7016,52 @@ namespace AvatarBridge
             }
             owner = owners;
             allClips = clips;
+        }
+
+        /// <summary>
+        /// The single state a layer can ever play, or null when the layer genuinely runs.
+        ///
+        /// A machine holding several states and not one transition anywhere — no state-to-state,
+        /// no AnyState, no Entry, none in any sub-machine — can only rest in its default state
+        /// forever. The rest is an animation LIBRARY: a place authors park clips so they are easy
+        /// to find and preview, common enough in VRChat FX controllers that one real avatar
+        /// shipped 75 of its toggles' clips this way. Unity cannot enter those states, so nothing
+        /// they animate can ever fight anything at runtime — which is exactly why they must not
+        /// take part in deciding which layer restores a property.
+        ///
+        /// Deliberately this narrow: zero transitions in the whole layer. A layer with even one
+        /// transition somewhere gets full ownership of everything it animates, reachable or not,
+        /// because partial reachability needs real graph analysis through entry/exit semantics and
+        /// a wrong answer here silently re-breaks toggles. Widen it only on evidence.
+        /// </summary>
+        static AnimatorState LibraryDefaultState(AnimatorControllerLayer layer)
+        {
+            var root = layer != null ? layer.stateMachine : null;
+            if (root == null)
+            {
+                return null;
+            }
+            int states = 0, transitions = 0;
+            WalkMachines(root, machine =>
+            {
+                states += machine.states.Length;
+                transitions += machine.anyStateTransitions.Length + machine.entryTransitions.Length;
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        transitions += child.state.transitions.Length;
+                    }
+                }
+                foreach (var sub in machine.stateMachines)
+                {
+                    if (sub.stateMachine != null)
+                    {
+                        transitions += machine.GetStateMachineTransitions(sub.stateMachine).Length;
+                    }
+                }
+            });
+            return states > 1 && transitions == 0 ? root.defaultState : null;
         }
 
         /// <summary>A 1D blend tree shaped like a toggle: one child animates, the other is empty.</summary>
