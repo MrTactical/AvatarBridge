@@ -6650,6 +6650,12 @@ namespace AvatarBridge
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
             int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
+            // Bindings that named something this avatar no longer has. Counted because the two
+            // skips below used to be silent, and when EVERY binding took one of them the pass
+            // reported "found candidates and produced nothing" with no way to tell which — see
+            // the failure branch at the bottom, where that question is finally answerable.
+            int unresolved = 0;
+            var unresolvedPaths = new SortedSet<string>(StableSampleOrder.Instance);
             var names = new List<string>();
             var keptClips = new HashSet<string>();
             // Layers whose empty states are structural rather than a toggle.s off half.
@@ -6774,6 +6780,11 @@ namespace AvatarBridge
                     }
                     if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
                     {
+                        // The clip names an object or property the converted avatar does not have
+                        // — stripped with a VRChat-only system, or renamed by a baker. There is no
+                        // current value to snapshot, so nothing can be restored here.
+                        unresolved++;
+                        unresolvedPaths.Add($"{binding.path}:{binding.propertyName}");
                         continue;
                     }
                     AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0f, 0f, value));
@@ -6788,6 +6799,8 @@ namespace AvatarBridge
                     }
                     if (!AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
                     {
+                        unresolved++;
+                        unresolvedPaths.Add($"{binding.path}:{binding.propertyName}");
                         continue;
                     }
                     AnimationUtility.SetObjectReferenceCurve(clip, binding,
@@ -6857,12 +6870,35 @@ namespace AvatarBridge
                 // rather than leave the report silent about a pass that ran and achieved zero.
                 if (candidates > 0)
                 {
+                    // Say WHY, which this used to leave out entirely — it counted the candidates,
+                    // asked to be told about it, and threw away the two numbers that answer the
+                    // question. Reported from an avatar whose seven toggles all switched on and
+                    // stayed on, where the report could only say that something had gone wrong.
+                    string because =
+                        unresolved > 0 && sharedSkipped > 0
+                            ? $" {unresolved} propert(ies) named something this avatar no longer has, and " +
+                              $"{sharedSkipped} belong to a lower layer, so nothing was left to restore."
+                        : unresolved > 0
+                            ? $" Every property they animate — {unresolved} of them — names something this " +
+                              "avatar no longer has, so there was no current value to snapshot. Removing a " +
+                              "VRChat-only system takes its objects with it, and a toggle that only ever " +
+                              "moved those has nothing left to restore: " +
+                              $"{string.Join(", ", unresolvedPaths.Take(4))}" +
+                              (unresolvedPaths.Count > 4 ? $", … ({unresolvedPaths.Count} paths)" : "") + "."
+                        : sharedSkipped > 0
+                            ? $" All {sharedSkipped} of the properties they animate are claimed by a lower " +
+                              "layer, which restores them instead — see the note about several layers " +
+                              "animating one thing. If these toggles do stick, that rule is picking the " +
+                              "wrong layer and the conversion is worth reporting."
+                            : " The pass found candidates and produced nothing, with no property either " +
+                              "unresolved or claimed elsewhere — which it should not do. Please report " +
+                              "this conversion.";
+
                     ctx.Report.Warning(Category,
                         $"{candidates} empty \"off\" state(s) were left without a restore animation",
                         "Each belongs to a toggle whose off direction now depends on Write Defaults " +
                         "putting the property back. If any of these switch on and never off again, " +
-                        "that is why. Please report it with this conversion — the pass that fills " +
-                        "them found candidates and produced nothing, which it should not do.");
+                        "that is why." + because);
                 }
                 return;
             }
