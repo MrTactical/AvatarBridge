@@ -42,6 +42,11 @@ release. The format, set by v2.68.4:
 - **Title**: `v<version> - <headline>` — the version comes FIRST, then the two or three headline
   fixes in plain words. The releases page is a scannable list; a prose-only title makes the reader
   cross-reference the tag column to see whether they already have it.
+- **Never mention internal tooling anywhere user-facing.** Release notes, README, store
+  description, report entries — the regression harness, the corpus, `ToggleSweep`, the build
+  script and this file do not exist as far as users are concerned. They are pruned from the public
+  package, so naming one describes something the reader cannot have. Internal *method* names that
+  ship inside `Editor/` are fine within the technical dropdown; a reader can grep those.
 
 Nobody reads a wall of text, and a changelog that isn't read may as well not exist. The same
 applies to report entries — say what broke and what to do, and put the mechanism somewhere
