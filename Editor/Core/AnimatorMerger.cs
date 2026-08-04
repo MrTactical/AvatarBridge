@@ -2411,6 +2411,12 @@ namespace AvatarBridge
                 }
 
                 var filled = new AnimationClip { name = SanitizeFileName($"{offClip.name} restore") };
+                // Same rule as the assertion pass's copies: settings travel with the curves, or a
+                // looping source comes back loop=False and freezes after one play.
+                AnimationUtility.SetAnimationClipSettings(filled,
+                    AnimationUtility.GetAnimationClipSettings(offClip));
+                filled.frameRate = offClip.frameRate;
+                filled.wrapMode = offClip.wrapMode;
                 foreach (var binding in AnimationUtility.GetCurveBindings(offClip))
                 {
                     AnimationUtility.SetEditorCurve(filled, binding, AnimationUtility.GetEditorCurve(offClip, binding));
@@ -2585,6 +2591,14 @@ namespace AvatarBridge
                         {
                             name = SanitizeFileName($"{layer.name} {state.name} restore")
                         };
+                        // Settings travel with the curves or the copy changes behaviour: an
+                        // 8.3-second looping animation topped by this pass came back loop=False,
+                        // playing once and freezing where the original cycled. Caught by the
+                        // corpus gate before release, on the first avatar checked.
+                        AnimationUtility.SetAnimationClipSettings(copy,
+                            AnimationUtility.GetAnimationClipSettings(current));
+                        copy.frameRate = current.frameRate;
+                        copy.wrapMode = current.wrapMode;
                         foreach (var b in haveFloats)
                         {
                             AnimationUtility.SetEditorCurve(copy, b, AnimationUtility.GetEditorCurve(current, b));
