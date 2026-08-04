@@ -162,6 +162,11 @@ namespace AvatarBridge.Regression
                       "afterwards.");
 
             var stuck = new List<string>();
+            // How many parameters visibly did ANYTHING when driven. Without this the tool cannot
+            // tell "every toggle came back" from "I never moved a thing", and reports the two
+            // identically — which is how it came back clean twice on an avatar with a toggle that
+            // is broken in game, and neither result meant anything.
+            int responded = 0;
             foreach (var parameter in parameters)
             {
                 float original = animator.GetFloat(parameter);
@@ -169,9 +174,15 @@ namespace AvatarBridge.Regression
 
                 animator.SetFloat(parameter, 1f);
                 Settle(animator, SettleFrames);
+                bool moves = watch.Differences(before).Count > 0;
+
                 animator.SetFloat(parameter, original);
                 Settle(animator, SettleFrames);
 
+                if (moves)
+                {
+                    responded++;
+                }
                 var moved = watch.Differences(before);
                 if (moved.Count == 0)
                 {
@@ -185,11 +196,28 @@ namespace AvatarBridge.Regression
 
             animator.cullingMode = culling;
 
-            Debug.Log(stuck.Count == 0
-                ? $"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where they " +
-                  "started. Note this is not the same as \"nothing is wrong\": edit-mode evaluation is " +
-                  "unproven, and anything the watchlist does not cover is invisible to it."
-                : $"[Sweep] {stuck.Count} of {parameters.Length} left something stuck: {string.Join(", ", stuck)}");
+            if (responded == 0)
+            {
+                // Not a clean bill of health — the opposite. Driving 65 parameters and observing
+                // nothing move even WHILE they were held at 1 means the avatar was never actually
+                // animated, so every "came back fine" below it is vacuous.
+                Debug.LogError($"[Sweep] INVALID RUN — none of the {parameters.Length} parameters changed " +
+                               "anything even while held on, so nothing was really being driven. Edit-mode " +
+                               "Animator.Update is the likely culprit and this result says NOTHING about " +
+                               "the avatar. Do not read the line below as a pass.");
+            }
+            else if (stuck.Count == 0)
+            {
+                Debug.Log($"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where " +
+                          $"they started, and {responded} of them demonstrably moved something while on, " +
+                          "so the sweep was really driving the avatar. Still not the same as \"nothing is " +
+                          "wrong\": anything outside the watchlist is invisible to it.");
+            }
+            else
+            {
+                Debug.Log($"[Sweep] {stuck.Count} of {parameters.Length} left something stuck " +
+                          $"({responded} moved something while on): {string.Join(", ", stuck)}");
+            }
             return stuck.Count;
         }
 
