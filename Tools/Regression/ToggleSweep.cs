@@ -34,6 +34,12 @@ namespace AvatarBridge.Regression
     ///   which includes the constant-1 weights a Direct tree needs) are left alone. Sweeping those
     ///   measures ChilloutVR, or breaks the avatar outright.
     ///
+    ///   Four kinds of state are watched, not just object activity. The first version only checked
+    ///   GameObject.activeSelf and came back clean on an avatar whose toggles were reported broken —
+    ///   which proves nothing either way, because a toggle that drives a BLENDSHAPE, swaps a
+    ///   material or flips Renderer.enabled was invisible to it. "Toggles something off and not back
+    ///   on" describes all four equally.
+    ///
     /// Edit mode rather than play mode, driving <c>Animator.Update</c> by hand: the harness lives in
     /// an Editor folder, so a runtime MonoBehaviour cannot ship with it.
     ///
@@ -55,6 +61,9 @@ namespace AvatarBridge.Regression
 
         /// <summary>Frames before the first measurement, so the controller reaches its resting pose.</summary>
         const int Warmup = 40;
+
+        /// <summary>Blendshape weights run 0..100, so this is a hundredth of a percent.</summary>
+        const float Epsilon = 0.01f;
 
         /// <summary>
         /// Driven by ChilloutVR itself. Sweeping one of these measures the game rather than the
@@ -139,7 +148,7 @@ namespace AvatarBridge.Regression
                 return 0;
             }
 
-            var all = root.GetComponentsInChildren<Transform>(true);
+            var watch = new Watchlist(root);
             // Without this an off-screen avatar simply is not evaluated, and every reading is the
             // pose it was built in.
             var culling = animator.cullingMode;
@@ -147,21 +156,23 @@ namespace AvatarBridge.Regression
             animator.Rebind();
             Settle(animator, Warmup);
 
-            Debug.Log($"[Sweep] \"{root.name}\": {parameters.Length} parameter(s) over {all.Length} objects. " +
-                      "This moves things in the open scene and does not put them back — reload it afterwards.");
+            Debug.Log($"[Sweep] \"{root.name}\": {parameters.Length} parameter(s) over {watch.Count} watched " +
+                      "propert(ies) — object activity, renderer enable, blendshape weights and material " +
+                      "slots. This moves things in the open scene and does not put them back — reload it " +
+                      "afterwards.");
 
             var stuck = new List<string>();
             foreach (var parameter in parameters)
             {
                 float original = animator.GetFloat(parameter);
-                var before = Snapshot(all);
+                var before = watch.Capture();
 
                 animator.SetFloat(parameter, 1f);
                 Settle(animator, SettleFrames);
                 animator.SetFloat(parameter, original);
                 Settle(animator, SettleFrames);
 
-                var moved = Differences(all, before);
+                var moved = watch.Differences(before);
                 if (moved.Count == 0)
                 {
                     continue;
@@ -175,7 +186,9 @@ namespace AvatarBridge.Regression
             animator.cullingMode = culling;
 
             Debug.Log(stuck.Count == 0
-                ? $"[Sweep] PASS — all {parameters.Length} toggle(s) came back to where they started."
+                ? $"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where they " +
+                  "started. Note this is not the same as \"nothing is wrong\": edit-mode evaluation is " +
+                  "unproven, and anything the watchlist does not cover is invisible to it."
                 : $"[Sweep] {stuck.Count} of {parameters.Length} left something stuck: {string.Join(", ", stuck)}");
             return stuck.Count;
         }
@@ -188,27 +201,132 @@ namespace AvatarBridge.Regression
             }
         }
 
-        static bool[] Snapshot(Transform[] all)
+        /// <summary>
+        /// Everything a toggle can plausibly leave behind, addressed once so each sweep is a cheap
+        /// array read rather than another walk of the hierarchy.
+        ///
+        /// Labels are built once and reused, because they are only wanted when something has already
+        /// gone wrong — building a few thousand strings per parameter to describe a clean result is
+        /// most of the run time for no benefit.
+        /// </summary>
+        sealed class Watchlist
         {
-            var state = new bool[all.Length];
-            for (int i = 0; i < all.Length; i++)
+            readonly string[] labels;
+            readonly Transform[] objects;
+            readonly Renderer[] renderers;
+            readonly SkinnedMeshRenderer[] skins;
+            readonly int blendShapeTotal;
+
+            public int Count => labels.Length;
+
+            public Watchlist(GameObject root)
             {
-                state[i] = all[i] != null && all[i].gameObject.activeSelf;
+                objects = root.GetComponentsInChildren<Transform>(true);
+                renderers = root.GetComponentsInChildren<Renderer>(true);
+                skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+
+                var names = new List<string>();
+                foreach (var t in objects)
+                {
+                    names.Add($"{t.name} active");
+                }
+                foreach (var r in renderers)
+                {
+                    names.Add($"{r.name} renderer");
+                    for (int i = 0; i < r.sharedMaterials.Length; i++)
+                    {
+                        names.Add($"{r.name} material[{i}]");
+                    }
+                }
+                blendShapeTotal = 0;
+                foreach (var s in skins)
+                {
+                    var mesh = s.sharedMesh;
+                    int shapes = mesh != null ? mesh.blendShapeCount : 0;
+                    for (int i = 0; i < shapes; i++)
+                    {
+                        names.Add($"{s.name}.{mesh.GetBlendShapeName(i)}");
+                        blendShapeTotal++;
+                    }
+                }
+                labels = names.ToArray();
             }
-            return state;
+
+            /// <summary>
+            /// One reading of every watched property. Numbers and object references are kept apart
+            /// so a material swap is compared by identity rather than by anything derived from it.
+            /// </summary>
+            public Reading Capture()
+            {
+                var numbers = new float[objects.Length + renderers.Length + blendShapeTotal];
+                var references = new Object[labels.Length - numbers.Length];
+                int n = 0, r = 0;
+
+                foreach (var t in objects)
+                {
+                    numbers[n++] = t != null && t.gameObject.activeSelf ? 1f : 0f;
+                }
+                foreach (var renderer in renderers)
+                {
+                    numbers[n++] = renderer != null && renderer.enabled ? 1f : 0f;
+                    var mats = renderer != null ? renderer.sharedMaterials : new Material[0];
+                    foreach (var m in mats)
+                    {
+                        references[r++] = m;
+                    }
+                }
+                foreach (var s in skins)
+                {
+                    var mesh = s != null ? s.sharedMesh : null;
+                    int shapes = mesh != null ? mesh.blendShapeCount : 0;
+                    for (int i = 0; i < shapes; i++)
+                    {
+                        numbers[n++] = s.GetBlendShapeWeight(i);
+                    }
+                }
+                return new Reading { Numbers = numbers, References = references };
+            }
+
+            /// <summary>
+            /// What changed since that reading, named. The label array interleaves numbers and
+            /// references, so both cursors walk it in the order the constructor built it.
+            /// </summary>
+            public List<string> Differences(Reading before)
+            {
+                var now = Capture();
+                var moved = new List<string>();
+                int n = 0, r = 0;
+
+                for (int i = 0; i < labels.Length; i++)
+                {
+                    bool isReference = labels[i].Contains(" material[");
+                    if (isReference)
+                    {
+                        if (before.References[r] != now.References[r])
+                        {
+                            string was = before.References[r] != null ? before.References[r].name : "none";
+                            string got = now.References[r] != null ? now.References[r].name : "none";
+                            moved.Add($"{labels[i]} {was} → {got}");
+                        }
+                        r++;
+                    }
+                    else
+                    {
+                        if (Mathf.Abs(before.Numbers[n] - now.Numbers[n]) > Epsilon)
+                        {
+                            moved.Add($"{labels[i]} {before.Numbers[n]:0.##} → {now.Numbers[n]:0.##}");
+                        }
+                        n++;
+                    }
+                }
+                return moved;
+            }
         }
 
-        static List<string> Differences(Transform[] all, bool[] before)
+        public struct Reading
         {
-            var moved = new List<string>();
-            for (int i = 0; i < all.Length; i++)
-            {
-                if (all[i] != null && all[i].gameObject.activeSelf != before[i])
-                {
-                    moved.Add($"{all[i].name} → {(all[i].gameObject.activeSelf ? "ON" : "OFF")}");
-                }
-            }
-            return moved;
+            public float[] Numbers;
+            public Object[] References;
         }
 
         /// <summary>
