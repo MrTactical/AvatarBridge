@@ -364,11 +364,17 @@ namespace AvatarBridge
             // empty — so running this first makes it impossible for it to re-process the filler's
             // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
             // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
-            RestorePartialOffStates(master, ctx);
-            // One shared name registry, so the two restore passes cannot overwrite each other's
-            // clips: both write "<thing> restore.anim" into one folder, and a nativized toggle
-            // layer and the tree Fury built from that same toggle are named alike often enough.
+            // One shared registry of every restore clip THIS conversion writes, created before
+            // the first pass that writes one. The empty-state filler sweeps stale " restore"
+            // files out of the output folder and can only spare what it knows about — and it
+            // used to know only its own. The partial-off topping that ran moments earlier had
+            // its freshly written clips DELETED on every conversion: the report swore the states
+            // were topped, the coverage checker swore they asserted nothing, and both were
+            // telling the truth, one sweep apart. The registry also stops the passes overwriting
+            // each other's names: a nativized toggle layer and the tree Fury built from that
+            // same toggle are named alike often enough.
             var restoreClipPaths = new HashSet<string>();
+            RestorePartialOffStates(master, ctx, restoreClipPaths);
             FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
             // AFTER the state pass, which sweeps stale " restore" clips out of the output folder
             // using only ITS OWN keep list — run the other way round, that sweep would delete the
@@ -2322,7 +2328,8 @@ namespace AvatarBridge
         /// what it forgot. Only the forgotten bindings are added; its own curves are copied over
         /// untouched.
         /// </summary>
-        static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx)
+        static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx,
+            HashSet<string> writtenPaths)
         {
             var topped = new List<string>();
             int curvesAdded = 0;
@@ -2458,6 +2465,10 @@ namespace AvatarBridge
                     AssetDatabase.DeleteAsset(target);
                 }
                 AssetDatabase.CreateAsset(filled, target);
+                // Register with the shared sweep-survivor list, or the empty-state filler's
+                // stale-clip sweep deletes this file minutes from now — see the registry comment
+                // at the call site.
+                writtenPaths.Add(target);
                 offState.motion = filled;
                 EditorUtility.SetDirty(offState);
                 curvesAdded += added;
@@ -7234,7 +7245,10 @@ namespace AvatarBridge
                 }
                 return;
             }
-            int stale = DeleteStaleRestoreClips(dir, keptClips);
+            // Spare EVERYTHING the shared registry knows about, not just this pass's own files —
+            // writtenPaths carries the partial-off topping's clips too, written moments before
+            // this sweep, referenced by live states, and deleted by it for four versions.
+            int stale = DeleteStaleRestoreClips(dir, writtenPaths);
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
                 $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
