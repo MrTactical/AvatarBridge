@@ -375,6 +375,11 @@ namespace AvatarBridge
             // tree clips written moments earlier. Both run BEFORE FillEmptyMotionSlots, so the off
             // halves they repair are still genuine holes rather than placeholders.
             FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
+            // AFTER both fillers, so the clips they wrote are seen and topped only where still
+            // missing something. This is the pass that stops relying on Write Defaults at all:
+            // ChilloutVR does not restore WD defaults the way VRChat's runtime does, so a binding
+            // left to WD is a binding left to nothing.
+            AssertOwnedBindingsEverywhere(master, ctx);
             // AFTER the filler, whose motions are what turned this from harmless into a strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
@@ -2471,6 +2476,187 @@ namespace AvatarBridge
                     "the value the property has on this avatar right now, so it returns properly. If one of " +
                     "these should rest somewhere else, set that up before converting: whatever is true at " +
                     "conversion time is what \"off\" now means.");
+            }
+        }
+
+        /// <summary>
+        /// Every property a layer OWNS is asserted from every state that layer can rest in.
+        ///
+        /// ChilloutVR does not fall back to Write Defaults the way VRChat's runtime does —
+        /// measured in game, twice, on one avatar: every toggle whose "on" direction was an
+        /// empty state switched off and never back on, while toggles whose states assert their
+        /// properties kept working. So the owner arbitration ("the lowest layer animating a
+        /// property restores it; higher layers stay silent") only functions if the owner
+        /// actually SPEAKS from every state it can rest in. Before this pass it spoke only from
+        /// clips that happened to mention the property — an exclusive-wear wardrobe, where one
+        /// outfit's clip also hides the other garments, left most owners silent at rest and the
+        /// whole wardrobe one-way in game.
+        ///
+        /// Deliberately left alone, each for a reason that has already shipped as a bug or been
+        /// measured as a fight:
+        ///   * bindings that appear inside any blend tree in the SAME layer — a slider owns its
+        ///     value, and pinning it from a plain state reverts the slider whenever the layer
+        ///     rests (the Reset state that flattened seven chest blendshapes);
+        ///   * states with no clip at all — a 2-state toggle's empty half is the empty-state
+        ///     filler's job, and anything larger left empty is structural;
+        ///   * pass-through states — a local/remote gate is never rested in;
+        ///   * Animator-typed bindings — muscles and animated parameters are not scene state;
+        ///   * unreachable library states, protected layers, and states holding blend trees.
+        /// </summary>
+        static void AssertOwnedBindingsEverywhere(AnimatorController master, BridgeContext ctx)
+        {
+            BuildRestoreOwnership(master.layers, out var owner, out _);
+
+            int curvesAddedTotal = 0;
+            var touched = new List<string>();
+
+            for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
+            {
+                var layer = master.layers[layerIndex];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                var onlyPlayable = LibraryDefaultState(layer);
+
+                // What this layer animates from plain clip states, and separately what its blend
+                // trees animate — the latter is excluded from assertions wholesale (slider rule).
+                var stateFloats = new HashSet<EditorCurveBinding>();
+                var stateObjects = new HashSet<EditorCurveBinding>();
+                var treeFloats = new HashSet<EditorCurveBinding>();
+                var treeObjects = new HashSet<EditorCurveBinding>();
+                var states = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null || (onlyPlayable != null && state != onlyPlayable))
+                        {
+                            continue;
+                        }
+                        states.Add(state);
+                        if (state.motion is AnimationClip clip)
+                        {
+                            foreach (var b in AnimationUtility.GetCurveBindings(clip)) stateFloats.Add(b);
+                            foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip)) stateObjects.Add(b);
+                        }
+                        else if (state.motion != null)
+                        {
+                            CollectBindings(state.motion, treeFloats, treeObjects);
+                        }
+                    }
+                });
+
+                var ownedFloats = stateFloats.Where(b => b.type != typeof(Animator)
+                    && !treeFloats.Contains(b)
+                    && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
+                var ownedObjects = stateObjects.Where(b => !treeObjects.Contains(b)
+                    && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
+                if (ownedFloats.Count == 0 && ownedObjects.Count == 0)
+                {
+                    continue;
+                }
+
+                int addedThisLayer = 0;
+                foreach (var state in states)
+                {
+                    if (!(state.motion is AnimationClip current) || IsPassThroughState(state))
+                    {
+                        continue;
+                    }
+                    var haveFloats = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(current));
+                    var haveObjects = new HashSet<EditorCurveBinding>(AnimationUtility.GetObjectReferenceCurveBindings(current));
+
+                    AnimationClip copy = null;
+                    int added = 0;
+                    AnimationClip Copy()
+                    {
+                        if (copy != null)
+                        {
+                            return copy;
+                        }
+                        copy = new AnimationClip
+                        {
+                            name = SanitizeFileName($"{layer.name} {state.name} restore")
+                        };
+                        foreach (var b in haveFloats)
+                        {
+                            AnimationUtility.SetEditorCurve(copy, b, AnimationUtility.GetEditorCurve(current, b));
+                        }
+                        foreach (var b in haveObjects)
+                        {
+                            AnimationUtility.SetObjectReferenceCurve(copy, b,
+                                AnimationUtility.GetObjectReferenceCurve(current, b));
+                        }
+                        return copy;
+                    }
+
+                    foreach (var binding in ownedFloats)
+                    {
+                        if (haveFloats.Contains(binding)
+                            || !AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetEditorCurve(Copy(), binding, AnimationCurve.Constant(0f, 0f, value));
+                        added++;
+                    }
+                    foreach (var binding in ownedObjects)
+                    {
+                        if (haveObjects.Contains(binding)
+                            || !AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetObjectReferenceCurve(Copy(), binding,
+                            new[] { new ObjectReferenceKeyframe { time = 0f, value = value } });
+                        added++;
+                    }
+                    if (added == 0)
+                    {
+                        continue;
+                    }
+
+                    // Same home, claiming and delete-first rules as the other restore writers, so
+                    // reconversion replaces cleanly instead of stacking numbered copies.
+                    string target = OutputAssetPaths.Claim(
+                        $"{ctx.OutputDir}/RehomedAssets/{copy.name}.anim");
+                    var folder = System.IO.Path.GetDirectoryName(target).Replace('\\', '/');
+                    if (!AssetDatabase.IsValidFolder(folder))
+                    {
+                        System.IO.Directory.CreateDirectory(folder);
+                        AssetDatabase.Refresh();
+                    }
+                    if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
+                    {
+                        AssetDatabase.DeleteAsset(target);
+                    }
+                    AssetDatabase.CreateAsset(copy, target);
+                    state.motion = copy;
+                    EditorUtility.SetDirty(state);
+                    addedThisLayer += added;
+                }
+
+                if (addedThisLayer > 0)
+                {
+                    curvesAddedTotal += addedThisLayer;
+                    touched.Add($"\"{layer.name}\" ({addedThisLayer})");
+                }
+            }
+
+            if (touched.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{touched.Count} layer(s) now assert everything they own, from every state",
+                    $"{string.Join(", ", touched.Take(8))}{(touched.Count > 8 ? ", …" : "")} — " +
+                    $"{curvesAddedTotal} propert(ies) in total. VRChat quietly puts a property back " +
+                    "to its default when no animation is writing it (Write Defaults); ChilloutVR " +
+                    "does not, so anything left to that rule switches off and never back on in " +
+                    "game. Each layer that owns a property now states its value from every state " +
+                    "it can rest in, so nothing is ever left to the runtime's discretion. Whatever " +
+                    "is true at conversion time is what those values are — set the avatar up the " +
+                    "way it should rest before converting.");
             }
         }
 

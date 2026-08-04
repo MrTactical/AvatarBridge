@@ -1124,6 +1124,13 @@ while the library, which can never play, restored nothing. One avatar shipped it
 that way: every toggle switched off and never back on. Libraries no longer take part in deciding
 who restores a property.
 
+**And from 3.5.49, nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
+property back to its default when no animation writes it; **ChilloutVR's does not** — measured in
+game, and it is why avatars that behave in VRChat come back one-way here. The layer that owns a
+property now asserts its value from *every* state it can rest in, so the game is never asked to
+fill a gap. Sliders, pass-through gates and muscle curves are deliberately excluded — each of
+those has been a shipped bug before.
+
 Four things worth knowing:
 
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
