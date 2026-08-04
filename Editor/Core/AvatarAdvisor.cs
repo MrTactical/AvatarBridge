@@ -39,6 +39,15 @@ namespace AvatarBridge
         public string Finding;
         /// <summary>Applies the recommendation. Null when there is nothing to change.</summary>
         public Action<BridgeSettings> Apply;
+
+        /// <summary>
+        /// What the finding is about, so the window can select it in the Hierarchy or Project.
+        ///
+        /// "3 chains run through toe bones" is a number until you can see WHICH three. Counting
+        /// something and then leaving the reader to find it by hand is half a finding — and on an
+        /// avatar with two hundred objects, the half that was actually hard.
+        /// </summary>
+        public UnityEngine.Object[] Targets;
     }
 
     /// <summary>
@@ -230,7 +239,7 @@ namespace AvatarBridge
             }
 
             var animator = root.GetComponent<Animator>();
-            int chains = 0;
+            var chains = new List<UnityEngine.Object>();
             foreach (var pb in physBones)
             {
                 if (pb == null)
@@ -239,10 +248,10 @@ namespace AvatarBridge
                 }
                 if (PhysBoneChainData.Read(pb, animator, true).ToeExclusions.Count > 0)
                 {
-                    chains++;
+                    chains.Add(pb.gameObject);
                 }
             }
-            if (chains == 0)
+            if (chains.Count == 0)
             {
                 return;
             }
@@ -251,11 +260,12 @@ namespace AvatarBridge
             {
                 Kind = AdviceKind.Manual,
                 Setting = "Convert toe PhysBones",
-                Finding = $"{chains} chain{(chains == 1 ? " runs" : "s run")} through toe bones. They are " +
-                          "excluded by default: simulated toes splay and swing while the foot itself is " +
-                          "planted by IK, which reads as broken feet rather than as physics. Your call — " +
-                          "turn it on if this avatar's toe physics are deliberate.",
+                Finding = $"{chains.Count} chain{(chains.Count == 1 ? " runs" : "s run")} through toe bones. " +
+                          "They are excluded by default: simulated toes splay and swing while the foot " +
+                          "itself is planted by IK, which reads as broken feet rather than as physics. " +
+                          "Your call — turn it on if this avatar's toe physics are deliberate.",
                 Apply = s => s.convertToePhysBones = true,
+                Targets = chains.ToArray(),
             });
         }
 
@@ -281,6 +291,7 @@ namespace AvatarBridge
                         Setting = "Face tracking",
                         Finding = $"{where}. ChilloutVR's own component reads them directly — no OSC and " +
                                   "no per-shape animator layers needed.",
+                        Targets = new UnityEngine.Object[] { mesh.gameObject },
                     });
                 }
                 else
@@ -293,6 +304,7 @@ namespace AvatarBridge
                                   "which is the cheapest and most reliable route — it needs no extra " +
                                   "package and spends no animator layers.",
                         Apply = s => s.faceTrackingMode = FaceTrackingMode.Native,
+                        Targets = new UnityEngine.Object[] { mesh.gameObject },
                     });
                 }
                 return;
@@ -407,6 +419,7 @@ namespace AvatarBridge
 
             var checkedShaders = new HashSet<Shader>();
             var missing = new List<string>();
+            var offenders = new List<UnityEngine.Object>();
             foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
             {
                 foreach (var material in renderer.sharedMaterials)
@@ -422,6 +435,9 @@ namespace AvatarBridge
                     if (source != null && !ShaderSpiPatcher.DeclaresStereo(source))
                     {
                         missing.Add(shader.name);
+                        // The shader asset, not the renderer: one shader is usually worn by
+                        // several meshes, and the thing to go and look at is the shader.
+                        offenders.Add(shader);
                     }
                 }
             }
@@ -445,6 +461,7 @@ namespace AvatarBridge
                           "copy is checked for compile errors and nothing more — whether it LOOKS right " +
                           "can only be judged with the avatar on, in both eyes.",
                 Apply = s => s.patchNonSpiShaders = true,
+                Targets = offenders.ToArray(),
             });
         }
 

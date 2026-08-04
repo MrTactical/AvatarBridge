@@ -95,6 +95,10 @@ namespace AvatarBridge
                 AssetDatabase.SaveAssets();
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
+                // The window resolves report subjects against this to offer "Show". Selection
+                // would have done at a pinch, but it is whatever the user clicked last by the
+                // time they read the report.
+                report.ConvertedRoot = ctx.Target;
 
                 report.Converted("Conversion", "Finished",
                     $"\"{ctx.Target.name}\" is ready for the CCK upload checks.");

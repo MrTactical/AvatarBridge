@@ -235,6 +235,7 @@ namespace AvatarBridge
                 // Findings belong to the avatar they were measured on. Keeping them across a
                 // swap would show one avatar's shader and PhysBone counts under another's name.
                 advice = null;
+                adviceFilter = null;
                 ScheduleRebuild();
             });
             parent.Add(field);
@@ -286,7 +287,7 @@ namespace AvatarBridge
                 "Reads the avatar as it sits in the scene — PhysBones, blendshapes, shaders, " +
                 "parameters and layers — and offers the settings those decide. Nothing changes " +
                 "until you apply it.",
-                () => { advice = AvatarAdvisor.Analyse(avatar, settings); ScheduleRebuild(); });
+                () => { Reanalyse(); ScheduleRebuild(); });
             button.SetEnabled(avatar != null);
             parent.Add(button);
 
@@ -333,6 +334,33 @@ namespace AvatarBridge
                 }
             }
 
+            // Deliberately the same shape as the conversion report below — banner, then chips,
+            // then rows. They answer the same kind of question at opposite ends of the job, and
+            // two different-looking lists in one window is two things to learn instead of one.
+            int blocked = CountOf(AdviceKind.Blocked);
+            int yours = CountOf(AdviceKind.Manual);
+            parent.Add(new HelpBox(
+                blocked > 0
+                    ? $"{blocked} setting(s) can't do what they say on this avatar — see below."
+                    : recommendations > 0
+                        ? $"{recommendations} setting(s) don't match this avatar."
+                        : yours > 0
+                            ? $"Everything measurable already matches. {yours} thing(s) are your call."
+                            : "Everything measurable already matches this avatar.",
+                blocked > 0 ? HelpBoxMessageType.Error
+                : recommendations > 0 ? HelpBoxMessageType.Warning
+                : HelpBoxMessageType.Info));
+
+            var chips = new VisualElement();
+            chips.AddToClassList("ab-row");
+            chips.style.flexWrap = Wrap.Wrap;
+            AddAdviceChip(chips, AdviceKind.Blocked, "blocked");
+            AddAdviceChip(chips, AdviceKind.Change, "recommended");
+            AddAdviceChip(chips, AdviceKind.Manual, "your call");
+            AddAdviceChip(chips, AdviceKind.Confirm, "already set");
+            AddAdviceChip(chips, AdviceKind.Inert, "not needed");
+            parent.Add(chips);
+
             if (recommendations > 1)
             {
                 parent.Add(ReportButton($"Apply all {recommendations} recommendations",
@@ -347,15 +375,71 @@ namespace AvatarBridge
                                 a.Apply(settings);
                             }
                         }
-                        advice = AvatarAdvisor.Analyse(avatar, settings);
+                        Reanalyse();
                         ScheduleRebuild();
                     }));
             }
 
-            for (int i = 0; i < ordered.Count; i++)
+            int shown = 0;
+            foreach (var a in ordered)
             {
-                parent.Add(AdviceRow(ordered[i], i % 2 == 1));
+                if (adviceFilter.HasValue && a.Kind != adviceFilter.Value)
+                {
+                    continue;
+                }
+                parent.Add(AdviceRow(a, shown % 2 == 1));
+                shown++;
             }
+        }
+
+        /// <summary>
+        /// Which kind the findings are filtered to, or null for all of them.
+        ///
+        /// Unlike the conversion report this defaults to showing EVERYTHING, including the rows
+        /// that agree. The report hides its successes because there are hundreds of them; there
+        /// are six findings here, and "already set" is load-bearing — it is the difference
+        /// between "checked, and it's right" and "never looked at".
+        /// </summary>
+        AdviceKind? adviceFilter;
+
+        /// <summary>
+        /// Re-measures and drops any filter with it. Applying one setting can change what the
+        /// others should be, so every path that changes a setting comes back through here rather
+        /// than marking a row done — and a filter left pointing at a kind the new findings have
+        /// none of shows an empty list with an unclickable chip to clear it.
+        /// </summary>
+        void Reanalyse()
+        {
+            advice = AvatarAdvisor.Analyse(avatar, settings);
+            adviceFilter = null;
+        }
+
+        int CountOf(AdviceKind kind)
+        {
+            int n = 0;
+            foreach (var a in advice)
+            {
+                if (a.Kind == kind)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        void AddAdviceChip(VisualElement parent, AdviceKind kind, string noun)
+        {
+            int count = CountOf(kind);
+            bool selected = adviceFilter == kind;
+            parent.Add(BridgeElements.Chip($"{count} {noun}", KindColour(kind),
+                kind != AdviceKind.Confirm && kind != AdviceKind.Inert,
+                () =>
+                {
+                    adviceFilter = selected ? (AdviceKind?)null : kind;
+                    ScheduleRebuild();
+                },
+                selected,
+                count > 0));
         }
 
         /// <summary>
@@ -370,6 +454,14 @@ namespace AvatarBridge
         {
             var row = BridgeElements.ReportRow(KindLabel(a.Kind), a.Setting, a.Finding,
                 KindColour(a.Kind), alternate);
+            if (a.Targets != null && a.Targets.Length > 0)
+            {
+                row.Add(ReportButton(a.Targets.Length == 1 ? "Show" : $"Show {a.Targets.Length}",
+                    a.Targets.Length == 1
+                        ? $"Selects \"{a.Targets[0].name}\"."
+                        : "Selects all of them, so you can see what the count is made of.",
+                    () => Ping(a.Targets)));
+            }
             if (a.Apply != null)
             {
                 row.Add(ReportButton(a.Kind == AdviceKind.Manual ? "Turn on" : "Apply", null,
@@ -380,7 +472,7 @@ namespace AvatarBridge
                         // change what the others should be (a physics target of None has no toe
                         // question), and a stale list is how a reader ends up applying advice
                         // that stopped being true two presses ago.
-                        advice = AvatarAdvisor.Analyse(avatar, settings);
+                        Reanalyse();
                         ScheduleRebuild();
                     }));
             }
@@ -1182,8 +1274,18 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                list.Add(BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
-                    StatusColour(entry.Status), shown % 2 == 1));
+                var row = BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
+                    StatusColour(entry.Status), shown % 2 == 1);
+                // Most subjects are an object path or an object name — the field's own comment
+                // says so — so the ones that still resolve on the converted avatar become
+                // clickable for free, and prose subjects simply don't and get no button.
+                var found = ResolveSubject(entry.Subject);
+                if (found != null)
+                {
+                    row.Add(ReportButton("Show", $"Selects \"{found.name}\" in the Hierarchy.",
+                        () => Ping(new UnityEngine.Object[] { found })));
+                }
+                list.Add(row);
                 shown++;
             }
             // A clean run has nothing to list, and an empty bordered box reads as something that
@@ -1192,6 +1294,61 @@ namespace AvatarBridge
             {
                 parent.Add(list);
             }
+        }
+
+        /// <summary>
+        /// Turns a report entry's subject back into the object it is about, or null.
+        ///
+        /// Two ways, both exact: the subject as a path from the converted root, then as the name
+        /// of exactly one descendant. "Exactly one" is the whole safety rule — an avatar with
+        /// four objects called "Body" cannot tell you which one an entry meant, and selecting the
+        /// wrong one is worse than offering nothing, because the reader believes it.
+        ///
+        /// Never guesses, never fuzzy-matches, never strips punctuation to try harder. A subject
+        /// that is a sentence resolves to nothing and the row keeps its old shape.
+        /// </summary>
+        UnityEngine.Object ResolveSubject(string subject)
+        {
+            var root = lastReport != null ? lastReport.ConvertedRoot : null;
+            if (root == null || string.IsNullOrEmpty(subject))
+            {
+                return null;
+            }
+
+            var byPath = root.transform.Find(subject);
+            if (byPath != null)
+            {
+                return byPath.gameObject;
+            }
+
+            Transform single = null;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name != subject)
+                {
+                    continue;
+                }
+                if (single != null)
+                {
+                    return null;   // ambiguous — say nothing rather than pick
+                }
+                single = t;
+            }
+            return single != null ? single.gameObject : null;
+        }
+
+        /// <summary>
+        /// Selects and pings, so the object is both highlighted in place and left selected for
+        /// whatever the reader wants to do to it next.
+        /// </summary>
+        static void Ping(UnityEngine.Object[] targets)
+        {
+            if (targets == null || targets.Length == 0)
+            {
+                return;
+            }
+            Selection.objects = targets;
+            EditorGUIUtility.PingObject(targets[0]);
         }
 
         // ------------------------------------------------------------------- footer ---

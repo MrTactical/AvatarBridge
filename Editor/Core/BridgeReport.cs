@@ -79,6 +79,19 @@ namespace AvatarBridge
         /// </summary>
         public string Appendix;
 
+        /// <summary>
+        /// The converted avatar, so the window can turn an entry back into something clickable.
+        ///
+        /// Most entries already carry an object path or an object name in <see cref="ReportEntry.Subject"/>
+        /// — hundreds of call sites put it there — and with a root to resolve them against, the
+        /// window can offer "Show" on the ones that resolve without a single one of those sites
+        /// changing. Entries whose subject is prose simply don't resolve and get no button.
+        ///
+        /// Not serialized into the markdown: a scene reference means nothing in a file someone
+        /// attaches to a bug report.
+        /// </summary>
+        [System.NonSerialized] public GameObject ConvertedRoot;
+
         public void Add(ReportStatus status, string category, string subject, string detail = "")
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });
