@@ -342,66 +342,186 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// How far past the avatar's own silhouette a box reaches, as a fraction of its height.
+        /// 0.3 is half a metre on a 1.65 m avatar — enough for hair, a skirt or a tail to swing
+        /// into — and it scales, where a flat 0.5 m would be most of the box on a 40 cm chibi
+        /// and nothing at all on a five-metre dragon.
+        /// </summary>
+        const float BoundsPaddingFraction = 0.3f;
+
+        /// <summary>
         /// Unity culls a skinned mesh by its AUTHORED bounding box, not by where animation,
-        /// physics or cloth actually put the vertices — the box is baked from the bind pose
-        /// and never follows. The moment the stale box leaves the camera frustum the whole
-        /// mesh blinks out: classically at screen edges, or for another player looking from
-        /// the side. Centre zero puts the box on each mesh's root bone; the extent floor is
-        /// the avatar's own measured height (at least 1.5 m), so a chibi doesn't drag a
-        /// stadium-sized box around and a giant isn't clipped by a human-sized one. Authored
-        /// extents larger than the floor are kept — shrinking a deliberately large box could
-        /// CAUSE the very culling this prevents.
+        /// physics or cloth actually put the vertices — the box is baked from the bind pose and
+        /// never follows. The moment the stale box leaves the camera frustum the whole mesh blinks
+        /// out: classically at screen edges, or for another player looking from the side.
+        ///
+        /// The fix is a box that is generous but SHAPED LIKE THE AVATAR. This used to be a cube of
+        /// the avatar's eye height in every direction centred on each mesh's root bone, which was
+        /// generous and nothing else: on a 1.7 m avatar it is a 3.4 m cube reaching as far below
+        /// the hips as above the head, most of it empty. Now every mesh gets the avatar's own
+        /// measured volume plus <see cref="BoundsPaddingFraction"/> of its height, which is both
+        /// smaller and better placed.
+        ///
+        /// It now SHRINKS boxes that were authored larger, where before those were left alone.
+        /// That direction is the one that can cause culling rather than prevent it, so it is
+        /// deliberate: the envelope is the whole avatar plus a swing margin, and a mesh with
+        /// vertices outside that is a prop that flies away from the body — rare, and visible
+        /// immediately if it happens. Only wearing the avatar in ChilloutVR can confirm it.
         /// </summary>
         static void NormalizeSkinnedBounds(BridgeContext ctx)
         {
-            float floor = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
+            float height = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
+
+            if (!MeasureAvatarVolume(ctx.Target, out var envelope)
+                // A measurement shorter than half the avatar means the geometry did not give a
+                // usable answer — a mesh with broken bounds, an armature with no skin. Shrinking
+                // every box to THAT would make the avatar disappear, which is the failure this
+                // pass exists to prevent, so it declines rather than guesses.
+                || envelope.size.y < height * 0.5f)
+            {
+                ctx.Report.Warning("Meshes", "Bounding boxes left as the avatar had them",
+                    "The avatar's own volume could not be measured from its meshes, so there was nothing " +
+                    "trustworthy to size the culling boxes against. If meshes vanish at the edge of the " +
+                    "screen in game, that is what this would have fixed — please report the avatar.");
+                return;
+            }
+
+            envelope.Expand(height * BoundsPaddingFraction * 2f);   // Expand takes a diameter
+
             int changed = 0;
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                var bounds = renderer.localBounds;
-
-                // localBounds is expressed in the ROOT BONE's space, but the floor is a real
-                // measurement in metres — so the two are only comparable when that bone sits at
-                // scale 1. Convert the floor into this renderer's own units before using it.
-                //
-                // Without this, the same "1.5" meant 1.5 m on an ordinary rig, 1.5 cm on a bone
+                // localBounds is expressed in the ROOT BONE's space, so the envelope — measured in
+                // world metres — has to be carried into that space before it means anything here.
+                // Without this the same number meant 1.5 m on an ordinary rig, 1.5 cm on a bone
                 // scaled to 0.01, and 150 m on one scaled to 100 (Second Life conversions run
-                // around 100x) — so the box was alternately too small to stop the culling it
-                // exists to prevent, or absurdly large. Reported as "1.5 is sometimes too small
-                // or too big", which is exactly what a unit mismatch looks like from outside.
-                var boneScale = (renderer.rootBone != null ? renderer.rootBone : renderer.transform).lossyScale;
-                float Local(float axis)
-                {
-                    // A zero or degenerate axis carries no usable ratio; fall back to the metre
-                    // value rather than dividing by ~0 and producing an infinite box.
-                    float s = Mathf.Abs(axis);
-                    return s > 1e-4f ? floor / s : floor;
-                }
-                var localFloor = new Vector3(Local(boneScale.x), Local(boneScale.y), Local(boneScale.z));
+                // around 100x). Reported once as "sometimes too small or too big", which is
+                // exactly what a unit mismatch looks like from outside.
+                var space = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
+                var wanted = ToLocalBounds(space, envelope);
 
-                var extents = new Vector3(
-                    Mathf.Max(bounds.extents.x, localFloor.x),
-                    Mathf.Max(bounds.extents.y, localFloor.y),
-                    Mathf.Max(bounds.extents.z, localFloor.z));
-                if (bounds.center == Vector3.zero && bounds.extents == extents)
+                if (Approximately(renderer.localBounds, wanted))
                 {
                     continue;
                 }
-                renderer.localBounds = new Bounds(Vector3.zero, extents * 2f);
+                renderer.localBounds = wanted;
                 EditorUtility.SetDirty(renderer);
                 changed++;
             }
+
             if (changed > 0)
             {
                 ctx.Report.Converted("Meshes",
-                    $"{changed} skinned mesh bounding box(es) normalized — centre 0, extents at least {floor:0.##} m",
+                    $"{changed} skinned mesh bounding box(es) resized to the avatar — " +
+                    $"{envelope.size.x:0.##} × {envelope.size.y:0.##} × {envelope.size.z:0.##} m",
                     "Unity culls a skinned mesh by its authored bind-pose box, not by where animation, physics " +
                     "or cloth actually put the vertices — so a mesh can vanish at screen edges while plainly on " +
-                    "camera. Each box now sits centred on its mesh's root bone and reaches at least the avatar's " +
-                    "own measured height in every direction, scaled with the avatar if it resizes; authored boxes " +
-                    "larger than that are kept, since shrinking one could cause the very culling this prevents.");
+                    "camera. Each box is now the avatar's own measured volume with " +
+                    $"{height * BoundsPaddingFraction:0.##} m of clearance around it for hair, skirts and tails " +
+                    "to swing into, placed where the avatar actually is rather than centred on each mesh's root " +
+                    "bone. Boxes that were larger than this are brought down to it as well.");
             }
         }
+
+        /// <summary>
+        /// The space the avatar occupies, in world metres, measured from the bones that skin it.
+        ///
+        /// Three sources were tried on a real avatar (BHFBunny, 26 skinned meshes, root scaled 2×)
+        /// and only one of them is trustworthy:
+        ///
+        ///   <c>Renderer.bounds</c> / <c>localBounds</c> — circular. On a skinned mesh that IS the
+        ///   culling box this pass exists to correct, so it hands back whatever wrong answer the
+        ///   avatar arrived with. Measured 4.05 × 4.99 × 4.16 m: the bad box, read back.
+        ///
+        ///   <c>sharedMesh.bounds</c> — a different field, and not stale, but it is expressed in
+        ///   the mesh's own authoring space, which is NOT the root bone's and NOT metres. On that
+        ///   avatar the whole body mesh reads 0.11 × 0.13 × 0.13, because the scale to world lives
+        ///   in the bindposes. Mapping it through the root bone gave 1.40 × 0.41 × 1.72 — a
+        ///   40 cm tall four-metre avatar — and mapping it through a bindpose still came out at
+        ///   the wrong scale.
+        ///
+        ///   The BONES — 1.33 × 4.02 × 1.31 m, which is that avatar. Bone positions are read
+        ///   straight from the transforms, so there is no stale field and no space to convert out
+        ///   of. Every skinning bone counts, and only skinning bones: an ordinary child transform
+        ///   might be a world-space prop parked at the origin or an effect anchor, and one of
+        ///   those would swallow the measurement whole. What deforms the mesh is the mesh's size.
+        ///
+        /// The skin does reach past its bones — a wide skirt, a shoulder pad. That is what the
+        /// padding at the call site is for, and it is the reason the padding is generous.
+        /// </summary>
+        static bool MeasureAvatarVolume(GameObject root, out Bounds world)
+        {
+            // A local rather than the out parameter directly: C# won't let a local function
+            // capture an out parameter.
+            var measured = new Bounds();
+            bool any = false;
+
+            void Add(Vector3 point)
+            {
+                if (any)
+                {
+                    measured.Encapsulate(point);
+                }
+                else
+                {
+                    measured = new Bounds(point, Vector3.zero);
+                    any = true;
+                }
+            }
+
+            foreach (var skinned in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                foreach (var bone in skinned.bones)
+                {
+                    if (bone != null)
+                    {
+                        Add(bone.position);
+                    }
+                }
+                // A skinned mesh with no bone list is rare but legal; its root bone still says
+                // where it is, and without this such a mesh would contribute nothing at all.
+                if (skinned.bones.Length == 0 && skinned.rootBone != null)
+                {
+                    Add(skinned.rootBone.position);
+                }
+            }
+
+            world = measured;
+            return any;
+        }
+
+        /// <summary>
+        /// An axis-aligned box through a matrix, via its eight corners.
+        ///
+        /// The result is the AABB of the transformed corners, which under rotation is slightly
+        /// larger than the true bound of the contents. That is the safe direction here: too large
+        /// draws a mesh that was about to leave the screen, too small blinks it out.
+        /// </summary>
+        static Bounds TransformBounds(Matrix4x4 matrix, Bounds local)
+        {
+            var min = local.min;
+            var max = local.max;
+            var result = new Bounds(matrix.MultiplyPoint3x4(min), Vector3.zero);
+            for (int i = 1; i < 8; i++)
+            {
+                result.Encapsulate(matrix.MultiplyPoint3x4(new Vector3(
+                    (i & 1) == 0 ? min.x : max.x,
+                    (i & 2) == 0 ? min.y : max.y,
+                    (i & 4) == 0 ? min.z : max.z)));
+            }
+            return result;
+        }
+
+        static Bounds ToLocalBounds(Transform space, Bounds world) =>
+            TransformBounds(space.worldToLocalMatrix, world);
+
+        /// <summary>
+        /// Millimetre tolerance, so a box that is already right isn't rewritten every conversion.
+        /// Comparing Bounds with == would call a float a hair off "different" and dirty every
+        /// renderer on the avatar for nothing.
+        /// </summary>
+        static bool Approximately(Bounds a, Bounds b) =>
+            (a.center - b.center).sqrMagnitude < 1e-6f && (a.extents - b.extents).sqrMagnitude < 1e-6f;
 
         /// <summary>Test seam — HeadChopCurveTest asserts the per-type m_Enabled polarity.</summary>
         internal static void ConvertHeadChopsForTest(BridgeContext ctx) => ConvertHeadChops(ctx);
