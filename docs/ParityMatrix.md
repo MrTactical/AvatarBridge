@@ -52,7 +52,7 @@ and were never affected. **Where an instrument and the conversion reports disagr
 | type | wild n | verdict | notes |
 |---|---|---|---|
 | VRCAvatarParameterDriver | 3282 | converted | → AnimatorDriver; results sync (client-verified). Was measured as 1751 |
-| VRCAnimatorTrackingControl | 581 | converted | → BodyControl; eyes/mouth/fingers have no CVR mask, reported. **Was measured as 24 — a 24× undercount, so "a rare gap" was wrong. At this scale the unmaskable channels deserve their own look** |
+| VRCAnimatorTrackingControl | 581 | converted, with a named platform gap | → BodyControl. Head/pelvis/arms/legs/locomotion map exactly. Eyes, mouth and FINGERS have no CVR mask — the CCK itself says `// TODO: Add FingerTracking masks when GS is ready`, so this is upstream, not ours. MEASURED 2026-08-04: 34 of the 40 avatars using tracking behaviours drop at least one channel — fingers 340, eyes 120, mouth 119. Fingers are the costly one: VRChat sets them to Animation for an emote AND puts Action above Gesture, while CVR grafts emotes into Locomotion/Emotes which sits BELOW the hand layers on all 53 corpus avatars, so a gesture overrides an emote hand pose. Report and README now say so. UNVERIFIED IN GAME — needs someone to play an emote while holding a fist |
 | VRCAnimatorTemporaryPoseSpace | 575 | reported | says what it did — viewpoint to hips while crawling etc. (#29). Was measured as **2**, which is how a 100-per-avatar behaviour got judged not worth building for |
 | VRCAnimatorLayerControl | 262 | converted | Action-layer live-window detection. Was 198 |
 | VRCAnimatorLocomotionControl | 152 | converted | → BodyControl Locomotion mask. Was 31 |

@@ -1642,8 +1642,21 @@ namespace AvatarBridge
                     if (DroppedFingers > 0) parts.Add($"fingers ({DroppedFingers})");
                     ctx.Report.Approximated(Category, "Some tracking targets have no ChilloutVR body mask",
                         $"{string.Join(", ", parts)} — ChilloutVR's Body Control covers head, pelvis, arms, legs " +
-                        "and locomotion only. These targets keep whatever the avatar's own animation and face " +
-                        "tracking do with them.");
+                        "and locomotion only, and that is the platform's own limit rather than a gap in this " +
+                        "conversion: the CCK declares the mask list with the comment \"TODO: Add FingerTracking " +
+                        "masks when GS is ready\". There is nothing to map these onto yet." +
+                        (DroppedFingers > 0
+                            ? " FINGERS ARE THE ONE TO WATCH. In VRChat an emote sets them to \"Animation\" so the " +
+                              "emote's own hand pose plays instead of the gesture you are holding, and VRChat's " +
+                              "Action layer sits ABOVE its Gesture layer, so it wins twice over. ChilloutVR's " +
+                              "layer order is the other way round — emotes are grafted into Locomotion/Emotes, " +
+                              "which sits BELOW the hand-pose layers — so expect an emote's hand pose to be " +
+                              "overridden by whatever gesture your controller is reporting. If a dance looks " +
+                              "right except that the hands hold a fist or a point, this is why. The workaround " +
+                              "today is to hold an open/neutral gesture while the emote plays."
+                            : "") +
+                        " Eyes and mouth keep whatever the avatar's own animation and face tracking do with them, " +
+                        "which is usually what you want — face tracking wants those channels anyway.");
                 }
             }
         }

@@ -223,7 +223,7 @@ defines.
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
-| VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation |
+| VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation. Head, pelvis, arms, legs and locomotion map exactly; eyes, mouth and **fingers** have no ChilloutVR mask yet — see [emote hand poses](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) |
 | Base / Action / Sitting locomotion animations | grafted into CVR's own `Locomotion/Emotes` layer | custom walk/crouch/crawl/fall/sit clips, matched by blend-tree position, loop settings matched to the slot; VRChat `proxy_*` placeholders skipped — those live in the VRChat client, and CVR's animation set is their equivalent here |
 | VRChat flight / copter systems | pose grafted onto CVR's `LocFlying` state | ChilloutVR flies natively (keybind or double-jump where the world allows), so the VRChat system's speed logic isn't needed — the avatar's flight pose plays whenever the wearer actually flies |
 | VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
@@ -1098,6 +1098,26 @@ Four things worth knowing:
   usual case. Those garments keep VRChat's behaviour; the report names them.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
+
+### An emote's hand pose is wrong, or follows your gesture
+
+The dance plays, the body is right, and the hands hold whatever gesture your controller is
+reporting instead of the pose the emote wants.
+
+This one is ChilloutVR's, not the conversion's. VRChat's tracking control can hand **fingers** over
+to animation for the length of an emote; ChilloutVR's Body Control has no finger mask yet — its own
+CCK carries the note *"TODO: Add FingerTracking masks when GS is ready"*. There is nothing to map
+it onto until that lands.
+
+The layer order compounds it. In VRChat the Action layer sits **above** Gesture, so an emote
+outranks your hand pose anyway. In ChilloutVR emotes are grafted into `Locomotion/Emotes`, which
+sits **below** the hand-pose layers — so the gesture wins.
+
+**Workaround:** hold an open or neutral gesture while the emote plays. Everything else about the
+emote — body, head, locomotion — converts and behaves normally.
+
+Eyes and mouth are in the same boat and it matters far less: those channels stay with the avatar's
+own animation and face tracking, which is usually where you want them.
 
 ### A particle effect only you can see
 
