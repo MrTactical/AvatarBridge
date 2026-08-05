@@ -6815,16 +6815,19 @@ namespace AvatarBridge
         /// through a different path and applies everything, which is why the fault only
         /// appears when the animator itself runs the toggle.
         ///
-        /// Unmasking is safe because the mask on these layers protected the rig from humanoid
-        /// curves — and any the layer carries are dead VRChat finger/body curves (the FX
-        /// playable there cannot drive muscles), so they are deleted here instead of masked.
-        /// A mask the AUTHOR placed is respected and warned about rather than edited.
+        /// Only layers that animate NOTHING humanoid are freed, so unmasking cannot hand a
+        /// layer power over the rig. A layer that both swaps and drives muscles keeps its mask
+        /// and is reported instead: deleting its humanoid curves would be the obvious repair
+        /// and is forbidden, because clips are SHARED — one edit reaches every other layer and
+        /// every other avatar playing that clip. A mask the AUTHOR placed is likewise reported,
+        /// never edited.
         /// </summary>
         static void UnmaskObjectSwapLayers(AnimatorController master, BridgeContext ctx)
         {
             var layers = master.layers;
             var freed = new SortedSet<string>(StableSampleOrder.Instance);
             var authored = new SortedSet<string>(StableSampleOrder.Instance);
+            var conflicted = new SortedSet<string>(StableSampleOrder.Instance);
             bool changed = false;
             foreach (var layer in layers)
             {
@@ -6840,7 +6843,14 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool body, out bool fingers);
                 if (body || fingers)
                 {
-                    StripMuscleCurves(layer);
+                    // Not this one. Unmasked, its humanoid curves would drive the rig the mask
+                    // exists to protect — and deleting those curves instead is NOT an option,
+                    // because clips are SHARED: editing one in place damages every other layer,
+                    // and every other avatar, that plays it. That was learned by doing it — a
+                    // strip here emptied the SDK's own proxy_hands_idle for the whole project,
+                    // and every avatar converted afterwards lost its hand poses.
+                    conflicted.Add(layer.name);
+                    continue;
                 }
                 layer.avatarMask = null;
                 freed.Add(layer.name);
@@ -6865,6 +6875,16 @@ namespace AvatarBridge
                     $"{string.Join(", ", authored)} — with an avatar mask on the layer, only the first " +
                     "material slot of a swap applies in game. If a swap from one of these layers misses " +
                     "slots, remove the layer's mask in the Animator window and reconvert.");
+            }
+            if (conflicted.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{conflicted.Count} layer(s) both swap materials and animate the rig",
+                    $"{string.Join(", ", conflicted)} — these keep their mask, because without it their " +
+                    "body or finger curves would fight the client's locomotion and hand poses. The cost " +
+                    "is that only the first material slot of a swap in those layers applies in game. If " +
+                    "one of them misses slots, move its material swap into a layer of its own — one that " +
+                    "animates nothing else — and reconvert.");
             }
         }
 
@@ -6895,41 +6915,6 @@ namespace AvatarBridge
                 }
             });
             return found;
-        }
-
-        /// <summary>
-        /// Deletes humanoid (Animator-typed) curves from every clip the layer plays. Used on the
-        /// swap layers that stay unmasked: their finger curves never moved a finger in VRChat —
-        /// the FX playable there cannot drive muscles — and unmasked here they would stomp the
-        /// hand pose, so the curves go instead of the mask.
-        /// </summary>
-        static void StripMuscleCurves(AnimatorControllerLayer layer)
-        {
-            var stripped = new HashSet<AnimationClip>();
-            WalkMachines(layer.stateMachine, machine =>
-            {
-                foreach (var child in machine.states)
-                {
-                    if (child.state == null)
-                    {
-                        continue;
-                    }
-                    foreach (var clip in CollectClips(child.state.motion))
-                    {
-                        if (!stripped.Add(clip))
-                        {
-                            continue;
-                        }
-                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                        {
-                            if (binding.type == typeof(Animator))
-                            {
-                                AnimationUtility.SetEditorCurve(clip, binding, null);
-                            }
-                        }
-                    }
-                }
-            });
         }
 
         /// <summary>
