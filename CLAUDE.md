@@ -42,6 +42,11 @@ release. The format, set by v2.68.4:
 - **Title**: `v<version> - <headline>` — the version comes FIRST, then the two or three headline
   fixes in plain words. The releases page is a scannable list; a prose-only title makes the reader
   cross-reference the tag column to see whether they already have it.
+- **Never mention internal tooling anywhere user-facing.** Release notes, README, store
+  description, report entries — the regression harness, the corpus, `ToggleSweep`, the build
+  script and this file do not exist as far as users are concerned. They are pruned from the public
+  package, so naming one describes something the reader cannot have. Internal *method* names that
+  ship inside `Editor/` are fine within the technical dropdown; a reader can grep those.
 
 Nobody reads a wall of text, and a changelog that isn't read may as well not exist. The same
 applies to report entries — say what broke and what to do, and put the mechanism somewhere
@@ -85,6 +90,13 @@ removing a download is safe, and why the "never delete an old package" rule belo
   project's `Assets/Editor/` and its digests live in the gitignored `Regression/`. Dev-package
   metas are synthesized at build time from an md5 of the destination path, so they are stable
   across rebuilds and no `.meta` needs committing.
+- **`Tools/Regression/ToggleSweep.cs` drives every toggle and reports what doesn't come back.**
+  Reading the generated controller is not enough — a stuck wardrobe toggle was chased through
+  blend-tree shapes, layer indices, Write Defaults and ownership rules, and *every* static
+  explanation was wrong; the sweep found the real failures on its first run. Reach for it before
+  theorising about any "toggle doesn't work" report. Menu item, or `ToggleSweep.RunBatch` with
+  `AVATARBRIDGE_SWEEP_SCENE`. **Batch Unity cannot open a project that is already open in the
+  GUI** — it dies in `HandleProjectAlreadyOpenInAnotherInstance`, which reads as a crash.
 - **Compile all five configurations** before any build: plain, `AVATARBRIDGE_DECLS`,
   `AVATARBRIDGE_DYNBONE` (+stub), no-CCK, no-VRC. **The plain config must include
   `Tools/Regression/*.cs`** — those files only compile in Unity when a test is actually deployed

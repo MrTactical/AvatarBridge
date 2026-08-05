@@ -512,7 +512,7 @@ namespace AvatarBridge
             }
 
             var rows = new List<string>();
-            foreach (var pair in counts.OrderByDescending(p => p.Value))
+            foreach (var pair in counts.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal))
             {
                 if (!string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(pair.Key)))
                 {

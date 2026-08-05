@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -52,10 +53,14 @@ namespace AvatarBridge
 #endif
 
 #if VRC_SDK_VRCSDK3
-        // Physics is convert-mode only, so without the VRChat SDK nothing reads this — and an
-        // ungated field earns a CS0414 "assigned but never used" in every CCK-only project.
-        // A warning in a tester's console reads like something is wrong with the tool.
-        bool showPhysics = true;
+        // Convert-mode only, so without the VRChat SDK nothing reads these — and an ungated
+        // field earns a CS0414 "assigned but never used" in every CCK-only project. A warning
+        // in a tester's console reads like something is wrong with the tool.
+        bool showManual = true;
+        bool showAutomated;
+        // What the last Analyse found, or null if it hasn't been run for the current avatar.
+        // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
+        List<Advice> advice;
 #endif
         bool showFaceTracking = true;
         bool showAdvanced;
@@ -198,13 +203,14 @@ namespace AvatarBridge
             BuildAvatarPicker(pick.Body);
             body.Add(pick);
 
+            // Two cards, split by who can answer the question. Everything the avatar decides
+            // for itself is folded away under "Automated"; what is left in the open is the
+            // short list nothing in the file can settle. Before this, forty-odd toggles sat at
+            // one level with no way to tell which of them anyone was expected to think about.
             var choose = new BridgeElements.Card("Choose what gets set up", null, null, 2, 0.5f);
-            choose.Body.Add(BridgeElements.Hint(
-                "The defaults suit most avatars — you can convert without changing anything here."));
-            BuildPhysicsCard(choose.Body);
-            BuildFaceTrackingCard(choose.Body);
-            BuildExtrasCard(choose.Body);
-            BuildAdvancedCard(choose.Body);
+            BuildAnalyseSection(choose.Body);
+            BuildManualCard(choose.Body);
+            BuildAutomatedCard(choose.Body);
             body.Add(choose);
 
             var run = new BridgeElements.Card("Convert", null, null, 3, 1f);
@@ -226,6 +232,10 @@ namespace AvatarBridge
             field.RegisterValueChangedCallback(e =>
             {
                 avatar = e.newValue as VRCAvatarDescriptor;
+                // Findings belong to the avatar they were measured on. Keeping them across a
+                // swap would show one avatar's shader and PhysBone counts under another's name.
+                advice = null;
+                adviceFilter = null;
                 ScheduleRebuild();
             });
             parent.Add(field);
@@ -250,6 +260,246 @@ namespace AvatarBridge
                     "Modular Avatar detected — it will be baked via NDMF first, so MA features " +
                     "(merged armature, menus, outfits) carry over.",
                     HelpBoxMessageType.Info));
+            }
+        }
+
+        // ------------------------------------------------------------------ analyse ----
+
+        /// <summary>
+        /// Reads the avatar and offers the settings its own contents decide.
+        ///
+        /// Greyed out rather than hidden until an avatar is picked: a control that isn't drawn
+        /// yet teaches nobody that the step exists, and someone who never learns this button is
+        /// here is exactly the person who converts on defaults that didn't suit their avatar.
+        ///
+        /// Nothing is applied without a press. The analysis is a measurement and a
+        /// recommendation, and the two are shown separately — the reader can see what was found
+        /// before deciding to act on it, which also means a wrong recommendation is arguable
+        /// rather than silent.
+        /// </summary>
+        void BuildAnalyseSection(VisualElement parent)
+        {
+            parent.Add(BridgeElements.Hint(
+                "The defaults suit most avatars — you can convert without changing anything here. " +
+                "Analysing reads this avatar and offers the settings its own contents decide."));
+
+            var button = ReportButton("Analyse this avatar",
+                "Reads the avatar as it sits in the scene — PhysBones, blendshapes, shaders, " +
+                "parameters and layers — and offers the settings those decide. Nothing changes " +
+                "until you apply it.",
+                () => { Reanalyse(); ScheduleRebuild(); });
+            button.SetEnabled(avatar != null);
+            parent.Add(button);
+
+            if (avatar == null)
+            {
+                parent.Add(BridgeElements.Hint("Pick an avatar in step 1 to enable this."));
+                return;
+            }
+            if (advice == null)
+            {
+                return;
+            }
+            if (advice.Count == 0)
+            {
+                parent.Add(BridgeElements.Hint(
+                    "Nothing to change — the current settings already suit this avatar."));
+                return;
+            }
+
+            // Action first, agreement last. A list that opens with six green "already set" rows
+            // buries the one red one, and the red one is why anybody pressed the button.
+            var ordered = new List<Advice>();
+            foreach (var kind in new[]
+                     {
+                         AdviceKind.Blocked, AdviceKind.Change, AdviceKind.Manual,
+                         AdviceKind.Confirm, AdviceKind.Inert,
+                     })
+            {
+                foreach (var a in advice)
+                {
+                    if (a.Kind == kind)
+                    {
+                        ordered.Add(a);
+                    }
+                }
+            }
+
+            int recommendations = 0;
+            foreach (var a in ordered)
+            {
+                if (IsRecommendation(a))
+                {
+                    recommendations++;
+                }
+            }
+
+            // Deliberately the same shape as the conversion report below — banner, then chips,
+            // then rows. They answer the same kind of question at opposite ends of the job, and
+            // two different-looking lists in one window is two things to learn instead of one.
+            int blocked = CountOf(AdviceKind.Blocked);
+            int yours = CountOf(AdviceKind.Manual);
+            parent.Add(new HelpBox(
+                blocked > 0
+                    ? $"{blocked} setting(s) can't do what they say on this avatar — see below."
+                    : recommendations > 0
+                        ? $"{recommendations} setting(s) don't match this avatar."
+                        : yours > 0
+                            ? $"Everything measurable already matches. {yours} thing(s) are your call."
+                            : "Everything measurable already matches this avatar.",
+                blocked > 0 ? HelpBoxMessageType.Error
+                : recommendations > 0 ? HelpBoxMessageType.Warning
+                : HelpBoxMessageType.Info));
+
+            var chips = new VisualElement();
+            chips.AddToClassList("ab-row");
+            chips.style.flexWrap = Wrap.Wrap;
+            AddAdviceChip(chips, AdviceKind.Blocked, "blocked");
+            AddAdviceChip(chips, AdviceKind.Change, "recommended");
+            AddAdviceChip(chips, AdviceKind.Manual, "your call");
+            AddAdviceChip(chips, AdviceKind.Confirm, "already set");
+            AddAdviceChip(chips, AdviceKind.Inert, "not needed");
+            parent.Add(chips);
+
+            if (recommendations > 1)
+            {
+                parent.Add(ReportButton($"Apply all {recommendations} recommendations",
+                    "Applies the measured ones only. The \"your call\" rows are never included — " +
+                    "nothing in the avatar says which way those should go.",
+                    () =>
+                    {
+                        foreach (var a in ordered)
+                        {
+                            if (IsRecommendation(a))
+                            {
+                                a.Apply(settings);
+                            }
+                        }
+                        Reanalyse();
+                        ScheduleRebuild();
+                    }));
+            }
+
+            int shown = 0;
+            foreach (var a in ordered)
+            {
+                if (adviceFilter.HasValue && a.Kind != adviceFilter.Value)
+                {
+                    continue;
+                }
+                parent.Add(AdviceRow(a, shown % 2 == 1));
+                shown++;
+            }
+        }
+
+        /// <summary>
+        /// Which kind the findings are filtered to, or null for all of them.
+        ///
+        /// Unlike the conversion report this defaults to showing EVERYTHING, including the rows
+        /// that agree. The report hides its successes because there are hundreds of them; there
+        /// are six findings here, and "already set" is load-bearing — it is the difference
+        /// between "checked, and it's right" and "never looked at".
+        /// </summary>
+        AdviceKind? adviceFilter;
+
+        /// <summary>
+        /// Re-measures and drops any filter with it. Applying one setting can change what the
+        /// others should be, so every path that changes a setting comes back through here rather
+        /// than marking a row done — and a filter left pointing at a kind the new findings have
+        /// none of shows an empty list with an unclickable chip to clear it.
+        /// </summary>
+        void Reanalyse()
+        {
+            advice = AvatarAdvisor.Analyse(avatar, settings);
+            adviceFilter = null;
+        }
+
+        int CountOf(AdviceKind kind)
+        {
+            int n = 0;
+            foreach (var a in advice)
+            {
+                if (a.Kind == kind)
+                {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        void AddAdviceChip(VisualElement parent, AdviceKind kind, string noun)
+        {
+            int count = CountOf(kind);
+            bool selected = adviceFilter == kind;
+            parent.Add(BridgeElements.Chip($"{count} {noun}", KindColour(kind),
+                kind != AdviceKind.Confirm && kind != AdviceKind.Inert,
+                () =>
+                {
+                    adviceFilter = selected ? (AdviceKind?)null : kind;
+                    ScheduleRebuild();
+                },
+                selected,
+                count > 0));
+        }
+
+        /// <summary>
+        /// A recommendation is something measured. A Manual row also carries an Apply — it is a
+        /// one-press shortcut for a decision the reader has just made — but it must never be
+        /// swept up by "apply all", or the tool would be quietly deciding the questions it just
+        /// finished saying it cannot answer.
+        /// </summary>
+        static bool IsRecommendation(Advice a) => a.Apply != null && a.Kind != AdviceKind.Manual;
+
+        VisualElement AdviceRow(Advice a, bool alternate)
+        {
+            var row = BridgeElements.ReportRow(KindLabel(a.Kind), a.Setting, a.Finding,
+                KindColour(a.Kind), alternate);
+            if (a.Targets != null && a.Targets.Length > 0)
+            {
+                row.Add(ReportButton(a.Targets.Length == 1 ? "Show" : $"Show {a.Targets.Length}",
+                    a.Targets.Length == 1
+                        ? $"Selects \"{a.Targets[0].name}\"."
+                        : "Selects all of them, so you can see what the count is made of.",
+                    () => Ping(a.Targets)));
+            }
+            if (a.Apply != null)
+            {
+                row.Add(ReportButton(a.Kind == AdviceKind.Manual ? "Turn on" : "Apply", null,
+                    () =>
+                    {
+                        a.Apply(settings);
+                        // Re-measure rather than mark the row done: applying one setting can
+                        // change what the others should be (a physics target of None has no toe
+                        // question), and a stale list is how a reader ends up applying advice
+                        // that stopped being true two presses ago.
+                        Reanalyse();
+                        ScheduleRebuild();
+                    }));
+            }
+            return row;
+        }
+
+        static string KindLabel(AdviceKind kind)
+        {
+            switch (kind)
+            {
+                case AdviceKind.Change: return "Recommended";
+                case AdviceKind.Confirm: return "Already set";
+                case AdviceKind.Inert: return "Not needed";
+                case AdviceKind.Manual: return "Your call";
+                default: return "Blocked";
+            }
+        }
+
+        static Color KindColour(AdviceKind kind)
+        {
+            switch (kind)
+            {
+                case AdviceKind.Change: return BridgeTheme.Warn;
+                case AdviceKind.Confirm: return BridgeTheme.Good;
+                case AdviceKind.Inert: return BridgeTheme.Muted;
+                case AdviceKind.Manual: return BridgeTheme.CvrOrange;
+                default: return BridgeTheme.Bad;
             }
         }
 
@@ -286,16 +536,15 @@ namespace AvatarBridge
             return popup;
         }
 
-        void BuildPhysicsCard(VisualElement parent)
+        /// <summary>
+        /// The physics choices the avatar and the project settle between them: which solver to
+        /// convert into — and whether it is even installed — plus the feel defaults, which were
+        /// derived from both solvers against a real avatar rather than picked. AddManualPhysics
+        /// has the four that are genuinely the user's.
+        /// </summary>
+        void AddAutomatedPhysics(VisualElement b)
         {
-            // Same nicified text as the dropdown below, so the collapsed summary and the open
-            // control never disagree about what the setting is called.
-            string summary = settings.physicsTarget == PhysicsTarget.None
-                ? "not converted" : Nicify(settings.physicsTarget);
-            var card = new BridgeElements.Card("Physics", summary, showPhysics, null, 0f,
-                open => showPhysics = open);
-            var b = card.Body;
-
+            b.Add(BridgeElements.SubHeading("Physics"));
             b.Add(EnumPopup<PhysicsTarget>("Convert PhysBones to",
                 "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback.",
                 settings.physicsTarget,
@@ -356,6 +605,23 @@ namespace AvatarBridge
                     "particles wider than the gap between bones shove each other apart. Leave on " +
                     "unless chains come out feeling too thin.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
+            }
+        }
+
+        /// <summary>
+        /// The physics decisions nothing in the avatar file answers.
+        ///
+        /// Each of these departs from the source avatar or depends on how it was built, and the
+        /// answer lives in the author's intent rather than in any measurement: whether the toe
+        /// physics were deliberate or an oversight, whether a rig with no PhysBone is rigid on
+        /// purpose, whether an angle limit that steadies one avatar's chains will shake this
+        /// one's. Analyse counts what it finds and says which way it leans; the tick is yours.
+        /// </summary>
+        void AddManualPhysics(VisualElement b)
+        {
+            if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                b.Add(BridgeElements.SubHeading("Physics"));
                 b.Add(BridgeElements.Bind("Convert toe PhysBones",
                     "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
                     "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
@@ -385,18 +651,39 @@ namespace AvatarBridge
                     "check the result before uploading. Every assignment is listed in the report.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
             }
-            parent.Add(card);
         }
 
-        void BuildAdvancedCard(VisualElement parent)
+        /// <summary>
+        /// Everything the avatar decides for itself, folded away behind a warning.
+        ///
+        /// These are not "advanced" in the sense of being for experts — they are settings with a
+        /// right answer that this avatar already gives, which is exactly why they should not be
+        /// the first thing anyone reads. The old flat list of forty-odd toggles gave no way to
+        /// tell the two kinds apart, so people either changed nothing and hoped, or changed the
+        /// wrong ones. Analyse sets these; opening the card is for overriding it deliberately.
+        /// </summary>
+        void BuildAutomatedCard(VisualElement parent)
         {
-            var card = new BridgeElements.Card("Advanced options",
-                showAdvanced ? null : "baking, stripping, layers, components",
-                showAdvanced, null, 0f, open => { showAdvanced = open; ScheduleRebuild(); });
+            var card = new BridgeElements.Card("Automated options",
+                showAutomated ? null : "set for you from the avatar — physics, face tracking, layers, components",
+                showAutomated, null, 0f, open => { showAutomated = open; ScheduleRebuild(); });
             var b = card.Body;
 
+            b.Add(new HelpBox(
+                "These are decided by the avatar itself, and \"Analyse this avatar\" sets them to " +
+                "match it. You don't need to touch anything in here — changing one means overriding " +
+                "what was measured, so only do it if you know why this avatar is the exception.",
+                HelpBoxMessageType.Warning));
+
             b.Add(BridgeElements.SubHeading("General"));
-            AddCommonGeneralOptions(b);
+            b.Add(BridgeElements.Bind("Work on a clone (recommended)",
+                "The original avatar object stays untouched and gets deactivated.",
+                settings.cloneAvatar, v => settings.cloneAvatar = v));
+
+            AddAutomatedPhysics(b);
+
+            b.Add(BridgeElements.SubHeading("Face tracking"));
+            AddFaceTrackingOptions(b);
             // VRCFury/Modular Avatar baking, VRC-component cleanup, Fury toggle rebuilding and
             // humanoid masking used to be toggles here. Every off-state produced a conversion
             // that was broken or read as broken — an avatar still wearing its VRC descriptor
@@ -422,8 +709,8 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Hint(
                     "⚠ Keeping GoGo Loco is EXPERIMENTAL: GoGo fully replaces ChilloutVR's own " +
                     "locomotion (that layer is removed), so Base, Additive and Action must be " +
-                    "ticked under \"Animator layers to merge\" or the avatar has no locomotion " +
-                    "at all. Known limits ChilloutVR cannot express: poses don't lock movement " +
+                    "ticked under \"Animator layers to convert\" below, or the avatar has no " +
+                    "locomotion at all. Known limits ChilloutVR cannot express: poses don't lock movement " +
                     "(walking mid-pose slides), the viewpoint stays at standing height in floor " +
                     "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
                     "them. Removing GoGo remains the recommended path."));
@@ -439,16 +726,6 @@ namespace AvatarBridge
                 "an animation swaps are never touched, and only the conversion's own copies of the " +
                 "clips are edited. The report names everything removed.",
                 settings.stripDeadMaterialAnimation, v => settings.stripDeadMaterialAnimation = v));
-            var extra = new TextField("Extra strip keywords")
-            {
-                value = settings.extraStripKeywords,
-                tooltip = "Comma separated. Each is used as a parameter prefix and a layer-name match " +
-                          "for additional VRC-only systems to remove.",
-            };
-            extra.AddToClassList("ab-field");
-            extra.RegisterValueChangedCallback(e => settings.extraStripKeywords = e.newValue);
-            b.Add(extra);
-
             b.Add(BridgeElements.SubHeading("Animator layers to convert"));
             b.Add(BridgeElements.Bind("FX (toggles, expressions)", null,
                 settings.convertFxLayer, v => settings.convertFxLayer = v));
@@ -473,12 +750,6 @@ namespace AvatarBridge
                 settings.convertActionLayer, v => { settings.convertActionLayer = v; ScheduleRebuild(); }));
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
-            var style = EnumPopup<ToggleStyle>("Toggle style",
-                "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
-                "CVR Native Targets: object toggles are left to the CCK's own builder " +
-                "(you must press \"Create Controller\" on the avatar).",
-                settings.toggleStyle, v => settings.toggleStyle = v);
-            b.Add(style);
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
                 "Non-synced VRC parameters get CVR's '#' local-only prefix.",
                 settings.preserveParameterSyncState, v => settings.preserveParameterSyncState = v));
@@ -495,6 +766,43 @@ namespace AvatarBridge
                 "Head/hands/fingers pointers so converted receivers keep reacting to other players.",
                 settings.createDefaultColliderPointers, v => settings.createDefaultColliderPointers = v));
 
+            b.Add(BridgeElements.Bind("Convert VRC constraints", null,
+                settings.convertConstraints, v => settings.convertConstraints = v));
+            b.Add(BridgeElements.Bind("Convert VRC Head Chop",
+                "First-person show/hide, including its toggle animations.",
+                settings.convertHeadChop, v => settings.convertHeadChop = v));
+            b.Add(BridgeElements.Bind("Convert spatial audio", null,
+                settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
+            AddBlinkToggle(b);
+
+            parent.Add(card);
+        }
+
+        /// <summary>
+        /// The options nothing in the avatar file can settle.
+        ///
+        /// Every one of these is either a departure from the source avatar (inventing physics an
+        /// author never made, improving on collisions they never wired), a judgement about intent
+        /// that only they know (were the toe physics deliberate?), a workflow choice about how
+        /// YOU finish the avatar (toggle style decides whether "Create Controller" is needed), or
+        /// something whose result can only be judged by wearing it (a patched shader compiles;
+        /// whether it looks right is a different question). Analyse counts the evidence for each
+        /// and says which way it leans — it never ticks them for you.
+        /// </summary>
+        void BuildManualCard(VisualElement parent)
+        {
+            var card = new BridgeElements.Card("Manual options",
+                showManual ? null : "the calls only you can make",
+                showManual, null, 0f, open => { showManual = open; ScheduleRebuild(); });
+            var b = card.Body;
+
+            b.Add(BridgeElements.Hint(
+                "These are yours: the avatar doesn't say which way they should go, so nothing " +
+                "sets them for you. Leaving them all alone converts fine."));
+
+            AddManualPhysics(b);
+
+            b.Add(BridgeElements.SubHeading("Contacts & shaders"));
             var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
                 "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
                 "of approximating them with pointers and triggers: real proximity and collision " +
@@ -507,6 +815,11 @@ namespace AvatarBridge
                 settings.useNativeContacts, v => { settings.useNativeContacts = v; ScheduleRebuild(); });
             native.SetEnabled(settings.convertContacts);
             b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
+            if (!settings.convertContacts)
+            {
+                b.Add(BridgeElements.Hint(
+                    "Contact conversion is off under Automated options, so this does nothing."));
+            }
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
@@ -529,14 +842,39 @@ namespace AvatarBridge
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
 
-            b.Add(BridgeElements.Bind("Convert VRC constraints", null,
-                settings.convertConstraints, v => settings.convertConstraints = v));
-            b.Add(BridgeElements.Bind("Convert VRC Head Chop",
-                "First-person show/hide, including its toggle animations.",
-                settings.convertHeadChop, v => settings.convertHeadChop = v));
-            b.Add(BridgeElements.Bind("Convert spatial audio", null,
-                settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
-            AddBlinkToggle(b);
+            b.Add(BridgeElements.SubHeading("Menu & extras"));
+            b.Add(EnumPopup<ToggleStyle>("Toggle style",
+                "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
+                "CVR Native Targets: object toggles are left to the CCK's own builder " +
+                "(you must press \"Create Controller\" on the avatar).",
+                settings.toggleStyle, v => settings.toggleStyle = v));
+            b.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
+                "A smooth avatar scaler: a quick-menu slider covering 0.25×–4× of this avatar's " +
+                "measured height geometrically, with dead centre = exactly its original size (the default, so " +
+                "it spawns unchanged). Props held by a parent constraint — hats, held items — are re-anchored " +
+                "so they scale with you instead of drifting off; the report lists any it had to leave alone.",
+                settings.addAvatarScaler, v => settings.addAvatarScaler = v));
+
+            var extra = new TextField("Extra strip keywords")
+            {
+                value = settings.extraStripKeywords,
+                tooltip = "Comma separated. Each is used as a parameter prefix and a layer-name match " +
+                          "for additional VRC-only systems to remove.",
+            };
+            extra.AddToClassList("ab-field");
+            extra.RegisterValueChangedCallback(e => settings.extraStripKeywords = e.newValue);
+            b.Add(extra);
+
+            var output = new TextField("Output folder")
+            {
+                value = settings.outputFolder,
+                tooltip = "Where generated assets and the report go. Must be inside Assets. " +
+                          "The default is deliberately OUTSIDE the tool's folder, so deleting " +
+                          "Assets/AvatarBridge to update it can never erase conversions.",
+            };
+            output.AddToClassList("ab-field");
+            output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);
+            b.Add(output);
 
             parent.Add(card);
         }
@@ -729,7 +1067,17 @@ namespace AvatarBridge
                            : "avatar's own rig";
             var card = new BridgeElements.Card("Face tracking", summary, showFaceTracking, null, 0f,
                 open => showFaceTracking = open);
+            AddFaceTrackingOptions(card.Body);
+            parent.Add(card);
+        }
 
+        /// <summary>
+        /// The face-tracking control without a card around it. Setup mode gives it its own card;
+        /// in Convert mode it is one section of the automated list, because which mode fits is
+        /// something the avatar's own blendshapes and parameters answer.
+        /// </summary>
+        void AddFaceTrackingOptions(VisualElement b)
+        {
             int index = Mathf.Max(0, Array.IndexOf(FtModes, settings.faceTrackingMode));
             var popup = new PopupField<string>("Face tracking",
                 new System.Collections.Generic.List<string>(FtLabels), index)
@@ -752,27 +1100,26 @@ namespace AvatarBridge
                 settings.faceTrackingMode = FtModes[Array.IndexOf(FtLabels, e.newValue)];
                 ScheduleRebuild();
             });
-            card.Body.Add(popup);
+            b.Add(popup);
 
             if (settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
             {
                 if (FaceTrackingPackages.IsInstalled())
                 {
-                    card.Body.Add(new HelpBox(
+                    b.Add(new HelpBox(
                         "Injects DragonSkyRunner's CVR Eye & Face Tracking rig (bundled) and rebuilds it onto " +
                         "this avatar — including an auto-generated eye-tracking rig. Eye gaze strength may want " +
                         "tuning per the package readme. Credit: DragonSkyRunner.", HelpBoxMessageType.Info));
-                    card.Body.Add(Link("DragonSkyRunner's package (GitHub)  ↗",
+                    b.Add(Link("DragonSkyRunner's package (GitHub)  ↗",
                         () => Application.OpenURL(FaceTrackingPackages.Url)));
                 }
                 else
                 {
-                    card.Body.Add(new HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't " +
+                    b.Add(new HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't " +
                         "found — reimport AvatarBridge (the button is disabled until then).",
                         HelpBoxMessageType.Warning));
                 }
             }
-            parent.Add(card);
         }
 
         // ------------------------------------------------------------------- report ---
@@ -927,8 +1274,18 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                list.Add(BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
-                    StatusColour(entry.Status), shown % 2 == 1));
+                var row = BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
+                    StatusColour(entry.Status), shown % 2 == 1);
+                // Most subjects are an object path or an object name — the field's own comment
+                // says so — so the ones that still resolve on the converted avatar become
+                // clickable for free, and prose subjects simply don't and get no button.
+                var found = ResolveSubject(entry.Subject);
+                if (found != null)
+                {
+                    row.Add(ReportButton("Show", $"Selects \"{found.name}\" in the Hierarchy.",
+                        () => Ping(new UnityEngine.Object[] { found })));
+                }
+                list.Add(row);
                 shown++;
             }
             // A clean run has nothing to list, and an empty bordered box reads as something that
@@ -937,6 +1294,61 @@ namespace AvatarBridge
             {
                 parent.Add(list);
             }
+        }
+
+        /// <summary>
+        /// Turns a report entry's subject back into the object it is about, or null.
+        ///
+        /// Two ways, both exact: the subject as a path from the converted root, then as the name
+        /// of exactly one descendant. "Exactly one" is the whole safety rule — an avatar with
+        /// four objects called "Body" cannot tell you which one an entry meant, and selecting the
+        /// wrong one is worse than offering nothing, because the reader believes it.
+        ///
+        /// Never guesses, never fuzzy-matches, never strips punctuation to try harder. A subject
+        /// that is a sentence resolves to nothing and the row keeps its old shape.
+        /// </summary>
+        UnityEngine.Object ResolveSubject(string subject)
+        {
+            var root = lastReport != null ? lastReport.ConvertedRoot : null;
+            if (root == null || string.IsNullOrEmpty(subject))
+            {
+                return null;
+            }
+
+            var byPath = root.transform.Find(subject);
+            if (byPath != null)
+            {
+                return byPath.gameObject;
+            }
+
+            Transform single = null;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name != subject)
+                {
+                    continue;
+                }
+                if (single != null)
+                {
+                    return null;   // ambiguous — say nothing rather than pick
+                }
+                single = t;
+            }
+            return single != null ? single.gameObject : null;
+        }
+
+        /// <summary>
+        /// Selects and pings, so the object is both highlighted in place and left selected for
+        /// whatever the reader wants to do to it next.
+        /// </summary>
+        static void Ping(UnityEngine.Object[] targets)
+        {
+            if (targets == null || targets.Length == 0)
+            {
+                return;
+            }
+            Selection.objects = targets;
+            EditorGUIUtility.PingObject(targets[0]);
         }
 
         // ------------------------------------------------------------------- footer ---

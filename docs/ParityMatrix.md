@@ -5,7 +5,7 @@ any SDK or CCK update, since new components arrive silently.
 
 The deep-dive ledger. One row per thing the VRC SDK can put on an
 avatar; the verdict says what conversion does with it **today**. Wild counts come from two census
-tools in `Tools/Regression/` — `ComponentCensus` (84 scenes, components + state behaviours) and
+tools in `Tools/Regression/` — `ComponentCensus` (85 scenes, components + state behaviours; re-measured 2026-08-04 after it was found to be missing descriptor layers) and
 `AnimatedVrcPropertyScan` (6,661 clips, animated properties on deleted components) — so priority is
 set by what avatars actually do, not by what the SDK offers.
 
@@ -20,37 +20,44 @@ Classification:
 
 | type | wild n | verdict | notes |
 |---|---|---|---|
-| VRCAvatarDescriptor | 93 | converted | field-level rows below |
-| VRCPhysBone | 1531 | converted | → MagicaCloth2/DynamicBone; animated parameter curves reported-as-lost with each named (#16, done; MC2 cannot be animation-driven — measured); m_Enabled chain toggles were already rewired |
-| VRCPhysBoneCollider | 449 | converted | animated `m_Enabled` ×28 repointed at the generated collider host (task #15, done) |
-| VRCContactReceiver | 447 | converted | enable curves fixed 3.5.36; position curves follow the contact on both paths and filter curves on native (#19, done — legacy filters bake at Create and drop loudly) |
+| VRCAvatarDescriptor | 101 | converted | field-level rows below |
+| VRCPhysBone | 1701 | converted | → MagicaCloth2/DynamicBone; animated parameter curves reported-as-lost with each named (#16, done; MC2 cannot be animation-driven — measured); m_Enabled chain toggles were already rewired |
+| VRCPhysBoneCollider | 494 | converted | animated `m_Enabled` ×28 repointed at the generated collider host (task #15, done) |
+| VRCContactReceiver | 456 | converted | enable curves fixed 3.5.36; position curves follow the contact on both paths and filter curves on native (#19, done — legacy filters bake at Create and drop loudly) |
 | VRCContactSender | 165 | converted | as above |
-| VRCRotation/Parent/Scale/Position Constraint | 195/144/68/29 | converted | source-weight curve spelling fixed 3.5.36; `FreezeToWorld` reported-dropped |
+| VRCRotation/Parent/Scale/Position Constraint | 203/154/68/20 | converted | source-weight curve spelling fixed 3.5.36; `FreezeToWorld` reported-dropped |
 | VRCAimConstraint | 5 | converted | |
 | VRCLookAtConstraint | 2 | converted | |
-| VRCStation | 102 | reported | sit-on-me chairs. No seat type on the client avatar whitelist — platform gap. Kept stations get a Skipped entry naming each (#28, done); GoGo strip removes its own first. Wild-verified: GoAvatrCoat names its three chairs |
+| VRCStation | 110 | reported | sit-on-me chairs. No seat type on the client avatar whitelist — platform gap. Kept stations get a Skipped entry naming each (#28, done); GoGo strip removes its own first. Wild-verified: GoAvatrCoat names its three chairs |
 | VRCSpatialAudioSource | 91 | converted | → AudioSource + VRChat-parity clamps |
 | VRCHeadChop | 17 | converted | → FPRExclusion; animated curves were already rewired onto isShown — #17 fixed the m_Enabled POLARITY for showing-type chops (was inverted unconditionally, backwards for the keep-visible idiom) and made curves on skipped chops loud. applyCondition still unaudited field-level |
 | VRCPerPlatformOverrides | 5 | absent-in-effect | upload-time platform switching; nothing to convert, sweep-deleted |
 | VRCImpostorSettings / VRCImpostorEnvironment | 0 | absent | VRChat-service impostor hints |
 | VRCRaycast / VRCRaycastHandler | 0 | absent | |
 | VRCPhysBoneRoot | 0 | absent | |
-| PipelineManager | 94 | converted | deleted deliberately, reported |
+| PipelineManager | 102 | converted | deleted deliberately, reported |
 
 ## State behaviours
 
 All unknown VRC behaviours are counted and reported when skipped (`ConvertBehaviours`' skip dict),
 so nothing here is fully silent — the question is feature vs report.
 
+**Behaviour counts re-measured 2026-08-04 and they moved enormously** — the census had been reading
+only `animator.runtimeAnimatorController`, missing the descriptor's own `baseAnimationLayers` and
+`specialAnimationLayers`, which is where a VRChat avatar actually keeps Base/Additive/Gesture/
+Action/FX. Every number in this table was a floor; PoseSpace was wrong by 288×. Component counts
+below barely moved, which is the check that the fix is aimed correctly: components sit on objects
+and were never affected. **Where an instrument and the conversion reports disagree, the reports win.**
+
 | type | wild n | verdict | notes |
 |---|---|---|---|
-| VRCAvatarParameterDriver | 1751 | converted | → AnimatorDriver; results sync (client-verified) |
-| VRCAnimatorLayerControl | 198 | converted | Action-layer live-window detection |
-| VRCAnimatorLocomotionControl | 31 | converted | → BodyControl Locomotion mask |
-| VRCAnimatorTrackingControl | 24 | converted | → BodyControl; eyes/mouth/fingers have no CVR mask, reported |
-| VRCPlayableLayerControl | 11 | converted | Action transplant |
-| VRCAnimatorPlayAudio | 86+ | reported richly | own inventory naming state, source path, clips, looping (#29, done — lumar names 22). Approximation deliberately deferred: the enable-window play/stop trick interacts with Write Defaults and needs the off-state restore machinery; hand-wiring hint in the report (AudioSource Play On Awake, CVRAudioDriver animated index) |
-| VRCAnimatorTemporaryPoseSpace | 100+ per GoGo avatar | reported | says what it did — viewpoint to hips while crawling etc. (#29, done). The census read 2 because it walked Animator slots, not descriptor layers: BEHAVIOUR COUNTS IN THE CENSUS ARE FLOORS, the reports are the truth |
+| VRCAvatarParameterDriver | 3282 | converted | → AnimatorDriver; results sync (client-verified). Was measured as 1751 |
+| VRCAnimatorTrackingControl | 581 | converted, with a named platform gap | → BodyControl. Head/pelvis/arms/legs/locomotion map exactly. Eyes, mouth and FINGERS have no CVR mask — the CCK itself says `// TODO: Add FingerTracking masks when GS is ready`, so this is upstream, not ours. MEASURED 2026-08-04: 34 of the 40 avatars using tracking behaviours drop at least one channel — fingers 340, eyes 120, mouth 119. Fingers are the costly one: VRChat sets them to Animation for an emote AND puts Action above Gesture, while CVR grafts emotes into Locomotion/Emotes which sits BELOW the hand layers on all 53 corpus avatars, so a gesture overrides an emote hand pose. Report and README now say so. UNVERIFIED IN GAME — needs someone to play an emote while holding a fist |
+| VRCAnimatorTemporaryPoseSpace | 575 | reported | says what it did — viewpoint to hips while crawling etc. (#29). Was measured as **2**, which is how a 100-per-avatar behaviour got judged not worth building for |
+| VRCAnimatorLayerControl | 262 | converted | Action-layer live-window detection. Was 198 |
+| VRCAnimatorLocomotionControl | 152 | converted | → BodyControl Locomotion mask. Was 31 |
+| VRCPlayableLayerControl | 129 | converted | Action transplant. Was 11 |
+| VRCAnimatorPlayAudio | 132 | reported richly | own inventory naming state, source path, clips, looping (#29, done — lumar names 22). Approximation deliberately deferred: the enable-window play/stop trick interacts with Write Defaults and needs the off-state restore machinery; hand-wiring hint in the report (AudioSource Play On Awake, CVRAudioDriver animated index). Was 86 |
 
 ## Descriptor, field level (complete 2026-08-03)
 

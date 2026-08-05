@@ -364,17 +364,28 @@ namespace AvatarBridge
             // empty — so running this first makes it impossible for it to re-process the filler's
             // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
             // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
-            RestorePartialOffStates(master, ctx);
-            // One shared name registry, so the two restore passes cannot overwrite each other's
-            // clips: both write "<thing> restore.anim" into one folder, and a nativized toggle
-            // layer and the tree Fury built from that same toggle are named alike often enough.
+            // One shared registry of every restore clip THIS conversion writes, created before
+            // the first pass that writes one. The empty-state filler sweeps stale " restore"
+            // files out of the output folder and can only spare what it knows about — and it
+            // used to know only its own. The partial-off topping that ran moments earlier had
+            // its freshly written clips DELETED on every conversion: the report swore the states
+            // were topped, the coverage checker swore they asserted nothing, and both were
+            // telling the truth, one sweep apart. The registry also stops the passes overwriting
+            // each other's names: a nativized toggle layer and the tree Fury built from that
+            // same toggle are named alike often enough.
             var restoreClipPaths = new HashSet<string>();
+            RestorePartialOffStates(master, ctx, restoreClipPaths);
             FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
             // AFTER the state pass, which sweeps stale " restore" clips out of the output folder
             // using only ITS OWN keep list — run the other way round, that sweep would delete the
             // tree clips written moments earlier. Both run BEFORE FillEmptyMotionSlots, so the off
             // halves they repair are still genuine holes rather than placeholders.
             FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
+            // AFTER both fillers, so the clips they wrote are seen and topped only where still
+            // missing something. This is the pass that stops relying on Write Defaults at all:
+            // ChilloutVR does not restore WD defaults the way VRChat's runtime does, so a binding
+            // left to WD is a binding left to nothing.
+            AssertOwnedBindingsEverywhere(master, ctx);
             // AFTER the filler, whose motions are what turned this from harmless into a strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
@@ -382,7 +393,7 @@ namespace AvatarBridge
             AvatarScalerInjector.Inject(master, ctx);
             // After every layer that will exist, exists: the stack order it checks is the one
             // the game will run.
-            AuditHandPoseConflicts(master, convertingGestureLayer, ctx);
+            AuditHandPoseConflicts(master, ctx);
             // Run last: after every merge and injection, make sure no transition conditions
             // it on a parameter using a comparison its final type can't express (e.g. a
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
@@ -1642,8 +1653,21 @@ namespace AvatarBridge
                     if (DroppedFingers > 0) parts.Add($"fingers ({DroppedFingers})");
                     ctx.Report.Approximated(Category, "Some tracking targets have no ChilloutVR body mask",
                         $"{string.Join(", ", parts)} — ChilloutVR's Body Control covers head, pelvis, arms, legs " +
-                        "and locomotion only. These targets keep whatever the avatar's own animation and face " +
-                        "tracking do with them.");
+                        "and locomotion only, and that is the platform's own limit rather than a gap in this " +
+                        "conversion: the CCK declares the mask list with the comment \"TODO: Add FingerTracking " +
+                        "masks when GS is ready\". There is nothing to map these onto yet." +
+                        (DroppedFingers > 0
+                            ? " FINGERS ARE THE ONE TO WATCH. In VRChat an emote sets them to \"Animation\" so the " +
+                              "emote's own hand pose plays instead of the gesture you are holding, and VRChat's " +
+                              "Action layer sits ABOVE its Gesture layer, so it wins twice over. ChilloutVR's " +
+                              "layer order is the other way round — emotes are grafted into Locomotion/Emotes, " +
+                              "which sits BELOW the hand-pose layers — so expect an emote's hand pose to be " +
+                              "overridden by whatever gesture your controller is reporting. If a dance looks " +
+                              "right except that the hands hold a fist or a point, this is why. The workaround " +
+                              "today is to hold an open/neutral gesture while the emote plays."
+                            : "") +
+                        " Eyes and mouth keep whatever the avatar's own animation and face tracking do with them, " +
+                        "which is usually what you want — face tracking wants those channels anyway.");
                 }
             }
         }
@@ -2304,7 +2328,8 @@ namespace AvatarBridge
         /// what it forgot. Only the forgotten bindings are added; its own curves are copied over
         /// untouched.
         /// </summary>
-        static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx)
+        static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx,
+            HashSet<string> writtenPaths)
         {
             var topped = new List<string>();
             int curvesAdded = 0;
@@ -2322,11 +2347,15 @@ namespace AvatarBridge
                 var l = master.layers[i];
                 if (l?.stateMachine == null) continue;
                 var here = new HashSet<EditorCurveBinding>();
+                // Same reachability rule as BuildRestoreOwnership: a library layer's orphan
+                // states can never play, so they own nothing — see LibraryDefaultState.
+                var onlyPlayable = LibraryDefaultState(l);
                 WalkMachines(l.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
-                        if (child.state?.motion is AnimationClip c)
+                        if (child.state?.motion is AnimationClip c
+                            && (onlyPlayable == null || child.state == onlyPlayable))
                         {
                             foreach (var binding in AnimationUtility.GetCurveBindings(c)) here.Add(binding);
                         }
@@ -2382,6 +2411,12 @@ namespace AvatarBridge
                 }
 
                 var filled = new AnimationClip { name = SanitizeFileName($"{offClip.name} restore") };
+                // Same rule as the assertion pass's copies: settings travel with the curves, or a
+                // looping source comes back loop=False and freezes after one play.
+                AnimationUtility.SetAnimationClipSettings(filled,
+                    AnimationUtility.GetAnimationClipSettings(offClip));
+                filled.frameRate = offClip.frameRate;
+                filled.wrapMode = offClip.wrapMode;
                 foreach (var binding in AnimationUtility.GetCurveBindings(offClip))
                 {
                     AnimationUtility.SetEditorCurve(filled, binding, AnimationUtility.GetEditorCurve(offClip, binding));
@@ -2436,6 +2471,10 @@ namespace AvatarBridge
                     AssetDatabase.DeleteAsset(target);
                 }
                 AssetDatabase.CreateAsset(filled, target);
+                // Register with the shared sweep-survivor list, or the empty-state filler's
+                // stale-clip sweep deletes this file minutes from now — see the registry comment
+                // at the call site.
+                writtenPaths.Add(target);
                 offState.motion = filled;
                 EditorUtility.SetDirty(offState);
                 curvesAdded += added;
@@ -2456,6 +2495,306 @@ namespace AvatarBridge
                     "conversion time is what \"off\" now means.");
             }
         }
+
+        /// <summary>
+        /// Every property a layer OWNS is asserted from every state that layer can rest in.
+        ///
+        /// ChilloutVR does not fall back to Write Defaults the way VRChat's runtime does —
+        /// measured in game, twice, on one avatar: every toggle whose "on" direction was an
+        /// empty state switched off and never back on, while toggles whose states assert their
+        /// properties kept working. So the owner arbitration ("the lowest layer animating a
+        /// property restores it; higher layers stay silent") only functions if the owner
+        /// actually SPEAKS from every state it can rest in. Before this pass it spoke only from
+        /// clips that happened to mention the property — an exclusive-wear wardrobe, where one
+        /// outfit's clip also hides the other garments, left most owners silent at rest and the
+        /// whole wardrobe one-way in game.
+        ///
+        /// Deliberately left alone, each for a reason that has already shipped as a bug or been
+        /// measured as a fight:
+        ///   * bindings that appear inside any blend tree in the SAME layer — a slider owns its
+        ///     value, and pinning it from a plain state reverts the slider whenever the layer
+        ///     rests (the Reset state that flattened seven chest blendshapes);
+        ///   * states with no clip at all — a 2-state toggle's empty half is the empty-state
+        ///     filler's job, and anything larger left empty is structural;
+        ///   * pass-through states — a local/remote gate is never rested in;
+        ///   * Animator-typed bindings — muscles and animated parameters are not scene state;
+        ///   * unreachable library states, protected layers, and states holding blend trees.
+        /// </summary>
+        static void AssertOwnedBindingsEverywhere(AnimatorController master, BridgeContext ctx)
+        {
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
+
+            int curvesAddedTotal = 0;
+            var touched = new List<string>();
+
+            for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
+            {
+                var layer = master.layers[layerIndex];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                var onlyPlayable = LibraryDefaultState(layer);
+
+                // What this layer animates from plain clip states. Tree-driven bindings are
+                // exempt globally — ownership never contains them (see BuildRestoreOwnership).
+                var stateFloats = new HashSet<EditorCurveBinding>();
+                var stateObjects = new HashSet<EditorCurveBinding>();
+                var states = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null || (onlyPlayable != null && state != onlyPlayable))
+                        {
+                            continue;
+                        }
+                        states.Add(state);
+                        if (state.motion is AnimationClip clip)
+                        {
+                            foreach (var b in AnimationUtility.GetCurveBindings(clip)) stateFloats.Add(b);
+                            foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip)) stateObjects.Add(b);
+                        }
+                    }
+                });
+
+                var ownedFloats = stateFloats.Where(b => b.type != typeof(Animator)
+                    && !treeDriven.Contains(b)
+                    && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
+                var ownedObjects = stateObjects.Where(b => !treeDriven.Contains(b)
+                    && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
+                if (ownedFloats.Count == 0 && ownedObjects.Count == 0)
+                {
+                    continue;
+                }
+
+                int addedThisLayer = 0;
+                foreach (var state in states)
+                {
+                    if (!(state.motion is AnimationClip current) || IsPassThroughState(state))
+                    {
+                        continue;
+                    }
+                    var haveFloats = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(current));
+                    var haveObjects = new HashSet<EditorCurveBinding>(AnimationUtility.GetObjectReferenceCurveBindings(current));
+
+                    AnimationClip copy = null;
+                    int added = 0;
+                    AnimationClip Copy()
+                    {
+                        if (copy != null)
+                        {
+                            return copy;
+                        }
+                        copy = new AnimationClip
+                        {
+                            name = SanitizeFileName($"{layer.name} {state.name} restore")
+                        };
+                        // Settings travel with the curves or the copy changes behaviour: an
+                        // 8.3-second looping animation topped by this pass came back loop=False,
+                        // playing once and freezing where the original cycled. Caught by the
+                        // corpus gate before release, on the first avatar checked.
+                        AnimationUtility.SetAnimationClipSettings(copy,
+                            AnimationUtility.GetAnimationClipSettings(current));
+                        copy.frameRate = current.frameRate;
+                        copy.wrapMode = current.wrapMode;
+                        foreach (var b in haveFloats)
+                        {
+                            AnimationUtility.SetEditorCurve(copy, b, AnimationUtility.GetEditorCurve(current, b));
+                        }
+                        foreach (var b in haveObjects)
+                        {
+                            AnimationUtility.SetObjectReferenceCurve(copy, b,
+                                AnimationUtility.GetObjectReferenceCurve(current, b));
+                        }
+                        return copy;
+                    }
+
+                    foreach (var binding in ownedFloats)
+                    {
+                        if (haveFloats.Contains(binding)
+                            || !AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetEditorCurve(Copy(), binding, AnimationCurve.Constant(0f, 0f, value));
+                        added++;
+                    }
+                    foreach (var binding in ownedObjects)
+                    {
+                        if (haveObjects.Contains(binding)
+                            || !AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
+                        {
+                            continue;
+                        }
+                        AnimationUtility.SetObjectReferenceCurve(Copy(), binding,
+                            new[] { new ObjectReferenceKeyframe { time = 0f, value = value } });
+                        added++;
+                    }
+                    if (added == 0)
+                    {
+                        continue;
+                    }
+
+                    // Same home, claiming and delete-first rules as the other restore writers, so
+                    // reconversion replaces cleanly instead of stacking numbered copies.
+                    string target = OutputAssetPaths.Claim(
+                        $"{ctx.OutputDir}/RehomedAssets/{copy.name}.anim");
+                    var folder = System.IO.Path.GetDirectoryName(target).Replace('\\', '/');
+                    if (!AssetDatabase.IsValidFolder(folder))
+                    {
+                        System.IO.Directory.CreateDirectory(folder);
+                        AssetDatabase.Refresh();
+                    }
+                    if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
+                    {
+                        AssetDatabase.DeleteAsset(target);
+                    }
+                    AssetDatabase.CreateAsset(copy, target);
+                    state.motion = copy;
+                    EditorUtility.SetDirty(state);
+                    addedThisLayer += added;
+                }
+
+                if (addedThisLayer > 0)
+                {
+                    curvesAddedTotal += addedThisLayer;
+                    touched.Add($"\"{layer.name}\" ({addedThisLayer})");
+                }
+            }
+
+            if (touched.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{touched.Count} layer(s) now assert everything they own, from every state",
+                    $"{string.Join(", ", touched.Take(8))}{(touched.Count > 8 ? ", …" : "")} — " +
+                    $"{curvesAddedTotal} propert(ies) in total. VRChat quietly puts a property back " +
+                    "to its default when no animation is writing it (Write Defaults); ChilloutVR " +
+                    "does not, so anything left to that rule switches off and never back on in " +
+                    "game. Each layer that owns a property now states its value from every state " +
+                    "it can rest in, so nothing is ever left to the runtime's discretion. Whatever " +
+                    "is true at conversion time is what those values are — set the avatar up the " +
+                    "way it should rest before converting.");
+            }
+
+            ReportNoWdCoverage(master, ctx);
+        }
+
+        /// <summary>
+        /// The audit for everything above: after every restore pass has run, is any owned
+        /// property still able to fall back to the runtime?
+        ///
+        /// This exists because the chain it checks was broken four separate ways on one avatar
+        /// — curveless states invisible to the filler, a dead library owning the wardrobe, tree
+        /// claims orphaning bindings, owners silent at rest — and each was found by hand, from a
+        /// game report, days apart. The checker asks the finished controller the one question
+        /// all of those reduce to, with the same helpers the passes themselves use, so it cannot
+        /// drift from them. A violation here lands in the report as a warning, which the
+        /// regression corpus records in full — so this entire class of bug now fails loudly at
+        /// conversion time instead of quietly in game.
+        /// </summary>
+        static void ReportNoWdCoverage(AnimatorController master, BridgeContext ctx)
+        {
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
+
+            var violations = new SortedSet<string>(StableSampleOrder.Instance);
+            int violationCount = 0;
+            int deadCount = 0;
+
+            for (int layerIndex = 0; layerIndex < master.layers.Length; layerIndex++)
+            {
+                var layer = master.layers[layerIndex];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                var onlyPlayable = LibraryDefaultState(layer);
+
+                var owned = new List<EditorCurveBinding>();
+                foreach (var pair in owner)
+                {
+                    if (pair.Value != layerIndex || pair.Key.type == typeof(Animator)
+                        || treeDriven.Contains(pair.Key))
+                    {
+                        continue;
+                    }
+                    // A binding that no longer resolves on the avatar is a toggle over a ghost —
+                    // its object went with a stripped system (SPS sockets, deleted physbone
+                    // hosts). Nothing can restore it and nothing in game shows it either way, so
+                    // it is not a coverage gap. The first run of this checker reported 136
+                    // violations on one avatar and every visible one was this.
+                    if (!AnimationUtility.GetFloatValue(ctx.Target, pair.Key, out _)
+                        && !AnimationUtility.GetObjectReferenceValue(ctx.Target, pair.Key, out _))
+                    {
+                        deadCount++;
+                        continue;
+                    }
+                    owned.Add(pair.Key);
+                }
+                if (owned.Count == 0)
+                {
+                    continue;
+                }
+
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null || (onlyPlayable != null && state != onlyPlayable)
+                            || IsPassThroughState(state))
+                        {
+                            continue;
+                        }
+                        // A tree state asserts its whole union continuously; count it as covering
+                        // whatever it animates.
+                        var asserts = new HashSet<EditorCurveBinding>();
+                        CollectBindings(state.motion, asserts, asserts);
+                        bool empty = state.motion == null || IsCurveless(state.motion, null);
+                        foreach (var binding in owned)
+                        {
+                            if (!empty && asserts.Contains(binding))
+                            {
+                                continue;
+                            }
+                            violationCount++;
+                            // The filler's own account of this layer, so a violation arrives
+                            // explaining itself instead of costing a reconversion round-trip.
+                            string verdict = restoreVerdicts.TryGetValue(layer.name, out string why)
+                                ? why : "filler never reached this layer";
+                            violations.Add($"{layer.name}/{state.name}: {binding.path}:{PrettyProperty(binding)}"
+                                + (empty ? " (state asserts nothing)" : "") + $" [filler: {verdict}]");
+                        }
+                    }
+                });
+            }
+
+            if (violationCount > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{violationCount} propert(ies) can still fall back to the runtime",
+                    $"{string.Join("; ", violations.Take(6))}{(violations.Count > 6 ? "; …" : "")} — " +
+                    "each is owned by a layer that stays silent about it in the named state. " +
+                    "VRChat's runtime fills that silence with the property's default; ChilloutVR's " +
+                    "does not, so if a toggle over one of these switches off and never back on in " +
+                    "game, this is why. Please report the avatar — the passes that close these " +
+                    "gaps believed they had.");
+            }
+            if (deadCount > 0)
+            {
+                ctx.Report.Skipped(Category,
+                    $"{deadCount} animated propert(ies) point at objects that were removed",
+                    "Their toggles controlled systems this conversion stripped — SPS sockets, " +
+                    "deleted physics hosts — so the animation now points at nothing, and nothing " +
+                    "shows in game either way. Not a coverage gap; there is nothing left to restore.");
+            }
+        }
+
+        /// <summary>"blendShape.X" reads better than nothing, but strip nothing else — the report
+        /// line is how a violation gets found again.</summary>
+        static string PrettyProperty(EditorCurveBinding binding) =>
+            string.IsNullOrEmpty(binding.propertyName) ? "(property)" : binding.propertyName;
 
         static void SyncDriverParameterTypes(AnimatorController master, BridgeContext ctx)
         {
@@ -3412,7 +3751,7 @@ namespace AvatarBridge
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
             var added = new List<AnimatorControllerParameter>();
-            var repointed = new SortedSet<string>();
+            var repointed = new SortedSet<string>(StableSampleOrder.Instance);
             var map = new Dictionary<string, string>();
             var seen = new HashSet<BlendTree>();
 
@@ -3589,7 +3928,7 @@ namespace AvatarBridge
                 return;
             }
 
-            var withdrawn = new SortedSet<string>();
+            var withdrawn = new SortedSet<string>(StableSampleOrder.Instance);
             for (int i = settings.Count - 1; i >= 0; i--)
             {
                 var entry = settings[i];
@@ -4497,7 +4836,7 @@ namespace AvatarBridge
         static bool ActionLayerDrivesOwnFeature(AnimatorControllerLayer layer, out string byWhat)
         {
             byWhat = null;
-            var own = new SortedSet<string>();
+            var own = new SortedSet<string>(StableSampleOrder.Instance);
             WalkMachines(layer.stateMachine, machine =>
             {
                 void Note(AnimatorTransitionBase transition)
@@ -6360,7 +6699,7 @@ namespace AvatarBridge
             var vrcNames = new HashSet<string>(vrcLayers.Select(l => l.name));
             var layers = master.layers;
             int masked = 0, handed = 0;
-            var maskedBaseBody = new SortedSet<string>();
+            var maskedBaseBody = new SortedSet<string>(StableSampleOrder.Instance);
 
             foreach (var layer in layers)
             {
@@ -6471,12 +6810,28 @@ namespace AvatarBridge
         /// WITH one is skipped by it, and injected layers never pass through it at all. So this
         /// checks the finished stack rather than trusting the passes that built it.
         /// </summary>
-        static void AuditHandPoseConflicts(AnimatorController master, bool convertingGestureLayer, BridgeContext ctx)
+        internal static void AuditHandPoseConflictsForTest(AnimatorController master, BridgeContext ctx)
+            => AuditHandPoseConflicts(master, ctx);
+
+        static void AuditHandPoseConflicts(AnimatorController master, BridgeContext ctx)
         {
-            if (convertingGestureLayer)
-            {
-                return; // the avatar's own gesture layers ARE the hand pose — nothing to protect
-            }
+            // This used to return early when the gesture layer was being converted, reasoning that
+            // "the avatar's own gesture layers ARE the hand pose, so there is nothing to protect".
+            // That confuses the SOURCE of the pose with its SAFETY. The promoted LeftHand/RightHand
+            // layers are indeed the avatar's own — and something merged in above them can still
+            // overwrite the fingers they just posed.
+            //
+            // Reported from the wild on two avatars whose FX layer ALSO carried layers called
+            // "Left Hand" and "Right Hand". Both copies survived: the promoted pair at 2 and 3, the
+            // FX duplicates at 5 and 6, all unmasked and all at weight 1, so the FX pair won. On one
+            // of them the winning copy had no Idle state at all and a fist band starting at -0.9,
+            // which parks the hand in a fist at rest — reported as "gestures are just wrong, with
+            // the wrong thresholds". The promoted layer's own bands were correct throughout.
+            //
+            // It cannot happen in VRChat, which is why an avatar can ship like this and look fine:
+            // the FX playable layer there cannot drive humanoid muscles at all, so those FX hand
+            // layers never touched a finger. Merging everything into one controller hands them
+            // muscles they never had.
             var layers = master.layers;
             int handTop = -1;
             for (int i = 0; i < layers.Length; i++)
@@ -6498,25 +6853,38 @@ namespace AvatarBridge
             {
                 var layer = layers[i];
                 var mask = layer.avatarMask;
-                // A null mask is MaskMergedLayers' business, not this one's — flagging those
-                // here would fire on every injected layer we write ourselves.
-                if (mask == null || layer.defaultWeight <= 0f
-                    || layer.blendingMode != AnimatorLayerBlendingMode.Override)
+                if (layer.defaultWeight <= 0f || layer.blendingMode != AnimatorLayerBlendingMode.Override)
                 {
                     continue;
                 }
-                if (!mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
+                if (mask != null
+                    && !mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftFingers)
                     && !mask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightFingers))
                 {
-                    continue;
+                    continue; // already cannot reach fingers
                 }
-                InspectLayerCurves(layer, out bool body, out _);
+                InspectLayerCurves(layer, out bool body, out bool fingers);
                 if (body)
                 {
                     // A layer that deliberately drives the body — a kept GoGo locomotion
                     // replacement, say. Silently stripping its fingers would be us overruling
                     // the author, so this one is the user's call.
                     warned.Add(layer.name);
+                    continue;
+                }
+                if (mask == null)
+                {
+                    // No mask at all, so nothing to edit — and this is the case that mattered.
+                    // Only act when the layer really animates fingers: giving a mask to a layer
+                    // that has none is a bigger intervention than editing one, and for a layer
+                    // with no finger curves it would change nothing anyway.
+                    if (!fingers)
+                    {
+                        continue;
+                    }
+                    layer.avatarMask = GetNoFingersMask(ctx);
+                    repaired.Add(layer.name);
+                    changed = true;
                     continue;
                 }
                 var stripped = new AvatarMask { name = mask.name + "_NoFingers" };
@@ -6548,11 +6916,16 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{repaired.Count} layer(s) above the hand-pose layers stopped from overwriting gestures",
                     $"{string.Join(", ", repaired.Take(6))}{(repaired.Count > 6 ? ", …" : "")} — each sat " +
-                    "above ChilloutVR's LeftHand/RightHand layers with a mask that let it write finger " +
-                    "muscles, which on Override at full weight replaces whatever pose the gesture just " +
-                    "played. Fingers were removed from their masks; everything else those layers animate " +
-                    "is untouched. This is what makes a gesture look \"dead\" in game while the CCK " +
-                    "Debugger shows the right clip playing at weight 1.");
+                    "above the LeftHand/RightHand layers and could write finger muscles, which on " +
+                    "Override at full weight replaces whatever pose the gesture just played. Fingers " +
+                    "are now masked off them; everything else those layers animate is untouched. " +
+                    "This is what makes a gesture look \"dead\" in game while the CCK Debugger shows " +
+                    "the right clip playing at weight 1 — and when the offender is a COPY of the " +
+                    "avatar's own hand layers that VRChat kept in its FX playable, the symptom is " +
+                    "stranger still: gestures that work but land on the wrong pose, or a hand stuck " +
+                    "in a fist at rest, because the copy that won was never the one driving fingers " +
+                    "in VRChat. FX cannot touch humanoid muscles there; merged into one ChilloutVR " +
+                    "controller it can.");
             }
             if (warned.Count > 0)
             {
@@ -6564,6 +6937,13 @@ namespace AvatarBridge
                     "avatar mask, or lower their weight.");
             }
         }
+
+        /// <summary>
+        /// Why the empty-state filler did what it did, per layer, for the coverage checker to
+        /// print beside a violation. A violation without its refusal reason cost three
+        /// reconversion round-trips on one avatar; with it, the fix is named in the report.
+        /// </summary>
+        static readonly Dictionary<string, string> restoreVerdicts = new Dictionary<string, string>();
 
         /// <summary>
         /// Gives every empty "off" state a real clip that restores what its layer animates.
@@ -6602,11 +6982,18 @@ namespace AvatarBridge
         {
             var root = ctx.Target.transform;
             string dir = $"{ctx.OutputDir}/RehomedAssets";
+            restoreVerdicts.Clear();
             int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
+            // Bindings that named something this avatar no longer has. Counted because the two
+            // skips below used to be silent, and when EVERY binding took one of them the pass
+            // reported "found candidates and produced nothing" with no way to tell which — see
+            // the failure branch at the bottom, where that question is finally answerable.
+            int unresolved = 0;
+            var unresolvedPaths = new SortedSet<string>(StableSampleOrder.Instance);
             var names = new List<string>();
             var keptClips = new HashSet<string>();
             // Layers whose empty states are structural rather than a toggle.s off half.
-            var notToggles = new SortedSet<string>();
+            var notToggles = new SortedSet<string>(StableSampleOrder.Instance);
 
             // Snapshot ONCE. master.layers hands back a fresh array of fresh wrappers on every
             // access, so an index looked up against one call is meaningless against another —
@@ -6623,7 +7010,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven);
 
             // Every layer of the finished controller except the ones that must not be touched —
             // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
@@ -6651,7 +7038,14 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        if (state.motion == null)
+                        // A curve-less clip IS an empty state. VRCFury does not leave its empty
+                        // toggle halves null — it parks a shared clip with no curves in them —
+                        // and the tree collector has accepted that spelling since the day it was
+                        // written, while this one demanded null. On a Fury avatar whose toggles
+                        // are state pairs, that asymmetry made every single one invisible here:
+                        // 'found candidates and produced nothing' with the candidates being only
+                        // the states some later strip had genuinely nulled.
+                        if (state.motion == null || IsCurveless(state.motion, null))
                         {
                             // An empty state is only an "off" state if the layer can REST in it.
                             // A router can't be rested in and must not be given values to assert.
@@ -6670,6 +7064,9 @@ namespace AvatarBridge
                 });
                 if (empties.Count == 0 || (bindings.Count == 0 && objectBindings.Count == 0))
                 {
+                    restoreVerdicts[layer.name] = empties.Count == 0
+                        ? "no empty state to fill (every state already holds a motion, or is a router)"
+                        : "empty state found, but the layer animates nothing to restore";
                     continue;
                 }
                 // ONLY the two-state toggle. VRChat's idiom is exactly one empty "off" state and
@@ -6687,6 +7084,7 @@ namespace AvatarBridge
                 // rescues. Erring the other way changes what the avatar looks like.
                 if (stateCount != 2)
                 {
+                    restoreVerdicts[layer.name] = $"not a two-state toggle ({stateCount} states)";
                     notToggles.Add($"{layer.name} ({stateCount} states)");
                     continue;
                 }
@@ -6708,6 +7106,12 @@ namespace AvatarBridge
                 int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
+                    // A blend tree drives this somewhere: leave it to the tree. A constant
+                    // assertion from any plain state fights a parameter-driven value.
+                    if (treeDriven.Contains(binding))
+                    {
+                        return false;
+                    }
                     // Unknown binding: nobody else claims it, so this layer may restore it.
                     return !owner.TryGetValue(binding, out int lowest) || lowest == here;
                 }
@@ -6727,6 +7131,11 @@ namespace AvatarBridge
                     }
                     if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
                     {
+                        // The clip names an object or property the converted avatar does not have
+                        // — stripped with a VRChat-only system, or renamed by a baker. There is no
+                        // current value to snapshot, so nothing can be restored here.
+                        unresolved++;
+                        unresolvedPaths.Add($"{binding.path}:{binding.propertyName}");
                         continue;
                     }
                     AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0f, 0f, value));
@@ -6741,6 +7150,8 @@ namespace AvatarBridge
                     }
                     if (!AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out var value))
                     {
+                        unresolved++;
+                        unresolvedPaths.Add($"{binding.path}:{binding.propertyName}");
                         continue;
                     }
                     AnimationUtility.SetObjectReferenceCurve(clip, binding,
@@ -6750,9 +7161,14 @@ namespace AvatarBridge
                 sharedSkipped += shared;
                 if (curves == 0)
                 {
+                    restoreVerdicts[layer.name] =
+                        $"candidate refused in full: {shared} propert(ies) owned elsewhere or " +
+                        "tree-driven, the rest unresolved or parameter-typed";
                     UnityEngine.Object.DestroyImmediate(clip);
                     continue;
                 }
+                restoreVerdicts[layer.name] = $"filled ({curves} curve(s))"
+                    + (shared > 0 ? $", {shared} refused as owned elsewhere or tree-driven" : "");
 
                 // Prefer the avatar's OWN animation. If the author already ships a clip that
                 // sets these same properties to these same values — the "on" half of a pair
@@ -6769,6 +7185,7 @@ namespace AvatarBridge
                         filled++;
                     }
                     layersTouched++;
+                    restoreVerdicts[layer.name] = $"filled by reusing the avatar's own \"{existing.name}\"";
                     names.Add($"{layer.name} (reused \"{existing.name}\")");
                     reused++;
                     continue;
@@ -6810,16 +7227,42 @@ namespace AvatarBridge
                 // rather than leave the report silent about a pass that ran and achieved zero.
                 if (candidates > 0)
                 {
+                    // Say WHY, which this used to leave out entirely — it counted the candidates,
+                    // asked to be told about it, and threw away the two numbers that answer the
+                    // question. Reported from an avatar whose seven toggles all switched on and
+                    // stayed on, where the report could only say that something had gone wrong.
+                    string because =
+                        unresolved > 0 && sharedSkipped > 0
+                            ? $" {unresolved} propert(ies) named something this avatar no longer has, and " +
+                              $"{sharedSkipped} belong to a lower layer, so nothing was left to restore."
+                        : unresolved > 0
+                            ? $" Every property they animate — {unresolved} of them — names something this " +
+                              "avatar no longer has, so there was no current value to snapshot. Removing a " +
+                              "VRChat-only system takes its objects with it, and a toggle that only ever " +
+                              "moved those has nothing left to restore: " +
+                              $"{string.Join(", ", unresolvedPaths.Take(4))}" +
+                              (unresolvedPaths.Count > 4 ? $", … ({unresolvedPaths.Count} paths)" : "") + "."
+                        : sharedSkipped > 0
+                            ? $" All {sharedSkipped} of the properties they animate are claimed by a lower " +
+                              "layer, which restores them instead — see the note about several layers " +
+                              "animating one thing. If these toggles do stick, that rule is picking the " +
+                              "wrong layer and the conversion is worth reporting."
+                            : " The pass found candidates and produced nothing, with no property either " +
+                              "unresolved or claimed elsewhere — which it should not do. Please report " +
+                              "this conversion.";
+
                     ctx.Report.Warning(Category,
                         $"{candidates} empty \"off\" state(s) were left without a restore animation",
                         "Each belongs to a toggle whose off direction now depends on Write Defaults " +
                         "putting the property back. If any of these switch on and never off again, " +
-                        "that is why. Please report it with this conversion — the pass that fills " +
-                        "them found candidates and produced nothing, which it should not do.");
+                        "that is why." + because);
                 }
                 return;
             }
-            int stale = DeleteStaleRestoreClips(dir, keptClips);
+            // Spare EVERYTHING the shared registry knows about, not just this pass's own files —
+            // writtenPaths carries the partial-off topping's clips too, written moments before
+            // this sweep, referenced by live states, and deleted by it for four versions.
+            int stale = DeleteStaleRestoreClips(dir, writtenPaths);
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
                 $"{filled} empty \"off\" state(s) across {layersTouched} layer(s) given a restore animation",
@@ -6877,7 +7320,8 @@ namespace AvatarBridge
         /// let both of them restore it.
         /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
-            out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips)
+            out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
+            out HashSet<EditorCurveBinding> treeDriven)
         {
             // Locals rather than the out params directly: a lambda may not touch an out parameter,
             // and the walk below is a lambda.
@@ -6885,19 +7329,46 @@ namespace AvatarBridge
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
             var clips = new HashSet<AnimationClip>();
+            // Bindings that any BLEND TREE anywhere animates. Ownership is awarded from plain
+            // clip states only, and tree-driven bindings are exempt from state restores entirely:
+            // a tree's curves are parameter-driven and continuously blended, so a constant
+            // assertion from any plain state — above OR below — fights the tree whenever it is
+            // live. The measured case: a low gesture layer's weight trees touched hundreds of
+            // bindings, claimed ownership of all of them, was rightly refused permission to
+            // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
+            // — nobody restored anything, and the whole avatar was one-way in game.
+            var trees = new HashSet<EditorCurveBinding>();
             int layerIndex = -1;
             foreach (var candidate in layers)
             {
                 layerIndex++;
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
+                // Ownership only counts states Unity can actually reach. A library layer (see
+                // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
+                // states at layer 4, each holding one toggle's clip, awarded every property to
+                // a layer that can never play — so every live toggle above it was refused as
+                // "owned by a lower layer", the library restored nothing, and every toggle on
+                // the avatar switched off and never back on in game. Clips are still collected
+                // from everywhere: a library is exactly where an authored clip worth reusing
+                // by FindEquivalentClip lives.
+                var onlyPlayable = LibraryDefaultState(candidate);
                 WalkMachines(candidate.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
                         var motion = child.state != null ? child.state.motion : null;
                         CollectClips(motion, clips);
-                        CollectBindings(motion, floatsHere, objectsHere);
+                        if (motion is BlendTree)
+                        {
+                            // Trees feed the exemption set, never ownership — see above.
+                            CollectBindings(motion, trees, trees);
+                            continue;
+                        }
+                        if (onlyPlayable == null || child.state == onlyPlayable)
+                        {
+                            CollectBindings(motion, floatsHere, objectsHere);
+                        }
                     }
                 });
                 foreach (var binding in floatsHere.Concat(objectsHere))
@@ -6910,6 +7381,53 @@ namespace AvatarBridge
             }
             owner = owners;
             allClips = clips;
+            treeDriven = trees;
+        }
+
+        /// <summary>
+        /// The single state a layer can ever play, or null when the layer genuinely runs.
+        ///
+        /// A machine holding several states and not one transition anywhere — no state-to-state,
+        /// no AnyState, no Entry, none in any sub-machine — can only rest in its default state
+        /// forever. The rest is an animation LIBRARY: a place authors park clips so they are easy
+        /// to find and preview, common enough in VRChat FX controllers that one real avatar
+        /// shipped 75 of its toggles' clips this way. Unity cannot enter those states, so nothing
+        /// they animate can ever fight anything at runtime — which is exactly why they must not
+        /// take part in deciding which layer restores a property.
+        ///
+        /// Deliberately this narrow: zero transitions in the whole layer. A layer with even one
+        /// transition somewhere gets full ownership of everything it animates, reachable or not,
+        /// because partial reachability needs real graph analysis through entry/exit semantics and
+        /// a wrong answer here silently re-breaks toggles. Widen it only on evidence.
+        /// </summary>
+        static AnimatorState LibraryDefaultState(AnimatorControllerLayer layer)
+        {
+            var root = layer != null ? layer.stateMachine : null;
+            if (root == null)
+            {
+                return null;
+            }
+            int states = 0, transitions = 0;
+            WalkMachines(root, machine =>
+            {
+                states += machine.states.Length;
+                transitions += machine.anyStateTransitions.Length + machine.entryTransitions.Length;
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        transitions += child.state.transitions.Length;
+                    }
+                }
+                foreach (var sub in machine.stateMachines)
+                {
+                    if (sub.stateMachine != null)
+                    {
+                        transitions += machine.GetStateMachineTransitions(sub.stateMachine).Length;
+                    }
+                }
+            });
+            return states > 1 && transitions == 0 ? root.defaultState : null;
         }
 
         /// <summary>A 1D blend tree shaped like a toggle: one child animates, the other is empty.</summary>
@@ -6953,7 +7471,7 @@ namespace AvatarBridge
             string dir = $"{ctx.OutputDir}/RehomedAssets";
             int filled = 0, reused = 0, candidateCount = 0;
             var names = new List<string>();
-            var contested = new SortedSet<string>();
+            var contested = new SortedSet<string>(StableSampleOrder.Instance);
 
             var layers = master.layers;
             var indexByName = new Dictionary<string, int>();
@@ -6964,7 +7482,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out _);
 
             foreach (var layer in layers)
             {
@@ -8598,7 +9116,7 @@ namespace AvatarBridge
             string List(IEnumerable<string> names) =>
                 string.Join(", ", names.Take(6)) + (names.Count() > 6 ? ", …" : "");
 
-            var worst = dead.OrderByDescending(p => p.Value.count).Take(6)
+            var worst = dead.OrderByDescending(p => p.Value.count).ThenBy(p => p.Key, StringComparer.Ordinal).Take(6)
                 .Select(p => $"{p.Key} ({p.Value.count} renderer(s), e.g. \"{p.Value.path}\")");
             bool anyLocked = locked.Count > 0;
             ctx.Report.Warning(Category,
@@ -8829,7 +9347,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(master);
             AssetDatabase.SaveAssets();
 
-            var worst = byProperty.OrderByDescending(p => p.Value).Take(6)
+            var worst = byProperty.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Take(6)
                 .Select(p => $"{p.Key} ({p.Value})");
             ctx.Report.Converted(Category,
                 $"Removed {curvesRemoved} animation curve(s) that could never have done anything",
@@ -9174,7 +9692,7 @@ namespace AvatarBridge
             }
         }
 
-        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask, _fingersOnlyMask;
+        static AvatarMask _handLeftMask, _handRightMask, _handsOnlyMask, _musclesOnlyMask, _noMuscleMask, _fingersOnlyMask, _noFingersMask;
 
         static AvatarMask GetHandsOnlyMask() =>
             _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
@@ -9204,6 +9722,32 @@ namespace AvatarBridge
             return _fingersOnlyMask != null ? _fingersOnlyMask
                 : _fingersOnlyMask = BuildRigMask("AvatarBridge_FingersOnly", ctx,
                     AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+        }
+
+        /// <summary>
+        /// Everything EXCEPT fingers, for a layer that would otherwise overwrite a hand pose.
+        ///
+        /// Needed for layers that arrive with no mask at all. The hand-pose audit could only ever
+        /// edit an existing mask, so an unmasked layer sailed through it — and unmasked is exactly
+        /// what a merged FX layer full of finger curves ends up as, because MaskMergedLayers reads
+        /// muscle curves as deliberate body animation and leaves it alone.
+        /// </summary>
+        static AvatarMask GetNoFingersMask(BridgeContext ctx)
+        {
+            if (_noFingersMask != null)
+            {
+                return _noFingersMask;
+            }
+            var parts = new List<AvatarMaskBodyPart>();
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            {
+                var part = (AvatarMaskBodyPart)i;
+                if (part != AvatarMaskBodyPart.LeftFingers && part != AvatarMaskBodyPart.RightFingers)
+                {
+                    parts.Add(part);
+                }
+            }
+            return _noFingersMask = BuildRigMask("AvatarBridge_NoFingers", ctx, parts.ToArray());
         }
 
         static AvatarMask BuildRigMask(string name, BridgeContext ctx, params AvatarMaskBodyPart[] activeParts)
@@ -9267,7 +9811,7 @@ namespace AvatarBridge
         public static void ResetMaskCache()
         {
             _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
-            _noMuscleMask = _fingersOnlyMask = null;
+            _noMuscleMask = _fingersOnlyMask = _noFingersMask = null;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)

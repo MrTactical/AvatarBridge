@@ -193,14 +193,19 @@ namespace AvatarBridge
             }
         }
 
-        static string SourcePathOf(Shader shader)
+        /// <summary>
+        /// Internal rather than private so AvatarAdvisor can count the shaders this pass would
+        /// act on without running it. Same question, same answer — an advisor with its own
+        /// notion of "supports stereo" would recommend the box and then patch nothing.
+        /// </summary>
+        internal static string SourcePathOf(Shader shader)
         {
             string path = AssetDatabase.GetAssetPath(shader);
             return !string.IsNullOrEmpty(path) && path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)
                    && File.Exists(path) ? path : null;
         }
 
-        static bool DeclaresStereo(string path)
+        internal static bool DeclaresStereo(string path)
         {
             var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
             try

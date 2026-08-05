@@ -33,6 +33,17 @@ namespace AvatarBridge
         /// </summary>
         static Dictionary<string, string> relocated = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Every VRChat constraint this pass converts, matched by type name because the SDK
+        /// versions that predate VRC constraints don't ship the types to compile against.
+        /// This gates <see cref="Run"/>'s loop, so it is the one list — see the comment there.
+        /// </summary>
+        internal static readonly string[] VrcConstraintTypeNames =
+        {
+            "VRCParentConstraint", "VRCPositionConstraint", "VRCRotationConstraint",
+            "VRCScaleConstraint", "VRCAimConstraint", "VRCLookAtConstraint"
+        };
+
         public static void Run(BridgeContext ctx)
         {
             if (!ctx.Settings.convertConstraints)
@@ -49,6 +60,10 @@ namespace AvatarBridge
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
             reparented = AlignLocalSpaceRelays(ctx);
+            // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
+            // beside it as a list someone has to remember to update: AvatarAdvisor counts what
+            // this pass would convert, and a name in one place but not the other would have it
+            // promising a conversion that never happens (or staying quiet about one that does).
             var realigned = reparented;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
@@ -57,6 +72,10 @@ namespace AvatarBridge
                     continue;
                 }
                 string typeName = component.GetType().Name;
+                if (Array.IndexOf(VrcConstraintTypeNames, typeName) < 0)
+                {
+                    continue;
+                }
                 bool ok;
                 try
                 {
@@ -68,7 +87,7 @@ namespace AvatarBridge
                         case "VRCScaleConstraint": ok = ConvertScale(ctx, component); break;
                         case "VRCAimConstraint": ok = ConvertAim(ctx, component); break;
                         case "VRCLookAtConstraint": ok = ConvertLookAt(ctx, component); break;
-                        default: continue;
+                        default: continue;   // unreachable: the guard above already filtered
                     }
                 }
                 catch (Exception e)
@@ -99,7 +118,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
-            RepointConstraintCurves(ctx);
+            // NOT here any more. This rewrites curves in place, and at this point in the pipeline
+            // the clips are still the avatar author's own files — see RepointCurvesOnOurCopies.
             ReportLocalSpace(ctx, localSpaceRelays);
             ReportMirrored(ctx, mirrored);
             ReportDisabledLocalSpace(ctx, disabledLocalSpace);
@@ -235,6 +255,19 @@ namespace AvatarBridge
         /// reason rather than left pointing at nothing.
         /// </summary>
         /// <summary>
+        /// Repoints the curves that switch constraints on and off, AFTER AnimationSelfContainer has
+        /// copied every clip into this conversion's own folder.
+        ///
+        /// Split out of Run for that reason alone. Run creates the Unity constraints and populates
+        /// the relocation map; this rewrites clips, which may only happen once the clips are ours.
+        /// Run used to do both, which meant it edited the source avatar's animations — and a
+        /// package's, in one real project — because it sits nine passes before self-containment.
+        /// The SafeToRewrite guard inside still stands as a net, but the ordering is now the actual
+        /// protection rather than the apology for its absence.
+        /// </summary>
+        public static void RepointCurvesOnOurCopies(BridgeContext ctx) => RepointConstraintCurves(ctx);
+
+        /// <summary>
         /// Whether a clip may be rewritten in place: it must be OURS, not the avatar author's.
         ///
         /// Three things qualify. A clip with no asset path at all lives inside a controller we
@@ -295,12 +328,12 @@ namespace AvatarBridge
             }
 
             int repointed = 0, followed = 0;
-            var dropped = new SortedSet<string>();
-            var lost = new SortedSet<string>();        // the object is gone: something here removed it
-            var neverBuilt = new SortedSet<string>();  // the object is there, but never had a constraint
-            var movedByBake = new SortedSet<string>(); // the object exists under a different parent
+            var dropped = new SortedSet<string>(StableSampleOrder.Instance);
+            var lost = new SortedSet<string>(StableSampleOrder.Instance);        // the object is gone: something here removed it
+            var neverBuilt = new SortedSet<string>(StableSampleOrder.Instance);  // the object is there, but never had a constraint
+            var movedByBake = new SortedSet<string>(StableSampleOrder.Instance); // the object exists under a different parent
 
-            var protectedSources = new SortedSet<string>();
+            var protectedSources = new SortedSet<string>(StableSampleOrder.Instance);
 
             foreach (var clip in clips)
             {

@@ -52,50 +52,20 @@ namespace AvatarBridge
             try
             {
                 PrepareOutputFolder(ctx);
+                // Before anything is built or written: if the project has a baker installed that
+                // did not compile, every component it owns reads as absent and the conversion
+                // comes out quietly gutted. Stop here rather than spend the run producing it.
+                if (!BridgePreflight.Check(ctx))
+                {
+                    report.Error("Conversion", "Stopped before converting",
+                        "The problem above would have made this conversion silently wrong rather " +
+                        "than visibly broken, which is worse. Nothing was changed.");
+                    return report;
+                }
                 PrepareTarget(ctx);
                 WarnMissingScripts(ctx);
-                // Delete the VRChat-only systems first, so nothing downstream wastes effort
-                // converting content that's about to be thrown away — or worse, leaves parts of
-                // it behind (rescued SPS shaders that render pink, cloth whose bones then vanish).
-                SystemStripper.RemoveStrippedObjects(ctx);
-                // Then rescue VRCFury-baked meshes out of its volatile temp before anything else
-                // reads them (otherwise they orphan to null → invisible avatar).
-                SceneAssetRehomer.Run(ctx);
 
-                DescriptorConverter.Run(ctx);
-                FaceTrackingConverter.Run(ctx);
-                ParameterMenuConverter.Run(ctx);
-                PhysBoneConverter.Run(ctx);
-                ContactsConverter.Run(ctx);
-                AnimatorMerger.Run(ctx);
-                MiscConverter.Run(ctx);
-                ConstraintConverter.Run(ctx);
-                // After the constraints exist as Unity components and after AlignLocalSpaceRelays
-                // has finished moving transforms about — this pass reads live world poses, so
-                // everything it measures has to have stopped changing first.
-                ConstraintScaleRelay.Run(ctx);
-                ShaderSpiPatcher.Run(ctx);
-                // Last content pass: the controller is final here, so every clip it ends up
-                // referencing gets pulled into the output folder — a conversion that works on
-                // this PC must also work on one without the source avatar's folders.
-                AnimationSelfContainer.Run(ctx);
-                // After self-containment, because it edits clips: every one it touches is now
-                // the conversion's own copy, never the source avatar's.
-                AnimatorMerger.StripDeadMaterialCurves(ctx);
-                // Same rule: this rewrites contact m_Enabled curves at the converted contacts'
-                // host objects, and must never write into a source clip.
-                ContactsConverter.RepointContactEnableCurves(ctx);
-                // And the collider twin — clothing that switches its own collision.
-                PhysBoneConverter.RepointColliderEnableCurves(ctx);
-                // Reads the final clip list and writes to PARTICLE COMPONENTS, not to clips, so it
-                // is safe either side of self-containment — but it wants the finished controller.
-                MiscConverter.EnableAnimatedParticleEmitters(ctx);
-                // Animated PhysBone PARAMETERS (radius, gravity…) have no retarget on the Magica
-                // path — measured, not assumed — so they are named as lost and removed.
-                PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
-                // And only then judge the saved file's references — auditing any earlier
-                // flags things the self-container is about to fix.
-                AnimatorMerger.AuditSerializedReferences(ctx);
+                BridgePipeline.Execute(ctx, ContentPasses());
 
                 // Always: ChilloutVR deletes them on load anyway, the CCK upload complains
                 // about them, and an avatar still wearing its VRC descriptor reads as "not
@@ -125,6 +95,10 @@ namespace AvatarBridge
                 AssetDatabase.SaveAssets();
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
+                // The window resolves report subjects against this to offer "Show". Selection
+                // would have done at a pinch, but it is whatever the user clicked last by the
+                // time they read the report.
+                report.ConvertedRoot = ctx.Target;
 
                 report.Converted("Conversion", "Finished",
                     $"\"{ctx.Target.name}\" is ready for the CCK upload checks.");
@@ -140,6 +114,73 @@ namespace AvatarBridge
             }
             return report;
         }
+
+        /// <summary>
+        /// The conversion's content passes, in the order they run. Declared as data so the ordering
+        /// rules live in BridgePipeline where they are CHECKED rather than described, and so a test
+        /// can validate this exact list without running a conversion.
+        /// </summary>
+        static BridgePass[] ContentPasses()
+        {
+            return new[]
+                {
+                    // Delete the VRChat-only systems first, so nothing downstream wastes effort
+                    // converting content that's about to be thrown away — or worse, leaves parts
+                    // of it behind (rescued SPS shaders that render pink, cloth whose bones vanish).
+                    Pass("Strip VRChat-only systems", SystemStripper.RemoveStrippedObjects),
+                    // Then rescue VRCFury-baked meshes out of its volatile temp before anything
+                    // else reads them (otherwise they orphan to null → invisible avatar).
+                    Pass("Rehome baked scene assets", SceneAssetRehomer.Run),
+
+                    Pass("Avatar descriptor", DescriptorConverter.Run),
+                    Pass("Face tracking", FaceTrackingConverter.Run),
+                    Pass("Parameters and menu", ParameterMenuConverter.Run),
+                    Pass("PhysBones", PhysBoneConverter.Run),
+                    Pass("Contacts", ContactsConverter.Run),
+                    Pass("Animator merge", AnimatorMerger.Run),
+                    Pass("Misc components", MiscConverter.Run),
+                    Pass("Constraints", ConstraintConverter.Run),
+                    // After the constraints exist as Unity components and after
+                    // AlignLocalSpaceRelays has finished moving transforms about — this pass reads
+                    // live world poses, so everything it measures has to have stopped changing.
+                    Pass("Constraint scale relays", ConstraintScaleRelay.Run),
+                    Pass("Shader SPI patch", ShaderSpiPatcher.Run),
+
+                    // Last content pass before anything edits a clip: the controller is final
+                    // here, so every clip it references is pulled into the output folder — a
+                    // conversion that works on this PC must also work on one without the source
+                    // avatar's folders. Everything below now edits OUR copies.
+                    Pass("Self-contain clips and masks", AnimationSelfContainer.Run,
+                         PassTraits.MakesClipsOurs),
+
+                    Pass("Strip dead material curves", AnimatorMerger.StripDeadMaterialCurves,
+                         PassTraits.EditsClips),
+                    // MOVED here from inside the Constraints pass, which is nine passes earlier:
+                    // it rewrites curves, and back there the clips were still the author's own.
+                    Pass("Repoint constraint curves", ConstraintConverter.RepointCurvesOnOurCopies,
+                         PassTraits.EditsClips),
+                    Pass("Repoint contact enable curves", ContactsConverter.RepointContactEnableCurves,
+                         PassTraits.EditsClips),
+                    // And the collider twin — clothing that switches its own collision.
+                    Pass("Repoint collider enable curves", PhysBoneConverter.RepointColliderEnableCurves,
+                         PassTraits.EditsClips),
+                    // Reads the final clip list and writes to PARTICLE COMPONENTS, not to clips.
+                    Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
+                    // Animated PhysBone PARAMETERS (radius, gravity…) have no retarget on the
+                    // Magica path — measured, not assumed — so they are named as lost and removed.
+                    Pass("Report animated PhysBone properties",
+                         PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
+                    // And only then judge the saved file's references — auditing any earlier
+                    // flags things the self-container is about to fix.
+                    Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
+                };
+        }
+
+        /// <summary>Lets the regression test validate the SHIPPING order, not a mock of it.</summary>
+        internal static string ValidateLivePipelineForTest() => BridgePipeline.Validate(ContentPasses());
+        /// <summary>Declares one content pass. Traits default to None — the common case.</summary>
+        static BridgePass Pass(string name, Action<BridgeContext> run, PassTraits traits = PassTraits.None) =>
+            new BridgePass { Name = name, Run = run, Traits = traits };
 
         /// <summary>
         /// Persists the converted avatar as a prefab in the output folder.

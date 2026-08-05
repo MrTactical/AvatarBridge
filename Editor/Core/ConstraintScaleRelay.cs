@@ -101,11 +101,11 @@ namespace AvatarBridge
             var animatedOffsets = ConstraintsWithAnimatedOffsets(ctx);
 
             int constraintsFixed = 0, relaysMade = 0, leftAlone = 0;
-            var animated = new SortedSet<string>();
-            var simulated = new SortedSet<string>();
-            var external = new SortedSet<string>();
-            var degenerate = new SortedSet<string>();
-            var unlocked = new SortedSet<string>();
+            var animated = new SortedSet<string>(StableSampleOrder.Instance);
+            var simulated = new SortedSet<string>(StableSampleOrder.Instance);
+            var external = new SortedSet<string>(StableSampleOrder.Instance);
+            var degenerate = new SortedSet<string>(StableSampleOrder.Instance);
+            var unlocked = new SortedSet<string>(StableSampleOrder.Instance);
             float worstDisagreement = -1f;
             string worstAt = null;
 
