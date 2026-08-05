@@ -2522,7 +2522,7 @@ namespace AvatarBridge
         /// </summary>
         static void AssertOwnedBindingsEverywhere(AnimatorController master, BridgeContext ctx)
         {
-            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven, out _);
 
             int curvesAddedTotal = 0;
             var touched = new List<string>();
@@ -2696,7 +2696,7 @@ namespace AvatarBridge
         /// </summary>
         static void ReportNoWdCoverage(AnimatorController master, BridgeContext ctx)
         {
-            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven);
+            BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven, out _);
 
             var violations = new SortedSet<string>(StableSampleOrder.Instance);
             int violationCount = 0;
@@ -7010,7 +7010,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven, out _);
 
             // Every layer of the finished controller except the ones that must not be touched —
             // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
@@ -7321,7 +7321,8 @@ namespace AvatarBridge
         /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
             out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
-            out HashSet<EditorCurveBinding> treeDriven)
+            out HashSet<EditorCurveBinding> treeDriven,
+            out Dictionary<EditorCurveBinding, int> anyOwner)
         {
             // Locals rather than the out params directly: a lambda may not touch an out parameter,
             // and the walk below is a lambda.
@@ -7338,12 +7339,21 @@ namespace AvatarBridge
             // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
             // — nobody restored anything, and the whole avatar was one-way in game.
             var trees = new HashSet<EditorCurveBinding>();
+            // Ownership over EVERYTHING a layer animates, trees included — the arbitration the
+            // TREE repair needs. Removing tree bindings from the plain-state map above was right
+            // for the state passes, but the tree pass inherited the same map and read "absent"
+            // as "nobody claims it": on a real avatar the higher all-clothing-off preset tree was
+            // then given a restore that asserted two garments visible from above, and both
+            // garments' own toggles stopped touching anything. The exact configuration the
+            // two-layer play-mode probe had already measured as broken.
+            var anyOwners = new Dictionary<EditorCurveBinding, int>();
             int layerIndex = -1;
             foreach (var candidate in layers)
             {
                 layerIndex++;
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
+                var anythingHere = new HashSet<EditorCurveBinding>();
                 // Ownership only counts states Unity can actually reach. A library layer (see
                 // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
                 // states at layer 4, each holding one toggle's clip, awarded every property to
@@ -7361,13 +7371,19 @@ namespace AvatarBridge
                         CollectClips(motion, clips);
                         if (motion is BlendTree)
                         {
-                            // Trees feed the exemption set, never ownership — see above.
+                            // Trees feed the exemption set and the any-ownership map, never
+                            // plain-state ownership — see above.
                             CollectBindings(motion, trees, trees);
+                            if (onlyPlayable == null || child.state == onlyPlayable)
+                            {
+                                CollectBindings(motion, anythingHere, anythingHere);
+                            }
                             continue;
                         }
                         if (onlyPlayable == null || child.state == onlyPlayable)
                         {
                             CollectBindings(motion, floatsHere, objectsHere);
+                            CollectBindings(motion, anythingHere, anythingHere);
                         }
                     }
                 });
@@ -7378,10 +7394,18 @@ namespace AvatarBridge
                         owners[binding] = layerIndex;
                     }
                 }
+                foreach (var binding in anythingHere)
+                {
+                    if (!anyOwners.ContainsKey(binding))
+                    {
+                        anyOwners[binding] = layerIndex;
+                    }
+                }
             }
             owner = owners;
             allClips = clips;
             treeDriven = trees;
+            anyOwner = anyOwners;
         }
 
         /// <summary>
@@ -7482,7 +7506,7 @@ namespace AvatarBridge
                     indexByName[layers[i].name] = i;
                 }
             }
-            BuildRestoreOwnership(layers, out var owner, out var allClips, out _);
+            BuildRestoreOwnership(layers, out var owner, out var allClips, out _, out var anyOwner);
 
             foreach (var layer in layers)
             {
@@ -7547,8 +7571,13 @@ namespace AvatarBridge
                         {
                             return false;
                         }
-                        // Unknown binding: nobody else claims it, so this layer may restore it.
-                        return !owner.TryGetValue(binding, out int lowest) || lowest == here;
+                        // Cross-layer arbitration uses the ANY-ownership map — trees included —
+                        // because this pass's own repairs live inside trees. The plain-state map
+                        // stopped listing tree bindings, this check read absent as unclaimed, and
+                        // a higher all-clothing-off preset tree was handed a restore that
+                        // asserted two garments visible from above their own toggles. Unknown
+                        // binding in THIS map: genuinely nobody's, so this layer may restore it.
+                        return !anyOwner.TryGetValue(binding, out int lowest) || lowest == here;
                     }
 
                     var clip = new AnimationClip { name = SanitizeFileName($"{label} restore") };
