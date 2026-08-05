@@ -1199,6 +1199,12 @@ namespace AvatarBridge
 
             if (!string.IsNullOrEmpty(lastReport.SavedReportPath))
             {
+                if (!string.IsNullOrEmpty(lastReport.SavedHtmlPath))
+                {
+                    actions.Add(ReportButton("Open web report",
+                        "The same report as a page — charts, filters, and the technical appendix.",
+                        () => EditorUtility.OpenWithDefaultApp(lastReport.SavedHtmlPath)));
+                }
                 actions.Add(ReportButton("Open full report", null, () =>
                 {
                     var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);

@@ -551,6 +551,10 @@ namespace AvatarBridge
             try
             {
                 DiagnosticsWriter.Write(ctx);
+                // The web report renders the same entries with the numbers drawn — nice to have,
+                // never allowed to take the conversion down. Written last so it can show
+                // everything, including anything the diagnostics writer added.
+                HtmlReportWriter.Write(ctx);
             }
             catch (Exception e)
             {

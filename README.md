@@ -218,7 +218,11 @@ defines.
    analysis sets it.
 4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
    folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
-   the report, then test in game.
+   the report, then test in game. From 3.6.3 the report is also written as a **web page**
+   (`ConversionReport.html`, "Open web report" in the window): what happened drawn as charts,
+   every entry filterable, and the technical appendix rendered — self-contained, so it opens
+   from disk and can be shared as-is. The markdown beside it stays the file to attach to bug
+   reports.
 
 ## What gets converted
 
