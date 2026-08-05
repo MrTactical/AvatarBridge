@@ -7887,32 +7887,42 @@ namespace AvatarBridge
                 return;
             }
             var children = tree.children;
-            if (tree.blendType == BlendTreeType.Simple1D && children.Length == 2)
+            // Two children is the toggle; more is a SELECTOR — a body-shape or outfit-style
+            // chooser whose "none" option is the empty child. Same idiom, one size up: at the
+            // empty option the tree asserts nothing, VRChat's runtime filled the silence, and
+            // ChilloutVR's does not — a belly toggle summed against a body selector resting on
+            // its empty option could switch on and never revert, because nobody wrote the shape
+            // back. The empty child gets the union of its SIBLINGS' properties at rest, so the
+            // selector restores whenever it rests there, exactly as a toggle's off half does.
+            if (tree.blendType == BlendTreeType.Simple1D && children.Length >= 2)
             {
-                int empty = -1, holds = -1;
+                int empty = -1;
+                bool multipleEmpty = false;
                 for (int i = 0; i < children.Length; i++)
                 {
                     if (children[i].motion == null || IsCurveless(children[i].motion, null))
                     {
-                        // Both halves empty: there is no ON clip to read a property list off, and
-                        // the toggle animates nothing in either direction. Nothing to restore.
+                        // More than one empty child: there is no single "off" to repair, and the
+                        // shape is structural rather than a toggle or selector.
                         if (empty >= 0)
                         {
-                            empty = -1;
+                            multipleEmpty = true;
                             break;
                         }
                         empty = i;
                     }
-                    else
-                    {
-                        holds = i;
-                    }
                 }
-                if (empty >= 0 && holds >= 0)
+                if (empty >= 0 && !multipleEmpty)
                 {
                     var floats = new HashSet<EditorCurveBinding>();
                     var objects = new HashSet<EditorCurveBinding>();
-                    CollectBindings(children[holds].motion, floats, objects);
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        if (i != empty)
+                        {
+                            CollectBindings(children[i].motion, floats, objects);
+                        }
+                    }
                     if (floats.Count > 0 || objects.Count > 0)
                     {
                         into.Add(new ToggleTree
