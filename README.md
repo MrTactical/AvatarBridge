@@ -1137,10 +1137,12 @@ Four things worth knowing:
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
 - **Where several layers animate one thing, only the lowest restores it** — otherwise a dress toggle
   would assert the shirt from above and it could never come off.
-- **Two toggles inside one Fury tree that move the same thing are both left alone.** Separate layers
-  let the top one win, but toggles blended into a single tree *add up*, so a restore there would
-  fight rather than defer — an "all clothing off" preset overlapping the individual garments is the
-  usual case. Those garments keep VRChat's behaviour; the report names them.
+- **Two toggles inside one Fury tree that move the same thing get their own layers, from 3.6.2.**
+  Toggles blended into a single tree *add up*, so no restore could be written for the shared part
+  and both toggles stuck — a whisker style-swap over a whisker hide, or an "all clothing off"
+  preset over its garments. Each is now lifted into its own layer, where the top one wins while it
+  acts and each restores on its own. The one visible difference: with **both** switched on at
+  once, the higher one decides the shared part, where VRChat showed an arithmetic mix of the two.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 

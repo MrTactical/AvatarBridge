@@ -364,6 +364,9 @@ namespace AvatarBridge
             // empty — so running this first makes it impossible for it to re-process the filler's
             // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
             // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
+            // BEFORE every restore pass, so the layers it creates take part in ownership and get
+            // their restores through the ordinary machinery rather than a special case.
+            HoistContestedTreeToggles(master, ctx);
             // One shared registry of every restore clip THIS conversion writes, created before
             // the first pass that writes one. The empty-state filler sweeps stale " restore"
             // files out of the output folder and can only spare what it knows about — and it
@@ -6939,6 +6942,165 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Toggles that share parts inside one Direct blend tree are moved into their own layers.
+        ///
+        /// A Direct tree SUMS its always-on children, so when two toggles in it animate the same
+        /// object — a "swap style" and a "hide all" over the same whiskers, an outfit preset over
+        /// its garments — no restore can be written for the shared property: the toggle switched
+        /// ON writes 0, the other's restore writes 1, and the sum reads as on. For a long time the
+        /// honest answer was to refuse and report, which in ChilloutVR means those toggles stick:
+        /// with no Write Defaults there is nothing else to bring the property back.
+        ///
+        /// Stacked as OVERRIDE layers instead, the same toggles just work, and it is the
+        /// configuration this project has already measured end to end: the top layer wins while
+        /// it asserts, the lowest layer that animates a property restores it, and everything
+        /// comes back. So each contested toggle subtree is lifted out of the Direct tree into its
+        /// own layer above the source — same mask, weight 1 — and the ordinary restore passes,
+        /// which run after this, treat them like any other layers. When two are on at once the
+        /// higher layer's look applies, where VRChat showed the arithmetic sum of both; that
+        /// corner is the price, and single-toggle behaviour — the part that was broken — is what
+        /// it buys.
+        ///
+        /// Deliberately narrow: only direct children of a Direct tree, only the two-child toggle
+        /// shape, only when the shared property is contested with another TOGGLE (a binding also
+        /// animated by the layer's non-toggle content is a radial or gesture matter and is left
+        /// alone), and only when the child's direct weight parameter rests at 1 — a dynamically
+        /// weighted child is real blending, and lifting it to a full-weight layer would change
+        /// what the author built.
+        /// </summary>
+        static void HoistContestedTreeToggles(AnimatorController master, BridgeContext ctx)
+        {
+            var hoisted = new List<string>();
+            int originalLayerCount = master.layers.Length;
+
+            for (int li = 0; li < originalLayerCount; li++)
+            {
+                var layer = master.layers[li];
+                if (layer?.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+
+                var directStates = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state?.motion is BlendTree bt && bt.blendType == BlendTreeType.Direct)
+                        {
+                            directStates.Add(child.state);
+                        }
+                    }
+                });
+                if (directStates.Count == 0)
+                {
+                    continue;
+                }
+
+                // What the layer animates OUTSIDE the toggle-shaped children, so a binding shared
+                // with a radial or a gesture state never triggers a hoist.
+                var candidates = new List<ToggleTree>();
+                var seen = new HashSet<BlendTree>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            CollectToggleTrees(child.state.motion, seen, candidates);
+                        }
+                    }
+                });
+                if (candidates.Count < 2)
+                {
+                    continue;   // a contest takes two
+                }
+                var toggleTrees = new HashSet<BlendTree>(candidates.Select(c => c.Tree));
+                var outside = new HashSet<EditorCurveBinding>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            CollectOutsideToggles(child.state.motion, toggleTrees, outside);
+                        }
+                    }
+                });
+                var usage = new Dictionary<EditorCurveBinding, int>();
+                foreach (var candidate in candidates)
+                {
+                    foreach (var binding in candidate.Floats.Concat(candidate.Objects))
+                    {
+                        usage.TryGetValue(binding, out int n);
+                        usage[binding] = n + 1;
+                    }
+                }
+
+                bool Contested(ToggleTree t) => t.Floats.Concat(t.Objects).Any(b =>
+                    usage.TryGetValue(b, out int users) && users > 1);
+                bool TouchesOutside(ToggleTree t) => t.Floats.Concat(t.Objects).Any(outside.Contains);
+
+                foreach (var state in directStates)
+                {
+                    var direct = (BlendTree)state.motion;
+                    var children = direct.children;
+                    var keep = new List<ChildMotion>();
+                    bool changed = false;
+
+                    foreach (var child in children)
+                    {
+                        var subtree = child.motion as BlendTree;
+                        var match = subtree != null
+                            ? candidates.FirstOrDefault(c => c.Tree == subtree) : default;
+                        bool restsAtFullWeight =
+                            master.parameters.Any(p => p.name == child.directBlendParameter
+                                                       && p.defaultFloat >= 1f);
+                        if (match.Tree == null || !restsAtFullWeight
+                            || !Contested(match) || TouchesOutside(match))
+                        {
+                            keep.Add(child);
+                            continue;
+                        }
+
+                        string label = ToggleTreeLabel(match.Tree, layer.name);
+                        master.AddLayer(SanitizeFileName($"{layer.name} {label}"));
+                        var all = master.layers;
+                        var lifted = all[all.Length - 1];
+                        lifted.defaultWeight = 1f;
+                        lifted.blendingMode = AnimatorLayerBlendingMode.Override;
+                        lifted.avatarMask = layer.avatarMask;
+                        var home = lifted.stateMachine.AddState(SanitizeFileName(label));
+                        home.motion = match.Tree;
+                        home.writeDefaultValues = true;
+                        lifted.stateMachine.defaultState = home;
+                        master.layers = all;
+
+                        hoisted.Add(label);
+                        changed = true;
+                    }
+                    if (changed)
+                    {
+                        direct.children = keep.ToArray();
+                        EditorUtility.SetDirty(direct);
+                    }
+                }
+            }
+
+            if (hoisted.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{hoisted.Count} toggle(s) that share parts moved into their own layers",
+                    $"{string.Join(", ", hoisted.Take(8))}{(hoisted.Count > 8 ? ", …" : "")} — " +
+                    "blended into one tree, toggles that animate the same thing add up and fight " +
+                    "over it, so neither could safely restore it and both stuck in game. As " +
+                    "separate layers the top one wins while it acts and each restores on its own. " +
+                    "If two are switched on at once, the one higher in the list decides the " +
+                    "shared part — VRChat showed a mix of both, which ChilloutVR cannot express.");
+            }
+        }
+
+        /// <summary>
         /// Why the empty-state filler did what it did, per layer, for the coverage checker to
         /// print beside a violation. A violation without its refusal reason cost three
         /// reconversion round-trips on one avatar; with it, the fix is named in the report.
@@ -7725,32 +7887,42 @@ namespace AvatarBridge
                 return;
             }
             var children = tree.children;
-            if (tree.blendType == BlendTreeType.Simple1D && children.Length == 2)
+            // Two children is the toggle; more is a SELECTOR — a body-shape or outfit-style
+            // chooser whose "none" option is the empty child. Same idiom, one size up: at the
+            // empty option the tree asserts nothing, VRChat's runtime filled the silence, and
+            // ChilloutVR's does not — a belly toggle summed against a body selector resting on
+            // its empty option could switch on and never revert, because nobody wrote the shape
+            // back. The empty child gets the union of its SIBLINGS' properties at rest, so the
+            // selector restores whenever it rests there, exactly as a toggle's off half does.
+            if (tree.blendType == BlendTreeType.Simple1D && children.Length >= 2)
             {
-                int empty = -1, holds = -1;
+                int empty = -1;
+                bool multipleEmpty = false;
                 for (int i = 0; i < children.Length; i++)
                 {
                     if (children[i].motion == null || IsCurveless(children[i].motion, null))
                     {
-                        // Both halves empty: there is no ON clip to read a property list off, and
-                        // the toggle animates nothing in either direction. Nothing to restore.
+                        // More than one empty child: there is no single "off" to repair, and the
+                        // shape is structural rather than a toggle or selector.
                         if (empty >= 0)
                         {
-                            empty = -1;
+                            multipleEmpty = true;
                             break;
                         }
                         empty = i;
                     }
-                    else
-                    {
-                        holds = i;
-                    }
                 }
-                if (empty >= 0 && holds >= 0)
+                if (empty >= 0 && !multipleEmpty)
                 {
                     var floats = new HashSet<EditorCurveBinding>();
                     var objects = new HashSet<EditorCurveBinding>();
-                    CollectBindings(children[holds].motion, floats, objects);
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        if (i != empty)
+                        {
+                            CollectBindings(children[i].motion, floats, objects);
+                        }
+                    }
                     if (floats.Count > 0 || objects.Count > 0)
                     {
                         into.Add(new ToggleTree
