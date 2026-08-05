@@ -1155,6 +1155,22 @@ Four things worth knowing:
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
 
+### A material swap changes only some parts
+
+**Reconvert on 3.6.4 or later.**
+
+A toggle that swaps several material slots at once — a full-body recolour, say — used to come
+through swapping only its first slot in game: the body changed, the fur kept its old colour. The
+Animation window previewed the very same clip perfectly, which is what made it maddening — the
+swap only loses slots when the animator itself plays it.
+
+The cause is an undocumented Unity behaviour: a layer wearing an avatar mask applies only the
+*first* material-reference curve of its clips, and conversion used to give every merged layer a
+protective mask. Material-swap layers now keep no mask — they drive no muscles, so the mask
+protected nothing — and every slot of the swap lands. If you masked such a layer yourself in the
+source avatar, the conversion warns instead of editing your work: clear that layer's mask in the
+Animator window and reconvert.
+
 ### Gestures play the wrong pose, or a hand sits in a fist at rest
 
 **Reconvert on 3.6.0 or later.**

@@ -43,12 +43,16 @@ namespace AvatarBridge.Regression
     /// Edit mode rather than play mode, driving <c>Animator.Update</c> by hand: the harness lives in
     /// an Editor folder, so a runtime MonoBehaviour cannot ship with it.
     ///
-    /// THAT SUBSTITUTION IS NOT YET PROVEN. The failures this was written from were found in play
-    /// mode, and edit-mode evaluation is a different code path — <c>Animator.Update</c> outside play
-    /// mode is not obliged to apply everything the player would. Until a run here reproduces the
-    /// play-mode answer on an avatar with known failures, a clean result from this tool means
-    /// "found nothing", NOT "nothing is wrong". The known answer to check against, Saavi_NSFW:
-    /// WhiskersOff, WhiskerSwap, Unsheath, HeadPat and Tail leave something stuck.
+    /// THAT SUBSTITUTION IS PARTIALLY PROVEN, in both directions. Edit-mode driving reproduced a
+    /// real in-game fault once (2026-08-05: the masked-layer material swap that lost every slot
+    /// but its first on Kaides Expie failed identically under edit-mode <c>Animator.Update</c>) —
+    /// so the method has teeth. But the SUBSETS differ: on the same avatar, edit mode dropped
+    /// slots 1 and 2 where play mode dropped only slot 1's visible effect, so edit-mode results
+    /// do not transfer curve-for-curve. A clean result from this tool still means "found
+    /// nothing", NOT "nothing is wrong" — and remember this tool is structurally blind to
+    /// ON-direction failures of default-off parameters, which is exactly what that swap bug was.
+    /// The known answer to check against, Saavi_NSFW: WhiskersOff, WhiskerSwap, Unsheath,
+    /// HeadPat and Tail leave something stuck.
     ///
     /// This MOVES THINGS in the open scene and does not put them back. Nothing is saved, but reload
     /// the scene before doing anything else with it.
