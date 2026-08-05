@@ -532,6 +532,11 @@ Two practical notes:
 **ChilloutVR renders single-pass instanced; VRChat renders double-wide single-pass.** Both SDKs
 force their own mode unconditionally.
 
+From 3.6.4 the check reads the shader's *whole* include chain, the way the compiler does — so a
+shader that keeps its stereo handling in include files (lilToon, most modern toon shaders) is
+recognised as already correct instead of flagged. The CCK's own upload warning still judges the
+one file and may keep naming such shaders; that warning is theirs, and safe to ignore for them.
+
 Under double-wide a shader gets both eyes without asking. Under instancing it has to declare that it
 knows which eye it's drawing — so a shader that never opted in looked perfectly fine in VRChat and
 draws into one eye only here. Nobody did anything wrong; it's a conversion problem, which makes it

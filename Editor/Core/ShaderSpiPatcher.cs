@@ -207,12 +207,20 @@ namespace AvatarBridge
 
         internal static bool DeclaresStereo(string path)
         {
+            // The WHOLE unit, not the one file — through the same ReadUnit the patcher itself
+            // uses, so the question "does this shader handle stereo" and the files that get
+            // patched can never disagree. Judging the .shader alone called lilToon broken:
+            // lts_fur.shader is a thousand lines of pass declarations whose every line of real
+            // code — including all five stereo macros, wrapped as LIL_* — lives in Includes/.
+            // The advisor then recommended patching the most widely used avatar shader there
+            // is, and the patcher wasted a compile discovering the vertex stage it wanted to
+            // edit was not in the file it was reading.
             var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
             try
             {
-                foreach (var line in File.ReadLines(path))
+                foreach (var file in ReadUnit(path))
                 {
-                    remaining.RemoveWhere(m => line.Contains(m, StringComparison.Ordinal));
+                    remaining.RemoveWhere(m => file.Text.Contains(m, StringComparison.Ordinal));
                     if (remaining.Count == 0) return true;
                 }
             }
