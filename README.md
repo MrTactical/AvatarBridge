@@ -218,7 +218,11 @@ defines.
    analysis sets it.
 4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
    folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
-   the report, then test in game.
+   the report, then test in game. From 3.6.3 the report is also written as a **web page**
+   (`ConversionReport.html`, "Open web report" in the window): what happened drawn as charts,
+   every entry filterable, and the technical appendix rendered — self-contained, so it opens
+   from disk and can be shared as-is. The markdown beside it stays the file to attach to bug
+   reports.
 
 ## What gets converted
 
@@ -527,6 +531,11 @@ Two practical notes:
 
 **ChilloutVR renders single-pass instanced; VRChat renders double-wide single-pass.** Both SDKs
 force their own mode unconditionally.
+
+From 3.6.4 the check reads the shader's *whole* include chain, the way the compiler does — so a
+shader that keeps its stereo handling in include files (lilToon, most modern toon shaders) is
+recognised as already correct instead of flagged. The CCK's own upload warning still judges the
+one file and may keep naming such shaders; that warning is theirs, and safe to ignore for them.
 
 Under double-wide a shader gets both eyes without asking. Under instancing it has to declare that it
 knows which eye it's drawing — so a shader that never opted in looked perfectly fine in VRChat and
@@ -1145,6 +1154,22 @@ Four things worth knowing:
   once, the higher one decides the shared part, where VRChat showed an arithmetic mix of the two.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
   (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
+
+### A material swap changes only some parts
+
+**Reconvert on 3.6.4 or later.**
+
+A toggle that swaps several material slots at once — a full-body recolour, say — used to come
+through swapping only its first slot in game: the body changed, the fur kept its old colour. The
+Animation window previewed the very same clip perfectly, which is what made it maddening — the
+swap only loses slots when the animator itself plays it.
+
+The cause is an undocumented Unity behaviour: a layer wearing an avatar mask applies only the
+*first* material-reference curve of its clips, and conversion used to give every merged layer a
+protective mask. Material-swap layers now keep no mask — they drive no muscles, so the mask
+protected nothing — and every slot of the swap lands. If you masked such a layer yourself in the
+source avatar, the conversion warns instead of editing your work: clear that layer's mask in the
+Animator window and reconvert.
 
 ### Gestures play the wrong pose, or a hand sits in a fist at rest
 

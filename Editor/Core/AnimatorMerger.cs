@@ -397,6 +397,12 @@ namespace AvatarBridge
             // After every layer that will exist, exists: the stack order it checks is the one
             // the game will run.
             AuditHandPoseConflicts(master, ctx);
+            // AFTER every pass that can hand out a mask — the merge masking, the hoist that
+            // copies its source layer's mask, and the hand-pose audit above — because what
+            // matters is the finished stack: a masked layer applies only the FIRST
+            // object-reference binding of its clips, so a masked material swap loses every
+            // slot but one.
+            UnmaskObjectSwapLayers(master, ctx);
             // Run last: after every merge and injection, make sure no transition conditions
             // it on a parameter using a comparison its final type can't express (e.g. a
             // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
@@ -6798,6 +6804,120 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Removes the avatar mask from any layer whose clips swap object references.
+        ///
+        /// A layer wearing ANY AvatarMask applies only the FIRST object-reference binding of
+        /// its clips — every slot after that is silently dropped, in play mode and in game,
+        /// even when the mask's transform list grants the target's path at full weight.
+        /// Measured on a three-slot material swap: an identical fresh layer applied all three
+        /// slots without a mask and exactly one with it, and the shipped avatar showed the
+        /// same — body turned milky, fur stayed black. The Animation window samples clips
+        /// through a different path and applies everything, which is why the fault only
+        /// appears when the animator itself runs the toggle.
+        ///
+        /// Only layers that animate NOTHING humanoid are freed, so unmasking cannot hand a
+        /// layer power over the rig. A layer that both swaps and drives muscles keeps its mask
+        /// and is reported instead: deleting its humanoid curves would be the obvious repair
+        /// and is forbidden, because clips are SHARED — one edit reaches every other layer and
+        /// every other avatar playing that clip. A mask the AUTHOR placed is likewise reported,
+        /// never edited.
+        /// </summary>
+        static void UnmaskObjectSwapLayers(AnimatorController master, BridgeContext ctx)
+        {
+            var layers = master.layers;
+            var freed = new SortedSet<string>(StableSampleOrder.Instance);
+            var authored = new SortedSet<string>(StableSampleOrder.Instance);
+            var conflicted = new SortedSet<string>(StableSampleOrder.Instance);
+            bool changed = false;
+            foreach (var layer in layers)
+            {
+                if (layer.avatarMask == null || !LayerSwapsObjectReferences(layer))
+                {
+                    continue;
+                }
+                if (!layer.avatarMask.name.StartsWith("AvatarBridge_", StringComparison.Ordinal))
+                {
+                    authored.Add(layer.name);
+                    continue;
+                }
+                InspectLayerCurves(layer, out bool body, out bool fingers);
+                if (body || fingers)
+                {
+                    // Not this one. Unmasked, its humanoid curves would drive the rig the mask
+                    // exists to protect — and deleting those curves instead is NOT an option,
+                    // because clips are SHARED: editing one in place damages every other layer,
+                    // and every other avatar, that plays it. That was learned by doing it — a
+                    // strip here emptied the SDK's own proxy_hands_idle for the whole project,
+                    // and every avatar converted afterwards lost its hand poses.
+                    conflicted.Add(layer.name);
+                    continue;
+                }
+                layer.avatarMask = null;
+                freed.Add(layer.name);
+                changed = true;
+            }
+            if (changed)
+            {
+                master.layers = layers;
+            }
+            if (freed.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{freed.Count} material-swap layer(s) unmasked so every slot applies",
+                    $"{string.Join(", ", freed)} — a masked layer silently applies only the first material " +
+                    "slot of a swap in game, so these keep no mask. They drive no muscles, so locomotion " +
+                    "and hand gestures are unaffected.");
+            }
+            if (authored.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{authored.Count} layer(s) swap materials from behind a mask you authored",
+                    $"{string.Join(", ", authored)} — with an avatar mask on the layer, only the first " +
+                    "material slot of a swap applies in game. If a swap from one of these layers misses " +
+                    "slots, remove the layer's mask in the Animator window and reconvert.");
+            }
+            if (conflicted.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{conflicted.Count} layer(s) both swap materials and animate the rig",
+                    $"{string.Join(", ", conflicted)} — these keep their mask, because without it their " +
+                    "body or finger curves would fight the client's locomotion and hand poses. The cost " +
+                    "is that only the first material slot of a swap in those layers applies in game. If " +
+                    "one of them misses slots, move its material swap into a layer of its own — one that " +
+                    "animates nothing else — and reconvert.");
+            }
+        }
+
+        /// <summary>Whether any clip played by this layer carries an object-reference curve.</summary>
+        static bool LayerSwapsObjectReferences(AnimatorControllerLayer layer)
+        {
+            if (layer.stateMachine == null)
+            {
+                return false;
+            }
+            bool found = false;
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    if (found || child.state == null)
+                    {
+                        continue;
+                    }
+                    foreach (var clip in CollectClips(child.state.motion))
+                    {
+                        if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            });
+            return found;
+        }
+
+        /// <summary>
         /// The last line of defence for hand gestures, and the reason this exists is worth
         /// writing down: a tester spent five rounds on an avatar whose CCK Debugger read
         /// "LeftHand — Layer Weight 1.00, playing Thumbs Up 1.00" while the fingers sat in
@@ -9782,6 +9902,7 @@ namespace AvatarBridge
             }
             return count;
         }
+
 
         static IEnumerable<AnimationClip> CollectClips(Motion motion)
         {

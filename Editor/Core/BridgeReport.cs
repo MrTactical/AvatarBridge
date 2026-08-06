@@ -67,6 +67,9 @@ namespace AvatarBridge
         /// <summary>Asset path of the saved ConversionReport.md (set once written).</summary>
         public string SavedReportPath;
 
+        /// <summary>Asset path of the web report beside it — the one a person reads.</summary>
+        public string SavedHtmlPath;
+
         /// <summary>Ready-made store listing text for the CCK's Description box (see AvatarDescription).</summary>
         public string StoreDescription;
 
