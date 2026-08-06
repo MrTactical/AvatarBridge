@@ -362,6 +362,15 @@ that does. Constraints under such a parent land reflected, and the report names 
 **Structure transfers exactly:** which bone the chain hangs from, which colliders it collides with,
 which transforms to leave out, whether it started enabled.
 
+**Size is measured as you wear it, once.** Every radius here comes from the mesh with your
+blendshape weights applied, so an avatar saved with a body slider part-way up is measured at the
+shape people will see. What it can't do is *follow* that slider in game: a size slider that works
+by **scaling bones** is fine, because the cloth simulates those bones and follows for free, but one
+that works by **blendshape** moves no bones — and MagicaCloth2 won't take an animated radius (of
+its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at
+all). The report names every chain in that position along with the slider responsible; if it's a
+slider people will actually use, set it where you want collision to be correct before converting.
+
 **The colliders themselves are fitted to the body.** A PhysBone collider carries one radius from
 end to end; MagicaCloth2's capsule takes a start radius and an end radius separately, so a converted
 thigh or arm collider tapers the way the limb does instead of splitting the difference. The body
@@ -432,7 +441,7 @@ of simulation, so that path maps values 1:1.
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
 | **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. It can *firm* the matched preset with the source's own character but never soften it below that preset's baseline — MagicaCloth2's own presets are the floor of a spring that still reads as one, and a very loose PhysBone converts faithfully to mush without it. The report says when the floor held. Turn it off to get the preset exactly as authored |
-| **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped — the same size on a breast as on a hair strand — so collision covers a fraction of what you see. This measures the mesh those bones move and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
+| **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped — the same size on a breast as on a hair strand — so collision covers a fraction of what you see. This measures the mesh those bones move — with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it — and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
 | **Fit colliders to the mesh** | on | A PhysBone collider carries *one* radius from end to end, so an author covering a thigh has to choose between fitting the hip and fitting the knee. MagicaCloth2's capsule takes a start and an end radius separately, so the converted one can taper the way the limb does. This measures the body part the collider sits on and fits the capsule to it. The measurement *replaces* the source's numbers: a PhysBone collider's size is invisible in VRChat unless something collides with it, so it's routinely one default stamped onto every collider on the avatar. Only the host bone's own vertices are read, so a leg collider can only come out leg-sized. The report gives the before and after for each |
 | **Cap particle radius to bone spacing** | off | Bounds each particle to half the gap between its bones. Off since the radius above became a measurement rather than a guess — on a soft-body chain, where two or three bones carry a large volume, this throws most of that measurement away. The overlap it guards against only bites with self-collision, which MagicaCloth2 leaves off. Turn on if a long chain of closely-spaced bones misbehaves |
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |

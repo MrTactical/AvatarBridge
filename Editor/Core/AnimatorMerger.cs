@@ -433,6 +433,7 @@ namespace AvatarBridge
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
             RewirePhysicsToggles(master, ctx);
+            AuditSizeBlendshapes(master, ctx);
             RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
             AuditMaterialProperties(master, ctx);
@@ -8495,6 +8496,233 @@ namespace AvatarBridge
         /// is created inactive). Clips are cloned before modification; they may be the source
         /// avatar's own assets.
         /// </summary>
+        /// <summary>
+        /// Names the chains whose size is driven by a blendshape rather than by their bones.
+        ///
+        /// A converted chain's collision radius is measured once, from the mesh as the avatar is
+        /// saved. Where a size slider scales BONES the cloth follows for free — the bones it
+        /// simulates are the ones being scaled. Where the slider is a pure blendshape the bones
+        /// never move, so the radius stays at whatever the saved pose measured and collision is
+        /// right at exactly one slider position.
+        ///
+        /// This cannot be fixed by driving the radius from the same animation. MagicaCloth2 does
+        /// evaluate its radius curve per frame, so the value is live, but the only properties its
+        /// animation wrapper forwards to the solver are animationPoseRatio, gravity, damping,
+        /// world and local inertia, wind influence and blend weight. A curve on the radius lands
+        /// in the serialized data and is never read. So the honest thing is to say so, and say
+        /// which slider.
+        /// </summary>
+        static void AuditSizeBlendshapes(AnimatorController master, BridgeContext ctx)
+        {
+            var chains = ctx.ConvertedPhysicsChains;
+            if (chains == null || chains.Count == 0)
+            {
+                return;
+            }
+            var root = ctx.Target.transform;
+
+            // chain name -> the shapes that resize it
+            var driven = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+            var seen = new HashSet<AnimationClip>();
+
+            // How far each shape travels across the WHOLE controller, not within one clip. A
+            // toggle is a pair of clips each holding a constant — "on" pins the shape to 100 and
+            // "off" pins it to 0 — so judged clip by clip nothing ever moves and this found
+            // nothing on an avatar whose sliders visibly resize it. The span that matters is
+            // between the extremes any state can reach.
+            var span = new Dictionary<EditorCurveBinding, Vector2>();
+
+            void Inspect(AnimationClip clip)
+            {
+                if (clip == null || !seen.Add(clip))
+                {
+                    return;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(SkinnedMeshRenderer)
+                        || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve == null || curve.keys.Length == 0)
+                    {
+                        continue;
+                    }
+                    float low = curve.keys[0].value, high = low;
+                    foreach (var key in curve.keys)
+                    {
+                        low = Mathf.Min(low, key.value);
+                        high = Mathf.Max(high, key.value);
+                    }
+                    if (span.TryGetValue(binding, out var reach))
+                    {
+                        low = Mathf.Min(low, reach.x);
+                        high = Mathf.Max(high, reach.y);
+                    }
+                    span[binding] = new Vector2(low, high);
+                }
+            }
+
+            void Walk(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    Inspect(clip);
+                }
+                else if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Walk(child.motion);
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Walk(child.state.motion);
+                    }
+                });
+            }
+
+            // Which bones a shape actually MOVES, from its own deltas. Matching on the renderer's
+            // bone list instead flagged every chain on the avatar against every shape on the body:
+            // a body mesh lists the whole armature, so a tongue shape came out "resizing" the arm
+            // ribbons, and eighteen chains were named against forty shapes apiece. Deltas are the
+            // difference between listing a bone and deforming around it.
+            var movedCache = new Dictionary<string, HashSet<Transform>>(StringComparer.Ordinal);
+            HashSet<Transform> BonesMovedBy(SkinnedMeshRenderer renderer, string shapeName, string key)
+            {
+                if (movedCache.TryGetValue(key, out var known))
+                {
+                    return known;
+                }
+                var moved = new HashSet<Transform>();
+                movedCache[key] = moved;
+                var mesh = renderer.sharedMesh;
+                var bones = renderer.bones;
+                if (mesh == null || bones == null)
+                {
+                    return moved;
+                }
+                int shape = mesh.GetBlendShapeIndex(shapeName);
+                int frames = shape >= 0 ? mesh.GetBlendShapeFrameCount(shape) : 0;
+                if (frames <= 0)
+                {
+                    return moved;
+                }
+                BoneWeight[] weights;
+                Vector3[] deltas;
+                try
+                {
+                    weights = mesh.boneWeights;
+                    deltas = new Vector3[mesh.vertexCount];
+                    mesh.GetBlendShapeFrameVertices(shape, frames - 1, deltas, null, null);
+                }
+                catch
+                {
+                    return moved;
+                }
+                if (weights.Length != deltas.Length)
+                {
+                    return moved;
+                }
+                for (int i = 0; i < deltas.Length; i++)
+                {
+                    // A millimetre. Below that the shape is touching this vertex incidentally.
+                    if (deltas[i].sqrMagnitude < 1e-6f)
+                    {
+                        continue;
+                    }
+                    var w = weights[i];
+                    if (w.weight0 >= 0.2f && w.boneIndex0 < bones.Length && bones[w.boneIndex0] != null) moved.Add(bones[w.boneIndex0]);
+                    if (w.weight1 >= 0.2f && w.boneIndex1 < bones.Length && bones[w.boneIndex1] != null) moved.Add(bones[w.boneIndex1]);
+                    if (w.weight2 >= 0.2f && w.boneIndex2 < bones.Length && bones[w.boneIndex2] != null) moved.Add(bones[w.boneIndex2]);
+                    if (w.weight3 >= 0.2f && w.boneIndex3 < bones.Length && bones[w.boneIndex3] != null) moved.Add(bones[w.boneIndex3]);
+                }
+                return moved;
+            }
+
+            foreach (var pair in span)
+            {
+                // A shape every state pins to the same number resizes nothing.
+                if (pair.Value.y - pair.Value.x < 1f)
+                {
+                    continue;
+                }
+                var binding = pair.Key;
+                var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                var renderer = target != null ? target.GetComponent<SkinnedMeshRenderer>() : null;
+                if (renderer == null || renderer.bones == null)
+                {
+                    continue;
+                }
+                string shapeName = binding.propertyName.Substring("blendShape.".Length);
+                var moved = BonesMovedBy(renderer, shapeName, binding.path + "|" + shapeName);
+                if (moved.Count == 0)
+                {
+                    continue;
+                }
+                foreach (var chain in chains)
+                {
+                    var chainRoot = chain.Root != null ? chain.Root
+                        : chain.Source != null ? chain.Source.transform : null;
+                    if (chainRoot == null)
+                    {
+                        continue;
+                    }
+                    foreach (var bone in moved)
+                    {
+                        if (bone != chainRoot && !bone.IsChildOf(chainRoot))
+                        {
+                            continue;
+                        }
+                        if (!driven.TryGetValue(chainRoot.name, out var shapes))
+                        {
+                            driven[chainRoot.name] = shapes = new SortedSet<string>(StringComparer.Ordinal);
+                        }
+                        shapes.Add(shapeName);
+                        break;
+                    }
+                }
+            }
+
+            if (driven.Count == 0)
+            {
+                return;
+            }
+            // Four names is enough to recognise the slider; a chain deformed by twenty shapes
+            // does not become clearer by listing all twenty.
+            var lines = driven.Select(entry =>
+            {
+                var shown = entry.Value.Take(4).ToList();
+                string extra = entry.Value.Count > shown.Count
+                    ? $", +{entry.Value.Count - shown.Count} more" : "";
+                return $"\"{entry.Key}\" ({string.Join(", ", shown)}{extra})";
+            }).ToList();
+            // Approximated rather than a Warning: nothing is broken, the size is simply fixed
+            // where a slider is not. Calling it a warning puts thirteen alarms on an avatar that
+            // converted correctly.
+            ctx.Report.Approximated("PhysBones -> MagicaCloth2",
+                $"{driven.Count} chain(s) are resized by a blendshape, so their collision size " +
+                "cannot follow the slider",
+                string.Join("; ", lines) + " — each of these chains has its collision sized from " +
+                "the mesh as this avatar is saved, which is the right size at the slider position " +
+                "it was saved at and too small or too large everywhere else. Sliders that work by " +
+                "SCALING BONES do not have this problem: the cloth simulates those bones, so it " +
+                "follows for free. A pure blendshape moves no bones, and MagicaCloth2 will not " +
+                "accept a radius driven by animation — of its parameters only pose ratio, gravity, " +
+                "damping, inertia, wind and blend weight can be animated at all. If one of these " +
+                "sliders is the one people will actually use, set it where you want it to be " +
+                "correct BEFORE converting, and convert again.");
+        }
+
         static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;

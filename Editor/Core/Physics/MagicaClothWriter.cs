@@ -1233,7 +1233,10 @@ namespace AvatarBridge
                 Matrix4x4[] binds;
                 try
                 {
-                    vertices = mesh.vertices;
+                    // As the avatar is actually worn: base mesh plus whatever blendshape weights
+                    // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
+                    // nobody sees whenever a body slider is shipped part-way up.
+                    vertices = DeformedVertices(ctx, renderer, mesh);
                     weights = mesh.boneWeights;
                     binds = mesh.bindposes;
                 }
@@ -1431,6 +1434,103 @@ namespace AvatarBridge
         /// giving up on measuring that end. A sparse mesh needs the wider ones.</summary>
         static readonly float[] StationFractions = { 0.1f, 0.18f, 0.26f, 0.34f };
 
+        static BridgeContext deformedOwner;
+        static Dictionary<SkinnedMeshRenderer, Vector3[]> deformedCache;
+
+        /// <summary>
+        /// A mesh's vertices as the avatar actually WEARS them: the base mesh with its blendshapes
+        /// applied at the weights the renderer is carrying.
+        ///
+        /// Mesh.vertices is the undeformed shape, and reading it means measuring an avatar that
+        /// nobody sees. Body sliders are routinely shipped part-way up — a chest or hip shape left
+        /// at 100 on the renderer is the avatar's real silhouette, and every radius derived from
+        /// the base mesh is then sized to a body the wearer does not have.
+        ///
+        /// What this CANNOT do is follow a slider that moves in game. MagicaCloth2 evaluates its
+        /// radius curve per frame, so the value is live, but the only properties its animation
+        /// wrapper forwards are animationPoseRatio, gravity, damping, world and local inertia, wind
+        /// influence and blend weight — radius is not among them, so an animated radius would sit
+        /// in the serialized data unread. Measuring the pose the avatar is saved in is as close as
+        /// this gets.
+        /// </summary>
+        static Vector3[] DeformedVertices(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh)
+        {
+            if (!ReferenceEquals(deformedOwner, ctx) || deformedCache == null)
+            {
+                deformedOwner = ctx;
+                deformedCache = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+            }
+            if (deformedCache.TryGetValue(renderer, out var known))
+            {
+                return known;
+            }
+
+            var vertices = mesh.vertices;
+            int shapes = mesh.blendShapeCount;
+            if (shapes > 0)
+            {
+                Vector3[] lower = null, upper = null;
+                for (int s = 0; s < shapes; s++)
+                {
+                    float weight = renderer.GetBlendShapeWeight(s);
+                    if (Mathf.Abs(weight) < 0.01f)
+                    {
+                        continue;   // off, and reading its frames is the expensive part
+                    }
+                    if (lower == null)
+                    {
+                        lower = new Vector3[vertices.Length];
+                        upper = new Vector3[vertices.Length];
+                    }
+                    ApplyBlendShape(mesh, s, weight, vertices, lower, upper);
+                }
+            }
+            deformedCache[renderer] = vertices;
+            return vertices;
+        }
+
+        /// <summary>Adds one blendshape's deltas at the given weight, interpolating between the
+        /// frames that bracket it — a shape built with several frames morphs through them rather
+        /// than jumping, and beyond the last frame Unity keeps going, so this does too.</summary>
+        static void ApplyBlendShape(Mesh mesh, int shape, float weight, Vector3[] into,
+            Vector3[] lower, Vector3[] upper)
+        {
+            int frames = mesh.GetBlendShapeFrameCount(shape);
+            if (frames <= 0)
+            {
+                return;
+            }
+            int high = frames - 1;
+            for (int f = 0; f < frames; f++)
+            {
+                if (mesh.GetBlendShapeFrameWeight(shape, f) >= weight)
+                {
+                    high = f;
+                    break;
+                }
+            }
+            float highWeight = mesh.GetBlendShapeFrameWeight(shape, high);
+            if (high == 0)
+            {
+                float scale = highWeight > 0f ? weight / highWeight : 0f;
+                mesh.GetBlendShapeFrameVertices(shape, 0, lower, null, null);
+                for (int i = 0; i < into.Length; i++)
+                {
+                    into[i] += lower[i] * scale;
+                }
+                return;
+            }
+            float lowWeight = mesh.GetBlendShapeFrameWeight(shape, high - 1);
+            float span = highWeight - lowWeight;
+            float t = span > 0f ? (weight - lowWeight) / span : 0f;
+            mesh.GetBlendShapeFrameVertices(shape, high - 1, lower, null, null);
+            mesh.GetBlendShapeFrameVertices(shape, high, upper, null, null);
+            for (int i = 0; i < into.Length; i++)
+            {
+                into[i] += Vector3.LerpUnclamped(lower[i], upper[i], t);
+            }
+        }
+
         static BridgeContext boneVertexOwner;
         static Dictionary<Transform, List<Vector3>> boneVertexCache;
 
@@ -1461,7 +1561,10 @@ namespace AvatarBridge
                 Matrix4x4[] binds;
                 try
                 {
-                    vertices = mesh.vertices;
+                    // As the avatar is actually worn: base mesh plus whatever blendshape weights
+                    // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
+                    // nobody sees whenever a body slider is shipped part-way up.
+                    vertices = DeformedVertices(ctx, renderer, mesh);
                     weights = mesh.boneWeights;
                     binds = mesh.bindposes;
                 }
