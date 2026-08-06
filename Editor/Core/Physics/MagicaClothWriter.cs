@@ -64,18 +64,40 @@ namespace AvatarBridge
             holderName = UniqueChildName(ctx.Target.transform, holderName);
             var holder = new GameObject(holderName);
             holder.transform.SetParent(ctx.Target.transform, false);
+            var cloth = holder.AddComponent<MagicaCloth>();
+
+            // "Off" is carried by the COMPONENT, not by deactivating the holder.
+            //
+            // The holder used to be created inactive, which reads as the obvious mirror of a
+            // PhysBone that started disabled. It is a trap: enabling a component on an inactive
+            // GameObject does nothing, so a clip that switches this chain on has no effect at
+            // all. Reported from an avatar whose "thick" cloth variant never appeared — its
+            // clips named the right object, the right property and the right script, all three
+            // verified correct, and the object they addressed was switched off.
+            //
+            // RewirePhysicsToggles copies an ACTIVATION of the source's object onto the holder,
+            // which rescues the case where a hairstyle's mesh is toggled. It cannot rescue this
+            // one: that avatar's PhysBone lives on a BONE, while the toggle activates a MESH
+            // object in a different subtree, so there is no activation to copy — only the
+            // PhysBone's own m_Enabled curve, which retargets onto the component and lands on a
+            // dead object.
+            //
+            // Holding the state on the component instead means the same thing in the scene (no
+            // simulation) while leaving the one property every such clip actually drives able
+            // to drive it.
             if (!data.InitiallyActive)
             {
-                holder.SetActive(false);
+                cloth.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
-                    ? "Style was inactive at conversion; cloth created disabled. Its toggle is " +
+                    ? "Style was inactive at conversion; cloth created disabled (the component is " +
+                      "off, its object stays active so a toggle can switch it on). Its toggle is " +
                       "re-wired to activate this cloth — see the Animator section of this report."
-                    : "Source PhysBone was disabled; cloth created disabled. Animator toggles that " +
-                      "activated the original object (hair swaps, outfit toggles) are re-wired to " +
-                      "activate this cloth too — see the Animator section of this report.");
+                    : "Source PhysBone was disabled; cloth created disabled (the component is off, " +
+                      "its object stays active so a toggle can switch it on — a component enabled " +
+                      "on an inactive object never runs). Animator toggles that activated the " +
+                      "original object are re-wired to activate this cloth too — see the Animator " +
+                      "section of this report.");
             }
-
-            var cloth = holder.AddComponent<MagicaCloth>();
             ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
             {
                 Source = data.SourceGameObject,
