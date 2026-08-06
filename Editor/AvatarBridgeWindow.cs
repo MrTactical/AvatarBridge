@@ -608,6 +608,14 @@ namespace AvatarBridge
                     "PhysBone's own radius is not used: in VRChat it only governs contact with PhysBone " +
                     "colliders, so it is routinely near zero.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
+                b.Add(BridgeElements.Bind("Bound swing to the source's limit",
+                    "A PhysBone's angle limit is often the only thing keeping a deliberately loose " +
+                    "chain presentable — convert the looseness without it and the chain swings much " +
+                    "further here than it ever did in VRChat. This bounds how far each bone may " +
+                    "travel from rest, worked out from that limit and the chain's length. It is a " +
+                    "distance bound rather than an angle limit, so it removes motion instead of " +
+                    "adding a restoring force and cannot set the chain vibrating.",
+                    settings.boundSwingToSourceLimit, v => settings.boundSwingToSourceLimit = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "Bounds each particle to half the gap between its bones. Off by default now " +
                     "that the radius above is measured from the mesh rather than guessed: on a " +

@@ -134,6 +134,14 @@ namespace AvatarBridge
         // own radius is deliberately NOT used — in VRChat it only governs contact with PhysBone
         // colliders, so authors who never used that leave it near zero.
         public bool fitRadiusToMesh = true;
+        // Honours the source PhysBone's own Angle/Hinge/Polar limit as a bound on how far the
+        // chain may travel from rest. That limit is often the only thing keeping a deliberately
+        // loose chain presentable — one reported avatar pairs pull 0.22 with spring 0.81 and a
+        // 48° limit — and converting the looseness without the limit is what "way too swaying"
+        // turned out to be. Applied as a distance bound rather than MagicaCloth2's angle limit,
+        // because a distance bound removes motion instead of adding a restoring force and so
+        // cannot set the chain vibrating (which is why transferAngleLimits stays off).
+        public bool boundSwingToSourceLimit = true;
         // OFF since the radius above became a measurement instead of a guess. This bounds the
         // particle to half the gap between bones, which was a sensible rail when the radius was
         // whatever a preset shipped — but it is the wrong shape for soft-body chains, where two

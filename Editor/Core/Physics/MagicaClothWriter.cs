@@ -270,6 +270,11 @@ namespace AvatarBridge
                 FitToPhysBone(ctx, data, sdata);
             }
 
+            if (ctx.Settings.boundSwingToSourceLimit)
+            {
+                ApplyMotionLeash(ctx, data, sdata);
+            }
+
             if (ctx.Settings.transferAngleLimits)
             {
                 ApplyAngleLimit(ctx, data, sdata);
@@ -839,6 +844,98 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>
+        /// Bounds how far the chain may swing, from the limit its author already set.
+        ///
+        /// A PhysBone's Angle/Hinge/Polar limit is not decoration: it is the reason a floaty
+        /// chain stays presentable in VRChat. The avatar that prompted this carries pull 0.22
+        /// against spring 0.81 — genuinely loose, and faithfully converted as such — with a 48°
+        /// limit holding it in. Converted without that limit the chain is loose and UNBOUNDED,
+        /// which is the "way too swaying" this was reported as.
+        ///
+        /// The limit is applied as a POSITIONAL leash (MotionConstraint) rather than as
+        /// MagicaCloth2's own angle limit, deliberately. The angle constraint runs three
+        /// iterations per step against a stiffness that snaps back hard, and its own author's
+        /// comment calls rotating about a point near the parent 酷い振動の温床 — a hotbed of
+        /// severe vibration. That is why "Transfer angle limits" is off by default and warns
+        /// that it shakes some chains. maxDistance is a plain clamp on how far a particle may
+        /// travel from rest: it cannot oscillate, because it removes motion rather than adding
+        /// a restoring force.
+        ///
+        /// The conversion is geometry. A bone d along the chain, swung θ from rest, moves a
+        /// chord of 2·d·sin(θ/2). MagicaCloth2 wants one value with a 0..1 curve over the
+        /// chain's depth, so the tip's chord is the value and the curve carries the rest: the
+        /// root is pinned and may not move at all, the tip may move furthest.
+        /// </summary>
+        static void ApplyMotionLeash(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
+            {
+                return;   // the author set no limit, so there is nothing to honour
+            }
+            float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
+            if (limitAngle <= 0f)
+            {
+                return;
+            }
+            float length = MeasureChainLength(data.Root);
+            if (length <= 0f)
+            {
+                return;   // single bone with no reach; a leash would only pin it
+            }
+
+            float chord = 2f * length * Mathf.Sin(Mathf.Min(limitAngle, 180f) * 0.5f * Mathf.Deg2Rad);
+            if (chord <= 0f)
+            {
+                return;
+            }
+
+            // The curve is what makes this exact rather than approximate. A bone's chord is
+            // 2·d·sin(θ/2), which grows LINEARLY with its distance d along the chain, and
+            // MagicaCloth2 evaluates the curve linearly over depth — so the tip's chord with a
+            // straight 0→1 curve gives every bone in between precisely its own allowance. Set
+            // as a flat value instead, a bone near the root could travel the tip's full distance.
+            bool applied = TrySetMember(sdata.motionConstraint, "useMaxDistance", true)
+                           && TrySetCurveValue(sdata.motionConstraint, "maxDistance", chord, 0f, 1f);
+            if (applied)
+            {
+                ctx.Report.Converted(Category, data.Root.name,
+                    $"Swing bounded to {chord:0.###} from rest, converted from the source's {limitAngle:0}° " +
+                    $"{data.LimitTypeName} limit over a {length:0.###} chain, easing to nothing at the root. " +
+                    "That limit is what kept this " +
+                    "chain presentable in VRChat, and without it a loose chain converts loose and unbounded. " +
+                    "It is applied as a distance bound rather than MagicaCloth2's angle limit because a " +
+                    "distance bound removes motion instead of adding a restoring force, so it cannot set the " +
+                    "chain vibrating. Clear Movement Limit > Use Max Distance on the cloth to undo it.");
+            }
+            else
+            {
+                ctx.Report.Skipped(Category, data.Root.name,
+                    $"Source {data.LimitTypeName} limit ({limitAngle:0}°) could not be applied as a movement " +
+                    "bound on this MagicaCloth2 version — the chain will swing further here than in VRChat.");
+            }
+        }
+
+        /// <summary>Root to furthest tip, following the longest path.</summary>
+        static float MeasureChainLength(Transform root)
+        {
+            if (root == null)
+            {
+                return 0f;
+            }
+            float longest = 0f;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                float branch = Vector3.Distance(root.position, child.position) + MeasureChainLength(child);
+                if (branch > longest)
+                {
+                    longest = branch;
+                }
+            }
+            return longest;
+        }
+
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
             Dictionary<VRCPhysBoneCollider, ColliderComponent> cache)
         {
@@ -1093,6 +1190,27 @@ namespace AvatarBridge
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Sets a curve-backed value with a linear shape over the chain's depth, root to tip.
+        /// MagicaCloth2 stores these as one value scaled by a 0..1 curve, so a bound that grows
+        /// with depth is expressed as the TIP's value with the curve carrying everything above it.
+        /// </summary>
+        static bool TrySetCurveValue(object target, string fieldName, float value,
+            float curveStart, float curveEnd)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field == null || !(field.GetValue(target) is CurveSerializeData curveData))
+            {
+                return false;
+            }
+            curveData.SetValue(value, curveStart, curveEnd);
+            return true;
         }
 
         static bool TrySetCurveValue(object target, string fieldName, float value)
