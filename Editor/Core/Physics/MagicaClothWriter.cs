@@ -89,12 +89,14 @@ namespace AvatarBridge
             // defaults. Still no arithmetic — it swaps one author-tuned baseline for another.
             // MagicaCloth2's ImportJson preserves the structural fields, so this is free to run
             // either side of the wiring below.
-            string preset = null, chainClass = null;
+            string preset = null;
             bool customPreset = false;
+            // Classified whether or not presets are in use: what KIND of chain this is decides
+            // which MagicaCloth2 idiom it becomes, and that question outlives the preset option.
+            var cls = MagicaPresetLibrary.Classify(data);
+            string chainClass = cls.Name;
             if (ctx.Settings.useMagicaPresets)
             {
-                var cls = MagicaPresetLibrary.Classify(data);
-                chainClass = cls.Name;
                 if (!MagicaPresetLibrary.TryApply(sdata, cls, out preset, out customPreset, out string presetError))
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
@@ -105,7 +107,24 @@ namespace AvatarBridge
             }
 
             // --- structure ----------------------------------------------------------------
-            sdata.clothType = ClothProcess.ClothType.BoneCloth;
+            //
+            // Which of MagicaCloth2's two idioms this chain IS, rather than translating a
+            // PhysBone's structure and hoping. A PhysBone is one shape for everything: a chain
+            // of bones with a rotational spring at each joint. MagicaCloth2 has two, and picking
+            // the wrong one costs more than any coefficient.
+            //
+            // A breast, a belly, a thigh is not a chain — it is a soft body anchored to a bone,
+            // and BoneSpring is MagicaCloth2's word for that: it holds the bone near its rest
+            // position with a spring, and it offers a SELECTIVE collision list, so the parts
+            // other people can touch are chosen rather than every particle presenting itself.
+            // Hair, tails, skirts and accessories genuinely are chains, and stay BoneCloth.
+            //
+            // This must run AFTER the preset import: ImportJson carries clothType through its
+            // TempBuffer, so a preset applied later would silently take the idiom back.
+            bool softBody = chainClass != null && SoftBodyClasses.Contains(chainClass);
+            sdata.clothType = softBody
+                ? ClothProcess.ClothType.BoneSpring
+                : ClothProcess.ClothType.BoneCloth;
 
             // "Is Animated" on the source PhysBone means exactly one thing: an animation moves
             // these bones. MagicaCloth2 settles a chain back to its INITIAL pose by default, so
@@ -265,9 +284,14 @@ namespace AvatarBridge
                 DerivePhysics(ctx, data, sdata);
             }
 
+            if (softBody)
+            {
+                ConfigureSoftBody(ctx, data, sdata, chainClass);
+            }
+
             if (ctx.Settings.fitToPhysBone)
             {
-                FitToPhysBone(ctx, data, sdata);
+                FitToPhysBone(ctx, data, sdata, softBody);
             }
 
             if (ctx.Settings.boundSwingToSourceLimit)
@@ -727,7 +751,8 @@ namespace AvatarBridge
         /// claim than this method makes, so it lives behind its own setting in
         /// <see cref="DerivePhysics"/>. Everything else stays with the preset.
         /// </summary>
-        static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata,
+            bool softBody)
         {
             // VRChat has no wind. There is no PhysBone field for it, nothing in SolveChain reads
             // one, and a VRChat world cannot blow a chain around — so every PhysBone ever authored
@@ -789,7 +814,13 @@ namespace AvatarBridge
             // a 0.9-immobile PhysBone still swung freely in game because localInertia was never
             // touched. Every MagicaCloth2 preset keeps the pair equal (both 1.0); the split was
             // this tool's invention, not the solver's design.
-            if (data.Immobile > 0.01f)
+            // Not for a soft body. Immobile answers "how much does the avatar moving shake this
+            // chain", which is a real question for something that hangs and can be flung — and
+            // the wrong question for a volume anchored to a bone, which cannot be. Held down on
+            // one of those, it stops the body answering the avatar's movement at all while doing
+            // nothing about the wobble, which is exactly how it was reported. ConfigureSoftBody
+            // says so in the report.
+            if (data.Immobile > 0.01f && !softBody)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
                 bool world = TrySetMember(sdata.inertiaConstraint, "worldInertia", influence);
@@ -1154,6 +1185,148 @@ namespace AvatarBridge
             {
                 CollectChainBones(root.GetChild(i), ignores, into);
             }
+        }
+
+        /// <summary>
+        /// Chain classes that are a soft body anchored to a bone rather than a chain of bones.
+        /// These become MagicaCloth2 BoneSpring; everything else stays BoneCloth.
+        ///
+        /// Only classes named from the ANATOMY belong here. "Floaty", "Loose", "Springy" and
+        /// "Stiff" are what <see cref="MagicaPresetLibrary.Classify"/> falls back to when no name
+        /// anywhere says what a chain is, and they describe how the PhysBone was TUNED, not what
+        /// it hangs off. Floaty was in this list for one test run and swept up a microphone on a
+        /// cord — a chain if ever there was one — because its author gave it no gravity and a
+        /// high immobile.
+        /// </summary>
+        static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
+        {
+            "Breast", "Butt", "Belly", "Thigh",
+        };
+
+        /// <summary>
+        /// MagicaCloth2's Hard Spring ships this, and it is the only spring power anyone has
+        /// actually watched on a converted avatar: a reported breast chain was tried by hand at
+        /// the soft presets' 0.01 and read as far too floaty, and at this value as right. Our own
+        /// soft-body presets carry 0.01 because they were written for BoneCloth, where the spring
+        /// constraint never ran — so those numbers were never once tested.
+        /// </summary>
+        const float SoftBodySpringPower = 0.06f;
+
+        /// <summary>
+        /// Configures a soft body the way MagicaCloth2 means one, rather than as a translated
+        /// chain.
+        ///
+        /// Three things separate this from BoneCloth, and all three answer something reported:
+        ///
+        /// SPRING. The bone is held near its rest position by a spring instead of by a chain of
+        /// distance constraints. That is what makes a breast return to where it belongs rather
+        /// than hanging wherever momentum left it.
+        ///
+        /// INERTIA IS LEFT ALONE. A soft body is anchored, so it cannot be thrown off the avatar
+        /// by the avatar moving, and it does not need inertia held down to stay presentable.
+        /// Every stock MagicaCloth2 preset ships world and local inertia at 1.0 for exactly this
+        /// reason. Converting immobile onto inertia — right for a chain, which really can be
+        /// flung — is what made these chains ignore the body walking while still wobbling once
+        /// they got going.
+        ///
+        /// SELECTIVE COLLISION. BoneCloth presents every particle for collision. BoneSpring takes
+        /// a list, so the bone that best stands for the volume is chosen and sized from the mesh,
+        /// and the rest of the chain stops offering collision surfaces nobody meant to touch.
+        /// </summary>
+        static void ConfigureSoftBody(BridgeContext ctx, PhysBoneChainData data,
+            ClothSerializeData sdata, string chainClass)
+        {
+            bool spring = TrySetMember(sdata.springConstraint, "useSpring", true);
+            float presetPower = 0f;
+            var powerField = sdata.springConstraint?.GetType()
+                .GetField("springPower", BindingFlags.Public | BindingFlags.Instance);
+            if (powerField != null && powerField.GetValue(sdata.springConstraint) is float existing)
+            {
+                presetPower = existing;
+            }
+            float power = Mathf.Max(presetPower, SoftBodySpringPower);
+            spring &= TrySetMember(sdata.springConstraint, "springPower", power);
+
+            var collisionBone = ChooseCollisionBone(ctx, data, out float collisionRadius);
+            bool collision = false;
+            if (collisionBone != null)
+            {
+                var list = sdata.colliderCollisionConstraint?.GetType()
+                    .GetField("collisionBones", BindingFlags.Public | BindingFlags.Instance);
+                if (list != null && list.GetValue(sdata.colliderCollisionConstraint) is List<Transform> bones)
+                {
+                    bones.Clear();
+                    bones.Add(collisionBone);
+                    collision = true;
+                }
+                if (collision && collisionRadius > 0f)
+                {
+                    sdata.radius.SetValue(collisionRadius);
+                }
+            }
+
+            ctx.Report.Converted(Category, data.Root.name,
+                $"Built as a MagicaCloth2 SOFT BODY (\"{chainClass}\"), not as a chain of bones. A breast, " +
+                "belly or thigh is a volume anchored to a bone rather than something that hangs, so it is " +
+                "held near its rest position by a spring" +
+                (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
+                (collision
+                    ? $", and only \"{collisionBone.name}\" is offered for collision, sized {collisionRadius:0.###} " +
+                      "from the mesh — so other people touch the part that is actually there instead of every " +
+                      "bone in the chain"
+                    : ", though its collision bone could not be set on this MagicaCloth2 version") +
+                ". Its inertia is also left at the preset's value rather than converted from Immobile: an " +
+                "anchored body cannot be thrown off the avatar, so holding inertia down only stops it " +
+                "answering the body's movement.");
+        }
+
+        /// <summary>
+        /// The bone that best stands for the volume: the one whose weighted vertices sit closest
+        /// to the centre of everything the chain moves. Sizing collision to the middle of the
+        /// mesh and out to its edge is what makes a touch land where the body looks like it is,
+        /// which is the whole point of choosing a collision bone rather than taking all of them.
+        /// </summary>
+        static Transform ChooseCollisionBone(BridgeContext ctx, PhysBoneChainData data, out float radius)
+        {
+            radius = 0f;
+            var chain = new HashSet<Transform>();
+            CollectChainBones(data.Root, data.Ignores, chain);
+            if (chain.Count == 0)
+            {
+                return null;
+            }
+
+            // Centre of the volume, weighted by how much mesh each bone actually carries.
+            Vector3 centre = Vector3.zero;
+            int counted = 0;
+            foreach (var bone in chain)
+            {
+                centre += bone.position;
+                counted++;
+            }
+            if (counted == 0)
+            {
+                return null;
+            }
+            centre /= counted;
+
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var bone in chain)
+            {
+                float d = Vector3.SqrMagnitude(bone.position - centre);
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = bone;
+                }
+            }
+
+            if (best != null)
+            {
+                radius = MeasureMeshRadius(ctx, data, out _);
+            }
+            return best;
         }
 
         static float MeasureBoneSpacing(Transform root)
