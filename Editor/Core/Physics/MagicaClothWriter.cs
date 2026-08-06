@@ -1182,6 +1182,7 @@ namespace AvatarBridge
 
             var distances = new List<float>();
             var positions = new List<Vector3>();
+            var flat = new Dictionary<Transform, List<Vector2>>();
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -1214,10 +1215,10 @@ namespace AvatarBridge
                 for (int i = 0; i < vertices.Length; i += stride)
                 {
                     var w = weights[i];
-                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
-                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
-                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
-                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
                 }
             }
 
@@ -1232,10 +1233,68 @@ namespace AvatarBridge
             }
             centre /= positions.Count;
             distances.Sort();
-            return distances[distances.Count / 2];
+
+            // A particle is a SPHERE, so it is bounded by the narrowest way across the mesh, not
+            // by the average distance out to it. On anything round the two agree; on a flat one
+            // they do not, and the median reads a cape's half-WIDTH where its half-THICKNESS is
+            // wanted. That put a 0.292 particle on a cloth panel — a sphere the size of the
+            // avatar's torso, on a chain whose holder happened to be inactive, so it went unseen
+            // until an unrelated fix switched the object back on and the gizmos appeared.
+            var perBone = new List<float>();
+            foreach (var section in flat.Values)
+            {
+                float caliper = MinimumCaliperRadius(section);
+                if (caliper < float.MaxValue)
+                {
+                    perBone.Add(caliper);
+                }
+            }
+            if (perBone.Count == 0)
+            {
+                return distances[distances.Count / 2];
+            }
+            perBone.Sort();
+            return Mathf.Min(distances[distances.Count / 2], perBone[perBone.Count / 2]);
+        }
+
+        /// <summary>
+        /// Half the narrowest width of a cross-section, measured by rotating a pair of parallel
+        /// lines around it and keeping the closest they ever come — the minimum caliper width.
+        ///
+        /// Sixteen directions over a half turn, because the section can sit at any angle and
+        /// checking only the two axes it happens to be stored in would miss a panel lying
+        /// diagonally. Cheap: it is one pass per direction over points already collected.
+        /// </summary>
+        static float MinimumCaliperRadius(List<Vector2> section)
+        {
+            if (section.Count < MinMeshSamples)
+            {
+                return float.MaxValue;   // nothing to bound with; the median stands
+            }
+            float narrowest = float.MaxValue;
+            const int directions = 16;
+            for (int d = 0; d < directions; d++)
+            {
+                float angle = Mathf.PI * d / directions;
+                var axis = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                float min = float.MaxValue, max = float.MinValue;
+                foreach (var p in section)
+                {
+                    float projected = Vector2.Dot(p, axis);
+                    if (projected < min) min = projected;
+                    if (projected > max) max = projected;
+                }
+                float width = max - min;
+                if (width < narrowest)
+                {
+                    narrowest = width;
+                }
+            }
+            return narrowest * 0.5f;
         }
 
         static void AddRadiusSample(List<float> into, List<Vector3> positions,
+            Dictionary<Transform, List<Vector2>> flat,
             HashSet<Transform> meshBones, Vector3 vertex, int boneIndex, float weight,
             Transform[] bones, Matrix4x4[] binds, HashSet<Transform> chain)
         {
@@ -1254,9 +1313,10 @@ namespace AvatarBridge
             // the avatar does.
             Vector3 local = binds[boneIndex].MultiplyPoint3x4(vertex);
             Vector3 axis = bone.childCount > 0 ? bone.GetChild(0).localPosition : Vector3.zero;
-            float distance = axis.sqrMagnitude > 1e-10f
-                ? Vector3.ProjectOnPlane(local, axis.normalized).magnitude
-                : local.magnitude;
+            Vector3 perpendicular = axis.sqrMagnitude > 1e-10f
+                ? Vector3.ProjectOnPlane(local, axis.normalized)
+                : local;
+            float distance = perpendicular.magnitude;
 
             // Bone-local units become world units, which is what MagicaCloth2's radius is in.
             Vector3 scale = bone.lossyScale;
@@ -1268,6 +1328,20 @@ namespace AvatarBridge
                 // vertex is skinned to, which is what "the middle of the mesh" has to mean.
                 positions.Add(bone.localToWorldMatrix.MultiplyPoint3x4(local));
                 meshBones.Add(bone);
+
+                // The same offset in the plane across the bone, kept PER BONE so the
+                // cross-section's narrowest width can be measured. Per bone matters: each one
+                // has its own frame, and pooling a panel whose bones fan out smears the section
+                // into a cloud wider than any single bone's, which is most of what a flat mesh
+                // needed measuring for. See MinimumCaliperRadius.
+                Vector3 a = axis.sqrMagnitude > 1e-10f ? axis.normalized : Vector3.up;
+                Vector3 e1 = Vector3.Cross(a, Mathf.Abs(a.x) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+                Vector3 e2 = Vector3.Cross(a, e1).normalized;
+                if (!flat.TryGetValue(bone, out var section))
+                {
+                    flat[bone] = section = new List<Vector2>();
+                }
+                section.Add(new Vector2(Vector3.Dot(perpendicular, e1), Vector3.Dot(perpendicular, e2)) * mean);
             }
         }
 
