@@ -8517,8 +8517,12 @@ namespace AvatarBridge
             }
 
             var rewired = new Dictionary<AnimationClip, AnimationClip>();
-            int curvesAdded = 0, clipsTouched = 0;
+            int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0;
             var physicslessStyles = new HashSet<Transform>();
+            // Chains left running when their style hides, because a mesh outside the toggled
+            // object rides them. Named in the report so "this cloth never stops" is explained
+            // rather than mysterious.
+            var sharedChains = new SortedSet<string>(StringComparer.Ordinal);
 
             // PhysBone on/off curves with nowhere to land: the chain they name produced no
             // physics, so there is no component to retarget them at. The curve then points at a
@@ -8538,6 +8542,63 @@ namespace AvatarBridge
                 {
                     if (chain.Source != null &&
                         (chain.Source.transform == container || chain.Source.transform.IsChildOf(container)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Everything that depends on a chain's simulated bones: a skinned mesh weighted to
+            // any bone at or under the chain root, and anything parented beneath one of those
+            // bones — a clip, a bell, a prop riding a hair strand. Built once per chain, because
+            // deciding whether a chain may be switched off is the only question that needs it.
+            var ridersByChain = new Dictionary<BridgeContext.ConvertedPhysicsChain, List<Transform>>();
+            List<Transform> RidersOf(BridgeContext.ConvertedPhysicsChain chain)
+            {
+                if (ridersByChain.TryGetValue(chain, out var known))
+                {
+                    return known;
+                }
+                var riders = new List<Transform>();
+                var chainRoot = chain.Root != null ? chain.Root
+                    : chain.Source != null ? chain.Source.transform : null;
+                if (chainRoot != null)
+                {
+                    foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+                    {
+                        bool rides = renderer.transform == chainRoot
+                            || renderer.transform.IsChildOf(chainRoot);
+                        if (!rides && renderer is SkinnedMeshRenderer skinned)
+                        {
+                            foreach (var bone in skinned.bones)
+                            {
+                                if (bone != null && (bone == chainRoot || bone.IsChildOf(chainRoot)))
+                                {
+                                    rides = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (rides)
+                        {
+                            riders.Add(renderer.transform);
+                        }
+                    }
+                }
+                ridersByChain[chain] = riders;
+                return riders;
+            }
+
+            // True when a mesh OUTSIDE the toggled object rides this chain — the one case where
+            // switching the cloth off with the object is wrong, because something still visible
+            // needs those bones moving. Anything inside the toggled object is hidden along with
+            // it, so its physics can stop.
+            bool ChainSharedOutside(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
+            {
+                foreach (var rider in RidersOf(chain))
+                {
+                    if (rider != animated && !rider.IsChildOf(animated))
                     {
                         return true;
                     }
@@ -8724,18 +8785,35 @@ namespace AvatarBridge
                         }
                         if (objectToggle && !CurveActivates(curve))
                         {
-                            // Mirror ACTIVATIONS only, never deactivations. Turning a holder
-                            // off with the style that owned it strangles any OTHER style whose
-                            // bones ride the same chain: a tester's "Vampy" hair has no
-                            // PhysBone of its own — its rig is grafted onto the base hair's
-                            // simulated bones at bake time — and the base cloth being switched
-                            // off with the base style's mesh left it rigid. A hidden style's
-                            // cloth staying alive costs a little simulation of bones nobody
-                            // sees; a shared chain being killed is a dead hairstyle. Where the
-                            // avatar uses Write Defaults, holders still switch off for free —
-                            // the added ON curve stops being written and the holder falls back
-                            // to its scene default, exactly like the hair objects themselves.
-                            continue;
+                            // A DEACTIVATION. This used to be dropped unconditionally, which
+                            // left every cloth a toggle switched on running forever: the ON
+                            // curve is the only one that reaches the component, so the first
+                            // time the style appears the physics latches on and no later state
+                            // takes it back. ChilloutVR does not restore Write Defaults, so
+                            // there is no fallback to a scene value the way there is in
+                            // VRChat — a binding nothing writes simply keeps its last value.
+                            // Measured on an avatar where "Tail-alt" and "V-killer" each left
+                            // a cloth enabled after being switched off again.
+                            //
+                            // The reason the blanket drop existed is real, just far narrower
+                            // than the rule that implemented it: a tester's "Vampy" hair has
+                            // no PhysBone of its own, its rig rides the base hair's simulated
+                            // bones, and switching that chain off with the base style's mesh
+                            // left the visible add-on rigid.
+                            //
+                            // That risk needs a CONTAINER being hidden. When the animation
+                            // switches the PhysBone's OWN object, it is not hiding anything —
+                            // it is stopping that one chain, which is precisely what VRChat
+                            // did with the same curve, and what a menu entry named
+                            // "Belly-physics" is for. The mesh stays on screen and goes
+                            // rigid, deliberately. So only a container deactivation has to
+                            // prove that nothing still visible rides these bones.
+                            if (source != animated && ChainSharedOutside(chain, animated))
+                            {
+                                sharedChains.Add(chain.Source.name);
+                                continue;
+                            }
+                            deactivationsMirrored++;
                         }
                         if (additions == null)
                         {
@@ -8911,10 +8989,26 @@ namespace AvatarBridge
                     "outfit toggles) now activate the generated physics too. Without this, a chain " +
                     "belonging to a style that was inactive at conversion time could never wake up — " +
                     "its cloth lives on its own object at the avatar root, on a path the original " +
-                    "animations never animated. Only activations are mirrored: styles that share " +
-                    "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
-                    "have that chain switched off with the base style's mesh, so a hidden style's " +
-                    "cloth may keep simulating — invisible, and harmless.");
+                    "animations never animated. " +
+                    (deactivationsMirrored > 0
+                        ? $"{deactivationsMirrored} of those curve(s) switch the physics back OFF " +
+                          "again when the style hides, which matters here because ChilloutVR does " +
+                          "not restore a binding nothing writes: without the off curve the cloth " +
+                          "would stay running from the first time it appeared."
+                        : "No style here switches its physics back off."));
+            }
+
+            if (sharedChains.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
+                    string.Join(", ", sharedChains) + " — each of these is switched ON with the " +
+                    "object it belongs to but never switched off, because a mesh OUTSIDE that " +
+                    "object is skinned to the same bones. Add-on hair grafted onto a base " +
+                    "hairstyle's rig is the usual shape. Stopping the chain with the base style's " +
+                    "mesh would leave the add-on rigid, so it is left running instead: it " +
+                    "simulates bones nobody can see, which costs a little performance and looks " +
+                    "like nothing at all.");
             }
 
             if (strandedToggles.Count > 0)

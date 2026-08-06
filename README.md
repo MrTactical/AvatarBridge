@@ -886,9 +886,14 @@ Bipeds are unaffected by any of it.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
   only one is left driving the chain — two solvers on the same bones jitter rather than blend.
   Nothing is deleted, so switching variant is one checkbox; the report names the one kept.
-- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the original
-  PhysBone's object are re-wired to switch the generated cloth too. Only *activations* are mirrored,
-  so a hidden style's cloth may keep simulating — invisible and harmless. **If the chain wasn't
+- **Toggled physics follows its toggle, both ways.** Hair swaps and outfit toggles that switched the
+  original PhysBone's object are re-wired to switch the generated cloth too — on *and* off, which
+  matters because ChilloutVR does not restore a binding nothing writes: mirror only the "on" and a
+  control like *Belly physics* turns the physics on the first time and can never turn it back off.
+  The one deactivation that is deliberately *not* mirrored is a whole style container being hidden
+  while a mesh outside it is still skinned to the same bones — add-on hair grafted onto a base
+  hairstyle's rig. Stopping that chain would leave the visible add-on rigid, so it keeps simulating
+  instead; the report names each one. **If the chain wasn't
   converted there's nothing to re-wire to**, and the control will look right and do nothing; the
   report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
   **Collider switches follow too**: a dress that disables the leg colliders that would clip it
