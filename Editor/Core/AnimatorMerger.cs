@@ -8673,9 +8673,22 @@ namespace AvatarBridge
                             {
                                 continue;
                             }
-                            target = EditorCurveBinding.FloatCurve(
-                                AnimationUtility.CalculateTransformPath(host, root),
-                                typeof(GameObject), "m_IsActive");
+                            // Onto the COMPONENT, not the holder's active flag. Holders are
+                            // created active now, with a cloth that starts off carrying that
+                            // state on its own enabled flag (see MagicaClothWriter) — so an
+                            // activation copied onto m_IsActive lands on an object that is
+                            // already active and changes nothing, leaving the cloth off forever.
+                            //
+                            // Measured on an avatar whose Belly, Butt, Thigh, Loin, Tail, Tongue
+                            // and Lace physics were all still off after the animator had settled,
+                            // with every one of their menu toggles defaulting to ON.
+                            target = chain.Physics != null
+                                ? EditorCurveBinding.FloatCurve(
+                                    AnimationUtility.CalculateTransformPath(host, root),
+                                    chain.Physics.GetType(), "m_Enabled")
+                                : EditorCurveBinding.FloatCurve(
+                                    AnimationUtility.CalculateTransformPath(host, root),
+                                    typeof(GameObject), "m_IsActive");
                         }
                         else
                         {

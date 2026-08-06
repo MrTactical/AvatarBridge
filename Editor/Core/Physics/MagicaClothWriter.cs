@@ -1420,16 +1420,16 @@ namespace AvatarBridge
             float power = Mathf.Max(presetPower, SoftBodySpringPower);
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
-            var collisionBone = ChooseCollisionBone(ctx, data, out float collisionRadius);
+            var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
             bool collision = false;
-            if (collisionBone != null)
+            if (collisionBones.Count > 0)
             {
                 var list = sdata.colliderCollisionConstraint?.GetType()
                     .GetField("collisionBones", BindingFlags.Public | BindingFlags.Instance);
                 if (list != null && list.GetValue(sdata.colliderCollisionConstraint) is List<Transform> bones)
                 {
                     bones.Clear();
-                    bones.Add(collisionBone);
+                    bones.AddRange(collisionBones);
                     collision = true;
                 }
                 if (collision && collisionRadius > 0f)
@@ -1437,6 +1437,9 @@ namespace AvatarBridge
                     sdata.radius.SetValue(collisionRadius);
                 }
             }
+            string collisionBone = collisionBones.Count > 0
+                ? string.Join("\", \"", collisionBones.Select(b => b.name))
+                : null;
 
             ctx.Report.Converted(Category, data.Root.name,
                 $"Built as a MagicaCloth2 SOFT BODY (\"{chainClass}\"), not as a chain of bones. A breast, " +
@@ -1444,7 +1447,8 @@ namespace AvatarBridge
                 "held near its rest position by a spring" +
                 (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
                 (collision
-                    ? $", and only \"{collisionBone.name}\" is offered for collision, sized {collisionRadius:0.###} " +
+                    ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
+                      $"branch(es)) is offered for collision, sized {collisionRadius:0.###} " +
                       "from the mesh — so other people touch the part that is actually there instead of every " +
                       "bone in the chain"
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
@@ -1459,14 +1463,15 @@ namespace AvatarBridge
         /// mesh and out to its edge is what makes a touch land where the body looks like it is,
         /// which is the whole point of choosing a collision bone rather than taking all of them.
         /// </summary>
-        static Transform ChooseCollisionBone(BridgeContext ctx, PhysBoneChainData data, out float radius)
+        static List<Transform> ChooseCollisionBones(BridgeContext ctx, PhysBoneChainData data, out float radius)
         {
             radius = 0f;
+            var chosen = new List<Transform>();
             var chain = new HashSet<Transform>();
             CollectChainBones(data.Root, data.Ignores, chain);
             if (chain.Count == 0)
             {
-                return null;
+                return chosen;
             }
 
             // The middle of the MESH, not the middle of the bones. A chain's bones are spaced
@@ -1476,23 +1481,65 @@ namespace AvatarBridge
                 out HashSet<Transform> meshBones);
             if (samples < MinMeshSamples || meshBones.Count == 0)
             {
-                return null;   // nothing measurable; better no collision bone than a guessed one
+                return chosen;   // nothing measurable; better no collision bone than a guessed one
             }
 
-            // Only bones that actually carry mesh are candidates — see MeasureMesh.
-            Transform best = null;
-            float bestDistance = float.MaxValue;
-            foreach (var bone in meshBones)
+            // ONE PER BRANCH, not one per chain. A single root very often carries a pair — a
+            // Breast-root over Breast-1.L and Breast-1.R is the ordinary shape — and picking the
+            // single bone nearest the middle of the whole mesh gives the left one nothing at all,
+            // so half the body has no collision while the other half looks right. Reported from
+            // exactly that rig. collisionBones is a list precisely because MagicaCloth2 expects
+            // several.
+            //
+            // Branches are the root's own children: each subtree below one is a limb of the
+            // chain that needs to be touchable in its own right. A chain with a single child is
+            // one branch and behaves as before.
+            var branches = new List<List<Transform>>();
+            for (int i = 0; i < data.Root.childCount; i++)
             {
-                float d = Vector3.SqrMagnitude(bone.position - centre);
-                if (d < bestDistance)
+                var child = data.Root.GetChild(i);
+                var members = meshBones.Where(b => b == child || b.IsChildOf(child)).ToList();
+                if (members.Count > 0)
                 {
-                    bestDistance = d;
-                    best = bone;
+                    branches.Add(members);
+                }
+            }
+            // A root that carries mesh itself and branches nowhere useful still needs a bone.
+            if (branches.Count == 0)
+            {
+                branches.Add(meshBones.ToList());
+            }
+
+            foreach (var branch in branches)
+            {
+                // Each branch is measured against ITS OWN middle: the mean of its bones weighted
+                // equally is close enough here, because the branch has already been narrowed to
+                // bones that carry mesh.
+                Vector3 branchCentre = Vector3.zero;
+                foreach (var bone in branch)
+                {
+                    branchCentre += bone.position;
+                }
+                branchCentre /= branch.Count;
+
+                Transform best = null;
+                float bestDistance = float.MaxValue;
+                foreach (var bone in branch)
+                {
+                    float d = Vector3.SqrMagnitude(bone.position - branchCentre);
+                    if (d < bestDistance)
+                    {
+                        bestDistance = d;
+                        best = bone;
+                    }
+                }
+                if (best != null && !chosen.Contains(best))
+                {
+                    chosen.Add(best);
                 }
             }
 
-            return best;
+            return chosen;
         }
 
         static float MeasureBoneSpacing(Transform root)

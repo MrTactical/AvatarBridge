@@ -160,6 +160,23 @@ namespace AvatarBridge.Regression
             animator.Rebind();
             Settle(animator, Warmup);
 
+            // What the animator has actually made of the physics once it has settled, which is a
+            // different question from what the prefab was saved as. A cloth saved disabled whose
+            // toggle defaults ON should be running by now; one that is still off after the
+            // animator has had its say is off in game too.
+            var clothStates = new List<string>();
+            foreach (var behaviour in root.GetComponentsInChildren<Behaviour>(true))
+            {
+                if (behaviour != null && behaviour.GetType().Name == "MagicaCloth")
+                {
+                    clothStates.Add($"{behaviour.name}={(behaviour.isActiveAndEnabled ? "on" : "OFF")}");
+                }
+            }
+            if (clothStates.Count > 0)
+            {
+                Debug.Log($"[Sweep] cloth after settling ({clothStates.Count}): {string.Join(", ", clothStates)}");
+            }
+
             Debug.Log($"[Sweep] \"{root.name}\": {parameters.Length} parameter(s) over {watch.Count} watched " +
                       "propert(ies) — object activity, renderer enable, blendshape weights and material " +
                       "slots. This moves things in the open scene and does not put them back — reload it " +
@@ -173,14 +190,30 @@ namespace AvatarBridge.Regression
             int responded = 0;
             foreach (var parameter in parameters)
             {
-                float original = animator.GetFloat(parameter);
+                float original = DefaultOf(controller, parameter);
                 var before = watch.Capture();
 
-                animator.SetFloat(parameter, 1f);
+                // AWAY from rest, not always to 1. A parameter that already rests at 1 — and
+                // default-true toggles are ordinary, "Belly-physics" and friends on the avatar
+                // this was written against — was being "driven" to the value it already held,
+                // so the sweep moved nothing, saw nothing, and reported it as a parameter that
+                // does nothing. It was testing that 1 equals 1.
+                float away = original > 0.5f ? 0f : 1f;
+                Drive(controller, animator, parameter, away);
                 Settle(animator, SettleFrames);
-                bool moves = watch.Differences(before).Count > 0;
+                var whileOn = watch.Differences(before);
+                bool moves = whileOn.Count > 0;
+                if (moves)
+                {
+                    // What a toggle DOES, not only what it fails to put back. Without this the
+                    // sweep can confirm a parameter drives something and still not say whether
+                    // it drove the thing being asked about — which is no use when the question
+                    // is "does this toggle reach the converted physics at all".
+                    Debug.Log($"[Sweep] MOVES \"{parameter}\": {string.Join("; ", whileOn.Take(6))}" +
+                              (whileOn.Count > 6 ? $" (+{whileOn.Count - 6} more)" : ""));
+                }
 
-                animator.SetFloat(parameter, original);
+                Drive(controller, animator, parameter, original);
                 Settle(animator, SettleFrames);
 
                 if (moves)
@@ -193,7 +226,7 @@ namespace AvatarBridge.Regression
                     continue;
                 }
                 stuck.Add(parameter);
-                Debug.Log($"[Sweep] STUCK \"{parameter}\" ({original} → 1 → {original}): " +
+                Debug.Log($"[Sweep] STUCK \"{parameter}\" ({original} → {away} → {original}): " +
                           string.Join("; ", moved.Take(8)) +
                           (moved.Count > 8 ? $" (+{moved.Count - 8} more)" : ""));
             }
@@ -225,6 +258,59 @@ namespace AvatarBridge.Regression
             return stuck.Count;
         }
 
+        /// <summary>
+        /// Moves a parameter by rewriting its DEFAULT on the controller and reattaching, rather
+        /// than through Animator.SetFloat.
+        ///
+        /// Not a preference. VRCFury Harmony-patches Animator.SetBool/SetFloat editor-wide
+        /// (FixAnimatorPreviewBreakingInPlayModeHook), and its shim dereferences a null playable
+        /// in batch mode — so every sweep of a project with VRCFury installed died on the first
+        /// parameter with an ArgumentNullException, which reads as the sweep being broken rather
+        /// than as the sweep being blocked. Reattaching leaves no instance setter to intercept.
+        ///
+        /// The animator still owns every object it drives; nothing here is set behind its back.
+        /// </summary>
+        static void Drive(AnimatorController controller, Animator animator, string name, float value)
+        {
+            var parameters = controller.parameters;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].name != name)
+                {
+                    continue;
+                }
+                parameters[i].defaultBool = value > 0.5f;
+                parameters[i].defaultInt = Mathf.RoundToInt(value);
+                parameters[i].defaultFloat = value;
+            }
+            controller.parameters = parameters;
+
+            var runtime = animator.runtimeAnimatorController;
+            animator.runtimeAnimatorController = null;
+            animator.runtimeAnimatorController = runtime;
+            animator.Rebind();
+        }
+
+        /// <summary>The value a parameter rests at, read from the controller rather than from the
+        /// animator, so restoring it does not depend on a getter either.</summary>
+        static float DefaultOf(AnimatorController controller, string name)
+        {
+            foreach (var p in controller.parameters)
+            {
+                if (p.name != name)
+                {
+                    continue;
+                }
+                switch (p.type)
+                {
+                    case AnimatorControllerParameterType.Bool: return p.defaultBool ? 1f : 0f;
+                    case AnimatorControllerParameterType.Int: return p.defaultInt;
+                    default: return p.defaultFloat;
+                }
+            }
+            return 0f;
+        }
+
         static void Settle(Animator animator, int frames)
         {
             for (int i = 0; i < frames; i++)
@@ -246,6 +332,7 @@ namespace AvatarBridge.Regression
             readonly string[] labels;
             readonly Transform[] objects;
             readonly Renderer[] renderers;
+            readonly Behaviour[] behaviours;
             readonly SkinnedMeshRenderer[] skins;
             readonly int blendShapeTotal;
 
@@ -256,11 +343,21 @@ namespace AvatarBridge.Regression
                 objects = root.GetComponentsInChildren<Transform>(true);
                 renderers = root.GetComponentsInChildren<Renderer>(true);
                 skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                // Components switched on and off, which is how converted physics is toggled: a
+                // MagicaCloth lives on its own holder and the clip drives its enabled flag, not
+                // the object's. Without this the sweep reports a cloth toggle as "nothing moved"
+                // and means only that it was not looking — the same blind spot that made it come
+                // back clean twice on an avatar with a broken toggle.
+                behaviours = root.GetComponentsInChildren<Behaviour>(true);
 
                 var names = new List<string>();
                 foreach (var t in objects)
                 {
                     names.Add($"{t.name} active");
+                }
+                foreach (var b in behaviours)
+                {
+                    names.Add($"{b.name}.{b.GetType().Name} enabled");
                 }
                 foreach (var r in renderers)
                 {
@@ -290,13 +387,17 @@ namespace AvatarBridge.Regression
             /// </summary>
             public Reading Capture()
             {
-                var numbers = new float[objects.Length + renderers.Length + blendShapeTotal];
+                var numbers = new float[objects.Length + behaviours.Length + renderers.Length + blendShapeTotal];
                 var references = new Object[labels.Length - numbers.Length];
                 int n = 0, r = 0;
 
                 foreach (var t in objects)
                 {
                     numbers[n++] = t != null && t.gameObject.activeSelf ? 1f : 0f;
+                }
+                foreach (var b in behaviours)
+                {
+                    numbers[n++] = b != null && b.enabled ? 1f : 0f;
                 }
                 foreach (var renderer in renderers)
                 {
