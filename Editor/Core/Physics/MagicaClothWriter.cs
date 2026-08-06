@@ -777,6 +777,25 @@ namespace AvatarBridge
                     "wind to reach this chain.");
             }
 
+            // VRChat clamps nothing. A PhysBone has no equivalent of MagicaCloth2's speed limits,
+            // so whatever the author tuned, they tuned it against a chain that received the
+            // avatar's movement in full.
+            //
+            // The clamp is applied to the avatar's frame velocity BEFORE it shifts the cloth's
+            // reference frame (TeamManager.cs:2242-2247), so past the limit the chain stops
+            // receiving any further drag and rides rigidly with the body. MagicaCloth2's spring
+            // presets ship 1 m/s — below walking pace — so on a converted avatar the clamp is
+            // engaged during ordinary movement, which is how "the cloth doesn't move cleanly when
+            // I move the avatar" was reported.
+            //
+            // Raised to MagicaCloth2's OWN code defaults (InertiaConstraint.cs:184-188), not
+            // removed: its author chose 5 m/s and 720 deg/s as the general-purpose values, and
+            // keeping a limit means a teleport still cannot fling the chain across the world.
+            RaiseSpeedLimit(sdata.inertiaConstraint, "movementSpeedLimit", 5f, ctx, data, "world movement");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "localMovementSpeedLimit", 5f, ctx, data, "local movement");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "rotationSpeedLimit", 720f, ctx, data, "world rotation");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "localRotationSpeedLimit", 720f, ctx, data, "local rotation");
+
             if (Mathf.Approximately(data.Gravity, 0f))
             {
                 // The author gave this chain no gravity, so it was never meant to hang. Presets
@@ -979,6 +998,36 @@ namespace AvatarBridge
                     $"Source {data.LimitTypeName} limit ({limitAngle:0}°) could not be applied as a movement " +
                     "bound on this MagicaCloth2 version — the chain will swing further here than in VRChat.");
             }
+        }
+
+        /// <summary>
+        /// Lifts one of MagicaCloth2's speed clamps to at least <paramref name="floor"/>, leaving
+        /// anything already looser alone. The clamps live in a small struct with a value and a
+        /// tick-box, so this reads that object out and writes the value back on it; a version
+        /// without the field is simply skipped.
+        /// </summary>
+        static void RaiseSpeedLimit(object inertia, string fieldName, float floor,
+            BridgeContext ctx, PhysBoneChainData data, string label)
+        {
+            var field = inertia?.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            var holder = field?.GetValue(inertia);
+            if (holder == null)
+            {
+                return;
+            }
+            var valueField = holder.GetType().GetField("value", BindingFlags.Public | BindingFlags.Instance);
+            if (valueField == null || !(valueField.GetValue(holder) is float current) || current >= floor)
+            {
+                return;
+            }
+            valueField.SetValue(holder, floor);
+            field.SetValue(inertia, holder);   // struct-safe: write the modified copy back
+            ctx.Report.Approximated(Category, data.Root.name,
+                $"{label} speed limit raised {current:0.##} → {floor:0.##} — VRChat has no such clamp, so this " +
+                "chain was tuned receiving the avatar's movement in full. Past the limit MagicaCloth2 stops " +
+                "passing movement to the chain and it rides rigidly with the body, and the preset's value sat " +
+                "below walking pace. This is MagicaCloth2's own default rather than no limit at all, so a " +
+                "teleport still cannot fling the chain.");
         }
 
         /// <summary>Root to furthest tip, following the longest path.</summary>
