@@ -1373,28 +1373,14 @@ namespace AvatarBridge
                 return false;
             }
 
-            // The outer third at each end. A capsule's surface between its two spheres is the
-            // straight line joining them, so what decides the fit is the flesh at the ends; the
-            // middle follows from those.
-            float band = span / 3f;
-            var top = new List<Vector2>();
-            var bottom = new List<Vector2>();
-            foreach (var p in points)
-            {
-                if (p.y >= high - band)
-                {
-                    top.Add(new Vector2(p.x, p.z));
-                }
-                if (p.y <= low + band)
-                {
-                    bottom.Add(new Vector2(p.x, p.z));
-                }
-            }
-
-            // +Y is the capsule's START end and -Y its END, per ColliderManager's own derivation
-            // of the two sphere centres.
-            float measuredStart = MinimumCaliperRadius(top);
-            float measuredEnd = MinimumCaliperRadius(bottom);
+            // A thin station at each end, widened only as far as it has to be to have something
+            // to measure. Read over the outer THIRD — which is where this started — the slab pools
+            // the whole taper, and at the top of a thigh it pools the hip and buttock mass that
+            // shares that bone: the leg capsules came out 0.127 at the top, a hip-sized circle
+            // wrapped around a thigh. That stood a skirt off the body at the sides while its front
+            // hung correctly, which is exactly the shape of the report that prompted this.
+            float measuredStart = MinimumCaliperRadius(Station(points, high, low, span, true));
+            float measuredEnd = MinimumCaliperRadius(Station(points, high, low, span, false));
             if (measuredStart == float.MaxValue || measuredEnd == float.MaxValue)
             {
                 return false;
@@ -1410,6 +1396,40 @@ namespace AvatarBridge
             offset = (low + high) * 0.5f;
             return true;
         }
+
+        /// <summary>
+        /// The cross-section at one end of a capsule: a thin slice of the vertex cloud, taken as
+        /// narrow as it can be while still holding enough points to measure.
+        ///
+        /// Thin is the whole point. A capsule's radius at an end should be the flesh AT that end,
+        /// and a fat slice averages in everything the limb does on the way there — including, at
+        /// the top of a thigh, the hip that shares the bone.
+        /// </summary>
+        static List<Vector2> Station(List<Vector3> points, float high, float low, float span, bool topEnd)
+        {
+            List<Vector2> slab = null;
+            foreach (float fraction in StationFractions)
+            {
+                float edge = span * fraction;
+                slab = new List<Vector2>();
+                foreach (var p in points)
+                {
+                    if (topEnd ? p.y >= high - edge : p.y <= low + edge)
+                    {
+                        slab.Add(new Vector2(p.x, p.z));
+                    }
+                }
+                if (slab.Count >= MinMeshSamples * 2)
+                {
+                    break;
+                }
+            }
+            return slab;
+        }
+
+        /// <summary>How thick an end slice may get, as a fraction of the capsule's length, before
+        /// giving up on measuring that end. A sparse mesh needs the wider ones.</summary>
+        static readonly float[] StationFractions = { 0.1f, 0.18f, 0.26f, 0.34f };
 
         static BridgeContext boneVertexOwner;
         static Dictionary<Transform, List<Vector3>> boneVertexCache;
