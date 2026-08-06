@@ -626,6 +626,24 @@ namespace AvatarBridge
         {
             bool advanced = data.IsAdvancedIntegration;
 
+            // The preset's own numbers, read BEFORE they are overwritten, and kept as a floor.
+            //
+            // The derivation below is faithful — re-derived by hand against a reported avatar it
+            // reproduces the shipped numbers exactly — but faithful to a loose PhysBone means
+            // mush in MagicaCloth2. A chain of pull 0.22 against spring 0.81 derives to damping
+            // 0.135 and restoration 0.048, where MagicaCloth2's SOFTEST stock spring preset is
+            // 0.20/0.20 and its hard one 0.30/0.60. Reported from the wild as breasts that swing
+            // far too freely, and confirmed by hand: the same chain on the Hard Spring preset
+            // "looks great".
+            //
+            // MagicaCloth2's authors evidently treat their preset values as the floor of a
+            // usable spring, and those presets are already matched to the KIND of chain this is.
+            // So the derivation may FIRM a preset with the source's character and may not soften
+            // it below that baseline. Each end is floored on its own, so wherever the source
+            // asked for more than the floor its shape still carries.
+            float dampFloor = sdata.damping.value;
+            float restFloor = sdata.angleRestorationConstraint.stiffness.value;
+
             // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
             // at the bone's depth, so root and tip can want quite different things.
             float pullRoot = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0f);
@@ -637,6 +655,9 @@ namespace AvatarBridge
 
             float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
             float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
+            float dampDerived = Mathf.Max(dampRoot, dampTip);
+            dampRoot = Mathf.Max(dampRoot, dampFloor);
+            dampTip = Mathf.Max(dampTip, dampFloor);
             PhysBoneSolverMap.MapCurve(dampRoot, dampTip,
                 out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
             sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
@@ -645,18 +666,31 @@ namespace AvatarBridge
                 pullRoot, springRoot, stiffRoot, advanced, out bool satRoot);
             float restTip = PhysBoneSolverMap.RestorationStiffness(
                 pullTip, springTip, stiffTip, advanced, out bool satTip);
+            float restDerived = Mathf.Max(restRoot, restTip);
+            restRoot = Mathf.Max(restRoot, restFloor);
+            restTip = Mathf.Max(restTip, restFloor);
             PhysBoneSolverMap.MapCurve(restRoot, restTip,
                 out float restValue, out float restStart, out float restEnd, out bool restCurve);
 
             sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
             sdata.angleRestorationConstraint.stiffness.SetValue(restValue, restStart, restEnd, restCurve);
 
+            bool dampFloored = dampValue > dampDerived + 0.0001f;
+            bool restFloored = restValue > restDerived + 0.0001f;
             ctx.Report.Approximated(Category, data.Root.name,
                 $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
                 $"damping {dampValue:0.###}, angle restoration {restValue:0.###}. Both solvers integrate " +
                 "positions per step at a fixed rate, so PhysBone's 60 Hz coefficients were re-expressed at " +
                 "MagicaCloth2's 90 Hz. This replaces the preset's feel — if the chain moves wrong, turning " +
-                "\"Derive physics from PhysBone\" off restores it.");
+                "\"Derive physics from PhysBone\" off restores it." +
+                $" Baseline it started from: damping {dampFloor:0.###}, restoration {restFloor:0.###}." +
+                (dampFloored || restFloored
+                    ? $" Held to the preset's baseline where the source asked for less" +
+                      (dampFloored ? $" (damping would have been {dampDerived:0.###})" : "") +
+                      (restFloored ? $" (restoration would have been {restDerived:0.###})" : "") +
+                      " — MagicaCloth2's own presets treat these as the floor of a spring that still reads " +
+                      "as one, and below it a chain converts to mush rather than to a loose chain."
+                    : ""));
 
             if (satRoot || satTip)
             {
