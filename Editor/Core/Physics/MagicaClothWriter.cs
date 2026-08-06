@@ -1083,8 +1083,34 @@ namespace AvatarBridge
         /// so the answer does not depend on how the avatar happens to be posed in the scene.
         /// </summary>
         static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled)
+            => MeasureMesh(ctx, data, out sampled, out _);
+
+        /// <summary>
+        /// The same measurement, also reporting where the middle of that mesh actually is.
+        ///
+        /// The centre is the mean position of the sampled vertices, not of the bones. Those are
+        /// different places and the difference decides which bone gets nominated for collision:
+        /// on the avatar this was built against, the bones' own midpoint chose Breast1 while the
+        /// mesh's midpoint chooses Breast2 — the one a hand-tuning tester had picked.
+        /// </summary>
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre)
+            => MeasureMesh(ctx, data, out sampled, out centre, out _);
+
+        /// <summary>
+        /// As above, also reporting which bones actually carry mesh.
+        ///
+        /// A chain contains more than deforming bones: collider hosts, physics anchors and other
+        /// bookkeeping transforms are parented into it and have no vertices weighted to them at
+        /// all. They must never be nominated for collision — one run picked a transform literally
+        /// named MagicaCollider_ButtTopL for the job, purely because it sat nearest the middle.
+        /// </summary>
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones)
         {
             sampled = 0;
+            centre = Vector3.zero;
+            meshBones = new HashSet<Transform>();
             var chain = new HashSet<Transform>();
             CollectChainBones(data.Root, data.Ignores, chain);
             if (chain.Count == 0)
@@ -1093,6 +1119,7 @@ namespace AvatarBridge
             }
 
             var distances = new List<float>();
+            var positions = new List<Vector3>();
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -1125,10 +1152,10 @@ namespace AvatarBridge
                 for (int i = 0; i < vertices.Length; i += stride)
                 {
                     var w = weights[i];
-                    AddRadiusSample(distances, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
-                    AddRadiusSample(distances, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
-                    AddRadiusSample(distances, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
-                    AddRadiusSample(distances, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
+                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
+                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
+                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
+                    AddRadiusSample(distances, positions, meshBones, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
                 }
             }
 
@@ -1137,11 +1164,17 @@ namespace AvatarBridge
             {
                 return 0f;
             }
+            foreach (var p in positions)
+            {
+                centre += p;
+            }
+            centre /= positions.Count;
             distances.Sort();
             return distances[distances.Count / 2];
         }
 
-        static void AddRadiusSample(List<float> into, Vector3 vertex, int boneIndex, float weight,
+        static void AddRadiusSample(List<float> into, List<Vector3> positions,
+            HashSet<Transform> meshBones, Vector3 vertex, int boneIndex, float weight,
             Transform[] bones, Matrix4x4[] binds, HashSet<Transform> chain)
         {
             if (weight < MinBoneWeight || boneIndex < 0
@@ -1169,6 +1202,10 @@ namespace AvatarBridge
             if (distance > 0f && mean > 0f)
             {
                 into.Add(distance * mean);
+                // Bind-pose local put through the bone's current world matrix IS where that
+                // vertex is skinned to, which is what "the middle of the mesh" has to mean.
+                positions.Add(bone.localToWorldMatrix.MultiplyPoint3x4(local));
+                meshBones.Add(bone);
             }
         }
 
@@ -1296,23 +1333,20 @@ namespace AvatarBridge
                 return null;
             }
 
-            // Centre of the volume, weighted by how much mesh each bone actually carries.
-            Vector3 centre = Vector3.zero;
-            int counted = 0;
-            foreach (var bone in chain)
+            // The middle of the MESH, not the middle of the bones. A chain's bones are spaced
+            // along its length while the mesh they carry is a lump somewhere on it, so the two
+            // midpoints are different places and the difference picks a different bone.
+            radius = MeasureMesh(ctx, data, out int samples, out Vector3 centre,
+                out HashSet<Transform> meshBones);
+            if (samples < MinMeshSamples || meshBones.Count == 0)
             {
-                centre += bone.position;
-                counted++;
+                return null;   // nothing measurable; better no collision bone than a guessed one
             }
-            if (counted == 0)
-            {
-                return null;
-            }
-            centre /= counted;
 
+            // Only bones that actually carry mesh are candidates — see MeasureMesh.
             Transform best = null;
             float bestDistance = float.MaxValue;
-            foreach (var bone in chain)
+            foreach (var bone in meshBones)
             {
                 float d = Vector3.SqrMagnitude(bone.position - centre);
                 if (d < bestDistance)
@@ -1322,10 +1356,6 @@ namespace AvatarBridge
                 }
             }
 
-            if (best != null)
-            {
-                radius = MeasureMeshRadius(ctx, data, out _);
-            }
             return best;
         }
 
