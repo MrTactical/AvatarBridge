@@ -11,6 +11,7 @@ using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
@@ -735,12 +736,41 @@ namespace AvatarBridge
         /// removing one re-numbers its neighbours and changes how the rest blend. A filler clip in
         /// place keeps every threshold where the author put it.
         /// </summary>
+        /// <summary>
+        /// Parameters the CVR menu drives with a SLIDER, i.e. continuously. A dropdown or toggle
+        /// lands its parameter exactly on a child's threshold; a slider passes between them, and
+        /// that is the difference that decides whether a hole in a 1D tree may be dropped.
+        /// </summary>
+        static HashSet<string> SliderParameterNames(BridgeContext ctx)
+        {
+            var names = new HashSet<string>();
+            var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings
+                : null;
+            if (settings == null)
+            {
+                return names;
+            }
+            foreach (var entry in settings)
+            {
+                if (entry != null && entry.setting is CVRAdvancesAvatarSettingSlider
+                    && !string.IsNullOrEmpty(entry.machineName))
+                {
+                    names.Add(entry.machineName);
+                }
+            }
+            return names;
+        }
+
         static void FillEmptyMotionSlots(BridgeContext ctx, AnimatorController master)
         {
             AnimationClip filler = null;
             int filled = 0;
             int states = 0;
+            int emptied = 0;
             var seen = new HashSet<Motion>();
+            var sliders = new SortedSet<string>(StableSampleOrder.Instance);
+            var sliderParameters = SliderParameterNames(ctx);
 
             AnimationClip Filler()
             {
@@ -767,6 +797,56 @@ namespace AvatarBridge
                     return;
                 }
                 var children = tree.children;
+
+                // A slider's holes are DROPPED rather than filled, and this is the one place
+                // where the filler is worse than the hole.
+                //
+                // Unity blends a 1D tree between the two children either side of the parameter.
+                // A null child is not one of those two — the weight goes to the real motions
+                // across the gap — which is how a slider with three real clips spread over
+                // thirty-eight slots still travels smoothly in VRChat. The filler is a REAL
+                // clip, so it becomes an eligible neighbour and takes that weight, and it
+                // animates nothing. Reported from an avatar whose "Storage Upgrade" slider did
+                // nothing at all until 0.97 and then jumped: thirty-three of its thirty-eight
+                // children were fillers.
+                //
+                // Only for a CVR Slider. A dropdown's empty option is a deliberate "show
+                // nothing", and the parameter lands exactly on it rather than between children,
+                // so dropping it there would let its neighbours bleed into a position the author
+                // meant to be empty — the shape 3.6.x already had to learn (see the
+                // selector-with-one-empty-option work).
+                //
+                // The thresholds are pinned first. The objection recorded above — that removing
+                // a child re-numbers its neighbours — is only true while useAutomaticThresholds
+                // is on, which spreads children evenly on every edit. Captured and written back
+                // explicitly, every surviving motion keeps the position the author gave it.
+                if (tree.blendType == BlendTreeType.Simple1D
+                    && !string.IsNullOrEmpty(tree.blendParameter)
+                    && sliderParameters.Contains(tree.blendParameter))
+                {
+                    var kept = new List<ChildMotion>();
+                    foreach (var child in children)
+                    {
+                        if (child.motion != null && !IsCurveless(child.motion, filler))
+                        {
+                            kept.Add(child);
+                        }
+                    }
+                    int dropped = children.Length - kept.Count;
+                    if (dropped > 0 && kept.Count >= 2)
+                    {
+                        foreach (var child in kept)
+                        {
+                            Walk(child.motion);
+                        }
+                        tree.useAutomaticThresholds = false;
+                        tree.children = kept.ToArray();
+                        emptied += dropped;
+                        sliders.Add(tree.blendParameter);
+                        return;
+                    }
+                }
+
                 bool changed = false;
                 for (int i = 0; i < children.Length; i++)
                 {
@@ -819,6 +899,21 @@ namespace AvatarBridge
             {
                 EditorUtility.SetDirty(master);
                 AssetDatabase.SaveAssets();
+            }
+
+            if (emptied > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{emptied} empty slot(s) removed from {sliders.Count} slider tree(s) instead of filled",
+                    $"{string.Join(", ", sliders)} — a slider blends between the two children either side " +
+                    "of its value, and an empty slot is not one of them: the weight passes across the gap " +
+                    "to the real motions, which is how a few clips spread over many slots still travel " +
+                    "smoothly. Filling those slots with a placeholder would make it an eligible neighbour " +
+                    "that animates nothing, and the slider would do nothing until its value reached a real " +
+                    "clip — reported from an avatar whose size slider did nothing until 0.97 and then " +
+                    "jumped. Every surviving motion keeps the threshold the author gave it. Dropdowns and " +
+                    "toggles are left alone: their empty options are deliberate, and the parameter lands " +
+                    "on them rather than between them.");
             }
 
             if (filled > 0)
