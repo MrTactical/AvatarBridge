@@ -1080,11 +1080,32 @@ namespace AvatarBridge
             go.transform.localRotation = pbCollider.rotation;
 
             ColliderComponent collider;
+            string fitted = null;
             if (shape.Contains("Capsule"))
             {
                 var capsule = go.AddComponent<MagicaCapsuleCollider>();
                 capsule.direction = MagicaCapsuleCollider.Direction.Y; // PB capsules extend along local Y
-                capsule.SetSize(pbCollider.radius, pbCollider.radius, Mathf.Max(pbCollider.height, pbCollider.radius * 2f));
+                float authorLength = Mathf.Max(pbCollider.height, pbCollider.radius * 2f);
+                float startRadius = pbCollider.radius, endRadius = pbCollider.radius, length = authorLength;
+                if (ctx.Settings.fitCollidersToMesh
+                    && MeasureColliderFit(ctx, parent, go.transform, pbCollider.radius, authorLength,
+                        out startRadius, out endRadius, out length, out float offset, out int sampled))
+                {
+                    fitted = $"fitted to the mesh from {sampled} vertices: radius " +
+                        $"{pbCollider.radius:0.###} -> {startRadius:0.###} at one end and " +
+                        $"{endRadius:0.###} at the other, length {authorLength:0.###} -> {length:0.###}";
+                    // Slide it along its own axis onto the middle of what it measured, since the
+                    // capsule is centred on this object. Done AFTER measuring, so the radii and
+                    // the length stay the ones taken in the space they were measured in.
+                    if (Mathf.Abs(offset) > 1e-4f)
+                    {
+                        go.transform.localPosition += pbCollider.rotation * (Vector3.up * offset);
+                        fitted += $", slid {offset:0.###} along its axis onto the middle of it";
+                    }
+                }
+                // SetSize turns on the capsule's own Start/End radius split for us whenever the
+                // two differ, so a tapered capsule arrives shaped rather than needing the checkbox.
+                capsule.SetSize(startRadius, endRadius, length);
                 collider = capsule;
             }
             else if (shape.Contains("Plane"))
@@ -1094,11 +1115,28 @@ namespace AvatarBridge
             else
             {
                 var sphere = go.AddComponent<MagicaSphereCollider>();
-                sphere.SetSize(pbCollider.radius);
+                float radius = pbCollider.radius;
+                // A sphere has no axis to taper along, so the same measurement gives it one
+                // number: the narrower of the two ends, which is the half-width it fits inside.
+                // Position is left alone here: a sphere has no axis to slide along, and moving it
+                // in three dimensions would be repositioning the author's collider rather than
+                // sizing it.
+                if (ctx.Settings.fitCollidersToMesh
+                    && MeasureColliderFit(ctx, parent, go.transform, pbCollider.radius,
+                        pbCollider.radius * 2f, out float a, out float b, out _, out _, out int sampled))
+                {
+                    radius = Mathf.Min(a, b);
+                    fitted = $"fitted to the mesh from {sampled} vertices: radius " +
+                        $"{pbCollider.radius:0.###} -> {radius:0.###}";
+                }
+                sphere.SetSize(radius);
                 collider = sphere;
             }
 
-            ctx.Report.Converted("PhysBone colliders", PathOf(pbCollider.transform), shape + " -> Magica collider");
+            ctx.Report.Converted("PhysBone colliders", PathOf(pbCollider.transform),
+                fitted == null
+                    ? shape + " -> Magica collider"
+                    : shape + " -> Magica collider, " + fitted);
             PhysBoneConverter.RecordColliderHost(ctx, pbCollider, go);
             cache[pbCollider] = collider;
             return collider;
@@ -1255,6 +1293,205 @@ namespace AvatarBridge
             }
             perBone.Sort();
             return Mathf.Min(distances[distances.Count / 2], perBone[perBone.Count / 2]);
+        }
+
+        /// <summary>
+        /// Fits a capsule to the body part a collider sits on: how long it is, and how thick at
+        /// each end.
+        ///
+        /// The same measurement the particle radius uses, turned ninety degrees. Vertices the host
+        /// bone drives are put into the collider's own space, so the capsule's axis is simply local
+        /// Y; their spread along that axis is the length, and the minimum caliper width of the slab
+        /// at each end is that end's radius. A PhysBone collider carries ONE radius, which is why
+        /// this is worth doing at all — an author covering a thigh picks a number that fits the hip
+        /// or the knee and lives with the other, while MagicaCloth2 takes the two separately.
+        ///
+        /// The measurement replaces the author's numbers rather than bounding them. Written the
+        /// careful way round first — never larger than the source — it changed nothing at all on
+        /// the avatar it was built against, whose author had stamped one radius of 0.07 and one
+        /// length of 0.4 onto the thigh and the shin alike. Those are a default, not a decision,
+        /// and that is the ordinary case: a PhysBone collider's size is invisible in VRChat unless
+        /// something collides with it.
+        ///
+        /// What keeps this from ballooning is where it looks rather than how far it may move. Only
+        /// vertices the host bone itself drives are read, so a leg collider can only ever come out
+        /// leg-sized, and each radius is a minimum caliper — the NARROWEST way across that end, not
+        /// the average distance out to it — so a flat or hollow section reads small rather than
+        /// large. Every collider it resizes is reported with both numbers.
+        /// </summary>
+        static bool MeasureColliderFit(BridgeContext ctx, Transform host, Transform colliderObject,
+            float authorRadius, float authorLength,
+            out float startRadius, out float endRadius, out float length, out float offset,
+            out int sampled)
+        {
+            startRadius = endRadius = authorRadius;
+            length = authorLength;
+            offset = 0f;
+            sampled = 0;
+            if (host == null || colliderObject == null)
+            {
+                return false;
+            }
+
+            // Only the bone the collider hangs on. Walking into its children would pull the
+            // forearm into an upper-arm collider and read the whole limb as one shape.
+            if (!BoneVertices(ctx).TryGetValue(host, out var world))
+            {
+                return false;
+            }
+
+            // World scale is divided out here and multiplied back by the solver (ColliderManager
+            // scales size by the collider transform's own scale), which is the same footing the
+            // author's radius is written on.
+            var toLocal = colliderObject.worldToLocalMatrix;
+            var points = new List<Vector3>(world.Count);
+            foreach (var w in world)
+            {
+                points.Add(toLocal.MultiplyPoint3x4(w));
+            }
+
+            sampled = points.Count;
+            if (points.Count < MinMeshSamples * 4)
+            {
+                return false;   // too little of this bone's flesh to say anything about its shape
+            }
+
+            // Capsules are written along local Y (see the caller). Ends are taken at the 2nd and
+            // 98th percentile rather than the extremes, so one stray vertex weighted to a distant
+            // part of the body cannot stretch the capsule to reach it.
+            var along = new List<float>(points.Count);
+            foreach (var p in points)
+            {
+                along.Add(p.y);
+            }
+            along.Sort();
+            float low = along[Mathf.Clamp(Mathf.RoundToInt(along.Count * 0.02f), 0, along.Count - 1)];
+            float high = along[Mathf.Clamp(Mathf.RoundToInt(along.Count * 0.98f), 0, along.Count - 1)];
+            float span = high - low;
+            if (span <= 0f)
+            {
+                return false;
+            }
+
+            // The outer third at each end. A capsule's surface between its two spheres is the
+            // straight line joining them, so what decides the fit is the flesh at the ends; the
+            // middle follows from those.
+            float band = span / 3f;
+            var top = new List<Vector2>();
+            var bottom = new List<Vector2>();
+            foreach (var p in points)
+            {
+                if (p.y >= high - band)
+                {
+                    top.Add(new Vector2(p.x, p.z));
+                }
+                if (p.y <= low + band)
+                {
+                    bottom.Add(new Vector2(p.x, p.z));
+                }
+            }
+
+            // +Y is the capsule's START end and -Y its END, per ColliderManager's own derivation
+            // of the two sphere centres.
+            float measuredStart = MinimumCaliperRadius(top);
+            float measuredEnd = MinimumCaliperRadius(bottom);
+            if (measuredStart == float.MaxValue || measuredEnd == float.MaxValue)
+            {
+                return false;
+            }
+
+            startRadius = measuredStart;
+            endRadius = measuredEnd;
+            length = span;
+            // Where the flesh's middle sits relative to the collider's own origin. A capsule set
+            // "aligned on center" grows symmetrically about that origin, so a length taken from
+            // the mesh without this would push one end past the limb and leave the other short of
+            // it. Zero whenever the author already centred the collider on what it covers.
+            offset = (low + high) * 0.5f;
+            return true;
+        }
+
+        static BridgeContext boneVertexOwner;
+        static Dictionary<Transform, List<Vector3>> boneVertexCache;
+
+        /// <summary>
+        /// Every sampled vertex in world space, grouped by the bone that drives it.
+        ///
+        /// Built once per conversion and keyed on the context that asked, because reading a mesh's
+        /// vertex array copies the whole thing — doing that once per collider per renderer is the
+        /// difference between a conversion that pauses and one that does not. The avatar does not
+        /// move while it is being converted, so the positions stay true for the whole run.
+        /// </summary>
+        static Dictionary<Transform, List<Vector3>> BoneVertices(BridgeContext ctx)
+        {
+            if (ReferenceEquals(boneVertexOwner, ctx) && boneVertexCache != null)
+            {
+                return boneVertexCache;
+            }
+            var byBone = new Dictionary<Transform, List<Vector3>>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+                Vector3[] vertices;
+                BoneWeight[] weights;
+                Matrix4x4[] binds;
+                try
+                {
+                    vertices = mesh.vertices;
+                    weights = mesh.boneWeights;
+                    binds = mesh.bindposes;
+                }
+                catch
+                {
+                    continue;   // unreadable mesh — nothing to measure, and not worth failing over
+                }
+                var bones = renderer.bones;
+                if (bones == null || vertices.Length == 0 || weights.Length != vertices.Length)
+                {
+                    continue;
+                }
+
+                int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
+                for (int i = 0; i < vertices.Length; i += stride)
+                {
+                    var w = weights[i];
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex0, w.weight0, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex1, w.weight1, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex2, w.weight2, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex3, w.weight3, bones, binds);
+                }
+            }
+            boneVertexOwner = ctx;
+            boneVertexCache = byBone;
+            return byBone;
+        }
+
+        static void AddBoneVertex(Dictionary<Transform, List<Vector3>> byBone, Vector3 vertex,
+            int boneIndex, float weight, Transform[] bones, Matrix4x4[] binds)
+        {
+            if (weight < MinBoneWeight || boneIndex < 0
+                || boneIndex >= bones.Length || boneIndex >= binds.Length)
+            {
+                return;
+            }
+            var bone = bones[boneIndex];
+            if (bone == null)
+            {
+                return;
+            }
+            // The bind pose puts the vertex in the bone's own space; that bone's current matrix
+            // puts it back where it is skinned to, which is the same route the particle radius
+            // takes to find the middle of a mesh.
+            Vector3 bindLocal = binds[boneIndex].MultiplyPoint3x4(vertex);
+            if (!byBone.TryGetValue(bone, out var list))
+            {
+                byBone[bone] = list = new List<Vector3>();
+            }
+            list.Add(bone.localToWorldMatrix.MultiplyPoint3x4(bindLocal));
         }
 
         /// <summary>

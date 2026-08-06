@@ -141,6 +141,17 @@ namespace AvatarBridge
         // own radius is deliberately NOT used — in VRChat it only governs contact with PhysBone
         // colliders, so authors who never used that leave it near zero.
         public bool fitRadiusToMesh = true;
+
+        // Fits each converted PhysBone collider to the body part it sits on, using the same
+        // mesh measurement as the particle radius above. A PhysBone collider is one radius from
+        // end to end, so an author covering a thigh has to pick between the hip and the knee;
+        // MagicaCloth2's capsule takes a start radius and an end radius separately, so the
+        // converted one can taper the way the limb does. The measurement replaces the source's
+        // numbers: a PhysBone collider's size is invisible in VRChat unless something collides
+        // with it, so it is routinely one default stamped onto every collider on the avatar.
+        // Only the host bone's own vertices are read, so a leg collider can only come out
+        // leg-sized. Turn it off to keep the source's dimensions.
+        public bool fitCollidersToMesh = true;
         // Honours the source PhysBone's own Angle/Hinge/Polar limit as a bound on how far the
         // chain may travel from rest. That limit is often the only thing keeping a deliberately
         // loose chain presentable — one reported avatar pairs pull 0.22 with spring 0.81 and a

@@ -627,6 +627,18 @@ namespace AvatarBridge
                     "PhysBone's own radius is not used: in VRChat it only governs contact with PhysBone " +
                     "colliders, so it is routinely near zero.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
+                b.Add(BridgeElements.Bind("Fit colliders to the mesh",
+                    "A PhysBone collider is one radius from end to end, so an author covering a " +
+                    "thigh has to choose between fitting the hip and fitting the knee. " +
+                    "MagicaCloth2's capsule takes a start and an end radius separately, so the " +
+                    "converted one can taper the way the limb does. This measures the body part " +
+                    "the collider sits on and fits the capsule to it. The measurement replaces " +
+                    "the source's numbers, because a PhysBone collider's size is invisible in " +
+                    "VRChat unless something collides with it and is routinely one default " +
+                    "stamped onto every collider on the avatar. Only the bone's own vertices are " +
+                    "read, so a leg collider can only come out leg-sized. The report gives the " +
+                    "before and after for each; turn this off to keep the source's dimensions.",
+                    settings.fitCollidersToMesh, v => settings.fitCollidersToMesh = v));
                 b.Add(BridgeElements.Bind("Bound swing to the source's limit",
                     "A PhysBone's angle limit is often the only thing keeping a deliberately loose " +
                     "chain presentable — convert the looseness without it and the chain swings much " +
