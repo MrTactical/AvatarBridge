@@ -627,6 +627,16 @@ namespace AvatarBridge
                     "PhysBone's own radius is not used: in VRChat it only governs contact with PhysBone " +
                     "colliders, so it is routinely near zero.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
+                b.Add(BridgeElements.Bind("Size for the largest a slider makes the body",
+                    "A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its " +
+                    "parameters only pose ratio, gravity, damping, inertia, wind and blend weight " +
+                    "can be animated at all, so collision is right at one slider position and " +
+                    "wrong at the rest. This measures the mesh again with every animated " +
+                    "blendshape pushed as far as the animator can take it and keeps the larger " +
+                    "reading, so collision covers the body when the slider is up and is a little " +
+                    "generous when it is down. Shapes that SHRINK the body cost nothing — the " +
+                    "saved reading simply wins. Turn it off to size for the avatar as saved.",
+                    settings.sizePhysicsForLargest, v => settings.sizePhysicsForLargest = v));
                 b.Add(BridgeElements.Bind("Fit colliders to the mesh",
                     "A PhysBone collider is one radius from end to end, so an author covering a " +
                     "thigh has to choose between fitting the hip and fitting the knee. " +

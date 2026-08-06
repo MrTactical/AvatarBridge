@@ -1064,7 +1064,9 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ setup ----
 
-        static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
+        /// <summary>Internal so the physics pass can read the same source layers: it runs BEFORE
+        /// the merge and still needs to know how far an animated blendshape travels.</summary>
+        internal static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
         {
             var result = new List<(VRCAvatarDescriptor.AnimLayerType, AnimatorController)>();
             foreach (var layer in ctx.SourceDescriptor.baseAnimationLayers)

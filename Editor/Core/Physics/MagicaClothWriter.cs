@@ -1,7 +1,9 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
 using MagicaCloth2;
@@ -279,7 +281,7 @@ namespace AvatarBridge
             // back wider than the chain can carry is still railed in rather than trusted.
             if (ctx.Settings.fitRadiusToMesh)
             {
-                float measured = MeasureMeshRadius(ctx, data, out int samples);
+                float measured = MeasureMeshRadius(ctx, data, out int samples, out bool grownForReach);
                 if (measured > 0f)
                 {
                     float before = sdata.radius.value;
@@ -290,7 +292,13 @@ namespace AvatarBridge
                         "body of a simulated bone; left at the preset's value it is the same size on a " +
                         "breast as on a hair strand, and collision in game covers a fraction of what you " +
                         "can see. The source PhysBone's radius is not used for this — in VRChat it only " +
-                        "governs contact with PhysBone colliders, so it is routinely near zero.");
+                        "governs contact with PhysBone colliders, so it is routinely near zero." +
+                        (grownForReach
+                            ? " This chain is measured at the LARGEST an animated blendshape makes it, " +
+                              "not at the size it is saved: the radius cannot follow a slider in game, " +
+                              "so it is set to cover the body when the slider is up rather than to fit " +
+                              "it when down."
+                            : ""));
                 }
                 else
                 {
@@ -1185,6 +1193,13 @@ namespace AvatarBridge
         static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled)
             => MeasureMesh(ctx, data, out sampled, out _);
 
+        /// <summary>As above, also saying whether the size came from a blendshape's reach rather
+        /// than from the pose the avatar is saved in — which is worth telling the user, since it
+        /// is why a chain can look larger than the body it sits on.</summary>
+        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out bool grown)
+            => MeasureMesh(ctx, data, out sampled, out _, out _, out grown);
+
         /// <summary>
         /// The same measurement, also reporting where the middle of that mesh actually is.
         ///
@@ -1207,6 +1222,32 @@ namespace AvatarBridge
         /// </summary>
         static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
             out Vector3 centre, out HashSet<Transform> meshBones)
+            => MeasureMesh(ctx, data, out sampled, out centre, out meshBones, out _);
+
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones, out bool grown)
+        {
+            grown = false;
+            float saved = MeasureMeshAt(ctx, data, out sampled, out centre, out meshBones, false);
+            if (!ctx.Settings.sizePhysicsForLargest || BlendShapeReach(ctx).Count == 0)
+            {
+                return saved;
+            }
+            // Measured again with every animated shape at the far end of its reach, keeping the
+            // larger. Which bones carry mesh, and where its middle is, stay the SAVED pose's
+            // answer — those choose the collision bone, and a bone should not change identity
+            // because a slider exists. Only the size is allowed to grow.
+            //
+            // Taking the larger of two readings handles both directions without deciding per
+            // shape which way it goes: a growth slider is caught by the second reading, and a
+            // shape that SHRINKS makes the second reading smaller, so the first simply wins.
+            float atReach = MeasureMeshAt(ctx, data, out _, out _, out _, true);
+            grown = atReach > saved;
+            return Mathf.Max(saved, atReach);
+        }
+
+        static float MeasureMeshAt(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones, bool atReach)
         {
             sampled = 0;
             centre = Vector3.zero;
@@ -1236,7 +1277,7 @@ namespace AvatarBridge
                     // As the avatar is actually worn: base mesh plus whatever blendshape weights
                     // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
                     // nobody sees whenever a body slider is shipped part-way up.
-                    vertices = DeformedVertices(ctx, renderer, mesh);
+                    vertices = DeformedVertices(ctx, renderer, mesh, atReach);
                     weights = mesh.boneWeights;
                     binds = mesh.bindposes;
                 }
@@ -1434,8 +1475,70 @@ namespace AvatarBridge
         /// giving up on measuring that end. A sparse mesh needs the wider ones.</summary>
         static readonly float[] StationFractions = { 0.1f, 0.18f, 0.26f, 0.34f };
 
+        static BridgeContext reachOwner;
+        static Dictionary<string, float> reachCache;
+
+        /// <summary>
+        /// The largest weight each animated blendshape reaches anywhere in the animator, keyed
+        /// "path|shape".
+        ///
+        /// Read from the SOURCE layers rather than the merged controller because physics is
+        /// converted before the merge. VRCFury has already baked by this point, so its layers are
+        /// among them. Empty when the setting is off, which switches the whole second measurement
+        /// off with it.
+        /// </summary>
+        static Dictionary<string, float> BlendShapeReach(BridgeContext ctx)
+        {
+            if (ReferenceEquals(reachOwner, ctx) && reachCache != null)
+            {
+                return reachCache;
+            }
+            var reach = new Dictionary<string, float>(StringComparer.Ordinal);
+            if (ctx.Settings.sizePhysicsForLargest && ctx.SourceDescriptor != null)
+            {
+                var seen = new HashSet<AnimationClip>();
+                foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
+                {
+                    if (entry.controller == null)
+                    {
+                        continue;
+                    }
+                    foreach (var clip in entry.controller.animationClips)
+                    {
+                        if (clip == null || !seen.Add(clip))
+                        {
+                            continue;
+                        }
+                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (binding.type != typeof(SkinnedMeshRenderer)
+                                || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                            {
+                                continue;
+                            }
+                            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                            if (curve == null || curve.keys.Length == 0)
+                            {
+                                continue;
+                            }
+                            float high = curve.keys[0].value;
+                            foreach (var key in curve.keys)
+                            {
+                                high = Mathf.Max(high, key.value);
+                            }
+                            string key2 = binding.path + "|" + binding.propertyName.Substring("blendShape.".Length);
+                            reach[key2] = reach.TryGetValue(key2, out var had) ? Mathf.Max(had, high) : high;
+                        }
+                    }
+                }
+            }
+            reachOwner = ctx;
+            reachCache = reach;
+            return reach;
+        }
+
         static BridgeContext deformedOwner;
-        static Dictionary<SkinnedMeshRenderer, Vector3[]> deformedCache;
+        static Dictionary<string, Vector3[]> deformedCache;
 
         /// <summary>
         /// A mesh's vertices as the avatar actually WEARS them: the base mesh with its blendshapes
@@ -1453,18 +1556,22 @@ namespace AvatarBridge
         /// in the serialized data unread. Measuring the pose the avatar is saved in is as close as
         /// this gets.
         /// </summary>
-        static Vector3[] DeformedVertices(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh)
+        static Vector3[] DeformedVertices(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh,
+            bool atReach = false)
         {
             if (!ReferenceEquals(deformedOwner, ctx) || deformedCache == null)
             {
                 deformedOwner = ctx;
-                deformedCache = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+                deformedCache = new Dictionary<string, Vector3[]>(StringComparer.Ordinal);
             }
-            if (deformedCache.TryGetValue(renderer, out var known))
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
+            string cacheKey = (atReach ? "max|" : "saved|") + path;
+            if (deformedCache.TryGetValue(cacheKey, out var known))
             {
                 return known;
             }
 
+            var reach = atReach ? BlendShapeReach(ctx) : null;
             var vertices = mesh.vertices;
             int shapes = mesh.blendShapeCount;
             if (shapes > 0)
@@ -1473,6 +1580,12 @@ namespace AvatarBridge
                 for (int s = 0; s < shapes; s++)
                 {
                     float weight = renderer.GetBlendShapeWeight(s);
+                    // The far end of what the animator can reach, when asked for it. A slider the
+                    // avatar ships at zero still grows the body once someone moves it.
+                    if (reach != null && reach.TryGetValue(path + "|" + mesh.GetBlendShapeName(s), out var high))
+                    {
+                        weight = Mathf.Max(weight, high);
+                    }
                     if (Mathf.Abs(weight) < 0.01f)
                     {
                         continue;   // off, and reading its frames is the expensive part
@@ -1485,7 +1598,7 @@ namespace AvatarBridge
                     ApplyBlendShape(mesh, s, weight, vertices, lower, upper);
                 }
             }
-            deformedCache[renderer] = vertices;
+            deformedCache[cacheKey] = vertices;
             return vertices;
         }
 

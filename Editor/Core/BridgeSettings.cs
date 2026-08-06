@@ -152,6 +152,16 @@ namespace AvatarBridge
         // Only the host bone's own vertices are read, so a leg collider can only come out
         // leg-sized. Turn it off to keep the source's dimensions.
         public bool fitCollidersToMesh = true;
+
+        // Measures the mesh a second time with every animated blendshape pushed to the far end of
+        // the range the animator can reach, and keeps whichever reading is larger. A size slider
+        // grows the body but MagicaCloth2's radius is fixed — of its parameters only pose ratio,
+        // gravity, damping, inertia, wind and blend weight can be animated at all — so collision
+        // is right at one slider position and wrong at the rest. Sizing for the largest means
+        // collision covers the body when the slider is up and is a little generous when it is
+        // down, which is the better way round: too small and people reach into a body that is
+        // visibly there. Shapes that SHRINK cost nothing, because the saved reading simply wins.
+        public bool sizePhysicsForLargest = true;
         // Honours the source PhysBone's own Angle/Hinge/Polar limit as a bound on how far the
         // chain may travel from rest. That limit is often the only thing keeping a deliberately
         // loose chain presentable — one reported avatar pairs pull 0.22 with spring 0.81 and a
