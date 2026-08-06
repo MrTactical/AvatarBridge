@@ -173,8 +173,7 @@ namespace AvatarBridge
                 foreach (var shape in shapes)
                 {
                     string plain = Simplify(shape.ToLowerInvariant());
-                    if (plain.Length < 4 || plain.Length <= bestLength
-                        || !target.StartsWith(plain, System.StringComparison.Ordinal))
+                    if (plain.Length <= bestLength || !IsSideVariant(target, plain))
                     {
                         continue;
                     }
@@ -272,14 +271,12 @@ namespace AvatarBridge
         /// The shape CONTAINS the target — "FT_JawOpen", "JawOpen_v2". This is what the matcher
         /// was written for and it handles every prefixed or suffixed scheme.
         ///
-        /// The target STARTS WITH the shape — an UNSIDED shape driving both sides at once.
-        /// ChilloutVR's list is sided throughout ("EyeLookDownLeft", "EyeLookDownRight",
-        /// "MouthUpperUpLeft"), while a great many rigs ship one "EyeLookDown" for the pair. The
-        /// unsided name is exactly the sided one with the side taken off, so it is a PREFIX of it
-        /// and never a substring match. A reported avatar scored 10 against a threshold of 12
-        /// while carrying 42 tracking shapes under a separator named "Unified Expressions FT".
-        /// Held to four characters or more so that a two-letter viseme cannot prefix its way into
-        /// a score.
+        /// The target is the shape with only a SIDE added — an unsided shape driving both sides
+        /// at once. ChilloutVR's list is sided throughout ("EyeLookDownLeft", "EyeLookDownRight",
+        /// "MouthUpperUpLeft"), while a great many rigs ship one "EyeLookDown" for the pair, which
+        /// is never a substring match. A reported avatar scored 10 against a threshold of 12 while
+        /// carrying 42 tracking shapes under a separator named "Unified Expressions FT". See
+        /// IsSideVariant for why this is not simply "is a prefix of".
         /// </summary>
         static int CountMatches(List<string> loweredShapeNames, string[] targets)
         {
@@ -292,8 +289,7 @@ namespace AvatarBridge
                 foreach (var shape in loweredShapeNames)
                 {
                     string sPlain = Simplify(shape);
-                    if (shape.Contains(t) || sPlain.Contains(tPlain)
-                        || (sPlain.Length >= 4 && tPlain.StartsWith(sPlain, System.StringComparison.Ordinal)))
+                    if (shape.Contains(t) || sPlain.Contains(tPlain) || IsSideVariant(tPlain, sPlain))
                     {
                         hit = true;
                         break;
@@ -306,6 +302,47 @@ namespace AvatarBridge
             }
             return count;
         }
+
+        /// <summary>
+        /// True when the shape is the tracking name with only a SIDE taken off it.
+        ///
+        /// "Is a prefix of" on its own is far too generous, and the corpus said so immediately: a
+        /// single shape called "Tongue" is a prefix of TongueOut, TongueRoll, TongueSquish,
+        /// TongueTwistLeft and eight more, which is twelve slots from one shape — exactly the
+        /// detection threshold — so five avatars with no face tracking at all were about to be
+        /// given a component whose every slot pointed at the same tongue.
+        ///
+        /// What was actually being claimed is narrower: an unsided name is the sided one with the
+        /// side REMOVED, so what is left over after the shape's name has to be a side and nothing
+        /// else. "EyeLookDown" leaves "left" of "EyeLookDownLeft" and counts; "Tongue" leaves
+        /// "out" of "TongueOut" and does not.
+        /// </summary>
+        static bool IsSideVariant(string targetPlain, string shapePlain)
+        {
+            if (shapePlain.Length < 4
+                || !targetPlain.StartsWith(shapePlain, System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            string rest = targetPlain.Substring(shapePlain.Length);
+            return System.Array.IndexOf(SideWords, rest) >= 0;
+        }
+
+        /// <summary>
+        /// Everything ChilloutVR may add to a shape's name to point at one part of it, and nothing
+        /// else. Unified Expressions splits some shapes into quadrants as well as sides —
+        /// LipFunnelUpperLeft, LipPuckerLowerRight — and a rig with a single "LipFunnel" is in the
+        /// same position as one with a single "EyeLookDown": one shape where ChilloutVR wants four.
+        ///
+        /// Whole words only, which is the whole defence. An avatar of anime expression shapes had
+        /// "Eye.close" read as EyeClosedLeft, leaving "dleft" — half of one word and the whole of
+        /// another — and scored 29 matches while carrying no tracking shapes whatsoever.
+        /// </summary>
+        static readonly string[] SideWords =
+        {
+            "", "left", "right", "upper", "lower",
+            "upperleft", "upperright", "lowerleft", "lowerright",
+        };
 
         /// <summary>Down to letters and digits, so "Mouth_Ape_Shape", "mouth ape shape" and
         /// "MouthApeShape" are one name.</summary>
