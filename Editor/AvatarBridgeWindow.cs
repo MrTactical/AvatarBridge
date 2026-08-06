@@ -600,6 +600,14 @@ namespace AvatarBridge
                     "conversion is derived from both solvers rather than guessed, and confirmed " +
                     "against a full avatar in ChilloutVR. Turn it off to get the preset's feel back.",
                     settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
+                b.Add(BridgeElements.Bind("Size particles from the mesh",
+                    "MagicaCloth2's radius is the collision body of a simulated bone. Left alone it " +
+                    "is whatever the matched preset shipped — the same size on a breast as on a hair " +
+                    "strand — so collision in game covers a fraction of what you can see. This measures " +
+                    "the mesh those bones actually move and sizes each chain to it. The source " +
+                    "PhysBone's own radius is not used: in VRChat it only governs contact with PhysBone " +
+                    "colliders, so it is routinely near zero.",
+                    settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "MagicaCloth2's radius is the particle size, not just a collision radius, so " +
                     "particles wider than the gap between bones shove each other apart. Leave on " +

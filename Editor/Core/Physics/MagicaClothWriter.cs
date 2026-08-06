@@ -207,6 +207,32 @@ namespace AvatarBridge
 
             // --- the two opt-in extras -----------------------------------------------------
 
+            // Particle size from the mesh. BEFORE the bound below, so a measurement that comes
+            // back wider than the chain can carry is still railed in rather than trusted.
+            if (ctx.Settings.fitRadiusToMesh)
+            {
+                float measured = MeasureMeshRadius(ctx, data, out int samples);
+                if (measured > 0f)
+                {
+                    float before = sdata.radius.value;
+                    sdata.radius.value = measured;   // direct, so any depth curve on it survives
+                    ctx.Report.Converted(Category, data.Root.name,
+                        $"Particle radius {before:0.###} → {measured:0.###}, measured from the mesh these " +
+                        $"bones move ({samples} vertex sample(s)). MagicaCloth2's radius is the collision " +
+                        "body of a simulated bone; left at the preset's value it is the same size on a " +
+                        "breast as on a hair strand, and collision in game covers a fraction of what you " +
+                        "can see. The source PhysBone's radius is not used for this — in VRChat it only " +
+                        "governs contact with PhysBone colliders, so it is routinely near zero.");
+                }
+                else
+                {
+                    ctx.Report.Skipped(Category, data.Root.name,
+                        "Particle radius left at the preset's value — no mesh vertices are weighted to " +
+                        "these bones (or the mesh could not be read), so there was nothing to measure. " +
+                        "Set it on the cloth by hand if this chain collides at the wrong size.");
+                }
+            }
+
             // Particle radius bound. Not a conversion — a safety rail. MagicaCloth2's radius is
             // the particle size, and a particle wider than the gap between bones overlaps its
             // neighbour, which the solver resolves by shoving them apart. Applies to the
@@ -506,9 +532,10 @@ namespace AvatarBridge
                            $"\"{chainClass}\" chain)";
             }
             string fate = ctx.Settings.derivePhysicsFromPhysBone
-                ? "Pull, spring and stiffness were converted into damping and angle restoration; gravity, " +
-                  "immobile and radius are handled separately. Tune the cloth directly if this chain wants " +
-                  "a different feel."
+                ? "Pull, spring and stiffness were converted into damping and angle restoration; gravity " +
+                  "and immobile are handled separately, and the particle radius is measured from the mesh " +
+                  "rather than taken from this number. Tune the cloth directly if this chain wants a " +
+                  "different feel."
                 : "Those numbers were not transferred — the cloth uses the baseline above. Turn on \"Derive " +
                   "physics from the PhysBone\" to convert pull, spring and stiffness, or tune the cloth by hand.";
 
@@ -862,6 +889,142 @@ namespace AvatarBridge
         }
 
         /// <summary>Average distance between bones down the chain, used to bound the particle radius.</summary>
+        /// <summary>One sample per this many vertices on a dense mesh.</summary>
+        const int MeshSampleTarget = 4000;
+
+        /// <summary>Fewer usable samples than this and the measurement is not worth trusting.</summary>
+        const int MinMeshSamples = 12;
+
+        /// <summary>Below this a vertex is barely attached to the bone and says nothing about its size.</summary>
+        const float MinBoneWeight = 0.2f;
+
+        /// <summary>
+        /// The radius a particle needs in order to stand for the part of the body it drives,
+        /// measured from the mesh instead of guessed.
+        ///
+        /// MagicaCloth2's radius is the collision body of a simulated bone, and nothing in this
+        /// conversion ever set it: the matched preset's value simply stood, so a breast chain and
+        /// a hair strand both arrived at whatever that preset happened to ship. Reported from a
+        /// real avatar as collision points a fraction of the size of the body they belong to.
+        ///
+        /// The source PhysBone's own radius is deliberately NOT the answer, tempting as it looks.
+        /// In VRChat that field only governs contact against PhysBone colliders, so an author who
+        /// never used that leaves it near zero — the avatar that prompted this carries 0.005,
+        /// 0.007 and 0.01 on chains whose meshes are the size of a head. Same word, different
+        /// quantity, and copying it across makes the collision smaller still.
+        ///
+        /// So: for every vertex weighted to a bone in the chain, the distance from that bone's
+        /// AXIS — not its origin, because a hair strand's vertices run down the length of the
+        /// bone and their distance from its origin is the strand's length rather than its
+        /// thickness. The median is taken rather than the extreme, so one vertex weighted across
+        /// half the body cannot size the whole chain. Everything is measured in the bind pose,
+        /// so the answer does not depend on how the avatar happens to be posed in the scene.
+        /// </summary>
+        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled)
+        {
+            sampled = 0;
+            var chain = new HashSet<Transform>();
+            CollectChainBones(data.Root, data.Ignores, chain);
+            if (chain.Count == 0)
+            {
+                return 0f;
+            }
+
+            var distances = new List<float>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+                Vector3[] vertices;
+                BoneWeight[] weights;
+                Matrix4x4[] binds;
+                try
+                {
+                    vertices = mesh.vertices;
+                    weights = mesh.boneWeights;
+                    binds = mesh.bindposes;
+                }
+                catch
+                {
+                    continue;   // unreadable mesh — nothing to measure, and not worth failing over
+                }
+                var bones = renderer.bones;
+                if (bones == null || vertices.Length == 0 || weights.Length != vertices.Length)
+                {
+                    continue;
+                }
+
+                // One sample in N on a dense mesh: a 60k-vertex body does not need every vertex
+                // to say how thick a breast is, and every chain on every avatar pays this cost.
+                int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
+                for (int i = 0; i < vertices.Length; i += stride)
+                {
+                    var w = weights[i];
+                    AddRadiusSample(distances, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
+                    AddRadiusSample(distances, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
+                    AddRadiusSample(distances, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
+                    AddRadiusSample(distances, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
+                }
+            }
+
+            sampled = distances.Count;
+            if (distances.Count < MinMeshSamples)
+            {
+                return 0f;
+            }
+            distances.Sort();
+            return distances[distances.Count / 2];
+        }
+
+        static void AddRadiusSample(List<float> into, Vector3 vertex, int boneIndex, float weight,
+            Transform[] bones, Matrix4x4[] binds, HashSet<Transform> chain)
+        {
+            if (weight < MinBoneWeight || boneIndex < 0
+                || boneIndex >= bones.Length || boneIndex >= binds.Length)
+            {
+                return;
+            }
+            var bone = bones[boneIndex];
+            if (bone == null || !chain.Contains(bone))
+            {
+                return;
+            }
+
+            // The bind pose puts the vertex in the bone's own space, so this does not move when
+            // the avatar does.
+            Vector3 local = binds[boneIndex].MultiplyPoint3x4(vertex);
+            Vector3 axis = bone.childCount > 0 ? bone.GetChild(0).localPosition : Vector3.zero;
+            float distance = axis.sqrMagnitude > 1e-10f
+                ? Vector3.ProjectOnPlane(local, axis.normalized).magnitude
+                : local.magnitude;
+
+            // Bone-local units become world units, which is what MagicaCloth2's radius is in.
+            Vector3 scale = bone.lossyScale;
+            float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
+            if (distance > 0f && mean > 0f)
+            {
+                into.Add(distance * mean);
+            }
+        }
+
+        /// <summary>Every transform the chain simulates: the root and its descendants, minus the
+        /// branches VRChat's Ignore Transforms cut out.</summary>
+        static void CollectChainBones(Transform root, List<Transform> ignores, HashSet<Transform> into)
+        {
+            if (root == null || (ignores != null && ignores.Contains(root)))
+            {
+                return;
+            }
+            into.Add(root);
+            for (int i = 0; i < root.childCount; i++)
+            {
+                CollectChainBones(root.GetChild(i), ignores, into);
+            }
+        }
+
         static float MeasureBoneSpacing(Transform root)
         {
             float total = 0f;

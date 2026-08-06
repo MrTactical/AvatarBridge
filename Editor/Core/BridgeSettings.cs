@@ -127,6 +127,13 @@ namespace AvatarBridge
         // Replaces the preset's damping and restoration only — structure, gravity, immobile and
         // radius are untouched, and turning this off restores the preset's feel exactly.
         public bool derivePhysicsFromPhysBone = true;
+        // Sizes each chain's particles from the mesh those bones actually move, because nothing
+        // else ever did: the matched preset's radius simply stood, so a breast chain and a hair
+        // strand both arrived at whatever that preset happened to ship. Reported from a real
+        // avatar as collision points a fraction of the body they belong to. The source PhysBone's
+        // own radius is deliberately NOT used — in VRChat it only governs contact with PhysBone
+        // colliders, so authors who never used that leave it near zero.
+        public bool fitRadiusToMesh = true;
         public bool capParticleRadius = true;
         // Off by default: VRChat avatars routinely carry per-toe PhysBones, and simulated toes
         // in ChilloutVR wiggle with every step — read as broken, not expressive. Chains rooted
