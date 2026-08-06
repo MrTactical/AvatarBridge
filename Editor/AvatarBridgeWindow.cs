@@ -609,9 +609,12 @@ namespace AvatarBridge
                     "colliders, so it is routinely near zero.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
-                    "MagicaCloth2's radius is the particle size, not just a collision radius, so " +
-                    "particles wider than the gap between bones shove each other apart. Leave on " +
-                    "unless chains come out feeling too thin.",
+                    "Bounds each particle to half the gap between its bones. Off by default now " +
+                    "that the radius above is measured from the mesh rather than guessed: on a " +
+                    "soft-body chain, where two or three bones carry a large volume, this throws " +
+                    "away most of that measurement. The overlap it guards against only bites with " +
+                    "self-collision, which MagicaCloth2 leaves off. Turn it on if a long chain of " +
+                    "closely-spaced bones misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
             }
         }

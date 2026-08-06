@@ -134,7 +134,15 @@ namespace AvatarBridge
         // own radius is deliberately NOT used — in VRChat it only governs contact with PhysBone
         // colliders, so authors who never used that leave it near zero.
         public bool fitRadiusToMesh = true;
-        public bool capParticleRadius = true;
+        // OFF since the radius above became a measurement instead of a guess. This bounds the
+        // particle to half the gap between bones, which was a sensible rail when the radius was
+        // whatever a preset shipped — but it is the wrong shape for soft-body chains, where two
+        // or three bones drive a large volume: on the avatar that found this it cut a measured
+        // thigh from 0.209 to 0.044 and a belly from 0.116 to 0.029, throwing away most of what
+        // had just been measured off the mesh. The overlap it guards against is only a problem
+        // with self-collision, which MagicaCloth2 leaves off by default. Turn it on if a long
+        // chain of closely-spaced bones misbehaves.
+        public bool capParticleRadius = false;
         // Off by default: VRChat avatars routinely carry per-toe PhysBones, and simulated toes
         // in ChilloutVR wiggle with every step — read as broken, not expressive. Chains rooted
         // at (or under) a humanoid Toes bone, or whose root is named like a toe, are skipped
