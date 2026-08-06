@@ -1100,8 +1100,16 @@ namespace AvatarBridge
         }
 
         /// <summary>Average distance between bones down the chain, used to bound the particle radius.</summary>
-        /// <summary>One sample per this many vertices on a dense mesh.</summary>
-        const int MeshSampleTarget = 4000;
+        /// <summary>
+        /// Vertices to sample per mesh before thinning kicks in. Set high enough that ordinary
+        /// avatar meshes are measured in FULL, because thinning is not free of consequence: a
+        /// stride samples a different subset on the left of a body than on the right (vertex
+        /// order differs between the two), and a converted avatar came back with one breast
+        /// measured 0.118 and the other 0.131. Whether that gap is the mesh or the sampling is
+        /// exactly the question a stride makes unanswerable, so it is nearly always off now and
+        /// the cost is a few million comparisons at conversion time.
+        /// </summary>
+        const int MeshSampleTarget = 200000;
 
         /// <summary>Fewer usable samples than this and the measurement is not worth trusting.</summary>
         const int MinMeshSamples = 12;
