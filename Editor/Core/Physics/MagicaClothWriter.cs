@@ -1734,7 +1734,7 @@ namespace AvatarBridge
             // The middle of the MESH, not the middle of the bones. A chain's bones are spaced
             // along its length while the mesh they carry is a lump somewhere on it, so the two
             // midpoints are different places and the difference picks a different bone.
-            radius = MeasureMesh(ctx, data, out int samples, out Vector3 centre,
+            radius = MeasureMesh(ctx, data, out int samples, out _,
                 out HashSet<Transform> meshBones);
             if (samples < MinMeshSamples || meshBones.Count == 0)
             {
@@ -1767,18 +1767,67 @@ namespace AvatarBridge
                 branches.Add(meshBones.ToList());
             }
 
+            // Each branch is measured against ITS OWN middle, and that middle is the middle of the
+            // MESH — every vertex the branch carries — exactly as the measurement above exists to
+            // provide. Averaging BONE POSITIONS instead, which is what this did first, does not
+            // merely lean the wrong way: on the commonest shape of all it TIES. A two-bone branch
+            // has its bone midpoint exactly between the two, both bones equidistant from it, and
+            // the winner decided by whichever way the last bit of floating point fell — which is
+            // why one side of a mirrored pair chose Breast-1.L and the other Breast.R.
+            //
+            // Weighting by vertex count is what breaks the tie honestly: the bone carrying most of
+            // the volume pulls the middle toward itself, instead of counting the same as a bone
+            // holding almost none of it.
+            var vertices = BoneVertices(ctx);
             foreach (var branch in branches)
             {
-                // Each branch is measured against ITS OWN middle: the mean of its bones weighted
-                // equally is close enough here, because the branch has already been narrowed to
-                // bones that carry mesh.
-                Vector3 branchCentre = Vector3.zero;
+                var boneCentre = new Dictionary<Transform, Vector3>();
+                var boneWeight = new Dictionary<Transform, int>();
                 foreach (var bone in branch)
                 {
-                    branchCentre += bone.position;
+                    Vector3 sum = Vector3.zero;
+                    int n = 0;
+                    if (vertices.TryGetValue(bone, out var points))
+                    {
+                        foreach (var p in points)
+                        {
+                            sum += p;
+                            n++;
+                        }
+                    }
+                    // A bone with no vertices of its own still has to sit somewhere for the
+                    // comparison below; it just brings no weight to the middle.
+                    boneCentre[bone] = n > 0 ? sum / n : bone.position;
+                    boneWeight[bone] = n;
                 }
-                branchCentre /= branch.Count;
 
+                Vector3 branchCentre = Vector3.zero;
+                int total = 0;
+                foreach (var bone in branch)
+                {
+                    branchCentre += boneCentre[bone] * boneWeight[bone];
+                    total += boneWeight[bone];
+                }
+                if (total > 0)
+                {
+                    branchCentre /= total;
+                }
+                else
+                {
+                    foreach (var bone in branch)
+                    {
+                        branchCentre += bone.position;
+                    }
+                    branchCentre /= branch.Count;
+                }
+
+                // Judged on the bone's PIVOT, because that is where MagicaCloth2 puts the collision
+                // sphere — not on where its vertices average out. The two part company exactly
+                // where it matters: the root of a breast branch sits back at the chest wall but
+                // carries a wide ring of the mesh, so its vertex average lands out in the volume
+                // while the bone itself does not. Judged by that average it wins, and then
+                // collides at the chest. Judged by the pivot, the bone standing in the middle of
+                // the volume wins, which is the whole intent.
                 Transform best = null;
                 float bestDistance = float.MaxValue;
                 foreach (var bone in branch)
