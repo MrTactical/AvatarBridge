@@ -153,10 +153,37 @@ namespace AvatarBridge
             //
             // Presets do not carry rootRotation ("[NG] Export/Import with Presets" in MagicaCloth2's
             // own source), so this survives preset application in either order.
+            //
+            // And the other side of that same flag, which was left at MagicaCloth2's 0.5 until
+            // now: when VRChat did NOT pin the root, it SIMULATED it. PhysBone integrates the
+            // child endpoints and rotates the root to follow, so the chain bends at its first
+            // joint. MagicaCloth2 instead holds every root bone still, and at rootRotation 0.5 it
+            // gives that root only half the rotation its children ask for — so every converted
+            // chain came out one joint stiffer at the base than the source, which is the shape of
+            // "hair converts too stiff".
+            //
+            // 1.0 is "child-based" in MagicaCloth2's own words: the root turns to follow what
+            // hangs from it, which is what PhysBone was already doing. This is the closest either
+            // solver gets to the other without simulating the root's PARENT — usually a humanoid
+            // bone like Chest or Hips, where physics would fight the animator and IK every frame.
             if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
             {
                 sdata.rootRotation = 0f;
             }
+            else
+            {
+                sdata.rootRotation = 1f;
+            }
+
+            ctx.Report.Converted(Category, data.Root.name,
+                data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore"
+                    ? "Root held still (rotation 0) — the source's Multi Child Type is Ignore, which pins a "
+                      + "branching root in VRChat and simulates only the branches below it."
+                    : "Root turns with the chain (rotation 1) — VRChat simulates a PhysBone's root bone, "
+                      + "rotating it to follow the children it integrates, so the chain bends at its FIRST "
+                      + "joint. MagicaCloth2 holds root bones still and would give this one half the "
+                      + "rotation its children ask for, leaving the chain a joint stiffer at the base than "
+                      + "the original. Lower Root Rotation on the cloth if the base moves more than you want.");
 
             if (data.HumanoidExclusions.Count > 0)
             {
