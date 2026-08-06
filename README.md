@@ -635,7 +635,12 @@ shipped with — animator layers, parameters *and* objects — so nothing is lef
 blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
 
 - **Native CVR Component** — sets up `CVRFaceTracking` and maps the shapes. Self-contained, but the
-  built-in solver is a bit stiff.
+  built-in solver is a bit stiff. **Rigs that name their shapes without a side are handled**: many
+  ship one `EyeLookDown` where ChilloutVR's own matcher looks for `EyeLookDownLeft` and
+  `EyeLookDownRight` and so fills neither. Both slots get that shape — the report says how many were
+  matched this way, and expect symmetric movement on them, since there's only one shape to move.
+  This also decides the *Analyse avatar* recommendation, so a rig like that no longer reads as
+  having no face tracking at all.
 - **Unity Animator Blendtrees (DSR)** — injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has — by name, casing, **ARKit ↔ Unified Expressions**
