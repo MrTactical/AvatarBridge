@@ -426,7 +426,6 @@ of simulation, so that path maps values 1:1.
 | **Cap particle radius to bone spacing** | off | Bounds each particle to half the gap between its bones. Off since the radius above became a measurement rather than a guess — on a soft-body chain, where two or three bones carry a large volume, this throws most of that measurement away. The overlap it guards against only bites with self-collision, which MagicaCloth2 leaves off. Turn on if a long chain of closely-spaced bones misbehaves |
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
 | **Bound swing to the source's limit** | on | A PhysBone's angle limit is often the only thing keeping a deliberately loose chain presentable — convert the looseness without it and the chain swings much further here than it did in VRChat. This bounds how far each bone may travel from rest, worked out from that limit and the chain's length, easing to nothing at the root. It's a *distance* bound rather than an angle limit, so it removes motion instead of adding a restoring force and can't set the chain vibrating |
-| **Transfer angle limits** | off | ⚠️ Genuinely avatar-dependent — shakes some chains, best result the tool gives on others. Worth trying if physics feels loose. Usually unnecessary now that **Bound swing to the source's limit** honours the same limit without the vibration |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
@@ -712,10 +711,11 @@ settle. Leaving all of them alone converts fine.
 | **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
 | **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
 
-Four more manual rows appear under **Physics** in the same card when the target is MagicaCloth2 —
-**Convert toe PhysBones**, **Add physics to toggled rigs that have none**, **Transfer angle limits**
-and **Auto-assign nearby colliders**. They're described in the [physics table](#options) above and
-not repeated here.
+Physics has a card of its own, above Manual and Automated: which solver to convert into isn't
+something the avatar decides, so it isn't buried with the settings that are. Its **Your call**
+section holds the three that depend on intent rather than measurement — **Convert toe PhysBones**,
+**Add physics to toggled rigs that have none** and **Auto-assign nearby colliders** — described in
+the [physics table](#options) above and not repeated here.
 
 ### Automated options — set from the avatar
 

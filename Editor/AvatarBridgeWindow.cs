@@ -58,6 +58,7 @@ namespace AvatarBridge
         // in a tester's console reads like something is wrong with the tool.
         bool showManual = true;
         bool showAutomated;
+        bool showPhysics = true;
         // What the last Analyse found, or null if it hasn't been run for the current avatar.
         // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
         List<Advice> advice;
@@ -209,6 +210,9 @@ namespace AvatarBridge
             // one level with no way to tell which of them anyone was expected to think about.
             var choose = new BridgeElements.Card("Choose what gets set up", null, null, 2, 0.5f);
             BuildAnalyseSection(choose.Body);
+            // Physics first and open: which solver to convert into is the biggest decision in
+            // the window and it is the wearer's, not the avatar's.
+            BuildPhysicsCard(choose.Body);
             BuildManualCard(choose.Body);
             BuildAutomatedCard(choose.Body);
             body.Add(choose);
@@ -537,14 +541,29 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// The physics choices the avatar and the project settle between them: which solver to
-        /// convert into — and whether it is even installed — plus the feel defaults, which were
-        /// derived from both solvers against a real avatar rather than picked. AddManualPhysics
-        /// has the four that are genuinely the user's.
+        /// Physics in one place, and out in the open.
+        ///
+        /// It used to be split across both cards: the solver choice and the feel defaults under
+        /// "Automated", the departures from the source under "Manual". That split is true on
+        /// paper — some of these the avatar answers and some it cannot — but it is the wrong cut
+        /// for the person using the window. Which solver an avatar converts into is not something
+        /// the avatar decides; it depends on what the wearer has installed and what they want,
+        /// and burying it behind a warning that says "you don't need to touch anything in here"
+        /// is exactly backwards. Everything downstream of that choice belongs beside it.
         /// </summary>
-        void AddAutomatedPhysics(VisualElement b)
+        void BuildPhysicsCard(VisualElement parent)
         {
-            b.Add(BridgeElements.SubHeading("Physics"));
+            var card = new BridgeElements.Card("Physics",
+                showPhysics ? null : "which solver, and how the chains feel",
+                showPhysics, null, 0f, open => { showPhysics = open; ScheduleRebuild(); });
+            var b = card.Body;
+
+            AddPhysicsOptions(b);
+            parent.Add(card);
+        }
+
+        void AddPhysicsOptions(VisualElement b)
+        {
             b.Add(EnumPopup<PhysicsTarget>("Convert PhysBones to",
                 "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback.",
                 settings.physicsTarget,
@@ -624,23 +643,11 @@ namespace AvatarBridge
                     "self-collision, which MagicaCloth2 leaves off. Turn it on if a long chain of " +
                     "closely-spaced bones misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
-            }
-        }
 
-        /// <summary>
-        /// The physics decisions nothing in the avatar file answers.
-        ///
-        /// Each of these departs from the source avatar or depends on how it was built, and the
-        /// answer lives in the author's intent rather than in any measurement: whether the toe
-        /// physics were deliberate or an oversight, whether a rig with no PhysBone is rigid on
-        /// purpose, whether an angle limit that steadies one avatar's chains will shake this
-        /// one's. Analyse counts what it finds and says which way it leans; the tick is yours.
-        /// </summary>
-        void AddManualPhysics(VisualElement b)
-        {
-            if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
-            {
-                b.Add(BridgeElements.SubHeading("Physics"));
+                b.Add(BridgeElements.SubHeading("Your call"));
+                b.Add(BridgeElements.Hint(
+                    "The avatar doesn't answer these — each either departs from the source or turns on " +
+                    "intent only you know. Leaving them alone converts fine."));
                 b.Add(BridgeElements.Bind("Convert toe PhysBones",
                     "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
                     "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
@@ -656,13 +663,6 @@ namespace AvatarBridge
                     "and some rigged props are rigid on purpose. The report names every rig " +
                     "this would apply to either way.",
                     settings.addPhysicsToRiggedStyles, v => settings.addPhysicsToRiggedStyles = v));
-                b.Add(BridgeElements.Bind("Transfer angle limits",
-                    "Copy each PhysBone's limit angle onto the cloth. MagicaCloth2's limit pushes on " +
-                    "particle positions rather than bone rotation, at a stiffness that snaps back " +
-                    "hard — so this shakes some avatars and is the best result the tool gives on " +
-                    "others. Worth trying if chains feel loose; lower Angle Limit > Stiffness on any " +
-                    "chain that snaps.",
-                    settings.transferAngleLimits, v => settings.transferAngleLimits = v));
                 b.Add(BridgeElements.Bind("Auto-assign nearby colliders",
                     "Also give each cloth the avatar's own colliders that it starts clear of and " +
                     "could swing into — so a tail that passed through the leg in VRChat collides " +
@@ -698,8 +698,6 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Work on a clone (recommended)",
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
-
-            AddAutomatedPhysics(b);
 
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);
@@ -818,8 +816,6 @@ namespace AvatarBridge
             b.Add(BridgeElements.Hint(
                 "These are yours: the avatar doesn't say which way they should go, so nothing " +
                 "sets them for you. Leaving them all alone converts fine."));
-
-            AddManualPhysics(b);
 
             b.Add(BridgeElements.SubHeading("Contacts & shaders"));
             var native = BridgeElements.Bind("Use ChilloutVR's native contacts",

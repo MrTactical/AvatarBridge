@@ -326,10 +326,6 @@ namespace AvatarBridge
                 ApplyMotionLeash(ctx, data, sdata);
             }
 
-            if (ctx.Settings.transferAngleLimits)
-            {
-                ApplyAngleLimit(ctx, data, sdata);
-            }
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
@@ -599,17 +595,6 @@ namespace AvatarBridge
                 $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
                 $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
-
-            if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName)
-                && !ctx.Settings.transferAngleLimits)
-            {
-                bool polar = data.LimitTypeName == "Polar";
-                float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"{data.LimitTypeName} limit ({limitAngle:0}°) not applied. To add it, tick Angle Limit on " +
-                    $"this cloth and set Limit Angle to {limitAngle:0}, then lower Stiffness until it stops " +
-                    "snapping — or turn on \"Transfer angle limits\" to do this for every chain.");
-            }
 
             if (data.MaxStretch > 0f || data.MaxSquish > 0f)
             {
@@ -926,36 +911,6 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Copies the PhysBone's angle limit across verbatim, behind the "Transfer angle limits"
-        /// option. MagicaCloth2's limit constrains particle positions against a baseline pose
-        /// where PhysBone's constrains bone rotation against its parent, and MagicaCloth2's
-        /// stiffness defaults to a rigid snap-back — so on some avatars this shakes the chain
-        /// and on others it is the best result the tool gives. Hence the option.
-        /// </summary>
-        static void ApplyAngleLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
-        {
-            if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
-            {
-                return;
-            }
-            float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
-            bool applied = TrySetMember(sdata.angleLimitConstraint, "useAngleLimit", true)
-                           && TrySetCurveValue(sdata.angleLimitConstraint, "limitAngle", limitAngle);
-            if (applied)
-            {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.LimitTypeName} limit transferred as a symmetric {limitAngle:0}° angle limit. " +
-                    "If this chain snaps back or shakes, lower Angle Limit > Stiffness on the cloth, or turn " +
-                    "off \"Transfer angle limits\" and convert again.");
-            }
-            else
-            {
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"Angle limit ({data.LimitTypeName}) could not be applied on this MagicaCloth2 version.");
-            }
-        }
-
-        /// <summary>
         /// Bounds how far the chain may swing, from the limit its author already set.
         ///
         /// A PhysBone's Angle/Hinge/Polar limit is not decoration: it is the reason a floaty
@@ -968,8 +923,9 @@ namespace AvatarBridge
         /// MagicaCloth2's own angle limit, deliberately. The angle constraint runs three
         /// iterations per step against a stiffness that snaps back hard, and its own author's
         /// comment calls rotating about a point near the parent 酷い振動の温床 — a hotbed of
-        /// severe vibration. That is why "Transfer angle limits" is off by default and warns
-        /// that it shakes some chains. maxDistance is a plain clamp on how far a particle may
+        /// severe vibration. An option that transferred the limit that way shipped for several
+        /// versions and was removed in 3.7.0, the maintainer's verdict being that it produced a
+        /// broken avatar every time. maxDistance is a plain clamp on how far a particle may
         /// travel from rest: it cannot oscillate, because it removes motion rather than adding
         /// a restoring force.
         ///

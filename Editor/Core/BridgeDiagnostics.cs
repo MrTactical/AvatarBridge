@@ -172,7 +172,8 @@ namespace AvatarBridge
             var s = ctx.Settings;
             sb.AppendLine($"- physics target: `{s.physicsTarget}` · presets: `{s.useMagicaPresets}` · " +
                           $"fit to PhysBone: `{s.fitToPhysBone}` · cap radius: `{s.capParticleRadius}` · " +
-                          $"angle limits: `{s.transferAngleLimits}` · auto colliders: `{s.autoAssignNearbyColliders}`");
+                          $"bound swing: `{s.boundSwingToSourceLimit}` · mesh radius: `{s.fitRadiusToMesh}` · " +
+                          $"auto colliders: `{s.autoAssignNearbyColliders}`");
             sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · strip SPS: `{s.stripSpsSystems}` · " +
                           $"face tracking: `{s.faceTrackingMode}` · scaler: `{s.addAvatarScaler}`");
             sb.AppendLine();

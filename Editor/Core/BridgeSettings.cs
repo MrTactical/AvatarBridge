@@ -108,7 +108,14 @@ namespace AvatarBridge
         // MagicaCloth2 result they've had — while the angle limit wrecked the jiggle chains on
         // a different avatar, and an uncapped radius turned a 0.5 into metre-wide particles on
         // a third. They are genuinely avatar-dependent, so they are exposed rather than decided.
-        public bool transferAngleLimits = false;
+        // "Transfer angle limits" was removed in 3.7.0. It copied the PhysBone's limit onto
+        // MagicaCloth2's own angle limit, whose constraint runs three iterations a step against
+        // a hard snap-back — its author's comment calls rotating near the parent 酷い振動の温床,
+        // a hotbed of severe vibration — and the maintainer's verdict after living with it was
+        // that it produced a broken avatar every time. boundSwingToSourceLimit now honours the
+        // same source limit as a distance bound, which removes motion instead of adding a
+        // restoring force and so cannot set a chain vibrating. Anyone who wants the angular
+        // version can still tick Angle Limit on an individual cloth.
         // After the preset loads, apply the handful of PhysBone facts that mean the same thing
         // in MagicaCloth2 — no gravity, upward gravity, and immobile (which is world influence
         // inverted).
@@ -140,7 +147,7 @@ namespace AvatarBridge
         // 48° limit — and converting the looseness without the limit is what "way too swaying"
         // turned out to be. Applied as a distance bound rather than MagicaCloth2's angle limit,
         // because a distance bound removes motion instead of adding a restoring force and so
-        // cannot set the chain vibrating (which is why transferAngleLimits stays off).
+        // cannot set the chain vibrating (which is why the angular version was removed).
         public bool boundSwingToSourceLimit = true;
         // OFF since the radius above became a measurement instead of a guess. This bounds the
         // particle to half the gap between bones, which was a sensible rail when the radius was
