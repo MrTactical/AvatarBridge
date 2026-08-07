@@ -59,6 +59,9 @@ namespace AvatarBridge
         bool showManual = true;
         bool showAutomated;
         bool showPhysics = true;
+        /// <summary>Closed by default: these are escape hatches for a chain that converted wrong,
+        /// not a set of decisions to be made before the first conversion.</summary>
+        bool showPhysicsTuning = false;
         // What the last Analyse found, or null if it hasn't been run for the current avatar.
         // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
         List<Advice> advice;
@@ -594,9 +597,25 @@ namespace AvatarBridge
             {
                 b.Add(BridgeElements.SubHeading("MagicaCloth2 feel"));
                 b.Add(BridgeElements.Hint(
-                    "Bones, colliders and ignored transforms come from the PhysBone. The feel starts from " +
-                    "MagicaCloth2's own tuned values, and \"Derive physics\" below replaces it with a real " +
-                    "conversion of the PhysBone's numbers. Either way they're all in the report."));
+                    "Every one of these is on, and on is what you want — each is either a measurement " +
+                    "of your own avatar or a conversion of the PhysBone's numbers, and turning one off " +
+                    "gives that part of the chain back to MagicaCloth2's generic defaults. They are here " +
+                    "to be turned off when a specific chain converts wrong, not to be chosen between. " +
+                    "Whatever they do is named in the report."));
+
+                // Closed by default. Eight checkboxes nobody should have to reason about on a first
+                // conversion is a wall, and reading it as a decision to make is the wrong reading —
+                // these are escape hatches for a chain that came out wrong.
+                var feel = new Foldout { text = "Advanced physics tuning", value = showPhysicsTuning };
+                feel.AddToClassList("ab-field");
+                feel.RegisterValueChangedCallback(e =>
+                {
+                    // Foldouts inside carry their own change events up; only the fold's own counts.
+                    if (e.target == feel) showPhysicsTuning = e.newValue;
+                });
+                b.Add(feel);
+                var outer = b;
+                b = feel.contentContainer;
 
                 b.Add(BridgeElements.Bind("Match a preset to each chain",
                     "Start each chain from the MagicaCloth2 preset that fits it — hair, tail, skirt, " +
@@ -666,6 +685,7 @@ namespace AvatarBridge
                     "closely-spaced bones misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
 
+                b = outer;   // out of the fold — "Your call" is not advanced, it is a choice
                 b.Add(BridgeElements.SubHeading("Your call"));
                 b.Add(BridgeElements.Hint(
                     "The avatar doesn't answer these — each either departs from the source or turns on " +

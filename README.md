@@ -1007,6 +1007,23 @@ both and each is fed the other's output until the transform goes **NaN**, which 
 VRChat tolerates it because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone
 don't. Remove the constraint if you want the chain simulated.
 
+### I move slower (or faster) than I expect, and nothing in the avatar does that
+
+ChilloutVR scales your walking speed by how tall your avatar is. From the client:
+
+```
+movementScale = clamp(AvatarHeight / 1.6, 0.05, 1)
+```
+
+**The clamp only goes down.** A 1.6 m avatar moves at full speed; anything shorter is slowed in
+proportion; anything taller gains nothing. So a small avatar is permanently slow, and *raising* the
+**Height** slider speeds you back up — which reads as a boost arriving from nowhere, especially if
+a menu changes your size.
+
+It's the client, not the conversion — no animation is involved and there's nothing in the avatar to
+remove. Turn off **Control → Enable movement scale** in ChilloutVR's settings if you'd rather move
+at one speed whatever you're wearing.
+
 ### Hair or a tail floats upward in game, and I'm using DynamicBone
 
 Almost certainly a DynamicBone the avatar **already had**, which converts untouched — AvatarBridge

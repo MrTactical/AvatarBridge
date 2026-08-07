@@ -382,6 +382,44 @@ namespace AvatarBridge
 
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
+            // Action and Additive are reported but never RECOMMENDED, because neither is a clear
+            // win: Action takes full body control and its emote triggers have no ChilloutVR
+            // equivalent, so states can be unreachable, and a misfire is very visible. Saying
+            // nothing was the worse failure though — an avatar with a custom Action controller
+            // sitting there unmentioned reads as "checked, nothing here", which is how a copter
+            // avatar's whole Action layer went unnoticed.
+            var actionLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Action);
+            if (actionLayer != null && !settings.convertActionLayer)
+            {
+                advice.Add(new Advice
+                {
+                    Kind = AdviceKind.Manual,
+                    Setting = "Action (emotes, AFK)",
+                    Finding = $"This avatar has its own Action layer ({actionLayer.layers.Length} layer" +
+                              $"{(actionLayer.layers.Length == 1 ? "" : "s")}), and it is not being " +
+                              "converted. Action holds emotes and AFK — whether that matters is yours " +
+                              "to decide, which is why this is not ticked for you: the layer takes " +
+                              "FULL BODY control, VRChat's emote triggers have no ChilloutVR " +
+                              "equivalent so some states may be unreachable, and a misfire is very " +
+                              "visible. Turn it on if this avatar's emotes are the point of it.",
+                });
+            }
+
+            var additiveLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Additive);
+            if (additiveLayer != null && !settings.convertAdditiveLayer)
+            {
+                advice.Add(new Advice
+                {
+                    Kind = AdviceKind.Manual,
+                    Setting = "Additive",
+                    Finding = $"This avatar has its own Additive layer ({additiveLayer.layers.Length} " +
+                              $"layer{(additiveLayer.layers.Length == 1 ? "" : "s")}), and it is not " +
+                              "being converted. Additive is usually idle breathing, blended on top of " +
+                              "whatever else is playing — small, and easy not to miss. Turn it on if " +
+                              "this avatar's resting motion looks dead without it.",
+                });
+            }
+
             var baseLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Base);
             if (baseLayer == null || settings.convertBaseLayer)
             {
