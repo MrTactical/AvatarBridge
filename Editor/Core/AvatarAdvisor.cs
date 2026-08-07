@@ -377,6 +377,9 @@ namespace AvatarBridge
                               "Base, Additive and Action must all be ticked or the avatar has no " +
                               "locomotion at all. Poses will not lock movement and the viewpoint stays " +
                               "at standing height in floor poses — neither has an equivalent here.",
+                    // Puts the way back one press away. Keeping GoGo stays a choice — this is a
+                    // Manual, so the apply-everything button still leaves it alone.
+                    Apply = s => s.stripGogoLoco = true,
                 });
         }
 
@@ -402,6 +405,10 @@ namespace AvatarBridge
                               "FULL BODY control, VRChat's emote triggers have no ChilloutVR " +
                               "equivalent so some states may be unreachable, and a misfire is very " +
                               "visible. Turn it on if this avatar's emotes are the point of it.",
+                    // Gives the row its own "Turn on" button. Safe to attach on a Manual: the
+                    // apply-everything button filters on IsRecommendation, which excludes them,
+                    // so this can only ever be pressed deliberately.
+                    Apply = s => s.convertActionLayer = true,
                 });
             }
 
@@ -417,6 +424,7 @@ namespace AvatarBridge
                               "being converted. Additive is usually idle breathing, blended on top of " +
                               "whatever else is playing — small, and easy not to miss. Turn it on if " +
                               "this avatar's resting motion looks dead without it.",
+                    Apply = s => s.convertAdditiveLayer = true,
                 });
             }
 
