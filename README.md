@@ -103,11 +103,10 @@ actually running.
 ## Highlights
 
 - **It reads your avatar and picks the settings for you.** Press
-  [**Analyse this avatar**](#analyse-this-avatar) and it measures what's actually there
-  — PhysBones, face-tracking blendshapes, shaders that lose an eye in VR, the layers the avatar
-  built itself — then offers each setting those decide. What it *can't* measure is kept separately
-  and never ticked for you, so the options you're asked to think about are only the ones that
-  genuinely need thinking about.
+  [**Analyse this avatar**](#analyse-this-avatar) and it measures what's actually there — PhysBones,
+  face-tracking blendshapes, shaders that lose an eye in VR, the layers the avatar built itself —
+  then offers each setting those decide. What it *can't* measure is kept separate and never ticked
+  for you, so the only options you're asked to think about are the ones that need it.
 - **VRCFury & Modular Avatar avatars work.** Fury's own builder (or NDMF's bake) runs first, so
   toggles, linked clothing and merged armatures survive — and Fury's VRChat-only sync workarounds
   are removed rather than carried across.
@@ -136,9 +135,10 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts** — one-to-one, with real proximity and box shapes, using a system
-  the CCK doesn't expose ([experimental](#native-contacts), off by default: what they **switch on**
-  is visible only to you, unless you turn the driver bridge on with it).
+- **ChilloutVR's native contacts, and they reach other people** — one-to-one, with real proximity
+  and box shapes, using a system the CCK doesn't expose. On their own, whatever a native contact
+  switches on plays for nobody but you; a driver bridge carries it to everyone, for no sync bits,
+  and comes on with them ([experimental](#native-contacts), off by default).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -484,7 +484,9 @@ game client and the CCK ships no way to author it, so converters have always had
 with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim.
+**Advanced** and contacts convert one to one: real proximity, tags verbatim. *Let native contacts
+reach other players* comes on with it — [without it](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default),
+what a native contact switches on plays for you and nobody else.
 
 ### Grabbing a chain
 
@@ -531,44 +533,47 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-> ### ⚠️ On their own, native contacts only fire for you — so AvatarBridge fixes that
->
-> *Fixed by default since 3.7.1; this is what the fix is for, and what you get if you turn it off.*
->
-> A native contact writes its parameter **straight at the Animator** (`ContactAnimator.ApplyValue`
-> → `animator.SetFloat`). ChilloutVR's outbound sync cache only fills when something writes through
-> the avatar's **animator manager**, so that value never leaves your machine — nobody else's copy is
-> ever told to play the effect.
->
-> **It isn't occasional and it isn't random, though it looks like both.** An effect left
-> permanently **on** still appears for everyone — not because it syncs, but because every client is
-> already running it and it never needed the parameter. An effect the contact has to **switch on**
-> appears for you alone. Two effects on the same avatar behaving differently is always this: on one
-> reported avatar the boop particle (always active) was visible to everyone while the pop sound and
-> the headpat sparkles (both switched on by the contact) were visible to nobody.
->
-> The legacy pointer/trigger path does the opposite: `TriggerToContact` calls
-> `PlayerSetup.ChangeAnimatorParam`, which goes through the manager, so it **does** sync. That's
-> why it's the default.
->
-> **This is fixed, and the fix is on by default.** *Let native contacts reach other players*
-> points each contact at a local parameter and adds a small layer that copies it into the original
-> name with a **driver** — and a driver's writes *do* go out, because they go through the animator
-> manager. Every animation still reads the name it always read. **It costs no sync bits**: that
-> parameter was already declared, already counted against the 3200-bit budget and already being
-> transmitted — it was carrying a value nothing ever wrote. Receivers the author marked local-only
-> are left alone.
->
-> **On/off contacts only.** A driver writes its value on entering a state, which carries an on/off
-> reading exactly and an analog one only in steps. A *proximity* contact — one that reports how
-> close the toucher is — is therefore left exactly as it is, rather than trading the smooth value
-> you see today for a stepped one other people can see. The report names each one it left; switch
-> those to the legacy path if other players need to see what they drive.
+### On their own, native contacts only fire for you — so this is fixed by default
+
+A native contact writes its parameter **straight at the Animator**, and ChilloutVR only transmits a
+value written through the avatar's **animator manager**. Left alone, then, whatever a native contact
+switches on — a particle effect, a sound, a toggle — plays on your machine and nobody else's, and it
+looks perfect from inside your own headset.
+
+**Since 3.7.1 that is repaired, and the repair comes on with native contacts.** *Let native contacts
+reach other players* points each receiver at a local parameter and adds a small layer that copies it
+into the original name with a **driver** — a driver's writes *do* go out. Your animations are
+untouched; they read the name they always read. **It costs no sync bits**: that parameter was
+already declared, already counted against the 3200-bit budget and already being transmitted, just
+carrying a value nothing ever wrote.
+
+**On/off contacts only.** A *proximity* contact — one reporting how close the toucher is — is left
+exactly as it is, and the report names it. Switch those to the legacy path if other players need to
+see what they drive.
+
+<details><summary>Why it looked intermittent, and the call chain</summary>
+
+`ContactAnimator.ApplyValue` → `animator.SetFloat`, which never fills the outbound sync cache. The
+legacy pointer/trigger path does the opposite: `TriggerToContact` → `PlayerSetup.ChangeAnimatorParam`
+goes through the manager and **does** sync, which is why it remains the default. The bridge's driver
+works because `CVRAnimatorDriver.ApplyAnimatorChange` → `AnimatorManager.SetParameter` is transmitted
+as well.
+
+It isn't occasional and it isn't random, though it looks like both. An effect left permanently **on**
+still appears for everyone — not because it syncs, but because every client is already running it and
+it never needed the parameter. Only an effect the contact has to **switch on** is lost. That is why
+two effects on the same avatar can behave differently, which reads as the sync being unreliable when
+it is simply absent.
+
+A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
+one only in steps — hence on/off receivers only, rather than trade the wearer's smooth proximity
+value for a stepped one. Receivers the author marked local-only are left alone either way.
+
+</details>
 
 **Detection itself costs no sync** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer, and every client simulates every avatar's contact *shapes* itself. It's the parameter
-the receiver drives that stays local, per the warning above.
+developer, and every client simulates every avatar's contact *shapes* itself.
 
 **Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
 override when one is set — the component itself often lives somewhere central while the shape
@@ -1124,12 +1129,10 @@ whenever it's on.
 
 ### Converted avatars broke after updating AvatarBridge — missing controllers, pink particles
 
-Only affects conversions made before 2.59.0, which were written inside the tool's own folder — so
-deleting it to update erased them.
-
-**Check the Recycle Bin first:** Unity trashes deleted assets rather than destroying them, and
-restoring the folder relinks everything. Otherwise reconvert. Output has landed in the sibling
-`Assets/AvatarBridgeOutput` since 2.59.0, where updates can't reach it.
+Only affects conversions made before 2.59.0, which were written inside the tool's own folder, so
+updating erased them. **Check the Recycle Bin** — Unity trashes deleted assets rather than destroying
+them, and restoring the folder relinks everything. Otherwise reconvert; output has landed in the
+sibling `Assets/AvatarBridgeOutput` ever since, where updates can't reach it.
 
 ### A hat or held item drifts off when I resize myself
 
@@ -1161,14 +1164,13 @@ again**, and report separately from magenta.
 
 ### Gestures freeze in game, or on another PC
 
-**Reconvert on a current release.**
+**Check ChilloutVR's settings first — this usually isn't the conversion.** On Index-type controllers
+the game only registers gestures while *Skeletal Input* or *Infer Gestures from Finger Tracking* is
+enabled. With both off, no avatar gestures work, stock or converted.
 
-Not a conversion problem, and worth checking first: on Index-type controllers ChilloutVR only
-registers gestures while *Skeletal Input* or *Infer Gestures from Finger Tracking* is enabled in its
-settings. With both off, no avatar gestures work — stock or converted.
-
-If you converted before 3.5.13, **delete the output folder once and convert again**: reconverting
-used to stack duplicate copies of every rescued asset rather than replacing them.
+Otherwise reconvert on a current release. If you converted before 3.5.13, **delete the output folder
+once first**: reconverting used to stack duplicate copies of every rescued asset rather than
+replacing them.
 
 ### The viewpoint or voice position is nowhere near the head
 
@@ -1271,30 +1273,34 @@ filled as well. If your toggles stick on and you converted before 3.5.37, reconv
 property back to its default when no animation writes it; **ChilloutVR's does not** — measured in
 game, and it is why avatars that behave perfectly in VRChat came back one-way here. The layer
 that owns a property now asserts its value from *every* state it can rest in, so the game is
-never asked to fill a gap. Two spellings of the empty-off idiom that used to slip through are
-caught as well: Fury parking a shared clip with *no curves in it* rather than nothing at all, and
-an **animation library** — a layer full of states with no transitions, where authors park clips
-for easy previewing — counting as animating everything it held, which refused every real toggle a
-restore while the library, which can never play, restored nothing. Anything a blend tree drives
-is left to the tree — a constant assertion from a plain state would fight a parameter-driven
-value — and sliders, pass-through gates and muscle curves are excluded too; each of those has
-been a shipped bug before. The conversion then **audits itself**: any property that could still
-fall back to the runtime is named in the report as a warning, state by state, so this whole class
-of failure is caught at conversion time rather than discovered in game.
+never asked to fill a gap, and the conversion **audits itself** — anything that could still fall back
+to the runtime is named in the report, state by state.
 
-Four things worth knowing:
+Two things worth knowing:
 
 - **Whatever is true at conversion time is what "off" means.** Set the avatar up that way first.
 - **Where several layers animate one thing, only the lowest restores it** — otherwise a dress toggle
   would assert the shirt from above and it could never come off.
-- **Two toggles inside one Fury tree that move the same thing get their own layers, from 3.6.2.**
-  Toggles blended into a single tree *add up*, so no restore could be written for the shared part
-  and both toggles stuck — a whisker style-swap over a whisker hide, or an "all clothing off"
-  preset over its garments. Each is now lifted into its own layer, where the top one wins while it
-  acts and each restores on its own. The one visible difference: with **both** switched on at
-  once, the higher one decides the shared part, where VRChat showed an arithmetic mix of the two.
+
+<details><summary>The cases this had to grow to cover</summary>
+
+- **Fury parking a shared clip with *no curves in it*** rather than nothing at all — a second
+  spelling of the empty-off idiom that used to slip past the repair.
+- **Animation libraries** — a layer full of states with no transitions, where authors park clips for
+  easy previewing. It counted as animating everything it held, which refused every real toggle a
+  restore, while the library itself can never play and so restored nothing.
+- **Two toggles inside one Fury tree moving the same thing**, from 3.6.2. Blended into a single tree
+  they *add up*, so no restore could be written for the shared part and both stuck — a whisker
+  style-swap over a whisker hide, an "all clothing off" preset over its garments. Each is now lifted
+  into its own layer. One visible difference: with **both** on at once the higher one decides the
+  shared part, where VRChat showed an arithmetic mix.
+- **Excluded on purpose:** anything a blend tree drives (a constant assertion from a plain state
+  would fight the parameter-driven value), sliders, pass-through gates and muscle curves. Each of
+  those has been a shipped bug before.
 - **Only two-state toggles are filled.** Bigger layers are machines whose empty states are structural
-  (a slider's `Reset`, a local/remote gate), and filling those changes how the avatar looks.
+  — a slider's `Reset`, a local/remote gate — and filling those changes how the avatar looks.
+
+</details>
 
 ### A material swap changes only some parts
 
@@ -1353,7 +1359,12 @@ own animation and face tracking, which is usually where you want them.
 
 ### A sound only you can hear
 
-Two causes, and the report distinguishes them.
+Three causes, and the report distinguishes them.
+
+**A sound a native contact sets off.** **Reconvert on 3.7.1 or later**, which fixes this by
+default — the contact wrote its parameter straight at the Animator, which ChilloutVR never
+transmits, so the sound played on your machine alone.
+[Full explanation](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default).
 
 **Flat (2D) audio.** ChilloutVR decides whether to spatialize a source from its **Spatial Blend**
 alone — anything short of fully 3D is never handed to the spatializer and can go unheard by
@@ -1368,8 +1379,14 @@ whoever set it off.
 
 ### A particle effect only you can see
 
-**Reconvert on 3.5.38 or later.**
+**Reconvert on a current release.** Two separate causes produce this symptom, and the report
+distinguishes them.
 
+**A native contact switched it on** — fixed by default in **3.7.1**. The contact wrote its parameter
+straight at the Animator, which ChilloutVR never transmits, so the effect played for you alone.
+[Full explanation](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default).
+
+**The emitter was animated instead of the object** — fixed in **3.5.38**.
 Effects are built two ways, and only one of them travels. If the clip switches the effect's
 **GameObject** on and off, everyone sees it — that's an ordinary animation every client plays. If
 the emitter is left **off** in the prefab and the clip switches on the particle system's *emission
