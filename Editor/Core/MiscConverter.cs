@@ -58,6 +58,7 @@ namespace AvatarBridge
             var enabled = new List<string>();
             var otherModules = new SortedSet<string>(StableSampleOrder.Instance);
             var seen = new HashSet<ParticleSystem>();
+            int stripped = 0;
 
             foreach (var clip in controller.animationClips.Distinct())
             {
@@ -89,13 +90,29 @@ namespace AvatarBridge
                         continue;
                     }
                     var emission = system.emission;
-                    if (emission.enabled || !togglesActive.Contains(binding.path) || !seen.Add(system))
+                    if (!emission.enabled && togglesActive.Contains(binding.path) && seen.Add(system))
                     {
-                        continue;
+                        emission.enabled = true;
+                        EditorUtility.SetDirty(system);
+                        enabled.Add(binding.path);
                     }
-                    emission.enabled = true;
-                    EditorUtility.SetDirty(system);
-                    enabled.Add(binding.path);
+
+                    // And take the curve OUT, which is the half this was missing. Forcing the
+                    // component on is undone the moment the OFF clip plays and writes the module
+                    // back to false — which is at rest, always — so the emitter was never
+                    // "on permanently" the way the report claimed. The object's own m_IsActive
+                    // gates the effect; a module curve alongside it can only fight that.
+                    //
+                    // ONLY on a clip this conversion owns. Editing a clip in place reaches
+                    // whatever asset it really is, and a source avatar's clips — or worse, an SDK
+                    // package's — are shared by everything that references them. A pass that
+                    // stripped curves without this check once emptied a VRChat SDK proxy clip for
+                    // the whole project.
+                    if (togglesActive.Contains(binding.path) && OwnedByThisConversion(ctx, clip))
+                    {
+                        AnimationUtility.SetEditorCurve(clip, binding, null);
+                        stripped++;
+                    }
                 }
             }
 
@@ -110,7 +127,12 @@ namespace AvatarBridge
                     "the object turns on and emits nothing — the effect is invisible to everyone but you. " +
                     "The emitter is now on permanently and the object's own on/off animation gates the " +
                     "effect instead, which is how the effects that already worked were built. Nothing " +
-                    "plays at rest, because the same clip switches the object off.");
+                    "plays at rest, because the same clip switches the object off." +
+                    (stripped > 0
+                        ? $" The {stripped} module curve(s) that switched it off again are removed " +
+                          "from the converted clips — left in, they undo this every time the off " +
+                          "state plays, which is at rest, always."
+                        : ""));
             }
             ReportDefaultParticleMaterials(ctx);
             if (otherModules.Count > 0)
@@ -143,6 +165,33 @@ namespace AvatarBridge
         /// built-in path is gone; "Default-ParticleSystem" is Unity's fixed name for it and
         /// survives the copy.
         /// </summary>
+        /// <summary>
+        /// True only for a clip this conversion created and owns, which is the one kind safe to
+        /// edit in place.
+        ///
+        /// Everything else is shared by reference: a source avatar's clips belong to the avatar,
+        /// and an SDK package's belong to every project that imported it. A pass that stripped
+        /// curves without asking this question reached into the VRChat SDK's own
+        /// proxy_hands_idle.anim and emptied it — for the whole project, silently, so every avatar
+        /// converted afterwards lost its hand poses. An unsaved clip is ours by construction (it
+        /// has been built in memory this run); a saved one has to live under the output folder.
+        /// </summary>
+        static bool OwnedByThisConversion(BridgeContext ctx, AnimationClip clip)
+        {
+            string path = AssetDatabase.GetAssetPath(clip);
+            if (string.IsNullOrEmpty(path))
+            {
+                return true;
+            }
+            if (string.IsNullOrEmpty(ctx.OutputDir))
+            {
+                return false;
+            }
+            return path.Replace('\\', '/')
+                .StartsWith(ctx.OutputDir.Replace('\\', '/').TrimEnd('/') + "/",
+                    System.StringComparison.OrdinalIgnoreCase);
+        }
+
         static void ReportDefaultParticleMaterials(BridgeContext ctx)
         {
             if (ctx.Target == null)
@@ -293,11 +342,30 @@ namespace AvatarBridge
         /// </summary>
         static void SanitizeAudioSources(BridgeContext ctx)
         {
-            int clamped = 0;
+            int clamped = 0, flattened = 0;
             var notes = new List<string>();
+            var flat = new List<string>();
+            var nearby = new List<string>();
             foreach (var source in ctx.Target.GetComponentsInChildren<AudioSource>(true))
             {
                 bool changed = false;
+
+                // 2D audio is not merely "unpositioned" here, it is DROPPED. ChilloutVR decides
+                // whether to spatialize from the blend itself — SharedFilter.ProcessAudioSource
+                // sets spatialize = spatialBlend >= 1 — and a source that fails that test is not
+                // handed to Steam Audio, so it can go unheard by everyone but the wearer. Which is
+                // exactly how a 2D sound presents: it plays perfectly for you and never for them.
+                // An avatar sound is attached to a body in a room and has no business being flat.
+                if (source.spatialBlend < 1f)
+                {
+                    source.spatialBlend = 1f;
+                    changed = true;
+                    flattened++;
+                    if (flat.Count < 6)
+                    {
+                        flat.Add(source.gameObject.name);
+                    }
+                }
                 if (source.dopplerLevel != 0f)
                 {
                     source.dopplerLevel = 0f;
@@ -318,6 +386,14 @@ namespace AvatarBridge
                     source.maxDistance = source.minDistance;
                     changed = true;
                 }
+                // Not changed — the author's reach is the author's call. But a sound that stops
+                // carrying inside arm's length is worth saying out loud, because it presents as
+                // "nobody else can hear it" and looks like a conversion fault.
+                if (source.maxDistance < 5f && nearby.Count < 6)
+                {
+                    nearby.Add($"{source.gameObject.name} ({source.maxDistance:0.#} m)");
+                }
+
                 if (changed)
                 {
                     clamped++;
@@ -327,6 +403,30 @@ namespace AvatarBridge
                     }
                     EditorUtility.SetDirty(source);
                 }
+            }
+
+            if (flattened > 0)
+            {
+                ctx.Report.Converted("Audio",
+                    $"{flattened} flat (2D) audio source(s) made positional",
+                    $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")} — these were " +
+                    "authored with Spatial Blend below fully 3D. ChilloutVR decides whether to " +
+                    "spatialize a source from that blend alone, and one that does not reach fully 3D " +
+                    "is never handed to the spatializer — so it plays for the wearer and can be " +
+                    "silent for everyone else, which reads as a broken sound rather than a flat one. " +
+                    "An avatar's sound belongs to a body in a room, so the blend is set to 3D.");
+            }
+
+            if (nearby.Count > 0)
+            {
+                ctx.Report.Approximated("Audio",
+                    $"{nearby.Count} audio source(s) stop carrying within a few metres",
+                    $"{string.Join(", ", nearby)} — left exactly as the author set them, because how " +
+                    "far a sound should carry is a decision rather than a defect. Worth knowing all " +
+                    "the same: past that distance the sound is silent, so a listener standing a normal " +
+                    "conversational distance away hears nothing while you hear it perfectly. If one of " +
+                    "these is meant to be noticed by the person setting it off, raise its Max Distance " +
+                    "on the AudioSource.");
             }
             if (clamped > 0)
             {

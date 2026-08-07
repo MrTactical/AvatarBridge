@@ -64,6 +64,17 @@ namespace AvatarBridge
         public HashSet<string> PreserveParameters = new HashSet<string>();
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
+
+        /// <summary>
+        /// Native contacts whose value is being carried to the network by a driver: the LOCAL
+        /// parameter the contact now writes, against the ORIGINAL parameter every animation
+        /// already reads. The animator pass builds one small layer per pair.
+        ///
+        /// Empty unless "Let native contacts reach other players" is on, which is off by default
+        /// and only offered when native contacts are in use at all.
+        /// </summary>
+        public System.Collections.Generic.List<(string local, string synced)> BridgedContacts =
+            new System.Collections.Generic.List<(string, string)>();
         public List<string> ParameterOrder = new List<string>();
 
         /// <summary>

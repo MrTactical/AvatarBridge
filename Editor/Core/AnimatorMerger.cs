@@ -138,6 +138,7 @@ namespace AvatarBridge
         public static void Run(BridgeContext ctx)
         {
             var vrcControllers = GetSelectedVrcControllers(ctx);
+            ReportSkippedLayers(ctx);
             bool convertingGestureLayer = vrcControllers.Any(c => c.id == VRCAvatarDescriptor.AnimLayerType.Gesture);
 
             // Captured before any merging: the saved-controller audit uses these to tell a
@@ -432,6 +433,7 @@ namespace AvatarBridge
             // After every merge, injection and clip clone, right before saving: animations that
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
+            BridgeNativeContacts(master, ctx);
             RewirePhysicsToggles(master, ctx);
             AuditSizeBlendshapes(master, ctx);
             RepairClipPaths(master, ctx);
@@ -1063,6 +1065,198 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ setup ----
+
+        /// <summary>
+        /// Carries a native contact's value to the network, one small layer per contact.
+        ///
+        /// ChilloutVR's native contact system writes its parameter with animator.SetFloat —
+        /// straight at the Animator — and the outbound sync cache only fills inside
+        /// CVRAnimatorManager's own setters. So a native contact drives a value that never leaves
+        /// the wearer's machine, and every particle, sound and toggle it gates happens for them
+        /// alone. The legacy pointer/trigger path calls PlayerSetup.ChangeAnimatorParam and does
+        /// not have this problem, which is why it is the default.
+        ///
+        /// A DRIVER writes through the manager too (CVRAnimatorDriver.ApplyAnimatorChange calls
+        /// AnimatorManager.SetParameter), so it can act as the bridge. The contact was repointed
+        /// at a local parameter during the contacts pass; this reads that and drives the ORIGINAL
+        /// name, which every animation on the avatar already reads. Nothing needs retargeting.
+        ///
+        /// It buys no bits and spends none: the original parameter is unprefixed, so ChilloutVR
+        /// has always counted it against the 3200-bit budget and always transmitted it. It was
+        /// transmitting a value nothing ever wrote.
+        /// </summary>
+        static void BridgeNativeContacts(AnimatorController master, BridgeContext ctx)
+        {
+            if (ctx.BridgedContacts == null || ctx.BridgedContacts.Count == 0)
+            {
+                return;
+            }
+
+            var built = new List<string>();
+            foreach (var (local, synced) in ctx.BridgedContacts)
+            {
+                var target = master.parameters.FirstOrDefault(p => p.name == synced);
+                if (target == null)
+                {
+                    continue;   // nothing reads it; there is nothing to carry
+                }
+                if (master.parameters.All(p => p.name != local))
+                {
+                    master.AddParameter(local, AnimatorControllerParameterType.Float);
+                }
+
+                // AddLayer(name) rather than building a state machine and attaching it by hand:
+                // this runs BEFORE the controller is saved, and AddObjectToAsset refuses a target
+                // that is not yet persistent ("AddAssetToSameFile failed because the other asset
+                // is not persistent"), which took the whole conversion down. Letting Unity make
+                // the machine leaves its lifetime to the same code that saves everything else.
+                master.AddLayer(SanitizeFileName($"Contact sync {synced}"));
+                var layers = master.layers;
+                var layer = layers[layers.Length - 1];
+                layer.defaultWeight = 1f;
+                layer.blendingMode = AnimatorLayerBlendingMode.Override;
+                var machine = layer.stateMachine;
+
+                // Two states, each asserting its end of the value. Both directions are written,
+                // because ChilloutVR restores nothing a state does not write — the same rule that
+                // governs every toggle this tool produces.
+                var off = machine.AddState("Not touched");
+                var on = machine.AddState("Touched");
+                off.writeDefaultValues = false;
+                on.writeDefaultValues = false;
+                machine.defaultState = off;
+                off.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 0f) };
+                on.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 1f) };
+
+                var toOn = off.AddTransition(on);
+                toOn.hasExitTime = false;
+                toOn.duration = 0f;
+                toOn.AddCondition(AnimatorConditionMode.Greater, 0.5f, local);
+                var toOff = on.AddTransition(off);
+                toOff.hasExitTime = false;
+                toOff.duration = 0f;
+                toOff.AddCondition(AnimatorConditionMode.Less, 0.5f, local);
+
+                master.layers = layers;   // write the weight and blend mode back
+                built.Add(synced);
+            }
+
+            if (built.Count > 0)
+            {
+                ctx.Report.Converted("Contacts",
+                    $"{built.Count} native contact(s) carried to other players by a driver",
+                    string.Join(", ", built) + " — a native contact writes its parameter straight " +
+                    "at the Animator, which ChilloutVR never transmits, so whatever it sets off is " +
+                    "normally seen by you alone. Each of these now drives a local parameter that a " +
+                    "driver copies into the original name, and a driver's writes DO go out. " +
+                    "Nothing else changed: every animation still reads the name it always read. " +
+                    "This costs no sync bits — those parameters were already declared, already " +
+                    "counted against the 3200-bit budget and already being transmitted; they were " +
+                    "simply carrying a value nothing ever wrote. On/off contacts only — any " +
+                    "proximity contact was left as it was, and is listed separately.");
+            }
+        }
+
+        /// <summary>One driver task: set this parameter to this value, in the type it is declared
+        /// as, so a bool slot is not handed a float.</summary>
+        static AnimatorDriver ContactDriver(string parameter, AnimatorControllerParameterType type, float value)
+        {
+            var driver = ScriptableObject.CreateInstance<AnimatorDriver>();
+            driver.name = "AnimatorDriver";
+            driver.hideFlags = HideFlags.HideInHierarchy;
+            driver.EnterTasks.Add(new AnimatorDriverTask
+            {
+                op = AnimatorDriverTask.Operator.Set,
+                targetName = parameter,
+                targetType = type == AnimatorControllerParameterType.Bool
+                    ? AnimatorDriverTask.ParameterType.Bool
+                    : type == AnimatorControllerParameterType.Int
+                        ? AnimatorDriverTask.ParameterType.Int
+                        : AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Static,
+                aValue = value,
+            });
+            return driver;
+        }
+
+        /// <summary>
+        /// Names every animator layer the avatar wrote itself that this conversion is leaving
+        /// behind, and says what is in it.
+        ///
+        /// Silence was the failure. An unticked layer is skipped with a bare `continue` — not
+        /// merged at weight 0, not partially handled, absent — and nothing said so anywhere. A
+        /// transforming avatar (a mech that folds into a copter) keeps its menu toggle and its
+        /// mesh swaps, because those live in FX, and loses the entire sequence that drives them,
+        /// because that lives in Action. It converts to something that goes in and never comes
+        /// out, with a clean report. Reported at whatever the layer actually contains, so the
+        /// reader can tell a layer of idle breathing from twenty-one full-body pose states.
+        /// </summary>
+        static void ReportSkippedLayers(BridgeContext ctx)
+        {
+            if (ctx.SourceDescriptor?.baseAnimationLayers == null)
+            {
+                return;
+            }
+            foreach (var layer in ctx.SourceDescriptor.baseAnimationLayers)
+            {
+                bool wanted;
+                string option;
+                switch (layer.type)
+                {
+                    case VRCAvatarDescriptor.AnimLayerType.Base:
+                        wanted = ctx.Settings.convertBaseLayer; option = "Base / locomotion"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Additive:
+                        wanted = ctx.Settings.convertAdditiveLayer; option = "Additive"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Gesture:
+                        wanted = ctx.Settings.convertGestureLayer; option = "Gesture (hand poses)"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Action:
+                        wanted = ctx.Settings.convertActionLayer; option = "Action (emotes, AFK)"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.FX:
+                        wanted = ctx.Settings.convertFxLayer; option = "FX (toggles, expressions)"; break;
+                    default: continue;
+                }
+                if (wanted || layer.isDefault
+                    || !(layer.animatorController is AnimatorController controller)
+                    || controller.layers.Length == 0)
+                {
+                    continue;
+                }
+
+                int drivers = 0, states = 0;
+                foreach (var sub in controller.layers)
+                {
+                    WalkMachines(sub.stateMachine, machine =>
+                    {
+                        foreach (var child in machine.states)
+                        {
+                            states++;
+                            foreach (var behaviour in child.state.behaviours)
+                            {
+                                if (behaviour is VRCAvatarParameterDriver)
+                                {
+                                    drivers++;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                ctx.Report.Warning(Category,
+                    $"The avatar's own {layer.type} layer is NOT being converted",
+                    $"\"{controller.name}\" — {controller.layers.Length} layer(s), {states} state(s)" +
+                    (drivers > 0 ? $" and {drivers} parameter driver(s)" : "") +
+                    ". This is the avatar's own animator content, and it is being left behind " +
+                    "entirely: not merged, not carried at zero weight, absent. Anything it drove " +
+                    "is gone with it" +
+                    (drivers > 0
+                        ? " — and those parameter drivers are how a sequence sets its own state, so " +
+                          "a feature whose menu toggle and mesh swaps live in FX can still switch ON " +
+                          "and then have nothing left to switch it back off. An avatar that " +
+                          "transforms is the usual shape of this."
+                        : ".") +
+                    $" Tick \"{option}\" and convert again if this layer matters.");
+            }
+        }
 
         /// <summary>Internal so the physics pass can read the same source layers: it runs BEFORE
         /// the merge and still needs to know how far an animated blendshape travels.</summary>

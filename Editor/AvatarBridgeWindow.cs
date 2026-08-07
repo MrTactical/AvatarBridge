@@ -59,6 +59,9 @@ namespace AvatarBridge
         bool showManual = true;
         bool showAutomated;
         bool showPhysics = true;
+        /// <summary>Closed by default: these are escape hatches for a chain that converted wrong,
+        /// not a set of decisions to be made before the first conversion.</summary>
+        bool showPhysicsTuning = false;
         // What the last Analyse found, or null if it hasn't been run for the current avatar.
         // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
         List<Advice> advice;
@@ -594,9 +597,25 @@ namespace AvatarBridge
             {
                 b.Add(BridgeElements.SubHeading("MagicaCloth2 feel"));
                 b.Add(BridgeElements.Hint(
-                    "Bones, colliders and ignored transforms come from the PhysBone. The feel starts from " +
-                    "MagicaCloth2's own tuned values, and \"Derive physics\" below replaces it with a real " +
-                    "conversion of the PhysBone's numbers. Either way they're all in the report."));
+                    "Every one of these is on, and on is what you want — each is either a measurement " +
+                    "of your own avatar or a conversion of the PhysBone's numbers, and turning one off " +
+                    "gives that part of the chain back to MagicaCloth2's generic defaults. They are here " +
+                    "to be turned off when a specific chain converts wrong, not to be chosen between. " +
+                    "Whatever they do is named in the report."));
+
+                // Closed by default. Eight checkboxes nobody should have to reason about on a first
+                // conversion is a wall, and reading it as a decision to make is the wrong reading —
+                // these are escape hatches for a chain that came out wrong.
+                var feel = new Foldout { text = "Advanced physics tuning", value = showPhysicsTuning };
+                feel.AddToClassList("ab-field");
+                feel.RegisterValueChangedCallback(e =>
+                {
+                    // Foldouts inside carry their own change events up; only the fold's own counts.
+                    if (e.target == feel) showPhysicsTuning = e.newValue;
+                });
+                b.Add(feel);
+                var outer = b;
+                b = feel.contentContainer;
 
                 b.Add(BridgeElements.Bind("Match a preset to each chain",
                     "Start each chain from the MagicaCloth2 preset that fits it — hair, tail, skirt, " +
@@ -666,6 +685,7 @@ namespace AvatarBridge
                     "closely-spaced bones misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
 
+                b = outer;   // out of the fold — "Your call" is not advanced, it is a choice
                 b.Add(BridgeElements.SubHeading("Your call"));
                 b.Add(BridgeElements.Hint(
                     "The avatar doesn't answer these — each either departs from the source or turns on " +
@@ -842,14 +862,33 @@ namespace AvatarBridge
             b.Add(BridgeElements.SubHeading("Contacts & shaders"));
             var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
                 "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
-                "of approximating them with pointers and triggers: real proximity and collision " +
-                "tags kept as-is. Contacts are per-client by design — every client simulates " +
-                "every avatar's contacts itself, so reactions work over the network without " +
-                "costing sync bits (confirmed in game). The components aren't in the CCK, so " +
-                "AvatarBridge declares them itself, verified field-for-field against the " +
-                "decompiled game client — the only layout that matters, since the client is " +
-                "what reads the uploaded avatar.",
-                settings.useNativeContacts, v => { settings.useNativeContacts = v; ScheduleRebuild(); });
+                "of approximating them with pointers and triggers: real proximity, box shapes and " +
+                "collision tags kept as-is.\n\n" +
+                "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system writes " +
+                "its parameter straight at the Animator, and the sync cache only fills when " +
+                "something writes through the avatar's animator manager, so the value never " +
+                "leaves your machine.\n\n" +
+                "An effect left permanently ON still appears for everyone — every client is " +
+                "already running it and it never needed the parameter. Only what the contact has " +
+                "to switch on is lost. The legacy pointer/trigger path writes through the manager " +
+                "and does sync, which is why it is the default.\n\n" +
+                "The components also aren't in the CCK: AvatarBridge declares them itself, " +
+                "verified field-for-field against the decompiled game client. Nothing obliges " +
+                "ChilloutVR to keep them as they are, so an avatar built on them can be broken by " +
+                "a client update. Take them only for a shape or receiver type the legacy triggers " +
+                "cannot do.",
+                settings.useNativeContacts, v =>
+                {
+                    settings.useNativeContacts = v;
+                    // Turning native contacts on turns the bridge on with them. The bridge is
+                    // what makes them behave the way a reader expects them to behave, so the
+                    // two arrive together and the broken combination has to be asked for.
+                    if (v)
+                    {
+                        settings.syncNativeContacts = true;
+                    }
+                    ScheduleRebuild();
+                });
             native.SetEnabled(settings.convertContacts);
             b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
             if (!settings.convertContacts)
@@ -859,11 +898,77 @@ namespace AvatarBridge
             }
             if (settings.convertContacts && settings.useNativeContacts)
             {
-                b.Add(new HelpBox(
-                    "Experimental — this talks to a component internal to the game, not the CCK, " +
-                    "so any ChilloutVR update can break it, possibly for good. Treat it as a " +
-                    "bonus, not something the avatar depends on.",
-                    HelpBoxMessageType.Info));
+                // Two states, two boxes. The long warning describes a problem the bridge below
+                // solves, so it is shown only when the bridge is OFF — leaving it up beside a
+                // ticked fix would tell the reader their avatar is broken when it isn't, and a
+                // warning that is wrong half the time stops being read at all.
+                b.Add(settings.syncNativeContacts
+                    ? new HelpBox(
+                        "Native contacts write their parameter straight at the Animator, which " +
+                        "ChilloutVR never transmits — so on their own, what one switches on is " +
+                        "seen by you alone. \"Let native contacts reach other players\" below " +
+                        "handles that, at no cost in sync bits, and it is on. Proximity contacts " +
+                        "are the exception: their smooth range cannot be carried, so they stay " +
+                        "local and the report names them.\n\n" +
+                        "Experimental — this talks to a component internal to the game, not the " +
+                        "CCK, so any ChilloutVR update can break it, possibly for good.",
+                        HelpBoxMessageType.Info)
+                    : new HelpBox(
+                        "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system " +
+                        "writes its parameter straight at the Animator, and ChilloutVR only sends a " +
+                        "value written through the avatar's animator manager — so the value never " +
+                        "leaves your machine and nobody else's copy is ever told to play the effect.\n\n" +
+                        "This is not occasional, and it is not random. An effect left permanently ON " +
+                        "still appears for everyone — not because it syncs, but because every client " +
+                        "is already running it and it never needed the parameter. An effect the " +
+                        "contact has to switch on appears for you alone. That is why two effects on " +
+                        "the same avatar behave differently.\n\n" +
+                        "Tick \"Let native contacts reach other players\" below and this goes away. " +
+                        "The legacy pointer/trigger path syncs on its own, which is why it is the " +
+                        "default. Confirmed in game, every way.\n\n" +
+                        "Experimental — this also talks to a component internal to the game, not the " +
+                        "CCK, so any ChilloutVR update can break it, possibly for good.",
+                        HelpBoxMessageType.Error));
+
+                Toggle sync = null;
+                sync = BridgeElements.Bind("Let native contacts reach other players",
+                    "Fixes the problem above. The contact is pointed at a local parameter and a " +
+                    "small animator layer copies it into the original name with a driver — and a " +
+                    "driver's writes DO go out over the network, because they go through the " +
+                    "avatar's animator manager. Every animation still reads the name it always " +
+                    "read, so nothing else about the avatar changes.\n\n" +
+                    "This costs no sync bits. The parameter a contact drives is already declared " +
+                    "and already counted against ChilloutVR's 3200-bit budget — it has been " +
+                    "transmitted all along, just carrying a value nothing ever wrote.\n\n" +
+                    "On/off contacts only. A proximity contact reports how close the toucher is, " +
+                    "and a driver can only write that range in steps — so it is left exactly as " +
+                    "it is rather than trading the smooth value you see now for a stepped one " +
+                    "other people can see. The report names any it left.\n\n" +
+                    "Receivers the author marked local-only are left alone.",
+                    settings.syncNativeContacts, v =>
+                    {
+                        // Unticking this is the one way to reach the broken combination, so it
+                        // is the one place that asks. Nothing is destroyed by saying yes; what
+                        // is lost is other people seeing the avatar work, which is invisible
+                        // from inside the editor and easy to tick past by accident.
+                        if (!v && !EditorUtility.DisplayDialog(
+                            "Contacts will only fire for you",
+                            "Without this, what a native contact switches on — particles, sounds, " +
+                            "a toggle — plays on your machine and nowhere else. Nobody else's " +
+                            "copy of your avatar is ever told to play it, and you cannot tell " +
+                            "from inside the editor or from wearing it yourself.\n\n" +
+                            "Carrying them costs no sync bits. Turning this off buys nothing " +
+                            "back.\n\n" +
+                            "Leave them local anyway?",
+                            "Leave them local", "Keep them syncing"))
+                        {
+                            sync.SetValueWithoutNotify(true);
+                            return;
+                        }
+                        settings.syncNativeContacts = v;
+                        ScheduleRebuild();
+                    });
+                b.Add(sync);
             }
 
             b.Add(BridgeElements.Row(

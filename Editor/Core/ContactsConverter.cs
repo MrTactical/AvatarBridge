@@ -61,6 +61,45 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{senders.Length} sender(s), {receivers.Length} receiver(s) converted");
             }
+
+            if (receivers.Length > 0 && UseNativeContacts(ctx))
+            {
+                // Both halves of this are read off the shipping client, and they are the reason
+                // native contacts are not the default.
+                //
+                // NAK.Contacts.ContactAnimator.ApplyValue writes the parameter with
+                // animator.SetFloat / SetBool — straight at the Animator. The outbound sync cache
+                // is only updated inside CVRAnimatorManager's own setters, so a value written that
+                // way never leaves the machine. The legacy path does the opposite:
+                // TriggerToContact calls PlayerSetup.ChangeAnimatorParam, which goes through the
+                // manager and therefore syncs.
+                //
+                // Reported by a user who could see their own headpat sparkles and pop sound and
+                // could not work out why nobody else could. The particle that DID work for
+                // everyone turned out to be one that is simply always on.
+                ctx.Report.Warning(Category,
+                    $"Native contacts are on: what those {receivers.Length} receiver(s) SWITCH ON, " +
+                    "only you will see",
+                    "ChilloutVR's native contact system writes its parameter directly at the " +
+                    "Animator, and a value written that way never reaches the network — the sync " +
+                    "cache only fills when something writes through the avatar's animator manager. " +
+                    "Nobody else's copy of the avatar is ever told to play the effect. " +
+                    "This is not occasional and it is not random, which matters because it looks " +
+                    "like both: an effect left permanently ON still appears for everyone, not " +
+                    "because it syncs but because every client is already running it and it never " +
+                    "needed the parameter, while an effect the contact has to switch on appears " +
+                    "for you alone. Two effects on one avatar behaving differently is this, every " +
+                    "time. " +
+                    "The legacy pointer/trigger path does not have the problem: it writes through " +
+                    "the manager and syncs. " +
+                    "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
+                    "AvatarBridge declares them itself against the decompiled client, and nothing " +
+                    "obliges ChilloutVR to keep them as they are. An avatar built on them can be " +
+                    "broken by a client update with no warning and no fix but reconverting. " +
+                    "Turn \"Use ChilloutVR's native contacts\" OFF unless you specifically need box " +
+                    "shapes or a receiver type the legacy triggers do not have, and expect to test " +
+                    "anything you build on them with a second person.");
+            }
         }
 
         static void ConvertSender(BridgeContext ctx, VRCContactSender sender)
@@ -516,13 +555,56 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
+            // The contact writes a LOCAL parameter and a driver copies it into the one the
+            // animations already read. Costs no sync bits that were not already being spent:
+            // the original is unprefixed, so ChilloutVR has always counted it against the 3200
+            // and always transmitted it — it simply transmitted a value nothing ever wrote,
+            // because the native path writes at the Animator and never through the manager.
+            // The bridge does not buy bits, it makes bits already paid for do something.
+            //
+            // localOnly receivers are left alone: the author asked for local, and honouring that
+            // is the whole point of the flag.
+            //
+            // PROXIMITY receivers are left alone too, and that is not an oversight. A driver
+            // writes a value on entering a state, so it can carry an on/off reading exactly and
+            // an analog one only in steps — and the steps would replace the smooth reading the
+            // WEARER gets today. Trading their working analog contact for a stepped one other
+            // people can see is not a trade this tool makes silently, so a proximity receiver
+            // keeps behaving exactly as it does without the option, and the report says so.
+            string driven = receiver.parameter;
+            bool analog = typeName.Contains("Proximity");
+            if (ctx.Settings.syncNativeContacts && !receiver.localOnly
+                && !driven.StartsWith("#", System.StringComparison.Ordinal))
+            {
+                if (analog)
+                {
+                    ctx.Report.Skipped(Category, PathOf(ctx, receiver.transform),
+                        $"\"{driven}\" is a proximity contact, so it is not carried to other " +
+                        "players even with the option on: it reports how close the toucher is, " +
+                        "and that whole range cannot be carried without replacing the smooth " +
+                        "value you see now with a handful of steps. It behaves exactly as it " +
+                        "would with the option off. On/off contacts on this avatar are carried " +
+                        "normally. Switch this one to the legacy contact path if other players " +
+                        "need to see what it drives.");
+                }
+                else
+                {
+                    string local = "#" + driven + "_contact";
+                    ctx.BridgedContacts.Add((local, driven));
+                    driven = local;
+                }
+            }
+
             var animator = host.AddComponent(FindType(NakAnimator));
             SetMember(animator, "animator", ctx.Target.GetComponent<Animator>());
-            SetMember(animator, "parameter", receiver.parameter);
+            SetMember(animator, "parameter", driven);
 
             ctx.ContactParameters.Add(receiver.parameter);
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
-                $"{typeName} receiver -> native ContactReceiver driving \"{receiver.parameter}\"" +
+                $"{typeName} receiver -> native ContactReceiver driving \"{driven}\"" +
+                (driven != receiver.parameter
+                    ? $", carried to \"{receiver.parameter}\" by a driver so other players see it"
+                    : "") +
                 (receiver.localOnly ? " (localOnly preserved)" : ""));
             Object.DestroyImmediate(receiver);
         }

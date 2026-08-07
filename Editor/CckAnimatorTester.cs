@@ -1244,32 +1244,31 @@ namespace AvatarBridge
             var declared = ControllerParameterList(avatar);
             var faceParams = declared.Where(AvatarFeatureDetect.IsFaceTrackingParameter).ToList();
 
+            // Native is checked FIRST, before concluding there is no rig. A native avatar declares
+            // no per-expression parameters — that is the whole point of it, the component reads the
+            // headset and writes the mesh with no animator in the loop — so a parameter count of
+            // ZERO is what a correctly converted native avatar looks like. Checking the count
+            // first told an avatar with a fully mapped CVRFaceTracking component that it had no
+            // face tracking and should be converted again, which is the opposite of true.
+            if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
+            {
+                var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
+                if (nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
+                    && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-"))
+                {
+                    BuildNativeFaceShapeSliders(card, nativeSetup);
+                    return card;
+                }
+            }
+
             if (faceParams.Count == 0)
             {
                 card.Body.Add(BridgeElements.Hint(
-                    "No face tracking parameters on this avatar's controller. Convert with " +
-                    "\"CVR-VRCFT\" face tracking selected, or bring an avatar that carries its " +
-                    "own Unified Expressions rig."));
+                    "No face tracking on this avatar: the controller declares no face-tracking " +
+                    "parameters and there is no CVRFaceTracking component with shapes mapped. " +
+                    "Convert with \"Native CVR Component\" or \"CVR-VRCFT\" selected, or bring an " +
+                    "avatar that carries its own Unified Expressions rig."));
                 return card;
-            }
-
-            // NATIVE face tracking declares no per-expression parameters, so the parameter walk
-            // below would build an empty card. ChilloutVR's CVRFaceTracking component reads the
-            // headset and writes blendshapes straight onto the mesh — there is no animator in the
-            // loop at all, which is the entire point of the native path. The only parameter such
-            // an avatar carries is the FacialExpressionsDisabled gate, so this card rendered one
-            // lone toggle and looked broken while being perfectly correct.
-            //
-            // The mapping is still testable, just not through the animator: drive the mapped
-            // blendshapes directly, which is what the client does with them.
-            if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
-            {
-                var native = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
-                if (native != null && native.FaceMesh != null && native.FaceBlendShapes != null)
-                {
-                    BuildNativeFaceShapeSliders(card, native);
-                    return card;
-                }
             }
 
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
