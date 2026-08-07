@@ -629,8 +629,18 @@ namespace AvatarBridge
                     // The menu needs this name synced, so the contact cannot have it. Give the
                     // contact a local name of its own and let a driver copy the value across —
                     // a driver writes through the animator manager, so it is transmitted.
+                    //
+                    // Recorded once per PAIR, not once per receiver. Several receivers sharing a
+                    // parameter is ordinary — a left and a right nipple, ear or hand all driving
+                    // one name — and they share the local name too, so a second entry would build
+                    // a second layer reading the same source and writing the same target. Those
+                    // duplicates agree with each other, so nothing misbehaves; they are simply a
+                    // layer and a driver call of pure waste on most symmetric avatars.
                     string local = "#" + driven + "_contact";
-                    ctx.BridgedContacts.Add((local, driven));
+                    if (!ctx.BridgedContacts.Contains((local, driven)))
+                    {
+                        ctx.BridgedContacts.Add((local, driven));
+                    }
                     driven = local;
                 }
                 else
