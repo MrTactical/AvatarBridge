@@ -11,6 +11,7 @@ using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
@@ -432,6 +433,7 @@ namespace AvatarBridge
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
             RewirePhysicsToggles(master, ctx);
+            AuditSizeBlendshapes(master, ctx);
             RepairClipPaths(master, ctx);
             AuditClipBindings(master, ctx);
             AuditMaterialProperties(master, ctx);
@@ -735,12 +737,41 @@ namespace AvatarBridge
         /// removing one re-numbers its neighbours and changes how the rest blend. A filler clip in
         /// place keeps every threshold where the author put it.
         /// </summary>
+        /// <summary>
+        /// Parameters the CVR menu drives with a SLIDER, i.e. continuously. A dropdown or toggle
+        /// lands its parameter exactly on a child's threshold; a slider passes between them, and
+        /// that is the difference that decides whether a hole in a 1D tree may be dropped.
+        /// </summary>
+        static HashSet<string> SliderParameterNames(BridgeContext ctx)
+        {
+            var names = new HashSet<string>();
+            var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings
+                : null;
+            if (settings == null)
+            {
+                return names;
+            }
+            foreach (var entry in settings)
+            {
+                if (entry != null && entry.setting is CVRAdvancesAvatarSettingSlider
+                    && !string.IsNullOrEmpty(entry.machineName))
+                {
+                    names.Add(entry.machineName);
+                }
+            }
+            return names;
+        }
+
         static void FillEmptyMotionSlots(BridgeContext ctx, AnimatorController master)
         {
             AnimationClip filler = null;
             int filled = 0;
             int states = 0;
+            int emptied = 0;
             var seen = new HashSet<Motion>();
+            var sliders = new SortedSet<string>(StableSampleOrder.Instance);
+            var sliderParameters = SliderParameterNames(ctx);
 
             AnimationClip Filler()
             {
@@ -767,6 +798,56 @@ namespace AvatarBridge
                     return;
                 }
                 var children = tree.children;
+
+                // A slider's holes are DROPPED rather than filled, and this is the one place
+                // where the filler is worse than the hole.
+                //
+                // Unity blends a 1D tree between the two children either side of the parameter.
+                // A null child is not one of those two — the weight goes to the real motions
+                // across the gap — which is how a slider with three real clips spread over
+                // thirty-eight slots still travels smoothly in VRChat. The filler is a REAL
+                // clip, so it becomes an eligible neighbour and takes that weight, and it
+                // animates nothing. Reported from an avatar whose "Storage Upgrade" slider did
+                // nothing at all until 0.97 and then jumped: thirty-three of its thirty-eight
+                // children were fillers.
+                //
+                // Only for a CVR Slider. A dropdown's empty option is a deliberate "show
+                // nothing", and the parameter lands exactly on it rather than between children,
+                // so dropping it there would let its neighbours bleed into a position the author
+                // meant to be empty — the shape 3.6.x already had to learn (see the
+                // selector-with-one-empty-option work).
+                //
+                // The thresholds are pinned first. The objection recorded above — that removing
+                // a child re-numbers its neighbours — is only true while useAutomaticThresholds
+                // is on, which spreads children evenly on every edit. Captured and written back
+                // explicitly, every surviving motion keeps the position the author gave it.
+                if (tree.blendType == BlendTreeType.Simple1D
+                    && !string.IsNullOrEmpty(tree.blendParameter)
+                    && sliderParameters.Contains(tree.blendParameter))
+                {
+                    var kept = new List<ChildMotion>();
+                    foreach (var child in children)
+                    {
+                        if (child.motion != null && !IsCurveless(child.motion, filler))
+                        {
+                            kept.Add(child);
+                        }
+                    }
+                    int dropped = children.Length - kept.Count;
+                    if (dropped > 0 && kept.Count >= 2)
+                    {
+                        foreach (var child in kept)
+                        {
+                            Walk(child.motion);
+                        }
+                        tree.useAutomaticThresholds = false;
+                        tree.children = kept.ToArray();
+                        emptied += dropped;
+                        sliders.Add(tree.blendParameter);
+                        return;
+                    }
+                }
+
                 bool changed = false;
                 for (int i = 0; i < children.Length; i++)
                 {
@@ -819,6 +900,21 @@ namespace AvatarBridge
             {
                 EditorUtility.SetDirty(master);
                 AssetDatabase.SaveAssets();
+            }
+
+            if (emptied > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{emptied} empty slot(s) removed from {sliders.Count} slider tree(s) instead of filled",
+                    $"{string.Join(", ", sliders)} — a slider blends between the two children either side " +
+                    "of its value, and an empty slot is not one of them: the weight passes across the gap " +
+                    "to the real motions, which is how a few clips spread over many slots still travel " +
+                    "smoothly. Filling those slots with a placeholder would make it an eligible neighbour " +
+                    "that animates nothing, and the slider would do nothing until its value reached a real " +
+                    "clip — reported from an avatar whose size slider did nothing until 0.97 and then " +
+                    "jumped. Every surviving motion keeps the threshold the author gave it. Dropdowns and " +
+                    "toggles are left alone: their empty options are deliberate, and the parameter lands " +
+                    "on them rather than between them.");
             }
 
             if (filled > 0)
@@ -968,7 +1064,9 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ setup ----
 
-        static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
+        /// <summary>Internal so the physics pass can read the same source layers: it runs BEFORE
+        /// the merge and still needs to know how far an animated blendshape travels.</summary>
+        internal static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
         {
             var result = new List<(VRCAvatarDescriptor.AnimLayerType, AnimatorController)>();
             foreach (var layer in ctx.SourceDescriptor.baseAnimationLayers)
@@ -8400,6 +8498,233 @@ namespace AvatarBridge
         /// is created inactive). Clips are cloned before modification; they may be the source
         /// avatar's own assets.
         /// </summary>
+        /// <summary>
+        /// Names the chains whose size is driven by a blendshape rather than by their bones.
+        ///
+        /// A converted chain's collision radius is measured once, from the mesh as the avatar is
+        /// saved. Where a size slider scales BONES the cloth follows for free — the bones it
+        /// simulates are the ones being scaled. Where the slider is a pure blendshape the bones
+        /// never move, so the radius stays at whatever the saved pose measured and collision is
+        /// right at exactly one slider position.
+        ///
+        /// This cannot be fixed by driving the radius from the same animation. MagicaCloth2 does
+        /// evaluate its radius curve per frame, so the value is live, but the only properties its
+        /// animation wrapper forwards to the solver are animationPoseRatio, gravity, damping,
+        /// world and local inertia, wind influence and blend weight. A curve on the radius lands
+        /// in the serialized data and is never read. So the honest thing is to say so, and say
+        /// which slider.
+        /// </summary>
+        static void AuditSizeBlendshapes(AnimatorController master, BridgeContext ctx)
+        {
+            var chains = ctx.ConvertedPhysicsChains;
+            if (chains == null || chains.Count == 0)
+            {
+                return;
+            }
+            var root = ctx.Target.transform;
+
+            // chain name -> the shapes that resize it
+            var driven = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+            var seen = new HashSet<AnimationClip>();
+
+            // How far each shape travels across the WHOLE controller, not within one clip. A
+            // toggle is a pair of clips each holding a constant — "on" pins the shape to 100 and
+            // "off" pins it to 0 — so judged clip by clip nothing ever moves and this found
+            // nothing on an avatar whose sliders visibly resize it. The span that matters is
+            // between the extremes any state can reach.
+            var span = new Dictionary<EditorCurveBinding, Vector2>();
+
+            void Inspect(AnimationClip clip)
+            {
+                if (clip == null || !seen.Add(clip))
+                {
+                    return;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(SkinnedMeshRenderer)
+                        || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve == null || curve.keys.Length == 0)
+                    {
+                        continue;
+                    }
+                    float low = curve.keys[0].value, high = low;
+                    foreach (var key in curve.keys)
+                    {
+                        low = Mathf.Min(low, key.value);
+                        high = Mathf.Max(high, key.value);
+                    }
+                    if (span.TryGetValue(binding, out var reach))
+                    {
+                        low = Mathf.Min(low, reach.x);
+                        high = Mathf.Max(high, reach.y);
+                    }
+                    span[binding] = new Vector2(low, high);
+                }
+            }
+
+            void Walk(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    Inspect(clip);
+                }
+                else if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Walk(child.motion);
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        Walk(child.state.motion);
+                    }
+                });
+            }
+
+            // Which bones a shape actually MOVES, from its own deltas. Matching on the renderer's
+            // bone list instead flagged every chain on the avatar against every shape on the body:
+            // a body mesh lists the whole armature, so a tongue shape came out "resizing" the arm
+            // ribbons, and eighteen chains were named against forty shapes apiece. Deltas are the
+            // difference between listing a bone and deforming around it.
+            var movedCache = new Dictionary<string, HashSet<Transform>>(StringComparer.Ordinal);
+            HashSet<Transform> BonesMovedBy(SkinnedMeshRenderer renderer, string shapeName, string key)
+            {
+                if (movedCache.TryGetValue(key, out var known))
+                {
+                    return known;
+                }
+                var moved = new HashSet<Transform>();
+                movedCache[key] = moved;
+                var mesh = renderer.sharedMesh;
+                var bones = renderer.bones;
+                if (mesh == null || bones == null)
+                {
+                    return moved;
+                }
+                int shape = mesh.GetBlendShapeIndex(shapeName);
+                int frames = shape >= 0 ? mesh.GetBlendShapeFrameCount(shape) : 0;
+                if (frames <= 0)
+                {
+                    return moved;
+                }
+                BoneWeight[] weights;
+                Vector3[] deltas;
+                try
+                {
+                    weights = mesh.boneWeights;
+                    deltas = new Vector3[mesh.vertexCount];
+                    mesh.GetBlendShapeFrameVertices(shape, frames - 1, deltas, null, null);
+                }
+                catch
+                {
+                    return moved;
+                }
+                if (weights.Length != deltas.Length)
+                {
+                    return moved;
+                }
+                for (int i = 0; i < deltas.Length; i++)
+                {
+                    // A millimetre. Below that the shape is touching this vertex incidentally.
+                    if (deltas[i].sqrMagnitude < 1e-6f)
+                    {
+                        continue;
+                    }
+                    var w = weights[i];
+                    if (w.weight0 >= 0.2f && w.boneIndex0 < bones.Length && bones[w.boneIndex0] != null) moved.Add(bones[w.boneIndex0]);
+                    if (w.weight1 >= 0.2f && w.boneIndex1 < bones.Length && bones[w.boneIndex1] != null) moved.Add(bones[w.boneIndex1]);
+                    if (w.weight2 >= 0.2f && w.boneIndex2 < bones.Length && bones[w.boneIndex2] != null) moved.Add(bones[w.boneIndex2]);
+                    if (w.weight3 >= 0.2f && w.boneIndex3 < bones.Length && bones[w.boneIndex3] != null) moved.Add(bones[w.boneIndex3]);
+                }
+                return moved;
+            }
+
+            foreach (var pair in span)
+            {
+                // A shape every state pins to the same number resizes nothing.
+                if (pair.Value.y - pair.Value.x < 1f)
+                {
+                    continue;
+                }
+                var binding = pair.Key;
+                var target = string.IsNullOrEmpty(binding.path) ? root : root.Find(binding.path);
+                var renderer = target != null ? target.GetComponent<SkinnedMeshRenderer>() : null;
+                if (renderer == null || renderer.bones == null)
+                {
+                    continue;
+                }
+                string shapeName = binding.propertyName.Substring("blendShape.".Length);
+                var moved = BonesMovedBy(renderer, shapeName, binding.path + "|" + shapeName);
+                if (moved.Count == 0)
+                {
+                    continue;
+                }
+                foreach (var chain in chains)
+                {
+                    var chainRoot = chain.Root != null ? chain.Root
+                        : chain.Source != null ? chain.Source.transform : null;
+                    if (chainRoot == null)
+                    {
+                        continue;
+                    }
+                    foreach (var bone in moved)
+                    {
+                        if (bone != chainRoot && !bone.IsChildOf(chainRoot))
+                        {
+                            continue;
+                        }
+                        if (!driven.TryGetValue(chainRoot.name, out var shapes))
+                        {
+                            driven[chainRoot.name] = shapes = new SortedSet<string>(StringComparer.Ordinal);
+                        }
+                        shapes.Add(shapeName);
+                        break;
+                    }
+                }
+            }
+
+            if (driven.Count == 0)
+            {
+                return;
+            }
+            // Four names is enough to recognise the slider; a chain deformed by twenty shapes
+            // does not become clearer by listing all twenty.
+            var lines = driven.Select(entry =>
+            {
+                var shown = entry.Value.Take(4).ToList();
+                string extra = entry.Value.Count > shown.Count
+                    ? $", +{entry.Value.Count - shown.Count} more" : "";
+                return $"\"{entry.Key}\" ({string.Join(", ", shown)}{extra})";
+            }).ToList();
+            // Approximated rather than a Warning: nothing is broken, the size is simply fixed
+            // where a slider is not. Calling it a warning puts thirteen alarms on an avatar that
+            // converted correctly.
+            ctx.Report.Approximated("PhysBones -> MagicaCloth2",
+                $"{driven.Count} chain(s) are resized by a blendshape, so their collision size " +
+                "cannot follow the slider",
+                string.Join("; ", lines) + " — each of these chains has its collision sized from " +
+                "the mesh as this avatar is saved, which is the right size at the slider position " +
+                "it was saved at and too small or too large everywhere else. Sliders that work by " +
+                "SCALING BONES do not have this problem: the cloth simulates those bones, so it " +
+                "follows for free. A pure blendshape moves no bones, and MagicaCloth2 will not " +
+                "accept a radius driven by animation — of its parameters only pose ratio, gravity, " +
+                "damping, inertia, wind and blend weight can be animated at all. If one of these " +
+                "sliders is the one people will actually use, set it where you want it to be " +
+                "correct BEFORE converting, and convert again.");
+        }
+
         static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
@@ -8422,8 +8747,12 @@ namespace AvatarBridge
             }
 
             var rewired = new Dictionary<AnimationClip, AnimationClip>();
-            int curvesAdded = 0, clipsTouched = 0;
+            int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0;
             var physicslessStyles = new HashSet<Transform>();
+            // Chains left running when their style hides, because a mesh outside the toggled
+            // object rides them. Named in the report so "this cloth never stops" is explained
+            // rather than mysterious.
+            var sharedChains = new SortedSet<string>(StringComparer.Ordinal);
 
             // PhysBone on/off curves with nowhere to land: the chain they name produced no
             // physics, so there is no component to retarget them at. The curve then points at a
@@ -8443,6 +8772,63 @@ namespace AvatarBridge
                 {
                     if (chain.Source != null &&
                         (chain.Source.transform == container || chain.Source.transform.IsChildOf(container)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Everything that depends on a chain's simulated bones: a skinned mesh weighted to
+            // any bone at or under the chain root, and anything parented beneath one of those
+            // bones — a clip, a bell, a prop riding a hair strand. Built once per chain, because
+            // deciding whether a chain may be switched off is the only question that needs it.
+            var ridersByChain = new Dictionary<BridgeContext.ConvertedPhysicsChain, List<Transform>>();
+            List<Transform> RidersOf(BridgeContext.ConvertedPhysicsChain chain)
+            {
+                if (ridersByChain.TryGetValue(chain, out var known))
+                {
+                    return known;
+                }
+                var riders = new List<Transform>();
+                var chainRoot = chain.Root != null ? chain.Root
+                    : chain.Source != null ? chain.Source.transform : null;
+                if (chainRoot != null)
+                {
+                    foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+                    {
+                        bool rides = renderer.transform == chainRoot
+                            || renderer.transform.IsChildOf(chainRoot);
+                        if (!rides && renderer is SkinnedMeshRenderer skinned)
+                        {
+                            foreach (var bone in skinned.bones)
+                            {
+                                if (bone != null && (bone == chainRoot || bone.IsChildOf(chainRoot)))
+                                {
+                                    rides = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (rides)
+                        {
+                            riders.Add(renderer.transform);
+                        }
+                    }
+                }
+                ridersByChain[chain] = riders;
+                return riders;
+            }
+
+            // True when a mesh OUTSIDE the toggled object rides this chain — the one case where
+            // switching the cloth off with the object is wrong, because something still visible
+            // needs those bones moving. Anything inside the toggled object is hidden along with
+            // it, so its physics can stop.
+            bool ChainSharedOutside(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
+            {
+                foreach (var rider in RidersOf(chain))
+                {
+                    if (rider != animated && !rider.IsChildOf(animated))
                     {
                         return true;
                     }
@@ -8578,9 +8964,22 @@ namespace AvatarBridge
                             {
                                 continue;
                             }
-                            target = EditorCurveBinding.FloatCurve(
-                                AnimationUtility.CalculateTransformPath(host, root),
-                                typeof(GameObject), "m_IsActive");
+                            // Onto the COMPONENT, not the holder's active flag. Holders are
+                            // created active now, with a cloth that starts off carrying that
+                            // state on its own enabled flag (see MagicaClothWriter) — so an
+                            // activation copied onto m_IsActive lands on an object that is
+                            // already active and changes nothing, leaving the cloth off forever.
+                            //
+                            // Measured on an avatar whose Belly, Butt, Thigh, Loin, Tail, Tongue
+                            // and Lace physics were all still off after the animator had settled,
+                            // with every one of their menu toggles defaulting to ON.
+                            target = chain.Physics != null
+                                ? EditorCurveBinding.FloatCurve(
+                                    AnimationUtility.CalculateTransformPath(host, root),
+                                    chain.Physics.GetType(), "m_Enabled")
+                                : EditorCurveBinding.FloatCurve(
+                                    AnimationUtility.CalculateTransformPath(host, root),
+                                    typeof(GameObject), "m_IsActive");
                         }
                         else
                         {
@@ -8616,18 +9015,35 @@ namespace AvatarBridge
                         }
                         if (objectToggle && !CurveActivates(curve))
                         {
-                            // Mirror ACTIVATIONS only, never deactivations. Turning a holder
-                            // off with the style that owned it strangles any OTHER style whose
-                            // bones ride the same chain: a tester's "Vampy" hair has no
-                            // PhysBone of its own — its rig is grafted onto the base hair's
-                            // simulated bones at bake time — and the base cloth being switched
-                            // off with the base style's mesh left it rigid. A hidden style's
-                            // cloth staying alive costs a little simulation of bones nobody
-                            // sees; a shared chain being killed is a dead hairstyle. Where the
-                            // avatar uses Write Defaults, holders still switch off for free —
-                            // the added ON curve stops being written and the holder falls back
-                            // to its scene default, exactly like the hair objects themselves.
-                            continue;
+                            // A DEACTIVATION. This used to be dropped unconditionally, which
+                            // left every cloth a toggle switched on running forever: the ON
+                            // curve is the only one that reaches the component, so the first
+                            // time the style appears the physics latches on and no later state
+                            // takes it back. ChilloutVR does not restore Write Defaults, so
+                            // there is no fallback to a scene value the way there is in
+                            // VRChat — a binding nothing writes simply keeps its last value.
+                            // Measured on an avatar where "Tail-alt" and "V-killer" each left
+                            // a cloth enabled after being switched off again.
+                            //
+                            // The reason the blanket drop existed is real, just far narrower
+                            // than the rule that implemented it: a tester's "Vampy" hair has
+                            // no PhysBone of its own, its rig rides the base hair's simulated
+                            // bones, and switching that chain off with the base style's mesh
+                            // left the visible add-on rigid.
+                            //
+                            // That risk needs a CONTAINER being hidden. When the animation
+                            // switches the PhysBone's OWN object, it is not hiding anything —
+                            // it is stopping that one chain, which is precisely what VRChat
+                            // did with the same curve, and what a menu entry named
+                            // "Belly-physics" is for. The mesh stays on screen and goes
+                            // rigid, deliberately. So only a container deactivation has to
+                            // prove that nothing still visible rides these bones.
+                            if (source != animated && ChainSharedOutside(chain, animated))
+                            {
+                                sharedChains.Add(chain.Source.name);
+                                continue;
+                            }
+                            deactivationsMirrored++;
                         }
                         if (additions == null)
                         {
@@ -8803,10 +9219,26 @@ namespace AvatarBridge
                     "outfit toggles) now activate the generated physics too. Without this, a chain " +
                     "belonging to a style that was inactive at conversion time could never wake up — " +
                     "its cloth lives on its own object at the avatar root, on a path the original " +
-                    "animations never animated. Only activations are mirrored: styles that share " +
-                    "another style's simulated bones (add-on hair grafted onto a base rig) must not " +
-                    "have that chain switched off with the base style's mesh, so a hidden style's " +
-                    "cloth may keep simulating — invisible, and harmless.");
+                    "animations never animated. " +
+                    (deactivationsMirrored > 0
+                        ? $"{deactivationsMirrored} of those curve(s) switch the physics back OFF " +
+                          "again when the style hides, which matters here because ChilloutVR does " +
+                          "not restore a binding nothing writes: without the off curve the cloth " +
+                          "would stay running from the first time it appeared."
+                        : "No style here switches its physics back off."));
+            }
+
+            if (sharedChains.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
+                    string.Join(", ", sharedChains) + " — each of these is switched ON with the " +
+                    "object it belongs to but never switched off, because a mesh OUTSIDE that " +
+                    "object is skinned to the same bones. Add-on hair grafted onto a base " +
+                    "hairstyle's rig is the usual shape. Stopping the chain with the base style's " +
+                    "mesh would leave the add-on rigid, so it is left running instead: it " +
+                    "simulates bones nobody can see, which costs a little performance and looks " +
+                    "like nothing at all.");
             }
 
             if (strandedToggles.Count > 0)

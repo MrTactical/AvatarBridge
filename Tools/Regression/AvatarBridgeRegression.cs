@@ -632,7 +632,6 @@ namespace AvatarBridge.Regression
             autoAssignNearbyColliders = true,
             addPhysicsToRiggedStyles = true,
             // Left off deliberately: both wreck specific avatars rather than exercising a path.
-            transferAngleLimits = false,
             convertToePhysBones = false,
 
             stripGogoLoco = true,

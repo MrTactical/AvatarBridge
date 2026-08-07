@@ -1,7 +1,9 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
 using MagicaCloth2;
@@ -64,18 +66,40 @@ namespace AvatarBridge
             holderName = UniqueChildName(ctx.Target.transform, holderName);
             var holder = new GameObject(holderName);
             holder.transform.SetParent(ctx.Target.transform, false);
+            var cloth = holder.AddComponent<MagicaCloth>();
+
+            // "Off" is carried by the COMPONENT, not by deactivating the holder.
+            //
+            // The holder used to be created inactive, which reads as the obvious mirror of a
+            // PhysBone that started disabled. It is a trap: enabling a component on an inactive
+            // GameObject does nothing, so a clip that switches this chain on has no effect at
+            // all. Reported from an avatar whose "thick" cloth variant never appeared — its
+            // clips named the right object, the right property and the right script, all three
+            // verified correct, and the object they addressed was switched off.
+            //
+            // RewirePhysicsToggles copies an ACTIVATION of the source's object onto the holder,
+            // which rescues the case where a hairstyle's mesh is toggled. It cannot rescue this
+            // one: that avatar's PhysBone lives on a BONE, while the toggle activates a MESH
+            // object in a different subtree, so there is no activation to copy — only the
+            // PhysBone's own m_Enabled curve, which retargets onto the component and lands on a
+            // dead object.
+            //
+            // Holding the state on the component instead means the same thing in the scene (no
+            // simulation) while leaving the one property every such clip actually drives able
+            // to drive it.
             if (!data.InitiallyActive)
             {
-                holder.SetActive(false);
+                cloth.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
-                    ? "Style was inactive at conversion; cloth created disabled. Its toggle is " +
+                    ? "Style was inactive at conversion; cloth created disabled (the component is " +
+                      "off, its object stays active so a toggle can switch it on). Its toggle is " +
                       "re-wired to activate this cloth — see the Animator section of this report."
-                    : "Source PhysBone was disabled; cloth created disabled. Animator toggles that " +
-                      "activated the original object (hair swaps, outfit toggles) are re-wired to " +
-                      "activate this cloth too — see the Animator section of this report.");
+                    : "Source PhysBone was disabled; cloth created disabled (the component is off, " +
+                      "its object stays active so a toggle can switch it on — a component enabled " +
+                      "on an inactive object never runs). Animator toggles that activated the " +
+                      "original object are re-wired to activate this cloth too — see the Animator " +
+                      "section of this report.");
             }
-
-            var cloth = holder.AddComponent<MagicaCloth>();
             ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
             {
                 Source = data.SourceGameObject,
@@ -89,12 +113,14 @@ namespace AvatarBridge
             // defaults. Still no arithmetic — it swaps one author-tuned baseline for another.
             // MagicaCloth2's ImportJson preserves the structural fields, so this is free to run
             // either side of the wiring below.
-            string preset = null, chainClass = null;
+            string preset = null;
             bool customPreset = false;
+            // Classified whether or not presets are in use: what KIND of chain this is decides
+            // which MagicaCloth2 idiom it becomes, and that question outlives the preset option.
+            var cls = MagicaPresetLibrary.Classify(data);
+            string chainClass = cls.Name;
             if (ctx.Settings.useMagicaPresets)
             {
-                var cls = MagicaPresetLibrary.Classify(data);
-                chainClass = cls.Name;
                 if (!MagicaPresetLibrary.TryApply(sdata, cls, out preset, out customPreset, out string presetError))
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
@@ -105,7 +131,24 @@ namespace AvatarBridge
             }
 
             // --- structure ----------------------------------------------------------------
-            sdata.clothType = ClothProcess.ClothType.BoneCloth;
+            //
+            // Which of MagicaCloth2's two idioms this chain IS, rather than translating a
+            // PhysBone's structure and hoping. A PhysBone is one shape for everything: a chain
+            // of bones with a rotational spring at each joint. MagicaCloth2 has two, and picking
+            // the wrong one costs more than any coefficient.
+            //
+            // A breast, a belly, a thigh is not a chain — it is a soft body anchored to a bone,
+            // and BoneSpring is MagicaCloth2's word for that: it holds the bone near its rest
+            // position with a spring, and it offers a SELECTIVE collision list, so the parts
+            // other people can touch are chosen rather than every particle presenting itself.
+            // Hair, tails, skirts and accessories genuinely are chains, and stay BoneCloth.
+            //
+            // This must run AFTER the preset import: ImportJson carries clothType through its
+            // TempBuffer, so a preset applied later would silently take the idiom back.
+            bool softBody = chainClass != null && SoftBodyClasses.Contains(chainClass);
+            sdata.clothType = softBody
+                ? ClothProcess.ClothType.BoneSpring
+                : ClothProcess.ClothType.BoneCloth;
 
             // "Is Animated" on the source PhysBone means exactly one thing: an animation moves
             // these bones. MagicaCloth2 settles a chain back to its INITIAL pose by default, so
@@ -134,10 +177,37 @@ namespace AvatarBridge
             //
             // Presets do not carry rootRotation ("[NG] Export/Import with Presets" in MagicaCloth2's
             // own source), so this survives preset application in either order.
+            //
+            // And the other side of that same flag, which was left at MagicaCloth2's 0.5 until
+            // now: when VRChat did NOT pin the root, it SIMULATED it. PhysBone integrates the
+            // child endpoints and rotates the root to follow, so the chain bends at its first
+            // joint. MagicaCloth2 instead holds every root bone still, and at rootRotation 0.5 it
+            // gives that root only half the rotation its children ask for — so every converted
+            // chain came out one joint stiffer at the base than the source, which is the shape of
+            // "hair converts too stiff".
+            //
+            // 1.0 is "child-based" in MagicaCloth2's own words: the root turns to follow what
+            // hangs from it, which is what PhysBone was already doing. This is the closest either
+            // solver gets to the other without simulating the root's PARENT — usually a humanoid
+            // bone like Chest or Hips, where physics would fight the animator and IK every frame.
             if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
             {
                 sdata.rootRotation = 0f;
             }
+            else
+            {
+                sdata.rootRotation = 1f;
+            }
+
+            ctx.Report.Converted(Category, data.Root.name,
+                data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore"
+                    ? "Root held still (rotation 0) — the source's Multi Child Type is Ignore, which pins a "
+                      + "branching root in VRChat and simulates only the branches below it."
+                    : "Root turns with the chain (rotation 1) — VRChat simulates a PhysBone's root bone, "
+                      + "rotating it to follow the children it integrates, so the chain bends at its FIRST "
+                      + "joint. MagicaCloth2 holds root bones still and would give this one half the "
+                      + "rotation its children ask for, leaving the chain a joint stiffer at the base than "
+                      + "the original. Lower Root Rotation on the cloth if the base moves more than you want.");
 
             if (data.HumanoidExclusions.Count > 0)
             {
@@ -207,6 +277,38 @@ namespace AvatarBridge
 
             // --- the two opt-in extras -----------------------------------------------------
 
+            // Particle size from the mesh. BEFORE the bound below, so a measurement that comes
+            // back wider than the chain can carry is still railed in rather than trusted.
+            if (ctx.Settings.fitRadiusToMesh)
+            {
+                float measured = MeasureMeshRadius(ctx, data, out int samples, out bool grownForReach);
+                if (measured > 0f)
+                {
+                    float before = sdata.radius.value;
+                    sdata.radius.value = measured;   // direct, so any depth curve on it survives
+                    ctx.Report.Converted(Category, data.Root.name,
+                        $"Particle radius {before:0.###} → {measured:0.###}, measured from the mesh these " +
+                        $"bones move ({samples} vertex sample(s)). MagicaCloth2's radius is the collision " +
+                        "body of a simulated bone; left at the preset's value it is the same size on a " +
+                        "breast as on a hair strand, and collision in game covers a fraction of what you " +
+                        "can see. The source PhysBone's radius is not used for this — in VRChat it only " +
+                        "governs contact with PhysBone colliders, so it is routinely near zero." +
+                        (grownForReach
+                            ? " This chain is measured at the LARGEST an animated blendshape makes it, " +
+                              "not at the size it is saved: the radius cannot follow a slider in game, " +
+                              "so it is set to cover the body when the slider is up rather than to fit " +
+                              "it when down."
+                            : ""));
+                }
+                else
+                {
+                    ctx.Report.Skipped(Category, data.Root.name,
+                        "Particle radius left at the preset's value — no mesh vertices are weighted to " +
+                        "these bones (or the mesh could not be read), so there was nothing to measure. " +
+                        "Set it on the cloth by hand if this chain collides at the wrong size.");
+                }
+            }
+
             // Particle radius bound. Not a conversion — a safety rail. MagicaCloth2's radius is
             // the particle size, and a particle wider than the gap between bones overlaps its
             // neighbour, which the solver resolves by shoving them apart. Applies to the
@@ -239,15 +341,21 @@ namespace AvatarBridge
                 DerivePhysics(ctx, data, sdata);
             }
 
-            if (ctx.Settings.fitToPhysBone)
+            if (softBody)
             {
-                FitToPhysBone(ctx, data, sdata);
+                ConfigureSoftBody(ctx, data, sdata, chainClass);
             }
 
-            if (ctx.Settings.transferAngleLimits)
+            if (ctx.Settings.fitToPhysBone)
             {
-                ApplyAngleLimit(ctx, data, sdata);
+                FitToPhysBone(ctx, data, sdata, softBody);
             }
+
+            if (ctx.Settings.boundSwingToSourceLimit)
+            {
+                ApplyMotionLeash(ctx, data, sdata);
+            }
+
 
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
@@ -506,9 +614,10 @@ namespace AvatarBridge
                            $"\"{chainClass}\" chain)";
             }
             string fate = ctx.Settings.derivePhysicsFromPhysBone
-                ? "Pull, spring and stiffness were converted into damping and angle restoration; gravity, " +
-                  "immobile and radius are handled separately. Tune the cloth directly if this chain wants " +
-                  "a different feel."
+                ? "Pull, spring and stiffness were converted into damping and angle restoration; gravity " +
+                  "and immobile are handled separately, and the particle radius is measured from the mesh " +
+                  "rather than taken from this number. Tune the cloth directly if this chain wants a " +
+                  "different feel."
                 : "Those numbers were not transferred — the cloth uses the baseline above. Turn on \"Derive " +
                   "physics from the PhysBone\" to convert pull, spring and stiffness, or tune the cloth by hand.";
 
@@ -516,17 +625,6 @@ namespace AvatarBridge
                 $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
                 $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
-
-            if (data.LimitTypeName != "None" && !string.IsNullOrEmpty(data.LimitTypeName)
-                && !ctx.Settings.transferAngleLimits)
-            {
-                bool polar = data.LimitTypeName == "Polar";
-                float limitAngle = polar ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"{data.LimitTypeName} limit ({limitAngle:0}°) not applied. To add it, tick Angle Limit on " +
-                    $"this cloth and set Limit Angle to {limitAngle:0}, then lower Stiffness until it stops " +
-                    "snapping — or turn on \"Transfer angle limits\" to do this for every chain.");
-            }
 
             if (data.MaxStretch > 0f || data.MaxSquish > 0f)
             {
@@ -594,6 +692,24 @@ namespace AvatarBridge
         {
             bool advanced = data.IsAdvancedIntegration;
 
+            // The preset's own numbers, read BEFORE they are overwritten, and kept as a floor.
+            //
+            // The derivation below is faithful — re-derived by hand against a reported avatar it
+            // reproduces the shipped numbers exactly — but faithful to a loose PhysBone means
+            // mush in MagicaCloth2. A chain of pull 0.22 against spring 0.81 derives to damping
+            // 0.135 and restoration 0.048, where MagicaCloth2's SOFTEST stock spring preset is
+            // 0.20/0.20 and its hard one 0.30/0.60. Reported from the wild as breasts that swing
+            // far too freely, and confirmed by hand: the same chain on the Hard Spring preset
+            // "looks great".
+            //
+            // MagicaCloth2's authors evidently treat their preset values as the floor of a
+            // usable spring, and those presets are already matched to the KIND of chain this is.
+            // So the derivation may FIRM a preset with the source's character and may not soften
+            // it below that baseline. Each end is floored on its own, so wherever the source
+            // asked for more than the floor its shape still carries.
+            float dampFloor = sdata.damping.value;
+            float restFloor = sdata.angleRestorationConstraint.stiffness.value;
+
             // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
             // at the bone's depth, so root and tip can want quite different things.
             float pullRoot = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0f);
@@ -605,6 +721,9 @@ namespace AvatarBridge
 
             float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
             float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
+            float dampDerived = Mathf.Max(dampRoot, dampTip);
+            dampRoot = Mathf.Max(dampRoot, dampFloor);
+            dampTip = Mathf.Max(dampTip, dampFloor);
             PhysBoneSolverMap.MapCurve(dampRoot, dampTip,
                 out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
             sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
@@ -613,18 +732,31 @@ namespace AvatarBridge
                 pullRoot, springRoot, stiffRoot, advanced, out bool satRoot);
             float restTip = PhysBoneSolverMap.RestorationStiffness(
                 pullTip, springTip, stiffTip, advanced, out bool satTip);
+            float restDerived = Mathf.Max(restRoot, restTip);
+            restRoot = Mathf.Max(restRoot, restFloor);
+            restTip = Mathf.Max(restTip, restFloor);
             PhysBoneSolverMap.MapCurve(restRoot, restTip,
                 out float restValue, out float restStart, out float restEnd, out bool restCurve);
 
             sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
             sdata.angleRestorationConstraint.stiffness.SetValue(restValue, restStart, restEnd, restCurve);
 
+            bool dampFloored = dampValue > dampDerived + 0.0001f;
+            bool restFloored = restValue > restDerived + 0.0001f;
             ctx.Report.Approximated(Category, data.Root.name,
                 $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
                 $"damping {dampValue:0.###}, angle restoration {restValue:0.###}. Both solvers integrate " +
                 "positions per step at a fixed rate, so PhysBone's 60 Hz coefficients were re-expressed at " +
                 "MagicaCloth2's 90 Hz. This replaces the preset's feel — if the chain moves wrong, turning " +
-                "\"Derive physics from PhysBone\" off restores it.");
+                "\"Derive physics from PhysBone\" off restores it." +
+                $" Baseline it started from: damping {dampFloor:0.###}, restoration {restFloor:0.###}." +
+                (dampFloored || restFloored
+                    ? $" Held to the preset's baseline where the source asked for less" +
+                      (dampFloored ? $" (damping would have been {dampDerived:0.###})" : "") +
+                      (restFloored ? $" (restoration would have been {restDerived:0.###})" : "") +
+                      " — MagicaCloth2's own presets treat these as the floor of a spring that still reads " +
+                      "as one, and below it a chain converts to mush rather than to a loose chain."
+                    : ""));
 
             if (satRoot || satTip)
             {
@@ -661,7 +793,8 @@ namespace AvatarBridge
         /// claim than this method makes, so it lives behind its own setting in
         /// <see cref="DerivePhysics"/>. Everything else stays with the preset.
         /// </summary>
-        static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata,
+            bool softBody)
         {
             // VRChat has no wind. There is no PhysBone field for it, nothing in SolveChain reads
             // one, and a VRChat world cannot blow a chain around — so every PhysBone ever authored
@@ -685,6 +818,25 @@ namespace AvatarBridge
                     "with no wind zone can't preview). Raise it on the cloth if you want the world's " +
                     "wind to reach this chain.");
             }
+
+            // VRChat clamps nothing. A PhysBone has no equivalent of MagicaCloth2's speed limits,
+            // so whatever the author tuned, they tuned it against a chain that received the
+            // avatar's movement in full.
+            //
+            // The clamp is applied to the avatar's frame velocity BEFORE it shifts the cloth's
+            // reference frame (TeamManager.cs:2242-2247), so past the limit the chain stops
+            // receiving any further drag and rides rigidly with the body. MagicaCloth2's spring
+            // presets ship 1 m/s — below walking pace — so on a converted avatar the clamp is
+            // engaged during ordinary movement, which is how "the cloth doesn't move cleanly when
+            // I move the avatar" was reported.
+            //
+            // Raised to MagicaCloth2's OWN code defaults (InertiaConstraint.cs:184-188), not
+            // removed: its author chose 5 m/s and 720 deg/s as the general-purpose values, and
+            // keeping a limit means a teleport still cannot fling the chain across the world.
+            RaiseSpeedLimit(sdata.inertiaConstraint, "movementSpeedLimit", 5f, ctx, data, "world movement");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "localMovementSpeedLimit", 5f, ctx, data, "local movement");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "rotationSpeedLimit", 720f, ctx, data, "world rotation");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "localRotationSpeedLimit", 720f, ctx, data, "local rotation");
 
             if (Mathf.Approximately(data.Gravity, 0f))
             {
@@ -723,7 +875,13 @@ namespace AvatarBridge
             // a 0.9-immobile PhysBone still swung freely in game because localInertia was never
             // touched. Every MagicaCloth2 preset keeps the pair equal (both 1.0); the split was
             // this tool's invention, not the solver's design.
-            if (data.Immobile > 0.01f)
+            // Not for a soft body. Immobile answers "how much does the avatar moving shake this
+            // chain", which is a real question for something that hangs and can be flung — and
+            // the wrong question for a volume anchored to a bone, which cannot be. Held down on
+            // one of those, it stops the body answering the avatar's movement at all while doing
+            // nothing about the wobble, which is exactly how it was reported. ConfigureSoftBody
+            // says so in the report.
+            if (data.Immobile > 0.01f && !softBody)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
                 bool world = TrySetMember(sdata.inertiaConstraint, "worldInertia", influence);
@@ -783,33 +941,126 @@ namespace AvatarBridge
         }
 
         /// <summary>
-        /// Copies the PhysBone's angle limit across verbatim, behind the "Transfer angle limits"
-        /// option. MagicaCloth2's limit constrains particle positions against a baseline pose
-        /// where PhysBone's constrains bone rotation against its parent, and MagicaCloth2's
-        /// stiffness defaults to a rigid snap-back — so on some avatars this shakes the chain
-        /// and on others it is the best result the tool gives. Hence the option.
+        /// Bounds how far the chain may swing, from the limit its author already set.
+        ///
+        /// A PhysBone's Angle/Hinge/Polar limit is not decoration: it is the reason a floaty
+        /// chain stays presentable in VRChat. The avatar that prompted this carries pull 0.22
+        /// against spring 0.81 — genuinely loose, and faithfully converted as such — with a 48°
+        /// limit holding it in. Converted without that limit the chain is loose and UNBOUNDED,
+        /// which is the "way too swaying" this was reported as.
+        ///
+        /// The limit is applied as a POSITIONAL leash (MotionConstraint) rather than as
+        /// MagicaCloth2's own angle limit, deliberately. The angle constraint runs three
+        /// iterations per step against a stiffness that snaps back hard, and its own author's
+        /// comment calls rotating about a point near the parent 酷い振動の温床 — a hotbed of
+        /// severe vibration. An option that transferred the limit that way shipped for several
+        /// versions and was removed in 3.7.0, the maintainer's verdict being that it produced a
+        /// broken avatar every time. maxDistance is a plain clamp on how far a particle may
+        /// travel from rest: it cannot oscillate, because it removes motion rather than adding
+        /// a restoring force.
+        ///
+        /// The conversion is geometry. A bone d along the chain, swung θ from rest, moves a
+        /// chord of 2·d·sin(θ/2). MagicaCloth2 wants one value with a 0..1 curve over the
+        /// chain's depth, so the tip's chord is the value and the curve carries the rest: the
+        /// root is pinned and may not move at all, the tip may move furthest.
         /// </summary>
-        static void ApplyAngleLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void ApplyMotionLeash(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
         {
             if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
             {
-                return;
+                return;   // the author set no limit, so there is nothing to honour
             }
             float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
-            bool applied = TrySetMember(sdata.angleLimitConstraint, "useAngleLimit", true)
-                           && TrySetCurveValue(sdata.angleLimitConstraint, "limitAngle", limitAngle);
+            if (limitAngle <= 0f)
+            {
+                return;
+            }
+            float length = MeasureChainLength(data.Root);
+            if (length <= 0f)
+            {
+                return;   // single bone with no reach; a leash would only pin it
+            }
+
+            float chord = 2f * length * Mathf.Sin(Mathf.Min(limitAngle, 180f) * 0.5f * Mathf.Deg2Rad);
+            if (chord <= 0f)
+            {
+                return;
+            }
+
+            // The curve is what makes this exact rather than approximate. A bone's chord is
+            // 2·d·sin(θ/2), which grows LINEARLY with its distance d along the chain, and
+            // MagicaCloth2 evaluates the curve linearly over depth — so the tip's chord with a
+            // straight 0→1 curve gives every bone in between precisely its own allowance. Set
+            // as a flat value instead, a bone near the root could travel the tip's full distance.
+            bool applied = TrySetMember(sdata.motionConstraint, "useMaxDistance", true)
+                           && TrySetCurveValue(sdata.motionConstraint, "maxDistance", chord, 0f, 1f);
             if (applied)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.LimitTypeName} limit transferred as a symmetric {limitAngle:0}° angle limit. " +
-                    "If this chain snaps back or shakes, lower Angle Limit > Stiffness on the cloth, or turn " +
-                    "off \"Transfer angle limits\" and convert again.");
+                ctx.Report.Converted(Category, data.Root.name,
+                    $"Swing bounded to {chord:0.###} from rest, converted from the source's {limitAngle:0}° " +
+                    $"{data.LimitTypeName} limit over a {length:0.###} chain, easing to nothing at the root. " +
+                    "That limit is what kept this " +
+                    "chain presentable in VRChat, and without it a loose chain converts loose and unbounded. " +
+                    "It is applied as a distance bound rather than MagicaCloth2's angle limit because a " +
+                    "distance bound removes motion instead of adding a restoring force, so it cannot set the " +
+                    "chain vibrating. Clear Movement Limit > Use Max Distance on the cloth to undo it.");
             }
             else
             {
                 ctx.Report.Skipped(Category, data.Root.name,
-                    $"Angle limit ({data.LimitTypeName}) could not be applied on this MagicaCloth2 version.");
+                    $"Source {data.LimitTypeName} limit ({limitAngle:0}°) could not be applied as a movement " +
+                    "bound on this MagicaCloth2 version — the chain will swing further here than in VRChat.");
             }
+        }
+
+        /// <summary>
+        /// Lifts one of MagicaCloth2's speed clamps to at least <paramref name="floor"/>, leaving
+        /// anything already looser alone. The clamps live in a small struct with a value and a
+        /// tick-box, so this reads that object out and writes the value back on it; a version
+        /// without the field is simply skipped.
+        /// </summary>
+        static void RaiseSpeedLimit(object inertia, string fieldName, float floor,
+            BridgeContext ctx, PhysBoneChainData data, string label)
+        {
+            var field = inertia?.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            var holder = field?.GetValue(inertia);
+            if (holder == null)
+            {
+                return;
+            }
+            var valueField = holder.GetType().GetField("value", BindingFlags.Public | BindingFlags.Instance);
+            if (valueField == null || !(valueField.GetValue(holder) is float current) || current >= floor)
+            {
+                return;
+            }
+            valueField.SetValue(holder, floor);
+            field.SetValue(inertia, holder);   // struct-safe: write the modified copy back
+            ctx.Report.Approximated(Category, data.Root.name,
+                $"{label} speed limit raised {current:0.##} → {floor:0.##} — VRChat has no such clamp, so this " +
+                "chain was tuned receiving the avatar's movement in full. Past the limit MagicaCloth2 stops " +
+                "passing movement to the chain and it rides rigidly with the body, and the preset's value sat " +
+                "below walking pace. This is MagicaCloth2's own default rather than no limit at all, so a " +
+                "teleport still cannot fling the chain.");
+        }
+
+        /// <summary>Root to furthest tip, following the longest path.</summary>
+        static float MeasureChainLength(Transform root)
+        {
+            if (root == null)
+            {
+                return 0f;
+            }
+            float longest = 0f;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                float branch = Vector3.Distance(root.position, child.position) + MeasureChainLength(child);
+                if (branch > longest)
+                {
+                    longest = branch;
+                }
+            }
+            return longest;
         }
 
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
@@ -837,11 +1088,32 @@ namespace AvatarBridge
             go.transform.localRotation = pbCollider.rotation;
 
             ColliderComponent collider;
+            string fitted = null;
             if (shape.Contains("Capsule"))
             {
                 var capsule = go.AddComponent<MagicaCapsuleCollider>();
                 capsule.direction = MagicaCapsuleCollider.Direction.Y; // PB capsules extend along local Y
-                capsule.SetSize(pbCollider.radius, pbCollider.radius, Mathf.Max(pbCollider.height, pbCollider.radius * 2f));
+                float authorLength = Mathf.Max(pbCollider.height, pbCollider.radius * 2f);
+                float startRadius = pbCollider.radius, endRadius = pbCollider.radius, length = authorLength;
+                if (ctx.Settings.fitCollidersToMesh
+                    && MeasureColliderFit(ctx, parent, go.transform, pbCollider.radius, authorLength,
+                        out startRadius, out endRadius, out length, out float offset, out int sampled))
+                {
+                    fitted = $"fitted to the mesh from {sampled} vertices: radius " +
+                        $"{pbCollider.radius:0.###} -> {startRadius:0.###} at one end and " +
+                        $"{endRadius:0.###} at the other, length {authorLength:0.###} -> {length:0.###}";
+                    // Slide it along its own axis onto the middle of what it measured, since the
+                    // capsule is centred on this object. Done AFTER measuring, so the radii and
+                    // the length stay the ones taken in the space they were measured in.
+                    if (Mathf.Abs(offset) > 1e-4f)
+                    {
+                        go.transform.localPosition += pbCollider.rotation * (Vector3.up * offset);
+                        fitted += $", slid {offset:0.###} along its axis onto the middle of it";
+                    }
+                }
+                // SetSize turns on the capsule's own Start/End radius split for us whenever the
+                // two differ, so a tapered capsule arrives shaped rather than needing the checkbox.
+                capsule.SetSize(startRadius, endRadius, length);
                 collider = capsule;
             }
             else if (shape.Contains("Plane"))
@@ -851,17 +1123,947 @@ namespace AvatarBridge
             else
             {
                 var sphere = go.AddComponent<MagicaSphereCollider>();
-                sphere.SetSize(pbCollider.radius);
+                float radius = pbCollider.radius;
+                // A sphere has no axis to taper along, so the same measurement gives it one
+                // number: the narrower of the two ends, which is the half-width it fits inside.
+                // Position is left alone here: a sphere has no axis to slide along, and moving it
+                // in three dimensions would be repositioning the author's collider rather than
+                // sizing it.
+                if (ctx.Settings.fitCollidersToMesh
+                    && MeasureColliderFit(ctx, parent, go.transform, pbCollider.radius,
+                        pbCollider.radius * 2f, out float a, out float b, out _, out _, out int sampled))
+                {
+                    radius = Mathf.Min(a, b);
+                    fitted = $"fitted to the mesh from {sampled} vertices: radius " +
+                        $"{pbCollider.radius:0.###} -> {radius:0.###}";
+                }
+                sphere.SetSize(radius);
                 collider = sphere;
             }
 
-            ctx.Report.Converted("PhysBone colliders", PathOf(pbCollider.transform), shape + " -> Magica collider");
+            ctx.Report.Converted("PhysBone colliders", PathOf(pbCollider.transform),
+                fitted == null
+                    ? shape + " -> Magica collider"
+                    : shape + " -> Magica collider, " + fitted);
             PhysBoneConverter.RecordColliderHost(ctx, pbCollider, go);
             cache[pbCollider] = collider;
             return collider;
         }
 
         /// <summary>Average distance between bones down the chain, used to bound the particle radius.</summary>
+        /// <summary>
+        /// Vertices to sample per mesh before thinning kicks in. Set high enough that ordinary
+        /// avatar meshes are measured in FULL, because thinning is not free of consequence: a
+        /// stride samples a different subset on the left of a body than on the right (vertex
+        /// order differs between the two), and a converted avatar came back with one breast
+        /// measured 0.118 and the other 0.131. Whether that gap is the mesh or the sampling is
+        /// exactly the question a stride makes unanswerable, so it is nearly always off now and
+        /// the cost is a few million comparisons at conversion time.
+        /// </summary>
+        const int MeshSampleTarget = 200000;
+
+        /// <summary>Fewer usable samples than this and the measurement is not worth trusting.</summary>
+        const int MinMeshSamples = 12;
+
+        /// <summary>Below this a vertex is barely attached to the bone and says nothing about its size.</summary>
+        const float MinBoneWeight = 0.2f;
+
+        /// <summary>
+        /// The radius a particle needs in order to stand for the part of the body it drives,
+        /// measured from the mesh instead of guessed.
+        ///
+        /// MagicaCloth2's radius is the collision body of a simulated bone, and nothing in this
+        /// conversion ever set it: the matched preset's value simply stood, so a breast chain and
+        /// a hair strand both arrived at whatever that preset happened to ship. Reported from a
+        /// real avatar as collision points a fraction of the size of the body they belong to.
+        ///
+        /// The source PhysBone's own radius is deliberately NOT the answer, tempting as it looks.
+        /// In VRChat that field only governs contact against PhysBone colliders, so an author who
+        /// never used that leaves it near zero — the avatar that prompted this carries 0.005,
+        /// 0.007 and 0.01 on chains whose meshes are the size of a head. Same word, different
+        /// quantity, and copying it across makes the collision smaller still.
+        ///
+        /// So: for every vertex weighted to a bone in the chain, the distance from that bone's
+        /// AXIS — not its origin, because a hair strand's vertices run down the length of the
+        /// bone and their distance from its origin is the strand's length rather than its
+        /// thickness. The median is taken rather than the extreme, so one vertex weighted across
+        /// half the body cannot size the whole chain. Everything is measured in the bind pose,
+        /// so the answer does not depend on how the avatar happens to be posed in the scene.
+        /// </summary>
+        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled)
+            => MeasureMesh(ctx, data, out sampled, out _);
+
+        /// <summary>As above, also saying whether the size came from a blendshape's reach rather
+        /// than from the pose the avatar is saved in — which is worth telling the user, since it
+        /// is why a chain can look larger than the body it sits on.</summary>
+        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out bool grown)
+            => MeasureMesh(ctx, data, out sampled, out _, out _, out grown);
+
+        /// <summary>
+        /// The same measurement, also reporting where the middle of that mesh actually is.
+        ///
+        /// The centre is the mean position of the sampled vertices, not of the bones. Those are
+        /// different places and the difference decides which bone gets nominated for collision:
+        /// on the avatar this was built against, the bones' own midpoint chose Breast1 while the
+        /// mesh's midpoint chooses Breast2 — the one a hand-tuning tester had picked.
+        /// </summary>
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre)
+            => MeasureMesh(ctx, data, out sampled, out centre, out _);
+
+        /// <summary>
+        /// As above, also reporting which bones actually carry mesh.
+        ///
+        /// A chain contains more than deforming bones: collider hosts, physics anchors and other
+        /// bookkeeping transforms are parented into it and have no vertices weighted to them at
+        /// all. They must never be nominated for collision — one run picked a transform literally
+        /// named MagicaCollider_ButtTopL for the job, purely because it sat nearest the middle.
+        /// </summary>
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones)
+            => MeasureMesh(ctx, data, out sampled, out centre, out meshBones, out _);
+
+        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones, out bool grown)
+        {
+            grown = false;
+            float saved = MeasureMeshAt(ctx, data, out sampled, out centre, out meshBones, false);
+            if (!ctx.Settings.sizePhysicsForLargest || BlendShapeReach(ctx).Count == 0)
+            {
+                return saved;
+            }
+            // Measured again with every animated shape at the far end of its reach, keeping the
+            // larger. Which bones carry mesh, and where its middle is, stay the SAVED pose's
+            // answer — those choose the collision bone, and a bone should not change identity
+            // because a slider exists. Only the size is allowed to grow.
+            //
+            // Taking the larger of two readings handles both directions without deciding per
+            // shape which way it goes: a growth slider is caught by the second reading, and a
+            // shape that SHRINKS makes the second reading smaller, so the first simply wins.
+            float atReach = MeasureMeshAt(ctx, data, out _, out _, out _, true);
+            grown = atReach > saved;
+            return Mathf.Max(saved, atReach);
+        }
+
+        static float MeasureMeshAt(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+            out Vector3 centre, out HashSet<Transform> meshBones, bool atReach)
+        {
+            sampled = 0;
+            centre = Vector3.zero;
+            meshBones = new HashSet<Transform>();
+            var chain = new HashSet<Transform>();
+            CollectChainBones(data.Root, data.Ignores, chain);
+            if (chain.Count == 0)
+            {
+                return 0f;
+            }
+
+            var distances = new List<float>();
+            var positions = new List<Vector3>();
+            var flat = new Dictionary<Transform, List<Vector2>>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+                Vector3[] vertices;
+                BoneWeight[] weights;
+                Matrix4x4[] binds;
+                try
+                {
+                    // As the avatar is actually worn: base mesh plus whatever blendshape weights
+                    // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
+                    // nobody sees whenever a body slider is shipped part-way up.
+                    vertices = DeformedVertices(ctx, renderer, mesh, atReach);
+                    weights = mesh.boneWeights;
+                    binds = mesh.bindposes;
+                }
+                catch
+                {
+                    continue;   // unreadable mesh — nothing to measure, and not worth failing over
+                }
+                var bones = renderer.bones;
+                if (bones == null || vertices.Length == 0 || weights.Length != vertices.Length)
+                {
+                    continue;
+                }
+
+                // One sample in N on a dense mesh: a 60k-vertex body does not need every vertex
+                // to say how thick a breast is, and every chain on every avatar pays this cost.
+                int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
+                for (int i = 0; i < vertices.Length; i += stride)
+                {
+                    var w = weights[i];
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
+                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
+                }
+            }
+
+            sampled = distances.Count;
+            if (distances.Count < MinMeshSamples)
+            {
+                return 0f;
+            }
+            foreach (var p in positions)
+            {
+                centre += p;
+            }
+            centre /= positions.Count;
+            distances.Sort();
+
+            // A particle is a SPHERE, so it is bounded by the narrowest way across the mesh, not
+            // by the average distance out to it. On anything round the two agree; on a flat one
+            // they do not, and the median reads a cape's half-WIDTH where its half-THICKNESS is
+            // wanted. That put a 0.292 particle on a cloth panel — a sphere the size of the
+            // avatar's torso, on a chain whose holder happened to be inactive, so it went unseen
+            // until an unrelated fix switched the object back on and the gizmos appeared.
+            var perBone = new List<float>();
+            foreach (var section in flat.Values)
+            {
+                float caliper = MinimumCaliperRadius(section);
+                if (caliper < float.MaxValue)
+                {
+                    perBone.Add(caliper);
+                }
+            }
+            if (perBone.Count == 0)
+            {
+                return distances[distances.Count / 2];
+            }
+            perBone.Sort();
+            return Mathf.Min(distances[distances.Count / 2], perBone[perBone.Count / 2]);
+        }
+
+        /// <summary>
+        /// Fits a capsule to the body part a collider sits on: how long it is, and how thick at
+        /// each end.
+        ///
+        /// The same measurement the particle radius uses, turned ninety degrees. Vertices the host
+        /// bone drives are put into the collider's own space, so the capsule's axis is simply local
+        /// Y; their spread along that axis is the length, and the minimum caliper width of the slab
+        /// at each end is that end's radius. A PhysBone collider carries ONE radius, which is why
+        /// this is worth doing at all — an author covering a thigh picks a number that fits the hip
+        /// or the knee and lives with the other, while MagicaCloth2 takes the two separately.
+        ///
+        /// The measurement replaces the author's numbers rather than bounding them. Written the
+        /// careful way round first — never larger than the source — it changed nothing at all on
+        /// the avatar it was built against, whose author had stamped one radius of 0.07 and one
+        /// length of 0.4 onto the thigh and the shin alike. Those are a default, not a decision,
+        /// and that is the ordinary case: a PhysBone collider's size is invisible in VRChat unless
+        /// something collides with it.
+        ///
+        /// What keeps this from ballooning is where it looks rather than how far it may move. Only
+        /// vertices the host bone itself drives are read, so a leg collider can only ever come out
+        /// leg-sized, and each radius is a minimum caliper — the NARROWEST way across that end, not
+        /// the average distance out to it — so a flat or hollow section reads small rather than
+        /// large. Every collider it resizes is reported with both numbers.
+        /// </summary>
+        static bool MeasureColliderFit(BridgeContext ctx, Transform host, Transform colliderObject,
+            float authorRadius, float authorLength,
+            out float startRadius, out float endRadius, out float length, out float offset,
+            out int sampled)
+        {
+            startRadius = endRadius = authorRadius;
+            length = authorLength;
+            offset = 0f;
+            sampled = 0;
+            if (host == null || colliderObject == null)
+            {
+                return false;
+            }
+
+            // Only the bone the collider hangs on. Walking into its children would pull the
+            // forearm into an upper-arm collider and read the whole limb as one shape.
+            if (!BoneVertices(ctx).TryGetValue(host, out var world))
+            {
+                return false;
+            }
+
+            // World scale is divided out here and multiplied back by the solver (ColliderManager
+            // scales size by the collider transform's own scale), which is the same footing the
+            // author's radius is written on.
+            var toLocal = colliderObject.worldToLocalMatrix;
+            var points = new List<Vector3>(world.Count);
+            foreach (var w in world)
+            {
+                points.Add(toLocal.MultiplyPoint3x4(w));
+            }
+
+            sampled = points.Count;
+            if (points.Count < MinMeshSamples * 4)
+            {
+                return false;   // too little of this bone's flesh to say anything about its shape
+            }
+
+            // Capsules are written along local Y (see the caller). Ends are taken at the 2nd and
+            // 98th percentile rather than the extremes, so one stray vertex weighted to a distant
+            // part of the body cannot stretch the capsule to reach it.
+            var along = new List<float>(points.Count);
+            foreach (var p in points)
+            {
+                along.Add(p.y);
+            }
+            along.Sort();
+            float low = along[Mathf.Clamp(Mathf.RoundToInt(along.Count * 0.02f), 0, along.Count - 1)];
+            float high = along[Mathf.Clamp(Mathf.RoundToInt(along.Count * 0.98f), 0, along.Count - 1)];
+            float span = high - low;
+            if (span <= 0f)
+            {
+                return false;
+            }
+
+            // A thin station at each end, widened only as far as it has to be to have something
+            // to measure. Read over the outer THIRD — which is where this started — the slab pools
+            // the whole taper, and at the top of a thigh it pools the hip and buttock mass that
+            // shares that bone: the leg capsules came out 0.127 at the top, a hip-sized circle
+            // wrapped around a thigh. That stood a skirt off the body at the sides while its front
+            // hung correctly, which is exactly the shape of the report that prompted this.
+            float measuredStart = MinimumCaliperRadius(Station(points, high, low, span, true));
+            float measuredEnd = MinimumCaliperRadius(Station(points, high, low, span, false));
+            if (measuredStart == float.MaxValue || measuredEnd == float.MaxValue)
+            {
+                return false;
+            }
+
+            startRadius = measuredStart;
+            endRadius = measuredEnd;
+            length = span;
+            // Where the flesh's middle sits relative to the collider's own origin. A capsule set
+            // "aligned on center" grows symmetrically about that origin, so a length taken from
+            // the mesh without this would push one end past the limb and leave the other short of
+            // it. Zero whenever the author already centred the collider on what it covers.
+            offset = (low + high) * 0.5f;
+            return true;
+        }
+
+        /// <summary>
+        /// The cross-section at one end of a capsule: a thin slice of the vertex cloud, taken as
+        /// narrow as it can be while still holding enough points to measure.
+        ///
+        /// Thin is the whole point. A capsule's radius at an end should be the flesh AT that end,
+        /// and a fat slice averages in everything the limb does on the way there — including, at
+        /// the top of a thigh, the hip that shares the bone.
+        /// </summary>
+        static List<Vector2> Station(List<Vector3> points, float high, float low, float span, bool topEnd)
+        {
+            List<Vector2> slab = null;
+            foreach (float fraction in StationFractions)
+            {
+                float edge = span * fraction;
+                slab = new List<Vector2>();
+                foreach (var p in points)
+                {
+                    if (topEnd ? p.y >= high - edge : p.y <= low + edge)
+                    {
+                        slab.Add(new Vector2(p.x, p.z));
+                    }
+                }
+                if (slab.Count >= MinMeshSamples * 2)
+                {
+                    break;
+                }
+            }
+            return slab;
+        }
+
+        /// <summary>How thick an end slice may get, as a fraction of the capsule's length, before
+        /// giving up on measuring that end. A sparse mesh needs the wider ones.</summary>
+        static readonly float[] StationFractions = { 0.1f, 0.18f, 0.26f, 0.34f };
+
+        static BridgeContext reachOwner;
+        static Dictionary<string, float> reachCache;
+
+        /// <summary>
+        /// The largest weight each animated blendshape reaches anywhere in the animator, keyed
+        /// "path|shape".
+        ///
+        /// Read from the SOURCE layers rather than the merged controller because physics is
+        /// converted before the merge. VRCFury has already baked by this point, so its layers are
+        /// among them. Empty when the setting is off, which switches the whole second measurement
+        /// off with it.
+        /// </summary>
+        static Dictionary<string, float> BlendShapeReach(BridgeContext ctx)
+        {
+            if (ReferenceEquals(reachOwner, ctx) && reachCache != null)
+            {
+                return reachCache;
+            }
+            var reach = new Dictionary<string, float>(StringComparer.Ordinal);
+            if (ctx.Settings.sizePhysicsForLargest && ctx.SourceDescriptor != null)
+            {
+                var seen = new HashSet<AnimationClip>();
+                foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
+                {
+                    if (entry.controller == null)
+                    {
+                        continue;
+                    }
+                    foreach (var clip in entry.controller.animationClips)
+                    {
+                        if (clip == null || !seen.Add(clip))
+                        {
+                            continue;
+                        }
+                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (binding.type != typeof(SkinnedMeshRenderer)
+                                || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                            {
+                                continue;
+                            }
+                            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                            if (curve == null || curve.keys.Length == 0)
+                            {
+                                continue;
+                            }
+                            float high = curve.keys[0].value;
+                            foreach (var key in curve.keys)
+                            {
+                                high = Mathf.Max(high, key.value);
+                            }
+                            string key2 = binding.path + "|" + binding.propertyName.Substring("blendShape.".Length);
+                            reach[key2] = reach.TryGetValue(key2, out var had) ? Mathf.Max(had, high) : high;
+                        }
+                    }
+                }
+            }
+            reachOwner = ctx;
+            reachCache = reach;
+            return reach;
+        }
+
+        static BridgeContext deformedOwner;
+        static Dictionary<string, Vector3[]> deformedCache;
+
+        /// <summary>
+        /// A mesh's vertices as the avatar actually WEARS them: the base mesh with its blendshapes
+        /// applied at the weights the renderer is carrying.
+        ///
+        /// Mesh.vertices is the undeformed shape, and reading it means measuring an avatar that
+        /// nobody sees. Body sliders are routinely shipped part-way up — a chest or hip shape left
+        /// at 100 on the renderer is the avatar's real silhouette, and every radius derived from
+        /// the base mesh is then sized to a body the wearer does not have.
+        ///
+        /// What this CANNOT do is follow a slider that moves in game. MagicaCloth2 evaluates its
+        /// radius curve per frame, so the value is live, but the only properties its animation
+        /// wrapper forwards are animationPoseRatio, gravity, damping, world and local inertia, wind
+        /// influence and blend weight — radius is not among them, so an animated radius would sit
+        /// in the serialized data unread. Measuring the pose the avatar is saved in is as close as
+        /// this gets.
+        /// </summary>
+        static Vector3[] DeformedVertices(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh,
+            bool atReach = false)
+        {
+            if (!ReferenceEquals(deformedOwner, ctx) || deformedCache == null)
+            {
+                deformedOwner = ctx;
+                deformedCache = new Dictionary<string, Vector3[]>(StringComparer.Ordinal);
+            }
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
+            string cacheKey = (atReach ? "max|" : "saved|") + path;
+            if (deformedCache.TryGetValue(cacheKey, out var known))
+            {
+                return known;
+            }
+
+            var reach = atReach ? BlendShapeReach(ctx) : null;
+            var vertices = mesh.vertices;
+            int shapes = mesh.blendShapeCount;
+            if (shapes > 0)
+            {
+                Vector3[] lower = null, upper = null;
+                for (int s = 0; s < shapes; s++)
+                {
+                    float weight = renderer.GetBlendShapeWeight(s);
+                    // The far end of what the animator can reach, when asked for it. A slider the
+                    // avatar ships at zero still grows the body once someone moves it.
+                    if (reach != null && reach.TryGetValue(path + "|" + mesh.GetBlendShapeName(s), out var high))
+                    {
+                        weight = Mathf.Max(weight, high);
+                    }
+                    if (Mathf.Abs(weight) < 0.01f)
+                    {
+                        continue;   // off, and reading its frames is the expensive part
+                    }
+                    if (lower == null)
+                    {
+                        lower = new Vector3[vertices.Length];
+                        upper = new Vector3[vertices.Length];
+                    }
+                    ApplyBlendShape(mesh, s, weight, vertices, lower, upper);
+                }
+            }
+            deformedCache[cacheKey] = vertices;
+            return vertices;
+        }
+
+        /// <summary>Adds one blendshape's deltas at the given weight, interpolating between the
+        /// frames that bracket it — a shape built with several frames morphs through them rather
+        /// than jumping, and beyond the last frame Unity keeps going, so this does too.</summary>
+        static void ApplyBlendShape(Mesh mesh, int shape, float weight, Vector3[] into,
+            Vector3[] lower, Vector3[] upper)
+        {
+            int frames = mesh.GetBlendShapeFrameCount(shape);
+            if (frames <= 0)
+            {
+                return;
+            }
+            int high = frames - 1;
+            for (int f = 0; f < frames; f++)
+            {
+                if (mesh.GetBlendShapeFrameWeight(shape, f) >= weight)
+                {
+                    high = f;
+                    break;
+                }
+            }
+            float highWeight = mesh.GetBlendShapeFrameWeight(shape, high);
+            if (high == 0)
+            {
+                float scale = highWeight > 0f ? weight / highWeight : 0f;
+                mesh.GetBlendShapeFrameVertices(shape, 0, lower, null, null);
+                for (int i = 0; i < into.Length; i++)
+                {
+                    into[i] += lower[i] * scale;
+                }
+                return;
+            }
+            float lowWeight = mesh.GetBlendShapeFrameWeight(shape, high - 1);
+            float span = highWeight - lowWeight;
+            float t = span > 0f ? (weight - lowWeight) / span : 0f;
+            mesh.GetBlendShapeFrameVertices(shape, high - 1, lower, null, null);
+            mesh.GetBlendShapeFrameVertices(shape, high, upper, null, null);
+            for (int i = 0; i < into.Length; i++)
+            {
+                into[i] += Vector3.LerpUnclamped(lower[i], upper[i], t);
+            }
+        }
+
+        static BridgeContext boneVertexOwner;
+        static Dictionary<Transform, List<Vector3>> boneVertexCache;
+
+        /// <summary>
+        /// Every sampled vertex in world space, grouped by the bone that drives it.
+        ///
+        /// Built once per conversion and keyed on the context that asked, because reading a mesh's
+        /// vertex array copies the whole thing — doing that once per collider per renderer is the
+        /// difference between a conversion that pauses and one that does not. The avatar does not
+        /// move while it is being converted, so the positions stay true for the whole run.
+        /// </summary>
+        static Dictionary<Transform, List<Vector3>> BoneVertices(BridgeContext ctx)
+        {
+            if (ReferenceEquals(boneVertexOwner, ctx) && boneVertexCache != null)
+            {
+                return boneVertexCache;
+            }
+            var byBone = new Dictionary<Transform, List<Vector3>>();
+            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = renderer.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+                Vector3[] vertices;
+                BoneWeight[] weights;
+                Matrix4x4[] binds;
+                try
+                {
+                    // As the avatar is actually worn: base mesh plus whatever blendshape weights
+                    // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
+                    // nobody sees whenever a body slider is shipped part-way up.
+                    vertices = DeformedVertices(ctx, renderer, mesh);
+                    weights = mesh.boneWeights;
+                    binds = mesh.bindposes;
+                }
+                catch
+                {
+                    continue;   // unreadable mesh — nothing to measure, and not worth failing over
+                }
+                var bones = renderer.bones;
+                if (bones == null || vertices.Length == 0 || weights.Length != vertices.Length)
+                {
+                    continue;
+                }
+
+                int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
+                for (int i = 0; i < vertices.Length; i += stride)
+                {
+                    var w = weights[i];
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex0, w.weight0, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex1, w.weight1, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex2, w.weight2, bones, binds);
+                    AddBoneVertex(byBone, vertices[i], w.boneIndex3, w.weight3, bones, binds);
+                }
+            }
+            boneVertexOwner = ctx;
+            boneVertexCache = byBone;
+            return byBone;
+        }
+
+        static void AddBoneVertex(Dictionary<Transform, List<Vector3>> byBone, Vector3 vertex,
+            int boneIndex, float weight, Transform[] bones, Matrix4x4[] binds)
+        {
+            if (weight < MinBoneWeight || boneIndex < 0
+                || boneIndex >= bones.Length || boneIndex >= binds.Length)
+            {
+                return;
+            }
+            var bone = bones[boneIndex];
+            if (bone == null)
+            {
+                return;
+            }
+            // The bind pose puts the vertex in the bone's own space; that bone's current matrix
+            // puts it back where it is skinned to, which is the same route the particle radius
+            // takes to find the middle of a mesh.
+            Vector3 bindLocal = binds[boneIndex].MultiplyPoint3x4(vertex);
+            if (!byBone.TryGetValue(bone, out var list))
+            {
+                byBone[bone] = list = new List<Vector3>();
+            }
+            list.Add(bone.localToWorldMatrix.MultiplyPoint3x4(bindLocal));
+        }
+
+        /// <summary>
+        /// Half the narrowest width of a cross-section, measured by rotating a pair of parallel
+        /// lines around it and keeping the closest they ever come — the minimum caliper width.
+        ///
+        /// Sixteen directions over a half turn, because the section can sit at any angle and
+        /// checking only the two axes it happens to be stored in would miss a panel lying
+        /// diagonally. Cheap: it is one pass per direction over points already collected.
+        /// </summary>
+        static float MinimumCaliperRadius(List<Vector2> section)
+        {
+            if (section.Count < MinMeshSamples)
+            {
+                return float.MaxValue;   // nothing to bound with; the median stands
+            }
+            float narrowest = float.MaxValue;
+            const int directions = 16;
+            for (int d = 0; d < directions; d++)
+            {
+                float angle = Mathf.PI * d / directions;
+                var axis = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                float min = float.MaxValue, max = float.MinValue;
+                foreach (var p in section)
+                {
+                    float projected = Vector2.Dot(p, axis);
+                    if (projected < min) min = projected;
+                    if (projected > max) max = projected;
+                }
+                float width = max - min;
+                if (width < narrowest)
+                {
+                    narrowest = width;
+                }
+            }
+            return narrowest * 0.5f;
+        }
+
+        static void AddRadiusSample(List<float> into, List<Vector3> positions,
+            Dictionary<Transform, List<Vector2>> flat,
+            HashSet<Transform> meshBones, Vector3 vertex, int boneIndex, float weight,
+            Transform[] bones, Matrix4x4[] binds, HashSet<Transform> chain)
+        {
+            if (weight < MinBoneWeight || boneIndex < 0
+                || boneIndex >= bones.Length || boneIndex >= binds.Length)
+            {
+                return;
+            }
+            var bone = bones[boneIndex];
+            if (bone == null || !chain.Contains(bone))
+            {
+                return;
+            }
+
+            // The bind pose puts the vertex in the bone's own space, so this does not move when
+            // the avatar does.
+            Vector3 local = binds[boneIndex].MultiplyPoint3x4(vertex);
+            Vector3 axis = bone.childCount > 0 ? bone.GetChild(0).localPosition : Vector3.zero;
+            Vector3 perpendicular = axis.sqrMagnitude > 1e-10f
+                ? Vector3.ProjectOnPlane(local, axis.normalized)
+                : local;
+            float distance = perpendicular.magnitude;
+
+            // Bone-local units become world units, which is what MagicaCloth2's radius is in.
+            Vector3 scale = bone.lossyScale;
+            float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
+            if (distance > 0f && mean > 0f)
+            {
+                into.Add(distance * mean);
+                // Bind-pose local put through the bone's current world matrix IS where that
+                // vertex is skinned to, which is what "the middle of the mesh" has to mean.
+                positions.Add(bone.localToWorldMatrix.MultiplyPoint3x4(local));
+                meshBones.Add(bone);
+
+                // The same offset in the plane across the bone, kept PER BONE so the
+                // cross-section's narrowest width can be measured. Per bone matters: each one
+                // has its own frame, and pooling a panel whose bones fan out smears the section
+                // into a cloud wider than any single bone's, which is most of what a flat mesh
+                // needed measuring for. See MinimumCaliperRadius.
+                Vector3 a = axis.sqrMagnitude > 1e-10f ? axis.normalized : Vector3.up;
+                Vector3 e1 = Vector3.Cross(a, Mathf.Abs(a.x) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+                Vector3 e2 = Vector3.Cross(a, e1).normalized;
+                if (!flat.TryGetValue(bone, out var section))
+                {
+                    flat[bone] = section = new List<Vector2>();
+                }
+                section.Add(new Vector2(Vector3.Dot(perpendicular, e1), Vector3.Dot(perpendicular, e2)) * mean);
+            }
+        }
+
+        /// <summary>Every transform the chain simulates: the root and its descendants, minus the
+        /// branches VRChat's Ignore Transforms cut out.</summary>
+        static void CollectChainBones(Transform root, List<Transform> ignores, HashSet<Transform> into)
+        {
+            if (root == null || (ignores != null && ignores.Contains(root)))
+            {
+                return;
+            }
+            into.Add(root);
+            for (int i = 0; i < root.childCount; i++)
+            {
+                CollectChainBones(root.GetChild(i), ignores, into);
+            }
+        }
+
+        /// <summary>
+        /// Chain classes that are a soft body anchored to a bone rather than a chain of bones.
+        /// These become MagicaCloth2 BoneSpring; everything else stays BoneCloth.
+        ///
+        /// Only classes named from the ANATOMY belong here. "Floaty", "Loose", "Springy" and
+        /// "Stiff" are what <see cref="MagicaPresetLibrary.Classify"/> falls back to when no name
+        /// anywhere says what a chain is, and they describe how the PhysBone was TUNED, not what
+        /// it hangs off. Floaty was in this list for one test run and swept up a microphone on a
+        /// cord — a chain if ever there was one — because its author gave it no gravity and a
+        /// high immobile.
+        /// </summary>
+        static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
+        {
+            "Breast", "Butt", "Belly", "Thigh",
+        };
+
+        /// <summary>
+        /// MagicaCloth2's Hard Spring ships this, and it is the only spring power anyone has
+        /// actually watched on a converted avatar: a reported breast chain was tried by hand at
+        /// the soft presets' 0.01 and read as far too floaty, and at this value as right. Our own
+        /// soft-body presets carry 0.01 because they were written for BoneCloth, where the spring
+        /// constraint never ran — so those numbers were never once tested.
+        /// </summary>
+        const float SoftBodySpringPower = 0.06f;
+
+        /// <summary>
+        /// Configures a soft body the way MagicaCloth2 means one, rather than as a translated
+        /// chain.
+        ///
+        /// Three things separate this from BoneCloth, and all three answer something reported:
+        ///
+        /// SPRING. The bone is held near its rest position by a spring instead of by a chain of
+        /// distance constraints. That is what makes a breast return to where it belongs rather
+        /// than hanging wherever momentum left it.
+        ///
+        /// INERTIA IS LEFT ALONE. A soft body is anchored, so it cannot be thrown off the avatar
+        /// by the avatar moving, and it does not need inertia held down to stay presentable.
+        /// Every stock MagicaCloth2 preset ships world and local inertia at 1.0 for exactly this
+        /// reason. Converting immobile onto inertia — right for a chain, which really can be
+        /// flung — is what made these chains ignore the body walking while still wobbling once
+        /// they got going.
+        ///
+        /// SELECTIVE COLLISION. BoneCloth presents every particle for collision. BoneSpring takes
+        /// a list, so the bone that best stands for the volume is chosen and sized from the mesh,
+        /// and the rest of the chain stops offering collision surfaces nobody meant to touch.
+        /// </summary>
+        static void ConfigureSoftBody(BridgeContext ctx, PhysBoneChainData data,
+            ClothSerializeData sdata, string chainClass)
+        {
+            bool spring = TrySetMember(sdata.springConstraint, "useSpring", true);
+            float presetPower = 0f;
+            var powerField = sdata.springConstraint?.GetType()
+                .GetField("springPower", BindingFlags.Public | BindingFlags.Instance);
+            if (powerField != null && powerField.GetValue(sdata.springConstraint) is float existing)
+            {
+                presetPower = existing;
+            }
+            float power = Mathf.Max(presetPower, SoftBodySpringPower);
+            spring &= TrySetMember(sdata.springConstraint, "springPower", power);
+
+            var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
+            bool collision = false;
+            if (collisionBones.Count > 0)
+            {
+                var list = sdata.colliderCollisionConstraint?.GetType()
+                    .GetField("collisionBones", BindingFlags.Public | BindingFlags.Instance);
+                if (list != null && list.GetValue(sdata.colliderCollisionConstraint) is List<Transform> bones)
+                {
+                    bones.Clear();
+                    bones.AddRange(collisionBones);
+                    collision = true;
+                }
+                if (collision && collisionRadius > 0f)
+                {
+                    sdata.radius.SetValue(collisionRadius);
+                }
+            }
+            string collisionBone = collisionBones.Count > 0
+                ? string.Join("\", \"", collisionBones.Select(b => b.name))
+                : null;
+
+            ctx.Report.Converted(Category, data.Root.name,
+                $"Built as a MagicaCloth2 SOFT BODY (\"{chainClass}\"), not as a chain of bones. A breast, " +
+                "belly or thigh is a volume anchored to a bone rather than something that hangs, so it is " +
+                "held near its rest position by a spring" +
+                (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
+                (collision
+                    ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
+                      $"branch(es)) is offered for collision, sized {collisionRadius:0.###} " +
+                      "from the mesh — so other people touch the part that is actually there instead of every " +
+                      "bone in the chain"
+                    : ", though its collision bone could not be set on this MagicaCloth2 version") +
+                ". Its inertia is also left at the preset's value rather than converted from Immobile: an " +
+                "anchored body cannot be thrown off the avatar, so holding inertia down only stops it " +
+                "answering the body's movement.");
+        }
+
+        /// <summary>
+        /// The bone that best stands for the volume: the one whose weighted vertices sit closest
+        /// to the centre of everything the chain moves. Sizing collision to the middle of the
+        /// mesh and out to its edge is what makes a touch land where the body looks like it is,
+        /// which is the whole point of choosing a collision bone rather than taking all of them.
+        /// </summary>
+        static List<Transform> ChooseCollisionBones(BridgeContext ctx, PhysBoneChainData data, out float radius)
+        {
+            radius = 0f;
+            var chosen = new List<Transform>();
+            var chain = new HashSet<Transform>();
+            CollectChainBones(data.Root, data.Ignores, chain);
+            if (chain.Count == 0)
+            {
+                return chosen;
+            }
+
+            // The middle of the MESH, not the middle of the bones. A chain's bones are spaced
+            // along its length while the mesh they carry is a lump somewhere on it, so the two
+            // midpoints are different places and the difference picks a different bone.
+            radius = MeasureMesh(ctx, data, out int samples, out _,
+                out HashSet<Transform> meshBones);
+            if (samples < MinMeshSamples || meshBones.Count == 0)
+            {
+                return chosen;   // nothing measurable; better no collision bone than a guessed one
+            }
+
+            // ONE PER BRANCH, not one per chain. A single root very often carries a pair — a
+            // Breast-root over Breast-1.L and Breast-1.R is the ordinary shape — and picking the
+            // single bone nearest the middle of the whole mesh gives the left one nothing at all,
+            // so half the body has no collision while the other half looks right. Reported from
+            // exactly that rig. collisionBones is a list precisely because MagicaCloth2 expects
+            // several.
+            //
+            // Branches are the root's own children: each subtree below one is a limb of the
+            // chain that needs to be touchable in its own right. A chain with a single child is
+            // one branch and behaves as before.
+            var branches = new List<List<Transform>>();
+            for (int i = 0; i < data.Root.childCount; i++)
+            {
+                var child = data.Root.GetChild(i);
+                var members = meshBones.Where(b => b == child || b.IsChildOf(child)).ToList();
+                if (members.Count > 0)
+                {
+                    branches.Add(members);
+                }
+            }
+            // A root that carries mesh itself and branches nowhere useful still needs a bone.
+            if (branches.Count == 0)
+            {
+                branches.Add(meshBones.ToList());
+            }
+
+            // Each branch is measured against ITS OWN middle, and that middle is the middle of the
+            // MESH — every vertex the branch carries — exactly as the measurement above exists to
+            // provide. Averaging BONE POSITIONS instead, which is what this did first, does not
+            // merely lean the wrong way: on the commonest shape of all it TIES. A two-bone branch
+            // has its bone midpoint exactly between the two, both bones equidistant from it, and
+            // the winner decided by whichever way the last bit of floating point fell — which is
+            // why one side of a mirrored pair chose Breast-1.L and the other Breast.R.
+            //
+            // Weighting by vertex count is what breaks the tie honestly: the bone carrying most of
+            // the volume pulls the middle toward itself, instead of counting the same as a bone
+            // holding almost none of it.
+            var vertices = BoneVertices(ctx);
+            foreach (var branch in branches)
+            {
+                var boneCentre = new Dictionary<Transform, Vector3>();
+                var boneWeight = new Dictionary<Transform, int>();
+                foreach (var bone in branch)
+                {
+                    Vector3 sum = Vector3.zero;
+                    int n = 0;
+                    if (vertices.TryGetValue(bone, out var points))
+                    {
+                        foreach (var p in points)
+                        {
+                            sum += p;
+                            n++;
+                        }
+                    }
+                    // A bone with no vertices of its own still has to sit somewhere for the
+                    // comparison below; it just brings no weight to the middle.
+                    boneCentre[bone] = n > 0 ? sum / n : bone.position;
+                    boneWeight[bone] = n;
+                }
+
+                Vector3 branchCentre = Vector3.zero;
+                int total = 0;
+                foreach (var bone in branch)
+                {
+                    branchCentre += boneCentre[bone] * boneWeight[bone];
+                    total += boneWeight[bone];
+                }
+                if (total > 0)
+                {
+                    branchCentre /= total;
+                }
+                else
+                {
+                    foreach (var bone in branch)
+                    {
+                        branchCentre += bone.position;
+                    }
+                    branchCentre /= branch.Count;
+                }
+
+                // Judged on the bone's PIVOT, because that is where MagicaCloth2 puts the collision
+                // sphere — not on where its vertices average out. The two part company exactly
+                // where it matters: the root of a breast branch sits back at the chest wall but
+                // carries a wide ring of the mesh, so its vertex average lands out in the volume
+                // while the bone itself does not. Judged by that average it wins, and then
+                // collides at the chest. Judged by the pivot, the bone standing in the middle of
+                // the volume wins, which is the whole intent.
+                Transform best = null;
+                float bestDistance = float.MaxValue;
+                foreach (var bone in branch)
+                {
+                    float d = Vector3.SqrMagnitude(bone.position - branchCentre);
+                    if (d < bestDistance)
+                    {
+                        bestDistance = d;
+                        best = bone;
+                    }
+                }
+                if (best != null && !chosen.Contains(best))
+                {
+                    chosen.Add(best);
+                }
+            }
+
+            return chosen;
+        }
+
         static float MeasureBoneSpacing(Transform root)
         {
             float total = 0f;
@@ -930,6 +2132,27 @@ namespace AvatarBridge
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Sets a curve-backed value with a linear shape over the chain's depth, root to tip.
+        /// MagicaCloth2 stores these as one value scaled by a 0..1 curve, so a bound that grows
+        /// with depth is expressed as the TIP's value with the curve carrying everything above it.
+        /// </summary>
+        static bool TrySetCurveValue(object target, string fieldName, float value,
+            float curveStart, float curveEnd)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field == null || !(field.GetValue(target) is CurveSerializeData curveData))
+            {
+                return false;
+            }
+            curveData.SetValue(value, curveStart, curveEnd);
+            return true;
         }
 
         static bool TrySetCurveValue(object target, string fieldName, float value)

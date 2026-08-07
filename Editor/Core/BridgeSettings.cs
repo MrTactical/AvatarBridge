@@ -108,7 +108,14 @@ namespace AvatarBridge
         // MagicaCloth2 result they've had — while the angle limit wrecked the jiggle chains on
         // a different avatar, and an uncapped radius turned a 0.5 into metre-wide particles on
         // a third. They are genuinely avatar-dependent, so they are exposed rather than decided.
-        public bool transferAngleLimits = false;
+        // "Transfer angle limits" was removed in 3.7.0. It copied the PhysBone's limit onto
+        // MagicaCloth2's own angle limit, whose constraint runs three iterations a step against
+        // a hard snap-back — its author's comment calls rotating near the parent 酷い振動の温床,
+        // a hotbed of severe vibration — and the maintainer's verdict after living with it was
+        // that it produced a broken avatar every time. boundSwingToSourceLimit now honours the
+        // same source limit as a distance bound, which removes motion instead of adding a
+        // restoring force and so cannot set a chain vibrating. Anyone who wants the angular
+        // version can still tick Angle Limit on an individual cloth.
         // After the preset loads, apply the handful of PhysBone facts that mean the same thing
         // in MagicaCloth2 — no gravity, upward gravity, and immobile (which is world influence
         // inverted).
@@ -127,7 +134,51 @@ namespace AvatarBridge
         // Replaces the preset's damping and restoration only — structure, gravity, immobile and
         // radius are untouched, and turning this off restores the preset's feel exactly.
         public bool derivePhysicsFromPhysBone = true;
-        public bool capParticleRadius = true;
+        // Sizes each chain's particles from the mesh those bones actually move, because nothing
+        // else ever did: the matched preset's radius simply stood, so a breast chain and a hair
+        // strand both arrived at whatever that preset happened to ship. Reported from a real
+        // avatar as collision points a fraction of the body they belong to. The source PhysBone's
+        // own radius is deliberately NOT used — in VRChat it only governs contact with PhysBone
+        // colliders, so authors who never used that leave it near zero.
+        public bool fitRadiusToMesh = true;
+
+        // Fits each converted PhysBone collider to the body part it sits on, using the same
+        // mesh measurement as the particle radius above. A PhysBone collider is one radius from
+        // end to end, so an author covering a thigh has to pick between the hip and the knee;
+        // MagicaCloth2's capsule takes a start radius and an end radius separately, so the
+        // converted one can taper the way the limb does. The measurement replaces the source's
+        // numbers: a PhysBone collider's size is invisible in VRChat unless something collides
+        // with it, so it is routinely one default stamped onto every collider on the avatar.
+        // Only the host bone's own vertices are read, so a leg collider can only come out
+        // leg-sized. Turn it off to keep the source's dimensions.
+        public bool fitCollidersToMesh = true;
+
+        // Measures the mesh a second time with every animated blendshape pushed to the far end of
+        // the range the animator can reach, and keeps whichever reading is larger. A size slider
+        // grows the body but MagicaCloth2's radius is fixed — of its parameters only pose ratio,
+        // gravity, damping, inertia, wind and blend weight can be animated at all — so collision
+        // is right at one slider position and wrong at the rest. Sizing for the largest means
+        // collision covers the body when the slider is up and is a little generous when it is
+        // down, which is the better way round: too small and people reach into a body that is
+        // visibly there. Shapes that SHRINK cost nothing, because the saved reading simply wins.
+        public bool sizePhysicsForLargest = true;
+        // Honours the source PhysBone's own Angle/Hinge/Polar limit as a bound on how far the
+        // chain may travel from rest. That limit is often the only thing keeping a deliberately
+        // loose chain presentable — one reported avatar pairs pull 0.22 with spring 0.81 and a
+        // 48° limit — and converting the looseness without the limit is what "way too swaying"
+        // turned out to be. Applied as a distance bound rather than MagicaCloth2's angle limit,
+        // because a distance bound removes motion instead of adding a restoring force and so
+        // cannot set the chain vibrating (which is why the angular version was removed).
+        public bool boundSwingToSourceLimit = true;
+        // OFF since the radius above became a measurement instead of a guess. This bounds the
+        // particle to half the gap between bones, which was a sensible rail when the radius was
+        // whatever a preset shipped — but it is the wrong shape for soft-body chains, where two
+        // or three bones drive a large volume: on the avatar that found this it cut a measured
+        // thigh from 0.209 to 0.044 and a belly from 0.116 to 0.029, throwing away most of what
+        // had just been measured off the mesh. The overlap it guards against is only a problem
+        // with self-collision, which MagicaCloth2 leaves off by default. Turn it on if a long
+        // chain of closely-spaced bones misbehaves.
+        public bool capParticleRadius = false;
         // Off by default: VRChat avatars routinely carry per-toe PhysBones, and simulated toes
         // in ChilloutVR wiggle with every step — read as broken, not expressive. Chains rooted
         // at (or under) a humanoid Toes bone, or whose root is named like a toe, are skipped

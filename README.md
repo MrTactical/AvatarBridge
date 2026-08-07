@@ -362,6 +362,28 @@ that does. Constraints under such a parent land reflected, and the report names 
 **Structure transfers exactly:** which bone the chain hangs from, which colliders it collides with,
 which transforms to leave out, whether it started enabled.
 
+**Size is measured as you wear it, once.** Every radius here comes from the mesh with your
+blendshape weights applied, so an avatar saved with a body slider part-way up is measured at the
+shape people will see. What it can't do is *follow* that slider in game: a size slider that works
+by **scaling bones** is fine, because the cloth simulates those bones and follows for free, but one
+that works by **blendshape** moves no bones — and MagicaCloth2 won't take an animated radius (of
+its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at
+all). So instead the mesh is measured a *second* time with every animated blendshape pushed as far
+as the animator can take it, and the larger reading wins: collision covers the body when the slider
+is up and is a little generous when it's down, which beats reaching into a body that's visibly
+there. Shapes that *shrink* cost nothing, because the saved reading wins. The report names every
+chain sized this way, and every chain whose slider it couldn't follow.
+
+**The colliders themselves are fitted to the body.** A PhysBone collider carries one radius from
+end to end; MagicaCloth2's capsule takes a start radius and an end radius separately, so a converted
+thigh or arm collider tapers the way the limb does instead of splitting the difference. The body
+part the collider sits on is measured and the capsule fitted to it. That measurement *replaces* the
+source's dimensions, because a PhysBone collider's size is invisible in VRChat unless something
+collides with it — one avatar here carries the same 0.07 radius and 0.4 length on the thigh and the
+shin alike, which is a default rather than a decision. Only the host bone's own vertices are read,
+so a leg collider can only come out leg-sized. Every change is in the report with its before and
+after, and *Fit colliders to the mesh* turns it off.
+
 **So does the feel.** Each chain's `pull`, `spring` and `stiffness` are converted into
 MagicaCloth2's damping and angle restoration, and `immobile` into its inertia. Every adjustment is
 named in the report alongside the PhysBone's original numbers.
@@ -409,7 +431,15 @@ Stretch & squish, multi-child blending and angle limits are reported rather than
 naming the field to change if that chain wants it.
 
 **Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
-of simulation, so that path maps values 1:1.
+of simulation, so that path maps values 1:1. With **one deliberate exception: gravity is written to
+`m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
+ChilloutVR on any avatar that isn't at scale exactly 1.0 — the client cancels the rest-pose share
+of gravity with one factor of scale too many, so the gravity term comes out as `g × scale − g`.
+That's zero at scale 1, and **negative below it**, which lifts hair and tails toward the sky. A
+converted avatar carries a height scaler, so it is essentially never at scale 1. `m_Force` is added
+after that cancellation and is only ever multiplied by scale, so it behaves identically at any
+size. The cost is `gravityFalloff`, which existed only as `m_Gravity`'s cancellation and can't
+come along; the report names each chain that had one.
 
 > ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode, and shaking
 > the avatar root in play mode proves nothing — MagicaCloth2's speed limits make a chain follow
@@ -421,10 +451,13 @@ of simulation, so that path maps values 1:1.
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
-| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration, replacing the preset's feel. Turn it off to get the preset's feel back |
-| **Cap particle radius to bone spacing** | on | A safety rail: MagicaCloth2's radius is the particle *size*, and particles wider than the gap between bones shove each other apart |
+| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. It can *firm* the matched preset with the source's own character but never soften it below that preset's baseline — MagicaCloth2's own presets are the floor of a spring that still reads as one, and a very loose PhysBone converts faithfully to mush without it. The report says when the floor held. Turn it off to get the preset exactly as authored |
+| **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped — the same size on a breast as on a hair strand — so collision covers a fraction of what you see. This measures the mesh those bones move — with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it — and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
+| **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all — so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing — the saved reading simply wins |
+| **Fit colliders to the mesh** | on | A PhysBone collider carries *one* radius from end to end, so an author covering a thigh has to choose between fitting the hip and fitting the knee. MagicaCloth2's capsule takes a start and an end radius separately, so the converted one can taper the way the limb does. This measures the body part the collider sits on and fits the capsule to it. The measurement *replaces* the source's numbers: a PhysBone collider's size is invisible in VRChat unless something collides with it, so it's routinely one default stamped onto every collider on the avatar. Only the host bone's own vertices are read, so a leg collider can only come out leg-sized. The report gives the before and after for each |
+| **Cap particle radius to bone spacing** | off | Bounds each particle to half the gap between its bones. Off since the radius above became a measurement rather than a guess — on a soft-body chain, where two or three bones carry a large volume, this throws most of that measurement away. The overlap it guards against only bites with self-collision, which MagicaCloth2 leaves off. Turn on if a long chain of closely-spaced bones misbehaves |
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
-| **Transfer angle limits** | off | ⚠️ Genuinely avatar-dependent — shakes some chains, best result the tool gives on others. Worth trying if physics feels loose |
+| **Bound swing to the source's limit** | on | A PhysBone's angle limit is often the only thing keeping a deliberately loose chain presentable — convert the looseness without it and the chain swings much further here than it did in VRChat. This bounds how far each bone may travel from rest, worked out from that limit and the chain's length, easing to nothing at the root. It's a *distance* bound rather than an angle limit, so it removes motion instead of adding a restoring force and can't set the chain vibrating |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
@@ -610,7 +643,12 @@ shipped with — animator layers, parameters *and* objects — so nothing is lef
 blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
 
 - **Native CVR Component** — sets up `CVRFaceTracking` and maps the shapes. Self-contained, but the
-  built-in solver is a bit stiff.
+  built-in solver is a bit stiff. **Rigs that name their shapes without a side are handled**: many
+  ship one `EyeLookDown` where ChilloutVR's own matcher looks for `EyeLookDownLeft` and
+  `EyeLookDownRight` and so fills neither. Both slots get that shape — the report says how many were
+  matched this way, and expect symmetric movement on them, since there's only one shape to move.
+  This also decides the *Analyse avatar* recommendation, so a rig like that no longer reads as
+  having no face tracking at all.
 - **Unity Animator Blendtrees (DSR)** — injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has — by name, casing, **ARKit ↔ Unified Expressions**
@@ -710,10 +748,11 @@ settle. Leaving all of them alone converts fine.
 | **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
 | **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
 
-Four more manual rows appear under **Physics** in the same card when the target is MagicaCloth2 —
-**Convert toe PhysBones**, **Add physics to toggled rigs that have none**, **Transfer angle limits**
-and **Auto-assign nearby colliders**. They're described in the [physics table](#options) above and
-not repeated here.
+Physics has a card of its own, above Manual and Automated: which solver to convert into isn't
+something the avatar decides, so it isn't buried with the settings that are. Its **Your call**
+section holds the three that depend on intent rather than measurement — **Convert toe PhysBones**,
+**Add physics to toggled rigs that have none** and **Auto-assign nearby colliders** — described in
+the [physics table](#options) above and not repeated here.
 
 ### Automated options — set from the avatar
 
@@ -884,9 +923,14 @@ Bipeds are unaffected by any of it.
 - **Stacked PhysBones** (several chains on one bone that VRChat toggles between) all convert, but
   only one is left driving the chain — two solvers on the same bones jitter rather than blend.
   Nothing is deleted, so switching variant is one checkbox; the report names the one kept.
-- **Toggled physics follows its toggle.** Hair swaps and outfit toggles that activated the original
-  PhysBone's object are re-wired to switch the generated cloth too. Only *activations* are mirrored,
-  so a hidden style's cloth may keep simulating — invisible and harmless. **If the chain wasn't
+- **Toggled physics follows its toggle, both ways.** Hair swaps and outfit toggles that switched the
+  original PhysBone's object are re-wired to switch the generated cloth too — on *and* off, which
+  matters because ChilloutVR does not restore a binding nothing writes: mirror only the "on" and a
+  control like *Belly physics* turns the physics on the first time and can never turn it back off.
+  The one deactivation that is deliberately *not* mirrored is a whole style container being hidden
+  while a mesh outside it is still skinned to the same bones — add-on hair grafted onto a base
+  hairstyle's rig. Stopping that chain would leave the visible add-on rigid, so it keeps simulating
+  instead; the report names each one. **If the chain wasn't
   converted there's nothing to re-wire to**, and the control will look right and do nothing; the
   report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
   **Collider switches follow too**: a dress that disables the leg colliders that would clip it
