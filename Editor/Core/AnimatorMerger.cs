@@ -2880,9 +2880,9 @@ namespace AvatarBridge
                 });
 
                 var ownedFloats = stateFloats.Where(b => b.type != typeof(Animator)
-                    && !treeDriven.Contains(b)
+                    && !TreeDrivenElsewhere(treeDriven, b, layerIndex)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
-                var ownedObjects = stateObjects.Where(b => !treeDriven.Contains(b)
+                var ownedObjects = stateObjects.Where(b => !TreeDrivenElsewhere(treeDriven, b, layerIndex)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
                 if (ownedFloats.Count == 0 && ownedObjects.Count == 0)
                 {
@@ -3062,7 +3062,7 @@ namespace AvatarBridge
                 foreach (var pair in owner)
                 {
                     if (pair.Value != layerIndex || pair.Key.type == typeof(Animator)
-                        || treeDriven.Contains(pair.Key))
+                        || TreeDrivenElsewhere(treeDriven, pair.Key, layerIndex))
                     {
                         continue;
                     }
@@ -7726,9 +7726,12 @@ namespace AvatarBridge
                 int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
-                    // A blend tree drives this somewhere: leave it to the tree. A constant
-                    // assertion from any plain state fights a parameter-driven value.
-                    if (treeDriven.Contains(binding))
+                    // A blend tree in ANOTHER layer drives this: leave it to the tree, because the
+                    // two blend and a constant here would fight a parameter-driven value. A tree
+                    // in a sibling state of THIS layer is a different matter — only one state
+                    // plays at a time, so it is not running while the layer rests here, and
+                    // deferring to it leaves the property to nobody.
+                    if (TreeDrivenElsewhere(treeDriven, binding, here))
                     {
                         return false;
                     }
@@ -7931,6 +7934,35 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Is this binding driven by a blend tree in some layer OTHER than the one asking?
+        ///
+        /// That is the only case where a constant assertion fights a parameter-driven value: two
+        /// layers blend, so both are live at once. Within one layer the states are mutually
+        /// exclusive — the tree in the "on" state is not running while the layer rests in "off" —
+        /// so the resting state must still say what it owns, or ChilloutVR leaves the property
+        /// wherever the tree last put it.
+        ///
+        /// Called with the asking layer's index; -1 means "not found", and is treated as any other
+        /// layer so an unidentifiable caller stays with the cautious old behaviour.
+        /// </summary>
+        static bool TreeDrivenElsewhere(Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
+            EditorCurveBinding binding, int askingLayer)
+        {
+            if (!treeDriven.TryGetValue(binding, out var owning))
+            {
+                return false;
+            }
+            foreach (int layer in owning)
+            {
+                if (layer != askingLayer)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Which layer OWNS each animated property, and every clip the controller already holds.
         ///
         /// Ownership is by DEPTH: the lowest layer index that animates a property owns it, and only
@@ -7941,7 +7973,7 @@ namespace AvatarBridge
         /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
             out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
-            out HashSet<EditorCurveBinding> treeDriven,
+            out Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
             out Dictionary<EditorCurveBinding, int> anyOwner)
         {
             // Locals rather than the out params directly: a lambda may not touch an out parameter,
@@ -7958,7 +7990,7 @@ namespace AvatarBridge
             // bindings, claimed ownership of all of them, was rightly refused permission to
             // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
             // — nobody restored anything, and the whole avatar was one-way in game.
-            var trees = new HashSet<EditorCurveBinding>();
+            var trees = new Dictionary<EditorCurveBinding, HashSet<int>>();
             // Ownership over EVERYTHING a layer animates, trees included — the arbitration the
             // TREE repair needs. Removing tree bindings from the plain-state map above was right
             // for the state passes, but the tree pass inherited the same map and read "absent"
@@ -7974,6 +8006,7 @@ namespace AvatarBridge
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
                 var anythingHere = new HashSet<EditorCurveBinding>();
+                var treesHere = new HashSet<EditorCurveBinding>();
                 // Ownership only counts states Unity can actually reach. A library layer (see
                 // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
                 // states at layer 4, each holding one toggle's clip, awarded every property to
@@ -7991,9 +8024,9 @@ namespace AvatarBridge
                         CollectClips(motion, clips);
                         if (motion is BlendTree)
                         {
-                            // Trees feed the exemption set and the any-ownership map, never
+                            // Trees feed the exemption map and the any-ownership map, never
                             // plain-state ownership — see above.
-                            CollectBindings(motion, trees, trees);
+                            CollectBindings(motion, treesHere, treesHere);
                             if (onlyPlayable == null || child.state == onlyPlayable)
                             {
                                 CollectBindings(motion, anythingHere, anythingHere);
@@ -8007,6 +8040,21 @@ namespace AvatarBridge
                         }
                     }
                 });
+                // WHICH layer's tree drives it, not merely that one does. Within a single layer
+                // only one state plays at a time, so a tree in a sibling state cannot be fighting
+                // a constant written into the state the layer is resting in — it is not running.
+                // Exempting there left the property to something switched off: measured on an
+                // avatar whose "Toot" and "Buttplug drive" layers each hold a tree in one state
+                // and rest in another, and whose objects stayed on for the rest of the session.
+                // Across layers the exemption is still right, because those genuinely do blend.
+                foreach (var binding in treesHere)
+                {
+                    if (!trees.TryGetValue(binding, out var owning))
+                    {
+                        trees[binding] = owning = new HashSet<int>();
+                    }
+                    owning.Add(layerIndex);
+                }
                 foreach (var binding in floatsHere.Concat(objectsHere))
                 {
                     if (!owners.ContainsKey(binding))

@@ -491,8 +491,26 @@ namespace AvatarBridge
                 return false;
             }
 
-            void Collect(Transform t)
+            // Branches kept by giving up their ignores, for the report. Empty in the ordinary case.
+            var unhonouredBranches = new List<Transform>();
+
+            bool HumanoidUnder(Transform t)
             {
+                foreach (var h in data.HumanoidExclusions)
+                {
+                    if (h != null && (h == t || h.IsChildOf(t)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Returns how many roots this subtree contributed, because a branch that contributes
+            // NONE has to be noticed rather than silently dropped.
+            int Collect(Transform t)
+            {
+                int added = 0;
                 for (int i = 0; i < t.childCount; i++)
                 {
                     var child = t.GetChild(i);
@@ -502,13 +520,35 @@ namespace AvatarBridge
                     }
                     if (SubtreeHasIgnored(child))
                     {
-                        Collect(child); // something inside is ignored, so this can't be one root
+                        int deeper = Collect(child); // something inside is ignored, so this can't be one root
+                        if (deeper == 0 && !HumanoidUnder(child))
+                        {
+                            // Descending found nothing rootable — every path below this child is
+                            // blocked by an ignore. Letting the branch vanish here is how a
+                            // tester's breasts came out as a cloth simulating one collider marker
+                            // while the breast chain itself was not in the cloth at all: the
+                            // marker was the only child with no ignores beneath it, so it became
+                            // the entire root set and looked healthy.
+                            //
+                            // Root at the branch head and give up its ignores. That over-simulates
+                            // the excluded helpers, which is exactly the trade the whole-root
+                            // fallback at the bottom of this method already takes, and for the
+                            // same reason: a few bones jiggling beats losing the chain. Refused
+                            // where a humanoid-mapped bone is among them, on the same grounds as
+                            // that fallback — simulating those fights the animator and IK.
+                            sdata.rootBones.Add(child);
+                            unhonouredBranches.Add(child);
+                            deeper = 1;
+                        }
+                        added += deeper;
                     }
                     else
                     {
                         sdata.rootBones.Add(child);
+                        added++;
                     }
                 }
+                return added;
             }
 
             Collect(data.Root);
@@ -539,7 +579,22 @@ namespace AvatarBridge
                 deadRoots = sdata.rootBones.Where(r => MovableDescendants(r) == 0).ToList();
             }
 
-            if (sdata.rootBones.Count > deadRoots.Count)
+            // What honouring the ignores actually COSTS, measured rather than assumed. Excluding a
+            // bone means rooting below it, so every joint above it stops simulating too — and when
+            // the ignores sit near the tips, that price is the whole chain. A tester's breasts
+            // decomposed to one bone seven joints down plus a collider marker: honoured perfectly,
+            // and the breast did not move.
+            //
+            // Two ignores should cost about two bones. Losing more than half the chain to them is
+            // not honouring an intent, it is destroying the thing the intent was about, so the
+            // whole-root fallback below is the better answer even though it over-simulates.
+            int wholeChain = MovableDescendants(data.Root);
+            int kept = sdata.rootBones.Where(r => !deadRoots.Contains(r))
+                                      .Sum(r => 1 + MovableDescendants(r));
+            bool costsTooMuch = wholeChain > 0 && kept * 2 < wholeChain
+                                && data.HumanoidExclusions.Count == 0;
+
+            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch)
             {
                 // At least one branch still moves: keep those, drop the statues.
                 foreach (var dead in deadRoots)
@@ -558,6 +613,14 @@ namespace AvatarBridge
                     (deadRoots.Count > 0
                         ? $" {deadRoots.Count} childless branch(es) were dropped rather than rooted " +
                           "(a root with nothing below it is a single pinned particle that can never move)."
+                        : "") +
+                    (unhonouredBranches.Count > 0
+                        ? $" {unhonouredBranches.Count} branch(es) kept their excluded bones instead of " +
+                          $"being lost: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
+                          $"{(unhonouredBranches.Count > 4 ? ", …" : "")}. Everything below those is " +
+                          "ignored by the source PhysBone, so honouring it would have left nothing of " +
+                          "the branch to root at all — the excluded bones now simulate, which is the " +
+                          "smaller error than the branch not being in the cloth."
                         : ""));
                 return;
             }
@@ -584,12 +647,16 @@ namespace AvatarBridge
             sdata.rootBones.Add(data.Root);
             ctx.Report.Warning(Category, data.Root.name,
                 $"{data.Ignores.Count} Ignore Transform(s) NOT honoured — MagicaCloth2 can only exclude " +
-                "a bone by rooting the cloth below it, and here that leaves nothing that can move (the " +
-                "exclusions sit at the chain's tips, or cover everything under the root). The cloth is " +
-                $"rooted at \"{data.Root.name}\" with the full tree simulating instead, so the excluded " +
-                "bones (usually squish/deform helpers) now jiggle where VRChat held them rigid — the far " +
-                "smaller error than the chain freezing solid. Delete those bones from the cloth by hand " +
-                "if it matters.");
+                "a bone by rooting the cloth below it, and here that costs more than it saves: " +
+                (costsTooMuch
+                    ? $"honouring them would have simulated {kept} of this chain's {wholeChain} bone(s), " +
+                      "leaving the joints nearest the body — the ones that carry the motion — pinned. "
+                    : "the exclusions sit at the chain's tips, or cover everything under the root, so " +
+                      "nothing that can move is left. ") +
+                $"The cloth is rooted at \"{data.Root.name}\" with the full tree simulating instead, so " +
+                "the excluded bones (usually squish/deform helpers) now jiggle where VRChat held them " +
+                "rigid — the far smaller error than the chain barely moving. Delete those bones from " +
+                "the cloth by hand if it matters.");
         }
 
         /// <summary>
