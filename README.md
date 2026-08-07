@@ -112,7 +112,11 @@ actually running.
   toggles, linked clothing and merged armatures survive — and Fury's VRChat-only sync workarounds
   are removed rather than carried across.
 - **PhysBones become real physics** — **MagicaCloth2** or **DynamicBone**, no external tool, with
-  the chain's feel converted from the PhysBone's own numbers.
+  the chain's feel converted from the PhysBone's own numbers. Not translated field by field:
+  breasts, bellies and thighs are written as **soft bodies** rather than hanging chains, and every
+  size — how big a chain's collision is, how wide a converted collider is — is **measured from your
+  mesh**, with your blendshape sliders applied. So people touch what they can see, instead of a
+  radius a preset happened to ship with.
 - **Prefabs that drive your bones keep working**, including constraints that target a different
   transform — the way [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling)
   and many others are built.
@@ -361,6 +365,16 @@ that does. Constraints under such a parent land reflected, and the report names 
 
 **Structure transfers exactly:** which bone the chain hangs from, which colliders it collides with,
 which transforms to leave out, whether it started enabled.
+
+**A breast is not a chain of hanging bones.** Chains read as a breast, butt, belly or thigh are
+written as MagicaCloth2's **Bone Spring** — a volume anchored to a bone and held near its rest
+position — rather than as Bone Cloth, which is for things that *hang*. Converting them as chains is
+what made them swing like a pendulum. Bone Spring also lets collision be offered on **one bone per
+side** instead of every bone in the chain, so a touch lands on the part that's actually there; the
+bone chosen is the one whose pivot sits nearest the middle of the mesh that side carries. Their
+inertia is left at the preset's value rather than converted from *Immobile*, because an anchored
+body can't be thrown off the avatar — holding inertia down would only stop it answering your
+movement.
 
 **Size is measured as you wear it, once.** Every radius here comes from the mesh with your
 blendshape weights applied, so an avatar saved with a body slider part-way up is measured at the
@@ -992,6 +1006,33 @@ A constraint writes the bone every frame; a cloth solver integrates it from its 
 both and each is fed the other's output until the transform goes **NaN**, which never recovers.
 VRChat tolerates it because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone
 don't. Remove the constraint if you want the chain simulated.
+
+### Hair or a tail floats upward in game, and I'm using DynamicBone
+
+Almost certainly a DynamicBone the avatar **already had**, which converts untouched — AvatarBridge
+only writes the ones it makes from PhysBones.
+
+ChilloutVR's `m_Gravity` is unusable on any avatar not at scale exactly 1.0. The client cancels the
+rest-pose share of gravity with one factor of avatar scale too many, so the gravity term works out
+to `g × scale − g`: zero at scale 1, and **negative below it**, which lifts the chain instead of
+dropping it. A converted avatar carries a height scaler and is essentially never at scale 1 — one
+avatar here converts at 0.077, where that term is about `−0.92g`.
+
+Fix it on the component: move the value out of **Gravity** and into **Force** (same direction, same
+magnitude), leaving Gravity at `(0, 0, 0)`. Force is applied after the cancellation and only ever
+scaled up, so it behaves the same at any size. Every chain AvatarBridge writes already does this.
+
+### Face tracking wasn't set up, and the avatar definitely has it
+
+Read the *Face tracking* section of the report — it says how close detection got and on which mesh,
+e.g. *matched 10 of the tracking shape names — 12 are needed*. A score near the threshold means the
+shapes are there under names it couldn't read; a score of nothing means it found no tracking shapes
+at all.
+
+Shapes named **without a side** are handled (one `EyeLookDown` standing for
+`EyeLookDownLeft`/`Right`, including upper/lower quadrants). What still won't be found is a scheme
+that renames the shapes themselves. If yours is one, that's worth
+[reporting](#reporting-a-bug) — the shape names on that mesh are the whole fix.
 
 ### A chain moves differently in game than in Unity
 
