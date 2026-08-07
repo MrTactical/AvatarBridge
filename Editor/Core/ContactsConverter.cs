@@ -598,79 +598,55 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
-            // The contact writes a LOCAL parameter and a driver copies it into the one the
-            // animations already read. Costs no sync bits that were not already being spent:
-            // the original is unprefixed, so ChilloutVR has always counted it against the 3200
-            // and always transmitted it — it simply transmitted a value nothing ever wrote,
-            // because the native path writes at the Animator and never through the manager.
-            // The bridge does not buy bits, it makes bits already paid for do something.
+            // A native contact must drive a LOCAL parameter. It writes straight at the Animator
+            // without filling the outbound AAS buffer, so a synced name has the declared default
+            // streamed back over every value the contact sets — which is the "it only syncs
+            // sometimes" this tool used to cause, and it costs the wearer the contact as often as
+            // it costs everyone else. Made local, the system does what it was built to do: every
+            // client runs the contact itself and reaches the same answer from the same collision.
             //
-            // localOnly receivers are left alone: the author asked for local, and honouring that
-            // is the whole point of the flag.
-            //
-            // PROXIMITY receivers are left alone too, and that is not an oversight. A driver
-            // writes a value on entering a state, so it can carry an on/off reading exactly and
-            // an analog one only in steps — and the steps would replace the smooth reading the
-            // WEARER gets today. Trading their working analog contact for a stepped one other
-            // people can see is not a trade this tool makes silently, so a proximity receiver
-            // keeps behaving exactly as it does without the option, and the report says so.
+            // Which route gets there is decided PER PARAMETER, because only one thing can stop
+            // the simple route — a menu control driving the same name, which has to stay synced
+            // to reach anyone. That is rare, so it does not deserve a setting; it deserves the
+            // other route. This used to be a global tickbox that had to be right for the whole
+            // avatar at once, and the avatar is not uniform.
             string driven = receiver.parameter;
             bool analog = typeName.Contains("Proximity");
-            if (ctx.Settings.syncNativeContacts && !receiver.localOnly
-                && !driven.StartsWith("#", System.StringComparison.Ordinal))
+            if (!driven.StartsWith("#", System.StringComparison.Ordinal))
             {
-                if (analog)
+                bool onMenu = ctx.CvrAvatar?.avatarSettings?.settings != null
+                    && ctx.CvrAvatar.avatarSettings.settings
+                        .Any(s => s != null && s.machineName == driven);
+                if (!onMenu)
                 {
-                    ctx.Report.Skipped(Category, PathOf(ctx, receiver.transform),
-                        $"\"{driven}\" is a proximity contact, so it is not carried to other " +
-                        "players even with the option on: it reports how close the toucher is, " +
-                        "and that whole range cannot be carried without replacing the smooth " +
-                        "value you see now with a handful of steps. It behaves exactly as it " +
-                        "would with the option off. On/off contacts on this avatar are carried " +
-                        "normally. Switch this one to the legacy contact path if other players " +
-                        "need to see what it drives.");
+                    // The simple route: the parameter itself becomes "#name" everywhere. The
+                    // rename pass moves the declaration, every clip binding and every condition
+                    // together, so the animations keep reading whatever it ends up called.
+                    ctx.LocalContactParameters.Add(driven);
                 }
-                else
+                else if (!analog)
                 {
+                    // The menu needs this name synced, so the contact cannot have it. Give the
+                    // contact a local name of its own and let a driver copy the value across —
+                    // a driver writes through the animator manager, so it is transmitted.
                     string local = "#" + driven + "_contact";
                     ctx.BridgedContacts.Add((local, driven));
                     driven = local;
                 }
-            }
-            // Without the bridge, the parameter the contact writes has to become local. Left
-            // synced it is written raw by the contact and then overwritten by the AAS stream's
-            // declared default, which is the "it only kinda syncs sometimes" people report — and
-            // it can cost the WEARER the contact too, not just everyone else. The rename pass
-            // moves the declaration, every clip binding and every condition together, so the
-            // animations keep reading whatever the parameter ends up called.
-            //
-            // Not applied when the bridge is on: there the contact already writes its own "#"
-            // name and a driver carries the value into the original, which must stay synced to
-            // be broadcast at all.
-            if (driven == receiver.parameter
-                && !driven.StartsWith("#", System.StringComparison.Ordinal))
-            {
-                // Unless a MENU control drives the same parameter. Making that local would take
-                // the entry off the network to fix a contact, which is a trade the wearer never
-                // asked for and would not connect to this setting. Said out loud instead: the
-                // contact is the thing that misbehaves, and the bridge fixes it without moving
-                // anyone's menu.
-                bool onMenu = ctx.CvrAvatar?.avatarSettings?.settings != null
-                    && ctx.CvrAvatar.avatarSettings.settings
-                        .Any(s => s != null && s.machineName == driven);
-                if (onMenu)
-                {
-                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
-                        $"\"{driven}\" is driven by this native contact AND by a menu control, so it " +
-                        "is left synced. A native contact writes straight at the Animator without " +
-                        "filling the outbound buffer, so the sync stream writes the declared default " +
-                        "back over whatever the contact set — the contact will behave erratically. " +
-                        "Turn on \"Let native contacts reach other players\" to fix it without " +
-                        "touching the menu entry, or move the menu control to its own parameter.");
-                }
                 else
                 {
-                    ctx.LocalContactParameters.Add(driven);
+                    // Analog AND menu-driven: neither route exists. It cannot be made local
+                    // without taking the menu entry off the network, and a driver writes on
+                    // entering a state, so it can carry an on/off reading exactly and a smooth
+                    // one only in steps. Left alone and named rather than quietly degraded.
+                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
+                        $"\"{driven}\" is a proximity contact whose parameter a MENU control also " +
+                        "drives, and those two cannot both be satisfied. The menu needs the name " +
+                        "synced; the contact needs it local, or the sync stream writes the " +
+                        "declared default back over whatever it sets. A driver would bridge the " +
+                        "gap for an on/off contact but can only carry this one's smooth range in " +
+                        "steps. Give the menu control its own parameter, or move this contact to " +
+                        "the legacy path, which has neither problem.");
                 }
             }
 

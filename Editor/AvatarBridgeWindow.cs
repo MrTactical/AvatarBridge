@@ -911,18 +911,6 @@ namespace AvatarBridge
                     "control also drives cannot be made local, and the report names those.",
                     HelpBoxMessageType.Info));
 
-                b.Add(BridgeElements.Bind("Carry contacts through a driver instead",
-                    "Rarely needed. Contacts already work by driving a local \"#\" parameter, " +
-                    "which is what the native system requires — every client runs the contact and " +
-                    "reaches the same answer, so effects appear for everyone.\n\n" +
-                    "This is the fallback for the one case that cannot: a parameter a MENU control " +
-                    "also drives has to stay synced, so it cannot be made local, and the sync " +
-                    "stream would overwrite whatever the contact set. Turning this on points the " +
-                    "contact at a local name of its own and has a driver copy the value into the " +
-                    "synced one instead. The report names any parameter in that position.\n\n" +
-                    "On/off contacts only — a proximity contact's smooth range cannot be carried " +
-                    "by a driver, so those are left as they are.",
-                    settings.syncNativeContacts, v => { settings.syncNativeContacts = v; ScheduleRebuild(); }));
             }
 
             b.Add(BridgeElements.Row(

@@ -550,9 +550,13 @@ contact components are repointed to follow the rename.
 *Confirmed in game: sound and particles reaching other players reliably.*
 
 The one parameter that can't be made local is one a **menu control** also drives, since that has to
-stay synced. Those are named in the report, and *Carry contacts through a driver instead* is the
-fallback for them — it gives the contact a local name of its own and has a driver copy the value
-into the synced one.
+stay synced to reach anyone. Those take the other route automatically: the contact gets a local name
+of its own and a **driver** copies the value into the synced one, because a driver's writes *do* go
+out. Nothing to choose — the converter can see which case each parameter is in.
+
+The only combination with no answer is a **proximity** contact whose parameter a menu control also
+drives: a driver can carry an on/off reading exactly but a smooth range only in steps. That one is
+named in the report and left alone.
 
 <details><summary>Why results differ between clients, and the call chain</summary>
 
@@ -804,7 +808,6 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Carry contacts through a driver instead** | off | Only shown with native contacts on, and rarely needed — contacts already work by driving a local `#` parameter. This is the fallback for a parameter a **menu control** also drives, which has to stay synced and would otherwise have the sync stream overwrite whatever the contact set. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. **On/off contacts only** — a proximity contact's smooth range can't be carried by a driver, so it is left as-is and named in the report. Local-only receivers are left alone |
 | **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |

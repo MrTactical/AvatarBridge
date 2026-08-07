@@ -160,28 +160,13 @@ namespace AvatarBridge
         // map it wrongly, which is what Unity's Auto-Map does to a face it cannot read.
         public bool unmapMisplacedJaw = true;
 
-        // Only meaningful with native contacts on. ChilloutVR's native contact system writes its
-        // parameter straight at the Animator, and only a write through the avatar's animator
-        // manager is transmitted — so whatever a native contact sets off is seen by the wearer
-        // alone. This points the contact at a local parameter and copies it into the original
-        // with a driver, which DOES go through the manager. Costs no sync bits beyond what the
-        // avatar already spends: the original parameter was always counted and always
-        // transmitted, it was simply transmitting a value nothing ever wrote.
-        //
-        // On/off receivers only. A driver writes on entering a state, so it carries an on/off
-        // reading exactly and an analog one only in steps — proximity receivers are therefore
-        // left untouched rather than have the wearer's smooth value replaced by a stepped one.
-        //
-        // OFF again, and no longer forced on with native contacts. It was on while the driver
-        // bridge was the only thing making them reach other players — but the reason they did not
-        // was that this tool handed the native system a SYNCED parameter, which the sync stream
-        // then overwrote. Contacts now drive a local "#" parameter, every client runs the contact
-        // and reaches the same answer, and a tester confirmed sound and particles reaching other
-        // players reliably in game with this off.
-        //
-        // It remains the fallback for the one parameter that cannot be made local: one a MENU
-        // control also drives, which has to stay synced. Only read when useNativeContacts is on.
-        public bool syncNativeContacts = false;
+        // NOTE: "syncNativeContacts" lived here from 3.7.1 to 3.7.2 and is gone. It offered a
+        // choice between two ways of getting a native contact's value where it needed to go, and
+        // the choice was never the user's to make: which route is correct is decided by whether a
+        // MENU control drives the same parameter, which the converter can see for itself and the
+        // wearer would have to reason about. It is now decided per parameter in ContactsConverter
+        // — local name by default, driver only where the menu needs the synced one — so the
+        // avatar no longer has to be uniform for the setting to be right.
 
         // Measures the mesh a second time with every animated blendshape pushed to the far end of
         // the range the animator can reach, and keeps whichever reading is larger. A size slider
