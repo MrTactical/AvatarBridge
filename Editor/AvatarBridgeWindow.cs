@@ -886,10 +886,27 @@ namespace AvatarBridge
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
-                    "Experimental — this talks to a component internal to the game, not the CCK, " +
-                    "so any ChilloutVR update can break it, possibly for good. Treat it as a " +
-                    "bonus, not something the avatar depends on.",
-                    HelpBoxMessageType.Info));
+                    "ONLY YOU WILL SEE WHAT THESE DRIVE. The native system writes its parameter " +
+                    "straight at the Animator, and ChilloutVR only sends a value that was written " +
+                    "through the avatar's animator manager — so a particle, sound or toggle set " +
+                    "off by a native contact happens on your screen and for nobody else. The " +
+                    "legacy pointer/trigger path writes through the manager and syncs, which is " +
+                    "why it is the default. Confirmed in game, both ways.\n\n" +
+                    "Experimental — this also talks to a component internal to the game, not the " +
+                    "CCK, so any ChilloutVR update can break it, possibly for good.",
+                    HelpBoxMessageType.Warning));
+
+                b.Add(BridgeElements.Bind("Let native contacts reach other players",
+                    "Fixes the problem above. The contact is pointed at a local parameter and a " +
+                    "small animator layer copies it into the original name with a driver — and a " +
+                    "driver's writes DO go out over the network, because they go through the " +
+                    "avatar's animator manager. Every animation still reads the name it always " +
+                    "read, so nothing else about the avatar changes.\n\n" +
+                    "This costs no sync bits. The parameter a contact drives is already declared " +
+                    "and already counted against ChilloutVR's 3200-bit budget — it has been " +
+                    "transmitted all along, just carrying a value nothing ever wrote.\n\n" +
+                    "Receivers the author marked local-only are left alone.",
+                    settings.syncNativeContacts, v => settings.syncNativeContacts = v));
             }
 
             b.Add(BridgeElements.Row(

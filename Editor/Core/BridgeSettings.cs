@@ -160,6 +160,15 @@ namespace AvatarBridge
         // map it wrongly, which is what Unity's Auto-Map does to a face it cannot read.
         public bool unmapMisplacedJaw = true;
 
+        // Only meaningful with native contacts on. ChilloutVR's native contact system writes its
+        // parameter straight at the Animator, and only a write through the avatar's animator
+        // manager is transmitted — so whatever a native contact sets off is seen by the wearer
+        // alone. This points the contact at a local parameter and copies it into the original
+        // with a driver, which DOES go through the manager. Costs no sync bits beyond what the
+        // avatar already spends: the original parameter was always counted and always
+        // transmitted, it was simply transmitting a value nothing ever wrote.
+        public bool syncNativeContacts = false;
+
         // Measures the mesh a second time with every animated blendshape pushed to the far end of
         // the range the animator can reach, and keeps whichever reading is larger. A size slider
         // grows the body but MagicaCloth2's radius is fixed — of its parameters only pose ratio,

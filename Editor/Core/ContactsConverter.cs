@@ -551,13 +551,34 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
+            // The contact writes a LOCAL parameter and a driver copies it into the one the
+            // animations already read. Costs no sync bits that were not already being spent:
+            // the original is unprefixed, so ChilloutVR has always counted it against the 3200
+            // and always transmitted it — it simply transmitted a value nothing ever wrote,
+            // because the native path writes at the Animator and never through the manager.
+            // The bridge does not buy bits, it makes bits already paid for do something.
+            //
+            // localOnly receivers are left alone: the author asked for local, and honouring that
+            // is the whole point of the flag.
+            string driven = receiver.parameter;
+            if (ctx.Settings.syncNativeContacts && !receiver.localOnly
+                && !driven.StartsWith("#", System.StringComparison.Ordinal))
+            {
+                string local = "#" + driven + "_contact";
+                ctx.BridgedContacts.Add((local, driven));
+                driven = local;
+            }
+
             var animator = host.AddComponent(FindType(NakAnimator));
             SetMember(animator, "animator", ctx.Target.GetComponent<Animator>());
-            SetMember(animator, "parameter", receiver.parameter);
+            SetMember(animator, "parameter", driven);
 
             ctx.ContactParameters.Add(receiver.parameter);
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
-                $"{typeName} receiver -> native ContactReceiver driving \"{receiver.parameter}\"" +
+                $"{typeName} receiver -> native ContactReceiver driving \"{driven}\"" +
+                (driven != receiver.parameter
+                    ? $", carried to \"{receiver.parameter}\" by a driver so other players see it"
+                    : "") +
                 (receiver.localOnly ? " (localOnly preserved)" : ""));
             Object.DestroyImmediate(receiver);
         }

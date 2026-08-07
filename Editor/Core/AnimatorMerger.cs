@@ -433,6 +433,7 @@ namespace AvatarBridge
             // After every merge, injection and clip clone, right before saving: animations that
             // toggled a converted PhysBone's GameObject or component are taught to reach the
             // generated physics as well.
+            BridgeNativeContacts(master, ctx);
             RewirePhysicsToggles(master, ctx);
             AuditSizeBlendshapes(master, ctx);
             RepairClipPaths(master, ctx);
@@ -1064,6 +1065,118 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ setup ----
+
+        /// <summary>
+        /// Carries a native contact's value to the network, one small layer per contact.
+        ///
+        /// ChilloutVR's native contact system writes its parameter with animator.SetFloat —
+        /// straight at the Animator — and the outbound sync cache only fills inside
+        /// CVRAnimatorManager's own setters. So a native contact drives a value that never leaves
+        /// the wearer's machine, and every particle, sound and toggle it gates happens for them
+        /// alone. The legacy pointer/trigger path calls PlayerSetup.ChangeAnimatorParam and does
+        /// not have this problem, which is why it is the default.
+        ///
+        /// A DRIVER writes through the manager too (CVRAnimatorDriver.ApplyAnimatorChange calls
+        /// AnimatorManager.SetParameter), so it can act as the bridge. The contact was repointed
+        /// at a local parameter during the contacts pass; this reads that and drives the ORIGINAL
+        /// name, which every animation on the avatar already reads. Nothing needs retargeting.
+        ///
+        /// It buys no bits and spends none: the original parameter is unprefixed, so ChilloutVR
+        /// has always counted it against the 3200-bit budget and always transmitted it. It was
+        /// transmitting a value nothing ever wrote.
+        /// </summary>
+        static void BridgeNativeContacts(AnimatorController master, BridgeContext ctx)
+        {
+            if (ctx.BridgedContacts == null || ctx.BridgedContacts.Count == 0)
+            {
+                return;
+            }
+
+            var built = new List<string>();
+            foreach (var (local, synced) in ctx.BridgedContacts)
+            {
+                var target = master.parameters.FirstOrDefault(p => p.name == synced);
+                if (target == null)
+                {
+                    continue;   // nothing reads it; there is nothing to carry
+                }
+                if (master.parameters.All(p => p.name != local))
+                {
+                    master.AddParameter(local, AnimatorControllerParameterType.Float);
+                }
+
+                var machine = new AnimatorStateMachine
+                {
+                    name = $"Contact sync {synced}",
+                    hideFlags = HideFlags.HideInHierarchy,
+                };
+                AssetDatabase.AddObjectToAsset(machine, master);
+
+                // Two states, each asserting its end of the value. Both directions are written,
+                // because ChilloutVR restores nothing a state does not write — the same rule that
+                // governs every toggle this tool produces.
+                var off = machine.AddState("Not touched");
+                var on = machine.AddState("Touched");
+                off.writeDefaultValues = false;
+                on.writeDefaultValues = false;
+                machine.defaultState = off;
+                off.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 0f) };
+                on.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 1f) };
+
+                var toOn = off.AddTransition(on);
+                toOn.hasExitTime = false;
+                toOn.duration = 0f;
+                toOn.AddCondition(AnimatorConditionMode.Greater, 0.5f, local);
+                var toOff = on.AddTransition(off);
+                toOff.hasExitTime = false;
+                toOff.duration = 0f;
+                toOff.AddCondition(AnimatorConditionMode.Less, 0.5f, local);
+
+                master.AddLayer(new AnimatorControllerLayer
+                {
+                    name = $"Contact sync {synced}",
+                    stateMachine = machine,
+                    defaultWeight = 1f,
+                });
+                built.Add(synced);
+            }
+
+            if (built.Count > 0)
+            {
+                ctx.Report.Converted("Contacts",
+                    $"{built.Count} native contact(s) carried to other players by a driver",
+                    string.Join(", ", built) + " — a native contact writes its parameter straight " +
+                    "at the Animator, which ChilloutVR never transmits, so whatever it sets off is " +
+                    "normally seen by you alone. Each of these now drives a local parameter that a " +
+                    "driver copies into the original name, and a driver's writes DO go out. " +
+                    "Nothing else changed: every animation still reads the name it always read. " +
+                    "This costs no sync bits — those parameters were already declared, already " +
+                    "counted against the 3200-bit budget and already being transmitted; they were " +
+                    "simply carrying a value nothing ever wrote.");
+            }
+        }
+
+        /// <summary>One driver task: set this parameter to this value, in the type it is declared
+        /// as, so a bool slot is not handed a float.</summary>
+        static AnimatorDriver ContactDriver(string parameter, AnimatorControllerParameterType type, float value)
+        {
+            var driver = ScriptableObject.CreateInstance<AnimatorDriver>();
+            driver.name = "AnimatorDriver";
+            driver.hideFlags = HideFlags.HideInHierarchy;
+            driver.EnterTasks.Add(new AnimatorDriverTask
+            {
+                op = AnimatorDriverTask.Operator.Set,
+                targetName = parameter,
+                targetType = type == AnimatorControllerParameterType.Bool
+                    ? AnimatorDriverTask.ParameterType.Bool
+                    : type == AnimatorControllerParameterType.Int
+                        ? AnimatorDriverTask.ParameterType.Int
+                        : AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Static,
+                aValue = value,
+            });
+            return driver;
+        }
 
         /// <summary>
         /// Names every animator layer the avatar wrote itself that this conversion is leaving

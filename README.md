@@ -545,6 +545,14 @@ be able to set it off.
 >
 > If an effect on a native-contact avatar *is* visible to others, check whether it's simply left
 > switched on — an always-active particle needs no sync at all, and that's usually the explanation.
+>
+> **There is a fix, if you need native contacts anyway.** *Let native contacts reach other players*
+> points each contact at a local parameter and adds a small layer that copies it into the original
+> name with a **driver** — and a driver's writes *do* go out, because they go through the animator
+> manager. Every animation still reads the name it always read. **It costs no sync bits**: that
+> parameter was already declared, already counted against the 3200-bit budget and already being
+> transmitted — it was carrying a value nothing ever wrote. Receivers the author marked local-only
+> are left alone.
 
 **Detection itself costs no sync** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
@@ -770,6 +778,7 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
+| **Let native contacts reach other players** | off | Only shown with native contacts on, and it fixes their one real flaw. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. Local-only receivers are left alone |
 | **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **Whatever they drive is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
