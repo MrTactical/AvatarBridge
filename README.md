@@ -136,8 +136,9 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts** — one-to-one, with real proximity and zero sync cost (contacts
-  are per-client by design), using a system the CCK doesn't expose ([experimental](#native-contacts)).
+- **ChilloutVR's native contacts** — one-to-one, with real proximity and box shapes, using a system
+  the CCK doesn't expose ([experimental](#native-contacts), off by default: what they drive is
+  **visible only to you**).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -530,11 +531,25 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-**Contacts are per-client by design** — the system is by
+> ### ⚠️ Only you will see the result
+>
+> A native contact writes its parameter **straight at the Animator** (`ContactAnimator.ApplyValue`
+> → `animator.SetFloat`). ChilloutVR's outbound sync cache only fills when something writes through
+> the avatar's **animator manager**, so that value never leaves your machine. Anything a native
+> contact gates — a particle, a sound, a toggle — plays perfectly on your screen and **does not
+> happen for anybody else**.
+>
+> The legacy pointer/trigger path does the opposite: `TriggerToContact` calls
+> `PlayerSetup.ChangeAnimatorParam`, which goes through the manager, so it **does** sync. That's
+> why it's the default.
+>
+> If an effect on a native-contact avatar *is* visible to others, check whether it's simply left
+> switched on — an always-active particle needs no sync at all, and that's usually the explanation.
+
+**Detection itself costs no sync** — the system is by
 [NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer. Every client simulates every avatar's contacts itself, so **detection costs no sync at
-all**. Whether the parameter a receiver drives replicates its value is that parameter's own sync
-declaration, unchanged.
+developer, and every client simulates every avatar's contact *shapes* itself. It's the parameter
+the receiver drives that stays local, per the warning above.
 
 **Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
 override when one is set — the component itself often lives somewhere central while the shape
@@ -755,7 +770,7 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, tags verbatim — instead of approximating with pointers and triggers. Talks to a component internal to the game |
+| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **Whatever they drive is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |

@@ -61,6 +61,41 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{senders.Length} sender(s), {receivers.Length} receiver(s) converted");
             }
+
+            if (receivers.Length > 0 && UseNativeContacts(ctx))
+            {
+                // Both halves of this are read off the shipping client, and they are the reason
+                // native contacts are not the default.
+                //
+                // NAK.Contacts.ContactAnimator.ApplyValue writes the parameter with
+                // animator.SetFloat / SetBool — straight at the Animator. The outbound sync cache
+                // is only updated inside CVRAnimatorManager's own setters, so a value written that
+                // way never leaves the machine. The legacy path does the opposite:
+                // TriggerToContact calls PlayerSetup.ChangeAnimatorParam, which goes through the
+                // manager and therefore syncs.
+                //
+                // Reported by a user who could see their own headpat sparkles and pop sound and
+                // could not work out why nobody else could. The particle that DID work for
+                // everyone turned out to be one that is simply always on.
+                ctx.Report.Warning(Category,
+                    $"Native contacts are on: those {receivers.Length} receiver(s) drive parameters " +
+                    "that ONLY YOU CAN SEE",
+                    "ChilloutVR's native contact system writes its parameter directly at the " +
+                    "Animator, and a value written that way never reaches the network — the sync " +
+                    "cache only fills when something writes through the avatar's animator manager. " +
+                    "So anything a native contact gates — a particle, a sound, a toggle — plays " +
+                    "perfectly on your own screen and does not happen at all for anyone else. An " +
+                    "effect that IS visible to others is one that was simply left switched on. " +
+                    "The legacy pointer/trigger path does not have this problem: it writes through " +
+                    "the manager and syncs. " +
+                    "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
+                    "AvatarBridge declares them itself against the decompiled client, and nothing " +
+                    "obliges ChilloutVR to keep them as they are. An avatar built on them can be " +
+                    "broken by a client update with no warning and no fix but reconverting. " +
+                    "Turn \"Use ChilloutVR's native contacts\" OFF unless you specifically need box " +
+                    "shapes or a receiver type the legacy triggers do not have, and expect to test " +
+                    "anything you build on them with a second person.");
+            }
         }
 
         static void ConvertSender(BridgeContext ctx, VRCContactSender sender)

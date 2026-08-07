@@ -862,13 +862,19 @@ namespace AvatarBridge
             b.Add(BridgeElements.SubHeading("Contacts & shaders"));
             var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
                 "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
-                "of approximating them with pointers and triggers: real proximity and collision " +
-                "tags kept as-is. Contacts are per-client by design — every client simulates " +
-                "every avatar's contacts itself, so reactions work over the network without " +
-                "costing sync bits (confirmed in game). The components aren't in the CCK, so " +
-                "AvatarBridge declares them itself, verified field-for-field against the " +
-                "decompiled game client — the only layout that matters, since the client is " +
-                "what reads the uploaded avatar.",
+                "of approximating them with pointers and triggers: real proximity, box shapes and " +
+                "collision tags kept as-is.\n\n" +
+                "ONLY YOU WILL SEE THE RESULT. The native system writes its parameter straight at " +
+                "the Animator, and the sync cache only fills when something writes through the " +
+                "avatar's animator manager — so a particle, sound or toggle driven by a native " +
+                "contact plays on your screen and does not happen for anybody else. The legacy " +
+                "pointer/trigger path writes through the manager and does sync, which is why it " +
+                "is the default.\n\n" +
+                "The components also aren't in the CCK: AvatarBridge declares them itself, " +
+                "verified field-for-field against the decompiled game client. Nothing obliges " +
+                "ChilloutVR to keep them as they are, so an avatar built on them can be broken by " +
+                "a client update. Take them only for a shape or receiver type the legacy triggers " +
+                "cannot do.",
                 settings.useNativeContacts, v => { settings.useNativeContacts = v; ScheduleRebuild(); });
             native.SetEnabled(settings.convertContacts);
             b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
