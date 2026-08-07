@@ -66,6 +66,22 @@ namespace AvatarBridge
         public HashSet<string> ContactParameters = new HashSet<string>();
 
         /// <summary>
+        /// Contact parameters that must end up LOCAL ("#"), overriding the rule that keeps a
+        /// contact parameter synced.
+        ///
+        /// That rule is right for the legacy path, where TriggerToContact writes through
+        /// ChangeAnimatorParam and the value is genuinely broadcast. It is backwards for the
+        /// native system: that writes straight at the Animator and never fills the outbound AAS
+        /// buffer, so a SYNCED parameter has the declared default streamed back over whatever the
+        /// contact just wrote. The system's author states the requirement plainly — a native
+        /// contact must drive a "#" parameter.
+        ///
+        /// Empty unless native contacts are on without the driver bridge; with the bridge, the
+        /// original name is written BY a driver and so must stay synced.
+        /// </summary>
+        public HashSet<string> LocalContactParameters = new HashSet<string>();
+
+        /// <summary>
         /// Native contacts whose value is being carried to the network by a driver: the LOCAL
         /// parameter the contact now writes, against the ORIGINAL parameter every animation
         /// already reads. The animator pass builds one small layer per pair.
@@ -105,6 +121,18 @@ namespace AvatarBridge
         /// settled while the menu is being built and obeyed later by the rename pass.
         /// </summary>
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Every rename the animator merge actually applied, original name -> final name. Written
+        /// by the rename pass, read by anything holding a parameter name OUTSIDE the controller.
+        ///
+        /// A native contact component stores the name of the parameter it drives as a string, and
+        /// nothing was updating it: a contact whose parameter was sanitised for the CCK, or made
+        /// local, kept pointing at a name the finished animator no longer declares, and drove
+        /// nothing at all. The controller renames itself consistently, so the fault was invisible
+        /// from inside it.
+        /// </summary>
+        public Dictionary<string, string> AppliedParameterRenames = new Dictionary<string, string>();
 
         /// <summary>
         /// Menu entries this conversion invented for synced parameters the VRChat menu never

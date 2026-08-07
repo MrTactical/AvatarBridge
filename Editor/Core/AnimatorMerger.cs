@@ -2267,11 +2267,21 @@ namespace AvatarBridge
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
+                // A native contact's parameter must be local, and that outranks both the contact
+                // rule above and the setting below. The native system writes straight at the
+                // Animator without filling the outbound AAS buffer, so a SYNCED name has the
+                // declared default streamed back over whatever the contact just wrote — the
+                // system's author is explicit that it must be a "#" name. Core and stream-fed
+                // parameters are still exempt: those have to be broadcast to work at all, and a
+                // contact sharing one of those names is a different problem.
+                bool mustBeLocal = ctx.LocalContactParameters.Contains(name)
+                    && !CvrCoreParameters.Contains(result)
+                    && !StreamFedParameters.Contains(result);
                 // Already-local names are left alone — the Action transplant declares its
                 // "#AB_Ready" flag and scratch cells BEFORE this pass runs, and prefixing them
                 // again made "##AB_Ready_…": still local, still consistent, but a name no reader
                 // of the tester or the report should ever have to puzzle over.
-                if (ctx.Settings.preserveParameterSyncState && !preserved
+                if ((mustBeLocal || (ctx.Settings.preserveParameterSyncState && !preserved))
                     && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     result = "#" + result;
@@ -2281,6 +2291,15 @@ namespace AvatarBridge
                 // inspector only accepts [a-zA-Z0-9/-_#] in a machine name: the '<', '>', '=' and
                 // '.' broke the parameter picker for that entry and every control drawn after it,
                 // leaving most of the menu inert. Buttons now convert as plain toggles.
+                //
+                // Published for readers OUTSIDE the controller. A native contact component holds
+                // the parameter name as a plain string; the controller renaming itself is
+                // consistent and invisible to it, so without this the component keeps addressing
+                // a name that no longer exists.
+                if (!string.IsNullOrEmpty(name) && result != name)
+                {
+                    ctx.AppliedParameterRenames[name] = result;
+                }
                 return result;
             }
 

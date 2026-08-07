@@ -77,20 +77,26 @@ namespace AvatarBridge
                 // Reported by a user who could see their own headpat sparkles and pop sound and
                 // could not work out why nobody else could. The particle that DID work for
                 // everyone turned out to be one that is simply always on.
+                //
+                // Corrected after the system's author described the model: the contact is not
+                // wearer-only, it runs on EVERY client, and the clients simply disagree. He is
+                // also explicit that a native contact must drive a "#" parameter, because a synced
+                // one has the AAS default written back over it.
                 ctx.Report.Warning(Category,
                     $"Native contacts are on: what those {receivers.Length} receiver(s) SWITCH ON, " +
-                    "only you will see",
+                    "clients will disagree about",
                     "ChilloutVR's native contact system writes its parameter directly at the " +
-                    "Animator, and a value written that way never reaches the network — the sync " +
-                    "cache only fills when something writes through the avatar's animator manager. " +
-                    "Nobody else's copy of the avatar is ever told to play the effect. " +
-                    "This is not occasional and it is not random, which matters because it looks " +
-                    "like both: an effect left permanently ON still appears for everyone, not " +
-                    "because it syncs but because every client is already running it and it never " +
-                    "needed the parameter, while an effect the contact has to switch on appears " +
-                    "for you alone. Two effects on one avatar behaving differently is this, every " +
-                    "time. " +
-                    "The legacy pointer/trigger path does not have the problem: it writes through " +
+                    "Animator and transmits nothing at all. The contact runs on every client " +
+                    "instead, so each one reaches its own answer from what it can see, and they " +
+                    "match only when everyone observes the same collision. What a contact switches " +
+                    "on can appear for you, for whoever touched you, or for nobody — and it looks " +
+                    "right from inside your own headset either way. An effect left permanently ON " +
+                    "appears for everyone regardless, because it never needed the parameter. " +
+                    "There is a second way to lose it: if the parameter the contact drives is " +
+                    "SYNCED (no \"#\" prefix), the AAS stream writes the declared default back over " +
+                    "whatever the contact wrote. The system's author is explicit that a native " +
+                    "contact must drive a \"#\" parameter. " +
+                    "The legacy pointer/trigger path has neither problem: it writes through " +
                     "the manager and syncs. " +
                     "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
                     "AvatarBridge declares them itself against the decompiled client, and nothing " +
@@ -344,6 +350,51 @@ namespace AvatarBridge
             return null;
         }
 
+        /// <summary>
+        /// Native contact components address their parameter by NAME, so every rename the animator
+        /// merge applied has to be followed here too. Runs after the merge for that reason.
+        ///
+        /// Without it a contact whose parameter was sanitised for the CCK — or made local, which
+        /// the native system requires — kept pointing at a name the finished controller no longer
+        /// declares, and drove nothing. Nothing in the controller looks wrong when this happens:
+        /// it renamed itself consistently, and the component is not part of it.
+        /// </summary>
+        public static void RepointContactParameters(BridgeContext ctx)
+        {
+            var type = FindType(NakAnimator);
+            if (type == null || ctx.AppliedParameterRenames.Count == 0)
+            {
+                return;
+            }
+            var field = type.GetField("parameter", BindingFlags.Public | BindingFlags.Instance);
+            if (field == null)
+            {
+                return;
+            }
+            var moved = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (var component in ctx.Target.GetComponentsInChildren(type, true))
+            {
+                string current = field.GetValue(component) as string;
+                if (string.IsNullOrEmpty(current)
+                    || !ctx.AppliedParameterRenames.TryGetValue(current, out string final)
+                    || final == current)
+                {
+                    continue;
+                }
+                field.SetValue(component, final);
+                moved.Add($"\"{current}\" -> \"{final}\"");
+            }
+            if (moved.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{moved.Count} native contact(s) repointed at their renamed parameter",
+                    string.Join(", ", moved) + " — a contact component addresses its parameter by " +
+                    "name, and the animator renamed those while making them CCK-safe or local. " +
+                    "The component is not part of the controller, so it does not follow along by " +
+                    "itself, and one left behind drives a parameter nothing declares.");
+            }
+        }
+
         static void SetMember(object target, string field, object value)
         {
             if (target == null || value == null)
@@ -592,6 +643,42 @@ namespace AvatarBridge
                     string local = "#" + driven + "_contact";
                     ctx.BridgedContacts.Add((local, driven));
                     driven = local;
+                }
+            }
+            // Without the bridge, the parameter the contact writes has to become local. Left
+            // synced it is written raw by the contact and then overwritten by the AAS stream's
+            // declared default, which is the "it only kinda syncs sometimes" people report — and
+            // it can cost the WEARER the contact too, not just everyone else. The rename pass
+            // moves the declaration, every clip binding and every condition together, so the
+            // animations keep reading whatever the parameter ends up called.
+            //
+            // Not applied when the bridge is on: there the contact already writes its own "#"
+            // name and a driver carries the value into the original, which must stay synced to
+            // be broadcast at all.
+            if (driven == receiver.parameter
+                && !driven.StartsWith("#", System.StringComparison.Ordinal))
+            {
+                // Unless a MENU control drives the same parameter. Making that local would take
+                // the entry off the network to fix a contact, which is a trade the wearer never
+                // asked for and would not connect to this setting. Said out loud instead: the
+                // contact is the thing that misbehaves, and the bridge fixes it without moving
+                // anyone's menu.
+                bool onMenu = ctx.CvrAvatar?.avatarSettings?.settings != null
+                    && ctx.CvrAvatar.avatarSettings.settings
+                        .Any(s => s != null && s.machineName == driven);
+                if (onMenu)
+                {
+                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
+                        $"\"{driven}\" is driven by this native contact AND by a menu control, so it " +
+                        "is left synced. A native contact writes straight at the Animator without " +
+                        "filling the outbound buffer, so the sync stream writes the declared default " +
+                        "back over whatever the contact set — the contact will behave erratically. " +
+                        "Turn on \"Let native contacts reach other players\" to fix it without " +
+                        "touching the menu entry, or move the menu control to its own parameter.");
+                }
+                else
+                {
+                    ctx.LocalContactParameters.Add(driven);
                 }
             }
 

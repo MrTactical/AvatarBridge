@@ -904,28 +904,30 @@ namespace AvatarBridge
                 // warning that is wrong half the time stops being read at all.
                 b.Add(settings.syncNativeContacts
                     ? new HelpBox(
-                        "Native contacts write their parameter straight at the Animator, which " +
-                        "ChilloutVR never transmits — so on their own, what one switches on is " +
-                        "seen by you alone. \"Let native contacts reach other players\" below " +
-                        "handles that, at no cost in sync bits, and it is on. Proximity contacts " +
-                        "are the exception: their smooth range cannot be carried, so they stay " +
-                        "local and the report names them.\n\n" +
+                        "Native contacts transmit nothing — each client runs the contact itself and " +
+                        "reaches its own answer, so on their own they agree only when everyone " +
+                        "observes the same collision. \"Let native contacts reach other players\" " +
+                        "below settles it, at no cost in sync bits, and it is on. Proximity " +
+                        "contacts are the exception: their smooth range cannot be carried, so they " +
+                        "stay local and the report names them.\n\n" +
                         "Experimental — this talks to a component internal to the game, not the " +
                         "CCK, so any ChilloutVR update can break it, possibly for good.",
                         HelpBoxMessageType.Info)
                     : new HelpBox(
-                        "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system " +
-                        "writes its parameter straight at the Animator, and ChilloutVR only sends a " +
-                        "value written through the avatar's animator manager — so the value never " +
-                        "leaves your machine and nobody else's copy is ever told to play the effect.\n\n" +
-                        "This is not occasional, and it is not random. An effect left permanently ON " +
-                        "still appears for everyone — not because it syncs, but because every client " +
-                        "is already running it and it never needed the parameter. An effect the " +
-                        "contact has to switch on appears for you alone. That is why two effects on " +
-                        "the same avatar behave differently.\n\n" +
-                        "Tick \"Let native contacts reach other players\" below and this goes away. " +
-                        "The legacy pointer/trigger path syncs on its own, which is why it is the " +
-                        "default. Confirmed in game, every way.\n\n" +
+                        "WHAT A NATIVE CONTACT SWITCHES ON, CLIENTS WILL DISAGREE ABOUT. The native " +
+                        "system writes its parameter straight at the Animator and transmits nothing. " +
+                        "The contact runs on every client instead, so each works out its own answer " +
+                        "from what it can see, and they match only when everyone observes the same " +
+                        "collision. The effect can appear for you, for whoever touched you, or for " +
+                        "nobody — and it looks right from inside your own headset either way.\n\n" +
+                        "There is a second way to lose it. If the parameter the contact drives is " +
+                        "synced (no \"#\"), the AAS stream writes the declared default back over " +
+                        "whatever the contact just wrote. The system's author is explicit that a " +
+                        "native contact must drive a \"#\" parameter.\n\n" +
+                        "Tick \"Let native contacts reach other players\" below and both problems go " +
+                        "away: the contact gets a \"#\" name of its own and a driver carries the " +
+                        "value into the synced one. The legacy pointer/trigger path syncs on its " +
+                        "own, which is why it is the default.\n\n" +
                         "Experimental — this also talks to a component internal to the game, not the " +
                         "CCK, so any ChilloutVR update can break it, possibly for good.",
                         HelpBoxMessageType.Error));

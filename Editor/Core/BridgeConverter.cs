@@ -165,6 +165,9 @@ namespace AvatarBridge
                          PassTraits.EditsClips),
                     Pass("Repoint contact enable curves", ContactsConverter.RepointContactEnableCurves,
                          PassTraits.EditsClips),
+                    // Not a clip pass — it edits the contact COMPONENTS, which hold their
+                    // parameter as a string and so do not follow the animator's renames.
+                    Pass("Repoint contact parameters", ContactsConverter.RepointContactParameters),
                     // And the collider twin — clothing that switches its own collision.
                     Pass("Repoint collider enable curves", PhysBoneConverter.RepointColliderEnableCurves,
                          PassTraits.EditsClips),

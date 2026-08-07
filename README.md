@@ -533,12 +533,13 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-### On their own, native contacts only fire for you — so this is fixed by default
+### Native contacts don't agree between clients — so this is bridged by default
 
-A native contact writes its parameter **straight at the Animator**, and ChilloutVR only transmits a
-value written through the avatar's **animator manager**. Left alone, then, whatever a native contact
-switches on — a particle effect, a sound, a toggle — plays on your machine and nobody else's, and it
-looks perfect from inside your own headset.
+A native contact writes its parameter **straight at the Animator**, and nothing about that value is
+ever transmitted. The contact itself runs on **every** client, so each one works out its own answer
+from what *it* can see — and they only match when every client observes the same collision. Whatever
+the contact switches on can therefore appear for you, for the person touching you, or for nobody,
+and it looks perfect from inside your own headset either way.
 
 **Since 3.7.1 that is repaired, and the repair comes on with native contacts.** *Let native contacts
 reach other players* points each receiver at a local parameter and adds a small layer that copies it
@@ -551,7 +552,7 @@ carrying a value nothing ever wrote.
 exactly as it is, and the report names it. Switch those to the legacy path if other players need to
 see what they drive.
 
-<details><summary>Why it looked intermittent, and the call chain</summary>
+<details><summary>Why results differ between clients, and the call chain</summary>
 
 `ContactAnimator.ApplyValue` → `animator.SetFloat`, which never fills the outbound sync cache. The
 legacy pointer/trigger path does the opposite: `TriggerToContact` → `PlayerSetup.ChangeAnimatorParam`
@@ -559,11 +560,18 @@ goes through the manager and **does** sync, which is why it remains the default.
 works because `CVRAnimatorDriver.ApplyAnimatorChange` → `AnimatorManager.SetParameter` is transmitted
 as well.
 
-It isn't occasional and it isn't random, though it looks like both. An effect left permanently **on**
-still appears for everyone — not because it syncs, but because every client is already running it and
-it never needed the parameter. Only an effect the contact has to **switch on** is lost. That is why
-two effects on the same avatar can behave differently, which reads as the sync being unreliable when
-it is simply absent.
+Nothing is broken in the contact system — it was never built to transmit. Every client simulates
+every avatar's contacts locally, so two clients agree only when both observe the same collision.
+An effect left permanently **on** appears for everyone because it never needed the parameter at all.
+An effect the contact has to **switch on** appears wherever that collision was seen, and nowhere
+else. That is why two effects on one avatar behave differently, and why the same effect can reach
+one person and not another.
+
+There is a second way to lose it, and it is worse: if the parameter the contact drives is **synced**
+(no `#` prefix), the AAS stream keeps writing the declared default over the top of what the contact
+just wrote. The system's author is explicit that a native contact must drive a `#` parameter for
+this reason. Turning the bridge on satisfies that — the contact drives a `#` name of its own and a
+driver carries the value into the synced one.
 
 A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
 one only in steps — hence on/off receivers only, rather than trade the wearer's smooth proximity
