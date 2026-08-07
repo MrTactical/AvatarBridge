@@ -531,7 +531,9 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-> ### ⚠️ What a native contact switches on, only you will see
+> ### ⚠️ On their own, native contacts only fire for you — so AvatarBridge fixes that
+>
+> *Fixed by default since 3.7.1; this is what the fix is for, and what you get if you turn it off.*
 >
 > A native contact writes its parameter **straight at the Animator** (`ContactAnimator.ApplyValue`
 > → `animator.SetFloat`). ChilloutVR's outbound sync cache only fills when something writes through
@@ -549,7 +551,7 @@ be able to set it off.
 > `PlayerSetup.ChangeAnimatorParam`, which goes through the manager, so it **does** sync. That's
 > why it's the default.
 >
-> **There is a fix, if you need native contacts anyway.** *Let native contacts reach other players*
+> **This is fixed, and the fix is on by default.** *Let native contacts reach other players*
 > points each contact at a local parameter and adds a small layer that copies it into the original
 > name with a **driver** — and a driver's writes *do* go out, because they go through the animator
 > manager. Every animation still reads the name it always read. **It costs no sync bits**: that
@@ -787,7 +789,7 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Let native contacts reach other players** | off | Only shown with native contacts on, and it fixes their one real flaw. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. **On/off contacts only** — a proximity contact's smooth range can't be carried by a driver, so it is left as-is and named in the report. Local-only receivers are left alone |
+| **Let native contacts reach other players** | on | Only shown with native contacts on — ticking those ticks this — and it fixes their one real flaw. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. **On/off contacts only** — a proximity contact's smooth range can't be carried by a driver, so it is left as-is and named in the report. Local-only receivers are left alone |
 | **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |

@@ -171,7 +171,12 @@ namespace AvatarBridge
         // On/off receivers only. A driver writes on entering a state, so it carries an on/off
         // reading exactly and an analog one only in steps — proximity receivers are therefore
         // left untouched rather than have the wearer's smooth value replaced by a stepped one.
-        public bool syncNativeContacts = false;
+        //
+        // On by default, and the window turns it on again whenever native contacts are ticked:
+        // it costs nothing and it is what makes native contacts behave the way a reader expects,
+        // so the broken combination has to be asked for rather than fallen into. Only read when
+        // useNativeContacts is on.
+        public bool syncNativeContacts = true;
 
         // Measures the mesh a second time with every animated blendshape pushed to the far end of
         // the range the animator can reach, and keeps whichever reading is larger. A size slider
