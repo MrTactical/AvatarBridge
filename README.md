@@ -251,7 +251,7 @@ defines.
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
-| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn |
+| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps — and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
@@ -1315,6 +1315,21 @@ emote — body, head, locomotion — converts and behaves normally.
 
 Eyes and mouth are in the same boat and it matters far less: those channels stay with the avatar's
 own animation and face tracking, which is usually where you want them.
+
+### A sound only you can hear
+
+Two causes, and the report distinguishes them.
+
+**Flat (2D) audio.** ChilloutVR decides whether to spatialize a source from its **Spatial Blend**
+alone — anything short of fully 3D is never handed to the spatializer and can go unheard by
+everyone else, while playing perfectly for you. Every avatar source is set to 3D on conversion and
+the report names the ones it changed.
+
+**A sound that doesn't carry.** *Max Distance* on the AudioSource is how far it reaches, and some
+avatars ship effects set to two or three metres — audible to the wearer, silent to somebody standing
+a normal distance away. That's the author's choice, so it's left alone, but the report names any
+source that stops carrying within a few metres. Raise *Max Distance* if it's meant to be noticed by
+whoever set it off.
 
 ### A particle effect only you can see
 
