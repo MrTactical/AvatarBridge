@@ -172,11 +172,16 @@ namespace AvatarBridge
         // reading exactly and an analog one only in steps — proximity receivers are therefore
         // left untouched rather than have the wearer's smooth value replaced by a stepped one.
         //
-        // On by default, and the window turns it on again whenever native contacts are ticked:
-        // it costs nothing and it is what makes native contacts behave the way a reader expects,
-        // so the broken combination has to be asked for rather than fallen into. Only read when
-        // useNativeContacts is on.
-        public bool syncNativeContacts = true;
+        // OFF again, and no longer forced on with native contacts. It was on while the driver
+        // bridge was the only thing making them reach other players — but the reason they did not
+        // was that this tool handed the native system a SYNCED parameter, which the sync stream
+        // then overwrote. Contacts now drive a local "#" parameter, every client runs the contact
+        // and reaches the same answer, and a tester confirmed sound and particles reaching other
+        // players reliably in game with this off.
+        //
+        // It remains the fallback for the one parameter that cannot be made local: one a MENU
+        // control also drives, which has to stay synced. Only read when useNativeContacts is on.
+        public bool syncNativeContacts = false;
 
         // Measures the mesh a second time with every animated blendshape pushed to the far end of
         // the range the animator can reach, and keeps whichever reading is larger. A size slider

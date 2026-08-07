@@ -880,13 +880,10 @@ namespace AvatarBridge
                 settings.useNativeContacts, v =>
                 {
                     settings.useNativeContacts = v;
-                    // Turning native contacts on turns the bridge on with them. The bridge is
-                    // what makes them behave the way a reader expects them to behave, so the
-                    // two arrive together and the broken combination has to be asked for.
-                    if (v)
-                    {
-                        settings.syncNativeContacts = true;
-                    }
+                    // No longer forces the driver bridge on with it. That pairing existed while
+                    // the bridge was the only thing making native contacts reach other players;
+                    // driving a local parameter does that on its own now, and the bridge is the
+                    // fallback for menu-driven parameters rather than the default path.
                     ScheduleRebuild();
                 });
             native.SetEnabled(settings.convertContacts);
@@ -898,79 +895,34 @@ namespace AvatarBridge
             }
             if (settings.convertContacts && settings.useNativeContacts)
             {
-                // Two states, two boxes. The long warning describes a problem the bridge below
-                // solves, so it is shown only when the bridge is OFF — leaving it up beside a
-                // ticked fix would tell the reader their avatar is broken when it isn't, and a
-                // warning that is wrong half the time stops being read at all.
-                b.Add(settings.syncNativeContacts
-                    ? new HelpBox(
-                        "Native contacts transmit nothing — each client runs the contact itself and " +
-                        "reaches its own answer, so on their own they agree only when everyone " +
-                        "observes the same collision. \"Let native contacts reach other players\" " +
-                        "below settles it, at no cost in sync bits, and it is on. Proximity " +
-                        "contacts are the exception: their smooth range cannot be carried, so they " +
-                        "stay local and the report names them.\n\n" +
-                        "Experimental — this talks to a component internal to the game, not the " +
-                        "CCK, so any ChilloutVR update can break it, possibly for good.",
-                        HelpBoxMessageType.Info)
-                    : new HelpBox(
-                        "WHAT A NATIVE CONTACT SWITCHES ON, CLIENTS WILL DISAGREE ABOUT. The native " +
-                        "system writes its parameter straight at the Animator and transmits nothing. " +
-                        "The contact runs on every client instead, so each works out its own answer " +
-                        "from what it can see, and they match only when everyone observes the same " +
-                        "collision. The effect can appear for you, for whoever touched you, or for " +
-                        "nobody — and it looks right from inside your own headset either way.\n\n" +
-                        "There is a second way to lose it. If the parameter the contact drives is " +
-                        "synced (no \"#\"), the AAS stream writes the declared default back over " +
-                        "whatever the contact just wrote. The system's author is explicit that a " +
-                        "native contact must drive a \"#\" parameter.\n\n" +
-                        "Tick \"Let native contacts reach other players\" below and both problems go " +
-                        "away: the contact gets a \"#\" name of its own and a driver carries the " +
-                        "value into the synced one. The legacy pointer/trigger path syncs on its " +
-                        "own, which is why it is the default.\n\n" +
-                        "Experimental — this also talks to a component internal to the game, not the " +
-                        "CCK, so any ChilloutVR update can break it, possibly for good.",
-                        HelpBoxMessageType.Error));
+                // No alarm here any more. The long warning this used to carry described contacts
+                // firing for the wearer alone, and that turned out to be damage this tool was
+                // doing: it handed the native system a SYNCED parameter, and the sync stream
+                // wrote the declared default back over every value the contact set. Driving a
+                // local "#" parameter — what the system's author said to do all along — makes
+                // them behave, and a tester confirmed sound and particles reaching other players
+                // reliably in game. What is left is the one caveat the fix does not touch.
+                b.Add(new HelpBox(
+                    "Experimental — this talks to a component internal to the game rather than the " +
+                    "CCK, so any ChilloutVR update can break it, possibly for good. Take it for a " +
+                    "shape or receiver type the legacy triggers cannot do.\n\n" +
+                    "Contacts drive a local \"#\" parameter, which is what the system needs: every " +
+                    "client runs the contact itself and reaches the same answer. A parameter a menu " +
+                    "control also drives cannot be made local, and the report names those.",
+                    HelpBoxMessageType.Info));
 
-                Toggle sync = null;
-                sync = BridgeElements.Bind("Let native contacts reach other players",
-                    "Fixes the problem above. The contact is pointed at a local parameter and a " +
-                    "small animator layer copies it into the original name with a driver — and a " +
-                    "driver's writes DO go out over the network, because they go through the " +
-                    "avatar's animator manager. Every animation still reads the name it always " +
-                    "read, so nothing else about the avatar changes.\n\n" +
-                    "This costs no sync bits. The parameter a contact drives is already declared " +
-                    "and already counted against ChilloutVR's 3200-bit budget — it has been " +
-                    "transmitted all along, just carrying a value nothing ever wrote.\n\n" +
-                    "On/off contacts only. A proximity contact reports how close the toucher is, " +
-                    "and a driver can only write that range in steps — so it is left exactly as " +
-                    "it is rather than trading the smooth value you see now for a stepped one " +
-                    "other people can see. The report names any it left.\n\n" +
-                    "Receivers the author marked local-only are left alone.",
-                    settings.syncNativeContacts, v =>
-                    {
-                        // Unticking this is the one way to reach the broken combination, so it
-                        // is the one place that asks. Nothing is destroyed by saying yes; what
-                        // is lost is other people seeing the avatar work, which is invisible
-                        // from inside the editor and easy to tick past by accident.
-                        if (!v && !EditorUtility.DisplayDialog(
-                            "Contacts will only fire for you",
-                            "Without this, what a native contact switches on — particles, sounds, " +
-                            "a toggle — plays on your machine and nowhere else. Nobody else's " +
-                            "copy of your avatar is ever told to play it, and you cannot tell " +
-                            "from inside the editor or from wearing it yourself.\n\n" +
-                            "Carrying them costs no sync bits. Turning this off buys nothing " +
-                            "back.\n\n" +
-                            "Leave them local anyway?",
-                            "Leave them local", "Keep them syncing"))
-                        {
-                            sync.SetValueWithoutNotify(true);
-                            return;
-                        }
-                        settings.syncNativeContacts = v;
-                        ScheduleRebuild();
-                    });
-                b.Add(sync);
+                b.Add(BridgeElements.Bind("Carry contacts through a driver instead",
+                    "Rarely needed. Contacts already work by driving a local \"#\" parameter, " +
+                    "which is what the native system requires — every client runs the contact and " +
+                    "reaches the same answer, so effects appear for everyone.\n\n" +
+                    "This is the fallback for the one case that cannot: a parameter a MENU control " +
+                    "also drives has to stay synced, so it cannot be made local, and the sync " +
+                    "stream would overwrite whatever the contact set. Turning this on points the " +
+                    "contact at a local name of its own and has a driver copy the value into the " +
+                    "synced one instead. The report names any parameter in that position.\n\n" +
+                    "On/off contacts only — a proximity contact's smooth range cannot be carried " +
+                    "by a driver, so those are left as they are.",
+                    settings.syncNativeContacts, v => { settings.syncNativeContacts = v; ScheduleRebuild(); }));
             }
 
             b.Add(BridgeElements.Row(

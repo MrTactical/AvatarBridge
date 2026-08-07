@@ -82,29 +82,21 @@ namespace AvatarBridge
                 // wearer-only, it runs on EVERY client, and the clients simply disagree. He is
                 // also explicit that a native contact must drive a "#" parameter, because a synced
                 // one has the AAS default written back over it.
-                ctx.Report.Warning(Category,
-                    $"Native contacts are on: what those {receivers.Length} receiver(s) SWITCH ON, " +
-                    "clients will disagree about",
+                ctx.Report.Approximated(Category,
+                    $"Native contacts are on for {receivers.Length} receiver(s)",
                     "ChilloutVR's native contact system writes its parameter directly at the " +
-                    "Animator and transmits nothing at all. The contact runs on every client " +
-                    "instead, so each one reaches its own answer from what it can see, and they " +
-                    "match only when everyone observes the same collision. What a contact switches " +
-                    "on can appear for you, for whoever touched you, or for nobody — and it looks " +
-                    "right from inside your own headset either way. An effect left permanently ON " +
-                    "appears for everyone regardless, because it never needed the parameter. " +
-                    "There is a second way to lose it: if the parameter the contact drives is " +
-                    "SYNCED (no \"#\" prefix), the AAS stream writes the declared default back over " +
-                    "whatever the contact wrote. The system's author is explicit that a native " +
-                    "contact must drive a \"#\" parameter. " +
-                    "The legacy pointer/trigger path has neither problem: it writes through " +
-                    "the manager and syncs. " +
+                    "Animator and transmits nothing — it does not need to, because every client " +
+                    "runs the contact itself and reaches the same answer from the same collision. " +
+                    "That only holds while the parameter is LOCAL: a synced one has the declared " +
+                    "default streamed back over whatever the contact set, which is why this " +
+                    "conversion moves contact parameters to \"#\" names. Confirmed in game, with " +
+                    "sound and particles reaching other players. " +
                     "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
                     "AvatarBridge declares them itself against the decompiled client, and nothing " +
                     "obliges ChilloutVR to keep them as they are. An avatar built on them can be " +
                     "broken by a client update with no warning and no fix but reconverting. " +
-                    "Turn \"Use ChilloutVR's native contacts\" OFF unless you specifically need box " +
-                    "shapes or a receiver type the legacy triggers do not have, and expect to test " +
-                    "anything you build on them with a second person.");
+                    "That is the reason to prefer the legacy pointer/trigger path unless you need " +
+                    "a box shape or a receiver type it does not have — not the sync, which works.");
             }
         }
 
