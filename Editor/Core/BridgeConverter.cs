@@ -132,6 +132,10 @@ namespace AvatarBridge
                     // else reads them (otherwise they orphan to null → invisible avatar).
                     Pass("Rehome baked scene assets", SceneAssetRehomer.Run),
 
+                    // BEFORE the descriptor: the descriptor pass places Voice Position, and the
+                    // jaw bone is what it places it on. Unmapping a bogus jaw afterwards would
+                    // leave the voice already sitting in the avatar's hair.
+                    Pass("Humanoid rig", JawUnmapper.Run),
                     Pass("Avatar descriptor", DescriptorConverter.Run),
                     Pass("Face tracking", FaceTrackingConverter.Run),
                     Pass("Parameters and menu", ParameterMenuConverter.Run),

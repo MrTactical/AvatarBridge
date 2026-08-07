@@ -153,6 +153,13 @@ namespace AvatarBridge
         // leg-sized. Turn it off to keep the source's dimensions.
         public bool fitCollidersToMesh = true;
 
+        // Takes the humanoid Jaw mapping off a bone that is not a jaw, rebuilding the rig without
+        // it. ChilloutVR places the Auto voice position on the jaw bone and jaw-bone visemes
+        // animate it, so a Jaw pointing at hair or a mask puts your voice in the wrong place and
+        // waggles that object while you speak. Both avatars in the corpus that map a Jaw at all
+        // map it wrongly, which is what Unity's Auto-Map does to a face it cannot read.
+        public bool unmapMisplacedJaw = true;
+
         // Measures the mesh a second time with every animated blendshape pushed to the far end of
         // the range the animator can reach, and keeps whichever reading is larger. A size slider
         // grows the body but MagicaCloth2's radius is fixed — of its parameters only pose ratio,
