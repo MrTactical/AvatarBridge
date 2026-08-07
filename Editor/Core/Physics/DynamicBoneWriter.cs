@@ -112,11 +112,26 @@ namespace AvatarBridge
             // ~5x further than VRChat — a tester's tail with gravity -0.07 (a gentle upward
             // bias in VRChat) converted to a force that pinned the tail at the sky. Scaling
             // force and restore by the same factor preserves the resting pose exactly.
+            // Asserted for EVERY chain, not only the ones carrying gravity. Zero is DynamicBone's
+            // own default, so this changed nothing the day it was written — but it was relying on
+            // that default rather than stating the requirement, and the requirement is hard:
+            // anything that reaches m_Gravity on a scaled avatar goes through ChilloutVR's broken
+            // path and can be pushed UPWARD.
+            //
+            // Confirmed against the shipping client. DynamicBone.GetUpdatedDbData writes
+            // m_LocalGravity through the root's world-to-local matrix WITHOUT the renormalisation
+            // stock DynamicBone applies (".normalized * m_Gravity.magnitude"), and
+            // UpdateParticlesJob.GetForce then divides the rest-pose cancellation by scale to
+            // compensate — one factor too many, because local-to-world already put that scale
+            // back. The gravity term works out to (g * scale - g), which is zero only at scale 1:
+            // at 0.376 it is -0.62g, upward. m_Force is added after the cancellation and only ever
+            // multiplied by scale, so it is correct at every size.
+            db.m_Gravity = Vector3.zero;
+
             float g = Mathf.Abs(data.Gravity) * GravityScale * ElasticityScale;
             if (g > 0f)
             {
                 float sign = data.Gravity >= 0f ? -1f : 1f;
-                db.m_Gravity = Vector3.zero;
                 db.m_Force += new Vector3(0f, sign * g, 0f);
 
                 // Falloff is the one thing that cannot survive the move: it only existed as

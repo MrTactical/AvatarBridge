@@ -431,7 +431,15 @@ Stretch & squish, multi-child blending and angle limits are reported rather than
 naming the field to change if that chain wants it.
 
 **Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
-of simulation, so that path maps values 1:1.
+of simulation, so that path maps values 1:1. With **one deliberate exception: gravity is written to
+`m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
+ChilloutVR on any avatar that isn't at scale exactly 1.0 — the client cancels the rest-pose share
+of gravity with one factor of scale too many, so the gravity term comes out as `g × scale − g`.
+That's zero at scale 1, and **negative below it**, which lifts hair and tails toward the sky. A
+converted avatar carries a height scaler, so it is essentially never at scale 1. `m_Force` is added
+after that cancellation and is only ever multiplied by scale, so it behaves identically at any
+size. The cost is `gravityFalloff`, which existed only as `m_Gravity`'s cancellation and can't
+come along; the report names each chain that had one.
 
 > ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode, and shaking
 > the avatar root in play mode proves nothing — MagicaCloth2's speed limits make a chain follow
