@@ -190,7 +190,14 @@ namespace AvatarBridge
 
             // Saved, because an Avatar built in memory does not survive the scene: the animator
             // would come back with a null rig and the avatar would stop being humanoid at all.
-            rebuilt.name = animator.avatar.name;
+            //
+            // The name comes from "previous", not from animator.avatar, which is NULL here — it
+            // was cleared before the build so the old rig could not answer for the description.
+            // That line read animator.avatar.name from the day this pass was written and never
+            // once threw, because the build never succeeded: every avatar took the early return
+            // above. Making the rebuild work ran the success path for the first time, and it
+            // failed instantly, taking the whole conversion down with it.
+            rebuilt.name = previous.name;
             string safe = new string(rebuilt.name.Select(c =>
                 System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
             AssetDatabase.CreateAsset(rebuilt,
