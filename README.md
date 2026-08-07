@@ -923,7 +923,11 @@ Bipeds are unaffected by any of it.
 ### Converted with caveats
 
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default — Base,
-  Additive and Action are off, because CVR drives locomotion and emotes itself. Ticking Action on
+  Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
+  transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle
+  and its mesh swaps (those are FX) but loses the sequence that drives them, so it goes in and
+  never comes out. The conversion warns when it is leaving a layer behind, naming what's in it, and
+  *Analyse avatar* offers a **Turn on** for it. Ticking Action on
   merges the layer at **weight 0, the weight VRChat itself gives it** (VRChat raises the Action
   playable only while an emote plays; ChilloutVR has no playable layers to raise, and at weight 1
   its idle state would hold your body in rest pose above locomotion). The layer's **full-body

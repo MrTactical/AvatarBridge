@@ -138,6 +138,7 @@ namespace AvatarBridge
         public static void Run(BridgeContext ctx)
         {
             var vrcControllers = GetSelectedVrcControllers(ctx);
+            ReportSkippedLayers(ctx);
             bool convertingGestureLayer = vrcControllers.Any(c => c.id == VRCAvatarDescriptor.AnimLayerType.Gesture);
 
             // Captured before any merging: the saved-controller audit uses these to tell a
@@ -1063,6 +1064,85 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ setup ----
+
+        /// <summary>
+        /// Names every animator layer the avatar wrote itself that this conversion is leaving
+        /// behind, and says what is in it.
+        ///
+        /// Silence was the failure. An unticked layer is skipped with a bare `continue` — not
+        /// merged at weight 0, not partially handled, absent — and nothing said so anywhere. A
+        /// transforming avatar (a mech that folds into a copter) keeps its menu toggle and its
+        /// mesh swaps, because those live in FX, and loses the entire sequence that drives them,
+        /// because that lives in Action. It converts to something that goes in and never comes
+        /// out, with a clean report. Reported at whatever the layer actually contains, so the
+        /// reader can tell a layer of idle breathing from twenty-one full-body pose states.
+        /// </summary>
+        static void ReportSkippedLayers(BridgeContext ctx)
+        {
+            if (ctx.SourceDescriptor?.baseAnimationLayers == null)
+            {
+                return;
+            }
+            foreach (var layer in ctx.SourceDescriptor.baseAnimationLayers)
+            {
+                bool wanted;
+                string option;
+                switch (layer.type)
+                {
+                    case VRCAvatarDescriptor.AnimLayerType.Base:
+                        wanted = ctx.Settings.convertBaseLayer; option = "Base / locomotion"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Additive:
+                        wanted = ctx.Settings.convertAdditiveLayer; option = "Additive"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Gesture:
+                        wanted = ctx.Settings.convertGestureLayer; option = "Gesture (hand poses)"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.Action:
+                        wanted = ctx.Settings.convertActionLayer; option = "Action (emotes, AFK)"; break;
+                    case VRCAvatarDescriptor.AnimLayerType.FX:
+                        wanted = ctx.Settings.convertFxLayer; option = "FX (toggles, expressions)"; break;
+                    default: continue;
+                }
+                if (wanted || layer.isDefault
+                    || !(layer.animatorController is AnimatorController controller)
+                    || controller.layers.Length == 0)
+                {
+                    continue;
+                }
+
+                int drivers = 0, states = 0;
+                foreach (var sub in controller.layers)
+                {
+                    WalkMachines(sub.stateMachine, machine =>
+                    {
+                        foreach (var child in machine.states)
+                        {
+                            states++;
+                            foreach (var behaviour in child.state.behaviours)
+                            {
+                                if (behaviour is VRCAvatarParameterDriver)
+                                {
+                                    drivers++;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                ctx.Report.Warning(Category,
+                    $"The avatar's own {layer.type} layer is NOT being converted",
+                    $"\"{controller.name}\" — {controller.layers.Length} layer(s), {states} state(s)" +
+                    (drivers > 0 ? $" and {drivers} parameter driver(s)" : "") +
+                    ". This is the avatar's own animator content, and it is being left behind " +
+                    "entirely: not merged, not carried at zero weight, absent. Anything it drove " +
+                    "is gone with it" +
+                    (drivers > 0
+                        ? " — and those parameter drivers are how a sequence sets its own state, so " +
+                          "a feature whose menu toggle and mesh swaps live in FX can still switch ON " +
+                          "and then have nothing left to switch it back off. An avatar that " +
+                          "transforms is the usual shape of this."
+                        : ".") +
+                    $" Tick \"{option}\" and convert again if this layer matters.");
+            }
+        }
 
         /// <summary>Internal so the physics pass can read the same source layers: it runs BEFORE
         /// the merge and still needs to know how far an animated blendshape travels.</summary>
