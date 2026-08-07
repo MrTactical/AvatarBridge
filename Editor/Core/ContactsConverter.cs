@@ -564,13 +564,35 @@ namespace AvatarBridge
             //
             // localOnly receivers are left alone: the author asked for local, and honouring that
             // is the whole point of the flag.
+            //
+            // PROXIMITY receivers are left alone too, and that is not an oversight. A driver
+            // writes a value on entering a state, so it can carry an on/off reading exactly and
+            // an analog one only in steps — and the steps would replace the smooth reading the
+            // WEARER gets today. Trading their working analog contact for a stepped one other
+            // people can see is not a trade this tool makes silently, so a proximity receiver
+            // keeps behaving exactly as it does without the option, and the report says so.
             string driven = receiver.parameter;
+            bool analog = typeName.Contains("Proximity");
             if (ctx.Settings.syncNativeContacts && !receiver.localOnly
                 && !driven.StartsWith("#", System.StringComparison.Ordinal))
             {
-                string local = "#" + driven + "_contact";
-                ctx.BridgedContacts.Add((local, driven));
-                driven = local;
+                if (analog)
+                {
+                    ctx.Report.Skipped(Category, PathOf(ctx, receiver.transform),
+                        $"\"{driven}\" is a proximity contact, so it is not carried to other " +
+                        "players even with the option on: it reports how close the toucher is, " +
+                        "and that whole range cannot be carried without replacing the smooth " +
+                        "value you see now with a handful of steps. It behaves exactly as it " +
+                        "would with the option off. On/off contacts on this avatar are carried " +
+                        "normally. Switch this one to the legacy contact path if other players " +
+                        "need to see what it drives.");
+                }
+                else
+                {
+                    string local = "#" + driven + "_contact";
+                    ctx.BridgedContacts.Add((local, driven));
+                    driven = local;
+                }
             }
 
             var animator = host.AddComponent(FindType(NakAnimator));

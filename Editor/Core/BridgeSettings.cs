@@ -167,6 +167,10 @@ namespace AvatarBridge
         // with a driver, which DOES go through the manager. Costs no sync bits beyond what the
         // avatar already spends: the original parameter was always counted and always
         // transmitted, it was simply transmitting a value nothing ever wrote.
+        //
+        // On/off receivers only. A driver writes on entering a state, so it carries an on/off
+        // reading exactly and an analog one only in steps — proximity receivers are therefore
+        // left untouched rather than have the wearer's smooth value replaced by a stepped one.
         public bool syncNativeContacts = false;
 
         // Measures the mesh a second time with every animated blendshape pushed to the far end of

@@ -912,6 +912,10 @@ namespace AvatarBridge
                     "This costs no sync bits. The parameter a contact drives is already declared " +
                     "and already counted against ChilloutVR's 3200-bit budget — it has been " +
                     "transmitted all along, just carrying a value nothing ever wrote.\n\n" +
+                    "On/off contacts only. A proximity contact reports how close the toucher is, " +
+                    "and a driver can only write that range in steps — so it is left exactly as " +
+                    "it is rather than trading the smooth value you see now for a stepped one " +
+                    "other people can see. The report names any it left.\n\n" +
                     "Receivers the author marked local-only are left alone.",
                     settings.syncNativeContacts, v => settings.syncNativeContacts = v));
             }

@@ -1105,12 +1105,17 @@ namespace AvatarBridge
                     master.AddParameter(local, AnimatorControllerParameterType.Float);
                 }
 
-                var machine = new AnimatorStateMachine
-                {
-                    name = $"Contact sync {synced}",
-                    hideFlags = HideFlags.HideInHierarchy,
-                };
-                AssetDatabase.AddObjectToAsset(machine, master);
+                // AddLayer(name) rather than building a state machine and attaching it by hand:
+                // this runs BEFORE the controller is saved, and AddObjectToAsset refuses a target
+                // that is not yet persistent ("AddAssetToSameFile failed because the other asset
+                // is not persistent"), which took the whole conversion down. Letting Unity make
+                // the machine leaves its lifetime to the same code that saves everything else.
+                master.AddLayer(SanitizeFileName($"Contact sync {synced}"));
+                var layers = master.layers;
+                var layer = layers[layers.Length - 1];
+                layer.defaultWeight = 1f;
+                layer.blendingMode = AnimatorLayerBlendingMode.Override;
+                var machine = layer.stateMachine;
 
                 // Two states, each asserting its end of the value. Both directions are written,
                 // because ChilloutVR restores nothing a state does not write — the same rule that
@@ -1132,12 +1137,7 @@ namespace AvatarBridge
                 toOff.duration = 0f;
                 toOff.AddCondition(AnimatorConditionMode.Less, 0.5f, local);
 
-                master.AddLayer(new AnimatorControllerLayer
-                {
-                    name = $"Contact sync {synced}",
-                    stateMachine = machine,
-                    defaultWeight = 1f,
-                });
+                master.layers = layers;   // write the weight and blend mode back
                 built.Add(synced);
             }
 
@@ -1152,7 +1152,8 @@ namespace AvatarBridge
                     "Nothing else changed: every animation still reads the name it always read. " +
                     "This costs no sync bits — those parameters were already declared, already " +
                     "counted against the 3200-bit budget and already being transmitted; they were " +
-                    "simply carrying a value nothing ever wrote.");
+                    "simply carrying a value nothing ever wrote. On/off contacts only — any " +
+                    "proximity contact was left as it was, and is listed separately.");
             }
         }
 
