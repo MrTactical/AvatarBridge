@@ -137,8 +137,8 @@ actually running.
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts** — one-to-one, with real proximity and box shapes, using a system
-  the CCK doesn't expose ([experimental](#native-contacts), off by default: what they drive is
-  **visible only to you**).
+  the CCK doesn't expose ([experimental](#native-contacts), off by default: what they **switch on**
+  is visible only to you, unless you turn the driver bridge on with it).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -531,20 +531,23 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-> ### ⚠️ Only you will see the result
+> ### ⚠️ What a native contact switches on, only you will see
 >
 > A native contact writes its parameter **straight at the Animator** (`ContactAnimator.ApplyValue`
 > → `animator.SetFloat`). ChilloutVR's outbound sync cache only fills when something writes through
-> the avatar's **animator manager**, so that value never leaves your machine. Anything a native
-> contact gates — a particle, a sound, a toggle — plays perfectly on your screen and **does not
-> happen for anybody else**.
+> the avatar's **animator manager**, so that value never leaves your machine — nobody else's copy is
+> ever told to play the effect.
+>
+> **It isn't occasional and it isn't random, though it looks like both.** An effect left
+> permanently **on** still appears for everyone — not because it syncs, but because every client is
+> already running it and it never needed the parameter. An effect the contact has to **switch on**
+> appears for you alone. Two effects on the same avatar behaving differently is always this: on one
+> reported avatar the boop particle (always active) was visible to everyone while the pop sound and
+> the headpat sparkles (both switched on by the contact) were visible to nobody.
 >
 > The legacy pointer/trigger path does the opposite: `TriggerToContact` calls
 > `PlayerSetup.ChangeAnimatorParam`, which goes through the manager, so it **does** sync. That's
 > why it's the default.
->
-> If an effect on a native-contact avatar *is* visible to others, check whether it's simply left
-> switched on — an always-active particle needs no sync at all, and that's usually the explanation.
 >
 > **There is a fix, if you need native contacts anyway.** *Let native contacts reach other players*
 > points each contact at a local parameter and adds a small layer that copies it into the original
@@ -779,7 +782,7 @@ settle. Leaving all of them alone converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Let native contacts reach other players** | off | Only shown with native contacts on, and it fixes their one real flaw. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. Local-only receivers are left alone |
-| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **Whatever they drive is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
+| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |

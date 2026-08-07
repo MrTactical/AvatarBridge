@@ -78,15 +78,19 @@ namespace AvatarBridge
                 // could not work out why nobody else could. The particle that DID work for
                 // everyone turned out to be one that is simply always on.
                 ctx.Report.Warning(Category,
-                    $"Native contacts are on: those {receivers.Length} receiver(s) drive parameters " +
-                    "that ONLY YOU CAN SEE",
+                    $"Native contacts are on: what those {receivers.Length} receiver(s) SWITCH ON, " +
+                    "only you will see",
                     "ChilloutVR's native contact system writes its parameter directly at the " +
                     "Animator, and a value written that way never reaches the network — the sync " +
                     "cache only fills when something writes through the avatar's animator manager. " +
-                    "So anything a native contact gates — a particle, a sound, a toggle — plays " +
-                    "perfectly on your own screen and does not happen at all for anyone else. An " +
-                    "effect that IS visible to others is one that was simply left switched on. " +
-                    "The legacy pointer/trigger path does not have this problem: it writes through " +
+                    "Nobody else's copy of the avatar is ever told to play the effect. " +
+                    "This is not occasional and it is not random, which matters because it looks " +
+                    "like both: an effect left permanently ON still appears for everyone, not " +
+                    "because it syncs but because every client is already running it and it never " +
+                    "needed the parameter, while an effect the contact has to switch on appears " +
+                    "for you alone. Two effects on one avatar behaving differently is this, every " +
+                    "time. " +
+                    "The legacy pointer/trigger path does not have the problem: it writes through " +
                     "the manager and syncs. " +
                     "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
                     "AvatarBridge declares them itself against the decompiled client, and nothing " +

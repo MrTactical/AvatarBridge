@@ -864,12 +864,14 @@ namespace AvatarBridge
                 "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
                 "of approximating them with pointers and triggers: real proximity, box shapes and " +
                 "collision tags kept as-is.\n\n" +
-                "ONLY YOU WILL SEE THE RESULT. The native system writes its parameter straight at " +
-                "the Animator, and the sync cache only fills when something writes through the " +
-                "avatar's animator manager — so a particle, sound or toggle driven by a native " +
-                "contact plays on your screen and does not happen for anybody else. The legacy " +
-                "pointer/trigger path writes through the manager and does sync, which is why it " +
-                "is the default.\n\n" +
+                "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system writes " +
+                "its parameter straight at the Animator, and the sync cache only fills when " +
+                "something writes through the avatar's animator manager, so the value never " +
+                "leaves your machine.\n\n" +
+                "An effect left permanently ON still appears for everyone — every client is " +
+                "already running it and it never needed the parameter. Only what the contact has " +
+                "to switch on is lost. The legacy pointer/trigger path writes through the manager " +
+                "and does sync, which is why it is the default.\n\n" +
                 "The components also aren't in the CCK: AvatarBridge declares them itself, " +
                 "verified field-for-field against the decompiled game client. Nothing obliges " +
                 "ChilloutVR to keep them as they are, so an avatar built on them can be broken by " +
@@ -886,12 +888,17 @@ namespace AvatarBridge
             if (settings.convertContacts && settings.useNativeContacts)
             {
                 b.Add(new HelpBox(
-                    "ONLY YOU WILL SEE WHAT THESE DRIVE. The native system writes its parameter " +
-                    "straight at the Animator, and ChilloutVR only sends a value that was written " +
-                    "through the avatar's animator manager — so a particle, sound or toggle set " +
-                    "off by a native contact happens on your screen and for nobody else. The " +
-                    "legacy pointer/trigger path writes through the manager and syncs, which is " +
-                    "why it is the default. Confirmed in game, both ways.\n\n" +
+                    "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system " +
+                    "writes its parameter straight at the Animator, and ChilloutVR only sends a " +
+                    "value written through the avatar's animator manager — so the value never " +
+                    "leaves your machine and nobody else's copy is ever told to play the effect.\n\n" +
+                    "This is not occasional, and it is not random. An effect left permanently ON " +
+                    "still appears for everyone — not because it syncs, but because every client " +
+                    "is already running it and it never needed the parameter. An effect the " +
+                    "contact has to switch on appears for you alone. That is why two effects on " +
+                    "the same avatar behave differently.\n\n" +
+                    "The legacy pointer/trigger path writes through the manager and does sync, " +
+                    "which is why it is the default. Confirmed in game, both ways.\n\n" +
                     "Experimental — this also talks to a component internal to the game, not the " +
                     "CCK, so any ChilloutVR update can break it, possibly for good.",
                     HelpBoxMessageType.Warning));
