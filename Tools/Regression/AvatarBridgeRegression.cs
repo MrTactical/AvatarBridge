@@ -715,6 +715,7 @@ namespace AvatarBridge.Regression
 
             AppendAas(sb, avatar);
             AppendComponents(sb, target);
+            AppendPhysics(sb, target);
             AppendControllers(sb, avatar, target);
         }
 
@@ -753,6 +754,249 @@ namespace AvatarBridge.Regression
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
             foreach (var g in counts) sb.Append("  ").Append(g.Count().ToString("D3")).Append("  ").Append(g.Key).Append('\n');
             sb.Append('\n');
+        }
+
+        // MagicaCloth and ChilloutVR's native contacts are both reached by NAME rather than by a
+        // compile-time reference, so this block renders identically in every scripting-define
+        // configuration. That is not fussiness: a digest whose SHAPE depends on which packages
+        // happen to be installed cannot be diffed across machines, and a missing define would
+        // present as "this avatar lost all its cloth" rather than as "this build cannot see it".
+        const string MagicaClothType = "MagicaCloth2.MagicaCloth";
+        const string NativeContactAnimator = "NAK.Contacts.ContactAnimator";
+
+        /// <summary>
+        /// Physics and contact routing as FIELDS, read off the finished prefab.
+        ///
+        /// Written because three physics bugs in a row passed a clean corpus. The stuck wardrobe
+        /// chain, the breast chain rooted on a collider anchor and the toggle that never switched
+        /// its cloth back off were all invisible here — one of them produced a digest that was
+        /// BYTE-IDENTICAL before and after the fix that restored the avatar's physics. Every fact
+        /// below did exist somewhere at the time, but only inside a Converted report entry, which
+        /// this digest drops on purpose: those entries are documentation paragraphs, they get
+        /// reworded constantly, and keeping them would light up all seventy-four avatars on the
+        /// first docs edit. The lesson is not "keep the prose" — it is that a number a human
+        /// would notice changing has to be its own field, because a diff over fields is the one
+        /// thing this harness is good at.
+        ///
+        /// Everything here is read from the CONVERTED OBJECT, never from the report. The report
+        /// says what a pass believed it did; the prefab is what ChilloutVR loads. Those came
+        /// apart once already — a report read "honoured by rooting at 2 branches" while the
+        /// promoted branch sat seven joints down the chain, so the claim was true and the outcome
+        /// was wrong. Only one of the two is worth diffing.
+        ///
+        /// NOTE FOR WHOEVER LANDS THIS: adding a block invalidates every baseline. The first run
+        /// reports all of them as changed, and that diff has to be read and accepted rather than
+        /// waved through, because a real regression landing in the same run would hide inside it.
+        /// </summary>
+        static void AppendPhysics(StringBuilder sb, GameObject target)
+        {
+            sb.Append("[physics]\n");
+
+            var cloths = target.GetComponentsInChildren<Component>(true)
+                .Where(c => c != null && c.GetType().FullName == MagicaClothType)
+                .OrderBy(c => HierarchyPath(target, c), StringComparer.Ordinal)
+                .ToList();
+
+            // Component-enabled and object-active are counted SEPARATELY because they are
+            // separate bugs with the same symptom: cloth that starts disabled though its menu
+            // toggle defaults on, and a holder object that nothing ever activates. Reported as
+            // one "is it running" flag, either would hide behind the other.
+            int running = 0, componentOff = 0, objectOff = 0;
+            var clothPaths = new HashSet<string>(StringComparer.Ordinal);
+            var clothLines = new List<string>();
+            foreach (var c in cloths)
+            {
+                bool component = !(c is Behaviour behaviour) || behaviour.enabled;
+                bool active = c.gameObject.activeInHierarchy;
+                if (component && active) running++;
+                if (!component) componentOff++;
+                if (!active) objectOff++;
+                string path = HierarchyPath(target, c);
+                clothPaths.Add(path);
+                clothLines.Add($"  {path} | component={(component ? "on" : "OFF")} " +
+                               $"object={(active ? "on" : "OFF")} | roots: {ClothRoots(c)}");
+            }
+            sb.Append($"cloth={cloths.Count} running={running} ")
+              .Append($"componentOff={componentOff} objectOff={objectOff}\n");
+            foreach (var line in clothLines) sb.Append(line).Append('\n');
+
+            // Curves that switch cloth on or off, counted across the merged controller. An OFF
+            // curve is the thing ChilloutVR needs and VRChat never did: with no Write Defaults to
+            // undo the switch, a chain that is only ever switched ON latches the first time its
+            // toggle is used and runs forever. The count moving is the signal — a pass that stops
+            // writing them, or one that writes hundreds into states it has no business touching,
+            // both show up here as a number, and the second of those shipped once.
+            var animator = target.GetComponent<Animator>();
+            var controller = animator != null
+                ? animator.runtimeAnimatorController as AnimatorController
+                : null;
+            if (controller == null)
+            {
+                sb.Append("clothCurves <no controller to read>\n");
+            }
+            else
+            {
+                int on = 0, off = 0, clips = 0;
+                foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+                {
+                    bool touched = false;
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        bool isCloth =
+                            (binding.propertyName == "m_Enabled"
+                             && binding.type != null && binding.type.FullName == MagicaClothType)
+                            || (binding.propertyName == "m_IsActive" && clothPaths.Contains(binding.path));
+                        if (!isCloth) continue;
+                        touched = true;
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        // The LAST key, not the first: a curve is classified by where it leaves
+                        // the binding, which is what survives once the state settles.
+                        float ends = curve != null && curve.length > 0
+                            ? curve.keys[curve.length - 1].value
+                            : 0f;
+                        if (ends > 0.5f) on++; else off++;
+                    }
+                    if (touched) clips++;
+                }
+                sb.Append($"clothCurves on={on} off={off} clips={clips}\n");
+            }
+
+            // Contacts by ROUTE. Which route a contact takes decides whether anyone else sees it
+            // and whether it fires once or twice, and the three routes are indistinguishable in
+            // every other block of this digest: a "#" name is computed by each client and never
+            // transmitted, a plain name rides the settings stream, and a bridge layer is the pair
+            // of the two. A contact silently changing lanes is a behaviour change with no other
+            // trace here.
+            var bridged = BridgedLocalNames(controller);
+            var contacts = new List<string>();
+            int local = 0, streamed = 0, carried = 0;
+
+            void Record(string path, string kind, string parameter)
+            {
+                string route = bridged.Contains(parameter) ? "bridged"
+                    : parameter.StartsWith("#", StringComparison.Ordinal) ? "local"
+                    : "streamed";
+                if (route == "bridged") carried++;
+                else if (route == "local") local++;
+                else streamed++;
+                contacts.Add($"  {path} | {kind} | {route} | {parameter}");
+            }
+
+            foreach (var trigger in target.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
+            {
+                string path = HierarchyPath(target, trigger);
+                foreach (string parameter in TriggerParameters(trigger).OrderBy(p => p, StringComparer.Ordinal))
+                {
+                    Record(path, "trigger", parameter);
+                }
+            }
+            var nativeType = FindTypeByName(NativeContactAnimator);
+            if (nativeType != null)
+            {
+                var field = nativeType.GetField("parameter",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                foreach (var c in target.GetComponentsInChildren(nativeType, true))
+                {
+                    Record(HierarchyPath(target, c), "native", field?.GetValue(c) as string ?? "<unreadable>");
+                }
+            }
+            contacts.Sort(StringComparer.Ordinal);
+
+            sb.Append($"contacts={contacts.Count} local={local} bridged={carried} ")
+              .Append($"streamed={streamed} bridgeLayers={bridged.Count}\n");
+            foreach (var line in contacts) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
+        /// <summary>
+        /// The local parameter each contact-sync bridge carries, read from the CONDITIONS on the
+        /// bridge layer's own transitions.
+        ///
+        /// The obvious alternative — take the synced name out of the layer's title and rebuild
+        /// the local twin as "#name_contact" — would be a guess dressed as a fact, because the
+        /// title is put through filename sanitising on the way in and a name with a character
+        /// that does not survive that would rebuild wrong. The conditions are what the layer
+        /// actually reads.
+        /// </summary>
+        static HashSet<string> BridgedLocalNames(AnimatorController controller)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            if (controller == null) return names;
+            foreach (var layer in controller.layers)
+            {
+                if (layer?.stateMachine == null || layer.name == null) continue;
+                if (!layer.name.StartsWith("Contact sync ", StringComparison.Ordinal)) continue;
+                foreach (var child in layer.stateMachine.states)
+                {
+                    if (child.state == null) continue;
+                    foreach (var transition in child.state.transitions)
+                    {
+                        foreach (var condition in transition.conditions)
+                        {
+                            // "IsLocal" gates the bridge so the wearer computes and everyone else
+                            // receives; it is not the parameter being carried.
+                            if (!string.IsNullOrEmpty(condition.parameter) && condition.parameter != "IsLocal")
+                            {
+                                names.Add(condition.parameter);
+                            }
+                        }
+                    }
+                }
+            }
+            return names;
+        }
+
+        /// <summary>
+        /// The bones a cloth chain hangs from, in the order the writer chose.
+        ///
+        /// Deliberately NOT sorted. The order is the branch walk's own, and a change in it means
+        /// the walk changed — which is the entire failure of the chain that ended up rooted on a
+        /// collider anchor seven joints below where it belonged. Sorting would have hidden it.
+        /// </summary>
+        static string ClothRoots(Component cloth)
+        {
+            var data = cloth.GetType().GetProperty("SerializeData")?.GetValue(cloth);
+            var roots = data?.GetType().GetField("rootBones")?.GetValue(data)
+                as System.Collections.IEnumerable;
+            // "<unreadable>" and "<none>" are deliberately different words: the first means the
+            // harness lost its grip on MagicaCloth's shape and every line will say it, the second
+            // means this chain genuinely hangs from nothing. Collapsing them would turn a blind
+            // harness into what looks like a fleet of rootless chains.
+            if (roots == null) return "<unreadable>";
+            var names = new List<string>();
+            foreach (var o in roots) names.Add(o is Transform t ? t.name : "<null>");
+            return names.Count == 0 ? "<none>" : string.Join(",", names);
+        }
+
+        /// <summary>Every parameter a CCK trigger writes, across all three task lists.</summary>
+        static IEnumerable<string> TriggerParameters(CVRAdvancedAvatarSettingsTrigger trigger)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            if (trigger.enterTasks != null)
+                foreach (var t in trigger.enterTasks) if (t != null && !string.IsNullOrEmpty(t.settingName)) names.Add(t.settingName);
+            if (trigger.exitTasks != null)
+                foreach (var t in trigger.exitTasks) if (t != null && !string.IsNullOrEmpty(t.settingName)) names.Add(t.settingName);
+            if (trigger.stayTasks != null)
+                foreach (var t in trigger.stayTasks) if (t != null && !string.IsNullOrEmpty(t.settingName)) names.Add(t.settingName);
+            return names;
+        }
+
+        static Type FindTypeByName(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var type = assembly.GetType(fullName, false);
+                    if (type != null) return type;
+                }
+                catch
+                {
+                    // Reflection-only and broken assemblies throw here; they are not where the
+                    // answer lives.
+                }
+            }
+            return null;
         }
 
         static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
