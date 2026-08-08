@@ -20,16 +20,23 @@ namespace AvatarBridge
     ///
     /// THE REBUILD, and the thing that blocked this for a version:
     ///
-    /// AvatarBuilder.BuildHumanAvatar validates the description against the LIVE hierarchy, and a
-    /// baked Avatar asset remembers the name the GameObject had when the asset was created. Both
-    /// test avatars were configured from a cloned instance, so skeleton[0] reads "Momscarada(Clone)"
-    /// against a root now called "Momscarada", and "Sally(Clone)" against a root called "Sally_PC".
-    /// Unity then reports the mismatch against the first CHILD it checks — "Parent for 'Armature'
-    /// differs ... 'Momscarada(Clone)'" — which reads as a problem with the Armature and is not.
+    /// The obstacle was this pass. skeleton[0] records the MODEL PREFAB's root as it was at import
+    /// — "Gen5Base(Clone)" under a live root called "Cobra" — and that is not staleness to repair,
+    /// it is what AvatarBuilder.BuildHumanAvatar expects to be handed back. An earlier revision
+    /// read the mismatch as the fault, renamed the entry to the live root, and turned a rebuild
+    /// that worked into one Unity refused. Every "Unity refused the rebuild" line this pass printed
+    /// was reporting damage it had done itself, and the console message it quoted — "Parent for
+    /// 'Armature' differs" — was the consequence, not the cause.
     ///
-    /// Note the second case: the base name differs too, so stripping "(Clone)" would produce
-    /// "Sally" and fail all over again. The root entry is renamed to whatever the live root is
-    /// actually called, which is the only thing that is true in both.
+    /// Settled by building six variants against a real avatar rather than by reasoning about the
+    /// message: the unchanged description builds, dropping the Jaw builds, renaming the root
+    /// refuses, an empty skeleton refuses, and a skeleton regenerated from the live hierarchy
+    /// builds. So the Jaw was never the obstacle, and the rename was the whole of it.
+    ///
+    /// The rig's own skeleton is therefore passed through untouched, with a regenerated one as a
+    /// fallback for descriptions that genuinely have diverged from the hierarchy. That fallback
+    /// carries the pose the avatar is standing in rather than the T-pose it was configured in, so
+    /// it is second and it says so in the report.
     /// </summary>
     public static class JawUnmapper
     {
@@ -88,16 +95,20 @@ namespace AvatarBridge
                 return;   // the mapping is not in the description; nothing this pass can do
             }
 
-            // The root entry, renamed to the live root. See the class comment: a baked Avatar
-            // remembers the name its GameObject had when the asset was made, and both test avatars
-            // were configured from a clone.
+            // The baked skeleton is passed THROUGH, stale-looking root name and all.
+            //
+            // That name is not stale. skeleton[0] records the model prefab's root as it was at
+            // import — "Gen5Base(Clone)" under a live root called "Cobra" — and Unity wants it
+            // exactly as recorded. Renaming it to match the live object is what made the rebuild
+            // fail, which is worth stating plainly because this pass used to do that deliberately,
+            // and every "Unity refused the rebuild" line it printed was describing damage the
+            // workaround was doing.
+            //
+            // Measured rather than reasoned. Six variants were built against a real avatar: the
+            // unchanged description builds, dropping the Jaw builds, renaming the root refuses,
+            // and a skeleton regenerated from the live hierarchy builds. So the Jaw was never the
+            // obstacle and the rename was the whole of it.
             var skeleton = description.skeleton.ToArray();
-            string staleRoot = null;
-            if (skeleton.Length > 0 && skeleton[0].name != root.name)
-            {
-                staleRoot = skeleton[0].name;
-                skeleton[0].name = root.name;
-            }
 
             description.human = human;
             description.skeleton = skeleton;
@@ -127,6 +138,37 @@ namespace AvatarBridge
             var previous = animator.avatar;
             animator.avatar = null;
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
+
+            // Second attempt with the skeleton regenerated from the live hierarchy. The baked one
+            // describes the model as imported, and conversion has since added objects and removed
+            // others; where that divergence is what the builder objects to, a skeleton read off
+            // the avatar in front of it has no stale entries to object to. Measured as building on
+            // a real avatar, so it is a real fallback rather than a hopeful retry.
+            //
+            // Second, not first: the baked skeleton carries the T-POSE the rig was configured in,
+            // and this one carries whatever pose the avatar is standing in now. Identical for an
+            // avatar sitting at its bind pose, and a changed rest pose if it is not — worth having
+            // when the alternative is keeping a jaw mapped to a hair strand, not worth taking
+            // when the baked skeleton was going to work anyway.
+            bool usedLiveSkeleton = false;
+            if (rebuilt == null || !rebuilt.isValid)
+            {
+                if (rebuilt != null)
+                {
+                    Object.DestroyImmediate(rebuilt);
+                }
+                description.skeleton = root.GetComponentsInChildren<Transform>(true)
+                    .Select(t => new SkeletonBone
+                    {
+                        name = t.name,
+                        position = t.localPosition,
+                        rotation = t.localRotation,
+                        scale = t.localScale,
+                    }).ToArray();
+                rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
+                usedLiveSkeleton = rebuilt != null && rebuilt.isValid;
+            }
+
             if (rebuilt == null || !rebuilt.isValid)
             {
                 animator.avatar = previous;   // put it back; a null rig is worse than a wrong jaw
@@ -139,17 +181,23 @@ namespace AvatarBridge
                     "Rebuilding the humanoid rig without the Jaw was refused by Unity, so the avatar " +
                     "keeps the mapping it had. Clear the Jaw slot yourself in the model's " +
                     "Rig > Configure if you want it gone." + cost +
-                    $" (Rebuilt against root \"{root.name}\", skeleton root " +
-                    $"\"{(skeleton.Length > 0 ? skeleton[0].name : "(none)")}\"" +
-                    $"{(staleRoot != null ? $", renamed from \"{staleRoot}\"" : ", not renamed")}" +
-                    $", {skeleton.Length} skeleton and {human.Length} human entries — Unity's own " +
-                    "message in the console says which check failed.)");
+                    $" (Tried against root \"{root.name}\" with the rig's own skeleton " +
+                    $"({skeleton.Length} entries, root \"{(skeleton.Length > 0 ? skeleton[0].name : "(none)")}\") " +
+                    $"and again with one read off the live hierarchy, {human.Length} human entries " +
+                    "either way — Unity's own message in the console says which check failed.)");
                 return;
             }
 
             // Saved, because an Avatar built in memory does not survive the scene: the animator
             // would come back with a null rig and the avatar would stop being humanoid at all.
-            rebuilt.name = animator.avatar.name;
+            //
+            // The name comes from "previous", not from animator.avatar, which is NULL here — it
+            // was cleared before the build so the old rig could not answer for the description.
+            // That line read animator.avatar.name from the day this pass was written and never
+            // once threw, because the build never succeeded: every avatar took the early return
+            // above. Making the rebuild work ran the success path for the first time, and it
+            // failed instantly, taking the whole conversion down with it.
+            rebuilt.name = previous.name;
             string safe = new string(rebuilt.name.Select(c =>
                 System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
             AssetDatabase.CreateAsset(rebuilt,
@@ -164,10 +212,11 @@ namespace AvatarBridge
                 "in the wrong place and waggles that object while you speak. With no Jaw at all, the " +
                 "voice position falls back to a measured mouth and visemes stay on blendshapes, both " +
                 "of which are right." +
-                (staleRoot != null
-                    ? $" The rebuild also needed its skeleton root renamed from \"{staleRoot}\" to " +
-                      $"\"{root.name}\": a baked humanoid Avatar remembers the object name it was " +
-                      "created under, and this one was configured from a clone."
+                (usedLiveSkeleton
+                    ? " The rig's own skeleton was refused, so this was rebuilt from the avatar's " +
+                      "live hierarchy instead. That reads the bones where they stand NOW rather " +
+                      "than the T-pose the rig was configured in — identical if the avatar is at " +
+                      "its bind pose, and a slightly different rest pose if it is not."
                     : ""));
         }
 

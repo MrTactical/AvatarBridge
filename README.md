@@ -135,10 +135,11 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts, and they reach other people** — one-to-one, with real proximity
-  and box shapes, using a system the CCK doesn't expose. On their own, whatever a native contact
-  switches on plays for nobody but you; a driver bridge carries it to everyone, for no sync bits,
-  and comes on with them ([experimental](#native-contacts), off by default).
+- **ChilloutVR's native contacts, working for everyone** — one-to-one, with real proximity and box
+  shapes, using a system the CCK doesn't expose. Every client runs the contact itself, so the
+  parameters they drive are made local: a synced one would have the sync stream overwrite whatever
+  the contact set, which is what used to make converted contacts fire for the wearer alone
+  ([experimental](#native-contacts), off by default).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -484,9 +485,9 @@ game client and the CCK ships no way to author it, so converters have always had
 with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim. *Let native contacts
-reach other players* comes on with it — [without it](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default),
-what a native contact switches on plays for you and nobody else.
+**Advanced** and contacts convert one to one: real proximity, tags verbatim, and the parameters
+they drive made [local](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work),
+which is what the system needs to work for everyone.
 
 ### Grabbing a chain
 
@@ -533,25 +534,31 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-### On their own, native contacts only fire for you — so this is fixed by default
+### Native contacts drive a local parameter, because that's what makes them work
 
-A native contact writes its parameter **straight at the Animator**, and ChilloutVR only transmits a
-value written through the avatar's **animator manager**. Left alone, then, whatever a native contact
-switches on — a particle effect, a sound, a toggle — plays on your machine and nobody else's, and it
-looks perfect from inside your own headset.
+A native contact writes its parameter **straight at the Animator** and transmits nothing — and it
+doesn't need to. The contact runs on **every** client, so each one sees the same collision and
+reaches the same answer by itself.
 
-**Since 3.7.1 that is repaired, and the repair comes on with native contacts.** *Let native contacts
-reach other players* points each receiver at a local parameter and adds a small layer that copies it
-into the original name with a **driver** — a driver's writes *do* go out. Your animations are
-untouched; they read the name they always read. **It costs no sync bits**: that parameter was
-already declared, already counted against the 3200-bit budget and already being transmitted, just
-carrying a value nothing ever wrote.
+That only holds while the parameter is **local**. Give the contact a *synced* parameter and the
+sync stream writes the declared default straight back over whatever the contact set, so the effect
+misfires for other people and can misfire for you too. AvatarBridge used to do exactly that, which
+is why converted native contacts had a reputation for firing only for the wearer. Contact
+parameters now become `#` names — the system's author is explicit that they must be — and the
+contact components are repointed to follow the rename.
 
-**On/off contacts only.** A *proximity* contact — one reporting how close the toucher is — is left
-exactly as it is, and the report names it. Switch those to the legacy path if other players need to
-see what they drive.
+*Confirmed in game: sound and particles reaching other players reliably.*
 
-<details><summary>Why it looked intermittent, and the call chain</summary>
+The one parameter that can't be made local is one a **menu control** also drives, since that has to
+stay synced to reach anyone. Those take the other route automatically: the contact gets a local name
+of its own and a **driver** copies the value into the synced one, because a driver's writes *do* go
+out. Nothing to choose — the converter can see which case each parameter is in.
+
+The only combination with no answer is a **proximity** contact whose parameter a menu control also
+drives: a driver can carry an on/off reading exactly but a smooth range only in steps. That one is
+named in the report and left alone.
+
+<details><summary>Why results differ between clients, and the call chain</summary>
 
 `ContactAnimator.ApplyValue` → `animator.SetFloat`, which never fills the outbound sync cache. The
 legacy pointer/trigger path does the opposite: `TriggerToContact` → `PlayerSetup.ChangeAnimatorParam`
@@ -559,11 +566,18 @@ goes through the manager and **does** sync, which is why it remains the default.
 works because `CVRAnimatorDriver.ApplyAnimatorChange` → `AnimatorManager.SetParameter` is transmitted
 as well.
 
-It isn't occasional and it isn't random, though it looks like both. An effect left permanently **on**
-still appears for everyone — not because it syncs, but because every client is already running it and
-it never needed the parameter. Only an effect the contact has to **switch on** is lost. That is why
-two effects on the same avatar can behave differently, which reads as the sync being unreliable when
-it is simply absent.
+Nothing is broken in the contact system — it was never built to transmit. Every client simulates
+every avatar's contacts locally, so two clients agree only when both observe the same collision.
+An effect left permanently **on** appears for everyone because it never needed the parameter at all.
+An effect the contact has to **switch on** appears wherever that collision was seen, and nowhere
+else. That is why two effects on one avatar behave differently, and why the same effect can reach
+one person and not another.
+
+There is a second way to lose it, and it is worse: if the parameter the contact drives is **synced**
+(no `#` prefix), the AAS stream keeps writing the declared default over the top of what the contact
+just wrote. The system's author is explicit that a native contact must drive a `#` parameter for
+this reason. Turning the bridge on satisfies that — the contact drives a `#` name of its own and a
+driver carries the value into the synced one.
 
 A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
 one only in steps — hence on/off receivers only, rather than trade the wearer's smooth proximity
@@ -794,7 +808,6 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Let native contacts reach other players** | on | Only shown with native contacts on — ticking those ticks this — and it fixes their one real flaw. The contact drives a local parameter and a small layer copies it into the original name with a **driver**, whose writes go through the animator manager and therefore sync. Animations are untouched — they still read the name they always read. Costs **no sync bits**: that parameter was already declared, counted and transmitted, just carrying a value nothing wrote. **On/off contacts only** — a proximity contact's smooth range can't be carried by a driver, so it is left as-is and named in the report. Local-only receivers are left alone |
 | **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
@@ -1361,10 +1374,10 @@ own animation and face tracking, which is usually where you want them.
 
 Three causes, and the report distinguishes them.
 
-**A sound a native contact sets off.** **Reconvert on 3.7.1 or later**, which fixes this by
-default — the contact wrote its parameter straight at the Animator, which ChilloutVR never
-transmits, so the sound played on your machine alone.
-[Full explanation](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default).
+**A sound a native contact sets off.** **Reconvert on 3.7.2 or later**, which fixes this by
+default — the contact was driving a *synced* parameter, so the sync stream wrote the declared
+default back over whatever the contact set.
+[Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
 
 **Flat (2D) audio.** ChilloutVR decides whether to spatialize a source from its **Spatial Blend**
 alone — anything short of fully 3D is never handed to the spatializer and can go unheard by
@@ -1382,9 +1395,9 @@ whoever set it off.
 **Reconvert on a current release.** Two separate causes produce this symptom, and the report
 distinguishes them.
 
-**A native contact switched it on** — fixed by default in **3.7.1**. The contact wrote its parameter
-straight at the Animator, which ChilloutVR never transmits, so the effect played for you alone.
-[Full explanation](#on-their-own-native-contacts-only-fire-for-you--so-this-is-fixed-by-default).
+**A native contact switched it on** — fixed by default in **3.7.2**. The contact was driving a
+*synced* parameter, so the sync stream wrote the declared default back over whatever the contact
+set. [Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
 
 **The emitter was animated instead of the object** — fixed in **3.5.38**.
 Effects are built two ways, and only one of them travels. If the clip switches the effect's

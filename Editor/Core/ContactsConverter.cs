@@ -77,28 +77,26 @@ namespace AvatarBridge
                 // Reported by a user who could see their own headpat sparkles and pop sound and
                 // could not work out why nobody else could. The particle that DID work for
                 // everyone turned out to be one that is simply always on.
-                ctx.Report.Warning(Category,
-                    $"Native contacts are on: what those {receivers.Length} receiver(s) SWITCH ON, " +
-                    "only you will see",
+                //
+                // Corrected after the system's author described the model: the contact is not
+                // wearer-only, it runs on EVERY client, and the clients simply disagree. He is
+                // also explicit that a native contact must drive a "#" parameter, because a synced
+                // one has the AAS default written back over it.
+                ctx.Report.Approximated(Category,
+                    $"Native contacts are on for {receivers.Length} receiver(s)",
                     "ChilloutVR's native contact system writes its parameter directly at the " +
-                    "Animator, and a value written that way never reaches the network — the sync " +
-                    "cache only fills when something writes through the avatar's animator manager. " +
-                    "Nobody else's copy of the avatar is ever told to play the effect. " +
-                    "This is not occasional and it is not random, which matters because it looks " +
-                    "like both: an effect left permanently ON still appears for everyone, not " +
-                    "because it syncs but because every client is already running it and it never " +
-                    "needed the parameter, while an effect the contact has to switch on appears " +
-                    "for you alone. Two effects on one avatar behaving differently is this, every " +
-                    "time. " +
-                    "The legacy pointer/trigger path does not have the problem: it writes through " +
-                    "the manager and syncs. " +
+                    "Animator and transmits nothing — it does not need to, because every client " +
+                    "runs the contact itself and reaches the same answer from the same collision. " +
+                    "That only holds while the parameter is LOCAL: a synced one has the declared " +
+                    "default streamed back over whatever the contact set, which is why this " +
+                    "conversion moves contact parameters to \"#\" names. Confirmed in game, with " +
+                    "sound and particles reaching other players. " +
                     "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
                     "AvatarBridge declares them itself against the decompiled client, and nothing " +
                     "obliges ChilloutVR to keep them as they are. An avatar built on them can be " +
                     "broken by a client update with no warning and no fix but reconverting. " +
-                    "Turn \"Use ChilloutVR's native contacts\" OFF unless you specifically need box " +
-                    "shapes or a receiver type the legacy triggers do not have, and expect to test " +
-                    "anything you build on them with a second person.");
+                    "That is the reason to prefer the legacy pointer/trigger path unless you need " +
+                    "a box shape or a receiver type it does not have — not the sync, which works.");
             }
         }
 
@@ -344,6 +342,51 @@ namespace AvatarBridge
             return null;
         }
 
+        /// <summary>
+        /// Native contact components address their parameter by NAME, so every rename the animator
+        /// merge applied has to be followed here too. Runs after the merge for that reason.
+        ///
+        /// Without it a contact whose parameter was sanitised for the CCK — or made local, which
+        /// the native system requires — kept pointing at a name the finished controller no longer
+        /// declares, and drove nothing. Nothing in the controller looks wrong when this happens:
+        /// it renamed itself consistently, and the component is not part of it.
+        /// </summary>
+        public static void RepointContactParameters(BridgeContext ctx)
+        {
+            var type = FindType(NakAnimator);
+            if (type == null || ctx.AppliedParameterRenames.Count == 0)
+            {
+                return;
+            }
+            var field = type.GetField("parameter", BindingFlags.Public | BindingFlags.Instance);
+            if (field == null)
+            {
+                return;
+            }
+            var moved = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (var component in ctx.Target.GetComponentsInChildren(type, true))
+            {
+                string current = field.GetValue(component) as string;
+                if (string.IsNullOrEmpty(current)
+                    || !ctx.AppliedParameterRenames.TryGetValue(current, out string final)
+                    || final == current)
+                {
+                    continue;
+                }
+                field.SetValue(component, final);
+                moved.Add($"\"{current}\" -> \"{final}\"");
+            }
+            if (moved.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{moved.Count} native contact(s) repointed at their renamed parameter",
+                    string.Join(", ", moved) + " — a contact component addresses its parameter by " +
+                    "name, and the animator renamed those while making them CCK-safe or local. " +
+                    "The component is not part of the controller, so it does not follow along by " +
+                    "itself, and one left behind drives a parameter nothing declares.");
+            }
+        }
+
         static void SetMember(object target, string field, object value)
         {
             if (target == null || value == null)
@@ -555,43 +598,65 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
-            // The contact writes a LOCAL parameter and a driver copies it into the one the
-            // animations already read. Costs no sync bits that were not already being spent:
-            // the original is unprefixed, so ChilloutVR has always counted it against the 3200
-            // and always transmitted it — it simply transmitted a value nothing ever wrote,
-            // because the native path writes at the Animator and never through the manager.
-            // The bridge does not buy bits, it makes bits already paid for do something.
+            // A native contact must drive a LOCAL parameter. It writes straight at the Animator
+            // without filling the outbound AAS buffer, so a synced name has the declared default
+            // streamed back over every value the contact sets — which is the "it only syncs
+            // sometimes" this tool used to cause, and it costs the wearer the contact as often as
+            // it costs everyone else. Made local, the system does what it was built to do: every
+            // client runs the contact itself and reaches the same answer from the same collision.
             //
-            // localOnly receivers are left alone: the author asked for local, and honouring that
-            // is the whole point of the flag.
-            //
-            // PROXIMITY receivers are left alone too, and that is not an oversight. A driver
-            // writes a value on entering a state, so it can carry an on/off reading exactly and
-            // an analog one only in steps — and the steps would replace the smooth reading the
-            // WEARER gets today. Trading their working analog contact for a stepped one other
-            // people can see is not a trade this tool makes silently, so a proximity receiver
-            // keeps behaving exactly as it does without the option, and the report says so.
+            // Which route gets there is decided PER PARAMETER, because only one thing can stop
+            // the simple route — a menu control driving the same name, which has to stay synced
+            // to reach anyone. That is rare, so it does not deserve a setting; it deserves the
+            // other route. This used to be a global tickbox that had to be right for the whole
+            // avatar at once, and the avatar is not uniform.
             string driven = receiver.parameter;
             bool analog = typeName.Contains("Proximity");
-            if (ctx.Settings.syncNativeContacts && !receiver.localOnly
-                && !driven.StartsWith("#", System.StringComparison.Ordinal))
+            if (!driven.StartsWith("#", System.StringComparison.Ordinal))
             {
-                if (analog)
+                bool onMenu = ctx.CvrAvatar?.avatarSettings?.settings != null
+                    && ctx.CvrAvatar.avatarSettings.settings
+                        .Any(s => s != null && s.machineName == driven);
+                if (!onMenu)
                 {
-                    ctx.Report.Skipped(Category, PathOf(ctx, receiver.transform),
-                        $"\"{driven}\" is a proximity contact, so it is not carried to other " +
-                        "players even with the option on: it reports how close the toucher is, " +
-                        "and that whole range cannot be carried without replacing the smooth " +
-                        "value you see now with a handful of steps. It behaves exactly as it " +
-                        "would with the option off. On/off contacts on this avatar are carried " +
-                        "normally. Switch this one to the legacy contact path if other players " +
-                        "need to see what it drives.");
+                    // The simple route: the parameter itself becomes "#name" everywhere. The
+                    // rename pass moves the declaration, every clip binding and every condition
+                    // together, so the animations keep reading whatever it ends up called.
+                    ctx.LocalContactParameters.Add(driven);
+                }
+                else if (!analog)
+                {
+                    // The menu needs this name synced, so the contact cannot have it. Give the
+                    // contact a local name of its own and let a driver copy the value across —
+                    // a driver writes through the animator manager, so it is transmitted.
+                    //
+                    // Recorded once per PAIR, not once per receiver. Several receivers sharing a
+                    // parameter is ordinary — a left and a right nipple, ear or hand all driving
+                    // one name — and they share the local name too, so a second entry would build
+                    // a second layer reading the same source and writing the same target. Those
+                    // duplicates agree with each other, so nothing misbehaves; they are simply a
+                    // layer and a driver call of pure waste on most symmetric avatars.
+                    string local = "#" + driven + "_contact";
+                    if (!ctx.BridgedContacts.Contains((local, driven)))
+                    {
+                        ctx.BridgedContacts.Add((local, driven));
+                    }
+                    driven = local;
                 }
                 else
                 {
-                    string local = "#" + driven + "_contact";
-                    ctx.BridgedContacts.Add((local, driven));
-                    driven = local;
+                    // Analog AND menu-driven: neither route exists. It cannot be made local
+                    // without taking the menu entry off the network, and a driver writes on
+                    // entering a state, so it can carry an on/off reading exactly and a smooth
+                    // one only in steps. Left alone and named rather than quietly degraded.
+                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
+                        $"\"{driven}\" is a proximity contact whose parameter a MENU control also " +
+                        "drives, and those two cannot both be satisfied. The menu needs the name " +
+                        "synced; the contact needs it local, or the sync stream writes the " +
+                        "declared default back over whatever it sets. A driver would bridge the " +
+                        "gap for an on/off contact but can only carry this one's smooth range in " +
+                        "steps. Give the menu control its own parameter, or move this contact to " +
+                        "the legacy path, which has neither problem.");
                 }
             }
 

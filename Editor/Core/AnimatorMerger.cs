@@ -1157,6 +1157,33 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>
+        /// An AnimatorDriverTask.Operator looked up by NAME, trying each spelling in turn.
+        ///
+        /// The CCK renames these between versions — "MoreThan"/"LessThan" in one, "MoreThen"/
+        /// "LessThen" in another — and a member written into the source binds at COMPILE time, so
+        /// the whole tool stops building for anyone whose CCK spells it the other way. A user on
+        /// 3.7.1 hit exactly that, and no amount of compiling here would have found it: the check
+        /// builds against whichever CCK is installed on this machine, which is the one that agrees.
+        ///
+        /// Enum members that ARE stable across versions (Set, Addition, Subtraction …) stay written
+        /// out plainly; this is only for the ones known to have moved.
+        /// </summary>
+        static bool TryOperator(out AnimatorDriverTask.Operator op, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (System.Enum.IsDefined(typeof(AnimatorDriverTask.Operator), name))
+                {
+                    op = (AnimatorDriverTask.Operator)System.Enum.Parse(
+                        typeof(AnimatorDriverTask.Operator), name);
+                    return true;
+                }
+            }
+            op = default;
+            return false;
+        }
+
         /// <summary>One driver task: set this parameter to this value, in the type it is declared
         /// as, so a bool slot is not handed a float.</summary>
         static AnimatorDriver ContactDriver(string parameter, AnimatorControllerParameterType type, float value)
@@ -2267,11 +2294,21 @@ namespace AvatarBridge
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
+                // A native contact's parameter must be local, and that outranks both the contact
+                // rule above and the setting below. The native system writes straight at the
+                // Animator without filling the outbound AAS buffer, so a SYNCED name has the
+                // declared default streamed back over whatever the contact just wrote — the
+                // system's author is explicit that it must be a "#" name. Core and stream-fed
+                // parameters are still exempt: those have to be broadcast to work at all, and a
+                // contact sharing one of those names is a different problem.
+                bool mustBeLocal = ctx.LocalContactParameters.Contains(name)
+                    && !CvrCoreParameters.Contains(result)
+                    && !StreamFedParameters.Contains(result);
                 // Already-local names are left alone — the Action transplant declares its
                 // "#AB_Ready" flag and scratch cells BEFORE this pass runs, and prefixing them
                 // again made "##AB_Ready_…": still local, still consistent, but a name no reader
                 // of the tester or the report should ever have to puzzle over.
-                if (ctx.Settings.preserveParameterSyncState && !preserved
+                if ((mustBeLocal || (ctx.Settings.preserveParameterSyncState && !preserved))
                     && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     result = "#" + result;
@@ -2281,6 +2318,15 @@ namespace AvatarBridge
                 // inspector only accepts [a-zA-Z0-9/-_#] in a machine name: the '<', '>', '=' and
                 // '.' broke the parameter picker for that entry and every control drawn after it,
                 // leaving most of the menu inert. Buttons now convert as plain toggles.
+                //
+                // Published for readers OUTSIDE the controller. A native contact component holds
+                // the parameter name as a plain string; the controller renaming itself is
+                // consistent and invisible to it, so without this the component keeps addressing
+                // a name that no longer exists.
+                if (!string.IsNullOrEmpty(name) && result != name)
+                {
+                    ctx.AppliedParameterRenames[name] = result;
+                }
                 return result;
             }
 
@@ -2861,9 +2907,9 @@ namespace AvatarBridge
                 });
 
                 var ownedFloats = stateFloats.Where(b => b.type != typeof(Animator)
-                    && !treeDriven.Contains(b)
+                    && !TreeDrivenElsewhere(treeDriven, b, layerIndex)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
-                var ownedObjects = stateObjects.Where(b => !treeDriven.Contains(b)
+                var ownedObjects = stateObjects.Where(b => !TreeDrivenElsewhere(treeDriven, b, layerIndex)
                     && owner.TryGetValue(b, out int by) && by == layerIndex).ToList();
                 if (ownedFloats.Count == 0 && ownedObjects.Count == 0)
                 {
@@ -2873,12 +2919,35 @@ namespace AvatarBridge
                 int addedThisLayer = 0;
                 foreach (var state in states)
                 {
-                    if (!(state.motion is AnimationClip current) || IsPassThroughState(state))
+                    // A blend tree still stands aside — a constant assertion would fight the
+                    // parameter-driven value rather than rest beside it.
+                    if (state.motion is BlendTree || IsPassThroughState(state))
                     {
                         continue;
                     }
-                    var haveFloats = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(current));
-                    var haveObjects = new HashSet<EditorCurveBinding>(AnimationUtility.GetObjectReferenceCurveBindings(current));
+                    // An EMPTY state is the purest case of a state that asserts nothing, and it
+                    // used to be skipped here for the shallow reason that null is not a clip.
+                    // The empty-state filler does not reach these either — it handles only the
+                    // two-state toggle, on purpose, because filling a STRUCTURAL empty state with
+                    // a snapshot of everything the layer animates has shipped bugs twice. This
+                    // pass is not that: it writes only bindings the layer OWNS (lowest layer
+                    // wins), never a tree-driven one, and never a router. Those are the guards
+                    // that make an empty state safe to speak for.
+                    //
+                    // Between the two, a three-state machine fell through entirely: on one avatar
+                    // the layer that starts a heartbeat sound had "New" and "Off" both empty, so
+                    // nothing ever wrote the audio object inactive and the sound ran for the rest
+                    // of the session. What lands in those slots later is the placeholder from
+                    // FillEmptyMotionSlots, which exists to keep Unity's playable graph from
+                    // crashing and animates nothing but its own dummy path — it looks like a
+                    // motion in the finished controller while asserting nothing at all.
+                    var current = state.motion as AnimationClip;
+                    var haveFloats = current != null
+                        ? new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(current))
+                        : new HashSet<EditorCurveBinding>();
+                    var haveObjects = current != null
+                        ? new HashSet<EditorCurveBinding>(AnimationUtility.GetObjectReferenceCurveBindings(current))
+                        : new HashSet<EditorCurveBinding>();
 
                     AnimationClip copy = null;
                     int added = 0;
@@ -2892,6 +2961,10 @@ namespace AvatarBridge
                         {
                             name = SanitizeFileName($"{layer.name} {state.name} restore")
                         };
+                        if (current == null)
+                        {
+                            return copy;   // nothing to carry over; the state held no motion
+                        }
                         // Settings travel with the curves or the copy changes behaviour: an
                         // 8.3-second looping animation topped by this pass came back loop=False,
                         // playing once and freezing where the original cycled. Caught by the
@@ -3016,7 +3089,7 @@ namespace AvatarBridge
                 foreach (var pair in owner)
                 {
                     if (pair.Value != layerIndex || pair.Key.type == typeof(Animator)
-                        || treeDriven.Contains(pair.Key))
+                        || TreeDrivenElsewhere(treeDriven, pair.Key, layerIndex))
                     {
                         continue;
                     }
@@ -6330,12 +6403,30 @@ namespace AvatarBridge
                     Factor, 0f, null, 1f));
                 tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Multiplication,
                     Delta, 0f, Delta, 0f));
-                tasks.Add(Task(modified.name,
-                    modified.type == AnimatorControllerParameterType.Bool
-                        ? AnimatorDriverTask.ParameterType.Bool
-                        : Float,
-                    AnimatorDriverTask.Operator.MoreThan,
-                    Delta, 0f, null, 0.0001f));
+                // Resolved BY NAME rather than written as AnimatorDriverTask.Operator.MoreThan,
+                // because the CCK has shipped both spellings: "MoreThan"/"LessThan" in the version
+                // this was written against, "MoreThen"/"LessThen" in others. Naming either one
+                // directly makes AvatarBridge fail to COMPILE for everyone on the other — reported
+                // by a user on 3.7.1 as CS0117, and invisible here because the compile check builds
+                // against whichever CCK this machine happens to have.
+                if (TryOperator(out var moreThan, "MoreThan", "MoreThen"))
+                {
+                    tasks.Add(Task(modified.name,
+                        modified.type == AnimatorControllerParameterType.Bool
+                            ? AnimatorDriverTask.ParameterType.Bool
+                            : Float,
+                        moreThan,
+                        Delta, 0f, null, 0.0001f));
+                }
+                else
+                {
+                    ctx.Report.Warning(Category, $"Scale feed for \"{modified.name}\" is incomplete",
+                        "This ChilloutVR CCK spells its animator-driver comparison operators in a " +
+                        "way AvatarBridge does not recognise, so the step that decides whether the " +
+                        "avatar has been resized could not be built. The parameter still exists and " +
+                        "everything else converts; it simply will not update itself when you scale. " +
+                        "Please report the CCK version — this needs one more spelling added.");
+                }
             }
 
             var layers = master.layers.ToList();
@@ -7680,9 +7771,12 @@ namespace AvatarBridge
                 int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
-                    // A blend tree drives this somewhere: leave it to the tree. A constant
-                    // assertion from any plain state fights a parameter-driven value.
-                    if (treeDriven.Contains(binding))
+                    // A blend tree in ANOTHER layer drives this: leave it to the tree, because the
+                    // two blend and a constant here would fight a parameter-driven value. A tree
+                    // in a sibling state of THIS layer is a different matter — only one state
+                    // plays at a time, so it is not running while the layer rests here, and
+                    // deferring to it leaves the property to nobody.
+                    if (TreeDrivenElsewhere(treeDriven, binding, here))
                     {
                         return false;
                     }
@@ -7885,6 +7979,35 @@ namespace AvatarBridge
         }
 
         /// <summary>
+        /// Is this binding driven by a blend tree in some layer OTHER than the one asking?
+        ///
+        /// That is the only case where a constant assertion fights a parameter-driven value: two
+        /// layers blend, so both are live at once. Within one layer the states are mutually
+        /// exclusive — the tree in the "on" state is not running while the layer rests in "off" —
+        /// so the resting state must still say what it owns, or ChilloutVR leaves the property
+        /// wherever the tree last put it.
+        ///
+        /// Called with the asking layer's index; -1 means "not found", and is treated as any other
+        /// layer so an unidentifiable caller stays with the cautious old behaviour.
+        /// </summary>
+        static bool TreeDrivenElsewhere(Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
+            EditorCurveBinding binding, int askingLayer)
+        {
+            if (!treeDriven.TryGetValue(binding, out var owning))
+            {
+                return false;
+            }
+            foreach (int layer in owning)
+            {
+                if (layer != askingLayer)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Which layer OWNS each animated property, and every clip the controller already holds.
         ///
         /// Ownership is by DEPTH: the lowest layer index that animates a property owns it, and only
@@ -7895,7 +8018,7 @@ namespace AvatarBridge
         /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
             out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
-            out HashSet<EditorCurveBinding> treeDriven,
+            out Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
             out Dictionary<EditorCurveBinding, int> anyOwner)
         {
             // Locals rather than the out params directly: a lambda may not touch an out parameter,
@@ -7912,7 +8035,7 @@ namespace AvatarBridge
             // bindings, claimed ownership of all of them, was rightly refused permission to
             // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
             // — nobody restored anything, and the whole avatar was one-way in game.
-            var trees = new HashSet<EditorCurveBinding>();
+            var trees = new Dictionary<EditorCurveBinding, HashSet<int>>();
             // Ownership over EVERYTHING a layer animates, trees included — the arbitration the
             // TREE repair needs. Removing tree bindings from the plain-state map above was right
             // for the state passes, but the tree pass inherited the same map and read "absent"
@@ -7928,6 +8051,7 @@ namespace AvatarBridge
                 var floatsHere = new HashSet<EditorCurveBinding>();
                 var objectsHere = new HashSet<EditorCurveBinding>();
                 var anythingHere = new HashSet<EditorCurveBinding>();
+                var treesHere = new HashSet<EditorCurveBinding>();
                 // Ownership only counts states Unity can actually reach. A library layer (see
                 // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
                 // states at layer 4, each holding one toggle's clip, awarded every property to
@@ -7945,9 +8069,9 @@ namespace AvatarBridge
                         CollectClips(motion, clips);
                         if (motion is BlendTree)
                         {
-                            // Trees feed the exemption set and the any-ownership map, never
+                            // Trees feed the exemption map and the any-ownership map, never
                             // plain-state ownership — see above.
-                            CollectBindings(motion, trees, trees);
+                            CollectBindings(motion, treesHere, treesHere);
                             if (onlyPlayable == null || child.state == onlyPlayable)
                             {
                                 CollectBindings(motion, anythingHere, anythingHere);
@@ -7961,6 +8085,21 @@ namespace AvatarBridge
                         }
                     }
                 });
+                // WHICH layer's tree drives it, not merely that one does. Within a single layer
+                // only one state plays at a time, so a tree in a sibling state cannot be fighting
+                // a constant written into the state the layer is resting in — it is not running.
+                // Exempting there left the property to something switched off: measured on an
+                // avatar whose "Toot" and "Buttplug drive" layers each hold a tree in one state
+                // and rest in another, and whose objects stayed on for the rest of the session.
+                // Across layers the exemption is still right, because those genuinely do blend.
+                foreach (var binding in treesHere)
+                {
+                    if (!trees.TryGetValue(binding, out var owning))
+                    {
+                        trees[binding] = owning = new HashSet<int>();
+                    }
+                    owning.Add(layerIndex);
+                }
                 foreach (var binding in floatsHere.Concat(objectsHere))
                 {
                     if (!owners.ContainsKey(binding))
@@ -8535,11 +8674,28 @@ namespace AvatarBridge
                     var theirs = AnimationUtility.GetEditorCurve(candidate, binding);
                     // A restore clip holds one value; anything that moves over time is a
                     // different animation, whatever it happens to start at.
-                    if (theirs == null || theirs.length == 0 || mine == null || mine.length == 0
-                        || !Mathf.Approximately(theirs.keys[0].value, mine.keys[0].value)
-                        || !Mathf.Approximately(theirs.keys[theirs.length - 1].value, mine.keys[0].value))
+                    if (theirs == null || theirs.length == 0 || mine == null || mine.length == 0)
                     {
                         same = false;
+                        break;
+                    }
+                    // EVERY key, not just the ends. Comparing only the first and last let a clip
+                    // that returns to where it began pass as a constant, and the shape that does
+                    // that is a loop — a throb, a bounce, a pulse. One avatar's arousal throb was
+                    // adopted as the restore for its own off state, so the toggle's "off" half
+                    // played the very animation it was meant to undo and nothing could stop it.
+                    // The middle of the curve is the whole difference between a rest pose and an
+                    // oscillation around one.
+                    foreach (var key in theirs.keys)
+                    {
+                        if (!Mathf.Approximately(key.value, mine.keys[0].value))
+                        {
+                            same = false;
+                            break;
+                        }
+                    }
+                    if (!same)
+                    {
                         break;
                     }
                 }
@@ -8941,7 +9097,14 @@ namespace AvatarBridge
             }
 
             var rewired = new Dictionary<AnimationClip, AnimationClip>();
-            int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0;
+            int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0, offsAsserted = 0;
+            // Which cloth bindings each rewired clip switches ON, and which of those may be
+            // asserted OFF elsewhere at all. A target is off-safe only while EVERY container
+            // that activates it passed the shared-rider test — one style that shares the chain
+            // with something still visible disqualifies the binding everywhere, because this
+            // pass cannot tell which of the two a given resting state meant.
+            var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
+            var offSafe = new Dictionary<EditorCurveBinding, bool>();
             var physicslessStyles = new HashSet<Transform>();
             // Chains left running when their style hides, because a mesh outside the toggled
             // object rides them. Named in the report so "this cloth never stops" is explained
@@ -9235,9 +9398,35 @@ namespace AvatarBridge
                             if (source != animated && ChainSharedOutside(chain, animated))
                             {
                                 sharedChains.Add(chain.Source.name);
+                                offSafe[target] = false;
                                 continue;
                             }
                             deactivationsMirrored++;
+                        }
+                        else
+                        {
+                            // An ACTIVATION. Whether this binding may later be asserted off is
+                            // the same question the mirroring above asks, asked now: a chain
+                            // something outside the toggled object rides must keep running when
+                            // that object hides. Recorded rather than acted on, because the
+                            // states that would carry the off-assertion are not known until
+                            // every clip in every layer has been through this.
+                            //
+                            // BOTH kinds of toggle, which is the whole point. A PhysBone-component
+                            // curve only ever matches its own chain (source == animated above), so
+                            // it is always safe to stop — it hides nothing. Scoping this to object
+                            // toggles left exactly those chains unfixed: an avatar whose "Lick" and
+                            // "ButtplugOn" switch the COMPONENT had every one of its cloth curves
+                            // written as an activation and not one as a stop, while the guard that
+                            // would have explained it was never consulted.
+                            bool safe = source == animated || !ChainSharedOutside(chain, animated);
+                            if (!safe)
+                            {
+                                sharedChains.Add(chain.Source.name);
+                            }
+                            offSafe[target] = offSafe.TryGetValue(target, out bool had)
+                                ? had && safe
+                                : safe;
                         }
                         if (additions == null)
                         {
@@ -9284,6 +9473,18 @@ namespace AvatarBridge
                 curvesAdded += additions.Count;
                 clipsTouched++;
                 rewired[clip] = clone;
+                foreach (var pair in additions)
+                {
+                    if (!CurveActivates(pair.Value))
+                    {
+                        continue;
+                    }
+                    if (!activatedByClip.TryGetValue(clone, out var set))
+                    {
+                        activatedByClip[clone] = set = new HashSet<EditorCurveBinding>();
+                    }
+                    set.Add(pair.Key);
+                }
                 return clone;
             }
 
@@ -9405,6 +9606,121 @@ namespace AvatarBridge
                 });
             }
 
+            // Bindings the finished controller ALREADY switches off somewhere. A synthetic stop is
+            // for a binding nothing ever takes back; where the avatar's own animation takes it back
+            // already, adding one is at best redundant and at worst destructive.
+            //
+            // Measured on an avatar with TWO PhysBones per breast — one tuned for clothed, one for
+            // naked — where putting a top on enables the first and disables the second, and the
+            // defaults clip swaps them back. Both directions were converted correctly. The stop
+            // written on top turned the first off without turning the second on, so taking the top
+            // off left BOTH disabled and the breasts stopped moving entirely. In the editor nothing
+            // runs, so it looked perfect; it only died in play mode.
+            var alreadySwitchedOff = new HashSet<EditorCurveBinding>();
+            foreach (var pair in rewired)
+            {
+                var clip = pair.Value;
+                if (clip == null) continue;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!offSafe.ContainsKey(binding)) continue;
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve != null && !CurveActivates(curve))
+                    {
+                        alreadySwitchedOff.Add(binding);
+                    }
+                }
+            }
+
+            // Every pass that fills an empty off state — RestorePartialOffStates,
+            // FillEmptyStatesWithRestoreClips, AssertOwnedBindingsEverywhere — has already run by
+            // the time this one exists, so the m_Enabled bindings created above were invisible to
+            // all of them. The ON curve reaches the component and nothing ever takes it back:
+            // ChilloutVR restores nothing, so the cloth latches on the first time the toggle is
+            // used and stays on for the rest of the session.
+            //
+            // Mirroring a deactivation only helps when the source clip HAD one to copy. A VRChat
+            // toggle whose off state is empty — the Write Defaults idiom — has nothing to mirror,
+            // and that is the common shape. Measured on an avatar whose "Lick" and "ButtplugOn"
+            // both left their cloth running, both on plain two-state layers that the filler would
+            // have handled had the binding existed when it ran.
+            //
+            // Scoped deliberately, because the alternative is worse. Asserting these bindings off
+            // generally — by moving the assert pass after this one — would write a stop into every
+            // resting state of every layer that touches them, knowing nothing about who rides the
+            // chain, and would leave a visible add-on rigid on any avatar whose mesh is skinned to
+            // another style's simulated bones. So: only bindings THIS pass switched on, only in a
+            // layer that switches them on, only into states holding a plain clip, and only where
+            // the same shared-rider guard that governs mirroring says the chain may stop at all.
+            foreach (var layer in master.layers)
+            {
+                var activatedHere = new HashSet<EditorCurveBinding>();
+                var states = new List<AnimatorState>();
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        states.Add(child.state);
+                        if (child.state.motion is AnimationClip clip
+                            && activatedByClip.TryGetValue(clip, out var activated))
+                        {
+                            activatedHere.UnionWith(activated);
+                        }
+                    }
+                });
+                activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok
+                                               || alreadySwitchedOff.Contains(b));
+                // TWO-STATE LAYERS ONLY, for the same reason the empty-state filler restricts
+                // itself: on a bigger machine the "other states" are not the off half of a
+                // toggle, they are unrelated states that happen to share a layer.
+                //
+                // Shipped as a bug first. An avatar whose wardrobe and expressions live in one
+                // large layer had a clothing state switch its breast cloth ON, so every other
+                // state in that layer — Wink, Widen, Tongue, Stumped, tummy sliders — was given
+                // a stop, and the breasts stopped simulating the moment any of them played.
+                // 282 stops on that avatar, and the physics were dead in normal use.
+                if (activatedHere.Count == 0 || states.Count != 2)
+                {
+                    continue;
+                }
+
+                // Cloned per layer, never shared: the same clip can be the off state of this
+                // toggle and of an unrelated layer, and a stop written into the shared asset
+                // would have that other layer switching off physics it knows nothing about.
+                var perLayer = new Dictionary<AnimationClip, AnimationClip>();
+                foreach (var state in states)
+                {
+                    // A blend tree is left alone. Its children are blended rather than chosen,
+                    // so a constant stop in one of them fights the tree instead of resting it —
+                    // the same reason the restore filler defers to trees.
+                    if (!(state.motion is AnimationClip clip))
+                    {
+                        continue;
+                    }
+                    var drives = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(clip));
+                    foreach (var target in activatedHere)
+                    {
+                        if (drives.Contains(target))
+                        {
+                            continue;   // this state says its own piece already
+                        }
+                        if (!perLayer.TryGetValue(clip, out var owned))
+                        {
+                            owned = UnityEngine.Object.Instantiate(clip);
+                            owned.name = clip.name;
+                            owned.hideFlags = HideFlags.None;
+                            perLayer[clip] = owned;
+                        }
+                        AnimationUtility.SetEditorCurve(owned, target, AnimationCurve.Constant(0f, 1f / 60f, 0f));
+                        offsAsserted++;
+                    }
+                    if (perLayer.TryGetValue(clip, out var replacement))
+                    {
+                        state.motion = replacement;
+                    }
+                }
+            }
+
             if (clipsTouched > 0)
             {
                 ctx.Report.Converted(Category,
@@ -9419,7 +9735,15 @@ namespace AvatarBridge
                           "again when the style hides, which matters here because ChilloutVR does " +
                           "not restore a binding nothing writes: without the off curve the cloth " +
                           "would stay running from the first time it appeared."
-                        : "No style here switches its physics back off."));
+                        : "No style here switches its physics back off.") +
+                    (offsAsserted > 0
+                        ? $" A further {offsAsserted} resting state(s) were given an explicit stop " +
+                          "for physics they leave alone. Those states were empty of it — VRChat " +
+                          "relied on Write Defaults to undo the switch, and ChilloutVR has no such " +
+                          "rule, so the cloth latched on the first time the toggle was used and " +
+                          "never stopped. Chains that something outside the toggled object rides " +
+                          "are excluded and listed separately."
+                        : ""));
             }
 
             if (sharedChains.Count > 0)
