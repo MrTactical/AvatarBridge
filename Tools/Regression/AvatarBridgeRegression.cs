@@ -715,7 +715,7 @@ namespace AvatarBridge.Regression
 
             AppendAas(sb, avatar);
             AppendComponents(sb, target);
-            AppendPhysics(sb, target);
+            AppendPhysics(sb, avatar, target);
             AppendControllers(sb, avatar, target);
         }
 
@@ -788,7 +788,7 @@ namespace AvatarBridge.Regression
         /// reports all of them as changed, and that diff has to be read and accepted rather than
         /// waved through, because a real regression landing in the same run would hide inside it.
         /// </summary>
-        static void AppendPhysics(StringBuilder sb, GameObject target)
+        static void AppendPhysics(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
             sb.Append("[physics]\n");
 
@@ -827,17 +827,17 @@ namespace AvatarBridge.Regression
             // writing them, or one that writes hundreds into states it has no business touching,
             // both show up here as a number, and the second of those shipped once.
             var animator = target.GetComponent<Animator>();
-            var controller = animator != null
-                ? animator.runtimeAnimatorController as AnimatorController
-                : null;
-            if (controller == null)
+            var runtime = animator != null ? animator.runtimeAnimatorController : null;
+            if (runtime == null && avatar != null) runtime = avatar.overrides;
+            var controller = BaseController(runtime);
+            if (runtime == null)
             {
                 sb.Append("clothCurves <no controller to read>\n");
             }
             else
             {
                 int on = 0, off = 0, clips = 0;
-                foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+                foreach (var clip in runtime.animationClips.Where(c => c != null).Distinct())
                 {
                     bool touched = false;
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
@@ -906,6 +906,32 @@ namespace AvatarBridge.Regression
               .Append($"streamed={streamed} bridgeLayers={bridged.Count}\n");
             foreach (var line in contacts) sb.Append(line).Append('\n');
             sb.Append('\n');
+        }
+
+        /// <summary>
+        /// The AnimatorController behind whatever the Animator is holding.
+        ///
+        /// A converted avatar's root Animator holds the OVERRIDE controller — ChilloutVR runs the
+        /// avatar off it — so "as AnimatorController" is null on every avatar in the corpus, not
+        /// on some exotic one. The first run of the physics block reported "no controller to
+        /// read" for an avatar with 112 cloth chains and a full merged controller sitting right
+        /// behind the override, which took the cloth curve counts, the bridge layer count and the
+        /// entire bridged contact route down with it. Nothing about that failure was visible from
+        /// the fact that it compiled.
+        /// </summary>
+        static AnimatorController BaseController(RuntimeAnimatorController runtime)
+        {
+            for (int guard = 0; runtime != null && guard < 8; guard++)
+            {
+                if (runtime is AnimatorController controller) return controller;
+                if (runtime is AnimatorOverrideController over)
+                {
+                    runtime = over.runtimeAnimatorController;
+                    continue;
+                }
+                break;
+            }
+            return null;
         }
 
         /// <summary>
