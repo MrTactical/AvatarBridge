@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace AvatarBridge
@@ -134,6 +135,94 @@ namespace AvatarBridge
                 {
                     renderer.sharedMaterials = materials;
                 }
+            }
+
+            // Materials that arrive by an animated SWAP, which are on no renderer at this moment
+            // and were therefore invisible to the loop above. A hypno overlay, a transformation
+            // skin, a costume recolour — the whole point of them is that they are not assigned
+            // until a toggle assigns them, and a shader that draws into one eye does so just as
+            // badly then.
+            //
+            // Reported by a user whose hypno shader came through unpatched with the setting ON and
+            // NOTHING in the report, because a shader never considered produces no entry: the
+            // reader cannot tell "nothing needed patching" from "we never looked". The rehoming
+            // pass has always followed these curves, so the two passes disagreed about what counts
+            // as a material this avatar uses.
+            //
+            // The curve is rewritten to the patched clone as well. Patching the shader without
+            // repointing the swap would fix nothing — the toggle would still assign the original.
+            int swapsRepointed = 0;
+            foreach (var clip in ClipsOf(ctx.MergedController))
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null || keys.Length == 0)
+                    {
+                        continue;
+                    }
+                    bool rewritten = false;
+                    for (int k = 0; k < keys.Length; k++)
+                    {
+                        var material = keys[k].value as Material;
+                        var shader = material != null ? material.shader : null;
+                        if (shader == null)
+                        {
+                            continue;
+                        }
+                        if (!patched.TryGetValue(shader, out var fixedShader))
+                        {
+                            string source = SourcePathOf(shader);
+                            if (source == null)
+                            {
+                                patched[shader] = null;
+                                continue;
+                            }
+                            if (DeclaresStereo(source))
+                            {
+                                patched[shader] = null;
+                                alreadyCorrect.Add(shader.name);
+                                continue;
+                            }
+                            fixedShader = TryPatch(source, shader.name, dir, out string reason,
+                                out var recipe, out bool exact, out bool grabbed);
+                            patched[shader] = fixedShader;
+                            if (fixedShader == null)
+                            {
+                                refused.Add($"{shader.name} ({reason})");
+                                continue;
+                            }
+                            repointed.Add(shader.name);
+                            if (grabbed) { grabLimited.Add(shader.name); }
+                            if (recipe != null)
+                            {
+                                recipesUsed.Add($"{shader.name} — {recipe.Note}" +
+                                    (exact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
+                            }
+                        }
+                        if (fixedShader == null)
+                        {
+                            continue;
+                        }
+                        keys[k].value = Repoint(material, fixedShader, dir, clones);
+                        rewritten = true;
+                    }
+                    if (rewritten)
+                    {
+                        AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
+                        swapsRepointed++;
+                    }
+                }
+            }
+            if (swapsRepointed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
+                    "These materials are never assigned to a renderer — an animation swaps them in, " +
+                    "which is how hypno overlays, transformation skins and costume recolours are " +
+                    "built. Patching the shader alone would have changed nothing, because the " +
+                    "toggle would still have assigned the original, so the swap itself now points " +
+                    "at the patched copy.");
             }
 
             if (repointed.Count > 0)
@@ -612,6 +701,72 @@ namespace AvatarBridge
         /// original material are unaffected. Cloned once and reused for every slot that had the
         /// same material, which is what keeps those slots batching together.
         /// </summary>
+        /// <summary>
+        /// Every clip the merged controller plays, including the ones inside blend trees.
+        ///
+        /// Clips the avatar's AUTHOR owns are excluded. This pass runs before the self-contain
+        /// step, so a clip here can still be a file living beside the source avatar, and rewriting
+        /// one would repair the ChilloutVR copy by editing the VRChat original — the same rule the
+        /// constraint and contact repointers follow.
+        /// </summary>
+        static IEnumerable<AnimationClip> ClipsOf(AnimatorController controller)
+        {
+            if (controller == null)
+            {
+                yield break;
+            }
+            string ours = AssetDatabase.GetAssetPath(controller);
+            string folder = string.IsNullOrEmpty(ours) ? null : Path.GetDirectoryName(ours)?.Replace('\\', '/');
+            var seen = new HashSet<AnimationClip>();
+            var pending = new Stack<Motion>();
+            foreach (var layer in controller.layers)
+            {
+                if (layer?.stateMachine == null) continue;
+                foreach (var motion in MotionsOf(layer.stateMachine))
+                {
+                    pending.Push(motion);
+                }
+            }
+            while (pending.Count > 0)
+            {
+                var motion = pending.Pop();
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        if (child.motion != null) pending.Push(child.motion);
+                    }
+                    continue;
+                }
+                if (!(motion is AnimationClip clip) || !seen.Add(clip))
+                {
+                    continue;
+                }
+                string path = AssetDatabase.GetAssetPath(clip);
+                // In-memory clips (no path) are ours by construction; on-disk ones must sit inside
+                // this conversion's own folder.
+                if (!string.IsNullOrEmpty(path)
+                    && (folder == null || !path.Replace('\\', '/').StartsWith(folder, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                yield return clip;
+            }
+        }
+
+        static IEnumerable<Motion> MotionsOf(AnimatorStateMachine machine)
+        {
+            foreach (var child in machine.states)
+            {
+                if (child.state?.motion != null) yield return child.state.motion;
+            }
+            foreach (var sub in machine.stateMachines)
+            {
+                if (sub.stateMachine == null) continue;
+                foreach (var motion in MotionsOf(sub.stateMachine)) yield return motion;
+            }
+        }
+
         static Material Repoint(Material original, Shader patchedShader, string dir,
             Dictionary<Material, Material> clones)
         {

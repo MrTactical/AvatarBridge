@@ -47,6 +47,17 @@ release. The format, set by v2.68.4:
   script and this file do not exist as far as users are concerned. They are pruned from the public
   package, so naming one describes something the reader cannot have. Internal *method* names that
   ship inside `Editor/` are fine within the technical dropdown; a reader can grep those.
+- **GENERALISE. Never name the avatar, the part or the toggle that found it.** Not "breast physics
+  died when you pulled a facial expression", not "a jaw mapped to a hair strand", not the tester's
+  boop and headpat. Write the CLASS: "physics could stop when an unrelated toggle played", "a
+  humanoid jaw mapped to something that isn't a jaw". Two reasons, and the second is the one that
+  keeps getting forgotten:
+  1. A reader whose avatar has none of those parts learns nothing and assumes it does not affect
+     them — when the same bug is sitting in their hair, their tail or their ears.
+  2. Naming one avatar's anatomy in public notes is somebody's avatar, described to strangers.
+  The specifics belong in the COMMIT MESSAGE and the task, where the evidence trail matters and
+  the audience is us. This has been corrected twice and reintroduced twice; treat it as the
+  default posture, not a review step.
 
 Nobody reads a wall of text, and a changelog that isn't read may as well not exist. The same
 applies to report entries — say what broke and what to do, and put the mechanism somewhere
