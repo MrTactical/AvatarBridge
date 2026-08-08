@@ -1128,13 +1128,31 @@ namespace AvatarBridge
                 off.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 0f) };
                 on.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 1f) };
 
+                // Gated on IsLocal so ONLY THE WEARER'S COPY drives the synced name.
+                //
+                // The contact itself runs on every client — that is how the native system works,
+                // and why a local parameter needs no help. A driver is different: its write goes
+                // through the animator manager and is BROADCAST. Ungated, every remote copy also
+                // computed the contact for itself and drove the same parameter, so a remote client
+                // had two sources for one value — its own driver and the wearer's broadcast. Land
+                // them a frame apart and the layer that plays the effect exits and re-enters, and
+                // the effect plays twice. Reported from a world, on a headpat.
+                //
+                // Gated, the wearer computes and sends, everyone else receives. One source each.
+                if (master.parameters.All(p => p.name != "IsLocal"))
+                {
+                    master.AddParameter("IsLocal", AnimatorControllerParameterType.Bool);
+                }
+
                 var toOn = off.AddTransition(on);
                 toOn.hasExitTime = false;
                 toOn.duration = 0f;
                 toOn.AddCondition(AnimatorConditionMode.Greater, 0.5f, local);
+                toOn.AddCondition(AnimatorConditionMode.If, 0f, "IsLocal");
                 var toOff = on.AddTransition(off);
                 toOff.hasExitTime = false;
                 toOff.duration = 0f;
+                toOff.AddCondition(AnimatorConditionMode.If, 0f, "IsLocal");
                 toOff.AddCondition(AnimatorConditionMode.Less, 0.5f, local);
 
                 master.layers = layers;   // write the weight and blend mode back
