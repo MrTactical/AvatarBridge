@@ -1157,6 +1157,33 @@ namespace AvatarBridge
             }
         }
 
+        /// <summary>
+        /// An AnimatorDriverTask.Operator looked up by NAME, trying each spelling in turn.
+        ///
+        /// The CCK renames these between versions — "MoreThan"/"LessThan" in one, "MoreThen"/
+        /// "LessThen" in another — and a member written into the source binds at COMPILE time, so
+        /// the whole tool stops building for anyone whose CCK spells it the other way. A user on
+        /// 3.7.1 hit exactly that, and no amount of compiling here would have found it: the check
+        /// builds against whichever CCK is installed on this machine, which is the one that agrees.
+        ///
+        /// Enum members that ARE stable across versions (Set, Addition, Subtraction …) stay written
+        /// out plainly; this is only for the ones known to have moved.
+        /// </summary>
+        static bool TryOperator(out AnimatorDriverTask.Operator op, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (System.Enum.IsDefined(typeof(AnimatorDriverTask.Operator), name))
+                {
+                    op = (AnimatorDriverTask.Operator)System.Enum.Parse(
+                        typeof(AnimatorDriverTask.Operator), name);
+                    return true;
+                }
+            }
+            op = default;
+            return false;
+        }
+
         /// <summary>One driver task: set this parameter to this value, in the type it is declared
         /// as, so a bool slot is not handed a float.</summary>
         static AnimatorDriver ContactDriver(string parameter, AnimatorControllerParameterType type, float value)
@@ -6376,12 +6403,30 @@ namespace AvatarBridge
                     Factor, 0f, null, 1f));
                 tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Multiplication,
                     Delta, 0f, Delta, 0f));
-                tasks.Add(Task(modified.name,
-                    modified.type == AnimatorControllerParameterType.Bool
-                        ? AnimatorDriverTask.ParameterType.Bool
-                        : Float,
-                    AnimatorDriverTask.Operator.MoreThan,
-                    Delta, 0f, null, 0.0001f));
+                // Resolved BY NAME rather than written as AnimatorDriverTask.Operator.MoreThan,
+                // because the CCK has shipped both spellings: "MoreThan"/"LessThan" in the version
+                // this was written against, "MoreThen"/"LessThen" in others. Naming either one
+                // directly makes AvatarBridge fail to COMPILE for everyone on the other — reported
+                // by a user on 3.7.1 as CS0117, and invisible here because the compile check builds
+                // against whichever CCK this machine happens to have.
+                if (TryOperator(out var moreThan, "MoreThan", "MoreThen"))
+                {
+                    tasks.Add(Task(modified.name,
+                        modified.type == AnimatorControllerParameterType.Bool
+                            ? AnimatorDriverTask.ParameterType.Bool
+                            : Float,
+                        moreThan,
+                        Delta, 0f, null, 0.0001f));
+                }
+                else
+                {
+                    ctx.Report.Warning(Category, $"Scale feed for \"{modified.name}\" is incomplete",
+                        "This ChilloutVR CCK spells its animator-driver comparison operators in a " +
+                        "way AvatarBridge does not recognise, so the step that decides whether the " +
+                        "avatar has been resized could not be built. The parameter still exists and " +
+                        "everything else converts; it simply will not update itself when you scale. " +
+                        "Please report the CCK version — this needs one more spelling added.");
+                }
             }
 
             var layers = master.layers.ToList();
@@ -9598,7 +9643,16 @@ namespace AvatarBridge
                     }
                 });
                 activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok);
-                if (activatedHere.Count == 0 || states.Count < 2)
+                // TWO-STATE LAYERS ONLY, for the same reason the empty-state filler restricts
+                // itself: on a bigger machine the "other states" are not the off half of a
+                // toggle, they are unrelated states that happen to share a layer.
+                //
+                // Shipped as a bug first. An avatar whose wardrobe and expressions live in one
+                // large layer had a clothing state switch its breast cloth ON, so every other
+                // state in that layer — Wink, Widen, Tongue, Stumped, tummy sliders — was given
+                // a stop, and the breasts stopped simulating the moment any of them played.
+                // 282 stops on that avatar, and the physics were dead in normal use.
+                if (activatedHere.Count == 0 || states.Count != 2)
                 {
                     continue;
                 }
