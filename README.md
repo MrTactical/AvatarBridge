@@ -136,10 +136,12 @@ actually running.
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **ChilloutVR's native contacts, working for everyone** — one-to-one, with real proximity and box
-  shapes, using a system the CCK doesn't expose. Every client runs the contact itself, so the
-  parameters they drive are made local: a synced one would have the sync stream overwrite whatever
-  the contact set, which is what used to make converted contacts fire for the wearer alone
-  ([experimental](#native-contacts), off by default).
+  shapes, using a system the CCK doesn't expose. Every client runs the contact itself, so most of
+  the parameters they drive are made local: a synced one would have the sync stream overwrite
+  whatever the contact set, which is what used to make converted contacts fire for the wearer
+  alone. A parameter a menu control also drives has to stay synced, so those take a driver route
+  instead — decided [per parameter](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work),
+  with nothing to choose ([experimental](#native-contacts), off by default).
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -251,6 +253,7 @@ defines.
 | VRChat flight / copter systems | pose grafted onto CVR's `LocFlying` state | ChilloutVR flies natively (keybind or double-jump where the world allows), so the VRChat system's speed logic isn't needed — the avatar's flight pose plays whenever the wearer actually flies |
 | VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
+| A humanoid **Jaw** mapped to something that isn't a jaw | rig rebuilt without it | Unity's Auto-Map assigns a Jaw to whatever is nearest when it can't read a face, and ChilloutVR takes that bone literally: it's where the **Auto** voice position goes and what jaw-bone visemes animate, so the voice comes out of that object and the object waggles while you speak. With no Jaw, voice falls back to a measured mouth and visemes stay on blendshapes. Reported when it happens; the source avatar is untouched |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps — and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
@@ -485,9 +488,10 @@ game client and the CCK ships no way to author it, so converters have always had
 with pointers and triggers.
 
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim, and the parameters
-they drive made [local](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work),
-which is what the system needs to work for everyone.
+**Advanced** and contacts convert one to one: real proximity, tags verbatim, and each parameter
+[routed](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work) to whichever
+of the three cases it is in — local for almost all of them, a driver where a menu control needs the
+same name synced, and named in the report for the one combination that has no answer.
 
 ### Grabbing a chain
 
@@ -663,6 +667,11 @@ vertex stage to edit, and locked or generated shaders aren't worth attempting.
 Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a patched
 copy into `RehomedAssets`, adds the stereo macros, and points this avatar's materials at the copy.
 
+- **Materials that only arrive through an animation are covered too** — a material a toggle swaps
+  in isn't on any renderer when the avatar is sitting still, so scanning the avatar as it stands
+  misses it entirely and the effect stays broken in one eye until the moment it's switched on. The
+  animation clips are read as well, and the swap is repointed at the patched copy along with
+  everything else.
 - **Your originals are never modified** — shader and material are both copied, so other avatars
   sharing them are unaffected.
 - **A copy that doesn't compile is thrown away**, so the worst case is a report line rather than
