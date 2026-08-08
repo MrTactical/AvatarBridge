@@ -2939,7 +2939,29 @@ namespace AvatarBridge
                 {
                     // A blend tree still stands aside — a constant assertion would fight the
                     // parameter-driven value rather than rest beside it.
-                    if (state.motion is BlendTree || IsPassThroughState(state))
+                    //
+                    // ROUTERS NO LONGER STAND ASIDE, and that is a deliberate reversal.
+                    //
+                    // The ownership rule is "silence at the top, authority at the bottom": where
+                    // several layers animate one property only the LOWEST restores it, so a dress
+                    // layer above cannot pin a shirt that the shirt layer below is trying to hide.
+                    // That rule only works while the bottom actually SPEAKS. Skipping routers here
+                    // left the owner silent in its own transient states, and a measured avatar had
+                    // an owning layer whose resting states were all routers while a helper layer
+                    // above it was silent too — so in that combination nothing anywhere wrote the
+                    // binding, and with no Write Defaults to restore it, a sound object latched on
+                    // and played for the rest of the session.
+                    //
+                    // The standing objection to filling a router is real but belongs to a
+                    // different pass: the EMPTY-STATE FILLER hands a router "the values of whatever
+                    // it happens to lead to", which on a gate that never resolves pins values the
+                    // router never meant to hold. This pass does something much narrower — it
+                    // writes the avatar's conversion-time value, for bindings THIS layer already
+                    // owns and already animates elsewhere. A router that sits forever now holds
+                    // the value the avatar was converted wearing, instead of holding whatever the
+                    // last state to touch it happened to leave behind, and the first of those is
+                    // both deterministic and what the wearer sees in the inspector.
+                    if (state.motion is BlendTree)
                     {
                         continue;
                     }
