@@ -1380,6 +1380,21 @@ emote — body, head, locomotion — converts and behaves normally.
 Eyes and mouth are in the same boat and it matters far less: those channels stay with the avatar's
 own animation and face tracking, which is usually where you want them.
 
+### A contact does nothing at all — for anyone, including you
+
+**Check the report for a contact driving a parameter nothing reads.** The receiver is present, its
+shape and tags are fine, and touching it still does nothing, because the animator has no parameter
+by that name for it to write to. That usually means the feature was already half-gone before the
+conversion: the receiver shipped with the avatar but whatever used to read it did not, most often
+because it belonged to a system that was taken out before the avatar was shared.
+
+Nothing is damaged by leaving one — the write goes nowhere. It isn't free, though: every client who
+can see you tests the contact for collisions regardless. Delete the contact object, or wire the
+parameter back up if it's a feature you wanted.
+
+Contacts belonging to a system **this** conversion removes are a different matter — those are taken
+out with the rest of it, rather than left standing to be tested forever by everyone in the room.
+
 ### A sound only you can hear
 
 Three causes, and the report distinguishes them.

@@ -993,6 +993,39 @@ namespace AvatarBridge
                     removed++;
                 }
             }
+            // The NATIVE contact components, which this sweep did not know about: it was written
+            // for the legacy pointer/trigger route and the native one arrived later, so stripping
+            // a system took its layers, its parameters and its triggers but left its contacts
+            // standing. They are not harmless clutter — a native contact is simulated by EVERY
+            // client that can see the avatar, so an inert one costs everyone in the instance a
+            // collision test per frame to write a parameter that no longer exists.
+            //
+            // Only STRIPPED parameters are removed here. A contact whose parameter is simply
+            // absent for reasons of the author's own is somebody else's content and is reported
+            // rather than deleted — see ReportInertContacts.
+            var nativeContact = ContactsConverter.NativeContactAnimatorType;
+            if (nativeContact != null)
+            {
+                var field = nativeContact.GetField("parameter",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    foreach (var contact in ctx.Target.GetComponentsInChildren(nativeContact, true))
+                    {
+                        string name = field.GetValue(contact) as string;
+                        if (string.IsNullOrEmpty(name)) continue;
+                        // Both spellings: this runs inside the merge, and whether the rename pass
+                        // has already given the name its local "#" depends on ordering that is
+                        // not this sweep's business to depend on.
+                        string bare = name.StartsWith("#", StringComparison.Ordinal) ? name.Substring(1) : name;
+                        if (isStripped(name) || isStripped(bare))
+                        {
+                            UnityEngine.Object.DestroyImmediate(contact.gameObject);
+                            removed++;
+                        }
+                    }
+                }
+            }
             if (removed > 0)
             {
                 ctx.Report.Converted(Category, $"Removed {removed} orphaned pointer/trigger/exclusion object(s)");

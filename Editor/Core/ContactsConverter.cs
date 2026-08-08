@@ -322,7 +322,12 @@ namespace AvatarBridge
         const string NakReceiver = "NAK.Contacts.ContactReceiver";
         const string NakAnimator = "NAK.Contacts.ContactAnimator";
 
-        static System.Type FindType(string fullName)
+        /// <summary>The native contact component type, or null when the game's stubs are absent.
+        /// Internal so the system stripper can find the same components without naming the type
+        /// at compile time either — see the comment above for why nothing here may.</summary>
+        internal static System.Type NativeContactAnimatorType => FindType(NakAnimator);
+
+        internal static System.Type FindType(string fullName)
         {
             foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -354,13 +359,20 @@ namespace AvatarBridge
         public static void RepointContactParameters(BridgeContext ctx)
         {
             var type = FindType(NakAnimator);
-            if (type == null || ctx.AppliedParameterRenames.Count == 0)
+            if (type == null)
             {
                 return;
             }
             var field = type.GetField("parameter", BindingFlags.Public | BindingFlags.Instance);
             if (field == null)
             {
+                return;
+            }
+            if (ctx.AppliedParameterRenames.Count == 0)
+            {
+                // Nothing was renamed, so nothing needs following — but a contact can still be
+                // addressing a name that does not exist, and that question is asked either way.
+                ReportInertContacts(ctx, type, field);
                 return;
             }
             var moved = new SortedSet<string>(System.StringComparer.Ordinal);
@@ -385,6 +397,55 @@ namespace AvatarBridge
                     "The component is not part of the controller, so it does not follow along by " +
                     "itself, and one left behind drives a parameter nothing declares.");
             }
+
+            ReportInertContacts(ctx, type, field);
+        }
+
+        /// <summary>
+        /// Names contacts whose parameter the finished controller does not have.
+        ///
+        /// The write is a no-op — nothing declares the name, so nothing can read it — which is why
+        /// this is a warning about a lost feature rather than a fault to fix. It is worth saying
+        /// out loud because a contact that does nothing looks exactly like a contact that is
+        /// broken, and the avatar's owner is the only one who can tell which they meant.
+        ///
+        /// Contacts belonging to a system this conversion STRIPPED are already gone by here — the
+        /// stripper removes those with the rest of the system. What reaches this point is a
+        /// receiver whose parameter was missing in the source too.
+        ///
+        /// Asked of the controller rather than of the menu: a menu entry drives a controller
+        /// parameter, so a name absent from the controller is absent everywhere that matters.
+        /// </summary>
+        static void ReportInertContacts(BridgeContext ctx, System.Type type, FieldInfo field)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+            var declared = new HashSet<string>(
+                ctx.MergedController.parameters.Select(p => p.name), System.StringComparer.Ordinal);
+            var inert = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (var component in ctx.Target.GetComponentsInChildren(type, true))
+            {
+                string name = field.GetValue(component) as string;
+                if (!string.IsNullOrEmpty(name) && !declared.Contains(name))
+                {
+                    inert.Add(name);
+                }
+            }
+            if (inert.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Warning(Category,
+                $"{inert.Count} contact(s) drive a parameter nothing on this avatar reads",
+                string.Join(", ", inert.Select(n => $"\"{n}\"")) + " — the animator has no such " +
+                "parameter, so touching these does nothing. That is how they arrived: the " +
+                "receiver is in the source avatar but whatever used to read it is not, usually " +
+                "because the layer was part of a system removed before the avatar was shared. " +
+                "Nothing is broken by leaving them, though every client that can see you tests " +
+                "them for collisions anyway. Delete the contact objects, or wire the parameter " +
+                "back up if the feature is one you wanted.");
         }
 
         static void SetMember(object target, string field, object value)
