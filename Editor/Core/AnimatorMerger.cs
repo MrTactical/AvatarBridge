@@ -9606,6 +9606,32 @@ namespace AvatarBridge
                 });
             }
 
+            // Bindings the finished controller ALREADY switches off somewhere. A synthetic stop is
+            // for a binding nothing ever takes back; where the avatar's own animation takes it back
+            // already, adding one is at best redundant and at worst destructive.
+            //
+            // Measured on an avatar with TWO PhysBones per breast — one tuned for clothed, one for
+            // naked — where putting a top on enables the first and disables the second, and the
+            // defaults clip swaps them back. Both directions were converted correctly. The stop
+            // written on top turned the first off without turning the second on, so taking the top
+            // off left BOTH disabled and the breasts stopped moving entirely. In the editor nothing
+            // runs, so it looked perfect; it only died in play mode.
+            var alreadySwitchedOff = new HashSet<EditorCurveBinding>();
+            foreach (var pair in rewired)
+            {
+                var clip = pair.Value;
+                if (clip == null) continue;
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!offSafe.ContainsKey(binding)) continue;
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve != null && !CurveActivates(curve))
+                    {
+                        alreadySwitchedOff.Add(binding);
+                    }
+                }
+            }
+
             // Every pass that fills an empty off state — RestorePartialOffStates,
             // FillEmptyStatesWithRestoreClips, AssertOwnedBindingsEverywhere — has already run by
             // the time this one exists, so the m_Enabled bindings created above were invisible to
@@ -9642,7 +9668,8 @@ namespace AvatarBridge
                         }
                     }
                 });
-                activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok);
+                activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok
+                                               || alreadySwitchedOff.Contains(b));
                 // TWO-STATE LAYERS ONLY, for the same reason the empty-state filler restricts
                 // itself: on a bigger machine the "other states" are not the off half of a
                 // toggle, they are unrelated states that happen to share a layer.
