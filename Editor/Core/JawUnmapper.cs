@@ -200,8 +200,16 @@ namespace AvatarBridge
             rebuilt.name = previous.name;
             string safe = new string(rebuilt.name.Select(c =>
                 System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            AssetDatabase.CreateAsset(rebuilt,
-                AssetDatabase.GenerateUniqueAssetPath($"{ctx.OutputDir}/{safe}_NoJaw.asset"));
+            // Claim, not GenerateUniqueAssetPath. "Unique" is the wrong question in the output
+            // folder: it compares against everything on disk, INCLUDING the last conversion's
+            // rig, so reconverting never reused the name — it parked "…_NoJaw 1.asset" beside
+            // it, then " 2", one rig per run, none of them referenced by anything. Every other
+            // write site moved off it when OutputAssetPaths was written; this one was missed
+            // because the pass had never once reached its success path, so nobody had ever seen
+            // it write a second file.
+            string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}_NoJaw.asset");
+            AssetDatabase.CreateAsset(rebuilt, assetPath);
+            int orphans = DeleteStaleRigs(ctx.OutputDir, assetPath);
             animator.avatar = rebuilt;
             EditorUtility.SetDirty(animator);
 
@@ -217,7 +225,53 @@ namespace AvatarBridge
                       "live hierarchy instead. That reads the bones where they stand NOW rather " +
                       "than the T-pose the rig was configured in — identical if the avatar is at " +
                       "its bind pose, and a slightly different rest pose if it is not."
+                    : "") +
+                (orphans > 0
+                    ? $" {orphans} rig(s) left in the output folder by earlier conversions were " +
+                      "removed; nothing referenced them."
                     : ""));
+        }
+
+        /// <summary>
+        /// Removes rigs this pass left in the output folder on earlier runs.
+        ///
+        /// Claiming the un-numbered name stops NEW copies accumulating, but it cannot reach the
+        /// ones already on disk — those keep the numbered names forever, referenced by nothing,
+        /// and the folder never shrinks back. Same sweep the restore clips get: match only the
+        /// shapes this pass has ever written ("<name>_NoJaw" and "<name>_NoJaw 4"), and keep the
+        /// one just written.
+        /// </summary>
+        static int DeleteStaleRigs(string dir, string keep)
+        {
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                return 0;
+            }
+            int removed = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Avatar", new[] { dir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path) || path == keep)
+                {
+                    continue;
+                }
+                string file = System.IO.Path.GetFileNameWithoutExtension(path);
+                int cut = file.LastIndexOf("_NoJaw", System.StringComparison.Ordinal);
+                if (cut < 0)
+                {
+                    continue;
+                }
+                string tail = file.Substring(cut + "_NoJaw".Length).Trim();
+                if (tail.Length > 0 && !int.TryParse(tail, out _))
+                {
+                    continue;
+                }
+                if (AssetDatabase.DeleteAsset(path))
+                {
+                    removed++;
+                }
+            }
+            return removed;
         }
 
         /// <summary>The first mapped bone name that exists more than once under the root, or null.

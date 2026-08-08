@@ -1183,7 +1183,8 @@ enabled. With both off, no avatar gestures work, stock or converted.
 
 Otherwise reconvert on a current release. If you converted before 3.5.13, **delete the output folder
 once first**: reconverting used to stack duplicate copies of every rescued asset rather than
-replacing them.
+replacing them. A rebuilt humanoid rig kept stacking that way for longer than the rest — a current
+release replaces it and clears the numbered copies earlier runs left behind.
 
 ### The viewpoint or voice position is nowhere near the head
 
