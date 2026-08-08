@@ -113,6 +113,15 @@ removing a download is safe, and why the "never delete an old package" rule belo
   `Tools/Regression/*.cs`** — those files only compile in Unity when a test is actually deployed
   and executed, so one left behind by a design change rots silently (RootVerticalTest shipped
   calling a parameter that no longer existed, caught only by a later verification pass).
+- **Compiling proves it builds HERE, not that it builds.** Those five configurations reference the
+  test project's `Assembly-CSharp.dll`, so they only ever see the ChilloutVR CCK installed on this
+  machine — by definition the version that agrees with the source. 3.7.1 would not compile *at
+  all* for users whose CCK spells its comparison operators `MoreThen`/`LessThen`, and nothing here
+  could have shown it; the first sign was a user who could not install. So: **after updating the
+  CCK, and before a release, run `Tools → AvatarBridge Dev → Check the CCK still has what we
+  name`** (`Tools/Regression/CckContractProbe.cs`). When a member does move, resolve *that* one by
+  name — see `TryOperator` in `AnimatorMerger` — rather than converting every enum in the codebase
+  to reflection, which buys little for names that are not ambiguous.
 - **All work lands on the `dev` branch** (created 2026-07-28 from v2.50.6). Commit there and
   push `dev` freely — it is the visible work-in-progress. **`main` only moves when the
   maintainer explicitly says to batch it**: merges to main, tags and releases each require
