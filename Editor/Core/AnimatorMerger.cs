@@ -10551,6 +10551,110 @@ namespace AvatarBridge
         /// Runs after AnimationSelfContainer, so every clip touched is the conversion's own copy
         /// in the output folder. The source avatar's clips are never modified.
         /// </summary>
+        /// <summary>
+        /// Puts "Emote" in the name of every clip grafted into ChilloutVR's Locomotion/Emotes
+        /// layer from VRChat's Action layer, because the CLIP NAME is how the client decides what
+        /// an emote is.
+        ///
+        /// Read out of the shipped client rather than the docs, which do not mention it:
+        ///
+        ///   AvatarAnimatorManager.IsLegacyEmotePlaying()   // the clip playing on Locomotion/Emotes
+        ///       isEmote = name.Contains("Emote") || DefaultEmoteNames.Contains(name);
+        ///   PlayerBase.LegacyEmoteCheck()
+        ///       if (isEmote) { SetLayerWeight("LeftHand", 0f); SetLayerWeight("RightHand", 0f); }
+        ///       else         { both back to 1f }
+        ///
+        /// So the client already solves the problem this tool has been documenting as unsolvable:
+        /// in VRChat the Action layer sits ABOVE Gesture and an emote outranks your hand pose,
+        /// while here emotes are grafted BELOW the hand layers and the gesture wins. It mutes both
+        /// hand layers for the duration — but only for clips it recognises, and ours were named
+        /// after whatever VRChat called them, so it never recognised one.
+        ///
+        /// Deliberately narrow, in two directions:
+        ///
+        /// ONLY the states this tool grafted from the Action layer ("[AB] " prefixed). ChilloutVR's
+        /// own locomotion lives in the same layer — jumping, sitting, flying — and a clip named so
+        /// the client reads it as an emote would mute the wearer's hands every time they jumped.
+        ///
+        /// ONLY clips inside the output folder. Renaming reaches the asset, and a clip that is
+        /// still the author's own is not ours to rename; the self-container has run by now, so in
+        /// practice everything here is a copy we made.
+        ///
+        /// The match is case-sensitive and a substring, so "Emote" anywhere in the name does it.
+        /// Worth knowing while reading a converted avatar: the client ALSO matches the eight stock
+        /// names — Wave, Bow, Die, Backflip, Point, Sad, Salute, Dance — so an author's clip
+        /// innocently called "Point" already triggers this, which is its own small mystery for
+        /// anyone whose hands go slack unexpectedly.
+        /// </summary>
+        internal static void NameGraftedEmoteClips(BridgeContext ctx)
+        {
+            var master = ctx.MergedController;
+            if (master == null)
+            {
+                return;
+            }
+            var layer = master.layers.FirstOrDefault(l => l != null && l.name == "Locomotion/Emotes");
+            if (layer?.stateMachine == null)
+            {
+                return;
+            }
+            // COPIED, never renamed in place. The first version renamed the asset, and a rename
+            // reaches every reference the controller holds: on one avatar the same resting clip
+            // sat in a grafted state AND at the centre of a grafted puppet tree, so the tree's
+            // centre started reading as an emote — hands muted whenever the puppet rested near
+            // the middle, for a feature that is not an emote at all. A copy assigned to just the
+            // grafted state gives that state its recognisable name and leaves every other
+            // reference exactly as it was. One copy per source clip, shared by the states that
+            // shared the original.
+            var copies = new Dictionary<AnimationClip, AnimationClip>();
+            var renamed = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var child in layer.stateMachine.states)
+            {
+                var state = child.state;
+                if (state == null || state.name == null
+                    || !state.name.StartsWith("[AB] ", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (!(state.motion is AnimationClip clip) || clip == null
+                    || clip.name.Contains("Emote"))
+                {
+                    continue;
+                }
+                if (!copies.TryGetValue(clip, out var copy))
+                {
+                    copy = UnityEngine.Object.Instantiate(clip);
+                    copy.name = clip.name + " Emote";
+                    string target = OutputAssetPaths.Claim(
+                        $"{ctx.OutputDir}/RehomedAssets/{SanitizeFileName(copy.name)}.anim");
+                    var folder = System.IO.Path.GetDirectoryName(target).Replace('\\', '/');
+                    if (!AssetDatabase.IsValidFolder(folder))
+                    {
+                        System.IO.Directory.CreateDirectory(folder);
+                        AssetDatabase.Refresh();
+                    }
+                    AssetDatabase.CreateAsset(copy, target);
+                    copies[clip] = copy;
+                }
+                state.motion = copy;
+                EditorUtility.SetDirty(state);
+                renamed.Add($"\"{state.name.Substring(5)}\"");
+            }
+            if (renamed.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Converted(Category,
+                $"{renamed.Count} emote(s) will free your hands while they play",
+                string.Join(", ", renamed) + " — ChilloutVR decides whether something is an emote " +
+                "by reading the playing clip's NAME, and mutes both hand-pose layers while one is " +
+                "on. Converted emotes were named after whatever they were called in VRChat, so the " +
+                "client never recognised them and your controller's gesture kept overriding the " +
+                "pose the emote wanted. Their clips are named so it does. This is the hand half " +
+                "only: ChilloutVR still has no finger mask for tracking control, so an emote " +
+                "cannot pose individual fingers the way VRChat's could.");
+        }
+
         internal static void StripDeadMaterialCurves(BridgeContext ctx)
         {
             var master = ctx.MergedController;

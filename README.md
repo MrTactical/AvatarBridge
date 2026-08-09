@@ -1365,17 +1365,17 @@ the author.
 The dance plays, the body is right, and the hands hold whatever gesture your controller is
 reporting instead of the pose the emote wants.
 
-This one is ChilloutVR's, not the conversion's. VRChat's tracking control can hand **fingers** over
-to animation for the length of an emote; ChilloutVR's Body Control has no finger mask yet — its own
-CCK carries the note *"TODO: Add FingerTracking masks when GS is ready"*. There is nothing to map
-it onto until that lands.
+**Reconvert on a current release for the layer-order half of this.** ChilloutVR decides whether
+something is an emote by reading the name of the clip playing on its `Locomotion/Emotes` layer, and
+mutes both hand-pose layers while one is on. Converted emotes were named after whatever they were
+called in VRChat, so the client never recognised them and your gesture kept winning. They are named
+so it does now, and your hands are released for the length of the emote.
 
-The layer order compounds it. In VRChat the Action layer sits **above** Gesture, so an emote
-outranks your hand pose anyway. In ChilloutVR emotes are grafted into `Locomotion/Emotes`, which
-sits **below** the hand-pose layers — so the gesture wins.
-
-**Workaround:** hold an open or neutral gesture while the emote plays. Everything else about the
-emote — body, head, locomotion — converts and behaves normally.
+What remains is ChilloutVR's, not the conversion's: VRChat's tracking control can hand **individual
+fingers** to animation, and ChilloutVR's Body Control has no finger mask yet — its own CCK carries
+the note *"TODO: Add FingerTracking masks when GS is ready"*. So an emote can stop your gesture
+overriding it, but cannot pose your fingers the way VRChat's could. Everything else — body, head,
+locomotion — converts and behaves normally.
 
 Eyes and mouth are in the same boat and it matters far less: those channels stay with the avatar's
 own animation and face tracking, which is usually where you want them.

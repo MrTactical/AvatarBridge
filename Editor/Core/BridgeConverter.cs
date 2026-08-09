@@ -157,6 +157,10 @@ namespace AvatarBridge
                     Pass("Self-contain clips and masks", AnimationSelfContainer.Run,
                          PassTraits.MakesClipsOurs),
 
+                    // After self-containment, because it RENAMES clip assets and only a copy we
+                    // made is ours to rename. Not a clip pass — no curve is touched, only the
+                    // asset's name, which is the thing the client reads to decide what an emote is.
+                    Pass("Name grafted emote clips", AnimatorMerger.NameGraftedEmoteClips),
                     Pass("Strip dead material curves", AnimatorMerger.StripDeadMaterialCurves,
                          PassTraits.EditsClips),
                     // MOVED here from inside the Constraints pass, which is nine passes earlier:
