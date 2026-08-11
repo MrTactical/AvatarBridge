@@ -558,6 +558,13 @@ converted. Those curves now toggle the converted contact's own object, and curve
 contact drive its transform. Curves animating a contact's shape or filters have no equivalent and
 are removed with a report line naming each.
 
+**Zones something switches off get an explicit switch back on.** VRCFury's fix service disables
+every receiver for the first frames after load and relies on Write Defaults to re-enable them;
+ChilloutVR restores nothing a state doesn't write, so without this every zone on such an avatar
+went off at spawn and stayed off — contacts that never fire, for anyone. Any layer that switches
+a converted zone off without ever switching it on now writes the restore from its other states,
+and the report says so.
+
 ## Shaders that only draw into one eye
 
 **ChilloutVR renders single-pass instanced; VRChat renders double-wide single-pass.** Both SDKs

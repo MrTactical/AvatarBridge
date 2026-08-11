@@ -333,6 +333,201 @@ namespace AvatarBridge
             }
         }
 
+        // Runs after both repoint passes. VRCFury's contact fix service
+        // switches every receiver off for the first frames after load
+        // and lets Write Defaults switch them back on; ChilloutVR
+        // restores nothing a state does not write, so the rewired zone
+        // curves parked every contact off forever, on every client.
+        // The merge's own restore passes cannot see this: they run
+        // before the rewiring exists, on bindings that still name
+        // deleted VRChat components they cannot sample.
+        internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+            var hostPaths = new HashSet<string>();
+            foreach (var hosts in ctx.ContactHosts.Values)
+            {
+                hostPaths.UnionWith(hosts);
+            }
+            foreach (var hosts in ctx.PhysicsColliderHosts.Values)
+            {
+                hostPaths.UnionWith(hosts);
+            }
+            if (hostPaths.Count == 0)
+            {
+                return;
+            }
+
+            int balanced = 0;
+            int layersTouched = 0;
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                // A constant in an additive layer adds instead of asserting.
+                if (layer.blendingMode == UnityEditor.Animations.AnimatorLayerBlendingMode.Additive)
+                {
+                    continue;
+                }
+
+                var states = new List<UnityEditor.Animations.AnimatorState>();
+                var trees = new List<UnityEditor.Animations.BlendTree>();
+                var clips = new HashSet<AnimationClip>();
+                var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
+
+                void Collect(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        clips.Add(clip);
+                    }
+                    else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
+                    {
+                        trees.Add(tree);
+                        foreach (var child in tree.children)
+                        {
+                            Collect(child.motion);
+                        }
+                    }
+                }
+
+                void Walk(UnityEditor.Animations.AnimatorStateMachine machine)
+                {
+                    if (machine == null)
+                    {
+                        return;
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state == null)
+                        {
+                            continue;
+                        }
+                        states.Add(child.state);
+                        Collect(child.state.motion);
+                    }
+                    foreach (var sub in machine.stateMachines)
+                    {
+                        Walk(sub.stateMachine);
+                    }
+                }
+                Walk(layer.stateMachine);
+
+                // A zone binding is balanced when some clip in the layer
+                // switches it back on. Only 0-with-no-way-back is filled.
+                var highest = new Dictionary<UnityEditor.EditorCurveBinding, float>();
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive"
+                            || !hostPaths.Contains(binding.path))
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        float top = curve.keys.Max(k => k.value);
+                        highest[binding] = highest.TryGetValue(binding, out float seen)
+                            ? Mathf.Max(seen, top) : top;
+                    }
+                }
+                var unbalanced = highest.Where(kv => kv.Value <= 0.5f).Select(kv => kv.Key)
+                    .Where(b =>
+                    {
+                        // Restore to what the avatar rests at. A zone
+                        // authored inactive rests off; 0 is already right.
+                        var t = ctx.Target.transform.Find(b.path);
+                        return t != null && t.gameObject.activeSelf;
+                    })
+                    .ToList();
+                if (unbalanced.Count == 0)
+                {
+                    continue;
+                }
+
+                // Cloned per layer, never shared: the same clip (the
+                // empty-slot filler especially) sits in other layers too,
+                // and a restore written into the shared asset would have
+                // an unrelated layer switching zones it knows nothing about.
+                var perLayer = new Dictionary<AnimationClip, AnimationClip>();
+                foreach (var clip in clips)
+                {
+                    var drives = new HashSet<UnityEditor.EditorCurveBinding>(
+                        UnityEditor.AnimationUtility.GetCurveBindings(clip));
+                    foreach (var binding in unbalanced)
+                    {
+                        if (drives.Contains(binding))
+                        {
+                            continue;   // this motion says its own piece already
+                        }
+                        if (!perLayer.TryGetValue(clip, out var owned))
+                        {
+                            owned = Object.Instantiate(clip);
+                            owned.name = clip.name;
+                            owned.hideFlags = HideFlags.None;
+                            UnityEditor.AssetDatabase.AddObjectToAsset(owned, ctx.MergedController);
+                            perLayer[clip] = owned;
+                        }
+                        UnityEditor.AnimationUtility.SetEditorCurve(owned, binding,
+                            AnimationCurve.Constant(0f, 1f / 60f, 1f));
+                        balanced++;
+                    }
+                }
+                if (perLayer.Count == 0)
+                {
+                    continue;
+                }
+                layersTouched++;
+                foreach (var state in states)
+                {
+                    if (state.motion is AnimationClip clip && perLayer.TryGetValue(clip, out var owned))
+                    {
+                        state.motion = owned;
+                    }
+                }
+                foreach (var tree in trees)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        if (children[i].motion is AnimationClip clip && perLayer.TryGetValue(clip, out var owned))
+                        {
+                            children[i].motion = owned;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        // Writing children renumbers thresholds while
+                        // automatic thresholds are on; pin them first.
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+            }
+
+            if (balanced > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{balanced} contact zone restore(s) written into {layersTouched} layer(s)",
+                    "An animation switches these converted contact or collider objects off and " +
+                    "nothing ever switched them back on. VRChat undid it through Write Defaults " +
+                    "— VRCFury's fix service turns every receiver off for the first frames after " +
+                    "load and relies on exactly that — but ChilloutVR restores nothing a state " +
+                    "does not write, so the zones went off at spawn and stayed off: contacts " +
+                    "that never fire, for anyone. Every state and blend-tree slot in those " +
+                    "layers that left the zone alone now switches it back on.");
+            }
+        }
+
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
         {

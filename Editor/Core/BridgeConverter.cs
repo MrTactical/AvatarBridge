@@ -154,6 +154,10 @@ namespace AvatarBridge
                     // The collider twin: clothing switching its own collision.
                     Pass("Repoint collider enable curves", PhysBoneConverter.RepointColliderEnableCurves,
                          PassTraits.EditsClips),
+                    // After both repoints: a rewired zone something switches off
+                    // needs a writer switching it back on, because CVR will not.
+                    Pass("Balance rewired zone curves", ContactsConverter.BalanceRewiredZoneCurves,
+                         PassTraits.EditsClips),
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on
