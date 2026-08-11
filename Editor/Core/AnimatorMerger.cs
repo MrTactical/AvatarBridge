@@ -119,6 +119,8 @@ namespace AvatarBridge
             AudioWindowClones.Clear();
             DroppedPoseSpace.Clear();
             DroppedPoseSpaceCount = 0;
+            MergedLayerNames.Clear();
+            CapturedLayerControls.Clear();
 
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
@@ -143,8 +145,10 @@ namespace AvatarBridge
                 MergeParameters(master, controller, ctx);
 
                 bool firstLayerOfController = true;
+                int srcIndex = -1;
                 foreach (var srcLayer in controller.layers)
                 {
+                    srcIndex++;
                     if (srcLayer.syncedLayerIndex >= 0)
                     {
                         ctx.Report.Skipped(Category, $"{id} layer \"{srcLayer.name}\"",
@@ -168,6 +172,7 @@ namespace AvatarBridge
                             "equivalent generated copy (same humanoid bits, verified against " +
                             "VRChat's own vrc_Hand masks).");
                     }
+                    MergedLayerNames[$"{id}:{srcIndex}"] = clone.name;
                     if (firstLayerOfController)
                     {
                         // Unity forces a controller's first layer to weight 1; once merged it
@@ -339,6 +344,8 @@ namespace AvatarBridge
             PruneOrphanedParameters(master, ctx);
             // After pruning, which would throw these parameters away.
             SafeguardBlendParameters(master, ctx);
+
+            ReviveWeightGatedLayers(master, ctx);
 
             // Right before saving: animations that toggled a converted
             // PhysBone must reach the generated physics too.
@@ -1427,6 +1434,15 @@ namespace AvatarBridge
         static readonly List<string> DroppedPoseSpace = new List<string>();
         static int DroppedPoseSpaceCount;
 
+        // VRCAnimatorLayerControl, captured before the behaviours are
+        // destroyed so the weight gates they implemented can be rebuilt.
+        // Keys are "<playable>:<source layer index>"; the enum names
+        // match across VRChat's two layer enums.
+        static readonly Dictionary<string, string> MergedLayerNames =
+            new Dictionary<string, string>();
+        static readonly List<(string key, float goal)> CapturedLayerControls =
+            new List<(string, float)>();
+
         // VRChat plays audio from a state behaviour; CVR has none.
         // The window approximation: the AudioSource plays on awake and
         // the state that carried the behaviour animates its enabled
@@ -1695,6 +1711,16 @@ namespace AvatarBridge
                 else if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio playAudio)
                 {
                     ConvertPlayAudio(ctx, state, playAudio);
+                    UnityEngine.Object.DestroyImmediate(behaviour, true);
+                }
+                else if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl layerControl
+                         && layerControl.playable != VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.Action)
+                {
+                    // Action gates feed the emote transplant, which reads
+                    // the source layers itself; these are the FX-style
+                    // reaction gates, kept for the weight revival pass.
+                    CapturedLayerControls.Add(($"{layerControl.playable}:{layerControl.layer}",
+                        layerControl.goalWeight));
                     UnityEngine.Object.DestroyImmediate(behaviour, true);
                 }
                 else if (behaviour.GetType().Name == "VRCAnimatorTemporaryPoseSpace")
@@ -7712,6 +7738,194 @@ namespace AvatarBridge
                 "damping, inertia, wind and blend weight can be animated at all. If one of these " +
                 "sliders is the one people will actually use, set it where you want it to be " +
                 "correct BEFORE converting, and convert again.");
+        }
+
+        // VRChat gates reaction layers by weight: the layer rests at 0,
+        // and a VRCAnimatorLayerControl on a state raises it when the
+        // reaction fires — headpats, boops, pulls are all built this
+        // way. ChilloutVR has no layer-weight control, so those layers
+        // converted as permanently invisible: the contact fired, the
+        // parameter flipped, the reaction played at weight zero.
+        //
+        // The gate is rebuilt without weights: the layer runs at 1, and
+        // every state asserts the rest value of what the layer animates,
+        // so outside the reaction it holds the avatar exactly where the
+        // hidden layer left it. Only bindings no other layer animates
+        // are asserted; contested ones keep their existing arbitration.
+        // Crossfade durations have no equivalent and become instant.
+        static void ReviveWeightGatedLayers(AnimatorController master, BridgeContext ctx)
+        {
+            var raisedNames = new HashSet<string>();
+            foreach (var (key, goal) in CapturedLayerControls)
+            {
+                if (goal >= 0.5f && MergedLayerNames.TryGetValue(key, out string name))
+                {
+                    raisedNames.Add(name);
+                }
+            }
+            if (raisedNames.Count == 0)
+            {
+                return;
+            }
+
+            // Bindings animated by more than one layer stay untouched;
+            // asserting rest over them would override the other layer.
+            var layers = master.layers;
+            var animatedBy = new Dictionary<EditorCurveBinding, int>();
+            var layerClips = new List<(List<AnimationClip> clips, List<AnimatorState> states)>();
+            foreach (var layer in layers)
+            {
+                var clips = new List<AnimationClip>();
+                var states = new List<AnimatorState>();
+                var seenTrees = new HashSet<BlendTree>();
+                void Collect(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        clips.Add(clip);
+                    }
+                    else if (motion is BlendTree tree && seenTrees.Add(tree))
+                    {
+                        foreach (var child in tree.children)
+                        {
+                            Collect(child.motion);
+                        }
+                    }
+                }
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state == null)
+                        {
+                            continue;
+                        }
+                        states.Add(child.state);
+                        Collect(child.state.motion);
+                    }
+                });
+                layerClips.Add((clips, states));
+            }
+            for (int i = 0; i < layers.Length; i++)
+            {
+                foreach (var clip in layerClips[i].clips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        animatedBy[binding] = animatedBy.TryGetValue(binding, out int owner) && owner != i
+                            ? -1 : i;   // -1 marks contested
+                    }
+                }
+            }
+
+            var revived = new List<string>();
+            int curvesAdded = 0;
+            int contested = 0;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                var layer = layers[i];
+                if (!raisedNames.Contains(layer.name) || layer.defaultWeight > 0.5f)
+                {
+                    continue;
+                }
+
+                var mine = new List<EditorCurveBinding>();
+                foreach (var clip in layerClips[i].clips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Animator))
+                        {
+                            continue;   // parameters, not properties
+                        }
+                        if (animatedBy.TryGetValue(binding, out int owner) && owner == i)
+                        {
+                            if (!mine.Contains(binding))
+                            {
+                                mine.Add(binding);
+                            }
+                        }
+                        else
+                        {
+                            contested++;
+                        }
+                    }
+                }
+
+                int added = 0;
+                var perLayer = new Dictionary<AnimationClip, AnimationClip>();
+                foreach (var state in layerClips[i].states)
+                {
+                    // Trees blend their gaps against defaults; only plain
+                    // and empty states need the assertion written in.
+                    if (state.motion is BlendTree)
+                    {
+                        continue;
+                    }
+                    var clip = state.motion as AnimationClip;
+                    var drives = clip != null
+                        ? new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(clip))
+                        : new HashSet<EditorCurveBinding>();
+                    AnimationClip target = null;
+                    foreach (var binding in mine)
+                    {
+                        if (drives.Contains(binding))
+                        {
+                            continue;
+                        }
+                        if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float rest))
+                        {
+                            continue;   // not present on this avatar
+                        }
+                        if (target == null)
+                        {
+                            if (clip == null)
+                            {
+                                target = new AnimationClip { name = SanitizeFileName($"{layer.name} rest") };
+                                AssetDatabase.AddObjectToAsset(target, master);
+                            }
+                            else if (!perLayer.TryGetValue(clip, out target))
+                            {
+                                // Cloned per layer: the clip may sit in
+                                // other layers that must not gain asserts.
+                                target = UnityEngine.Object.Instantiate(clip);
+                                target.name = clip.name;
+                                target.hideFlags = HideFlags.None;
+                                AssetDatabase.AddObjectToAsset(target, master);
+                                perLayer[clip] = target;
+                            }
+                        }
+                        AnimationUtility.SetEditorCurve(target, binding,
+                            AnimationCurve.Constant(0f, 1f / 60f, rest));
+                        added++;
+                    }
+                    if (target != null)
+                    {
+                        state.motion = target;
+                    }
+                }
+
+                layer.defaultWeight = 1f;
+                revived.Add($"\"{layer.name}\"");
+                curvesAdded += added;
+            }
+            master.layers = layers;
+
+            if (revived.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{revived.Count} weight-gated reaction layer(s) rebuilt without the weight",
+                    string.Join(", ", revived) + $" — {curvesAdded} rest value(s) asserted. VRChat " +
+                    "held these layers at weight 0 and raised them from a state behaviour when " +
+                    "their contact or control fired; ChilloutVR cannot change layer weights, so " +
+                    "converted as-is the reaction played invisibly — a booped nose that detected " +
+                    "the touch and showed nothing. Each layer now runs at full weight and its " +
+                    "states assert the avatar's resting values for everything the layer animates, " +
+                    "so it is inert until the reaction actually plays. Fade-in durations from the " +
+                    "removed behaviours have no equivalent and become instant." +
+                    (contested > 0 ? $" {contested} propert(ies) shared with other layers were " +
+                    "left to those layers' own handling." : ""));
+            }
         }
 
         static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
