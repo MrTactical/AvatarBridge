@@ -107,10 +107,27 @@ namespace AvatarBridge.Regression
                 return -1;
             }
 
+            // A "#" local is user-facing when a menu control drives it;
+            // the zone toggles are all built that way. Locals with no
+            // menu entry stay excluded: those are internal scratch.
+            var menuNames = new HashSet<string>();
+            var cvrAvatar = root.GetComponentInParent<ABI.CCK.Components.CVRAvatar>()
+                ?? root.GetComponent<ABI.CCK.Components.CVRAvatar>();
+            if (cvrAvatar?.avatarSettings?.settings != null)
+            {
+                foreach (var entry in cvrAvatar.avatarSettings.settings)
+                {
+                    if (entry != null && !string.IsNullOrEmpty(entry.machineName))
+                    {
+                        menuNames.Add(entry.machineName);
+                    }
+                }
+            }
+
             var parameters = controller.parameters
                 .Where(p => p.type != AnimatorControllerParameterType.Trigger)
                 .Select(p => p.name)
-                .Where(n => !n.StartsWith("#") && !GameOwned.Contains(n))
+                .Where(n => (!n.StartsWith("#") || menuNames.Contains(n)) && !GameOwned.Contains(n))
                 .Distinct()
                 .ToArray();
             if (parameters.Length == 0)
