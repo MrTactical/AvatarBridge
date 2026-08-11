@@ -121,6 +121,7 @@ namespace AvatarBridge
             DroppedPoseSpaceCount = 0;
             MergedLayerNames.Clear();
             CapturedLayerControls.Clear();
+            LayerControlGoals.Clear();
 
             AnimatorController master = LoadBaseController(ctx, convertingGestureLayer);
             var masterLayers = master.layers.ToList();
@@ -1442,6 +1443,10 @@ namespace AvatarBridge
             new Dictionary<string, string>();
         static readonly List<(string key, float goal)> CapturedLayerControls =
             new List<(string, float)>();
+        // Max goal weight per state that carried a control; the states
+        // are the merged clones, so they can be matched by reference.
+        static readonly Dictionary<AnimatorState, float> LayerControlGoals =
+            new Dictionary<AnimatorState, float>();
 
         // VRChat plays audio from a state behaviour; CVR has none.
         // The window approximation: the AudioSource plays on awake and
@@ -1721,6 +1726,12 @@ namespace AvatarBridge
                     // reaction gates, kept for the weight revival pass.
                     CapturedLayerControls.Add(($"{layerControl.playable}:{layerControl.layer}",
                         layerControl.goalWeight));
+                    if (state != null)
+                    {
+                        LayerControlGoals[state] = LayerControlGoals.TryGetValue(state, out float seen)
+                            ? Mathf.Max(seen, layerControl.goalWeight)
+                            : layerControl.goalWeight;
+                    }
                     UnityEngine.Object.DestroyImmediate(behaviour, true);
                 }
                 else if (behaviour.GetType().Name == "VRCAnimatorTemporaryPoseSpace")
@@ -7747,12 +7758,21 @@ namespace AvatarBridge
         // converted as permanently invisible: the contact fired, the
         // parameter flipped, the reaction played at weight zero.
         //
-        // The gate is rebuilt without weights: the layer runs at 1, and
-        // every state asserts the rest value of what the layer animates,
-        // so outside the reaction it holds the avatar exactly where the
-        // hidden layer left it. Only bindings no other layer animates
-        // are asserted; contested ones keep their existing arbitration.
-        // Crossfade durations have no equivalent and become instant.
+        // The gate is rebuilt without weights. The layer runs at 1;
+        // its REST states (the default state, and any state whose
+        // control lowered the weight) trade their motion for a clip
+        // asserting the avatar's resting values, because their real
+        // motion is often the reaction itself, hidden only by the
+        // weight. States that raised the weight keep their motions.
+        //
+        // Only bindings no other layer moves are asserted. A layer
+        // whose every curve is a constant does not count as moving
+        // anything — VRCFury's Defaults layer asserts the same rest
+        // over the whole avatar, and counting it would leave nothing
+        // to assert. Bindings a genuinely animated layer also drives
+        // are skipped entirely: while the reaction plays it overrides
+        // them exactly as the raised weight did, and afterwards the
+        // other layer's own writes take them back.
         static void ReviveWeightGatedLayers(AnimatorController master, BridgeContext ctx)
         {
             var raisedNames = new HashSet<string>();
@@ -7768,10 +7788,7 @@ namespace AvatarBridge
                 return;
             }
 
-            // Bindings animated by more than one layer stay untouched;
-            // asserting rest over them would override the other layer.
             var layers = master.layers;
-            var animatedBy = new Dictionary<EditorCurveBinding, int>();
             var layerClips = new List<(List<AnimationClip> clips, List<AnimatorState> states)>();
             foreach (var layer in layers)
             {
@@ -7806,21 +7823,75 @@ namespace AvatarBridge
                 });
                 layerClips.Add((clips, states));
             }
+
+            bool MovesSomething(List<AnimationClip> clips)
+            {
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        float first = curve.keys[0].value;
+                        if (curve.keys.Any(k => !Mathf.Approximately(k.value, first)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                // Two constants for one binding in different clips still
+                // move it between states.
+                var seen = new Dictionary<EditorCurveBinding, float>();
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        if (seen.TryGetValue(binding, out float other))
+                        {
+                            if (!Mathf.Approximately(other, curve.keys[0].value))
+                            {
+                                return true;
+                            }
+                        }
+                        else
+                        {
+                            seen[binding] = curve.keys[0].value;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            // Bindings a moving layer animates; asserting rest over one
+            // of these would override that layer.
+            var movedElsewhere = new Dictionary<EditorCurveBinding, int>();
             for (int i = 0; i < layers.Length; i++)
             {
+                if (!MovesSomething(layerClips[i].clips))
+                {
+                    continue;   // assert-only, owns nothing
+                }
                 foreach (var clip in layerClips[i].clips.Distinct())
                 {
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
-                        animatedBy[binding] = animatedBy.TryGetValue(binding, out int owner) && owner != i
-                            ? -1 : i;   // -1 marks contested
+                        movedElsewhere[binding] = movedElsewhere.TryGetValue(binding, out int owner) && owner != i
+                            ? -1 : i;   // -1 marks two moving layers
                     }
                 }
             }
 
             var revived = new List<string>();
+            var unrevivable = new List<string>();
             int curvesAdded = 0;
-            int contested = 0;
             for (int i = 0; i < layers.Length; i++)
             {
                 var layer = layers[i];
@@ -7829,80 +7900,61 @@ namespace AvatarBridge
                     continue;
                 }
 
+                var defaultState = layer.stateMachine != null ? layer.stateMachine.defaultState : null;
+                var restStates = new List<AnimatorState>();
+                bool defaultRaises = false;
+                foreach (var state in layerClips[i].states)
+                {
+                    bool raises = LayerControlGoals.TryGetValue(state, out float goal) && goal >= 0.5f;
+                    if (state == defaultState && raises)
+                    {
+                        defaultRaises = true;
+                    }
+                    if (!raises && (state == defaultState
+                        || (LayerControlGoals.TryGetValue(state, out float lowered) && lowered < 0.5f)))
+                    {
+                        restStates.Add(state);
+                    }
+                }
+                if (restStates.Count == 0 || defaultRaises)
+                {
+                    // The layer rests inside its reaction; at full weight
+                    // it would show constantly. Weight 0 stays honest.
+                    unrevivable.Add($"\"{layer.name}\"");
+                    continue;
+                }
+
                 var mine = new List<EditorCurveBinding>();
                 foreach (var clip in layerClips[i].clips.Distinct())
                 {
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (binding.type == typeof(Animator))
+                        if (binding.type == typeof(Animator) || mine.Contains(binding))
                         {
                             continue;   // parameters, not properties
                         }
-                        if (animatedBy.TryGetValue(binding, out int owner) && owner == i)
+                        if (!movedElsewhere.TryGetValue(binding, out int owner) || owner == i)
                         {
-                            if (!mine.Contains(binding))
-                            {
-                                mine.Add(binding);
-                            }
-                        }
-                        else
-                        {
-                            contested++;
+                            mine.Add(binding);
                         }
                     }
                 }
 
+                var rest = new AnimationClip { name = SanitizeFileName($"{layer.name} rest") };
                 int added = 0;
-                var perLayer = new Dictionary<AnimationClip, AnimationClip>();
-                foreach (var state in layerClips[i].states)
+                foreach (var binding in mine)
                 {
-                    // Trees blend their gaps against defaults; only plain
-                    // and empty states need the assertion written in.
-                    if (state.motion is BlendTree)
+                    if (AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
                     {
-                        continue;
-                    }
-                    var clip = state.motion as AnimationClip;
-                    var drives = clip != null
-                        ? new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(clip))
-                        : new HashSet<EditorCurveBinding>();
-                    AnimationClip target = null;
-                    foreach (var binding in mine)
-                    {
-                        if (drives.Contains(binding))
-                        {
-                            continue;
-                        }
-                        if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float rest))
-                        {
-                            continue;   // not present on this avatar
-                        }
-                        if (target == null)
-                        {
-                            if (clip == null)
-                            {
-                                target = new AnimationClip { name = SanitizeFileName($"{layer.name} rest") };
-                                AssetDatabase.AddObjectToAsset(target, master);
-                            }
-                            else if (!perLayer.TryGetValue(clip, out target))
-                            {
-                                // Cloned per layer: the clip may sit in
-                                // other layers that must not gain asserts.
-                                target = UnityEngine.Object.Instantiate(clip);
-                                target.name = clip.name;
-                                target.hideFlags = HideFlags.None;
-                                AssetDatabase.AddObjectToAsset(target, master);
-                                perLayer[clip] = target;
-                            }
-                        }
-                        AnimationUtility.SetEditorCurve(target, binding,
-                            AnimationCurve.Constant(0f, 1f / 60f, rest));
+                        AnimationUtility.SetEditorCurve(rest, binding,
+                            AnimationCurve.Constant(0f, 1f / 60f, value));
                         added++;
                     }
-                    if (target != null)
-                    {
-                        state.motion = target;
-                    }
+                }
+                AssetDatabase.AddObjectToAsset(rest, master);
+                foreach (var state in restStates)
+                {
+                    state.motion = rest;
                 }
 
                 layer.defaultWeight = 1f;
@@ -7911,7 +7963,7 @@ namespace AvatarBridge
             }
             master.layers = layers;
 
-            if (revived.Count > 0)
+            if (revived.Count > 0 || unrevivable.Count > 0)
             {
                 ctx.Report.Converted(Category,
                     $"{revived.Count} weight-gated reaction layer(s) rebuilt without the weight",
@@ -7919,12 +7971,18 @@ namespace AvatarBridge
                     "held these layers at weight 0 and raised them from a state behaviour when " +
                     "their contact or control fired; ChilloutVR cannot change layer weights, so " +
                     "converted as-is the reaction played invisibly — a booped nose that detected " +
-                    "the touch and showed nothing. Each layer now runs at full weight and its " +
-                    "states assert the avatar's resting values for everything the layer animates, " +
-                    "so it is inert until the reaction actually plays. Fade-in durations from the " +
+                    "the touch and showed nothing. Each layer now runs at full weight; its " +
+                    "resting states play the avatar's resting values instead of the reaction " +
+                    "their raised weight used to reveal, and properties another layer genuinely " +
+                    "animates are left to it — the reaction still overrides those while it " +
+                    "plays, exactly as the raised weight did. Fade-in durations from the " +
                     "removed behaviours have no equivalent and become instant." +
-                    (contested > 0 ? $" {contested} propert(ies) shared with other layers were " +
-                    "left to those layers' own handling." : ""));
+                    (unrevivable.Count > 0
+                        ? " NOT rebuilt, still invisible: " + string.Join(", ", unrevivable) +
+                          " — each rests inside its own reaction with no state to return to, " +
+                          "so at full weight it would show constantly. The gating that " +
+                          "revealed it lived outside the layer and did not survive conversion."
+                        : ""));
             }
         }
 
