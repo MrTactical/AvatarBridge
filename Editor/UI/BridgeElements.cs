@@ -5,20 +5,15 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// The window's building blocks.
-    ///
-    /// Elements are constructed in C# rather than declared in UXML on purpose: UXML would put the
-    /// layout in one file and the wiring in another, joined by string names looked up with Q&lt;&gt;,
-    /// and a typo in that join fails silently at runtime. Built here, construction and wiring are
-    /// the same line of code, and the compiler checks it. The stylesheet still carries everything
-    /// USS is actually better at — the cascade, :hover, and the two skins.
-    /// </summary>
+    // The window's building blocks.
+    //
+    // Elements are constructed in C# rather than declared in UXML on purpose: UXML would put the
+    // layout in one file and the wiring in another, joined by string names looked up with Q<>,
+    // and a typo in that join fails silently at runtime. Built here, construction and wiring are
+    // the same line of code, and the compiler checks it. The stylesheet still carries everything
+    // USS is actually better at; the cascade, :hover, and the two skins.
     internal static class BridgeElements
     {
-        /// <summary>
-        /// The title bar: the blue-to-orange bridge, with the crossing named on it.
-        /// </summary>
         public static VisualElement Banner(string title, string subtitle, string version)
         {
             var bar = new VisualElement();
@@ -45,9 +40,6 @@ namespace AvatarBridge
             return bar;
         }
 
-        /// <summary>
-        /// A tab strip in the CCK's shape — icon plus label in a rounded, bordered container.
-        /// </summary>
         public static VisualElement Tabs(string[] labels, string[] icons, int current,
             Action<int> onSelect)
         {
@@ -83,10 +75,8 @@ namespace AvatarBridge
             return strip;
         }
 
-        /// <summary>
-        /// A card. <paramref name="step"/> adds a numbered badge tinted to its position on the
-        /// bridge; <paramref name="expanded"/> null means the card doesn't collapse.
-        /// </summary>
+        // A card. <paramref name="step"/> adds a numbered badge tinted to its position on the
+        // bridge; <paramref name="expanded"/> null means the card doesn't collapse.
         public class Card : VisualElement
         {
             public readonly VisualElement Body = new VisualElement();
@@ -147,8 +137,6 @@ namespace AvatarBridge
                 }
             }
 
-            /// <summary>Updates the right-hand summary — the current setting, so a collapsed
-            /// card still says where it stands.</summary>
             public void SetSummary(string text)
             {
                 _summary.text = text ?? string.Empty;
@@ -167,7 +155,7 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>The one button the window exists for, filled with the bridge itself.</summary>
+        // The one button the window exists for, filled with the bridge itself.
         public class PrimaryButton : VisualElement
         {
             readonly Label _label;
@@ -197,12 +185,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// A tally chip. Only non-zero counts are emphasised, so a clean run reads clean.
-        ///
-        /// With <paramref name="onClick"/> it becomes a filter: selected chips fill solid, and a
-        /// count of zero is left unclickable, since filtering to nothing helps nobody.
-        /// </summary>
         public static Label Chip(string text, Color colour, bool emphasise,
             Action onClick = null, bool selected = false, bool clickable = true)
         {
@@ -228,11 +210,6 @@ namespace AvatarBridge
             return chip;
         }
 
-        /// <summary>
-        /// One report entry, laid out rather than concatenated into a sentence: a status stripe,
-        /// the category and subject on one line, and the detail wrapped underneath it. The old
-        /// single-line form buried the useful half of every entry off the right edge.
-        /// </summary>
         public static VisualElement ReportRow(string category, string subject, string detail,
             Color colour, bool alternate)
         {
@@ -266,7 +243,6 @@ namespace AvatarBridge
             return row;
         }
 
-        /// <summary>Marks a toggle as opt-in rather than broken.</summary>
         public static Label BetaTag()
         {
             var tag = new Label("BETA");
@@ -279,11 +255,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------ controls ----
 
-        /// <summary>
-        /// A checkbox bound to a setting. The callback is the whole point: every control has to
-        /// write back, and a toggle that displays but never saves is the failure this shape of
-        /// helper exists to prevent.
-        /// </summary>
         public static Toggle Bind(string label, string tooltip, bool value, Action<bool> set)
         {
             var toggle = new Toggle(label) { value = value, tooltip = tooltip };

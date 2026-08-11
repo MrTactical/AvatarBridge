@@ -6,20 +6,13 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Converts every VRCPhysBone on the avatar to the chosen ChilloutVR-compatible
-    /// physics system (MagicaCloth2 preferred, DynamicBone as fallback) and removes the
-    /// original PhysBone components afterwards.
-    /// </summary>
+    // Converts every VRCPhysBone on the avatar to the chosen ChilloutVR-compatible
+    // physics system (MagicaCloth2 preferred, DynamicBone as fallback) and removes the
+    // original PhysBone components afterwards.
     public static class PhysBoneConverter
     {
         const string Category = "PhysBones";
 
-        /// <summary>
-        /// Remembers where a VRC collider's replacement landed, keyed by the ORIGINAL component's
-        /// animator path — which is what an m_Enabled curve binding carries. Called by both solver
-        /// writers at collider creation, before the VRC component is deleted.
-        /// </summary>
         internal static void RecordColliderHost(BridgeContext ctx, Component original, GameObject host)
         {
             string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
@@ -31,21 +24,6 @@ namespace AvatarBridge
             hosts.Add(hostPath);
         }
 
-        /// <summary>
-        /// Rewires animated collider on/off switches at the converted colliders. Runs after
-        /// self-containment, from BridgeConverter, exactly like the contact-curve repoint.
-        ///
-        /// Avatars animate <c>VRCPhysBoneCollider.m_Enabled</c> so clothing can switch its own
-        /// collision — a dress toggle disabling the leg colliders that would clip it (28 curves
-        /// across the wild census: DressOn, CPB_Clipping_ON/OFF, CPB_Interaction_OFF). The
-        /// component is deleted by conversion, so those curves played as silence.
-        ///
-        /// The retarget is the generated collider's own host object, verified against BOTH
-        /// shipped solvers: MagicaCloth2's ColliderComponent routes OnEnable/OnDisable through
-        /// MagicaManager.Collider.EnableCollider, and ChilloutVR's jobs-rewritten
-        /// DynamicBoneColliderBase routes the same pair through SetColliderState — so a
-        /// GameObject active toggle reaches each identically.
-        /// </summary>
         internal static void RepointColliderEnableCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null || ctx.PhysicsColliderHosts.Count == 0)
@@ -80,7 +58,7 @@ namespace AvatarBridge
                     if (binding.propertyName != "m_Enabled"
                         || !ctx.PhysicsColliderHosts.TryGetValue(binding.path, out var hosts))
                     {
-                        // A shape property (radius, height — no animatable equivalent written),
+                        // A shape property (radius, height; no animatable equivalent written),
                         // or a collider that was skipped rather than converted.
                         dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
                         continue;
@@ -114,26 +92,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Names every animated PhysBone PARAMETER an avatar loses, and removes the dead curves.
-        ///
-        /// Avatars animate live physics values — radius with a size slider ("Boobs Bigger"),
-        /// gravity, pull, immobile while a part resizes; ~110 curves across the wild census. The
-        /// component is deleted by conversion and the path-based clip audit cannot see it (the
-        /// OBJECT still exists), so until now these vanished with no trace.
-        ///
-        /// No retarget exists on the default path, and that is a measured fact, not a shrug:
-        /// MagicaCloth2 has no animation hook — its parameters only re-apply through the
-        /// SetParameterChange() API, which nothing animation-driven ever calls, and a helper
-        /// component would be deleted by ChilloutVR's avatar whitelist. The shipped DynamicBone
-        /// DOES carry OnDidApplyAnimationProperties, so a DynamicBone-target conversion could
-        /// genuinely accept some of these (radius maps 1:1); recorded as future work rather than
-        /// half-shipped, since Magica is the default and the value mappings are nonlinear.
-        ///
-        /// m_Enabled is deliberately not reported here: chain toggles are RewirePhysicsToggles'
-        /// job (mirrored onto the generated cloth, stranded ones already warned). The dead VRC
-        /// binding is still removed.
-        /// </summary>
         internal static void ReportAnimatedPhysBoneProperties(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -204,7 +162,7 @@ namespace AvatarBridge
 
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
             // animator switch between them. All get converted so nothing is lost, but at most
-            // one is left driving the chain — see below for why, and why none are deleted.
+            // one is left driving the chain; see below for why, and why none are deleted.
             foreach (var group in physBones
                 .GroupBy(pb => pb.rootTransform != null ? pb.rootTransform : pb.transform)
                 .Where(g => g.Count() > 1))
@@ -219,7 +177,7 @@ namespace AvatarBridge
                 }
                 else if (enabled.Count > 1)
                 {
-                    // Two solvers on one chain always fight — they take turns moving the same
+                    // Two solvers on one chain always fight; they take turns moving the same
                     // bones and the result is jitter, not a blend. Nothing is deleted, because
                     // which variant the author wanted is their call: the extras are switched
                     // off so only one drives the chain, and a checkbox puts any of them back.
@@ -311,23 +269,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Names the chains whose whole point is being GRABBED, because that is the part which
-        /// doesn't cross.
-        ///
-        /// MagicaCloth2 has no grab. VRChat's PhysBones do, and plenty of avatars are built
-        /// entirely around it — a pump handle, a leash, a lever, anything a stranger is meant to
-        /// pull. Worse, the failure is completely silent and looks like something else: on a
-        /// balloon avatar the pump handle carries a contact SENDER, and inflating works by someone
-        /// grabbing the handle so the sender moves into the matching receiver. Convert that and
-        /// every part still checks out — cloth present, sender present, receiver present, tags
-        /// matching — but nobody can grab the handle, so it never moves, so nothing fires. An
-        /// afternoon went into blaming the contact tags for it.
-        ///
-        /// The GrabbyBones mod restores grabbing, but it is a client mod: it only works for people
-        /// who have installed it, so an avatar that depends on it is inert for most of the room.
-        /// Nothing here can fix that, which is exactly why it is worth saying.
-        /// </summary>
         static void ReportGrabbableChains(BridgeContext ctx, VRCPhysBone[] physBones)
         {
             var grabbable = new List<string>();
@@ -363,33 +304,6 @@ namespace AvatarBridge
                 "wrong anywhere.");
         }
 
-        /// <summary>
-        /// A bone a constraint drives must never also be simulated.
-        ///
-        /// A constraint writes that bone's rotation every frame from somewhere else; a cloth
-        /// solver integrates it from its own previous state. Run both on one bone and each is
-        /// fed the other's output, the integration diverges, and within a second or two the
-        /// transform is **NaN** — which never recovers, propagates down the hierarchy, and
-        /// leaves everything below the cloth root at NaN position while the root itself looks
-        /// fine.
-        ///
-        /// The symptom is not subtle and not obviously physics: the chain "explodes", or hangs
-        /// in a pose nothing explains, at rest, in play mode and in game alike, with no motion
-        /// needed to trigger it. It cost this project a long hunt through the animator and the
-        /// constraint maths before the NaN was spotted.
-        ///
-        /// VRChat tolerates the overlap because its PhysBone integrator runs after constraints
-        /// each frame and simply re-reads the result. MagicaCloth2 and DynamicBone do not, and
-        /// nothing here can reorder them.
-        ///
-        /// Unity's own constraints count as much as VRChat's, which 2.91.0 missed by matching on
-        /// the "VRC*Constraint" type name. The feedback loop is engine-level and does not care
-        /// which component writes the rotation.
-        ///
-        /// The chain is skipped whole rather than trimmed. Simulating a constraint-driven bone
-        /// is meaningless anyway — the constraint fully determines its rotation — and a chain
-        /// re-rooted below the constrained part would be a different chain than its author made.
-        /// </summary>
         static bool SkipConstraintDrivenChain(BridgeContext ctx, PhysBoneChainData chain)
         {
             if (chain.Root == null)
@@ -405,7 +319,7 @@ namespace AvatarBridge
                         continue;
                     }
                     // Unity's constraints count too, not just VRChat's. 2.91.0 only matched
-                    // "VRC*Constraint" — but the NaN is an engine-level feedback loop between a
+                    // "VRC*Constraint"; but the NaN is an engine-level feedback loop between a
                     // component that WRITES a rotation every frame and a solver that integrates
                     // from its own previous state, and which constraint type does the writing is
                     // irrelevant. An avatar authored on Unity constraints (the AnyTaur quadruped
@@ -435,13 +349,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Toe chains are skipped by default. VRChat avatars routinely put PhysBones on
-        /// individual toe bones, and in ChilloutVR the result is toes that wiggle with every
-        /// step — universally read as broken rather than expressive. A chain counts as a toe
-        /// chain when its root is (or sits under) a humanoid Toes bone, or when its root's name
-        /// says so. "Convert toe PhysBones" in the physics options brings them back.
-        /// </summary>
         static bool SkipToeChain(BridgeContext ctx, PhysBoneChainData chain)
         {
             if (ctx.Settings.convertToePhysBones || chain.Root == null)
@@ -475,11 +382,6 @@ namespace AvatarBridge
             return isToe;
         }
 
-        /// <summary>
-        /// Enough to tell stacked variants apart in the report. They often sit on the same
-        /// GameObject, so the name alone may not distinguish them; the parameter is what the
-        /// animator was switching between.
-        /// </summary>
         static string DescribeVariant(VRCPhysBone pb)
         {
             return string.IsNullOrEmpty(pb.parameter)

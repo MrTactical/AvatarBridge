@@ -1,33 +1,20 @@
 #!/usr/bin/env bash
-# Builds AvatarBridge-<version>.unitypackage straight from the repo working tree.
-# Version is read from BridgeDefines.cs so the package can never disagree with the
-# version the tool reports at runtime.
-#
-# Lived in a session scratchpad until 2026-08-01, where it would have evaporated with the
-# session. It is build tooling; it belongs with the code it builds.
+# Builds AvatarBridge-<version>.unitypackage from the working tree.
+# Version comes from BridgeDefines.cs. Package and tool always agree.
 #
 # Usage:
-#   build-package.sh            PUBLIC build  -> AvatarBridge-<version>-public.unitypackage
-#   build-package.sh --dev      DEV build     -> AvatarBridge-<version>-dev.unitypackage
+#   build-package.sh            public build -> AvatarBridge-<version>-public.unitypackage
+#   build-package.sh --dev      dev build    -> AvatarBridge-<version>-dev.unitypackage
 #
-# Both sides are labelled, so a package's contents are never inferred from the ABSENCE of a
-# suffix. Packages built before 2026-08-01 have no suffix and are all public — Tools/ did not
-# exist yet, so nothing dev could have been in them. They keep their names because those names
-# are what GitHub released; re-uploading a renamed asset would misstate the release history.
+# Both modes are labelled. Never infer contents from a missing suffix.
+# Packages built before 2026-08-01 have no suffix and are all public.
+# They keep those names; GitHub released them under those names.
 #
-# A public package is what ships: Tools/ and Regression/ are pruned, so it carries no regression
-# harness, no scene cleanup, no test-scene builder and no menu items a user should never see.
-#
-# A dev package carries those, remapped under Editor/DevTools/ so Unity compiles them as editor
-# scripts. NEVER upload a "-dev" package to a release.
-#
-# The suffix is the marker, and only the dev side gets one, deliberately: the "never reuse a
-# shipped version" guard below works by checking whether the public filename already exists, so
-# renaming public packages — including the ~300 already built, every one of which predates Tools/
-# and is therefore already clean — would blind the one rule this project has never broken.
+# Public builds prune Tools/ and Regression/. That is what ships.
+# Dev builds carry them under Editor/DevTools/. Never release a dev build.
 set -euo pipefail
 
-REPO="D:/AvatarBridge"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_GUID="979cbf9a9a344ae7ad3f8b3bb3381da0"   # the "Assets/AvatarBridge" folder entry
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -43,20 +30,17 @@ else
   OUT="$REPO/AvatarBridge-$VERSION-public.unitypackage"
 fi
 
-# The guard checks EVERY name this version could occupy, not just the one about to be written.
-# Suffixes were added on 2026-08-01; before that a public package had no suffix at all, and ~300
-# of those exist. Checking only "$OUT" would have let a suffixed build silently reuse a version
-# already shipped unsuffixed, which is the one rule this project has never broken.
+# Check every name this version could occupy. Packages before
+# 2026-08-01 shipped with no suffix, and ~300 of those exist.
 for taken in "$REPO/AvatarBridge-$VERSION.unitypackage" \
              "$REPO/AvatarBridge-$VERSION-public.unitypackage" \
              "$REPO/AvatarBridge-$VERSION-dev.unitypackage"; do
-  # A dev build may be rebuilt over itself: it never ships, so nothing depends on it being
-  # immutable, and forbidding it would mean burning a version number per test build.
+  # A dev build may be rebuilt over itself. It never ships.
   if [ "$taken" = "$REPO/AvatarBridge-$VERSION-dev.unitypackage" ] && [ "$MODE" = "dev" ]; then
     continue
   fi
   if [ -e "$taken" ]; then
-    echo "REFUSING: $taken already exists — bump the version, never reuse one that shipped." >&2
+    echo "REFUSING: $taken already exists. Bump the version; never reuse one that shipped." >&2
     exit 1
   fi
 done
@@ -90,12 +74,12 @@ cd "$REPO"
 while IFS= read -r -d '' path; do
   rel="${path#./}"
   case "$rel" in
-    .*) continue ;;                      # repo plumbing (.git, .github, .claude, .gitignore)
-    *.unitypackage|*.meta) continue ;;   # prior builds, and metas ride with their asset
+    .*) continue ;;                      # repo plumbing
+    *.unitypackage|*.meta) continue ;;   # prior builds; metas ride with their asset
   esac
   meta="$rel.meta"
   if [ ! -f "$meta" ]; then
-    echo "  !! no .meta for $rel — Unity has not imported it yet" >&2
+    echo "  !! no .meta for $rel: Unity has not imported it yet" >&2
     missing=$((missing+1)); continue
   fi
   g="$(guid_of "$meta")"
@@ -120,14 +104,11 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 # ---- dev extras -------------------------------------------------------------------------
-# Remapped from Tools/Regression/ to Editor/DevTools/, because Unity only compiles a script as
-# an editor script when an "Editor" folder is somewhere in its path — dropped at Tools/ it would
-# land in the runtime assembly and fail on every UnityEditor reference it makes.
+# Remapped from Tools/Regression/ to Editor/DevTools/. Unity only
+# compiles editor scripts under an "Editor" folder.
 #
-# Metas are synthesized rather than committed: these files never ship publicly, so a .meta in the
-# repo would be dead weight that the public build has to remember to prune. The GUID is an md5 of
-# the destination path, so it is stable across rebuilds — reimporting a newer dev package updates
-# the script in place instead of leaving a duplicate behind.
+# Metas are synthesized, not committed. The GUID is an md5 of the
+# destination path, so it stays stable across rebuilds.
 if [ "$MODE" = "dev" ]; then
   devguid() { printf '%s' "$1" | md5sum | cut -c1-32; }
 
@@ -174,10 +155,10 @@ EOF
   done
 fi
 
-# --force-local: a Windows "D:/..." path otherwise reads as a remote host to tar.
+# --force-local: a drive-letter path otherwise reads as a remote host to tar.
 tar --force-local -czf "$OUT" -C "$STAGE" .
 echo "built $OUT"
 echo "  version : $VERSION"
-echo "  mode    : $MODE$([ "$MODE" = dev ] && echo '   *** DEV TOOLS INCLUDED — DO NOT RELEASE ***')"
+echo "  mode    : $MODE$([ "$MODE" = dev ] && echo '   *** DEV TOOLS INCLUDED. DO NOT RELEASE ***')"
 echo "  assets  : $count (+1 root folder)"
 echo "  bytes   : $(stat -c%s "$OUT")"

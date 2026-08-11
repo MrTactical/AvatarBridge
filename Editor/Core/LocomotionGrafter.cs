@@ -9,61 +9,28 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Grafts the avatar's own locomotion animations into ChilloutVR's Locomotion/Emotes layer —
-    /// the walking, crouching, crawling, falling and sitting the avatar actually shipped with,
-    /// playing from the one layer on this platform that can both assert a body pose and yield it.
-    ///
-    /// Why grafting instead of keeping the VRChat Base layer live: merged above CVR's
-    /// Locomotion/Emotes, a Base layer can only REPLACE that layer's output, never supplement it —
-    /// and CVR's movement sliders and stance buttons are answered nowhere else. So the merged
-    /// [Base] copy is masked off the body (AnimatorMerger.MaskMergedLayers), and this pass carries
-    /// the ANIMATIONS across into the CCK's own states, where CVR's state machine decides when
-    /// they play. The structure is ChilloutVR's; the art is the avatar's.
-    ///
-    /// The proxy discovery that shaped this pass: most VRChat avatars do not ship walking
-    /// animations at all. Their locomotion trees reference VRChat's <c>proxy_*</c> placeholder
-    /// clips, which the VRChat client swaps for its internal full-quality animations at runtime —
-    /// the real walk lives in the client, not the avatar (measured on a heavily customized avatar
-    /// whose "custom" standing tree was proxy_walk_forward/proxy_sprint_forward at the default
-    /// positions). ChilloutVR's equivalent of the proxies is the CCK's own locomotion clips,
-    /// already in place — so proxy children are skipped, and only animations the author actually
-    /// authored are grafted.
-    ///
-    /// Clips are matched by BLEND-TREE POSITION, not by name: a child's velocity-space position
-    /// says what it is (forward walk, backward run, strafe) regardless of naming convention, and
-    /// the same classifier reads both platforms' trees — VRChat's in metres per second (walk 1.56,
-    /// run 5.96), ChilloutVR's in normalized input (walk ring 0.4, run ring 1.0). Source clips are
-    /// only referenced, never modified; AnimationSelfContainer copies them into RehomedAssets at
-    /// the end of the pipeline like every other referenced clip.
-    /// </summary>
+    // Grafts the avatar's own locomotion animations into CVR's
+    // Locomotion/Emotes layer, the one layer that can both assert a
+    // body pose and yield it. The structure is CVR's; the art is the
+    // avatar's.
+    //
+    // proxy_* children are skipped: those placeholders live in the
+    // VRChat client, and the CCK's own clips are their equivalent.
+    // Clips match by blend-tree position, not name; the classifier
+    // reads VRChat trees in m/s and CVR trees in normalized input.
+    // Source clips are referenced, never modified.
     internal static class LocomotionGrafter
     {
         const string Category = "Animator";
 
-        /// <summary>
-        /// Clip -> loop-adjusted clone, per conversion. A grafted clip must carry the LOOP
-        /// SETTING of the slot it lands in: the CCK's walk cycles loop and its states rely on
-        /// that, while a custom clip straight off an avatar's FBX often doesn't — grafted as-is
-        /// it plays once and freezes on the last frame, which testers see as "animations don't
-        /// loop or finish". The source clip is never modified (it belongs to the source avatar);
-        /// a clone is, and the asset saver persists it inside the output controller.
-        /// </summary>
         static readonly Dictionary<(AnimationClip clip, bool loop), AnimationClip> LoopClones
             = new Dictionary<(AnimationClip, bool), AnimationClip>();
 
-        /// <summary>(Clip, travellers-only?) -> root-motion-free clone (or itself when spared).</summary>
         static readonly Dictionary<(AnimationClip clip, bool onlyIfTravels, bool keepPose), AnimationClip> MotionStripped
             = new Dictionary<(AnimationClip, bool, bool), AnimationClip>();
 
-        /// <summary>Names of clips that had movement stripped, for the report.</summary>
         static readonly List<string> StrippedNames = new List<string>();
 
-        /// <summary>
-        /// Both clone caches MUST be per-conversion: a clone is persisted as a sub-asset of the
-        /// output controller, and a cached clone reused by a SECOND conversion would try to live
-        /// inside two assets at once. AnimatorMerger.Run calls this before any clip is prepared.
-        /// </summary>
         internal static void ResetClones()
         {
             LoopClones.Clear();
@@ -71,25 +38,6 @@ namespace AvatarBridge
             StrippedNames.Clear();
         }
 
-        /// <summary>
-        /// The clip with every root-movement curve removed: humanoid RootT/RootQ and
-        /// MotionT/MotionQ, and generic Transform curves on the avatar root itself.
-        ///
-        /// VRChat systems bake movement into animations because VRChat's avatars cannot move the
-        /// player any other way — a copter takeoff climbs by animating the body upward. In
-        /// ChilloutVR the CLIENT moves the player (flight, jumps, seats all its own), and the
-        /// first-person camera rides the head bone — so a clip that also displaces the body
-        /// shoves the wearer's camera around with no input. That logic is not converted; the
-        /// muscles keep the pose, the game keeps the movement.
-        ///
-        /// <paramref name="onlyIfTravels"/> spares clips whose root motion RETURNS HOME — a
-        /// backflip's flip IS root rotation and its dance cousins sway the whole body, all ending
-        /// where they began. Stripping those broke them visibly (a backflip "up to half, then
-        /// breaks") while removing nothing a player could feel. A clip whose root ENDS displaced
-        /// or turned is a mover — looped, it is a vehicle — and always loses the curves.
-        /// Locomotion tree seats pass false: there the capsule owns every metre, homebound or
-        /// not.
-        /// </summary>
         internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false,
             bool keepPose = false)
         {
@@ -112,17 +60,11 @@ namespace AvatarBridge
                 // across the floor belongs to the game. A transforming avatar folding down into a
                 // car lowers itself AND turns from upright to flat, and both are the animation.
                 //
-                // These survive because the clone is ALSO told to bake them into the pose (see
-                // BakeIntoPose below), which is what puts them in the bones instead of the root.
-                // That distinction is the whole bug: ChilloutVR's character controller keeps the
-                // player capsule upright and discards root motion, so a curve left as root motion
-                // plays in the editor and does nothing worn — measured both ways on the avatar
-                // that reported it. Height already worked only because its clip happened to carry
-                // the position-Y bake flag; the orientation flag was unset, so the turn died.
-                //
-                // Only Action-transplanted poses ask for this. Everywhere else a clip that ends
-                // displaced still loses everything, because it would move the wearer with no
-                // input.
+                // These survive because the clone also bakes them into
+                // the pose, putting them in the bones instead of the
+                // root. CVR discards root motion, so a curve left there
+                // plays in the editor and does nothing worn.
+                // Only Action-transplanted poses ask for this.
                 if (keepPose && (IsVertical(binding) || IsRotation(binding)))
                 {
                     continue;
@@ -131,8 +73,8 @@ namespace AvatarBridge
             }
             if (doomed.Count == 0 || (onlyIfTravels && !Travels(clip, doomed)))
             {
-                // Nothing to strip — but a kept pose may still need its curves moved into the
-                // bones, and that needs a clone: the source clip belongs to the source avatar.
+                // Nothing to strip, but a kept pose may still need its
+                // curves baked, and that needs a clone.
                 if (keepPose && NeedsBake(clip))
                 {
                     var poseOnly = UnityEngine.Object.Instantiate(clip);
@@ -152,11 +94,10 @@ namespace AvatarBridge
             }
             foreach (var binding in doomed)
             {
-                // FLATTENED to the first key's value, never deleted: a root curve carries the
-                // body's BASELINE as well as its travel — RootT.y holds the hips at standing
-                // height — and deleting it dropped that to zero, sinking the wearer waist-deep
-                // into the floor (measured in game, three separate ways). A constant curve keeps
-                // the pose exactly where the author started it and moves it nowhere.
+                // Flattened to the first key's value, never deleted.
+                // A root curve carries the body's baseline as well as
+                // its travel; deleting it sinks the wearer into the
+                // floor. A constant curve holds the pose in place.
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 float first = curve != null && curve.keys.Length > 0 ? curve.keys[0].value : 0f;
                 AnimationUtility.SetEditorCurve(clone, binding,
@@ -167,11 +108,6 @@ namespace AvatarBridge
             return clone;
         }
 
-        /// <summary>
-        /// Whether the clip's root ends somewhere other than it started: more than 5 cm of net
-        /// position, or any meaningful net rotation. Sampled from the curves' own first and last
-        /// values, so it needs no scene and no humanoid rig instantiated.
-        /// </summary>
         static bool Travels(AnimationClip clip, List<EditorCurveBinding> rootBindings)
         {
             float positionDelta = 0f, rotationDelta = 0f;
@@ -221,34 +157,12 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Whether a kept pose still has root movement Unity would apply to the TRANSFORM rather
-        /// than to the bones. Both flags are usually already set on height (which is why the
-        /// descent worked all along) and usually unset on orientation.
-        /// </summary>
         static bool NeedsBake(AnimationClip clip)
         {
             var s = AnimationUtility.GetAnimationClipSettings(clip);
             return !s.loopBlendOrientation || !s.loopBlendPositionY;
         }
 
-        /// <summary>
-        /// Moves a clip's root height and orientation OUT of root motion and INTO the pose.
-        ///
-        /// This is the whole fix for a transforming avatar, and it is Unity's own mechanism —
-        /// the "Bake Into Pose" toggles an FBX importer exposes, reachable at runtime through
-        /// AnimationClipSettings. Baked, the animation system writes the movement through the
-        /// bones; unbaked, it hands it to the root transform. ChilloutVR's client owns the root
-        /// (the capsule stays upright and where the player put it) and simply discards it, so
-        /// only the baked form is visible in game.
-        ///
-        /// Height was already baked on the avatar that found this and orientation was not, which
-        /// is exactly why the descent survived conversion and the turn did not — and why keeping
-        /// the rotation curve alone fixed the editor and changed nothing worn.
-        ///
-        /// keepOriginal* pins the reference to the clip's own start rather than the body's
-        /// current transform, so the pose describes the same movement it always did.
-        /// </summary>
         static void BakeIntoPose(AnimationClip clip)
         {
             var s = AnimationUtility.GetAnimationClipSettings(clip);
@@ -259,11 +173,6 @@ namespace AvatarBridge
             AnimationUtility.SetAnimationClipSettings(clip, s);
         }
 
-        /// <summary>
-        /// Whether this root curve is the body's ORIENTATION — the humanoid quaternion channels,
-        /// and a generic Transform rotation on the avatar root. Kept — and baked into the pose —
-        /// for transplanted Action poses, alongside height.
-        /// </summary>
         static bool IsRotation(EditorCurveBinding binding)
         {
             string p = binding.propertyName;
@@ -272,10 +181,6 @@ namespace AvatarBridge
                    || p.StartsWith("m_LocalRotation.", StringComparison.Ordinal);
         }
 
-        /// <summary>
-        /// Whether this root curve is the body's own HEIGHT rather than travel across the floor.
-        /// Only the Y of a position curve: X and Z are the movement ChilloutVR owns.
-        /// </summary>
         static bool IsVertical(EditorCurveBinding binding)
         {
             string p = binding.propertyName;
@@ -285,7 +190,6 @@ namespace AvatarBridge
                        || p.StartsWith("m_LocalPosition.", StringComparison.Ordinal));
         }
 
-        /// <summary>Full preparation for a locomotion seat: movement stripped, loop matched.</summary>
         static AnimationClip Prepare(AnimationClip graft, Motion slotOriginal)
         {
             return LoopMatched(WithoutRootMotion(graft), slotOriginal);
@@ -315,7 +219,7 @@ namespace AvatarBridge
             return clone;
         }
 
-        /// <summary>Direction-and-speed identity of a locomotion blend-tree child.</summary>
+        // Direction-and-speed identity of a locomotion blend-tree child.
         enum Slot
         {
             Idle,
@@ -328,9 +232,8 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx, AnimatorController master)
         {
-            // Clone caches are cleared by AnimatorMerger.Run BEFORE the Action transplant, which
-            // also prepares clips through this class — clearing here would only break the
-            // dedupe between the two.
+            // Clone caches are cleared by AnimatorMerger.Run before the
+            // Action transplant. Clearing here would break the dedupe.
             var cvrLayer = master.layers.FirstOrDefault(l => l != null && l.name == "Locomotion/Emotes");
             if (cvrLayer == null || cvrLayer.stateMachine == null)
             {
@@ -350,13 +253,10 @@ namespace AvatarBridge
                 GraftJumpAndFall(baseController, targets, grafts, ref proxiesSkipped);
             }
 
-            // Flight and swim poses ride ChilloutVR's OWN movement modes: the client answers
-            // flight itself (world-permitting; keybind or double-jump; speed, sprint and world
-            // multipliers all its own), raises the core Flying bool, and the CCK's LocFlying
-            // state plays — so a VRChat "flight system" needs none of its speed logic converted,
-            // only its pose put where this platform will show it. Decompiled:
-            // BetterBetterCharacterController.ChangeFlight / HandleInputFlight, and
-            // AvatarAnimatorManager.Flying = IsFlying() || UseZeroGravityControls.
+            // Flight and swim poses ride CVR's own movement modes. The
+            // client answers flight itself and raises the Flying bool,
+            // so a VRChat flight system needs no speed logic converted,
+            // only its pose put where this platform shows it.
             var poseSources = new List<AnimatorController>();
             if (baseController != null)
             {
@@ -372,8 +272,8 @@ namespace AvatarBridge
             }
             GraftMovementModePoses(poseSources, targets, grafts, ref proxiesSkipped);
 
-            // The Sitting SPECIAL layer is descriptor-level content like the visemes — there is
-            // no merge toggle for it, and its one useful product here is the sit pose itself.
+            // The Sitting special layer is descriptor-level content.
+            // Its one useful product here is the sit pose itself.
             GraftSitting(ctx, targets, grafts, ref proxiesSkipped);
 
             if (grafts.Count > 0)
@@ -433,11 +333,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// A clip that is VRChat's, not the avatar's: the proxy_* placeholders and anything that
-        /// ships inside the VRChat SDK packages. Grafting these would be re-shipping VRChat's
-        /// low-quality "do not use" preview clips as the avatar's walk.
-        /// </summary>
         static bool IsVrchatStock(AnimationClip clip)
         {
             if (clip == null)
@@ -484,12 +379,10 @@ namespace AvatarBridge
                         GraftTree(sourceTree, cvrTree, cvrStateName, grafts, ref proxiesSkipped);
                         break; // first velocity tree per stance wins; duplicates are copies of it
                     }
-                    // Pose-style stance states (a single clip, no movement tree) are deliberately
-                    // NOT grafted, and a first version that grafted them proved why in game: they
-                    // are VR TRACKING poses — the headset lowers the player physically, so the
-                    // pose doesn't — and seated as a desktop crouch idle one sank the wearer
-                    // waist-deep into the floor. Only real velocity trees carry desktop
-                    // locomotion; anything else here means keep looking.
+                    // Pose-style stance states are not grafted. They are
+                    // VR tracking poses; the headset lowers the player
+                    // physically. Only real velocity trees carry
+                    // desktop locomotion.
                     if (state.motion is AnimationClip stock && IsVrchatStock(stock))
                     {
                         proxiesSkipped++;
@@ -537,7 +430,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Every direct clip child of the tree, tagged with its slot.</summary>
         static IEnumerable<(Slot slot, AnimationClip clip)> ClassifyClips(BlendTree tree)
         {
             var children = tree.children;
@@ -578,7 +470,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>0 idle, 1 forward, 2 forward-diagonal, 3 strafe, 4 back-diagonal, 5 back.</summary>
         static int DirectionOf(Vector2 position, float maxMag)
         {
             if (position.magnitude < 0.15f * maxMag)
@@ -632,14 +523,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Replaces every CVR tree child occupying <paramref name="slot"/> with the clip —
-        /// every one, because both platforms reuse a single clip across mirrored ± positions
-        /// (the CCK's forward-diagonal walk sits at both (0.25, 0.25) and (-0.25, 0.25)).
-        /// Single-ring CVR trees (crouch, prone: one speed per direction) classify their sole
-        /// child as run — its magnitude IS the direction's top speed — so a two-speed source
-        /// stance grafts its faster clip there and the walk pick simply finds no seat.
-        /// </summary>
         static bool ReplaceAt(BlendTree cvrTree, Slot slot, AnimationClip clip)
         {
             var children = cvrTree.children;
@@ -731,11 +614,9 @@ namespace AvatarBridge
                         proxiesSkipped++;
                         break; // the stock clip in the expected slot; later names are fallbacks
                     }
-                    // Deliberately NOT loop-matched: these are one-shot moments, and VRChat
-                    // played them once (exit-time transitions). The CCK's own JumpAir loops, and
-                    // matching a grafted wing-flap to that looped it forever on every hop —
-                    // played once it holds its last frame through a long fall, exactly as the
-                    // source did.
+                    // Not loop-matched: one-shot moments, played once in
+                    // the source. Played once, the clip holds its last
+                    // frame through a long fall as the source did.
                     var use = WithoutRootMotion(clip);
                     if (cvrState.motion != use)
                     {
@@ -769,9 +650,8 @@ namespace AvatarBridge
             {
                 return;
             }
-            // The layer's states are tracking plumbing sharing one or two pose clips; the pose
-            // used by the most states is the sit. A tie means two DIFFERENT authored sits with no
-            // way to pick — leave the CCK's.
+            // The pose used by the most states is the sit. A tie means
+            // two different authored sits; leave the CCK's.
             var votes = new Dictionary<AnimationClip, int>();
             foreach (var state in AllStates(sitting))
             {
@@ -806,13 +686,6 @@ namespace AvatarBridge
 
         // -------------------------------------------------- flight & swim poses ----
 
-        /// <summary>
-        /// Puts a flight (or swim) pose on the state ChilloutVR's own movement mode plays.
-        /// VRChat has no flight, so avatars fake it with seat tricks and locomotion replacements
-        /// carrying their own speed logic; ChilloutVR flies natively — none of that machinery is
-        /// needed, only the pose, on LocFlying, where the client will show it whenever the
-        /// wearer actually flies.
-        /// </summary>
         static void GraftMovementModePoses(List<AnimatorController> sources,
             Dictionary<string, AnimatorState> targets, List<string> grafts, ref int proxiesSkipped)
         {
@@ -827,13 +700,10 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Scored, not first-match. A copter avatar's controllers are FULL of states whose
-                // names contain "copter" — and the first one found was "Copter to Robot", the
-                // un-transformation, which loop-matched into flight mode endlessly transforming.
-                // A movement-mode pose is a state you can SIT in: its clip loops, or its name
-                // says idle/hover; transition names ("to", "in", "out", "changing") are evidence
-                // against. Nothing scores? The CCK's own pose stays — a right default beats a
-                // wrong graft.
+                // Scored, not first-match. A movement-mode pose is a
+                // state you can sit in: its clip loops or its name says
+                // idle or hover. Transition names count against.
+                // Nothing scores: the CCK's own pose stays.
                 AnimatorState best = null;
                 int bestScore = 1; // require positive evidence, not just a token match
                 foreach (var source in sources)

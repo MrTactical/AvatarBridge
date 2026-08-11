@@ -8,90 +8,50 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Generates declarations of ChilloutVR's native contact components so avatars can be
-    /// authored with them.
-    ///
-    /// ChilloutVR replaced its pointer/trigger contacts with a system in the NAK.Contacts
-    /// namespace that is a near-exact match for VRChat's: the same Sphere/Capsule shapes, the
-    /// same allowSelf/allowOthers/collisionTags fields under the same names, and receiver types
-    /// covering Constant, OnEnter, three flavours of Proximity, and velocity. It lives in the
-    /// game client only — CCK 4.0.x ships no such types — so without something like this every
-    /// conversion has to go through the legacy CVRPointer/CVRAdvancedAvatarSettingsTrigger
-    /// approximation.
-    ///
-    /// THE ONLY AUTHORITY FOR THE SERIALIZED SURFACE IS THE SHIPPED CLIENT, DECOMPILED.
-    /// Revision 5 learned this the expensive way: it was aligned to the system author's public
-    /// repository (github.com/NotAKidoS/Misc-Unity-Stuffs, NAK.Contacts — NotAKidoS is the
-    /// ChilloutVR developer behind the system), which had dropped Box, boxSize, localOnly and
-    /// the ContentType.Player flag. The shipped client kept all of them — the repo is a diverged
-    /// work-in-progress, not the game — and the missing Player flag alone killed every converted
-    /// receiver: the client's built-in hand/finger senders are SourceContentType.Player
-    /// (ContactsTools), and a receiver whose contentTypes mask lacks that bit can never be
-    /// triggered by another player's hands. Revision 6 is read field-for-field off the
-    /// decompiled Assembly-CSharp of the 2026-07-28 build (Hotfix 3 RC).
-    ///
-    /// The repository still contributes one thing: its MIT-licensed custom inspector, adapted
-    /// below (NakContactStubEditor) so contacts get foldouts and per-receiver-type help instead
-    /// of a raw field list. If real NAK.Contacts sources ever appear in the project,
-    /// RealTypesPresent() detects them and everything generated here removes itself — but do NOT
-    /// import the public repo into a conversion project while it disagrees with the game:
-    /// avatars authored against its layout lose the Player bit and go dead in game.
-    ///
-    /// An asset bundle carries no script assemblies. It records, per MonoBehaviour, a MonoScript
-    /// naming the assembly, namespace and class, and the player resolves that against its own
-    /// loaded assemblies. Declaring the same class, in the same namespace, in an assembly with the
-    /// same name is therefore enough for the client's real implementation to pick the data up.
-    ///
-    /// ONE MONOBEHAVIOUR PER FILE, EACH FILE NAMED AFTER ITS CLASS. This is not style — Unity
-    /// only associates a MonoBehaviour with a script asset when the file name matches the class
-    /// name. Declaring them together in one AvatarBridgeContactStub.cs compiled fine and
-    /// AddComponent worked, so the components looked correct and even drew their gizmos, but Unity
-    /// could produce no MonoScript for them: the inspector's Script field sat empty,
-    /// MonoScript.FromMonoBehaviour(...).text came back empty, the CCK's validator reported broken
-    /// Mono Script references, and every avatar built that way arrived in ChilloutVR as "The
-    /// referenced script on this Behaviour is missing". Everything else about the conversion was
-    /// correct; the file names were the whole defect. Never merge these back into one file.
-    ///
-    /// Only the serialized surface is reproduced, plus editor gizmos so a contact volume can be
-    /// seen and positioned. Anything else would be dead code the moment the avatar is in game,
-    /// since the client's own implementation is what executes there.
-    ///
-    /// Generated into the project rather than shipped in the package: if ChilloutVR ever ships
-    /// these types in the CCK, two definitions of one class would break compilation of the whole
-    /// project — including this patcher, leaving nothing able to undo it. Writing them only after
-    /// confirming the real thing is absent, and deleting them the moment it appears, keeps that
-    /// failure from being self-sealing.
-    /// </summary>
+    // Generates declarations of ChilloutVR's native contact components
+    // so avatars can be authored with them. The system lives in the
+    // game client only; the CCK ships no such types.
+    //
+    // The only authority for the serialized surface is the shipped
+    // client, decompiled. The author's public repo is a diverged
+    // work-in-progress that drops fields the client still reads;
+    // never import it into a conversion project. The repo contributes
+    // its MIT-licensed inspector, adapted below.
+    //
+    // An asset bundle carries no script assemblies; it records
+    // assembly, namespace and class per MonoBehaviour, resolved
+    // against the player's own assemblies. Matching declarations are
+    // enough for the client's implementation to pick the data up.
+    //
+    // One MonoBehaviour per file, each file named after its class.
+    // Unity only associates a MonoBehaviour with a script asset when
+    // the file name matches the class name; merged files compile and
+    // AddComponent works, but no MonoScript exists and the avatar
+    // arrives with missing script references. Never merge them.
+    //
+    // Only the serialized surface is reproduced, plus editor gizmos.
+    // Generated into the project rather than shipped: if the CCK ever
+    // ships these types, a duplicate definition would break the whole
+    // project, including the code able to undo it.
     [InitializeOnLoad]
     public static class ContactStubPatcher
     {
         const string StubTypeName = "NAK.Contacts.ContactBase";
         const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
 
-        /// <summary>Bumped when the generated source changes, so old copies get rewritten.</summary>
         const string StubVersion = "7";
         const string VersionTag = "// AvatarBridge generated contact declaration, revision " + StubVersion;
 
-        /// <summary>
-        /// The newest CCK whose contact surface these declarations were checked field-for-field
-        /// against. Past this, the shape of the data is an assumption rather than a finding.
-        /// 4.0.2: its changelog touches no contact type, and the system author's repository
-        /// (see the class comment) is what revision 5 was verified against.
-        /// </summary>
         const string VerifiedCckVersion = "4.0.2";
 
-        /// <summary>Left behind by revisions 1–3, which put every class in one file.</summary>
         const string LegacySingleFile = "AvatarBridgeContactStub.cs";
 
-        /// <summary>
-        /// One generated file, with a GUID pinned by hand.
-        ///
-        /// Unity identifies a script asset by the GUID in its .meta and every component stores
-        /// that GUID. Letting Unity mint one means the file is a different asset after every
-        /// regeneration or reinstall, orphaning components created before. Never change these
-        /// values: doing so breaks every avatar already converted against them.
-        /// </summary>
+        // One generated file, with a GUID pinned by hand.
+        //
+        // Unity identifies a script asset by the GUID in its .meta and every component stores
+        // that GUID. Letting Unity mint one means the file is a different asset after every
+        // regeneration or reinstall, orphaning components created before. Never change these
+        // values: doing so breaks every avatar already converted against them.
         readonly struct StubFile
         {
             public readonly string Name;
@@ -115,10 +75,6 @@ namespace AvatarBridge
             EditorApplication.delayCall += Sync;
         }
 
-        /// <summary>
-        /// True when NAK.Contacts exists and is not what this class generates — i.e. the real
-        /// thing has arrived and these declarations must get out of its way.
-        /// </summary>
         static bool RealTypesPresent(out Type found)
         {
             found = null;
@@ -160,10 +116,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // A newer CCK than these were verified against may have changed the contact components
-            // without exposing them. Guessing would serialize avatars against a layout nobody has
-            // checked, and that fails silently — data quietly dropped on load. Refusing is safer,
-            // and the conversion falls back to the legacy pointer/trigger path by itself.
+            // A newer CCK may have changed the contact components.
+            // Guessing serializes against an unchecked layout and
+            // fails silently. Refuse; conversion falls back to the
+            // legacy path by itself.
             string cck = InstalledCckVersion();
             if (cck != null && CompareVersions(cck, VerifiedCckVersion) > 0)
             {
@@ -200,16 +156,11 @@ namespace AvatarBridge
                 }
                 Directory.CreateDirectory(dir);
 
-                // Order matters, and getting it wrong is subtle enough to be worth spelling out.
-                //
-                // Writing the .cs first lets Unity's file watcher import it and assign a GUID of
-                // its own before the pinned .meta lands. Overwriting the .meta then changes the
-                // identity of an asset Unity has already imported, and it ends up in a state where
-                // the script asset and the type both exist and look right — the asset resolves to
-                // the correct class with the correct source — while a live component gets a
-                // MonoScript with no asset path and no text. Which is exactly the state that
-                // produced broken script references in the CCK and in game, with every individual
-                // piece appearing correct in isolation.
+                // Order matters. Writing the .cs first lets Unity
+                // import it under its own GUID before the pinned .meta
+                // lands; overwriting the .meta then changes the
+                // identity of an imported asset, and live components
+                // get a MonoScript with no path and no text.
                 //
                 // So an existing asset is removed outright rather than rewritten, and the .meta is
                 // written before the .cs, so the pair is complete the first time Unity sees it.
@@ -244,12 +195,6 @@ namespace AvatarBridge
             return any;
         }
 
-        /// <summary>
-        /// Writes the .meta by hand so the asset keeps its pinned GUID forever.
-        ///
-        /// Always written, never skipped: this runs before the .cs exists, so Unity imports a
-        /// complete pair and never has to be told an already-imported asset changed identity.
-        /// </summary>
         static void WritePinnedMeta(string assetPath, string guid)
         {
             string metaPath = assetPath + ".meta";
@@ -267,10 +212,6 @@ namespace AvatarBridge
                 "  assetBundleVariant:\n");
         }
 
-        /// <summary>
-        /// ABI.CCK.Scripts.CVRCommon.BaseVersion, read reflectively so this file keeps compiling
-        /// if the CCK moves or renames it. Null means "can't tell", not "too new".
-        /// </summary>
         static string InstalledCckVersion()
         {
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
@@ -287,7 +228,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>Numeric dotted-version compare; unparsable parts count as 0.</summary>
         static int CompareVersions(string a, string b)
         {
             var left = a.Split('.');
@@ -304,12 +244,6 @@ namespace AvatarBridge
             return 0;
         }
 
-        /// <summary>
-        /// A "Runtime" folder beside AvatarBridge's Editor folder. The location matters: with no
-        /// assembly definition, anything outside an Editor folder lands in Assembly-CSharp, which
-        /// is the assembly the client's own NAK.Contacts types live in, and matching it is what
-        /// makes the binding work.
-        /// </summary>
         static string GeneratedFolder()
         {
             foreach (var guid in AssetDatabase.FindAssets("t:MonoScript ContactStubPatcher"))
@@ -354,8 +288,8 @@ using System;
 
 namespace AvatarBridge
 {
-    /// <summary>Marks these declarations as AvatarBridge's, so the patcher recognises its own work
-    /// and stands down if ChilloutVR ever ships the real types.</summary>
+    // Marks these declarations as AvatarBridge's, so the patcher recognises its own work
+    // and stands down if ChilloutVR ever ships the real types.
     public interface IGeneratedContactStub { }
 }
 
@@ -390,9 +324,9 @@ namespace NAK.Contacts
     [DefaultExecutionOrder(18200)]
     public abstract class ContactBase : MonoBehaviour, AvatarBridge.IGeneratedContactStub
     {
-        // Field list read off the decompiled shipped client (2026-07-28 build) — every field,
-        // in order, defaults included. boxSize, localOnly and the Player flag exist there even
-        // though the author's public repo dropped them; the client wins.
+        // Field list read off the decompiled shipped client: every
+        // field, in order, defaults included. The public repo drops
+        // some of these; the client wins.
         public ShapeType shapeType;
         public Vector3 localPosition = Vector3.zero;
         public Quaternion localRotation = Quaternion.identity;
@@ -409,12 +343,10 @@ namespace NAK.Contacts
         public Color gizmoColor = Color.green;
 
 #if UNITY_EDITOR
-        // Empty on purpose, and load-bearing twice over. Unity only draws a MonoBehaviour's
-        // enabled checkbox when the script has an enable-able message, so without this the
-        // inspector showed no way to switch a contact off — reported by a tester comparing it
-        // against the VRChat component. And the checkbox is honest: the client's own ContactBase
-        // registers in OnEnable and de-registers in OnDisable (decompiled), so enabled state
-        // genuinely controls the contact in game.
+        // Empty on purpose, and load-bearing. Unity only draws the
+        // enabled checkbox when an enable-able message exists, and
+        // the checkbox is honest: the client's ContactBase registers
+        // in OnEnable and de-registers in OnDisable.
         private void OnEnable() { }
 
         // Editor-only, and the other exception to these files having no behaviour. The client
@@ -488,7 +420,7 @@ namespace NAK.Contacts
 // Inspector adapted from the system author's own MIT-licensed editor:
 // https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts (c) 2026 NotAKidoS.
 // Lives inside the generated set, in Assembly-CSharp behind UNITY_EDITOR, so it can only ever
-// compile when the stub types it draws exist — the same lifecycle, no cross-assembly window.
+// compile when the stub types it draws exist. Same lifecycle, no cross-assembly window.
 // Deliberately NOT in the NAK.Contacts namespace: if the real sources (and their own editor)
 // ever land in this project, class names must not collide while both briefly exist.
 #if UNITY_EDITOR

@@ -5,20 +5,18 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for root movement on transplanted Action poses — the SHIPPED 3.5.35
-    /// design: <c>keepPose</c> keeps height AND rotation curves and bakes both into the pose
-    /// (Unity's own AnimationClipSettings flags), because ChilloutVR's client owns the root and
-    /// discards root motion — only the baked form is visible in game.
-    ///
-    /// This file replaces RootVerticalTest, which asserted an earlier vertical-only design,
-    /// was never re-run after the bake landed, and sat in the repo NOT COMPILING — the blind
-    /// harness covers Editor/ only, so a Tools/ test rots silently unless executed. Caught by a
-    /// completion-verification pass, which is the reason this header explains itself.
-    ///
-    /// Both directions still matter: outside keepPose, a clip that ends displaced or turned
-    /// must lose its root curves, or it walks the wearer around with no input.
-    /// </summary>
+    // Known-answer test for root movement on transplanted Action poses; the SHIPPED 3.5.35
+    // design: keepPose keeps height AND rotation curves and bakes both into the pose
+    // (Unity's own AnimationClipSettings flags), because ChilloutVR's client owns the root and
+    // discards root motion; only the baked form is visible in game.
+    //
+    // This file replaces RootVerticalTest, which asserted an earlier vertical-only design,
+    // was never re-run after the bake landed, and sat in the repo NOT COMPILING; the blind
+    // harness covers Editor/ only, so a Tools/ test rots silently unless executed. Caught by a
+    // completion-verification pass, which is the reason this header explains itself.
+    //
+    // Both directions still matter: outside keepPose, a clip that ends displaced or turned
+    // must lose its root curves, or it walks the wearer around with no input.
     public static class RootPoseTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — root pose kept on Action poses")]
@@ -80,8 +78,8 @@ namespace AvatarBridge.Regression
             fail += Check("keepPose: RootQ.w KEPT", Varies(kept, "RootQ.w"));
             fail += Check("keepPose: RootT.x still stripped", !Varies(kept, "RootT.x"));
 
-            // 3. keepPose bakes the kept movement into the pose — the half that decides whether
-            //    the game shows it at all — and does it on a CLONE, never the source.
+            // 3. keepPose bakes the kept movement into the pose; the half that decides whether
+            //    the game shows it at all; and does it on a CLONE, never the source.
             var ks = AnimationUtility.GetAnimationClipSettings(kept);
             fail += Check("keepPose: orientation baked into pose",
                 ks.loopBlendOrientation && ks.keepOriginalOrientation);

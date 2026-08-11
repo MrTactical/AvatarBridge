@@ -7,68 +7,37 @@ using UnityEngine.Animations;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Makes <see cref="ParentConstraint"/> offsets follow the avatar's scale, so a hat stays on a
-    /// shrinking head instead of hanging above it.
-    ///
-    /// THE PROBLEM. Unity evaluates a parent constraint as
-    /// <c>source.position + source.rotation * translationOffset</c>. The offset is rotated by the
-    /// source but never SCALED by it — it is a fixed number of metres, whatever the rig is doing.
-    /// The avatar scaler animates the root's localScale, so every bone moves closer together while
-    /// each constraint keeps holding its target the same absolute distance away. Shrink and props
-    /// hang off you; grow and they sink inside you. On the avatar this was found on, the hat sat
-    /// 14.9 cm above the head bone and stayed there at every size.
-    ///
-    /// THE FIX. Don't animate the offset — spend the offset. For each source, a small empty
-    /// ("AvatarBridge_ScaleRelay_&lt;target&gt;") is created as a CHILD of that source, placed at
-    /// exactly the world point the offset described, and the constraint is re-pointed at the relay
-    /// with a zero offset. Being a real child, the relay inherits the source's scale for free, so
-    /// the gap between bone and prop is now part of the hierarchy and scales with it. Rotation is
-    /// untouched: the relay's local rotation is identity, so the source's rotation reaches the
-    /// constraint exactly as before and the existing rotation offset still applies.
-    ///
-    /// At 1× this changes nothing — by construction the relay sits where the offset already put
-    /// the target, so nothing on the avatar moves. That is also how to check it: convert, scale
-    /// the avatar root in the scene, and watch the prop track instead of drift.
-    ///
-    /// WHY NOT IN THE ANIMATION. 3.4.5 tried the obvious thing — write scaled copies of every
-    /// offset into the nine generated scale clips — and it made an avatar render pure white in
-    /// play mode and crashed the editor on scene reload. Two reasons it was the wrong shape:
-    /// the scaler runs inside AnimatorMerger, BEFORE constraints are converted and before
-    /// AlignLocalSpaceRelays re-parents transforms (so it baked paths that were about to change),
-    /// and the Size layer's state has Write Defaults ON and sits LAST, so anything its clips touch
-    /// it asserts over the whole avatar every frame. This pass touches no clip and no layer.
-    ///
-    /// WHAT IT DELIBERATELY LEAVES ALONE, and why each one is skipped whole rather than partly:
-    ///   - constraints whose offsets are ANIMATED — zeroing an offset a clip drives would hand
-    ///     control of the prop to a curve that no longer matches it;
-    ///   - sources inside a converted physics chain — a new child of a simulated bone becomes a
-    ///     new particle, and quietly changing how someone's tail moves is not a fair trade for a
-    ///     hat that fits;
-    ///   - sources outside this avatar — an offset from a world anchor is in metres on purpose;
-    ///   - UNLOCKED constraints — Unity re-derives their offsets from the live transform, so it
-    ///     would write the old offset straight back;
-    ///   - sources flattened on an axis — the world→local conversion would divide by zero and put
-    ///     a NaN somewhere it can spread from.
-    ///
-    /// The relay is placed by MEASUREMENT wherever the constraint's output is unambiguous (one
-    /// source, full weight, all three axes, live), so the common case rests on no belief about
-    /// Unity's evaluation at all. Where it can't be measured the documented formula stands in, and
-    /// the report carries the largest gap ever seen between the two — normally zero, and the first
-    /// thing to look at if a prop lands wrong.
-    /// </summary>
+    // Makes ParentConstraint offsets follow the avatar's scale, so a
+    // hat stays on a shrinking head.
+    //
+    // Unity rotates a constraint offset by its source but never scales
+    // it; the offset is a fixed number of metres. The fix: spend the
+    // offset. A relay empty is created as a child of the source at the
+    // world point the offset described, and the constraint repoints at
+    // it with a zero offset. As a real child it inherits scale for
+    // free. At 1x nothing moves, by construction.
+    //
+    // Not done in the animation: the scaler runs before constraints
+    // convert, and the Size layer asserts with Write Defaults on.
+    // This pass touches no clip and no layer.
+    //
+    // Left alone, each skipped whole: animated offsets, sources inside
+    // a converted physics chain, sources outside the avatar, unlocked
+    // constraints, sources flattened on an axis (divide by zero).
+    //
+    // The relay is placed by measurement wherever the output is
+    // unambiguous; the formula stands in elsewhere, and the report
+    // carries the largest gap seen between the two.
     public static class ConstraintScaleRelay
     {
         const string Category = "Avatar scaler";
         const string RelayPrefix = "AvatarBridge_ScaleRelay";
 
-        /// <summary>Below this an offset is rounding noise from the FBX, not a deliberate gap.
-        /// Squared, so 1e-8 is a tenth of a millimetre.</summary>
         const float OffsetEpsilonSq = 1e-8f;
 
         public static void Run(BridgeContext ctx)
         {
-            // Only when we are the thing changing the scale. An avatar that never resizes has
+            // Only when this tool is the thing changing the scale. An avatar that never resizes has
             // nothing to gain here, and every constraint left untouched is one that cannot break.
             if (ctx == null || ctx.Target == null || ctx.Settings == null
                 || !ctx.Settings.addAvatarScaler || !ctx.Settings.convertConstraints)
@@ -150,8 +119,8 @@ namespace AvatarBridge
                     }
                     else if (IsFlat(source.lossyScale))
                     {
-                        // A zero on any axis makes the world→local conversion divide by zero, and
-                        // a NaN reaching a constraint spreads to everything downstream of it.
+                        // A zero on any axis divides by zero, and a NaN
+                        // reaching a constraint spreads downstream.
                         degenerate.Add(path);
                         blocked = "degenerate";
                     }
@@ -239,12 +208,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Re-points every offset source of one constraint at a relay child. Returns how many were
-        /// moved. The constraint is deactivated across the edit and restored afterwards — Unity
-        /// recomputes rest values off a live constraint, and this pass exists precisely because
-        /// nobody wants it re-deriving offsets while the sources are being swapped.
-        /// </summary>
         static int Relay(ParentConstraint constraint)
         {
             // Where the target is standing right now, when that is unambiguously the constraint's
@@ -272,9 +235,9 @@ namespace AvatarBridge
                     relay.transform.SetParent(bone, false);
                     relay.transform.localRotation = Quaternion.identity;
                     relay.transform.localScale = Vector3.one;
-                    // Assigning a WORLD position lets Unity work out the local one, which matters
-                    // on rigs whose bones carry a scale of their own — the FBX import scale is the
-                    // common case. The fallback is the documented evaluation: Unity rotates a
+                    // Assigning a world position lets Unity work out the
+                    // local one, which matters on scaled bones.
+                    // The fallback is the documented evaluation: Unity rotates a
                     // parent constraint's offset by the source and never scales it.
                     relay.transform.position = measured
                         ? truth
@@ -294,11 +257,6 @@ namespace AvatarBridge
             return made;
         }
 
-        /// <summary>
-        /// True when the constrained transform's current world position IS this constraint's
-        /// output and nothing else's: one source at full weight, full constraint weight, all three
-        /// translation axes driven, and everything live enough to have been evaluated.
-        /// </summary>
         static bool Measurable(ParentConstraint constraint)
         {
             const Axis All = Axis.X | Axis.Y | Axis.Z;
@@ -316,13 +274,6 @@ namespace AvatarBridge
                 && constraint.weight >= 0.999f && source.weight >= 0.999f;
         }
 
-        /// <summary>
-        /// Metres between where the constraint has actually put its target and where the documented
-        /// evaluation says it should be. Negative when the constraint isn't in a state that can be
-        /// measured. Reported rather than acted on: it is only ever non-zero if the assumption this
-        /// pass rests on is wrong, and a number in the report beats finding that out from a photo
-        /// of a hat in the wrong place.
-        /// </summary>
         static float Disagreement(ParentConstraint constraint)
         {
             if (!Measurable(constraint))
@@ -334,7 +285,6 @@ namespace AvatarBridge
             return Vector3.Distance(predicted, constraint.transform.position);
         }
 
-        /// <summary>A scale with a zero (or near-zero) axis: world→local would divide by it.</summary>
         static bool IsFlat(Vector3 scale)
         {
             const float Tiny = 1e-5f;
@@ -353,9 +303,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>Named after what it holds up, so the hierarchy explains itself; suffixed only
-        /// if that bone already carries a relay, which happens when several props hang off the
-        /// head.</summary>
         static string RelayName(Transform bone, Transform constrained)
         {
             // '/' would make Transform.Find read the name as a path and never match.
@@ -369,7 +316,6 @@ namespace AvatarBridge
             return candidate;
         }
 
-        /// <summary>Every transform a converted cloth or dynamic-bone chain simulates.</summary>
         static HashSet<Transform> ClothDrivenTransforms(BridgeContext ctx)
         {
             var driven = new HashSet<Transform>();
@@ -393,12 +339,6 @@ namespace AvatarBridge
             return driven;
         }
 
-        /// <summary>
-        /// Paths of constraints whose translation offsets some clip drives. VRChat's own offset
-        /// curves are dropped during conversion (Unity has no matching binding), so anything found
-        /// here came from a Unity constraint the avatar already had — rare, and exactly the case
-        /// where zeroing an offset would be destructive.
-        /// </summary>
         static HashSet<string> ConstraintsWithAnimatedOffsets(BridgeContext ctx)
         {
             var paths = new HashSet<string>();

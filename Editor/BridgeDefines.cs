@@ -7,48 +7,31 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Keeps AvatarBridge's optional-dependency scripting defines in sync with what is
-    /// actually installed in the project. This file must always compile, so it may not
-    /// reference any SDK, CCK, MagicaCloth2 or DynamicBone types directly.
-    ///
-    /// Defines managed here:
-    ///   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
-    ///   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
-    ///   AVATARBRIDGE_CONTACTS - ChilloutVR's native NAK.Contacts components can be authored,
-    ///                           whether from a future CCK or from ContactStubPatcher's output
-    ///
-    /// The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
-    /// CVR_CCK_EXISTS) which the rest of this package is gated behind.
-    /// </summary>
+    // Keeps AvatarBridge's optional-dependency scripting defines in sync with what is
+    // actually installed in the project. This file must always compile, so it may not
+    // reference any SDK, CCK, MagicaCloth2 or DynamicBone types directly.
+    //
+    // Defines managed here:
+    //   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
+    //   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
+    //   AVATARBRIDGE_CONTACTS - ChilloutVR's native NAK.Contacts components can be authored,
+    //                           whether from a future CCK or from ContactStubPatcher's output
+    //
+    // The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
+    // CVR_CCK_EXISTS) which the rest of this package is gated behind.
     [InitializeOnLoad]
     public static class BridgeDefines
     {
-        /// <summary>Tool version, shown in the converter window title.</summary>
         public const string Version = "3.7.4";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
 
-        /// <summary>
-        /// Retired, and actively removed from any project still carrying it.
-        ///
-        /// This used to be set when ChilloutVR's native contact components were declared, and
-        /// ContactsConverter compiled against them behind it. That deadlocks. The define is
-        /// decided by a generated file in Assembly-CSharp, the code reading it lives in the
-        /// editor assembly, and if the two ever disagree — a stub not yet written, or deleted —
-        /// the editor assembly fails to compile. That takes this class with it, so the only thing
-        /// able to clear the define can no longer run, and the project can only be recovered by
-        /// editing Player Settings by hand.
-        ///
-        /// ContactsConverter reaches those components through reflection now and needs no define,
-        /// so the safest thing this can do is make sure the old one is gone.
-        /// </summary>
         public const string ContactsDefine = "AVATARBRIDGE_CONTACTS";
 
         static BridgeDefines()
         {
-            // Delay so we never mutate defines mid-compilation.
+            // Delayed so defines never mutate mid-compilation.
             EditorApplication.delayCall += SyncDefines;
         }
 

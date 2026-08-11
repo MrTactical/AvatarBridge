@@ -9,14 +9,12 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// VRC Contact system -> ChilloutVR pointers/triggers:
-    ///
-    ///   VRCContactSender    -> CVRPointer (one per collision tag) + trigger collider
-    ///   VRCContactReceiver  -> CVRAdvancedAvatarSettingsTrigger driving the parameter
-    ///   VRChat's built-in hand/head/torso colliders -> CVRPointers with standard tags,
-    ///     created only for tags the avatar's receivers actually listen to.
-    /// </summary>
+    // VRC Contact system -> ChilloutVR pointers/triggers:
+    //
+    //   VRCContactSender    -> CVRPointer (one per collision tag) + trigger collider
+    //   VRCContactReceiver  -> CVRAdvancedAvatarSettingsTrigger driving the parameter
+    //   VRChat's built-in hand/head/torso colliders -> CVRPointers with standard tags,
+    //     created only for tags the avatar's receivers actually listen to.
     public static class ContactsConverter
     {
         const string Category = "Contacts";
@@ -64,15 +62,10 @@ namespace AvatarBridge
 
             if (receivers.Length > 0 && UseNativeContacts(ctx))
             {
-                // Both halves of this are read off the shipping client, and they are the reason
-                // native contacts are not the default.
-                //
-                // NAK.Contacts.ContactAnimator.ApplyValue writes the parameter with
-                // animator.SetFloat / SetBool — straight at the Animator. The outbound sync cache
-                // is only updated inside CVRAnimatorManager's own setters, so a value written that
-                // way never leaves the machine. The legacy path does the opposite:
-                // TriggerToContact calls PlayerSetup.ChangeAnimatorParam, which goes through the
-                // manager and therefore syncs.
+                // Read off the shipping client, and the reason native
+                // contacts are not the default: the native system
+                // writes straight at the Animator, which never syncs.
+                // The legacy path writes through the manager, which does.
                 //
                 // Reported by a user who could see their own headpat sparkles and pop sound and
                 // could not work out why nobody else could. The particle that DID work for
@@ -121,16 +114,6 @@ namespace AvatarBridge
             Object.DestroyImmediate(sender);
         }
 
-        /// <summary>
-        /// Names the receivers only another copy of this same avatar can ever set off.
-        ///
-        /// A contact tag is just a word, and a receiver fires only when something SENDS that word.
-        /// Body-part tags are fine — everyone has hands. A tag the author invented ("pump",
-        /// "Balloon", a system's own private name) exists nowhere else in the game, so that
-        /// receiver is dead to every player who isn't wearing this avatar. That is often exactly
-        /// what the author intended, and just as often a surprise, so it is worth stating plainly
-        /// instead of leaving someone to wonder why nobody can trigger it.
-        /// </summary>
         static void ReportUnreachableTags(BridgeContext ctx, HashSet<string> listenedTags)
         {
             var custom = listenedTags
@@ -155,7 +138,6 @@ namespace AvatarBridge
                 "pointer names.");
         }
 
-        /// <summary>Body-part tags every player carries, whichever platform the avatar came from.</summary>
         static readonly HashSet<string> UniversalTags = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
         {
             "Head", "Torso", "Foot", "FootL", "FootR",
@@ -164,26 +146,6 @@ namespace AvatarBridge
             "FingerLittle", "FingerLittleL", "FingerLittleR",
         };
 
-        /// <summary>
-        /// VRChat contact tag -> the ChilloutVR pointer type that means the same thing, so an
-        /// ordinary ChilloutVR player can trigger a converted receiver.
-        ///
-        /// A receiver only ever fires for a tag something else is actually SENDING, and the two
-        /// platforms name the same body parts differently. Everyone in ChilloutVR carries pointers
-        /// on their hands and index fingers whatever avatar they're wearing — the client turns each
-        /// CVRPointer into a contact sender tagged with its <c>type</c> string
-        /// (<c>PointerToContact.Create</c>) — but those types are "LeftHand", "RightHand", "index",
-        /// where VRChat says "HandL", "HandR", "FingerIndexL". A converted head-pat receiver
-        /// listening for "HandR" therefore sits there forever, because nothing in the game sends
-        /// that word.
-        ///
-        /// "Hand" happens to be spelled the same on both platforms, which is why some converted
-        /// contacts work and others don't — a difference that looks arbitrary until you see the
-        /// list.
-        ///
-        /// Adding rather than replacing: the VRChat tags stay so converted avatars still trigger
-        /// each other exactly as they did, and the ChilloutVR names are extra ways in.
-        /// </summary>
         static readonly Dictionary<string, string[]> ChilloutVrPointerTypes =
             new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
             {
@@ -262,14 +224,9 @@ namespace AvatarBridge
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                     settingName = receiver.parameter
-                    // No min/max. This used to set minValue = 1, maxValue = 0 to "invert" the
-                    // range, on the belief that ChilloutVR measures distance outward while VRChat
-                    // reads 1 at the centre. That belief was wrong: the client computes
-                    // 1 - saturate(distance / extent), which is 1 at the centre exactly like
-                    // VRChat. The inversion was only ever harmless because SetFromDistance writes
-                    // the proximity value raw — min/max are read solely by Add, Subtract and
-                    // SetFromPosition. Left in, it was a trap waiting for the day the CCK started
-                    // honouring them here.
+                    // No min/max. The client computes proximity as
+                    // 1 at the centre, exactly like VRChat, and
+                    // SetFromDistance writes the value raw.
                 });
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                     $"Proximity receiver -> distance-driven \"{receiver.parameter}\"");
@@ -291,40 +248,23 @@ namespace AvatarBridge
             };
         }
 
-        // --- ChilloutVR's native contact system ---------------------------------------
+        // --- ChilloutVR's native contact system ---
         //
-        // The components line up with VRChat's almost field for field, so this is a copy rather
-        // than an impersonation: same shapes, same collision tags, same allowSelf/allowOthers/
-        // localOnly, real proximity. They also need no Unity collider — the shape lives on the
-        // component — and contacts are per-client by design (confirmed in game): every client
-        // simulates every avatar's contacts itself, so reactions cross the network with no sync
-        // involved and nothing here costs sync bits; whether a driven parameter's VALUE
-        // replicates is its own AAS declaration's business. The field layout comes from the
-        // DECOMPILED SHIPPED CLIENT, never from the author's public repo — see ContactStubPatcher
-        // for the revision-5 incident where trusting the repo made every receiver deaf.
+        // The components match VRChat's almost field for field: same
+        // shapes, same tags, real proximity, no Unity collider needed.
+        // Contacts are per-client by design. Field layout comes from
+        // the decompiled shipped client, never the author's public
+        // repo; ContactStubPatcher supplies the declarations.
         //
-        // ContactStubPatcher supplies the declarations; the game holds the implementation.
-
-        // ChilloutVR's native contact components, reached entirely through reflection.
-        //
-        // Deliberately NOT behind a scripting define. An earlier version gated this on
-        // AVATARBRIDGE_CONTACTS and named NAK.Contacts directly, which deadlocks: the define is
-        // set from a generated file in Assembly-CSharp while this file lives in the editor
-        // assembly, and the moment those two disagree the editor assembly stops compiling — which
-        // takes BridgeDefines with it, so the one piece of code that could clear the define can no
-        // longer run. The only way out was editing Player Settings by hand. Reflection removes the
-        // possibility entirely: nothing here needs those types at compile time, so a missing or
-        // half-written stub degrades to the legacy path instead of bricking the project.
-        //
-        // Same approach CreateParameterStreams already takes with the CCK.
+        // Reached entirely through reflection, never a scripting
+        // define. A define set from a generated file can deadlock the
+        // editor assembly against Assembly-CSharp; reflection degrades
+        // to the legacy path instead of bricking the project.
 
         const string NakSender = "NAK.Contacts.ContactSender";
         const string NakReceiver = "NAK.Contacts.ContactReceiver";
         const string NakAnimator = "NAK.Contacts.ContactAnimator";
 
-        /// <summary>The native contact component type, or null when the game's stubs are absent.
-        /// Internal so the system stripper can find the same components without naming the type
-        /// at compile time either — see the comment above for why nothing here may.</summary>
         internal static System.Type NativeContactAnimatorType => FindType(NakAnimator);
 
         internal static System.Type FindType(string fullName)
@@ -347,15 +287,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Native contact components address their parameter by NAME, so every rename the animator
-        /// merge applied has to be followed here too. Runs after the merge for that reason.
-        ///
-        /// Without it a contact whose parameter was sanitised for the CCK — or made local, which
-        /// the native system requires — kept pointing at a name the finished controller no longer
-        /// declares, and drove nothing. Nothing in the controller looks wrong when this happens:
-        /// it renamed itself consistently, and the component is not part of it.
-        /// </summary>
         public static void RepointContactParameters(BridgeContext ctx)
         {
             var type = FindType(NakAnimator);
@@ -370,8 +301,8 @@ namespace AvatarBridge
             }
             if (ctx.AppliedParameterRenames.Count == 0)
             {
-                // Nothing was renamed, so nothing needs following — but a contact can still be
-                // addressing a name that does not exist, and that question is asked either way.
+                // Nothing renamed, nothing to follow. A contact can
+                // still address a missing name; ask either way.
                 ReportInertContacts(ctx, type, field);
                 return;
             }
@@ -401,21 +332,6 @@ namespace AvatarBridge
             ReportInertContacts(ctx, type, field);
         }
 
-        /// <summary>
-        /// Names contacts whose parameter the finished controller does not have.
-        ///
-        /// The write is a no-op — nothing declares the name, so nothing can read it — which is why
-        /// this is a warning about a lost feature rather than a fault to fix. It is worth saying
-        /// out loud because a contact that does nothing looks exactly like a contact that is
-        /// broken, and the avatar's owner is the only one who can tell which they meant.
-        ///
-        /// Contacts belonging to a system this conversion STRIPPED are already gone by here — the
-        /// stripper removes those with the rest of the system. What reaches this point is a
-        /// receiver whose parameter was missing in the source too.
-        ///
-        /// Asked of the controller rather than of the menu: a menu entry drives a controller
-        /// parameter, so a name absent from the controller is absent everywhere that matters.
-        /// </summary>
         static void ReportInertContacts(BridgeContext ctx, System.Type type, FieldInfo field)
         {
             if (ctx.MergedController == null)
@@ -471,10 +387,6 @@ namespace AvatarBridge
             try { return System.Enum.Parse(enumType, member, true); } catch { return null; }
         }
 
-        /// <summary>
-        /// Every flag ContentType defines, OR'd together — computed from the live enum rather
-        /// than a literal, so a client build adding a flag is included automatically.
-        /// </summary>
         static object AllContentTypes(System.Type sibling)
         {
             var enumType = sibling.Assembly.GetType("NAK.Contacts.ContentType", false);
@@ -503,37 +415,26 @@ namespace AvatarBridge
             var receiver = FindType(NakReceiver);
             if (receiver != null && FindType(NakSender) != null && FindType(NakAnimator) != null)
             {
-                // The type resolving is not enough. A component only survives serialization if
-                // Unity can tie it back to a script asset, and it can't when the declarations
-                // exist solely in a stale compiled assembly — the .cs having been deleted, or not
-                // yet imported. AddComponent still succeeds there, and writes a script reference
-                // with no GUID at all, which fails in the CCK's validator and again in ChilloutVR
-                // as "the referenced script on this Behaviour is missing". The avatar looks
-                // perfectly converted right up until it doesn't work.
-                //
-                // So prove it on a throwaway object before committing the whole conversion to it.
+                // The type resolving is not enough. A component only
+                // survives serialization tied to a script asset, and a
+                // stale compiled assembly has none; the reference
+                // serializes without a GUID and fails downstream.
+                // Prove it on a throwaway object first.
                 var probe = new GameObject("AvatarBridge_ContactProbe") { hideFlags = HideFlags.HideAndDontSave };
                 try
                 {
-                    // Exactly the CCK's own test, from its BrokenMonoBehaviourStep validator:
-                    // MonoScript.FromMonoBehaviour(...).text must be non-empty. Checking only for
-                    // a non-null MonoScript is not enough and let this through once already — when
-                    // Assembly-CSharp has failed to compile, Unity keeps the last good assembly
-                    // loaded, so the type still resolves and AddComponent still succeeds, but it
-                    // binds to something with no script asset behind it. The reference serializes
-                    // without a GUID, the CCK rejects the avatar, and ChilloutVR reports the script
-                    // as missing. Empty source text is what distinguishes that from a real binding.
+                    // The CCK's own test: MonoScript source text must be
+                    // non-empty. A non-null MonoScript alone can bind to
+                    // a stale assembly with no script asset behind it.
                     var added = probe.AddComponent(receiver) as MonoBehaviour;
                     var script = added != null ? UnityEditor.MonoScript.FromMonoBehaviour(added) : null;
                     if (script != null && !string.IsNullOrEmpty(script.text))
                     {
                         return true;
                     }
-                    // Almost always the same cause, so name it rather than describe symptoms.
-                    //
-                    // A scene holding a MonoBehaviour whose script reference is dangling makes
-                    // Unity manufacture a placeholder MonoScript for that class — no asset, no
-                    // source text, a negative instance id. That placeholder then wins when
+                    // Almost always the same cause; name it. A dangling
+                    // script reference makes Unity manufacture a
+                    // placeholder MonoScript. That placeholder wins when
                     // AddComponent looks the class up, so every NEW component is bound to it and
                     // is born broken too. One bad conversion left in the scene therefore poisons
                     // every conversion after it, including ones that would otherwise be correct,
@@ -568,11 +469,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// True when Unity holds a MonoScript for one of the contact classes that has no asset
-        /// behind it — the placeholder it manufactures for a component whose script reference is
-        /// dangling. Its presence is what stops any new component binding correctly.
-        /// </summary>
         static bool HasPhantomContactScript(out string className)
         {
             className = null;
@@ -637,19 +533,16 @@ namespace AvatarBridge
             var contact = host.AddComponent(receiverType);
             ApplyShape(contact, receiver.shapeType, receiver.radius, receiver.height,
                 receiver.position, receiver.rotation);
-            // Same widening as the CVRAdvancedAvatarSettingsTrigger path — a native receiver is
-            // matched against the very same tags, so it needs the ChilloutVR pointer names too.
+            // Same widening as the trigger path. A native receiver
+            // needs the ChilloutVR pointer names too.
             SetMember(contact, "collisionTags", WithChilloutVrPointerTypes(receiver.collisionTags));
             SetMember(contact, "allowSelf", receiver.allowSelf);
             SetMember(contact, "allowOthers", receiver.allowOthers);
             SetMember(contact, "localOnly", receiver.localOnly);
-            // contentTypes is written EXPLICITLY, always, to every flag the client defines. It
-            // is a mask over the SENDER's source type, and the client's built-in hand/finger
-            // senders are SourceContentType.Player (ContactsTools, decompiled) — a receiver
-            // whose mask lacks the Player bit can never be touched by another player's hands.
-            // 2.50.3 relied on the stub's field default for this, the stub's default briefly
-            // lost the Player flag, and every converted receiver went silently deaf: a default
-            // is a hidden dependency, an explicit write is a fact.
+            // contentTypes is written explicitly, every flag. It masks
+            // the sender's source type, and the client's hand senders
+            // are Player; a mask without that bit is untouchable.
+            // A default is a hidden dependency; a write is a fact.
             SetMember(contact, "contentTypes", AllContentTypes(receiverType));
 
             string typeName = receiver.receiverType.ToString();
@@ -659,18 +552,11 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
-            // A native contact must drive a LOCAL parameter. It writes straight at the Animator
-            // without filling the outbound AAS buffer, so a synced name has the declared default
-            // streamed back over every value the contact sets — which is the "it only syncs
-            // sometimes" this tool used to cause, and it costs the wearer the contact as often as
-            // it costs everyone else. Made local, the system does what it was built to do: every
-            // client runs the contact itself and reaches the same answer from the same collision.
-            //
-            // Which route gets there is decided PER PARAMETER, because only one thing can stop
-            // the simple route — a menu control driving the same name, which has to stay synced
-            // to reach anyone. That is rare, so it does not deserve a setting; it deserves the
-            // other route. This used to be a global tickbox that had to be right for the whole
-            // avatar at once, and the avatar is not uniform.
+            // A native contact must drive a local parameter. A synced
+            // name has its default streamed back over the contact's
+            // writes. Local, every client runs the contact and reaches
+            // the same answer. The route is decided per parameter; only
+            // a menu control driving the same name blocks the simple one.
             string driven = receiver.parameter;
             bool analog = typeName.Contains("Proximity");
             if (!driven.StartsWith("#", System.StringComparison.Ordinal))
@@ -687,16 +573,11 @@ namespace AvatarBridge
                 }
                 else if (!analog)
                 {
-                    // The menu needs this name synced, so the contact cannot have it. Give the
-                    // contact a local name of its own and let a driver copy the value across —
-                    // a driver writes through the animator manager, so it is transmitted.
-                    //
-                    // Recorded once per PAIR, not once per receiver. Several receivers sharing a
-                    // parameter is ordinary — a left and a right nipple, ear or hand all driving
-                    // one name — and they share the local name too, so a second entry would build
-                    // a second layer reading the same source and writing the same target. Those
-                    // duplicates agree with each other, so nothing misbehaves; they are simply a
-                    // layer and a driver call of pure waste on most symmetric avatars.
+                    // The menu needs this name synced, so the contact
+                    // gets a local name of its own and a driver copies
+                    // the value across; driver writes are transmitted.
+                    // Recorded once per pair, not per receiver;
+                    // symmetric receivers share the local name.
                     string local = "#" + driven + "_contact";
                     if (!ctx.BridgedContacts.Contains((local, driven)))
                     {
@@ -746,11 +627,6 @@ namespace AvatarBridge
             SetMember(contact, "localRotation", sphere ? Quaternion.identity : rotation);
         }
 
-        /// <summary>
-        /// A child of whatever the VRChat contact was anchored to — its rootTransform when it set
-        /// one, otherwise its own transform — left at identity so the component's own
-        /// localPosition/localRotation carry the offset, as the native system expects.
-        /// </summary>
         static GameObject NativeContactObject(Transform root, Transform fallback, string name)
         {
             var go = new GameObject(name);
@@ -762,22 +638,6 @@ namespace AvatarBridge
         }
 
 
-        /// <summary>
-        /// The object a VRC contact's shape is actually anchored to. VRChat positions the shape
-        /// relative to <c>rootTransform</c> when it is set — the component itself often lives
-        /// somewhere central (VRCFury bakes them that way; hand-authored head-pat receivers do it
-        /// too) while the shape rides a bone. The native path always honoured this; the legacy
-        /// path used to parent under the component's own object, so any contact using the
-        /// override converted mis-anchored and did not follow its bone. Found by a completion
-        /// verification pass, wild frequency measured by ComponentCensus.
-        ///
-        /// One VRChat behaviour is knowingly NOT reproduced by anchoring here: disabling the
-        /// COMPONENT's GameObject disables the contact in VRChat even when the shape rides a
-        /// different bone. Animated enable curves are repointed at the host and still work; a raw
-        /// object toggle of the component's (now different) object no longer reaches it. The
-        /// native path has always had the same trade, and a shape that follows its bone is the
-        /// half testers actually see.
-        /// </summary>
         static GameObject AnchorOf(VRC.Dynamics.ContactBase contact)
         {
             return contact.rootTransform != null
@@ -785,11 +645,6 @@ namespace AvatarBridge
                 : contact.gameObject;
         }
 
-        /// <summary>
-        /// Remembers where a VRC contact's replacement landed, keyed by the ORIGINAL component's
-        /// animator path — which is exactly what an m_Enabled curve binding carries. The path is
-        /// captured here, before the VRC component is destroyed.
-        /// </summary>
         static void RecordHost(BridgeContext ctx, Component original, bool isSender, GameObject host)
         {
             string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
@@ -802,29 +657,6 @@ namespace AvatarBridge
             hosts.Add(hostPath);
         }
 
-        /// <summary>
-        /// Rewires animated contact on/off switches at the converted contacts. Runs after the
-        /// animator merge, from BridgeConverter, exactly like the constraint-curve repoint.
-        ///
-        /// VRChat avatars animate <c>VRCContactReceiver.m_Enabled</c> to switch a contact off —
-        /// "disable head pats" is built this way. Conversion deletes that component, and a curve
-        /// still addressing it plays as silence: the menu entry converts, the parameter syncs, the
-        /// layer plays, and the contact never turns off. Found by a tester reading the converted
-        /// inspector against the VRChat one.
-        ///
-        /// The retarget is the generated host object's ACTIVE state, not the new component's
-        /// enabled flag, and the choice is from the decompiled client, both paths:
-        ///   - Native: NAK.Contacts.ContactBase registers in OnEnable and de-registers in
-        ///     OnDisable, so object active works — and it also carries
-        ///     OnDidApplyAnimationProperties, so these components are BUILT to be animated.
-        ///   - Legacy: TriggerToContact.Create DISABLES the CVRAdvancedAvatarSettingsTrigger
-        ///     wrapper the moment it builds the backing contact, so animating the wrapper's
-        ///     enabled flag does nothing — but the backing contact is created on the wrapper's
-        ///     own GameObject, so deactivating the object disables it properly.
-        /// Every replacement lives on a generated host object of its own, which is what makes one
-        /// rule serve both paths. A legacy sender with several tags became several pointer
-        /// objects, so one enable curve fans out to each.
-        /// </summary>
         internal static void RepointContactEnableCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null || ctx.ContactHosts.Count == 0)
@@ -873,11 +705,10 @@ namespace AvatarBridge
                     // shipped client rather than hope:
                     //   m_Enabled     -> host object active, both paths (ContactBase and the
                     //                    legacy backing contact both register in OnEnable).
-                    //   position.xyz  -> legacy: the host TRANSFORM carries the offset, so the
-                    //                    curve maps 1:1 onto m_LocalPosition. Native: the host
-                    //                    sits at identity and the offset lives in the component's
-                    //                    localPosition FIELD — animating that works because
-                    //                    ContactBase carries OnDidApplyAnimationProperties.
+                    //   position.xyz  -> legacy: the host transform carries the offset, 1:1
+                    //                    onto m_LocalPosition. Native: the offset lives in the
+                    //                    component's localPosition field, which is animatable
+                    //                    (ContactBase has OnDidApplyAnimationProperties).
                     //   allowSelf/allowOthers/localOnly -> native only, same field animation.
                     //                    Legacy bakes them into the backing contact at Create and
                     //                    never looks again, so those drop with the warning.

@@ -6,17 +6,15 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Proves the stuck-state detector can actually fire.
-    ///
-    /// It came back clean on all fifty corpus avatars, which is worthless on its own — "the corpus
-    /// is healthy" and "the check never fires" look identical from outside. This builds controllers
-    /// with known answers and asserts both directions: a state whose only exit is unsatisfiable
-    /// must be caught, and ordinary complementary bands must NOT be, or the detector is noise.
-    ///
-    /// The cases mirror the real gesture idiom, since that is what it exists to police: entering a
-    /// gesture on "> 1.9 and < 2.1" and leaving on its complement.
-    /// </summary>
+    // Proves the stuck-state detector can actually fire.
+    //
+    // It came back clean on all fifty corpus avatars, which is worthless on its own. "the corpus
+    // is healthy" and "the check never fires" look identical from outside. This builds controllers
+    // with known answers and asserts both directions: a state whose only exit is unsatisfiable
+    // must be caught, and ordinary complementary bands must NOT be, or the detector is noise.
+    //
+    // The cases mirror the real gesture idiom, since that is what it exists to police: entering a
+    // gesture on "> 1.9 and < 2.1" and leaving on its complement.
     public static class StuckStateDetectorTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — stuck-state detector")]

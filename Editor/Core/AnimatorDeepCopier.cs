@@ -5,15 +5,13 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Deep-copies animator controller content so AvatarBridge never mutates the user's
-    /// original VRChat controllers. Animation clips are shared by reference (they are not
-    /// modified by the conversion except via clone-on-write in the rename pass).
-    ///
-    /// Usage: create one instance per source controller, call CloneLayer() for each layer.
-    /// State/state-machine cross references (transition destinations) are resolved from
-    /// the internal maps, so all layers of one controller must be cloned by one instance.
-    /// </summary>
+    // Deep-copies animator controller content so AvatarBridge never mutates the user's
+    // original VRChat controllers. Animation clips are shared by reference (they are not
+    // modified by the conversion except via clone-on-write in the rename pass).
+    //
+    // Usage: create one instance per source controller, call CloneLayer() for each layer.
+    // State/state-machine cross references (transition destinations) are resolved from
+    // the internal maps, so all layers of one controller must be cloned by one instance.
     public class AnimatorDeepCopier
     {
         readonly Dictionary<AnimatorState, AnimatorState> _stateMap = new Dictionary<AnimatorState, AnimatorState>();
@@ -151,13 +149,13 @@ namespace AvatarBridge
                 // are assigned. So the flag has to be cleared *before* the children land.
                 //
                 // Worse, Unity clamps child thresholds into [minThreshold, maxThreshold] when
-                // those are assigned — and min/max are meaningless in manual mode, so authors
+                // those are assigned; and min/max are meaningless in manual mode, so authors
                 // leave them anywhere. VRCFury emits its manual trees with min = max = 0. Copying
                 // that faithfully crushed every child threshold to 0, which turned a 1D tree into
                 // one that plays all of its clips at once: on "Kaides Expie" the tail-scale tree
                 // held both extremes at full weight and the tail swallowed the avatar.
                 //
-                // So min/max are only copied when they actually mean something — that is, when
+                // So min/max are only copied when they actually mean something; that is, when
                 // the author used automatic thresholds. In manual mode the children's own
                 // thresholds are the whole truth, and writing min/max can only damage them.
                 dst.useAutomaticThresholds = false;

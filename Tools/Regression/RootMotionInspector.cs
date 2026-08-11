@@ -6,11 +6,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Dumps the root-motion curves of a converted controller's states, so "did the descent
-    /// survive?" is answered by Unity's own curve API rather than by parsing controller YAML —
-    /// which I got wrong twice, once producing a 104-metre spread on a curve measured in metres.
-    /// </summary>
+    // Dumps the root-motion curves of a converted controller's states, so "did the descent
+    // survive?" is answered by Unity's own curve API rather than by parsing controller YAML .
+    // which I got wrong twice, once producing a 104-metre spread on a curve measured in metres.
     public static class RootMotionInspector
     {
         [MenuItem("Tools/AvatarBridge Dev/Inspect — root motion on transplanted poses")]

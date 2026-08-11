@@ -4,13 +4,11 @@ using UnityEditor.Animations;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Locates the CVR-VRCFT face-tracking animator that AvatarBridge injects. The rig is
-    /// DragonSkyRunner's "CVR Eye &amp; Face Tracking" and ships bundled under
-    /// Assets/AvatarBridge/FaceTracking, so this normally always resolves; the lookup is by
-    /// the controller's stable asset GUID (with a name-search fallback) so it still works if
-    /// the assets are relocated. IsInstalled only reports false if the bundle was deleted.
-    /// </summary>
+    // Locates the CVR-VRCFT face-tracking animator that AvatarBridge injects. The rig is
+    // DragonSkyRunner's "CVR Eye & Face Tracking" and ships bundled under
+    // Assets/AvatarBridge/FaceTracking, so this normally always resolves; the lookup is by
+    // the controller's stable asset GUID (with a name-search fallback) so it still works if
+    // the assets are relocated. IsInstalled only reports false if the bundle was deleted.
     public static class FaceTrackingPackages
     {
         public const string DisplayName = "CVR VRCFT — Eye & Face Tracking (DragonSkyRunner)";

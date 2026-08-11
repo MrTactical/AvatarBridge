@@ -7,17 +7,15 @@ using VRC.SDK3.Dynamics.Contact.Components;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for the widened contact-curve repointing (task #19): position curves
-    /// follow the converted contact, filter curves follow it on the native path only.
-    ///
-    /// The mapping is per PATH because the offset lives in different places, both verified from
-    /// the shipped client: the legacy host carries the offset in its TRANSFORM (curves map 1:1
-    /// onto m_LocalPosition), the native host sits at identity with the offset in the component's
-    /// localPosition FIELD (animatable because ContactBase carries
-    /// OnDidApplyAnimationProperties). Legacy filters bake once at TriggerToContact.Create, so
-    /// those drop with the warning.
-    /// </summary>
+    // Known-answer test for the widened contact-curve repointing (task #19): position curves
+    // follow the converted contact, filter curves follow it on the native path only.
+    //
+    // The mapping is per PATH because the offset lives in different places, both verified from
+    // the shipped client: the legacy host carries the offset in its TRANSFORM (curves map 1:1
+    // onto m_LocalPosition), the native host sits at identity with the offset in the component's
+    // localPosition FIELD (animatable because ContactBase carries
+    // OnDidApplyAnimationProperties). Legacy filters bake once at TriggerToContact.Create, so
+    // those drop with the warning.
     public static class ContactCurveRepointTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — contact curve repointing")]

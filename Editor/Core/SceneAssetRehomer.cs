@@ -7,18 +7,16 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// VRCFury bakes generated assets — meshes (SPS-deformed bodies, blendshape/mesh-optimizer
-    /// output, merged armatures), and materials/shaders (SPS-patched, poiyomi-locked) — under
-    /// Packages/com.vrcfury.temp, and it deletes that folder on its next build. A converted
-    /// avatar that still points at those temp assets loses them:
-    ///   * a null sharedMesh renders nothing → the avatar comes back **blank/invisible**;
-    ///   * a null material/shader renders **pink** and drops out of the scene.
-    ///
-    /// This copies every renderer mesh, material and (generated) shader that lives in the
-    /// volatile temp into the output folder and repoints the renderers, making the avatar
-    /// self-contained. Mesh-side sibling of AnimatorMerger.RehomeVolatileAssets (clips/masks).
-    /// </summary>
+    // VRCFury bakes generated assets; meshes (SPS-deformed bodies, blendshape/mesh-optimizer
+    // output, merged armatures), and materials/shaders (SPS-patched, poiyomi-locked); under
+    // Packages/com.vrcfury.temp, and it deletes that folder on its next build. A converted
+    // avatar that still points at those temp assets loses them:
+    //   * a null sharedMesh renders nothing -> the avatar comes back **blank/invisible**;
+    //   * a null material/shader renders **pink** and drops out of the scene.
+    //
+    // This copies every renderer mesh, material and (generated) shader that lives in the
+    // volatile temp into the output folder and repoints the renderers, making the avatar
+    // self-contained. Mesh-side sibling of AnimatorMerger.RehomeVolatileAssets (clips/masks).
     public static class SceneAssetRehomer
     {
         const string Category = "Assets";
@@ -31,7 +29,7 @@ namespace AvatarBridge
             }
             // Shared with the animator rescue: covers Fury's own temp AND NDMF's __Generated,
             // where Fury bakes the moment Modular Avatar is installed. A mesh referenced from
-            // either dies on the next play mode's bake — the avatar goes invisible rather than
+            // either dies on the next play mode's bake; the avatar goes invisible rather than
             // frozen, but by the same mechanism.
             return AnimatorMerger.IsDoomedGeneratedPath(AssetDatabase.GetAssetPath(obj));
         }
@@ -150,18 +148,18 @@ namespace AvatarBridge
             }
             var copy = UnityEngine.Object.Instantiate(mat);
             copy.name = mat.name;
-            // A generated (SPS/locked) shader lives in temp too — rescue it so the copy isn't pink.
+            // A generated (SPS/locked) shader lives in temp too; rescue it so the copy isn't pink.
             if (IsVolatile(copy.shader))
             {
                 copy.shader = RehomeShader(copy.shader, dir, shaderMap);
             }
             // And so do its TEXTURES, which for a long time they did not. Instantiate carries every
             // texture reference over verbatim, so a material rescued out of the doomed folder kept
-            // pointing INTO it — the shader survived and the pictures did not. Reported from game
+            // pointing INTO it; the shader survived and the pictures did not. Reported from game
             // as particles turning from golden stars into plain white squares on every avatar that
             // had any: Fury packs baked textures as sub-assets of one "VRCFury Other.asset", that
             // folder is wiped on its next build, and a particle with no _MainTex draws as an
-            // untextured quad. Nothing about it is particle-specific — particles are simply where
+            // untextured quad. Nothing about it is particle-specific; particles are simply where
             // a missing texture is unmistakable rather than merely wrong.
             RehomeTextures(copy, dir, textureMap);
             AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{SafeName(mat.name)}.mat"));
@@ -169,13 +167,6 @@ namespace AvatarBridge
             return copy;
         }
 
-        /// <summary>
-        /// Repoints every texture the material reads at a copy that will still be there tomorrow.
-        ///
-        /// Only properties the SHADER declares are walked. A material remembers values for
-        /// properties its current shader no longer has, and rescuing those would copy megabytes
-        /// of textures nothing samples.
-        /// </summary>
         static void RehomeTextures(Material mat, string dir, Dictionary<Texture, Texture> map)
         {
             var shader = mat.shader;
@@ -203,16 +194,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// A baked texture is almost never a file of its own — it is one object inside a container
-        /// asset holding dozens. So the CONTAINER is copied once, byte for byte, and each texture
-        /// is matched to its counterpart inside the copy.
-        ///
-        /// Deliberately NOT Instantiate + CreateAsset, which is how the meshes above are rescued:
-        /// a texture that is not marked readable has no pixels on the CPU to serialize, and that
-        /// route would write a blank one — turning "the picture is missing" into "the picture is
-        /// there and empty", which looks identical on screen and is harder to notice.
-        /// </summary>
         static Texture RehomeTexture(Texture texture, string dir, Dictionary<Texture, Texture> map)
         {
             if (map.TryGetValue(texture, out var already))
@@ -245,15 +226,8 @@ namespace AvatarBridge
             return map[texture];
         }
 
-        /// <summary>Source container path -> the copy of it, so one container is copied once.</summary>
         static readonly Dictionary<string, string> containerCopies = new Dictionary<string, string>();
 
-        /// <summary>
-        /// The same object, one file along. Matched by type and name, and where a container holds
-        /// several that share both, by position among them — a byte copy preserves the order, so
-        /// this is exact rather than a guess. Returns null when the shapes disagree, and the caller
-        /// then leaves the reference alone rather than pointing it somewhere plausible and wrong.
-        /// </summary>
         static UnityEngine.Object Counterpart(UnityEngine.Object original, string source, string copyPath)
         {
             int index = 0;
@@ -324,7 +298,7 @@ namespace AvatarBridge
             {
                 n = n.Replace(c, '_');
             }
-            // Shader names use '/' as category separators — not valid in file names.
+            // Shader names use '/' as category separators; not valid in file names.
             return n.Replace('/', '_');
         }
     }

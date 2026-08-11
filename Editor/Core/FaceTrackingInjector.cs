@@ -11,24 +11,22 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// CVR-VRCFT (parameter-based) face tracking, using DragonSkyRunner's "CVR Eye &amp; Face
-    /// Tracking" animator (bundled under Assets/AvatarBridge/FaceTracking). Copies the rig's
-    /// layers and parameters into the generated CVR animator, then makes it work on THIS
-    /// avatar without any mesh edits:
-    ///
-    ///   * The eye-gaze layer rotates two empties ("EyeTracking.L/.R"); we generate those
-    ///     empties at the avatar's eye bones and drive each eye bone from its empty via a
-    ///     RotationConstraint. The bundled ON/OFF clips toggle that constraint's source
-    ///     weight against CVR's native eye-look/blink.
-    ///   * The rig's clips are authored against a fixed hierarchy ("Armature/Hips/Spine/
-    ///     Chest/Neck/Head/…") and a face mesh named "Body". Unity animation paths are
-    ///     case-sensitive, so we clone-on-write every referenced clip and repath its curves
-    ///     onto the real avatar's eye bones, generated empties, and face mesh.
-    ///
-    /// Any existing FT rig is stripped first (see AnimatorMerger). Eye gaze magnitude still
-    /// wants per-avatar tuning per the package readme — this is a working starting point.
-    /// </summary>
+    // CVR-VRCFT (parameter-based) face tracking, using DragonSkyRunner's "CVR Eye & Face
+    // Tracking" animator (bundled under Assets/AvatarBridge/FaceTracking). Copies the rig's
+    // layers and parameters into the generated CVR animator, then makes it work on THIS
+    // avatar without any mesh edits:
+    //
+    //   * The eye-gaze layer rotates two empties ("EyeTracking.L/.R"); those are generated
+    //     empties at the avatar's eye bones and drive each eye bone from its empty via a
+    //     RotationConstraint. The bundled ON/OFF clips toggle that constraint's source
+    //     weight against CVR's native eye-look/blink.
+    //   * The rig's clips are authored against a fixed hierarchy ("Armature/Hips/Spine/
+    //     Chest/Neck/Head/...") and a face mesh named "Body". Unity animation paths are
+    //     case-sensitive, so every referenced clip is cloned on write and its curves repathed
+    //     onto the real avatar's eye bones, generated empties, and face mesh.
+    //
+    // Any existing FT rig is stripped first (see AnimatorMerger). Eye gaze magnitude still
+    // wants per-avatar tuning per the package readme; this is a working starting point.
     public static class FaceTrackingInjector
     {
         const string Category = "Face tracking";
@@ -106,7 +104,7 @@ namespace AvatarBridge
             master.parameters = parameters.ToArray();
 
             // ---- generate the eye rig and repath the clips onto this avatar -------------
-            // Do this while we still hold the authoritative layer references, BEFORE handing
+            // Do this while the authoritative layer references are still held, before handing
             // them to master.layers (whose setter can detach the state-machine objects).
             var pathRemap = new Dictionary<string, string>();
             try
@@ -120,7 +118,7 @@ namespace AvatarBridge
                 Debug.LogException(e);
             }
 
-            // Resolve the face mesh once — used for both the path repath and the blendshape
+            // Resolve the face mesh once; used for both the path repath and the blendshape
             // reconciliation below.
             var faceMesh = ResolveFaceMesh(ctx);
             string faceMeshPath = faceMesh != null ? ctx.PathInTarget(faceMesh.transform) : PkgFaceMesh;
@@ -171,10 +169,6 @@ namespace AvatarBridge
                 "verify the eye RotationConstraints in play mode.");
         }
 
-        /// <summary>
-        /// Adds the "Eye Tracking" / "Face Tracking" Advanced Avatar Setting toggles the rig's
-        /// EyeTracking / FaceTracking bool parameters need (only relevant in this mode).
-        /// </summary>
         static void AddTrackingToggles(BridgeContext ctx)
         {
             var settings = ctx.CvrAvatar?.avatarSettings?.settings;
@@ -205,7 +199,6 @@ namespace AvatarBridge
             });
         }
 
-        /// <summary>All blendshape names the injected clips drive on the package's face mesh.</summary>
         static HashSet<string> CollectRigFaceShapes(List<AnimatorControllerLayer> layers)
         {
             var shapes = new HashSet<string>();
@@ -268,11 +261,6 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------------- eye rig -------
 
-        /// <summary>
-        /// Finds the eye bones, spawns "EyeTracking.L/.R" empties at them, constrains each
-        /// eye bone to its empty, and fills <paramref name="remap"/> with the package→avatar
-        /// path rewrites for the eye and empty transforms.
-        /// </summary>
         static void BuildEyeRig(BridgeContext ctx, Dictionary<string, string> remap)
         {
             FindEyeBones(ctx, out var head, out var leftEye, out var rightEye);
@@ -332,10 +320,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Creates (or reuses) a head-aligned empty positioned at the eye bone. The gaze
-        /// clips rotate it in the head's frame, matching how the package's empties are set up.
-        /// </summary>
         static Transform MakeEyeTarget(string name, Transform head, Transform eye)
         {
             var existing = head.Find(name);
@@ -375,13 +359,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(rc);
         }
 
-        /// <summary>
-        /// The face mesh the FT blendshapes belong on. Prefers the descriptor's own viseme
-        /// mesh (CVRAvatar.bodyMesh) — the authoritative choice — then a mesh literally named
-        /// "Body", then a shape-count heuristic that skips VRCFury FT *debug* meshes (which
-        /// carry the full Unified-Expressions set purely for visualisation and otherwise win
-        /// the heuristic).
-        /// </summary>
         static SkinnedMeshRenderer ResolveFaceMesh(BridgeContext ctx)
         {
             if (ctx.CvrAvatar != null && ctx.CvrAvatar.bodyMesh != null)
@@ -423,7 +400,6 @@ namespace AvatarBridge
             return bestScore > 0 ? best : null;
         }
 
-        /// <summary>VRCFury's Unified-Expressions debug window and similar non-face meshes.</summary>
         static bool IsDebugMesh(BridgeContext ctx, SkinnedMeshRenderer smr)
         {
             string name = smr.name.ToLowerInvariant();
@@ -480,10 +456,6 @@ namespace AvatarBridge
 
         const string ShapePrefix = "blendShape.";
 
-        /// <summary>
-        /// Clone-on-write copy of a clip with its curves rebound: paths remapped onto this
-        /// avatar, and face blendshapes reconciled to the mesh's shape set (combined/split).
-        /// </summary>
         static AnimationClip RewriteClip(AnimationClip clip, Dictionary<string, string> pathRemap,
             Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
             Dictionary<AnimationClip, AnimationClip> cache)
@@ -512,7 +484,7 @@ namespace AvatarBridge
             clone.hideFlags = HideFlags.None;
 
             // Rebuild the float curves from scratch so shape collapses can merge onto one
-            // binding. Keyed by "path|type|property" → summed curve.
+            // binding. Keyed by "path|type|property" -> summed curve.
             var outCurves = new Dictionary<string, KeyValuePair<EditorCurveBinding, AnimationCurve>>();
             void Emit(EditorCurveBinding binding, AnimationCurve curve)
             {
@@ -608,7 +580,6 @@ namespace AvatarBridge
             return new AnimationCurve(keys) { preWrapMode = src.preWrapMode, postWrapMode = src.postWrapMode };
         }
 
-        /// <summary>Sums two curves over the union of their keyframe times (blend-tree semantics).</summary>
         static AnimationCurve SumCurves(AnimationCurve a, AnimationCurve b)
         {
             var times = a.keys.Select(k => k.time).Concat(b.keys.Select(k => k.time))

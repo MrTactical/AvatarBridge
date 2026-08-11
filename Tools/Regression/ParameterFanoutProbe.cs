@@ -7,18 +7,16 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Everything in a converted controller that reacts to one parameter, read through Unity's API
-    /// rather than by grepping the YAML.
-    ///
-    /// Written because hand-parsing the controller file produced two confidently wrong answers in
-    /// ten minutes — a transition attributed to the wrong state machine, and a layer credited with
-    /// a condition it does not have. The object model knows which layer owns what; the text does
-    /// not without care that is easy to get quietly wrong.
-    ///
-    /// Set AVATARBRIDGE_PROBE_CONTROLLER to the .controller asset path and AVATARBRIDGE_PROBE_PARAM
-    /// to the parameter name. Dev tooling; never ships.
-    /// </summary>
+    // Everything in a converted controller that reacts to one parameter, read through Unity's API
+    // rather than by grepping the YAML.
+    //
+    // Written because hand-parsing the controller file produced two confidently wrong answers in
+    // ten minutes; a transition attributed to the wrong state machine, and a layer credited with
+    // a condition it does not have. The object model knows which layer owns what; the text does
+    // not without care that is easy to get quietly wrong.
+    //
+    // Set AVATARBRIDGE_PROBE_CONTROLLER to the .controller asset path and AVATARBRIDGE_PROBE_PARAM
+    // to the parameter name. Dev tooling; never ships.
     public static class ParameterFanoutProbe
     {
         public static void RunBatch()
@@ -40,7 +38,7 @@ namespace AvatarBridge.Regression
             }
 
             // Every spelling worth reporting: the parameter itself, the local name the contact
-            // bridge gives it, and anything that merely contains the name — a neighbouring
+            // bridge gives it, and anything that merely contains the name; a neighbouring
             // parameter whose name starts with this one is exactly the kind of overlap that makes
             // two systems look like one.
             var related = controller.parameters

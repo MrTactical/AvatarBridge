@@ -2,7 +2,7 @@ blank_issues_enabled: true
 contact_links:
   - name: Troubleshooting first
     url: https://github.com/MrTactical/AvatarBridge#install-troubleshooting
-    about: Invisible avatar, pink materials, the "Error" robot, greyed-out Convert button — the common ones are already solved here.
+    about: Invisible avatar, pink materials, the "Error" robot, greyed-out Convert button; the common ones are already solved here.
   - name: Latest release
     url: https://github.com/MrTactical/AvatarBridge/releases/latest
-    about: Please re-run on the newest build before reporting — a lot gets fixed release to release.
+    about: Please re-run on the newest build before reporting; a lot gets fixed release to release.

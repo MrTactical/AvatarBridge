@@ -11,32 +11,20 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Converts VRChat expression parameters + expression menus into ChilloutVR
-    /// Advanced Avatar Settings entries:
-    ///
-    ///   Bool  + menu toggle/button  -> Toggle
-    ///   Int   + menu toggles        -> Dropdown (one option per used value) or Toggle
-    ///   Float + radial/puppet menu  -> Slider
-    ///
-    /// The generated entries deliberately have no GameObject targets: the converted FX
-    /// layers already react to the parameters, the entries only exist so CVR shows menu
-    /// controls and syncs the values.
-    /// </summary>
+    // Converts VRChat expression parameters + expression menus into ChilloutVR
+    // Advanced Avatar Settings entries:
+    //
+    //   Bool  + menu toggle/button  -> Toggle
+    //   Int   + menu toggles        -> Dropdown (one option per used value) or Toggle
+    //   Float + radial/puppet menu  -> Slider
+    //
+    // The generated entries deliberately have no GameObject targets: the converted FX
+    // layers already react to the parameters, the entries only exist so CVR shows menu
+    // controls and syncs the values.
     public static class ParameterMenuConverter
     {
         const string Category = "Parameters & menu";
 
-        /// <summary>
-        /// Menu entries whose name suggests they duplicate something ChilloutVR already tells the
-        /// avatar about, paired with the client parameter that carries it.
-        ///
-        /// Deliberately narrow. "sit" and "fly" are left out because they match Position, Visitor
-        /// and butterfly; a wrong hint pointing someone at the wrong parameter is worse than no
-        /// hint. This only ever prints advice — nothing is rewired, because matching a menu name
-        /// to a client parameter is a guess about intent and guessing wrong would hijack an
-        /// unrelated toggle.
-        /// </summary>
         static readonly (string Needle, string Parameter, string When)[] ClientDrivenEquivalents =
         {
             ("flight", "Flying", "you actually fly (or enter a zero-gravity world)"),
@@ -46,12 +34,6 @@ namespace AvatarBridge
             ("prone", "Prone", "you go prone"),
         };
 
-        /// <summary>
-        /// Points out that the client drives this state natively, so the pose can follow what the
-        /// player is really doing instead of a menu toggle. ChilloutVR feeds these to every avatar
-        /// animator the same way it feeds Grounded and the velocities — for flight,
-        /// <c>BetterBetterCharacterController</c> sets <c>AvatarAnimatorManager.Flying</c>.
-        /// </summary>
         static void NoteClientDrivenEquivalent(BridgeContext ctx, string parameterName, string display)
         {
             string haystack = ((parameterName ?? "") + " " + (display ?? "")).ToLowerInvariant();
@@ -75,11 +57,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Label for a dropdown slot that exists only because ChilloutVR addresses options by
-        /// position — nothing in the avatar responds to its value. The animator merge removes
-        /// these where the parameter can safely be renumbered (AnimatorMerger.CompactIntDropdowns).
-        /// </summary>
         public const string UnusedOption = "(unused)";
 
         class MenuUse
@@ -89,7 +66,7 @@ namespace AvatarBridge
             public VRCExpressionsMenu.Control.ControlType Type;
         }
 
-        /// <summary>A VRChat two-axis puppet: one control, two -1..1 parameters.</summary>
+        // A VRChat two-axis puppet: one control, two -1..1 parameters.
         class PuppetPair
         {
             public string Display;
@@ -152,7 +129,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    // Face-tracking parameters are driven by the FT animator layers — never
+                    // Face-tracking parameters are driven by the FT animator layers; never
                     // expose them as menu toggles.
                     if (FaceTrackingParameters.IsFaceTracking(p.name))
                     {
@@ -165,8 +142,8 @@ namespace AvatarBridge
                     }
                     // Never build a control for a parameter the stripper is about to take. The
                     // joystick path has refused these since 2.32.3; the slider/toggle/dropdown
-                    // path did not, so a stripped system's menu — GoGo's decoratively-labelled
-                    // "- (-)" controls and its 256-value emote dropdown — was faithfully rebuilt
+                    // path did not, so a stripped system's menu. GoGo's decoratively-labelled
+                    // "- (-)" controls and its 256-value emote dropdown; was faithfully rebuilt
                     // as Advanced Avatar Settings and then left dangling once the layers reading
                     // it were removed.
                     if (SystemStripper.WillBeStripped(ctx, p.name))
@@ -208,18 +185,6 @@ namespace AvatarBridge
             NoteParameterPackers(ctx, entries);
         }
 
-        /// <summary>
-        /// Turns each VRChat two-axis puppet into one ChilloutVR Joystick2D.
-        ///
-        /// These used to become two separate sliders, and a slider could only offer 0..1 while a
-        /// puppet axis runs -1..1 — so half of every axis was unreachable and a controller worked
-        /// in one quadrant. ChilloutVR has the matching control; it simply wasn't being used.
-        ///
-        /// The catch is that Joystick2D takes no parameter names. It derives them, driving
-        /// "&lt;machineName&gt;-x" and "&lt;machineName&gt;-y". So the avatar's own two axis parameters have
-        /// to be renamed to match, which is recorded in ForcedRenames for the animator merge to
-        /// apply everywhere they are referenced.
-        /// </summary>
         static List<CVRAdvancedSettingsEntry> BuildJoysticks(BridgeContext ctx, List<PuppetPair> puppets,
             HashSet<string> usedNames, HashSet<string> claimed)
         {
@@ -235,7 +200,7 @@ namespace AvatarBridge
 
                 // Leave anything the stripper is about to take. GoGo Loco ships a puppet on
                 // "Go/PuppetX"/"Go/PuppetY", and renaming those to a joystick's "-x"/"-y" moved
-                // them out of the "Go/" family the stripper recognises — so GoGo's puppet
+                // them out of the "Go/" family the stripper recognises; so GoGo's puppet
                 // survived removal, wearing a joystick and a meaningless generated name.
                 if (SystemStripper.WillBeStripped(ctx, puppet.X) ||
                     SystemStripper.WillBeStripped(ctx, puppet.Y))
@@ -269,7 +234,7 @@ namespace AvatarBridge
                 ctx.PreserveParameters.Add(candidate + "-y");
                 // And the base name, which is not a parameter at all but is what ChilloutVR
                 // derives the two axes from. Left out, the rename pass sees a name it doesn't
-                // recognise as synced and prefixes the entry to "#TailController" — which then
+                // recognise as synced and prefixes the entry to "#TailController"; which then
                 // derives "#TailController-x", matching nothing, and the dead-entry sweep removes
                 // the control as unused. The axes were preserved; the name they hang off wasn't.
                 ctx.PreserveParameters.Add(candidate);
@@ -299,22 +264,8 @@ namespace AvatarBridge
             return result;
         }
 
-        /// <summary>Prefixes used by the parameter-packing optimisers, whose synced slots look like junk.</summary>
         static readonly string[] PackerPrefixes = { "MemOpt", "VFUP_", "VRCFuryUnlimited" };
 
-        /// <summary>
-        /// Flags entries that belong to a parameter-packing optimiser so nobody deletes them.
-        ///
-        /// These tools cut sync cost by making the avatar's real toggles LOCAL and syncing a
-        /// handful of packed slots instead, which animator drivers unpack on the receiving end.
-        /// The slots carry names like "MemOpt_BoolSyncer 0" and land in the ChilloutVR menu as
-        /// meaningless toggles, because the CCK has no way to sync a parameter without giving
-        /// it a menu entry — CVRAdvancedSettingsEntry simply has no hidden flag.
-        ///
-        /// So they cannot be removed, however much they look like clutter: they are the only
-        /// thing carrying those toggles to anyone else in the instance. Deleting them leaves an
-        /// avatar that works perfectly on your own screen and never changes on anyone else's.
-        /// </summary>
         static void NoteParameterPackers(BridgeContext ctx, List<CVRAdvancedSettingsEntry> entries)
         {
             var packed = entries
@@ -339,7 +290,7 @@ namespace AvatarBridge
         {
             bool hasMenu = paramUses != null && paramUses.Count > 0;
 
-            // ChilloutVR supplies some values itself — gestures, locomotion, visemes, and the
+            // ChilloutVR supplies some values itself; gestures, locomotion, visemes, and the
             // stream-fed trigger/mute/VR-mode parameters. Avatars commonly declare those as
             // synced so their FX can read them, but a menu control for one is worse than
             // useless: the game overwrites it every frame, so the control does nothing while
@@ -376,8 +327,8 @@ namespace AvatarBridge
                 : FriendlyParamName(p.name);
             display = MakeUnique(display, usedNames);
 
-            // VRChat menu Buttons are momentary — held while pressed, then reset. ChilloutVR's
-            // menu has no equivalent control type (Toggle/Dropdown/Color/Slider/Input… only), so
+            // VRChat menu Buttons are momentary; held while pressed, then reset. ChilloutVR's
+            // menu has no equivalent control type (Toggle/Dropdown/Color/Slider/Input... only), so
             // they convert as ordinary toggles: the value stays until switched off.
             if (hasMenu && paramUses.All(u => u.Type == VRCExpressionsMenu.Control.ControlType.Button))
             {
@@ -633,14 +584,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Every value the animators compare this int parameter against, mapped to the name
-        /// of the state an "Equals" on it leads to (null when there's no usable name).
-        ///
-        /// Two uses: naming the options of a menu-less parameter, and — because ChilloutVR
-        /// dropdowns are index-addressed and so must span 0..max — telling a value that
-        /// genuinely does something from one that's only there to pad the gap.
-        /// </summary>
         static Dictionary<int, string> ScanIntUsage(VRCAvatarDescriptor vrc, string parameterName)
         {
             var values = new Dictionary<int, string> { { 0, null } };
@@ -710,7 +653,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Rejects Unity's default/placeholder state names, which make poor menu labels.</summary>
         static string UsefulStateName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -728,10 +670,6 @@ namespace AvatarBridge
             return trimmed;
         }
 
-        /// <summary>
-        /// Menu names frequently carry TextMeshPro markup (GoGo Loco headers etc.);
-        /// CVR menus render them literally, so strip tags and newlines.
-        /// </summary>
         static string CleanMenuName(string name)
         {
             if (string.IsNullOrEmpty(name))
@@ -764,7 +702,6 @@ namespace AvatarBridge
             return leaf;
         }
 
-        /// <summary>Menuless parameters: drop VRCFury's "VF12_" id prefix and any path.</summary>
         static string FriendlyParamName(string name)
         {
             string clean = System.Text.RegularExpressions.Regex.Replace(name, @"^VF\d+_", "");

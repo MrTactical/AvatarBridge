@@ -12,25 +12,23 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Writes Diagnostics.md next to the conversion report: the measurements, not the advice.
-    ///
-    /// The report says what happened and what to do about it, in a user's words. This says what
-    /// the avatar IS — versions, settings, rig shape, where the head and eyes actually are, what
-    /// the constraint graph looks like, which asset references resolve. It exists because every
-    /// hard diagnosis on this project has come from someone extracting those facts by hand from a
-    /// .prefab afterwards, one awk script at a time: where the eye bones sit relative to the head
-    /// bone, how many humanoid bones deform mesh, whether a curve's path still resolves. The
-    /// conversion already knows all of it and used to throw it away.
-    ///
-    /// Written for attaching to a bug report. Nothing here is advice and nothing is a judgement —
-    /// numbers only, so a reader can reach their own conclusion, and so two conversions can be
-    /// diffed against each other.
-    ///
-    /// Every section is independently guarded: a section that throws is replaced by its error and
-    /// the rest of the file still gets written. A diagnostics file that fails to save is worth
-    /// nothing precisely when it is needed most.
-    /// </summary>
+    // Writes Diagnostics.md next to the conversion report: the measurements, not the advice.
+    //
+    // The report says what happened and what to do about it, in a user's words. This says what
+    // the avatar IS; versions, settings, rig shape, where the head and eyes actually are, what
+    // the constraint graph looks like, which asset references resolve. It exists because every
+    // hard diagnosis on this project has come from someone extracting those facts by hand from a
+    // .prefab afterwards, one awk script at a time: where the eye bones sit relative to the head
+    // bone, how many humanoid bones deform mesh, whether a curve's path still resolves. The
+    // conversion already knows all of it and used to throw it away.
+    //
+    // Written for attaching to a bug report. Nothing here is advice and nothing is a judgement .
+    // numbers only, so a reader can reach their own conclusion, and so two conversions can be
+    // diffed against each other.
+    //
+    // Every section is independently guarded: a section that throws is replaced by its error and
+    // the rest of the file still gets written. A diagnostics file that fails to save is worth
+    // nothing precisely when it is needed most.
     public static class DiagnosticsWriter
     {
         public static void Write(BridgeContext ctx)
@@ -104,7 +102,6 @@ namespace AvatarBridge
             return Table(new[] { "Package", "Assembly / version" }, rows);
         }
 
-        /// <summary>Assembly name and version for whichever assembly declares a type, or "not installed".</summary>
         static string VersionOf(string fullTypeName)
         {
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
@@ -127,15 +124,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ settings ----
 
-        /// <summary>
-        /// Editor options that change whether a converted avatar can even be tested, rather than
-        /// anything about the avatar. "Enter Play Mode Options" earns its place: with Reload Scene
-        /// off, pressing Play takes a different code path (RestoreSceneBackups → ResetOpenScenes →
-        /// Animator::AwakeFromLoad) that rebinds every Animator against whatever survived from edit
-        /// mode. On an avatar whose controller was just rewritten in place, that has produced both
-        /// a hard SIGSEGV inside GenerateGraph and an avatar rendering with the wrong materials.
-        /// The crash stack is unreachable with the option off.
-        /// </summary>
         static string EditorEnvironment()
         {
             var rows = new List<string>
@@ -266,11 +254,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------- head and viewpoint ----
 
-        /// <summary>
-        /// The measurement that settled the quadruped viewpoint work, emitted every time so nobody
-        /// has to reconstruct it from a .prefab again. Positions are avatar-LOCAL, which is the
-        /// space CVRAvatar stores its markers in, so the numbers can be compared directly.
-        /// </summary>
         static string HeadGeometry(BridgeContext ctx)
         {
             var animator = ctx.TargetAnimator;
@@ -331,7 +314,7 @@ namespace AvatarBridge
             var text = new StringBuilder(Table(new[] { "", "Avatar-local position" }, rows));
 
             // Bones named like eyes, wherever they live. On more than one rig these are nowhere
-            // near the humanoid map — parked in a cloned chain, or under a face rig — and knowing
+            // near the humanoid map; parked in a cloned chain, or under a face rig; and knowing
             // that instantly is the difference between a five-minute answer and an afternoon.
             var mappedEyes = new HashSet<Transform>();
             if (animator != null && animator.isHuman)
@@ -352,7 +335,7 @@ namespace AvatarBridge
             {
                 // Mapped ones first, and never truncated away. The first version listed the first
                 // twelve in hierarchy order, which on a rig carrying a duplicate skeleton showed
-                // the template chain and hid the pair the humanoid map actually uses — the one
+                // the template chain and hid the pair the humanoid map actually uses; the one
                 // fact the table exists to establish.
                 var ordered = eyeish.OrderByDescending(mappedEyes.Contains).Take(20).ToList();
                 text.AppendLine();
@@ -367,14 +350,6 @@ namespace AvatarBridge
             return text.ToString();
         }
 
-        /// <summary>
-        /// A mapped humanoid bone with its FULL PATH, which is not optional detail.
-        ///
-        /// Rigs duplicate skeletons — a template chain, a poseclone, a deformation chain — and the
-        /// duplicates carry identical bone names. The first diagnostics file written listed
-        /// "HOOMAN_Eye_L" at two different positions in two different tables and gave no way to
-        /// tell which one the humanoid map actually points at. A name alone is not an identity.
-        /// </summary>
         static string Bone(BridgeContext ctx, Transform root, Transform bone)
         {
             if (bone == null)
@@ -485,11 +460,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------- unresolved asset lookups ----
 
-        /// <summary>
-        /// GUIDs the saved controller references that resolve to nothing in this project. This is
-        /// the evidence that separates "the conversion lost an asset" from "the avatar's own bake
-        /// never finished writing one", and it used to require grepping the .controller by hand.
-        /// </summary>
         static string UnresolvedAssets(BridgeContext ctx)
         {
             string path = ctx.MergedController != null
@@ -505,7 +475,7 @@ namespace AvatarBridge
             var counts = new Dictionary<string, int>();
             // Shares AnimatorMerger's reference matcher deliberately. When these two disagreed,
             // the report said an avatar's controller was fine while the crash guard refused to
-            // assign it — two answers to one question, from two copies of the same scan.
+            // assign it; two answers to one question, from two copies of the same scan.
             foreach (string guid in AnimatorMerger.ReferencedGuids(body))
             {
                 counts[guid] = counts.TryGetValue(guid, out int n) ? n + 1 : 1;

@@ -8,18 +8,16 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for animated head-chop rewiring — specifically the m_Enabled POLARITY,
-    /// which is per exclusion type and was inverted unconditionally before task #17:
-    ///
-    ///   - hiding chop (scale 0): enabling it HIDES, so m_Enabled inverts into isShown
-    ///   - showing chop (scale 1, keep-my-accessory-visible-in-first-person): enabling it SHOWS,
-    ///     so m_Enabled maps straight across — the old code played these exactly backwards
-    ///
-    /// Also asserts the silent-death fix: a curve driving a chop that was skipped (fractional
-    /// scale factor) is removed WITH a warning naming it, never left addressing a deleted
-    /// component.
-    /// </summary>
+    // Known-answer test for animated head-chop rewiring; specifically the m_Enabled POLARITY,
+    // which is per exclusion type and was inverted unconditionally before task #17:
+    //
+    //   - hiding chop (scale 0): enabling it HIDES, so m_Enabled inverts into isShown
+    //   - showing chop (scale 1, keep-my-accessory-visible-in-first-person): enabling it SHOWS,
+    //     so m_Enabled maps straight across; the old code played these exactly backwards
+    //
+    // Also asserts the silent-death fix: a curve driving a chop that was skipped (fractional
+    // scale factor) is removed WITH a warning naming it, never left addressing a deleted
+    // component.
     public static class HeadChopCurveTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — head-chop curve polarity")]

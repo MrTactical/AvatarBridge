@@ -4,40 +4,24 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// The window's colours and generated textures.
-    ///
-    /// The palette isn't invented. Both SDKs this tool sits between carry an identity colour, and
-    /// they're the two ends of what AvatarBridge does:
-    ///
-    ///   VRChat      — its SDK panel banner is blue; the accent through its stylesheets is #1778FF.
-    ///   ChilloutVR  — the CCK's control-panel header is an orange gradient, #EE4408 to #822A10.
-    ///
-    /// So the banner runs left-to-right from one into the other, and the step badges sample points
-    /// along that same ramp: step 1 sits in VRChat's blue, step 3 in ChilloutVR's orange. The
-    /// window ends up being a picture of the crossing it performs.
-    ///
-    /// USS has no gradient support — not in 2022.3 and not in Unity 6 — so every gradient here is
-    /// a Texture2D generated once and handed to style.backgroundImage.
-    /// </summary>
+    // The window's colours and generated textures.
+    //
+    // The palette isn't invented. Both SDKs this tool sits between carry an identity colour, and
+    // they're the two ends of what AvatarBridge does:
+    //
+    //   VRChat     ; its SDK panel banner is blue; the accent through its stylesheets is #1778FF.
+    //   ChilloutVR ; the CCK's control-panel header is an orange gradient, #EE4408 to #822A10.
+    //
+    // So the banner runs left-to-right from one into the other, and the step badges sample points
+    // along that same ramp: step 1 sits in VRChat's blue, step 3 in ChilloutVR's orange. The
+    // window ends up being a picture of the crossing it performs.
+    //
+    // USS has no gradient support; not in 2022.3 and not in Unity 6; so every gradient here is
+    // a Texture2D generated once and handed to style.backgroundImage.
     internal static class BridgeTheme
     {
         public static bool Dark => EditorGUIUtility.isProSkin;
 
-        /// <summary>
-        /// Puts the skin class on a root element EXCLUSIVELY, reading <c>isProSkin</c> live.
-        ///
-        /// Exclusively, because a window's root element survives every Rebuild — only its
-        /// children are cleared — so a class added once stays forever. AddToClassList could
-        /// therefore leave an element carrying BOTH classes, and the light rules sit after the
-        /// dark ones in the stylesheet, so light would win from then on.
-        ///
-        /// Nothing more than the two classes. A previous revision also force-loaded Unity's
-        /// generated editor-theme stylesheets onto the element; that broke the window in BOTH
-        /// skins at once, because those sheets are panel-level assets that were never meant to
-        /// cascade from an element. The panel applies the editor theme itself, correctly, as
-        /// long as the tree is built in CreateGUI rather than OnEnable.
-        /// </summary>
         public static void ApplySkin(VisualElement root, bool? dark = null)
         {
             bool isDark = dark ?? Dark;
@@ -56,7 +40,7 @@ namespace AvatarBridge
         // VRChat's own status colours, reused so a warning here looks like a warning there.
         //
         // Darkened on the light skin. These are used as text on a pale chip, and #E3BE0C yellow
-        // on a light grey background is close to unreadable — the dark-skin values are chosen to
+        // on a light grey background is close to unreadable; the dark-skin values are chosen to
         // glow against near-black, which is the opposite problem.
         public static Color Good => Dark ? Hex(0x2BCF5C) : Hex(0x1E7A34);
         public static Color Warn => Dark ? Hex(0xE3BE0C) : Hex(0x8A6D00);
@@ -65,12 +49,11 @@ namespace AvatarBridge
         public static Color Muted => Dark ? new Color(1f, 1f, 1f, 0.50f) : new Color(0f, 0f, 0f, 0.55f);
 
         // Blue and orange are near-opposites, so interpolating straight between them drags the
-        // middle through desaturated grey-brown — the ramp sagged visibly in the banner. Passing
+        // middle through desaturated grey-brown; the ramp sagged visibly in the banner. Passing
         // through a plum keeps saturation up across the whole span, and it sits at the right
         // luminance to look like one continuous crossing rather than two colours meeting.
         static readonly Color BridgeMid = Hex(0x7A3B8C);
 
-        /// <summary>Where along the bridge a step sits: 0 is VRChat, 1 is ChilloutVR.</summary>
         public static Color At(float t)
         {
             t = Mathf.Clamp01(t);
@@ -88,7 +71,6 @@ namespace AvatarBridge
 
         static Texture2D _bridge, _bridgeHover;
 
-        /// <summary>The blue-to-orange ramp, for the banner and the primary button.</summary>
         public static Texture2D BridgeGradient(bool bright = false)
         {
             if (bright && _bridgeHover != null)
@@ -117,7 +99,6 @@ namespace AvatarBridge
             return tex;
         }
 
-        /// <summary>A flat 1x1, for badges tinted to a point on the bridge.</summary>
         public static Texture2D Solid(Color colour)
         {
             var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false)
@@ -132,11 +113,6 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------------- icons ----
 
-        /// <summary>
-        /// A built-in editor icon, or null if this Unity doesn't have it. Nothing is shipped, so
-        /// there is no artwork that can fail to import — and a missing icon degrades to no icon
-        /// rather than to an error.
-        /// </summary>
         public static Texture GetIcon(string name)
         {
             if (string.IsNullOrEmpty(name))

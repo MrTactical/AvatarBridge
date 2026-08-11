@@ -11,20 +11,18 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Setup mode: prepares ANY humanoid avatar for ChilloutVR, with **no VRChat SDK
-    /// involved at all**.
-    ///
-    /// The conversion path exists to translate VRChat data. Everything else AvatarBridge
-    /// does — the viewpoint, visemes and blink wiring, face tracking, the height scaler —
-    /// is CVR-side work that never needed VRChat in the first place. This runs exactly
-    /// those passes against features read straight off the rig and meshes, so it works on
-    /// a Booth model, an original avatar, or one that was already converted.
-    ///
-    /// What it deliberately does NOT do: anything requiring VRChat data (menus and
-    /// parameters from expression assets, PhysBone/contact conversion, animator merging).
-    /// Those need the VRChat SDK to read, so they live in the conversion path.
-    /// </summary>
+    // Setup mode: prepares ANY humanoid avatar for ChilloutVR, with **no VRChat SDK
+    // involved at all**.
+    //
+    // The conversion path exists to translate VRChat data. Everything else AvatarBridge
+    // does; the viewpoint, visemes and blink wiring, face tracking, the height scaler .
+    // is CVR-side work that never needed VRChat in the first place. This runs exactly
+    // those passes against features read straight off the rig and meshes, so it works on
+    // a Booth model, an original avatar, or one that was already converted.
+    //
+    // What it deliberately does NOT do: anything requiring VRChat data (menus and
+    // parameters from expression assets, PhysBone/contact conversion, animator merging).
+    // Those need the VRChat SDK to read, so they live in the conversion path.
     public static class CvrSetup
     {
         const string Category = "CVR setup";
@@ -107,15 +105,15 @@ namespace AvatarBridge
             }
 
             // --- viewpoint -----------------------------------------------------------
-            // The CCK's own Auto placement first — one convention for every avatar; the
+            // The CCK's own Auto placement first; one convention for every avatar; the
             // bounds estimate only covers rigs the Auto chain can't read.
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
             var humanoidView = autoView
                 ? viewAuto
                 : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
 
-            // A decoy rig — the humanoid map pointing at a hidden stand-in skeleton, with
-            // constraints relaying it onto the visible body — puts both markers on the stand-in
+            // A decoy rig; the humanoid map pointing at a hidden stand-in skeleton, with
+            // constraints relaying it onto the visible body; puts both markers on the stand-in
             // instead of on the avatar. See AvatarFeatureDetect.DecoyRigAnchors.
             bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
                                 out var decoyView, out var decoyVoice, out var visibleHead, out string decoyDetail)
@@ -262,11 +260,6 @@ namespace AvatarBridge
 
         // --------------------------------------------------------------- controller ----
 
-        /// <summary>
-        /// A fresh controller built from the CCK's own AvatarAnimator, deep-copied so the
-        /// CCK asset is never mutated. Face tracking and the scaler inject their layers
-        /// into this.
-        /// </summary>
         static AnimatorController BuildController(BridgeContext ctx)
         {
             var master = new AnimatorController();

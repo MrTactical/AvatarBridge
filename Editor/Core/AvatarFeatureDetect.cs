@@ -9,44 +9,25 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Reads avatar features straight off the meshes and rig, with no VRChat descriptor
-    /// involved. The conversion path uses these as fallbacks when the VRChat descriptor
-    /// left something unset; Setup mode (no VRChat SDK at all) relies on them entirely.
-    /// </summary>
+    // Reads avatar features straight off the meshes and rig, no VRC
+    // descriptor involved. Fallbacks for the conversion path; Setup
+    // mode relies on them entirely.
     public static class AvatarFeatureDetect
     {
         // ------------------------------------------- face tracking parameters ----
 
-        /// <summary>
-        /// The eye/face parameters that carry no "v2/" anywhere in the name — the bundled
-        /// CVR-VRCFT rig's own spelling.
-        /// </summary>
         static readonly HashSet<string> FtPlainNames = new HashSet<string>
         {
             "EyesY", "LeftEyeX", "RightEyeX",
             "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
         };
 
-        /// <summary>The rig's master switches, whatever spelling it uses for them.</summary>
         static readonly HashSet<string> FtGateNames = new HashSet<string>
         {
             "EyeTracking", "FaceTracking", "EyeTrackingActive", "LipTrackingActive",
             "FacialExpressionsDisabled"
         };
 
-        /// <summary>
-        /// Is this a face-tracking parameter, whichever tool built the rig?
-        ///
-        /// Matching on a "v2/" PREFIX is not enough and was the first version's mistake: an
-        /// OSCmooth rig names the same shape "#OSCm/Proxy/FT/v2/EyeLeftX", so a prefix test
-        /// finds nothing at all on a perfectly good avatar and reports it as having no face
-        /// tracking. The version marker can sit anywhere in the path.
-        ///
-        /// Smoothing chains are deliberately excluded. VRCFury and OSCmooth both generate
-        /// per-parameter "…/Smoothed/Pass1" helpers; those are the smoother's own workings,
-        /// driven FROM the proxy, and writing to them is overwritten on the next frame.
-        /// </summary>
         public static bool IsFaceTrackingParameter(string name)
         {
             if (string.IsNullOrEmpty(name) || name.Contains("/Smoothed/"))
@@ -61,18 +42,11 @@ namespace AvatarBridge
             return FtPlainNames.Contains(shortName) || FtGateNames.Contains(shortName);
         }
 
-        /// <summary>The rig's own on/off switches — worth showing first, because with one of
-        /// these at 0 every shape below it looks broken however hard it is driven.</summary>
         public static bool IsFaceTrackingGate(string name)
         {
             return IsFaceTrackingParameter(name) && FtGateNames.Contains(FaceTrackingShortName(name));
         }
 
-        /// <summary>
-        /// The readable tail of a parameter name: "#OSCm/Proxy/FT/v2/EyeLeftX" -> "EyeLeftX".
-        /// The prefixes carry no meaning for someone reading fifty rows of them, and the
-        /// grouping rules need the bare shape name to classify it.
-        /// </summary>
         public static string FaceTrackingShortName(string name)
         {
             if (string.IsNullOrEmpty(name))
@@ -86,11 +60,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- blink ----
 
-        /// <summary>
-        /// Finds blink shapes by name: separate left/right, or a single combined one.
-        /// Deliberately matches "blink" only, never the Unified-Expressions EyeClosed*
-        /// shapes — those belong to the face-tracking rig and must not be hijacked.
-        /// </summary>
         public static void DetectBlinkShapes(Mesh mesh, out string left, out string right, out string combined)
         {
             left = right = combined = null;
@@ -125,10 +94,9 @@ namespace AvatarBridge
             }
             combined = PlainestBlink(combineds);
 
-            // Prefer two shapes that are the same name but for the side token. A mesh often
-            // carries more than one blink family — "! - Blink L"/"! - Blink R" alongside
-            // "vrc.blink_left"/"vrc.blink_right" — and taking the first of each side
-            // independently can pair the left eye of one family with the right of another.
+            // Prefer two shapes equal but for the side token. A mesh
+            // often carries several blink families, and independent
+            // picks can pair eyes from different ones.
             foreach (string candidateLeft in lefts)
             {
                 string stem = SideStem(candidateLeft, "left", 'l');
@@ -145,12 +113,6 @@ namespace AvatarBridge
             right = rights.FirstOrDefault();
         }
 
-        /// <summary>
-        /// Of several both-eyes candidates, the one carrying the least decoration around the
-        /// word itself. Meshes accumulate leftovers — one avatar had both "blink" and
-        /// "blink_old", and taking whichever came first in mesh order wired the eyes to the
-        /// dead one. Ties keep mesh order.
-        /// </summary>
         static string PlainestBlink(List<string> names)
         {
             string best = null;
@@ -172,11 +134,6 @@ namespace AvatarBridge
             return best;
         }
 
-        /// <summary>
-        /// A shape name with its side marker and all separators removed, so the two halves of
-        /// a pair collapse to the same key while different families stay apart
-        /// ("! - Blink L" -> "!blink", "vrc.blink_left" -> "vrcblink").
-        /// </summary>
         static string SideStem(string name, string word, char letter)
         {
             string lower = name.ToLowerInvariant();
@@ -185,17 +142,12 @@ namespace AvatarBridge
             return Regex.Replace(lower, @"[ _.\-]+", "");
         }
 
-        /// <summary>
-        /// A shape belongs to a side if it spells the word out, or carries the side letter
-        /// as a standalone token ("Blink L", "blink_r", "L_Blink") — not just any l/r.
-        /// </summary>
         public static bool IsSide(string lower, string word, char letter)
         {
             return lower.Contains(word)
                    || Regex.IsMatch(lower, $@"(^|[ _.\-]){letter}([ _.\-]|$)");
         }
 
-        /// <summary>The blink-mode field/enum name varies across CCK versions; find it by its members.</summary>
         public static void SetBlinkMode(CVRAvatar cvrAvatar, string modeName)
         {
             foreach (var f in cvrAvatar.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
@@ -215,19 +167,12 @@ namespace AvatarBridge
 
         // ----------------------------------------------------------------- visemes ----
 
-        /// <summary>Viseme order shared by VRChat and ChilloutVR.</summary>
         public static readonly string[] VisemeOrder =
         {
             "sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS",
             "nn", "RR", "aa", "E", "ih", "oh", "ou"
         };
 
-        /// <summary>
-        /// Matches the 15 visemes against a mesh's blendshapes. Only accepts the
-        /// conventional spellings ("vrc.v_aa", "v_aa", "vis_aa", or a bare "aa") so short
-        /// keys like "aa"/"E" can't collide with unrelated shape names.
-        /// Returns null when fewer than half are found (i.e. this mesh isn't the face).
-        /// </summary>
         public static string[] DetectVisemes(Mesh mesh)
         {
             if (mesh == null)
@@ -265,11 +210,6 @@ namespace AvatarBridge
 
         // --------------------------------------------------------------- face mesh ----
 
-        /// <summary>
-        /// The avatar's face mesh: one literally named "Body" (the near-universal
-        /// convention), else the renderer with the most blendshapes — skipping VRCFury's
-        /// face-tracking debug meshes, which carry a full shape set purely to visualise it.
-        /// </summary>
         public static SkinnedMeshRenderer FindFaceMesh(GameObject root)
         {
             var meshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
@@ -307,13 +247,6 @@ namespace AvatarBridge
 
         // --------------------------------------------------------------- viewpoint ----
 
-        /// <summary>
-        /// Estimates the first-person viewpoint the way VRChat's descriptor defaults do:
-        /// between the eyes, nudged forward so it sits at the front of the eyes rather than
-        /// inside the skull. Falls back to the head bone, then to a fraction of the
-        /// avatar's bounds. Returned in avatar-local space (unscaled), which is what
-        /// CVRAvatar.viewPosition holds — the scaler multiplies it back by root scale.
-        /// </summary>
         public static Vector3 EstimateViewPosition(GameObject root, Animator animator)
         {
             Transform head = null, leftEye = null, rightEye = null;
@@ -336,7 +269,7 @@ namespace AvatarBridge
             }
             else
             {
-                // Not humanoid at all — use the visual bounds as a last resort.
+                // Not humanoid at all; visual bounds as a last resort.
                 var bounds = CalculateBounds(root);
                 world = new Vector3(bounds.center.x, bounds.max.y - bounds.size.y * 0.08f, bounds.center.z);
             }
@@ -348,26 +281,14 @@ namespace AvatarBridge
 
         // ---------------------------------------------- the CCK's own Auto placement ----
 
-        // Blender's ".L"/".R" suffix convention is in here because leaving it out cost a real
-        // avatar 14 cm. A taur base names its eyes "eye.L" and "eye.R" and doesn't map them in the
-        // humanoid rig, so the name search missed and Auto fell through to its blind fallback —
-        // a fraction of the hips-to-head span offset from the head bone — landing the viewpoint on
-        // the muzzle instead of between the eyes. Blender exports that suffix by default, which is
-        // most anthro avatars, so this was never a one-avatar problem.
+        // Blender's ".L"/".R" suffix convention included. Unmapped eye
+        // bones with those names otherwise fall through to the blind
+        // fallback, and Blender exports that suffix by default.
         static readonly string[] LeftEyeNameVariants =
             { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left", "eye.L", "eye_L", "eyeL", "L_eye", "Eye.L.001" };
         static readonly string[] RightEyeNameVariants =
             { "RightEye", "Right_Eye", "EyeRight", "Eye_Right", "eye.R", "eye_R", "eyeR", "R_eye", "Eye.R.001" };
 
-        /// <summary>
-        /// The CVRAvatar inspector's "Auto" button for View Position, replicated from the
-        /// CCK's own editor (CCK_CVRAvatarEditor.AutoSetViewPosition is private, so it is
-        /// mirrored here): the midpoint between the humanoid eye bones; a single eye is
-        /// projected back onto the avatar's centreline; with no eye bones, name-matched eye
-        /// children under Head; failing that, a head-bone offset scaled by the hips-to-head
-        /// distance. Returned avatar-local like everything else here; false when the rig
-        /// gives the CCK's chain nothing to work with.
-        /// </summary>
         public static bool CckAutoViewPosition(GameObject root, Animator animator, out Vector3 localPosition)
         {
             localPosition = default;
@@ -390,21 +311,11 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
-                // Under the head first, then anywhere on the avatar that is still near it.
-                //
-                // Eye bones are not always children of the head bone, and assuming they are cost a
-                // taur base 14 cm of viewpoint. That rig parks them in a cloned spine chain under
-                // a node named "Head.children.go.here" — a different branch of the skeleton — so
-                // no amount of searching below the head could ever have found them:
-                //
-                //   eyes: .../hind.chest/HipsAgain/SpineAgain/ChestAgain/NeckAgain/Head.children.go.here/eye.L
-                //   head: .../Hips/Spine/Chest/Neck/Head
-                //
-                // Rigs do this whenever something else needs to drive the eyes — poseclone
-                // systems, VRCFury rewrites, a separate "Eyes" object. NearHeadByNameVariants
-                // widens the net to the whole avatar but only accepts a bone that lands within
-                // the same distance of the head this rig's own proportions already allow, so a
-                // stray match somewhere down the body is refused rather than believed.
+                // Under the head first, then anywhere still near it.
+                // Eye bones are not always children of the head bone;
+                // rigs park them elsewhere whenever something else
+                // drives the eyes. NearHeadByNameVariants widens the
+                // net but only accepts bones within head distance.
                 var namedLeft = FindChildByNameVariants(head, LeftEyeNameVariants);
                 var namedRight = FindChildByNameVariants(head, RightEyeNameVariants);
                 if (namedLeft == null || namedRight == null)
@@ -440,31 +351,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>The Auto button for Voice Position: the jaw bone, else a small fixed
-        /// offset in front of the head bone (CCK_CVRAvatarEditor.AutoSetVoicePosition,
-        /// mirrored). Avatar-local; false without a humanoid jaw or head.</summary>
-        /// <summary>
-        /// Whether a viewpoint sits ABOVE the eyes by more than the avatar's own eye separation —
-        /// which no viewpoint ever legitimately does.
-        ///
-        /// This exists because the head-distance check that normally catches a bad authored
-        /// viewpoint measures against the HIPS, and hips are mis-mapped at least as often as jaws.
-        /// One avatar mapped Hips to the armature root at floor level, which made its hips-to-head
-        /// span 1.78 m, which made the tolerance 0.89 m, which would have accepted a viewpoint
-        /// anywhere in the upper half of the avatar. Its authored viewpoint sat 10 cm above the
-        /// eye bones — on the brow — and sailed through.
-        ///
-        /// Interpupillary distance is the right yardstick here: it comes from the two bones being
-        /// compared against, so it needs no other part of the rig to be mapped correctly, and it
-        /// scales with the avatar. A human avatar's is around 6 cm, so an authored value has to be
-        /// more than that above the eye centres before this fires — far outside the range anyone
-        /// places a viewpoint on purpose, and comfortably clear of authors who nudge one slightly
-        /// up for comfort.
-        ///
-        /// Below the eyes is deliberately NOT checked. Placing a viewpoint at the tip of a muzzle
-        /// or down inside a helmet is a real choice on non-human avatars, and this only means to
-        /// catch the direction that is always a mistake.
-        /// </summary>
         public static bool ViewpointSitsAboveEyes(GameObject root, Animator animator,
             Vector3 localViewpoint, out float above, out float eyeSeparation)
         {
@@ -490,27 +376,6 @@ namespace AvatarBridge
             return above > eyeSeparation;
         }
 
-        /// <summary>
-        /// Whether the rig's Jaw bone is anywhere a jaw could be. Geometry decides; the name is
-        /// never consulted.
-        ///
-        /// The humanoid Jaw slot is optional and unpoliced, and riggers fill it with whatever was
-        /// nearest when they clicked. One avatar mapped Jaw to a bone called "fronthair1", 21 cm
-        /// ABOVE the head bone and a centimetre above the viewpoint — so the voice came out of the
-        /// top of the head, and the CVRAvatar gizmo drew it hovering over the hair. Trusting a
-        /// mapped bone because it is mapped is how that ships.
-        ///
-        /// Two things are true of every real jaw and of nothing on top of a head:
-        ///   - it is BELOW the eyes. Not level, not above: a jaw hinges under them. Eyes are the
-        ///     reference rather than the head bone because the head bone sits at the base of the
-        ///     skull, which a jaw is legitimately level with or slightly above.
-        ///   - it is within a head's reach of the head bone. A quarter of hips-to-head is generous
-        ///     for a skull and still rejects a bone out at the end of a hair strand or an ear.
-        ///
-        /// Lives here rather than in MouthLocator because BOTH voice paths need it and only one
-        /// of them was guarded first time round — the CCK-Auto path is the one that usually runs,
-        /// so guarding the fallback alone changed nothing on the avatar that found this.
-        /// </summary>
         public static bool JawIsBelievable(GameObject root, Animator animator, Transform jaw, out string why)
         {
             why = null;
@@ -562,21 +427,16 @@ namespace AvatarBridge
             }
             var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
-            // A mapped Jaw is only used if it is somewhere a jaw could be. The slot is optional
-            // and unvalidated, so it gets filled with whatever was nearest — one rig pointed it
-            // at a hair bone above the eyes, and the voice came out of the top of the head. When
-            // it fails, this returns false rather than falling back to the head offset, so the
-            // caller reaches MouthLocator, which can measure the mouth off a viseme shape and
-            // reports the rejected bone by name.
+            // A mapped Jaw is only used if it is somewhere a jaw could
+            // be; the slot is optional and unvalidated. On failure
+            // return false so the caller reaches MouthLocator.
             if (jaw != null && !JawIsBelievable(root, animator, jaw, out _))
             {
                 return false;
             }
-            // NO JAW means this path can only offer a head-bone offset — a guess at where a mouth
-            // usually sits. MouthLocator can do better whenever the avatar has visemes: an
-            // open-mouth shape's vertex deltas ARE the mouth, measured on this face rather than
-            // assumed. So hand the decision over instead of claiming it, and let MouthLocator fall
-            // back to this same offset if it finds no viseme to measure.
+            // No jaw means only a head-bone guess. MouthLocator does
+            // better whenever visemes exist: an open-mouth shape's
+            // deltas are the mouth, measured. Hand the decision over.
             //
             // Found on an avatar with 15 viseme blendshapes whose voice still landed mid-face,
             // because this path answered first and never mentioned the visemes existed.
@@ -592,15 +452,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// The CCK's own "just ahead of the head bone" voice placement, for rigs with no jaw and no
-        /// viseme to measure. Shared so both voice paths use one definition — MouthLocator's own
-        /// head fallback used the bare head-bone position, which is inside the skull.
-        ///
-        /// The CCK's numbers (5 mm up, 6 cm forward) are metres for a human-sized head. Expressed
-        /// as fractions of this avatar's own hips-to-head span they come out the same on a 1.8 m
-        /// biped and stay sane on anything else, without inheriting a bone scale.
-        /// </summary>
         public static bool HeadVoiceOffset(GameObject root, Animator animator, out Vector3 localPosition)
         {
             localPosition = default;
@@ -618,33 +469,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// The visible head and eyes of a DECOY RIG — a quadruped (or any non-biped) whose
-        /// humanoid map points at a hidden stand-in skeleton, with constraints relaying that
-        /// skeleton onto the bones you can actually see.
-        ///
-        /// This has to be handled because ChilloutVR hangs BOTH markers off the humanoid Head
-        /// bone. <c>AvatarHeadPoint.GetPointParent()</c> and <c>AvatarVoicePoint.GetPointParent()</c>
-        /// each return <c>animator.GetBoneTransform(HumanBodyBones.Head)</c>; the client spawns a
-        /// marker at the stored offset while the avatar is at rest, then re-parents it to that
-        /// bone. So on a decoy rig both markers land on the STAND-IN, wherever the stand-in
-        /// happens to be — which on the quadruped that produced this code was 0.57 m from the
-        /// dragon's eyes, inside its skull. Look up and you see out; look down and the inside of
-        /// the mouth fills the screen.
-        ///
-        /// Neither of the usual answers helps there: the CCK's Auto button reads the humanoid eye
-        /// bones, which are part of the stand-in, and the author's VRChat viewpoint was placed for
-        /// VRChat's own conventions against that same stand-in.
-        ///
-        /// The relay itself says where the visible bones are. A constraint whose SOURCE is the
-        /// humanoid Head or an eye bone exists to drive that bone's visible counterpart, so the
-        /// constrained transform is the answer:
-        ///
-        ///     Eye.L &lt;- RealEye.L      Eye.R &lt;- RealEye.R      Head &lt;- HeadHuman
-        ///
-        /// Only relays pointing AWAY from the humanoid rig count. A rig that constrains one
-        /// humanoid bone to another is doing something else and is left alone.
-        /// </summary>
         public static bool DecoyRigAnchors(GameObject root, Animator animator,
             out Transform head, out Transform leftEye, out Transform rightEye)
         {
@@ -674,29 +498,13 @@ namespace AvatarBridge
             var leftEyeBone = animator.GetBoneTransform(HumanBodyBones.LeftEye);
             var rightEyeBone = animator.GetBoneTransform(HumanBodyBones.RightEye);
 
-            // THE test for a decoy rig, and the thing that stops this misfiring.
-            //
-            // "A constraint sourced from the humanoid head" is not enough on its own. Plenty of
-            // ordinary rigs read the head to drive something unrelated — AnyTaur's flight system
-            // has a "Rotation Constraint to Head - Y" feeding a contact sender — and the first
-            // version of this happily decided the head's visible counterpart was a bone called
-            // "HipsAgain", then aimed the viewpoint, the voice and the first-person exclusion at
-            // it. Reading the head is not the same as reproducing it.
-            //
-            // What actually distinguishes a decoy is that its bones are INVISIBLE: the humanoid
-            // map points at a stand-in that deforms no mesh, and the constraints exist to move
-            // the bones that do.
-            //
-            // Testing that on the head bone ALONE was not enough, and this is the part worth
-            // remembering. A taur base has a real humanoid torso — arms, hands, fingers, spine,
-            // all skinning the mesh — but its humanoid Head happens to carry no weights of its
-            // own, so a head-only check waved it straight through and the viewpoint went to
-            // "HipsAgain" anyway. Being a decoy is a property of the WHOLE rig, so the whole rig
-            // is what gets measured.
-            //
-            // The threshold is loose on purpose. A true decoy scores zero — every mapped bone is a
-            // stand-in — while a real humanoid clears a fifth on its fingers alone. Nothing sits
-            // near the line, so this only has to survive a rig with a few stray weights.
+            // The decoy test. A constraint reading the head is not
+            // enough; ordinary rigs read the head for unrelated things.
+            // What distinguishes a decoy is invisible bones: the map
+            // points at stand-ins deforming no mesh. Being a decoy is a
+            // property of the whole rig, so the whole rig is measured.
+            // The threshold is loose; a true decoy scores zero and a
+            // real humanoid clears a fifth on its fingers alone.
             if (headBone == null || humanoid.Count == 0)
             {
                 return false;
@@ -746,48 +554,16 @@ namespace AvatarBridge
                     }
                 }
             }
-            // BOTH relayed eyes, or nothing. This is the gate that finally worked, after three
-            // that didn't, and the reasoning behind it is the useful part.
-            //
-            // Every attempt to recognise a decoy by the RIG failed, because the taur base that
-            // kept tripping this genuinely has one — a humanoid stand-in that deforms no mesh,
-            // exactly like the dragon's. What it does NOT have is a relayed head. Its constraint
-            // sourced from the humanoid head drives a hip clone, because that is its head-puppet
-            // feature: the head is an INPUT that swings the body, not a bone being reproduced
-            // somewhere visible.
-            //
-            // Position can't tell those apart — measured on both avatars, the dragon's real head
-            // sits 0.46 m from its humanoid head and the taur's hip clone 0.50 m. Neither can the
-            // constraint itself; they are the same component doing opposite jobs.
-            //
-            // Relayed EYES can. An eye bone exists to aim a pair of eyeballs, so a constraint
-            // driving something from one is reproducing a face — there is no other reason to do
-            // it. A puppet input never has them, and the taur's report said so outright: "this
-            // rig relays no eye bones", right before it guessed from the hip clone anyway.
-            //
-            // The cost is a decoy rig that maps no eye bones no longer gets this treatment, and
-            // falls back to the author's own viewpoint as it did before 2.92.0. That is the safe
-            // direction to fail in: a viewpoint that is merely unhelpful beats one confidently
-            // placed at the avatar's hips.
+            // Both relayed eyes, or nothing. A puppet rig can read the
+            // head as an input that swings the body; position and the
+            // constraint type cannot tell that from a relay. Relayed
+            // eyes can: an eye bone exists to aim eyeballs, so driving
+            // from one means reproducing a face. A decoy mapping no eye
+            // bones falls back to the authored viewpoint, the safe
+            // direction to fail in.
             return leftEye != null && rightEye != null;
         }
 
-        /// <summary>
-        /// Hides the VISIBLE head in first person on a decoy rig, by adding the CCK's own
-        /// <c>FPRExclusion</c> to it.
-        ///
-        /// ChilloutVR does this for you, but it aims at the same wrong bone everything else does.
-        /// <c>AvatarClone.AddExclusionToHeadIfNeeded()</c> reads
-        /// <c>animator.GetBoneTransform(HumanBodyBones.Head)</c> and, if that GameObject has no
-        /// exclusion of its own, adds one with <c>isShown = false</c>. On a decoy rig that bone is
-        /// part of the stand-in skeleton and skins nothing, so the client dutifully hides nothing
-        /// and you spend the session looking at the inside of your own head.
-        ///
-        /// The component only affects the first-person render clone — it shrinks the excluded
-        /// hierarchy to zero for your camera, never for anyone else's — and it is on the CCK's
-        /// avatar whitelist, so it survives upload. An exclusion the author placed themselves is
-        /// left alone.
-        /// </summary>
         public static bool ExcludeVisibleHeadFromFirstPerson(Animator animator, Transform visibleHead)
         {
             if (visibleHead == null)
@@ -809,17 +585,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// How much of the humanoid rig actually moves geometry.
-        ///
-        /// Zero is the loudest signal an avatar can give and the conversion used to say nothing
-        /// about it. Every quadruped that has caused trouble scored zero: a decoy relay skeleton,
-        /// a poseclone puppet, and a FinalIK VRIK proxy — three unrelated designs, one symptom.
-        /// It matters because the viewpoint, the voice position and ChilloutVR's first-person head
-        /// hiding all hang off humanoid bones, so when those bones drive nothing visible, all three
-        /// land somewhere the wearer isn't, and every internal check still passes because they are
-        /// correct *relative to the rig they were measured against*.
-        /// </summary>
         public static void HumanoidDeformShare(GameObject root, Animator animator,
             out int mapped, out int deforming)
         {
@@ -849,26 +614,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Rescues the viewpoint on an avatar whose humanoid rig drives nothing you can see.
-        ///
-        /// Three quadrupeds have now arrived with the humanoid map pointing at an invisible
-        /// skeleton — a decoy relay, a poseclone puppet, a FinalIK VRIK proxy — and every
-        /// viewpoint check passed on all of them, because the checks measure against the same
-        /// skeleton that is wrong. One landed 0.102 m from "its" head bone and 60 cm above the
-        /// avatar's actual eyes.
-        ///
-        /// So this asks the one question the humanoid rig cannot answer: is the viewpoint inside
-        /// the body at all? The visible body is the union of the renderers' own bounds, which owes
-        /// nothing to any skeleton. A viewpoint outside it is wrong however well it scores, and a
-        /// viewpoint inside it is left strictly alone — which is what keeps this off avatars that
-        /// are already correct, including the other two quadrupeds.
-        ///
-        /// The replacement comes from eye-named transforms that are themselves inside the body.
-        /// Naming is only used to nominate candidates; geometry decides. Rigs of this kind carry
-        /// several co-located eye markers (LOCAL_CNST_Eye_L, LOCAL_ZERO_Eye_L, EyeWidth_DEF_*),
-        /// and since they sit in the same place, which one wins does not matter.
-        /// </summary>
         public static bool RescueViewpointOffBody(GameObject root, Animator animator,
             Vector3 storedView, out Vector3 localPosition, out string detail)
         {
@@ -879,9 +624,9 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Distance to the nearest bone that actually deforms mesh — NOT a bounding box.
-            // A quadruped's box is enormous (wings, tail, ears) and a viewpoint floating well off
-            // the avatar can sit inside it happily, so containment proves nothing. Deforming bones
+            // Distance to the nearest deforming bone, not a bounding
+            // box. A quadruped's box is enormous and containment
+            // proves nothing. Deforming bones
             // are where the body genuinely is.
             var deforming = DeformingBones(root).Where(b => b != null).ToList();
             if (deforming.Count == 0)
@@ -952,12 +697,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Whether a stored marker sits further from every mesh-deforming bone than this rig's own
-        /// proportions allow — i.e. it is not on the avatar. Same measurement
-        /// <see cref="RescueViewpointOffBody"/> gates on, exposed so the voice position can be
-        /// judged by it too rather than being left behind on a skeleton nobody can see.
-        /// </summary>
         public static bool PointIsOffBody(GameObject root, Animator animator, Vector3 stored)
         {
             if (root == null)
@@ -1001,14 +740,6 @@ namespace AvatarBridge
         static readonly string[] JawNameVariants =
             { "Jaw", "jaw", "LowerJaw", "Jaw_L", "Mouth", "mouth", "Chin", "Snout" };
 
-        /// <summary>
-        /// View and voice positions for a decoy rig, measured on the bones you can SEE.
-        ///
-        /// Same conventions as the CCK's own Auto buttons — eye midpoint for the view, jaw for
-        /// the voice, a head-bone offset when a bone is missing — just aimed at the visible
-        /// counterparts <see cref="DecoyRigAnchors"/> found instead of at the stand-in skeleton.
-        /// Returns false on every ordinary rig, where there is no relay to follow.
-        /// </summary>
         public static bool DecoyRigPlacement(GameObject root, Animator animator,
             out Vector3 viewLocal, out Vector3 voiceLocal, out Transform visibleHead, out string detail)
         {
@@ -1063,13 +794,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Bones that actually deform a mesh — ones with at least one vertex weighted to them.
-        ///
-        /// Not <c>SkinnedMeshRenderer.bones</c>, which lists the WHOLE skeleton regardless of
-        /// whether a bone moves anything; an FBX exporter puts every bone in there. Only the
-        /// weights prove it. Editor code can read them whatever the mesh's Read/Write setting says.
-        /// </summary>
         static HashSet<Transform> DeformingBones(GameObject root)
         {
             var deforming = new HashSet<Transform>();
@@ -1096,8 +820,8 @@ namespace AvatarBridge
                 }
                 catch
                 {
-                    // Unreadable mesh: assume every listed bone deforms, which can only make this
-                    // check MORE cautious — the decoy path stays off rather than firing wrongly.
+                    // Unreadable mesh: assume every listed bone deforms.
+                    // That only makes the check more cautious.
                     foreach (var bone in bones)
                     {
                         if (bone != null)
@@ -1110,10 +834,6 @@ namespace AvatarBridge
             return deforming;
         }
 
-        /// <summary>
-        /// The transform a constraint drives, for Unity's own constraints and VRChat's alike,
-        /// or null when the component is not a constraint at all.
-        /// </summary>
         static Transform ConstraintTarget(Component component)
         {
             if (component is UnityEngine.Animations.IConstraint)
@@ -1126,14 +846,12 @@ namespace AvatarBridge
             {
                 return null;
             }
-            // NOT "?? component.transform": an unassigned Transform field comes back as Unity's
-            // FAKE null — a live C# reference whose overloaded == reports null while ?? passes it
-            // straight through. That distinction crashed every conversion in 2.88.0.
+            // Not "?? component.transform". An unassigned Transform is
+            // Unity's fake null: overloaded == says null, ?? passes it.
             var target = Field<Transform>(component, "TargetTransform");
             return target != null ? target : component.transform;
         }
 
-        /// <summary>Every source transform a constraint reads, Unity's or VRChat's.</summary>
         static IEnumerable<Transform> ConstraintSources(Component component)
         {
             if (component is UnityEngine.Animations.IConstraint unity)
@@ -1162,7 +880,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Reads a public field or property by name, or default when it isn't there.</summary>
         static T Field<T>(object instance, string name)
         {
             if (instance == null)
@@ -1176,19 +893,6 @@ namespace AvatarBridge
             return value is T typed ? typed : default;
         }
 
-        /// <summary>
-        /// A point offset from a bone, in the bone's DIRECTIONS but in world-space metres.
-        ///
-        /// Not <c>bone.TransformPoint</c>, which is what the CCK uses and what put a tester's
-        /// voice position 6 metres in front of their avatar. TransformPoint multiplies the offset
-        /// by the bone's world SCALE, and plenty of rigs carry a scale on their bones —
-        /// Second Life-derived skeletons routinely run at 100× — so a 6 cm nudge becomes 6 m.
-        /// It is invisible on a rig whose bones are all scale 1, which is most of them, which is
-        /// why it survived: the viewpoint (a midpoint between two eye bone POSITIONS) was fine on
-        /// the same avatar, and only the offset-based fallback broke.
-        ///
-        /// Rotation carries the direction; the caller sizes the offset from the avatar itself.
-        /// </summary>
         static Vector3 OffsetFromBone(Transform bone, Vector3 offsetInMetres)
         {
             // The AVATAR's orientation, not the bone's. A bone's local axes are whatever the
@@ -1199,9 +903,6 @@ namespace AvatarBridge
             return bone.position + root.rotation * offsetInMetres;
         }
 
-        /// <summary>One eye only (cyclops rigs, asymmetric heads): the CCK removes the eye's
-        /// offset along whichever root axis it sits furthest out on, landing the viewpoint
-        /// back on the centreline.</summary>
         static Vector3 ProjectSingleEye(Animator animator, Transform singleEye)
         {
             var avatarRoot = animator.transform;
@@ -1219,12 +920,6 @@ namespace AvatarBridge
                 : eyePosition - Vector3.Project(eyePosition - avatarRoot.position, avatarRoot.right);
         }
 
-        /// <summary>
-        /// An eye-named bone anywhere on the avatar, accepted only if it sits within a plausible
-        /// distance of the head — the same tolerance <see cref="VerifyHeadPlacement"/> judges a
-        /// finished viewpoint by. The nearest qualifying match wins, so a rig with several
-        /// candidates gets the one on the face rather than the first in hierarchy order.
-        /// </summary>
         static Transform NearHeadByNameVariants(GameObject root, Animator animator, Transform head,
             string[] nameVariants)
         {
@@ -1275,14 +970,9 @@ namespace AvatarBridge
                 {
                     return child;
                 }
-                // Every descendant, not just direct children. Eye bones are routinely a few
-                // joints below the head — behind a skull, a face rig or an "eyes" grouping node —
-                // and the taur base that exposed this keeps "eye.L" three levels down. A
-                // direct-children scan missed it, Auto fell back to a blind head offset, and the
-                // viewpoint landed 14 cm low on the muzzle.
-                //
-                // Safe to widen because the match is an exact name comparison against a short
-                // list, not a substring: "eyelid.L" and "eye_socket" don't qualify.
+                // Every descendant, not just direct children. Eye bones
+                // routinely sit a few joints below the head. Safe to
+                // widen: exact name match, never a substring.
                 foreach (Transform candidate in parent.GetComponentsInChildren<Transform>(true))
                 {
                     if (candidate != parent
@@ -1304,63 +994,12 @@ namespace AvatarBridge
                 Mathf.Abs(position.z) < tolerance ? 0f : position.z);
         }
 
-        /// <summary>
-        /// A world point expressed the way CVRAvatar stores viewPosition and voicePosition:
-        /// the offset from the avatar root, **with the root's scale still in it**.
-        ///
-        /// This is not what InverseTransformPoint gives you, and the difference is invisible on
-        /// the majority of avatars because their root scale is 1. On a root scaled to 1.4 the
-        /// viewpoint landed at 1/1.4 of its correct height — around the collarbone rather than
-        /// the eyes — and clicking the CCK's own Auto button "fixed" it, which is what finally
-        /// gave the bug away.
-        ///
-        /// The CCK's contract is written down in its own inspector, and the scale it uses is
-        /// **localScale**:
-        ///
-        ///     Vector3 scale = avatarTransform.localScale;
-        ///     pos    = avatarTransform.TransformPoint(Scale(viewPosition, 1/scale));   // read
-        ///     stored = Scale(avatarTransform.InverseTransformPoint(handle), scale);    // write
-        ///
-        /// localScale, NOT lossyScale — and the difference is invisible on an avatar sitting at
-        /// the top of the hierarchy, where the two are equal. Parent that avatar under anything
-        /// scaled and they diverge by the parent's factor, which throws the viewpoint metres
-        /// away from the head. An earlier revision here used lossyScale and was confirmed
-        /// correct on an unparented avatar, which proved nothing about the parented case.
-        ///
-        /// Matching localScale is also right for the game: an uploaded avatar is instantiated
-        /// with no scaled ancestor, so localScale IS its world scale there.
-        /// </summary>
         static Vector3 RootOffset(GameObject root, Vector3 world)
         {
             return Vector3.Scale(root.transform.InverseTransformPoint(world),
                                  root.transform.localScale);
         }
 
-        /// <summary>
-        /// The CCK's own round trip: what its inspector will draw for a stored position. Used to
-        /// CHECK a computed placement instead of trusting the arithmetic that produced it —
-        /// this contract has now been got wrong twice, in both directions.
-        /// </summary>
-        /// <summary>
-        /// Checks the viewpoint and voice position where the user will actually see them: back
-        /// through the CCK inspector's own arithmetic, measured against the head the avatar has.
-        ///
-        /// The space these are stored in has now been got wrong twice — once by dropping the
-        /// scale entirely, once by using lossyScale where the CCK uses localScale — and both
-        /// times the mistake was invisible on the avatars to hand, because an unparented root
-        /// makes those two scales equal, and glaring to a tester whose avatar sat under
-        /// something scaled. Arithmetic this easy to get wrong by inspection should be measured
-        /// instead, so it is.
-        ///
-        /// The tolerance is deliberately loose: half a head-to-hips is not a rounding question,
-        /// it means the value is in the wrong space entirely.
-        /// </summary>
-        /// <summary>
-        /// How far a stored viewpoint or voice position lands from the humanoid head bone, against
-        /// the tolerance past which that is wrong rather than merely unusual — the same numbers
-        /// <see cref="VerifyHeadPlacement"/> warns on, exposed so a caller can act on them instead
-        /// of shipping a value it already knows is bad. False when there is no head to measure from.
-        /// </summary>
         public static bool HeadDistance(GameObject root, Animator animator, Vector3 stored,
             out float distance, out float tolerance)
         {
@@ -1433,7 +1072,6 @@ namespace AvatarBridge
             return root.transform.TransformPoint(Vector3.Scale(stored, inverse));
         }
 
-        /// <summary>Voice emitted from the head, like VRChat does. Avatar-local, unscaled.</summary>
         public static Vector3 EstimateVoicePosition(GameObject root, Animator animator)
         {
             if (animator != null && animator.isHuman)

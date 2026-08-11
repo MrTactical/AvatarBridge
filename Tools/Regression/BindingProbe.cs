@@ -7,24 +7,22 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Everything in a converted controller that writes one object's bindings, and — the part that
-    /// answers "why is this stuck" — every state in the OWNING layer that writes nothing to it.
-    ///
-    /// ChilloutVR does not restore Write Defaults. A binding stays wherever the last state to write
-    /// it left it, so a value latches the moment control passes to a state that is silent about it.
-    /// Which means the interesting output here is not the clip that switches something ON; it is
-    /// the list of states in the same layer that say NOTHING, because those are where it sticks.
-    ///
-    /// Written because hand-parsing the .anim YAML for this exact question produced garbage: a
-    /// grep window around a path match picks up whichever binding happens to sit nearby, and the
-    /// attribute and value it prints belong to a different curve. The object model pairs them
-    /// correctly and nothing else does.
-    ///
-    /// AVATARBRIDGE_PROBE_CONTROLLER  the .controller asset path
-    /// AVATARBRIDGE_PROBE_PATH        substring of the object path to follow
-    /// Dev tooling; never ships.
-    /// </summary>
+    // Everything in a converted controller that writes one object's bindings, and; the part that
+    // answers "why is this stuck"; every state in the OWNING layer that writes nothing to it.
+    //
+    // ChilloutVR does not restore Write Defaults. A binding stays wherever the last state to write
+    // it left it, so a value latches the moment control passes to a state that is silent about it.
+    // Which means the interesting output here is not the clip that switches something ON; it is
+    // the list of states in the same layer that say NOTHING, because those are where it sticks.
+    //
+    // Written because hand-parsing the .anim YAML for this exact question produced garbage: a
+    // grep window around a path match picks up whichever binding happens to sit nearby, and the
+    // attribute and value it prints belong to a different curve. The object model pairs them
+    // correctly and nothing else does.
+    //
+    // AVATARBRIDGE_PROBE_CONTROLLER  the .controller asset path
+    // AVATARBRIDGE_PROBE_PATH        substring of the object path to follow
+    // Dev tooling; never ships.
     public static class BindingProbe
     {
         public static void RunBatch()
@@ -115,7 +113,7 @@ namespace AvatarBridge.Regression
                 }
                 else
                 {
-                    // WHY it is silent, in the terms the assert pass reasons in — a state with an
+                    // WHY it is silent, in the terms the assert pass reasons in; a state with an
                     // unconditional exit is deliberately skipped there, on the theory that nobody
                     // lingers in it. If that theory is wrong for this state, the value latches and
                     // this is the line that says so.
@@ -138,9 +136,6 @@ namespace AvatarBridge.Regression
             }
         }
 
-        /// <summary>A blend tree writes it if ANY clip it can reach does — a tree that only
-        /// sometimes writes a binding still owns it, and treating that as silence was a real bug
-        /// once.</summary>
         static bool MotionWrites(Motion motion, Dictionary<AnimationClip, List<string>> writers)
         {
             if (motion is AnimationClip clip) return writers.ContainsKey(clip);

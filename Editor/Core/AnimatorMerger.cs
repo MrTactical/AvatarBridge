@@ -15,19 +15,9 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Merges the selected VRChat playable layers (Base/Additive/Gesture/Action/FX) into a
-    /// single ChilloutVR animator controller built on top of the CCK's default
-    /// AvatarAnimator, then rewrites everything VRC-specific:
-    ///
-    ///  - GestureLeft/GestureRight int values -> CVR float values (with range conditions)
-    ///  - GestureLeftWeight/RightWeight       -> fed by a CVRParameterStream (trigger value)
-    ///  - VRC parameter names                 -> CVR core names (Viseme -> VisemeIdx, ...)
-    ///  - non-synced parameters               -> "#" prefix (CVR local-only convention)
-    ///  - menu Buttons                        -> plain toggles (CVR has no momentary control)
-    ///  - VRCAvatarParameterDriver            -> CCK AnimatorDriver
-    ///  - VRC built-in avatar masks           -> equivalent generated masks
-    /// </summary>
+    // Merges the selected VRChat playable layers into one ChilloutVR
+    // controller on the CCK's AvatarAnimator. Rewrites the VRC-specific
+    // parts: gestures, parameter names, "#" locals, drivers, masks.
     public static class AnimatorMerger
     {
         const string Category = "Animator";
@@ -40,8 +30,8 @@ namespace AvatarBridge
         };
 
         // VRChat parameter -> ChilloutVR core parameter.
-        // GestureLeftWeight/RightWeight are NOT renamed: a CVRParameterStream feeds them
-        // from the real trigger values instead (see CreateParameterStreams).
+        // GestureLeftWeight/RightWeight stay unrenamed.
+        // A CVRParameterStream feeds them instead.
         static readonly Dictionary<string, string> ParameterRenameMap = new Dictionary<string, string>
         {
             { "Viseme", "VisemeIdx" },
@@ -61,29 +51,17 @@ namespace AvatarBridge
             "VelocityX", "VelocityY", "VelocityZ", "AFK"
         };
 
-        // Parameters a CVRParameterStream feeds from the game (see CreateParameterStreams).
-        // These are deliberately kept out of the "#" local prefix in RenamePass: the stream only
-        // runs on the wearer's copy, so replication is the sole way its value reaches anyone else.
+        // Fed from the game by a CVRParameterStream.
+        // Never "#" prefixed. The stream runs on the wearer's copy only,
+        // so sync is the sole path to other clients.
         static readonly HashSet<string> StreamFedParameters = new HashSet<string>
         {
             "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
             "Upright", "TrackingType", "EyeHeightAsMeters"
-            // The rest of VRChat's scale family — ScaleFactor, ScaleFactorInverse,
-            // EyeHeightAsPercent, ScaleModified — is deliberately NOT here: FeedScaleParameters
-            // derives them from EyeHeightAsMeters by pure arithmetic, which every client can do
-            // for every copy. Local ("#") + recomputed beats synced by 97 bits with identical
-            // values, the same trade FeedVelocityMagnitude makes.
+            // The rest of the scale family is derived locally from
+            // EyeHeightAsMeters by FeedScaleParameters. Cheaper than sync.
         };
 
-        /// <summary>
-        /// True if ChilloutVR supplies this parameter's value itself — core avatar state
-        /// (gestures, locomotion, visemes) or something fed by a CVRParameterStream.
-        ///
-        /// VRChat avatars often declare these as synced expression parameters so their FX can
-        /// read them. They must never become menu controls: the game overwrites the value
-        /// every frame, so the control does nothing while still costing sync budget.
-        /// Takes the VRChat-side name, since this is asked before the rename pass.
-        /// </summary>
         internal static bool IsGameDrivenParameter(string vrcParameterName)
         {
             if (string.IsNullOrEmpty(vrcParameterName))
@@ -97,37 +75,19 @@ namespace AvatarBridge
                    || GestureMap.GestureWeightParameters.Contains(bare);
         }
 
-        // CVR drives these to non-zero at runtime; matching defaults avoids startup glitches.
-        // Anything CVR does NOT drive belongs in UnsupportedBuiltInDefaults instead — the scale
-        // and eye-height entries used to be listed here as well as in the unsupported set below,
-        // which are contradictory claims about the same parameter.
+        // CVR drives these non-zero at runtime.
+        // Matching defaults avoids startup glitches.
         static readonly Dictionary<string, float> NonZeroDefaults = new Dictionary<string, float>
         {
             { "Grounded", 1f }
         };
 
-        // VRC built-ins with no CVR equivalent; they stay as frozen local parameters.
-        // (MuteSelf/VRMode/GestureWeights/Upright/TrackingType are fed by a CVRParameterStream
-        // instead, so they are live rather than frozen — see StreamFedParameters.)
-        //
-        // "AFK" used to be in this list, and that was wrong on both counts: the client writes
-        // `AnimatorManager.AFK` from real AFK detection — headset taken off, or the AFK toggle
-        // (`PlayerSetup`, decompiled) — and because AFK is NOT in the client's own core-parameter
-        // set, an unprefixed declaration syncs through the ordinary AAS bits, so the wearer's
-        // value reaches everyone else exactly as it does in VRChat. An avatar's AFK sign or
-        // sleeping pose works in ChilloutVR with no conversion at all, and the report was telling
-        // its owner the feature was dead.
-        // "VelocityMagnitude" stays in this list for the "#" prefix it confers — the value is
-        // computed per-client, so syncing it would be waste — but it is NOT frozen anymore:
-        // FeedVelocityMagnitude derives it from the native VelocityX/Y/Z every frame, and the
-        // "nothing writes them in game" note below explicitly skips it.
-        //
-        // The scale family (EyeHeightAsMeters, ScaleFactor, ScaleFactorInverse,
-        // EyeHeightAsPercent, ScaleModified) left this list in 3.5.0: EyeHeightAsMeters is fed
-        // by a CVRParameterStream from the client's AvatarHeight — the calibrated avatar height
-        // in metres, the very number AvatarUpright divides by — and the other four are exact
-        // arithmetic on it (FeedScaleParameters), using the conversion-time viewpoint height as
-        // the baseline VRChat calls "default scale".
+        // VRC built-ins with no CVR equivalent. Frozen "#" locals.
+        // Stream-fed names are live instead; see StreamFedParameters.
+        // AFK is absent on purpose: it syncs natively in CVR.
+        // VelocityMagnitude is here for the "#" prefix only.
+        // FeedVelocityMagnitude recomputes it every frame.
+        // The scale family is stream-fed or derived; see FeedScaleParameters.
         static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
@@ -141,17 +101,16 @@ namespace AvatarBridge
             ReportSkippedLayers(ctx);
             bool convertingGestureLayer = vrcControllers.Any(c => c.id == VRCAvatarDescriptor.AnimLayerType.Gesture);
 
-            // Captured before any merging: the saved-controller audit uses these to tell a
-            // dead reference INHERITED from the source avatar (already dead in VRChat) from
-            // one the conversion introduced (our bug).
+            // Captured before merging. The saved-controller audit uses
+            // these to tell inherited dead references from introduced ones.
             _sourceControllerGuids.Clear();
             foreach (var (_, sourceController) in vrcControllers)
             {
                 CollectSerializedGuids(AssetDatabase.GetAssetPath(sourceController), _sourceControllerGuids);
             }
 
-            // Before the merge loop: the Action transplant below and LocomotionGrafter both
-            // prepare clips through the grafter's per-conversion clone caches.
+            // The Action transplant and LocomotionGrafter share
+            // per-conversion clone caches. Reset before the merge loop.
             LocomotionGrafter.ResetClones();
             DroppedPlayAudio.Clear();
             DroppedPlayAudioCount = 0;
@@ -162,32 +121,20 @@ namespace AvatarBridge
             var masterLayers = master.layers.ToList();
             var vrcLayers = new List<AnimatorControllerLayer>();
 
-            // In keep-GoGo mode the Base/Additive/Action layers REPLACE ChilloutVR's locomotion,
-            // so they are supposed to run at full weight and drive the body.
+            // In keep-GoGo mode Base/Additive/Action replace CVR's
+            // locomotion and must run at full weight.
             bool gogoDrivesLocomotion = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx);
             int actionLayersRested = 0;
-            // Action layers kept LIVE because the avatar drives them itself — see the weight
-            // decision below and the report entry at the end of the merge.
+            // Action layers the avatar drives itself; see the weight decision below.
             var actionFeatures = new List<string>();
             var actionMoved = new List<string>();
 
             foreach (var (id, controller) in vrcControllers)
             {
-                // VRChat's ACTION playable layer sits at weight 0 and is raised to 1 by a
-                // VRCPlayableLayerControl behaviour only while an emote plays. That is why the
-                // stock Action layer can have a Write-Defaults idle state ("WaitForActionOrAFK")
-                // holding a full-body clip and harm nothing there: at weight 0 the layer
-                // contributes nothing at all.
-                //
-                // ChilloutVR has no playable layers. Merged into one controller the layer runs at
-                // whatever weight it is given, forever — so carrying VRChat's in-controller weight
-                // of 1 across hands that idle state the entire body, above locomotion, with no
-                // mask. The avatar then stands in its rest pose and NOTHING moves it: movement
-                // sliders, walking, crouching, all dead, in the editor and in game alike.
-                //
-                // Weight 0 is the faithful conversion — it is VRChat's own default. Emotes are
-                // unaffected: they come from ChilloutVR's own Locomotion/Emotes layer, which the
-                // CCK base controller keeps and the Emote parameter drives.
+                // VRChat holds the Action playable at weight 0 and raises
+                // it only during emotes. Merged here it would run forever.
+                // Weight 0 is the faithful conversion. CVR's own
+                // Locomotion/Emotes layer still plays emotes.
                 bool actionAtRest = id == VRCAvatarDescriptor.AnimLayerType.Action && !gogoDrivesLocomotion;
                 var copier = new AnimatorDeepCopier();
                 MergeParameters(master, controller, ctx);
@@ -203,16 +150,13 @@ namespace AvatarBridge
                     }
 
                     var clone = copier.CloneLayer(srcLayer);
-                    // Converted hand-pose layers take over the CCK's LeftHand/RightHand
-                    // slots (those were removed above), keeping the controller readable.
+                    // Hand-pose layers take over the freed LeftHand/RightHand slots.
                     string cvrHandName = GetCvrHandLayerName(id, srcLayer);
                     clone.name = MakeUniqueLayerName(masterLayers,
                         cvrHandName ?? $"[{id}] {clone.name}");
                     if (cvrHandName != null)
                     {
-                        // Silent until a tester spent a round believing these were the CCK's
-                        // layers. Saying which layer poses the fingers is what makes an
-                        // in-game "fingers don't move" report diagnosable.
+                        // Reported so finger-pose issues stay diagnosable.
                         ctx.Report.Converted(Category,
                             $"Gesture hand layer \"{srcLayer.name}\" -> \"{clone.name}\"",
                             "Takes over ChilloutVR's hand-pose slot: the CCK's own layer was " +
@@ -230,28 +174,16 @@ namespace AvatarBridge
                     }
                     if (actionAtRest)
                     {
-                        // After the first-layer rule above, which would otherwise re-raise it.
-                        //
-                        // ALWAYS weight 0, including for Action layers that carry a feature of the
-                        // avatar's own — and that "including" was fought for and lost, so record
-                        // the whole retreat. 3.4.20–3.4.24 tried to keep feature layers live at
-                        // weight 1 with their non-feature states made inert. Every variant failed
-                        // on the same wall: Unity gives a layer no way to YIELD. An inert state
-                        // with Write Defaults off makes the layer HOLD the last muscles any live
-                        // state wrote — the avatar froze mid-pose, confirmed by watching the stuck
-                        // machine sit in an inert state while the pose persisted — and Write
-                        // Defaults on would assert the rest pose over locomotion instead. VRChat
-                        // resolves this with runtime playable-weight control, which ChilloutVR
-                        // does not have. So the pose portion of such a feature is a platform wall,
-                        // and it is REPORTED as one rather than half-shipped: the FX portion (mesh
-                        // swaps, materials — the visible part) lives in other layers and works.
+                        // After the first-layer rule, which would re-raise it.
+                        // Always weight 0. Unity gives a layer no way to
+                        // yield, so a live Action layer freezes the body.
+                        // The pose part is a platform wall; it is reported.
                         clone.defaultWeight = 0f;
                         actionLayersRested++;
                         if (ActionLayerDrivesOwnFeature(clone, out string byWhat))
                         {
-                            // The POSES go where ChilloutVR keeps poses: inside its own
-                            // locomotion layer. The clone stays merged at weight 0 so its
-                            // parameter drivers keep firing on schedule.
+                            // Poses move into CVR's locomotion layer.
+                            // The clone stays at weight 0 so its drivers still fire.
                             int moved = TransplantActionFeature(master, masterLayers, clone, srcLayer, ctx);
                             if (moved > 0)
                             {
@@ -318,8 +250,7 @@ namespace AvatarBridge
 
             _gestureConditionsRedirected = 0;
             GesturePass(master, vrcLayers, ctx);
-            // The CCK's kept hand layers are deliberately NOT touched: they already condition
-            // on the gesture floats, which is the stock idiom the client actually runs.
+            // The CCK's kept hand layers already use gesture floats. Left alone.
             if (_gestureConditionsRedirected > 0)
             {
                 ctx.Report.Converted(Category,
@@ -338,22 +269,20 @@ namespace AvatarBridge
             RebuildAnalogFist(master, ctx);
             BehaviourPass(master, vrcLayers, ctx);
             SystemStripper.Run(ctx, master, vrcLayers);
-            // After the stripper (keep-GoGo mode may have removed the CCK locomotion layer this
-            // grafts into), before anything renames parameters — it reads the SOURCE controllers
-            // off the descriptor, where VelocityX/VelocityZ still carry VRChat's names.
+            // After the stripper, before any renames. Reads the source
+            // controllers, which still carry VRChat parameter names.
             LocomotionGrafter.Run(ctx, master);
             StripExistingFaceTracking(master, vrcLayers, ctx);
             ReplaceAnimatorBlink(master, ctx);
             ToggleNativizer.Run(ctx, master, vrcLayers);
-            // Before RenamePass, so the menu entries' machineNames still line up with the
-            // animator parameter names; and before CompactIntDropdowns, which needs the
-            // dropdown parameters to already be Ints.
+            // Before RenamePass, so menu machineNames still match.
+            // Before CompactIntDropdowns, which needs the Ints in place.
             ParameterTypeInference.Run(master, ctx);
             RenamePass(master, vrcLayers, ctx);
             ApplyParameterDefaults(master, ctx);
             ReconcileAasInputTypes(master, ctx);
-            // Before CreateParameterStreams: this declares EyeHeightAsMeters when only a derived
-            // scale parameter asked for it, and the stream pass has to see that declaration.
+            // Before CreateParameterStreams, which must see the
+            // EyeHeightAsMeters declaration this can add.
             FeedScaleParameters(master, ctx);
             CreateParameterStreams(master, ctx);
             FeedVelocityMagnitude(master, ctx);
@@ -361,54 +290,36 @@ namespace AvatarBridge
             DeduplicateLayers(master, ctx);
             DropStateMachinelessLayers(master, ctx);
             MaskMergedLayers(master, vrcLayers, ctx);
-            // BEFORE the empty-state filler, deliberately. The two passes have mutually exclusive
-            // preconditions — this one needs BOTH states to hold clips, the filler needs one to be
-            // empty — so running this first makes it impossible for it to re-process the filler's
-            // own output. Run the other way round it did exactly that, turning "Toggle Cat Tail
-            // restore" into "Toggle Cat Tail restore restore" on 27 avatars.
-            // BEFORE every restore pass, so the layers it creates take part in ownership and get
-            // their restores through the ordinary machinery rather than a special case.
+            // Before the empty-state filler. Their preconditions are
+            // mutually exclusive, so this order cannot reprocess its output.
+            // Before the restore passes, so hoisted layers join ownership.
             HoistContestedTreeToggles(master, ctx);
-            // One shared registry of every restore clip THIS conversion writes, created before
-            // the first pass that writes one. The empty-state filler sweeps stale " restore"
-            // files out of the output folder and can only spare what it knows about — and it
-            // used to know only its own. The partial-off topping that ran moments earlier had
-            // its freshly written clips DELETED on every conversion: the report swore the states
-            // were topped, the coverage checker swore they asserted nothing, and both were
-            // telling the truth, one sweep apart. The registry also stops the passes overwriting
-            // each other's names: a nativized toggle layer and the tree Fury built from that
-            // same toggle are named alike often enough.
+            // Shared registry of every restore clip this conversion writes.
+            // The state filler's sweep spares only clips it knows about.
+            // Also stops the passes overwriting each other's clip names.
             var restoreClipPaths = new HashSet<string>();
             RestorePartialOffStates(master, ctx, restoreClipPaths);
             FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
-            // AFTER the state pass, which sweeps stale " restore" clips out of the output folder
-            // using only ITS OWN keep list — run the other way round, that sweep would delete the
-            // tree clips written moments earlier. Both run BEFORE FillEmptyMotionSlots, so the off
-            // halves they repair are still genuine holes rather than placeholders.
+            // After the state pass, whose sweep would delete these clips.
+            // Before FillEmptyMotionSlots, so off halves are still holes.
             FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
-            // AFTER both fillers, so the clips they wrote are seen and topped only where still
-            // missing something. This is the pass that stops relying on Write Defaults at all:
-            // ChilloutVR does not restore WD defaults the way VRChat's runtime does, so a binding
-            // left to WD is a binding left to nothing.
+            // After both fillers, topping only what is still missing.
+            // CVR never restores Write Defaults, so every binding
+            // must be asserted by real animation.
             AssertOwnedBindingsEverywhere(master, ctx);
-            // AFTER the filler, whose motions are what turned this from harmless into a strobe.
+            // After the filler; its added motions are what can strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
-            // After every layer that will exist, exists: the stack order it checks is the one
-            // the game will run.
+            // After every layer exists. The stack checked is the one the game runs.
             AuditHandPoseConflicts(master, ctx);
-            // AFTER every pass that can hand out a mask — the merge masking, the hoist that
-            // copies its source layer's mask, and the hand-pose audit above — because what
-            // matters is the finished stack: a masked layer applies only the FIRST
-            // object-reference binding of its clips, so a masked material swap loses every
-            // slot but one.
+            // After every pass that can hand out a mask. A masked layer
+            // applies only the first object-reference binding, so a
+            // masked material swap loses every slot but one.
             UnmaskObjectSwapLayers(master, ctx);
-            // Run last: after every merge and injection, make sure no transition conditions
-            // it on a parameter using a comparison its final type can't express (e.g. a
-            // Float/Bool type-conflict that keeps Float but leaves bool-style If/IfNot
-            // conditions behind). ChilloutVR silently drops such transitions.
+            // Run last. CVR silently drops transitions whose comparison
+            // does not match the parameter's final type.
             ReconcileConditionModes(master, ctx);
             SyncDriverParameterTypes(master, ctx);
             RepairUnconditionalDriverStates(master, ctx);
@@ -416,23 +327,18 @@ namespace AvatarBridge
             PruneDeadMenuEntries(master, ctx);
             WithdrawSelfDrivenExposures(master, ctx);
             CompactIntDropdowns(master, ctx);
-            // After the menu is final. SystemStripper already drops unreferenced parameters, but
-            // it runs long before this and keeps anything a menu entry drives — so a parameter
-            // whose only justification was an entry that PruneDeadMenuEntries then removed is
-            // left behind, declared and inert, still costing sync bits if it was synced.
+            // After the menu is final. A parameter kept only for a menu
+            // entry pruned above would stay declared and cost sync bits.
             // Before pruning, while every reference is still visible.
             RepairPrefixedReferences(master, ctx);
             DeclareDanglingParameters(master, ctx);
             DefaultUnsupportedBuiltIns(master, ctx);
             PruneOrphanedParameters(master, ctx);
-            // AFTER pruning, because pruning decides what is live using the same vestigial-field
-            // rule this pass deliberately ignores — run it earlier and the parameters it adds are
-            // the first thing thrown away.
+            // After pruning, which would throw these parameters away.
             SafeguardBlendParameters(master, ctx);
 
-            // After every merge, injection and clip clone, right before saving: animations that
-            // toggled a converted PhysBone's GameObject or component are taught to reach the
-            // generated physics as well.
+            // Right before saving: animations that toggled a converted
+            // PhysBone must reach the generated physics too.
             BridgeNativeContacts(master, ctx);
             RewirePhysicsToggles(master, ctx);
             AuditSizeBlendshapes(master, ctx);
@@ -444,26 +350,18 @@ namespace AvatarBridge
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
-            // Persist controller + override controller and hook both to the CVRAvatar.
-            // Save hands back the persisted asset, which is a different object whenever an
-            // earlier run's controller was overwritten in place to keep its GUID — so
-            // everything below must reference that one, not the object we built.
+            // Save can hand back a different persisted object.
+            // Everything below must reference that one.
             string controllerPath = $"{ctx.OutputDir}/{master.name}.controller";
-            // Counted before and after saving, because Unity's persistence layer can silently
-            // amputate: an object flagged DontSave is refused at save time (an assertion in the
-            // editor log nobody reads) and its reference goes dangling — "Missing (Motion)" in
-            // the animator window, dead toggles in game, and a conversion report with no errors.
-            // If anything the controller referenced in memory failed to arrive on disk, that is
-            // an Error, in the report, with numbers.
+            // Counted before and after saving. Unity refuses DontSave
+            // objects at save time and the reference dangles silently.
+            // Any loss is an Error in the report.
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
-            // AFTER the save, not before: the filler clip is attached with AddObjectToAsset, which
-            // needs an object that is already an asset. Called earlier it silently achieved
-            // nothing, which is exactly what happened in 3.3.4.
+            // After the save. AddObjectToAsset needs a persisted asset.
             FillEmptyMotionSlots(ctx, master);
-            // The serialized-guid audit runs from BridgeConverter AFTER AnimationSelfContainer,
-            // so it judges the FINAL file — auditing here flagged references the self-container
-            // was about to repoint, and told a user "do not upload" a fine conversion.
+            // The serialized-guid audit runs later, from BridgeConverter,
+            // so it judges the final file.
             int motionsAfterSave = CountMotionReferences(master);
             if (motionsAfterSave < motionsBeforeSave)
             {
@@ -477,29 +375,23 @@ namespace AvatarBridge
             }
             ctx.MergedController = master;
 
-            // Generate the override controller wrapping the base. ChilloutVR uses this as
-            // the avatar's runtime controller (it's what the "Override Controller" slot
-            // expects), so it must be present, not left empty.
+            // CVR runs the avatar through the override controller.
+            // It must exist, not be left empty.
             var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
             string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
             overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
-            // The CCK's own "Override Controller" slot. Its Advanced Settings editor reads this
-            // when it regenerates a controller, so leaving it empty quietly loses the overrides
-            // the moment anyone uses the CCK's own controller-creation button.
+            // The CCK's Advanced Settings editor reads this slot when it
+            // regenerates a controller. Leave it filled.
             ctx.CvrAvatar.avatarSettings.baseOverrideController = overrides;
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
             if (animator == null)
             {
-                // Was a SILENT skip until 3.5.11, and five avatars in the regression corpus paid
-                // for it: Frenni, both Sallys, Stylized Tasque Manager and Tachy shipped prefabs
-                // whose Animator still held the controller inherited from the clone source — a
-                // VRCFury temp asset Fury deletes on its next build, so the Inspector reads
-                // "Missing (Runtime Animator Controller)" — and not one word of it reached the
-                // report. An avatar losing its animator is not something to find out by eye.
+                // Reported, never silent. Cloned avatars can inherit an
+                // Animator whose controller reference is already dead.
                 ctx.Report.Error(Category, "No Animator found to assign the controller to",
                     "The converted avatar has no Animator component on its root, so the merged " +
                     "controller could not be linked to one. ChilloutVR still loads the avatar — it " +
@@ -510,33 +402,15 @@ namespace AvatarBridge
             }
             else
             {
-                // The override, not the base. ChilloutVR does this itself on load — AssetFilter
-                // assigns CVRAvatar.overrides onto the Animator — so pointing at the base here
-                // left the editor showing something the game never runs, and play-mode preview
-                // disagreeing with the real thing.
+                // Assign the override, not the base. CVR assigns
+                // CVRAvatar.overrides onto the Animator on load.
                 //
-                // NOT ASSIGNED AT ALL when the controller references assets that resolve to
-                // nothing, because assigning one crashes Unity outright.
-                //
-                // This took four attempts, and the reason is worth writing down: every earlier fix
-                // assumed something that isn't true.
-                //
-                //   3.0.1  "the asset is still importing"   -> deferred it; crash moved to the delayCall
-                //   3.2.0  "a disabled Animator is safe"    -> crash moved to the Inspector
-                //   3.3.1  "unlink it after conversion"     -> too late; the assignment already did it
-                //
-                // The false assumption underneath all three was that a DISABLED Animator stores a
-                // controller without building anything. It does not. set_runtimeAnimatorController
-                // calls Animator::Rebind regardless of enabled state, and Rebind builds the whole
-                // Mecanim playable graph: CreateInternalControllerPlayable -> GenerateGraph ->
-                // SetStateMachineInInitialState -> DoBlendTreeEvaluation. A dangling motion
-                // reference in there is a segfault, and disabling never had anything to do with it
-                // — it only ever looked like it helped because healthy controllers survive.
-                //
-                // So the check happens BEFORE the assignment, which is the only place it can work.
-                // Nothing is lost by skipping it: ChilloutVR reads CVRAvatar.overrides on load, not
-                // the Animator, and later conversion passes fall back to ctx.MergedController for
-                // the clip list.
+                // Skipped entirely when references resolve to nothing.
+                // The setter rebinds even on a disabled Animator, and
+                // Rebind builds the full playable graph. A dangling
+                // motion reference there segfaults Unity.
+                // CVR reads CVRAvatar.overrides on load, so skipping
+                // the assignment loses nothing.
                 if (ControllerWouldCrashUnity(overrides))
                 {
                     ctx.Report.Error(Category, "Controller NOT assigned to the Animator — it crashes Unity",
@@ -553,78 +427,31 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    // Cleared first, then set. Not superstition — it is the one thing the
-                    // evidence actually supports.
-                    //
-                    // Sally_PC and Sally_Quest refused this assignment for four versions while
-                    // three theories about WHY were wrong in turn. The diagnostic build settled
-                    // the facts: the override controller is persisted and valid, its base
-                    // resolves, the Animator is enabled on an active object, and the component is
-                    // on neither a prefab asset nor a prefab instance — so both earlier "fixes"
-                    // were no-ops on this avatar. The assignment simply produced null.
-                    //
-                    // What those two have that the working avatars do not: no VRCFury. Everything
-                    // that converts correctly here is baked by Fury, which builds its own target;
-                    // without it the target is an Object.Instantiate clone, and the clone inherits
-                    // the source's Animator complete with its DEAD controller reference. Writing
-                    // null was already known to stick — the saved prefab came out {fileID: 0} —
-                    // while overwriting the dead reference in place did not, which is a component
-                    // whose native rebind failed and will not take a new controller until the
-                    // broken one is let go of.
+                    // Cleared first, then set. A clone can inherit a dead
+                    // controller whose failed native rebind refuses any
+                    // new controller until the broken one is let go.
                     animator.runtimeAnimatorController = null;
                     animator.runtimeAnimatorController = overrides;
 
-                    // Register the change as a prefab-instance override, or it does not survive.
-                    //
-                    // Avatars are almost always prefab INSTANCES, and a plain property set on an
-                    // instance is not automatically recorded as an override. SaveConvertedPrefab
-                    // then calls SaveAsPrefabAssetAndConnect, which reconnects the object and
-                    // reverts anything unrecorded to the prefab's own value — so the controller
-                    // this line just assigned quietly went back to whatever the source prefab
-                    // had.
-                    //
-                    // Invisible on most avatars, because the value it reverts TO is a live
-                    // controller and everything looks fine. Sally_PC and Sally_Quest are the
-                    // case where it is not: their source prefabs' Animator override points at a
-                    // controller that no longer exists, so the revert handed the conversion a
-                    // dangling reference. Sally_PC_SPS, same avatar, healthy source value,
-                    // reverted just as hard and nobody could tell.
+                    // Record a prefab-instance override, or
+                    // SaveAsPrefabAssetAndConnect reverts the assignment
+                    // to the prefab's own value.
                     if (PrefabUtility.IsPartOfPrefabInstance(animator))
                     {
                         PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
                     }
 
-                    // Read it back. This is not paranoia: Sally_PC and Sally_Quest reached this
-                    // line, ran it, and still shipped prefabs whose Animator held the SOURCE
-                    // avatar's controller — a GUID that resolves to nothing, inherited through the
-                    // clone from a scene where it was already dead. The assignment did not take,
-                    // nothing threw, and no error reached the report, so the avatar simply arrived
-                    // without an animator and the only way anyone found out was by clicking on it.
-                    //
-                    // A dangling reference is worse than an empty one, too: it reads as null to
-                    // script while the serialized GUID survives into the prefab, so it looks fine
-                    // to every check that asks the object what it has. If it would not stick, it
-                    // gets cleared — an empty slot is honest and cannot crash the graph builder —
-                    // and the report says so.
+                    // Read it back. The assignment can silently not take.
+                    // A dangling reference reads as null to script while
+                    // the GUID survives into the prefab. If it will not
+                    // stick, clear it; an empty slot is honest.
                     if (animator.runtimeAnimatorController != overrides)
                     {
-                        // The Inspector's path, not the API's. Five attempts went through the
-                        // C# setter — plain, recorded as a prefab override, after an unpack,
-                        // cleared-then-set, and after a forced synchronous import — and on two
-                        // avatars every one of them silently stored null while the very same
-                        // asset dragged into the very same slot BY HAND worked at once. The
-                        // Inspector does not call the setter: dragging writes the serialized
-                        // m_Controller property through a SerializedObject. The maintainer
-                        // proved that path works on these exact avatars; this does the same
-                        // thing programmatically.
-                        //
-                        // It is also consistent with every measurement: the serialized field
-                        // held the source's dead GUID for weeks and holds our null happily —
-                        // serialization never refused anything. Whatever rejects the controller
-                        // lives in the native setter, so the repair simply does not go through
-                        // it. The prefab is saved from serialized data, and the native side
-                        // binds from it on the next load, exactly as it does after a manual
-                        // drag.
+                        // The Inspector's path, not the API's. Dragging
+                        // writes serialized m_Controller directly, and that
+                        // works where the native setter stores null.
+                        // The prefab saves from serialized data; the native
+                        // side binds from it on the next load.
                         var serialized = new SerializedObject(animator);
                         serialized.FindProperty("m_Controller").objectReferenceValue = overrides;
                         serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -633,13 +460,10 @@ namespace AvatarBridge
                             PrefabUtility.RecordPrefabInstancePropertyModifications(animator);
                         }
 
-                        // And make the native side notice. The serialized write alone leaves the
-                        // component in a half-state for the rest of the session: the Inspector
-                        // slot shows the controller, the prefab saves it, and the Animator's
-                        // native binding still holds nothing — Clip Count: 0, no preview, until
-                        // a scene reload rebinds from serialized data. Rebind() forces that
-                        // rebuild now. Safe here for the same reason the assignment was: this
-                        // path only runs on a controller the crash guard already cleared.
+                        // Make the native side notice now. The serialized
+                        // write alone leaves the binding empty until a
+                        // scene reload. Safe: the crash guard already
+                        // cleared this controller.
                         animator.Rebind();
                         ctx.Report.Approximated(Category,
                             "Controller linked through the serialized property",
@@ -650,20 +474,14 @@ namespace AvatarBridge
                             "controller either way.");
                     }
 
-                    // Judged on the SERIALIZED value, not the getter. The getter answers from
-                    // the native binding, which can lag a serialized write within the same
-                    // editor frame — and the serialized value is the one that reaches the
-                    // prefab and the one ChilloutVR loads.
+                    // Judged on the serialized value, not the getter.
+                    // The getter can lag within the same editor frame.
+                    // The serialized value is what CVR loads.
                     var verify = new SerializedObject(animator);
                     var heldReference = verify.FindProperty("m_Controller").objectReferenceValue;
                     if (heldReference != overrides)
                     {
-                        // What the read-back actually saw. Three mechanism theories have now been
-                        // wrong about this — the prefab-override revert, then the prefab
-                        // connection, then a dangling sub-asset reference — each plausible, each
-                        // disproved only after a build and a run. The check knows the answer at
-                        // the moment it fails and was throwing it away; the next failure carries
-                        // it into the report instead.
+                        // Carry what the read-back saw into the report.
                         var getterHeld = animator.runtimeAnimatorController;
                         string evidence =
                             $"[serialized={(heldReference == null ? "null" : heldReference.name)}" +
@@ -676,8 +494,7 @@ namespace AvatarBridge
                             $"; animatorEnabled={animator.enabled}" +
                             $"; objectActive={animator.gameObject.activeInHierarchy}] ";
 
-                        // Cleared through the same serialized path the repair used — the API
-                        // setter has proven it cannot be trusted on this component.
+                        // Cleared through the same serialized path.
                         verify.FindProperty("m_Controller").objectReferenceValue = null;
                         verify.ApplyModifiedPropertiesWithoutUndo();
                         ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
@@ -696,54 +513,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(ctx.CvrAvatar);
         }
 
-        /// <summary>
-        /// Gives every empty blend-tree slot a real (empty) clip, because an empty one crashes Unity.
-        ///
-        /// A blend tree child whose motion is missing — the asset it named is gone, or a bake never
-        /// produced it — is the thing at the bottom of every crash dump this project has collected:
-        /// <c>DoBlendTreeEvaluation</c>, reached from <c>GenerateGraph</c>. It fires whenever
-        /// ANYTHING builds a playable graph from the controller, and plenty of things do that are
-        /// nothing to do with this tool: assigning it to an Animator, enabling one, selecting the
-        /// object in the Inspector, and — the one that matters most — the CCK's own uploader, which
-        /// instantiates the avatar to build it and takes the editor down with it. An avatar in that
-        /// state simply cannot be uploaded.
-        ///
-        /// Refusing to assign the controller only protected our own step. This removes the hazard
-        /// itself: each empty slot gets a shared filler clip. Nothing is lost — the slot already
-        /// animated nothing — but the graph builder now has a valid motion to read instead of a
-        /// hole, so the controller is safe for anyone to instantiate.
-        ///
-        /// THE FILLER IS NOT AN EMPTY CLIP, which is what 3.4.2 through 3.4.8 used. A clip with no
-        /// curves at all is degenerate to Mecanim, and binding one trips
-        ///
-        ///     Assertion failed on expression: 'mem->m_ConstantClipValueCount >= 0 &&
-        ///     mem->m_ConstantClipValueCount &lt;= (int)clip->m_ConstantClip.curveCount'
-        ///
-        /// once per state that holds it — the count it is comparing is the size of the value array
-        /// the animator reads and writes bindings through.
-        ///
-        /// BE PRECISE ABOUT WHAT THIS FIXED, because the avatar it was found on had two things
-        /// wrong at once. The assertions, a menu whose controls had swapped places, and a body in
-        /// the wrong materials all came from Unity's "Enter Play Mode Options" being on — proven by
-        /// turning it off and watching every symptom go, with no reconversion. See
-        /// BridgeConverter.WarnFastPlayMode. What a curve-less placeholder does is make OUR output
-        /// the thing that setting breaks, on an avatar that would otherwise survive it, and 66
-        /// states shared one on that avatar.
-        ///
-        /// So the filler carries ONE constant curve, on a dedicated empty child of the avatar that
-        /// nothing else touches, holding that object's own active state at the value it already
-        /// has. Writing it changes nothing on any frame; existing means Mecanim has a real curve
-        /// count to agree with itself about, and a user who likes fast play mode keeps it.
-        ///
-        /// Deliberately NOT deleting the children. Blend tree children carry thresholds, and
-        /// removing one re-numbers its neighbours and changes how the rest blend. A filler clip in
-        /// place keeps every threshold where the author put it.
-        /// </summary>
-        /// <summary>
-        /// Parameters the CVR menu drives with a SLIDER, i.e. continuously. A dropdown or toggle
-        /// lands its parameter exactly on a child's threshold; a slider passes between them, and
-        /// that is the difference that decides whether a hole in a 1D tree may be dropped.
-        /// </summary>
         static HashSet<string> SliderParameterNames(BridgeContext ctx)
         {
             var names = new HashSet<string>();
@@ -801,28 +570,16 @@ namespace AvatarBridge
                 }
                 var children = tree.children;
 
-                // A slider's holes are DROPPED rather than filled, and this is the one place
-                // where the filler is worse than the hole.
+                // A slider's holes are dropped rather than filled.
+                // Unity blends a 1D tree between the two children either
+                // side of the parameter. A null child never takes weight.
+                // A filler clip does, and it animates nothing.
                 //
-                // Unity blends a 1D tree between the two children either side of the parameter.
-                // A null child is not one of those two — the weight goes to the real motions
-                // across the gap — which is how a slider with three real clips spread over
-                // thirty-eight slots still travels smoothly in VRChat. The filler is a REAL
-                // clip, so it becomes an eligible neighbour and takes that weight, and it
-                // animates nothing. Reported from an avatar whose "Storage Upgrade" slider did
-                // nothing at all until 0.97 and then jumped: thirty-three of its thirty-eight
-                // children were fillers.
+                // Slider only. A dropdown's empty option is a deliberate
+                // "show nothing" the parameter lands exactly on.
                 //
-                // Only for a CVR Slider. A dropdown's empty option is a deliberate "show
-                // nothing", and the parameter lands exactly on it rather than between children,
-                // so dropping it there would let its neighbours bleed into a position the author
-                // meant to be empty — the shape 3.6.x already had to learn (see the
-                // selector-with-one-empty-option work).
-                //
-                // The thresholds are pinned first. The objection recorded above — that removing
-                // a child re-numbers its neighbours — is only true while useAutomaticThresholds
-                // is on, which spreads children evenly on every edit. Captured and written back
-                // explicitly, every surviving motion keeps the position the author gave it.
+                // Thresholds are pinned first. Removing a child only
+                // renumbers neighbours while useAutomaticThresholds is on.
                 if (tree.blendType == BlendTreeType.Simple1D
                     && !string.IsNullOrEmpty(tree.blendParameter)
                     && sliderParameters.Contains(tree.blendParameter))
@@ -877,13 +634,10 @@ namespace AvatarBridge
                 {
                     foreach (var child in machine.states)
                     {
-                        // The state's OWN motion as well as anything nested below it. An empty
-                        // state was the case 3.3.4 missed entirely — it only ever looked at blend
-                        // tree children, so it found nothing to do on the avatar that crashed and
-                        // said nothing. Unity works out a state's duration from its motion, and
-                        // does that while building the graph (EvaluateStateDuration, under
-                        // SetStateMachineInInitialState), so a state with no motion is the same
-                        // hole as an empty blend tree slot.
+                        // The state's own motion counts too. Unity derives
+                        // state duration from it while building the graph.
+                        // A motionless state is the same hole as an empty
+                        // blend tree slot.
                         if (child.state.motion == null || IsCurveless(child.state.motion, filler))
                         {
                             child.state.motion = Filler();
@@ -944,13 +698,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// A clip that animates literally nothing, which Mecanim cannot size a binding array from.
-        ///
-        /// Humanoid clips are excluded deliberately: their muscle data lives outside the curve
-        /// arrays, so VRChat's <c>proxy_hands_*</c> and every FBX animation read as curve-less here
-        /// and are perfectly valid. Legacy clips likewise never reach a Mecanim graph.
-        /// </summary>
         static bool IsCurveless(Motion motion, AnimationClip filler)
         {
             if (!(motion is AnimationClip clip) || clip == filler)
@@ -962,12 +709,6 @@ namespace AvatarBridge
                 && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0;
         }
 
-        /// <summary>
-        /// A dedicated empty child of the avatar, existing only so the placeholder clip has
-        /// something inert to animate. Nothing else reads it, nothing else writes it, and holding
-        /// its own active state at the value it already has is a no-op on every frame — the point
-        /// is purely that the clip carries a curve at all.
-        /// </summary>
         static string EmptySlotAnchorPath(BridgeContext ctx)
         {
             if (ctx == null || ctx.Target == null)
@@ -986,36 +727,6 @@ namespace AvatarBridge
             return ctx.PathInTarget(anchor);
         }
 
-        /// <summary>
-        /// Whether a controller asset (or anything it wraps) references a GUID that resolves to no
-        /// asset in this project.
-        ///
-        /// Read from the saved FILE rather than the object graph, because that is where a dangling
-        /// reference is still visible: in managed code it has already collapsed to a plain null,
-        /// indistinguishable from a state that legitimately has no motion. Cheap enough to run
-        /// once — a text scan of one .controller.
-        /// </summary>
-        /// <summary>
-        /// The GUIDs a serialized file genuinely REFERENCES, as opposed to ones that merely
-        /// appear somewhere in its text.
-        ///
-        /// Unity writes an external object reference as the whole triple
-        /// <c>{fileID: N, guid: G, type: N}</c>, and nothing else takes that shape, so matching
-        /// the triple is exact. Scanning for a bare "guid: &lt;32 hex&gt;" is not — and the
-        /// difference is not academic. Unity names a broken prefab instance
-        /// <c>SFX (Missing Prefab with guid: ea09b303…)</c>, that NAME then appears in every
-        /// animation curve path and avatar mask entry targeting the object, and a bare scan reads
-        /// it as a reference to a deleted asset.
-        ///
-        /// It cost two avatars their entire animator controller. BHFBunny and Sultry Snake each
-        /// carry one such placeholder under an SPS socket; the crash guard below read the name out
-        /// of a curve path, concluded the controller pointed at something deleted, and refused to
-        /// assign it — leaving a converted avatar with no controller at all. On Sultry Snake the
-        /// bare scan found 613 GUIDs where only 599 were references.
-        ///
-        /// Narrowing the match does not weaken the guard: a genuinely missing asset is still
-        /// written as the full triple, so it still matches.
-        /// </summary>
         internal static IEnumerable<string> ReferencedGuids(string yaml)
         {
             foreach (Match match in Regex.Matches(
@@ -1066,25 +777,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ setup ----
 
-        /// <summary>
-        /// Carries a native contact's value to the network, one small layer per contact.
-        ///
-        /// ChilloutVR's native contact system writes its parameter with animator.SetFloat —
-        /// straight at the Animator — and the outbound sync cache only fills inside
-        /// CVRAnimatorManager's own setters. So a native contact drives a value that never leaves
-        /// the wearer's machine, and every particle, sound and toggle it gates happens for them
-        /// alone. The legacy pointer/trigger path calls PlayerSetup.ChangeAnimatorParam and does
-        /// not have this problem, which is why it is the default.
-        ///
-        /// A DRIVER writes through the manager too (CVRAnimatorDriver.ApplyAnimatorChange calls
-        /// AnimatorManager.SetParameter), so it can act as the bridge. The contact was repointed
-        /// at a local parameter during the contacts pass; this reads that and drives the ORIGINAL
-        /// name, which every animation on the avatar already reads. Nothing needs retargeting.
-        ///
-        /// It buys no bits and spends none: the original parameter is unprefixed, so ChilloutVR
-        /// has always counted it against the 3200-bit budget and always transmitted it. It was
-        /// transmitting a value nothing ever wrote.
-        /// </summary>
         static void BridgeNativeContacts(AnimatorController master, BridgeContext ctx)
         {
             if (ctx.BridgedContacts == null || ctx.BridgedContacts.Count == 0)
@@ -1105,11 +797,9 @@ namespace AvatarBridge
                     master.AddParameter(local, AnimatorControllerParameterType.Float);
                 }
 
-                // AddLayer(name) rather than building a state machine and attaching it by hand:
-                // this runs BEFORE the controller is saved, and AddObjectToAsset refuses a target
-                // that is not yet persistent ("AddAssetToSameFile failed because the other asset
-                // is not persistent"), which took the whole conversion down. Letting Unity make
-                // the machine leaves its lifetime to the same code that saves everything else.
+                // AddLayer, not a hand-built machine. AddObjectToAsset
+                // refuses a target that is not yet persistent, and this
+                // runs before the controller is saved.
                 master.AddLayer(SanitizeFileName($"Contact sync {synced}"));
                 var layers = master.layers;
                 var layer = layers[layers.Length - 1];
@@ -1117,9 +807,8 @@ namespace AvatarBridge
                 layer.blendingMode = AnimatorLayerBlendingMode.Override;
                 var machine = layer.stateMachine;
 
-                // Two states, each asserting its end of the value. Both directions are written,
-                // because ChilloutVR restores nothing a state does not write — the same rule that
-                // governs every toggle this tool produces.
+                // Both directions are written. CVR restores nothing a
+                // state does not write.
                 var off = machine.AddState("Not touched");
                 var on = machine.AddState("Touched");
                 off.writeDefaultValues = false;
@@ -1128,17 +817,9 @@ namespace AvatarBridge
                 off.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 0f) };
                 on.behaviours = new StateMachineBehaviour[] { ContactDriver(synced, target.type, 1f) };
 
-                // Gated on IsLocal so ONLY THE WEARER'S COPY drives the synced name.
-                //
-                // The contact itself runs on every client — that is how the native system works,
-                // and why a local parameter needs no help. A driver is different: its write goes
-                // through the animator manager and is BROADCAST. Ungated, every remote copy also
-                // computed the contact for itself and drove the same parameter, so a remote client
-                // had two sources for one value — its own driver and the wearer's broadcast. Land
-                // them a frame apart and the layer that plays the effect exits and re-enters, and
-                // the effect plays twice. Reported from a world, on a headpat.
-                //
-                // Gated, the wearer computes and sends, everyone else receives. One source each.
+                // Gated on IsLocal so only the wearer drives the synced name.
+                // A driver's write is broadcast. Ungated, remote copies
+                // would double-drive the value and replay the effect.
                 if (master.parameters.All(p => p.name != "IsLocal"))
                 {
                     master.AddParameter("IsLocal", AnimatorControllerParameterType.Bool);
@@ -1175,18 +856,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// An AnimatorDriverTask.Operator looked up by NAME, trying each spelling in turn.
-        ///
-        /// The CCK renames these between versions — "MoreThan"/"LessThan" in one, "MoreThen"/
-        /// "LessThen" in another — and a member written into the source binds at COMPILE time, so
-        /// the whole tool stops building for anyone whose CCK spells it the other way. A user on
-        /// 3.7.1 hit exactly that, and no amount of compiling here would have found it: the check
-        /// builds against whichever CCK is installed on this machine, which is the one that agrees.
-        ///
-        /// Enum members that ARE stable across versions (Set, Addition, Subtraction …) stay written
-        /// out plainly; this is only for the ones known to have moved.
-        /// </summary>
         static bool TryOperator(out AnimatorDriverTask.Operator op, params string[] names)
         {
             foreach (string name in names)
@@ -1202,8 +871,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>One driver task: set this parameter to this value, in the type it is declared
-        /// as, so a bool slot is not handed a float.</summary>
         static AnimatorDriver ContactDriver(string parameter, AnimatorControllerParameterType type, float value)
         {
             var driver = ScriptableObject.CreateInstance<AnimatorDriver>();
@@ -1224,18 +891,6 @@ namespace AvatarBridge
             return driver;
         }
 
-        /// <summary>
-        /// Names every animator layer the avatar wrote itself that this conversion is leaving
-        /// behind, and says what is in it.
-        ///
-        /// Silence was the failure. An unticked layer is skipped with a bare `continue` — not
-        /// merged at weight 0, not partially handled, absent — and nothing said so anywhere. A
-        /// transforming avatar (a mech that folds into a copter) keeps its menu toggle and its
-        /// mesh swaps, because those live in FX, and loses the entire sequence that drives them,
-        /// because that lives in Action. It converts to something that goes in and never comes
-        /// out, with a clean report. Reported at whatever the layer actually contains, so the
-        /// reader can tell a layer of idle breathing from twenty-one full-body pose states.
-        /// </summary>
         static void ReportSkippedLayers(BridgeContext ctx)
         {
             if (ctx.SourceDescriptor?.baseAnimationLayers == null)
@@ -1303,8 +958,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Internal so the physics pass can read the same source layers: it runs BEFORE
-        /// the merge and still needs to know how far an animated blendshape travels.</summary>
         internal static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
         {
             var result = new List<(VRCAvatarDescriptor.AnimLayerType, AnimatorController)>();
@@ -1350,12 +1003,9 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, "CCK AvatarAnimator.controller not found",
                     "Locomotion/hand layers are missing; the CCK usually regenerates them, but check the result.");
-                // Names, types and order taken from the CCK's own AvatarAnimator.controller.
-                // ChilloutVR's animator manager dispatches writes on the *declared* type, so
-                // these have to match the real thing rather than be approximated: this list
-                // previously had Grounded as a Float, Emote and Toggle as Ints, and omitted the
-                // five locomotion Bools entirely, which left anything conditioning on Sitting or
-                // Flying referencing a parameter nothing declared.
+                // Names, types and order match the CCK's own controller.
+                // CVR dispatches writes on the declared type, so these
+                // must match the real thing exactly.
                 master.parameters = new[]
                 {
                     new AnimatorControllerParameter { name = "MovementX", type = AnimatorControllerParameterType.Float },
@@ -1384,14 +1034,10 @@ namespace AvatarBridge
                 allowed.Add("RightHand");
             }
 
-            // Keeping GoGo Loco (strip off) means GoGo IS the locomotion: its Base/Poses/Action
-            // layers replace ChilloutVR's own the same way they replace VRChat's. Leaving the
-            // CCK's Locomotion/Emotes underneath had the two fighting for the body every frame
-            // — the tester-visible result was CVR animations with GoGo flickering over them.
-            // Known, accepted losses in this mode (no CVR equivalents exist): movement is not
-            // locked during poses (walking mid-pose slides), the viewpoint does not follow
-            // pose height, and CVR's own quick-menu emotes no longer animate — GoGo's wheel
-            // replaces them.
+            // Keeping GoGo means GoGo is the locomotion. Leaving the
+            // CCK's Locomotion/Emotes underneath has the two fighting
+            // for the body every frame. Accepted losses in this mode
+            // are listed in the report warning below.
             if (!ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx))
             {
                 allowed.Remove("Locomotion/Emotes");
@@ -1533,10 +1179,6 @@ namespace AvatarBridge
             return result.ToArray();
         }
 
-        /// <summary>
-        /// Returns null when no condition needed rewriting; otherwise the OR-branches
-        /// (each an AND-group) replacing the original condition list.
-        /// </summary>
         static List<AnimatorCondition[]> RewriteConditions(AnimatorCondition[] conditions, BridgeContext ctx)
         {
             bool anyChanged = false;
@@ -1588,13 +1230,10 @@ namespace AvatarBridge
 
         static List<List<AnimatorCondition>> RewriteGestureCondition(AnimatorCondition condition, BridgeContext ctx)
         {
-            // Rebuild discrete gesture checks as threshold bands on the GestureLeft/GestureRight
-            // FLOATS — the exact idiom the CCK's own AvatarAnimator uses, and the only one the
-            // client is demonstrably exercised against. The integer GestureLeftIdx route looked
-            // equivalent in the decompile (Idx = round(GestureLeft) in the parameter setter),
-            // but a tester's split verdict — stock avatar poses fingers, converted avatar with
-            // identical clips, masks and wiring doesn't — isolated the difference to exactly
-            // this: the stock controller never references Idx. Condition like the CCK does.
+            // Rebuild discrete gesture checks as threshold bands on the
+            // gesture floats, the idiom the CCK's own controller uses.
+            // The integer Idx route looks equivalent in the decompile,
+            // but the stock controller never references Idx.
             string param = condition.parameter;
             _gestureConditionsRedirected++;
 
@@ -1651,16 +1290,6 @@ namespace AvatarBridge
                 .ToList();
         }
 
-        /// <summary>
-        /// Analog fist parity for taken-over hand layers. In VRChat a fist isn't a snap: the
-        /// gesture playable blends the fist pose in by grip strength. The CCK does the same
-        /// with its Relaxed/Fist blend tree on the gesture float — the float IS the grip in
-        /// the fist band. A converted hand layer whose Fist state plays a bare clip would
-        /// snap to full fist at a light squeeze instead, so the clip is wrapped in the CCK's
-        /// own idiom: a 1D tree on the gesture float, idle pose at 0.1, fist pose at 1.
-        /// Skipped when the fist state already uses a tree or motion-time weight — that
-        /// author built their own analog handling and it converts as-is.
-        /// </summary>
         static void RebuildAnalogFist(AnimatorController master, BridgeContext ctx)
         {
             foreach (var layer in master.layers)
@@ -1742,14 +1371,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// The CCK's own detection window for one gesture value, as serialized in its
-        /// AvatarAnimator: open (-1) is "&lt; -0.9", rock'n'roll (6) is "&gt; 5.9"
-        /// (open-ended), the discrete poses sit in (V-0.1, V+0.1). The CCK folds neutral and
-        /// fist into one (-0.9, 1.1) band because the float IS the analog grip there; VRChat
-        /// logic has separate neutral/fist states, so those split at 0.1 — grip past a light
-        /// squeeze counts as fist, mirroring VRChat's own low trigger threshold.
-        /// </summary>
         static List<AnimatorCondition> FloatBand(string param, int cvrValue)
         {
             var band = new List<AnimatorCondition>();
@@ -1769,10 +1390,6 @@ namespace AvatarBridge
             return band;
         }
 
-        /// <summary>
-        /// Everything OUTSIDE one gesture's band, as OR-branches — Unity evaluates only
-        /// Greater/Less on float parameters, so a NotEqual has to become two transitions.
-        /// </summary>
         static List<List<AnimatorCondition>> FloatBandInverse(string param, int cvrValue)
         {
             List<AnimatorCondition> One(AnimatorConditionMode mode, float threshold) =>
@@ -1877,7 +1494,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Inventory of dropped VRCAnimatorPlayAudio behaviours, reset per Run.</summary>
         static readonly List<string> DroppedPlayAudio = new List<string>();
         static int DroppedPlayAudioCount;
         static readonly List<string> DroppedPoseSpace = new List<string>();
@@ -1925,12 +1541,9 @@ namespace AvatarBridge
                 }
                 else if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio playAudio)
                 {
-                    // Animator-driven audio — music toggles, SFX on states; 86 across the wild
-                    // census, so it deserves its own inventory instead of a bare type count. No
-                    // conversion yet: the honest play/stop approximation (AudioSource enable
-                    // window) interacts with Write Defaults — leaving the state stops the WRITES,
-                    // not the audio — so it needs the off-state restore machinery and its own
-                    // design. The AudioSource itself survives conversion untouched.
+                    // Animator-driven audio. Not converted yet: a play/stop
+                    // approximation needs the off-state restore machinery.
+                    // The AudioSource itself survives untouched.
                     if (DroppedPlayAudio.Count < 6)
                     {
                         string clips = playAudio.Clips == null ? "no clips"
@@ -1964,10 +1577,7 @@ namespace AvatarBridge
             return result.ToArray();
         }
 
-        /// <summary>
-        /// Running totals for the tracking/locomotion conversion, so the report gets one line
-        /// instead of one per behaviour. Avatars carry dozens of these.
-        /// </summary>
+        // Running totals so the report gets one line, not one per behaviour.
         class BodyControlStats
         {
             public int Components;
@@ -2018,20 +1628,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat's per-limb tracking toggle, expressed as ChilloutVR Body Control tasks.
-        ///
-        /// The two systems line up exactly, which is worth stating because it isn't documented —
-        /// ChilloutVR's own docs page for Body Control is an empty placeholder. In the client,
-        /// BodyControlTask.Execute writes BodySystem.BodyControl{Head,Pelvis,LeftArm,…}, and
-        /// IKHandler.UpdateWeights feeds those straight into the FinalIK VRIK solver as
-        /// positionWeight/rotationWeight. Weight 0 means the solver stops driving that limb and
-        /// the animation wins; weight 1 means IK overrides the animation. That is precisely
-        /// VRChat's TrackingType.Animation and TrackingType.Tracking.
-        ///
-        /// Eyes, mouth and fingers have no equivalent mask — the CCK carries a
-        /// "TODO: Add FingerTracking masks when GS is ready" — so they are counted and reported.
-        /// </summary>
         static void ConvertTrackingControl(VRCAnimatorTrackingControl tracking, ref BodyControl bodyControl,
             List<StateMachineBehaviour> result, BodyControlStats stats)
         {
@@ -2066,17 +1662,6 @@ namespace AvatarBridge
                 type == VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Tracking ? 1f : 0f, stats);
         }
 
-        /// <summary>
-        /// Adds one body-mask task, creating the state's BodyControl on first use.
-        ///
-        /// Last write wins, matching both VRChat (behaviours run in list order, so a later one
-        /// overwrites an earlier one) and the CCK, whose OnValidate walks the list backwards
-        /// dropping earlier duplicates. Doing it here means the asset already looks the way the
-        /// CCK would rewrite it, so merely opening the inspector can't change behaviour.
-        ///
-        /// isBlend is left false deliberately: the client's ExecuteOverTime is an empty method,
-        /// so a blend task applies nothing at all.
-        /// </summary>
         static void AddBodyTask(ref BodyControl bodyControl, List<StateMachineBehaviour> result,
             BodyControlTask.BodyMask mask, float weight, BodyControlStats stats)
         {
@@ -2227,24 +1812,19 @@ namespace AvatarBridge
 
         static void RenamePass(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            // Menu-driven parameter names like "VF121_Clothing/Bennett Clothes/Cloak/Cloak"
-            // break the CCK's controller autogeneration (spaces/slashes). Rename them to
-            // clean names derived from their menu label, consistently everywhere.
+            // Slashes and spaces in parameter names break the CCK's
+            // controller autogeneration. Rename from the menu label,
+            // consistently everywhere.
             var sanitizedNames = new Dictionary<string, string>();
             var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
 
-            // Renames decided while the menu was built, which are not negotiable: a Joystick2D
-            // addresses its axes as "<machineName>-x" and "-y", so the avatar's own axis
-            // parameters have to arrive under exactly those names or the control drives nothing.
+            // Renames decided while the menu was built. A Joystick2D
+            // addresses its axes as "<machineName>-x"/"-y", so those
+            // exact names must exist.
             //
-            // Not negotiable — but not unconditional either. This map is consulted BEFORE
-            // ParameterRenameMap in Rename(), so an entry here shadows the VRChat→ChilloutVR core
-            // translations, and it renames whatever it names on the whole controller. Two things
-            // must therefore never get in: a key the game itself drives or this tool translates
-            // (renaming "Viseme" away means no viseme ever reaches the avatar), and a value that
-            // collides with a parameter the controller already declares (the "rename" would merge
-            // two unrelated parameters into one). Either would trade a working core system for a
-            // joystick, silently. Skip and say so instead.
+            // Consulted before ParameterRenameMap, so entries shadow the
+            // core translations. Never admit a key the game drives, or a
+            // value colliding with an existing parameter. Skip and report.
             foreach (var forced in ctx.ForcedRenames)
             {
                 if (CvrCoreParameters.Contains(forced.Key) || StreamFedParameters.Contains(forced.Key)
@@ -2297,50 +1877,29 @@ namespace AvatarBridge
                 }
                 string result = sanitizedNames.TryGetValue(name, out var sanitized) ? sanitized
                     : ParameterRenameMap.TryGetValue(name, out var mapped) ? mapped : name;
-                // Stream-fed parameters must stay synced, and this is the only place that decides
-                // it. A CVRParameterStream exists solely on the wearer's own copy of the avatar —
-                // it sits on ChilloutVR's local-component whitelist, so the filter strips it from
-                // everyone else's. The value it computes reaches other players only by being
-                // replicated, and a "#" name is never replicated. Prefixed, MuteSelf and VRMode and
-                // the gesture weights and Upright sat frozen at their defaults for every remote
-                // viewer: a mute indicator only its wearer could see. Left unprefixed, the wearer's
-                // stream writes through ChangeAnimatorParam, which both sets the parameter and
-                // broadcasts the change. Costs 32 bits each, and only for parameters the avatar
-                // actually declares — CreateParameterStreams builds an entry for nothing else.
+                // Stream-fed parameters must stay synced. The stream runs
+                // on the wearer's copy only, and a "#" name never
+                // replicates, so remote viewers would see frozen defaults.
                 bool preserved = CvrCoreParameters.Contains(result) ||
                                  StreamFedParameters.Contains(result) ||
                                  ctx.PreserveParameters.Contains(name) ||
                                  ctx.PreserveParameters.Contains(result) ||
                                  ctx.ContactParameters.Contains(name);
-                // A native contact's parameter must be local, and that outranks both the contact
-                // rule above and the setting below. The native system writes straight at the
-                // Animator without filling the outbound AAS buffer, so a SYNCED name has the
-                // declared default streamed back over whatever the contact just wrote — the
-                // system's author is explicit that it must be a "#" name. Core and stream-fed
-                // parameters are still exempt: those have to be broadcast to work at all, and a
-                // contact sharing one of those names is a different problem.
+                // A native contact's parameter must be local. A synced
+                // name has its default streamed back over the contact's
+                // write. Core and stream-fed names stay exempt.
                 bool mustBeLocal = ctx.LocalContactParameters.Contains(name)
                     && !CvrCoreParameters.Contains(result)
                     && !StreamFedParameters.Contains(result);
-                // Already-local names are left alone — the Action transplant declares its
-                // "#AB_Ready" flag and scratch cells BEFORE this pass runs, and prefixing them
-                // again made "##AB_Ready_…": still local, still consistent, but a name no reader
-                // of the tester or the report should ever have to puzzle over.
+                // Already-local names are left alone; no "##" doubling.
                 if ((mustBeLocal || (ctx.Settings.preserveParameterSyncState && !preserved))
                     && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     result = "#" + result;
                 }
-                // NOTE: menu Buttons used to get a "<impulse=0.1>" suffix here — a ChilloutVR 3
-                // era convention. CCK 4 has no such feature, and worse, its Advanced Settings
-                // inspector only accepts [a-zA-Z0-9/-_#] in a machine name: the '<', '>', '=' and
-                // '.' broke the parameter picker for that entry and every control drawn after it,
-                // leaving most of the menu inert. Buttons now convert as plain toggles.
-                //
-                // Published for readers OUTSIDE the controller. A native contact component holds
-                // the parameter name as a plain string; the controller renaming itself is
-                // consistent and invisible to it, so without this the component keeps addressing
-                // a name that no longer exists.
+                // Published for readers outside the controller. A native
+                // contact holds the parameter name as a plain string and
+                // must follow the rename.
                 if (!string.IsNullOrEmpty(name) && result != name)
                 {
                     ctx.AppliedParameterRenames[name] = result;
@@ -2348,16 +1907,11 @@ namespace AvatarBridge
                 return result;
             }
 
-            // The only property names a clip may have rewritten. Captured before the parameters
-            // are renamed, so these are the pre-rename spellings the clips still use.
-            //
-            // Humanoid muscle curves are indistinguishable from animated animator parameters by
-            // binding alone — both are type Animator with an empty path — so without this filter
-            // "Chest Front-Back", "Jaw Close" and "Right Hand.Little.3 Stretched" are treated as
-            // parameters, get the "#" local prefix, and bind to nothing. Every muscle curve in
-            // the clip dies silently and the avatar holds its rest pose while IK-tracked parts
-            // carry on, which is exactly how it looks in the animation window: rows of
-            // "Animator.#Chest Front-Back (Missing!)".
+            // The only property names a clip may have rewritten.
+            // Captured before renaming, so these are pre-rename spellings.
+            // Muscle curves share the Animator binding shape with animated
+            // parameters; without this filter they would get "#" prefixes
+            // and bind to nothing.
             var animatableParameters = new HashSet<string>(master.parameters.Select(p => p.name));
 
             // Parameters (dedupe after rename; e.g. Viseme folds into VisemeIdx).
@@ -2379,13 +1933,9 @@ namespace AvatarBridge
             master.parameters = newParams.ToArray();
 
             var clipMap = new Dictionary<AnimationClip, AnimationClip>();
-            // Every state machine in the controller, not just the VRChat layers being merged.
-            // The rename map only ever contains VRChat parameter names, so applying it to the
-            // CCK's own layers is a no-op there — but a reference living outside vrcLayers used
-            // to keep the ORIGINAL name while the declaration moved to the CCK-safe one, which
-            // is a reference to a parameter that no longer exists. A quad avatar lost its leg
-            // tracking and grounder that way: "#Controls/Synced/LegsOffset_Hind" still named in
-            // transitions while the parameter had become "LegsOffsetHind".
+            // Every state machine, not just the merged VRChat layers.
+            // A reference outside vrcLayers must follow the rename too,
+            // or it addresses a parameter that no longer exists.
             var machines = master.layers.Select(l => l.stateMachine)
                 .Concat(vrcLayers.Select(l => l.stateMachine))
                 .Where(m => m != null)
@@ -2507,10 +2057,6 @@ namespace AvatarBridge
             return motion;
         }
 
-        /// <summary>
-        /// Clips can animate animator parameters directly (AAPs). Those bindings live on
-        /// the shared clip asset, so a renamed parameter forces a clone-on-write copy.
-        /// </summary>
         static AnimationClip RenameInClip(AnimationClip clip, Func<string, string> rename,
             Dictionary<AnimationClip, AnimationClip> clipMap, HashSet<string> animatable)
         {
@@ -2603,52 +2149,6 @@ namespace AvatarBridge
         }
 
 
-        /// <summary>
-        /// A parameter can end up one type while some transitions still condition on it with a
-        /// comparison that type can't express — most often a Float/Bool type conflict that
-        /// "keeps Float" but leaves bool-style If/IfNot conditions behind (this is what breaks
-        /// the DSR face-tracking rig's RemoteModeActive local/remote gate). ChilloutVR's CCK
-        /// rejects such transitions ("parameter ... not compatible with condition type") and the
-        /// state silently never switches. Rewrite every condition's mode to match its
-        /// parameter's final type. Only invalid mode/type pairings are touched.
-        /// </summary>
-        /// <summary>
-        /// Brings every generated AnimatorDriver task's targetType into line with the
-        /// parameter's FINAL declared type.
-        ///
-        /// ConvertParameterDriver reads the type while the driver is built, in BehaviourPass —
-        /// which runs BEFORE ParameterTypeInference turns VRCFury's all-float parameters into
-        /// real bools and ints. Every driver written before that retyping kept "Float" for what
-        /// is now a Bool, and the decompiled client shows why that is invisible until it isn't
-        /// (AnimatorDriverTask.ApplyResult):
-        ///
-        ///   * in game on the LOCAL avatar the type is ignored — the value goes through
-        ///     PlayerSetup.ChangeAnimatorParam and the animator manager coerces it to the
-        ///     declared type, so the driver fires;
-        ///   * everywhere else — including Unity play mode, where the driver resolves to
-        ///     MiscAnimator — it calls Animator.SetFloat on a Bool parameter, which Unity
-        ///     SILENTLY IGNORES.
-        ///
-        /// A mistyped driver therefore does nothing in the editor and everything in game: the
-        /// exact "works in Unity, breaks in game" shape, and it hid driver faults from the CCK
-        /// Animator Tester as well.
-        /// </summary>
-        /// <summary>
-        /// Removes layers that have no state machine at all.
-        ///
-        /// A layer can arrive this way when its state machine lived in a DIFFERENT asset. Unity
-        /// stores <c>m_StateMachine</c> as a cross-file reference, so copying a layer between
-        /// controllers keeps it pointing at the original file — and when that file is stripped
-        /// (or simply absent), the layer survives with nothing behind it.
-        ///
-        /// Found on an avatar whose "Flying" and "Flying Scale" layers borrowed their state
-        /// machines from GoGo Loco's own controller. Removing GoGo took the machines with it and
-        /// left two husks, which Unity complains about on EVERY evaluation: a tester's play-mode
-        /// log carried 534 "Statemachine for layer is missing" lines per avatar. The layer cannot
-        /// do anything without a state machine, so nothing is lost by dropping it — and it is
-        /// dropped here, late, rather than trusted to the strip pass, because the reference can
-        /// break for reasons that have nothing to do with stripping.
-        /// </summary>
         static void DropStateMachinelessLayers(AnimatorController master, BridgeContext ctx)
         {
             var layers = master.layers;
@@ -2674,37 +2174,16 @@ namespace AvatarBridge
                 "would have been in.");
         }
 
-        /// <summary>
-        /// Tops up an "off" state that restores SOME of what its sibling animates, but not all.
-        ///
-        /// FillEmptyStatesWithRestoreClips only considers states with no motion at all, and stays
-        /// that way deliberately — its comment records two bugs from being more eager. But an off
-        /// state can under-restore while still holding a clip, and then it is invisible to that
-        /// pass: on the avatar that found this, a two-state contact layer's "Stop" clip toggled an
-        /// AudioSource off and nothing else, while its "Play" clip ALSO rotated a bone. With Write
-        /// Defaults off, every trigger left that rotation exactly where the clip stopped, and each
-        /// retrigger stacked on the last — a bone that drifted further from rest every time it was
-        /// touched, with nothing able to put it back.
-        ///
-        /// The rule here is narrower than the empty-state one rather than looser, which is what
-        /// makes it safe: the layer must have exactly two states, BOTH must hold clips, and one
-        /// clip's bindings must be a STRICT SUBSET of the other's. That combination is positive
-        /// evidence of an off state — it already turns something off — so the only question is
-        /// what it forgot. Only the forgotten bindings are added; its own curves are copied over
-        /// untouched.
-        /// </summary>
         static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx,
             HashSet<string> writtenPaths)
         {
             var topped = new List<string>();
             int curvesAdded = 0;
 
-            // Which layer owns each property. A binding two layers animate belongs to NEITHER for
-            // restoring purposes: if both restore it they fight, and the loser's toggle stops
-            // working. FillEmptyStatesWithRestoreClips applies the same rule, which is why its
-            // restore clips legitimately omit shared bindings — without this, the pass below saw
-            // those omissions as an off state "forgetting" them and topped the clip back up,
-            // producing "Toggle Cat Tail restore restore" and undoing the arbitration.
+            // Which layer owns each property. A binding two layers
+            // animate belongs to neither: dual restores fight, and the
+            // loser's toggle breaks. FillEmptyStatesWithRestoreClips
+            // applies the same rule, so its omissions are deliberate.
             var owner = new Dictionary<EditorCurveBinding, int>();
             var contested = new HashSet<EditorCurveBinding>();
             for (int i = 0; i < master.layers.Length; i++)
@@ -2712,8 +2191,8 @@ namespace AvatarBridge
                 var l = master.layers[i];
                 if (l?.stateMachine == null) continue;
                 var here = new HashSet<EditorCurveBinding>();
-                // Same reachability rule as BuildRestoreOwnership: a library layer's orphan
-                // states can never play, so they own nothing — see LibraryDefaultState.
+                // Same reachability rule as BuildRestoreOwnership.
+                // Orphan states never play, so they own nothing.
                 var onlyPlayable = LibraryDefaultState(l);
                 WalkMachines(l.stateMachine, machine =>
                 {
@@ -2751,7 +2230,7 @@ namespace AvatarBridge
                 });
                 if (states.Count != 2)
                 {
-                    continue;   // anything larger is a machine, not a toggle — same reasoning as above
+                    continue;   // larger than two states is a machine, not a toggle
                 }
                 if (!(states[0].motion is AnimationClip a) || !(states[1].motion is AnimationClip b))
                 {
@@ -2797,12 +2276,12 @@ namespace AvatarBridge
                 {
                     if (binding.type == typeof(Animator))
                     {
-                        continue;   // parameters, not properties — nothing to restore on the avatar
+                        continue;   // parameters, not properties; nothing to restore
                     }
                     if (contested.Contains(binding) || !owner.TryGetValue(binding, out int owns)
                         || owns != layerIndex)
                     {
-                        continue;   // another layer animates it too — arbitration belongs to them
+                        continue;   // another layer animates it too; leave arbitration to it
                     }
                     if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
                     {
@@ -2826,19 +2305,16 @@ namespace AvatarBridge
                     System.IO.Directory.CreateDirectory(folder);
                     AssetDatabase.Refresh();
                 }
-                // Delete anything already at the path FIRST, exactly as the empty-state filler
-                // does. CreateAsset over an existing asset replaces the object, and every other
-                // state still referencing the old one is left with a null motion — which the
-                // placeholder pass then papers over with an empty clip. On one avatar that cost
-                // four states their animation, one per layer this pass touched.
+                // Delete anything already at the path first. CreateAsset
+                // over an existing asset replaces the object and leaves
+                // other states holding null motions.
                 if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
                 {
                     AssetDatabase.DeleteAsset(target);
                 }
                 AssetDatabase.CreateAsset(filled, target);
-                // Register with the shared sweep-survivor list, or the empty-state filler's
-                // stale-clip sweep deletes this file minutes from now — see the registry comment
-                // at the call site.
+                // Register with the shared sweep-survivor list, or the
+                // filler's stale-clip sweep deletes this file.
                 writtenPaths.Add(target);
                 offState.motion = filled;
                 EditorUtility.SetDirty(offState);
@@ -2861,30 +2337,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Every property a layer OWNS is asserted from every state that layer can rest in.
-        ///
-        /// ChilloutVR does not fall back to Write Defaults the way VRChat's runtime does —
-        /// measured in game, twice, on one avatar: every toggle whose "on" direction was an
-        /// empty state switched off and never back on, while toggles whose states assert their
-        /// properties kept working. So the owner arbitration ("the lowest layer animating a
-        /// property restores it; higher layers stay silent") only functions if the owner
-        /// actually SPEAKS from every state it can rest in. Before this pass it spoke only from
-        /// clips that happened to mention the property — an exclusive-wear wardrobe, where one
-        /// outfit's clip also hides the other garments, left most owners silent at rest and the
-        /// whole wardrobe one-way in game.
-        ///
-        /// Deliberately left alone, each for a reason that has already shipped as a bug or been
-        /// measured as a fight:
-        ///   * bindings that appear inside any blend tree in the SAME layer — a slider owns its
-        ///     value, and pinning it from a plain state reverts the slider whenever the layer
-        ///     rests (the Reset state that flattened seven chest blendshapes);
-        ///   * states with no clip at all — a 2-state toggle's empty half is the empty-state
-        ///     filler's job, and anything larger left empty is structural;
-        ///   * pass-through states — a local/remote gate is never rested in;
-        ///   * Animator-typed bindings — muscles and animated parameters are not scene state;
-        ///   * unreachable library states, protected layers, and states holding blend trees.
-        /// </summary>
         static void AssertOwnedBindingsEverywhere(AnimatorController master, BridgeContext ctx)
         {
             BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven, out _);
@@ -2901,8 +2353,8 @@ namespace AvatarBridge
                 }
                 var onlyPlayable = LibraryDefaultState(layer);
 
-                // What this layer animates from plain clip states. Tree-driven bindings are
-                // exempt globally — ownership never contains them (see BuildRestoreOwnership).
+                // What this layer animates from plain clip states.
+                // Tree-driven bindings are exempt; ownership never holds them.
                 var stateFloats = new HashSet<EditorCurveBinding>();
                 var stateObjects = new HashSet<EditorCurveBinding>();
                 var states = new List<AnimatorState>();
@@ -2937,50 +2389,21 @@ namespace AvatarBridge
                 int addedThisLayer = 0;
                 foreach (var state in states)
                 {
-                    // A blend tree still stands aside — a constant assertion would fight the
-                    // parameter-driven value rather than rest beside it.
+                    // A blend tree stands aside. A constant assertion
+                    // would fight the parameter-driven value.
                     //
-                    // ROUTERS NO LONGER STAND ASIDE, and that is a deliberate reversal.
-                    //
-                    // The ownership rule is "silence at the top, authority at the bottom": where
-                    // several layers animate one property only the LOWEST restores it, so a dress
-                    // layer above cannot pin a shirt that the shirt layer below is trying to hide.
-                    // That rule only works while the bottom actually SPEAKS. Skipping routers here
-                    // left the owner silent in its own transient states, and a measured avatar had
-                    // an owning layer whose resting states were all routers while a helper layer
-                    // above it was silent too — so in that combination nothing anywhere wrote the
-                    // binding, and with no Write Defaults to restore it, a sound object latched on
-                    // and played for the rest of the session.
-                    //
-                    // The standing objection to filling a router is real but belongs to a
-                    // different pass: the EMPTY-STATE FILLER hands a router "the values of whatever
-                    // it happens to lead to", which on a gate that never resolves pins values the
-                    // router never meant to hold. This pass does something much narrower — it
-                    // writes the avatar's conversion-time value, for bindings THIS layer already
-                    // owns and already animates elsewhere. A router that sits forever now holds
-                    // the value the avatar was converted wearing, instead of holding whatever the
-                    // last state to touch it happened to leave behind, and the first of those is
-                    // both deterministic and what the wearer sees in the inspector.
+                    // Routers do not stand aside. Ownership is silence at
+                    // the top, authority at the bottom, and that only
+                    // works while the bottom speaks. The conversion-time
+                    // value is written for bindings this layer owns.
                     if (state.motion is BlendTree)
                     {
                         continue;
                     }
-                    // An EMPTY state is the purest case of a state that asserts nothing, and it
-                    // used to be skipped here for the shallow reason that null is not a clip.
-                    // The empty-state filler does not reach these either — it handles only the
-                    // two-state toggle, on purpose, because filling a STRUCTURAL empty state with
-                    // a snapshot of everything the layer animates has shipped bugs twice. This
-                    // pass is not that: it writes only bindings the layer OWNS (lowest layer
-                    // wins), never a tree-driven one, and never a router. Those are the guards
-                    // that make an empty state safe to speak for.
-                    //
-                    // Between the two, a three-state machine fell through entirely: on one avatar
-                    // the layer that starts a heartbeat sound had "New" and "Off" both empty, so
-                    // nothing ever wrote the audio object inactive and the sound ran for the rest
-                    // of the session. What lands in those slots later is the placeholder from
-                    // FillEmptyMotionSlots, which exists to keep Unity's playable graph from
-                    // crashing and animates nothing but its own dummy path — it looks like a
-                    // motion in the finished controller while asserting nothing at all.
+                    // Empty states are filled too, under the same guards:
+                    // owned bindings only, never tree-driven. The later
+                    // placeholder from FillEmptyMotionSlots asserts
+                    // nothing, so this must speak first.
                     var current = state.motion as AnimationClip;
                     var haveFloats = current != null
                         ? new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(current))
@@ -3095,19 +2518,6 @@ namespace AvatarBridge
             ReportNoWdCoverage(master, ctx);
         }
 
-        /// <summary>
-        /// The audit for everything above: after every restore pass has run, is any owned
-        /// property still able to fall back to the runtime?
-        ///
-        /// This exists because the chain it checks was broken four separate ways on one avatar
-        /// — curveless states invisible to the filler, a dead library owning the wardrobe, tree
-        /// claims orphaning bindings, owners silent at rest — and each was found by hand, from a
-        /// game report, days apart. The checker asks the finished controller the one question
-        /// all of those reduce to, with the same helpers the passes themselves use, so it cannot
-        /// drift from them. A violation here lands in the report as a warning, which the
-        /// regression corpus records in full — so this entire class of bug now fails loudly at
-        /// conversion time instead of quietly in game.
-        /// </summary>
         static void ReportNoWdCoverage(AnimatorController master, BridgeContext ctx)
         {
             BuildRestoreOwnership(master.layers, out var owner, out _, out var treeDriven, out _);
@@ -3133,11 +2543,9 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    // A binding that no longer resolves on the avatar is a toggle over a ghost —
-                    // its object went with a stripped system (SPS sockets, deleted physbone
-                    // hosts). Nothing can restore it and nothing in game shows it either way, so
-                    // it is not a coverage gap. The first run of this checker reported 136
-                    // violations on one avatar and every visible one was this.
+                    // A binding that no longer resolves is a toggle over
+                    // a ghost; its object went with a stripped system.
+                    // Not a coverage gap.
                     if (!AnimationUtility.GetFloatValue(ctx.Target, pair.Key, out _)
                         && !AnimationUtility.GetObjectReferenceValue(ctx.Target, pair.Key, out _))
                     {
@@ -3205,8 +2613,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>"blendShape.X" reads better than nothing, but strip nothing else — the report
-        /// line is how a violation gets found again.</summary>
         static string PrettyProperty(EditorCurveBinding binding) =>
             string.IsNullOrEmpty(binding.propertyName) ? "(property)" : binding.propertyName;
 
@@ -3232,15 +2638,9 @@ namespace AvatarBridge
                 }
             }
 
-            // A driver READS as well as writes. Each operand carries its own a/b/cParamType, and
-            // AnimatorDriverTask.GetSourceValue switches on it to pick GetBool / GetFloat /
-            // GetInteger. Those are stamped from TypeOf() when the task is built, which is BEFORE
-            // ParameterTypeInference may retype the parameter — so a retype left the read side
-            // pointing at the old type while the write side was corrected below.
-            //
-            // Unity logs "Parameter type 'Hash NNN' does not match." and returns 0 for the read,
-            // once per driver execution: a tester's play-mode log carried 19,760 of them. The
-            // driver then computes from a zero it should never have seen.
+            // A driver reads as well as writes. Operand types are stamped
+            // when the task is built, before ParameterTypeInference may
+            // retype. A mismatched read logs a warning and returns 0.
             void FixSource(string name, ref AnimatorDriverTask.ParameterType paramType,
                            AnimatorDriverTask.SourceType source)
             {
@@ -3339,23 +2739,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Removes AnyState transitions that make a driver-bearing state unconditional.
-        ///
-        /// Found on a tester's avatar: VRCFury's "exclusive tag" layer had, for each toggle, TWO
-        /// AnyState transitions to the same state — one "parameter is true" and one "parameter is
-        /// false" — which together fire no matter what. Unity evaluates AnyState transitions in
-        /// order and skips one whose destination is the current state (canTransitionToSelf off),
-        /// so the layer walked to the NEXT toggle's state instead, ran that state's driver, and
-        /// that driver switches the other toggles OFF. The result is a permanent ping-pong: every
-        /// frame a different exclusive state is entered and zeroes its siblings, so a toggle
-        /// pressed in the quick menu turns itself back off instantly — a visible flicker with the
-        /// parameter genuinely flipping, which is exactly what the CCK Debugger showed.
-        ///
-        /// The pair is only repaired where it is provably harmful — the destination runs a
-        /// parameter driver — and only the "is false" half is dropped, which leaves the reading
-        /// every exclusive-tag layer intends: enter this toggle's state when this toggle is on.
-        /// </summary>
         static void RepairUnconditionalDriverStates(AnimatorController master, BridgeContext ctx)
         {
             int removed = 0;
@@ -3485,19 +2868,15 @@ namespace AvatarBridge
                                     case AnimatorConditionMode.If:
                                     case AnimatorConditionMode.IfNot:
                                         break;
-                                    // Greater/Less are read AGAINST THE THRESHOLD, not assumed to
-                                    // mean ">0.5" and "<0.5". A bool only ever reads 0 or 1, so a
-                                    // comparison outside that range is a tautology, and turning
-                                    // one into If/IfNot asserts something the author never wrote.
+                                    // Greater/Less read against the threshold.
+                                    // A bool only reads 0 or 1, so an
+                                    // out-of-range comparison is a tautology,
+                                    // never an If/IfNot.
                                     //
-                                    // VRCFury writes its remote branches as the band
-                                    // "IsLocal Greater -0.001 && IsLocal Less 0.001" — float for
-                                    // "IsLocal is 0", i.e. this is someone else's copy. Read
-                                    // blindly, the first half became If and the second IfNot, so
-                                    // every NonLocal state Fury generated became unreachable on
-                                    // every copy: the local branch then ran for remote viewers,
-                                    // which is precisely the effect authors use these states to
-                                    // avoid. Fifteen transitions on one avatar.
+                                    // VRCFury writes remote branches as a
+                                    // float band meaning "IsLocal is 0".
+                                    // Misread, its NonLocal states become
+                                    // unreachable on every copy.
                                     case AnimatorConditionMode.Greater:
                                         if (threshold < 0f) { drop = true; break; }          // > -0.001: always
                                         if (threshold >= 1f) { impossible = true; break; }   // > 1: never
@@ -3558,20 +2937,10 @@ namespace AvatarBridge
                         var rebuilt = conditions[i];
                         if (impossible)
                         {
-                            // Genuinely unsatisfiable — "> 1" or "< 0" on a value that is only
-                            // ever 0 or 1. The whole transition goes, matching what
-                            // ParameterTypeInference already does with an unreachable one.
-                            //
-                            // It is not junk in the source: VRCFury expresses "IsLocal is not 0"
-                            // as an OR, and Unity ANDs conditions within a transition, so an OR
-                            // needs two — one testing "< -0.001" and one "> 0.001". Only the
-                            // second can ever fire for a 0/1 value; the first is the negative
-                            // half of a range a bool never reaches. Dropping it leaves the live
-                            // twin doing the work.
-                            //
-                            // Writing it as a contradictory If+IfNot pair instead (3.5.26) was
-                            // correct at runtime and awful to read: it looked identical to the
-                            // real bug 3.5.26 fixed, and cost a night of re-diagnosis.
+                            // Unsatisfiable: "> 1" or "< 0" on a 0/1 value.
+                            // Drop the transition. VRCFury encodes OR as a
+                            // condition pair; only one twin can fire, and
+                            // the dead one goes.
                             dead = true;
                             break;
                         }
@@ -3634,21 +3003,9 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Characters ChilloutVR accepts in a menu parameter name. Anything else breaks the
-        /// CCK's Advanced Settings inspector — its own field sanitiser is
-        /// <c>Regex.Replace(name, "[^a-zA-Z0-9/\-_#]", "")</c>, and feeding the parameter
-        /// picker a name outside that set takes out every control drawn after it.
-        /// </summary>
         static readonly System.Text.RegularExpressions.Regex IllegalMenuNameChars =
             new System.Text.RegularExpressions.Regex(@"[^a-zA-Z0-9/\-_#]");
 
-        /// <summary>
-        /// Last line of defence: renames any parameter whose name ChilloutVR can't accept,
-        /// keeping the menu entry and the animator in step. Nothing should reach here — the
-        /// rename pass already produces CCK-safe names — but a menu full of dead controls is
-        /// an expensive way to find out otherwise, so it's checked rather than assumed.
-        /// </summary>
         static void VerifyMenuParameterNames(AnimatorController master, BridgeContext ctx)
         {
             var settings = ctx.CvrAvatar.avatarSettings.settings;
@@ -3688,11 +3045,9 @@ namespace AvatarBridge
 
             string Rename(string n) => n != null && renames.TryGetValue(n, out var r) ? r : n;
 
-            // Hold the array. AnimatorController.parameters hands back a fresh copy on every
-            // read, so iterating the property and then assigning the property re-reads an
-            // untouched copy and throws the renames away — leaving the DECLARATION under the
-            // illegal name while every condition, driver and menu entry below moves to the
-            // clean one. Every other parameter edit in this file already does it this way.
+            // Hold the array. The parameters property hands back a fresh
+            // copy on every read, so property-iterate-then-assign throws
+            // the renames away.
             var parameters = master.parameters;
             foreach (var param in parameters)
             {
@@ -3751,7 +3106,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Renames blend-tree parameters in place (no clip rebinding — names only).</summary>
         static void RenameMotionParameters(Motion motion, Func<string, string> rename)
         {
             if (!(motion is BlendTree tree))
@@ -3769,16 +3123,6 @@ namespace AvatarBridge
             tree.children = children;
         }
 
-        /// <summary>
-        /// Drops menu entries whose parameter doesn't exist on the final controller.
-        ///
-        /// A VRChat avatar can declare an expression parameter — and give it a menu control —
-        /// that no converted animator layer actually reads: it belonged to a playable layer
-        /// that wasn't converted (Action emotes, VRCEmote/VRCFaceBlend*), or to a system that
-        /// was stripped. Those entries are inert clutter: the menu shows a control, nothing
-        /// listens, and the CCK inspector flags the missing parameter in red. Run last, once
-        /// every rename and injection has settled, so names are final.
-        /// </summary>
         static void PruneDeadMenuEntries(AnimatorController master, BridgeContext ctx)
         {
             var settings = ctx.CvrAvatar.avatarSettings.settings;
@@ -3787,17 +3131,13 @@ namespace AvatarBridge
                 return;
             }
             var known = new HashSet<string>(master.parameters.Select(p => p.name));
-            // A parameter can exist and still be inert: nothing conditions on it, no blend
-            // tree or clip touches it, no driver reads or writes it. One test avatar carried a
-            // 64-option instrument dropdown like this — the parameter survived because the
-            // layers that used it didn't, so the entry looked alive while doing nothing.
+            // A parameter can exist and still be inert: nothing
+            // conditions on it, nothing reads or writes it.
             var referenced = CollectReferencedParameters(master);
 
-            // A joystick's machineName is not itself a parameter — ChilloutVR derives one per
-            // axis, "<machineName>-x" and "-y" (and "-z" for the 3D one). Judging those entries
-            // by their bare name condemns every one of them: the name never appears in the
-            // animator, so a working Joystick2D looked exactly like a dead entry and was removed,
-            // taking the only control for those axes with it.
+            // A joystick's machineName is not itself a parameter. CVR
+            // derives one per axis, "<machineName>-x"/"-y"/"-z", so the
+            // bare name never appears in the animator.
             string[] AxesOf(ABI.CCK.Scripts.CVRAdvancedSettingsEntry entry)
             {
                 switch (entry.type)
@@ -3842,23 +3182,6 @@ namespace AvatarBridge
                 "compared anywhere in it, so they could never have done anything.");
         }
 
-        /// <summary>
-        /// Removes the placeholder entries from int dropdowns by renumbering the parameter.
-        ///
-        /// ChilloutVR addresses dropdown options by POSITION — option 20 sets the parameter
-        /// to 20 — so a VRChat menu that used sparse values (say 1, 2 and 20) forces 21
-        /// entries, 18 of which do nothing. The option list can't be thinned on its own
-        /// without silently re-pointing every entry after the gap.
-        ///
-        /// But nothing requires the animator to keep the original numbers. Renumbering the
-        /// values it actually uses down to 0..N-1 — conditions, drivers and triggers
-        /// together — makes the dropdown exactly as long as it has real options, with no
-        /// placeholders at all and identical behaviour.
-        ///
-        /// Only safe for parameters used purely as discrete selectors, so anything treating
-        /// the value as a quantity (blend trees, motion time, arithmetic drivers, clips
-        /// writing it) disqualifies it and the padded list is kept.
-        /// </summary>
         static void CompactIntDropdowns(AnimatorController master, BridgeContext ctx)
         {
             var settings = ctx.CvrAvatar.avatarSettings.settings;
@@ -3885,8 +3208,8 @@ namespace AvatarBridge
                 string param = entry.machineName;
                 if (!TryCollectSelectorValues(master, param, out var use, out string blockedBy))
                 {
-                    // Used as a quantity somewhere, so renumbering would change behaviour.
-                    // The placeholders have to stay — say so rather than leave them unexplained.
+                    // Used as a quantity somewhere; renumbering would
+                    // change behaviour. The placeholders stay, reported.
                     int stuck = dropdown.options.Count(o => o != null && o.name == ParameterMenuConverter.UnusedOption);
                     if (stuck > 0)
                     {
@@ -3983,15 +3306,8 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Collects the values an int parameter is used with, or returns false if anything
-        /// treats it as a quantity rather than a discrete selection — in which case
-        /// renumbering it would change how the avatar behaves.
-        /// </summary>
-        /// <summary>
-        /// How a dropdown parameter is used: the values it is matched against exactly, and the
-        /// boundaries it is compared across.
-        /// </summary>
+        // How a dropdown parameter is used: exact matches and
+        // the boundaries it is compared across.
         class SelectorUse
         {
             public readonly HashSet<int> Exact = new HashSet<int>();
@@ -3999,17 +3315,6 @@ namespace AvatarBridge
             public readonly HashSet<int> LessCuts = new HashSet<int>();     // "< t"
         }
 
-        /// <summary>
-        /// Gathers what a dropdown parameter is compared against, or fails if renumbering it
-        /// could change behaviour.
-        ///
-        /// Greater/Less used to fail here, which is why avatars kept dropdowns full of
-        /// "(unused)" entries — one had 30 options for 10 real ones, another 256 for 13. They
-        /// don't have to: the compaction map is order-preserving, so a "&gt;" still partitions
-        /// the same values as long as its threshold moves with them. What genuinely can't
-        /// survive renumbering is arithmetic — a driver adding to the value, or reading it as
-        /// an operand — and quantity reads like blend trees and motion time.
-        /// </summary>
         static bool TryCollectSelectorValues(AnimatorController master, string param,
             out SelectorUse use, out string blockedBy)
         {
@@ -4133,34 +3438,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Points every blend tree parameter field at a parameter that actually exists.
-        ///
-        /// THIS IS A CRASH FIX, and the distinction it rests on is the whole point. Two questions
-        /// look the same and are not:
-        ///
-        ///   - "which parameters does this avatar actually USE?" — Direct trees read neither axis
-        ///     field and 1D trees ignore Y, so counting those would invent phantom references.
-        ///     CollectReferencedParameters is right to skip them, and this pass does not change it.
-        ///   - "which parameters must EXIST for Unity to build a graph?" — all of them. Unity binds
-        ///     every blendParameter, blendParameterY and directBlendParameter it finds, vestigial
-        ///     or not, and resolves each to an index in the parameter table. A name that isn't
-        ///     there resolves to nothing, and the read happens inside
-        ///     <c>EvaluateStateDuration → DoBlendTreeEvaluation</c> — a segfault, not an error.
-        ///
-        /// Answering the first question for both is what left an avatar with six undeclared blend
-        /// parameters: "Blend" and "Value" and "Smooth Amount" (Unity's own defaults, left behind
-        /// on VRCFury and template Direct trees), "MovementZ", a VRCFury tracking-control name, and
-        /// one that was the empty string. Every one is invisible in the Animator window and fatal
-        /// on the frame the graph is built.
-        ///
-        /// Dangling names are RENAMED with a "#" prefix and declared as Float 0 rather than
-        /// declared as they stand: "#" keeps them local to the wearer so they cost no sync bits, a
-        /// prefixed name cannot collide with a menu entry, and the original is still readable in
-        /// the Animator window. Nothing else can reference them — anything referenced by a
-        /// transition or a driver was already declared by DeclareDanglingParameters, so a blend
-        /// parameter still missing at this point is referenced by this field and nothing else.
-        /// </summary>
         static void SafeguardBlendParameters(AnimatorController master, BridgeContext ctx)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
@@ -4247,21 +3524,11 @@ namespace AvatarBridge
             {
                 return;
             }
-            // DELIBERATELY NOT DECLARED, which is the opposite of what 3.4.11's own report claimed
-            // and took two versions to establish. 3.4.11 renamed the fields and — through an array
-            // setter that turned out not to add anything to a controller that is already an asset —
-            // declared nothing. It worked: no crash, repeated Plays, fast play mode on. 3.4.12
-            // "completed" it with AddParameter, and the crash came straight back.
-            //
-            // So the repair is the RENAME, not the declaration. Every dangling field now names one
-            // "#"-prefixed parameter instead of several different ones, and critically none of them
-            // is the empty string — which is almost certainly the one that mattered, since Unity
-            // resolves a missing NAME to an index of -1 and reads 0, while a blank name goes
-            // somewhere else entirely. Adding the parameters for real changes what the graph builder
-            // does with those trees, and on the avatar this was found on that is fatal.
-            //
-            // Anyone tempted to declare them: this was measured twice, in both directions, on a
-            // reproducible crash. Do not do it without doing that again.
+            // Deliberately not declared. The repair is the rename: no
+            // dangling field may be blank, since a blank name crashes
+            // the graph builder. Declaring them for real brings a
+            // reproducible crash back. Measured twice; do not redeclare
+            // without measuring again.
             EditorUtility.SetDirty(master);
 
             ctx.Report.Warning(Category,
@@ -4278,22 +3545,6 @@ namespace AvatarBridge
                 "avatar behaves — these fields were being read as garbage or not at all.");
         }
 
-        /// <summary>
-        /// Takes back menu entries this conversion invented for parameters the avatar turns out to
-        /// drive itself.
-        ///
-        /// "Expose menuless synced parameters" exists because ChilloutVR syncs from the animator,
-        /// so a synced parameter with no control still needs somewhere to live. It guesses, and the
-        /// guess is wrong whenever the avatar writes that parameter from a driver: the control then
-        /// sits in the menu fighting the animator for the value, which is the same objection that
-        /// already keeps game-driven parameters out.
-        ///
-        /// It also reads as a bug. One transforming avatar came out with a "Car Mode" control (the
-        /// author's, driving TransformMode) directly above a "CarMode" one (ours, driving the
-        /// parameter the Action layer sets for itself) — two controls, near-identical names, one of
-        /// them inert. Only entries recorded in AutoExposedParameters are eligible; anything the
-        /// author put in the menu stays whatever it does.
-        /// </summary>
         static void WithdrawSelfDrivenExposures(AnimatorController master, BridgeContext ctx)
         {
             var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
@@ -4303,11 +3554,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // Everything a parameter driver writes anywhere in the merged controller. The CCK
-            // AnimatorDriver, not the VRChat one: BehaviourPass has already converted every
-            // VRCAvatarParameterDriver by the time this runs, and the first version of this pass
-            // scanned for the VRChat type on the merged controller — zero matches, zero withdrawn,
-            // silently. The converted drivers are the same statements in the CCK's vocabulary.
+            // Everything a driver writes in the merged controller.
+            // The CCK AnimatorDriver, not the VRChat one; BehaviourPass
+            // already converted every VRCAvatarParameterDriver.
             var driven = new HashSet<string>();
             foreach (var layer in master.layers)
             {
@@ -4370,33 +3619,6 @@ namespace AvatarBridge
                 "untouched and still syncs.");
         }
 
-        /// <summary>
-        /// Replaces an animator-driven blink with ChilloutVR's native Eye Blink. Runs when
-        /// DescriptorConverter found SOME blink-ish shape animated — see
-        /// <c>BridgeContext.AnimatorBlinkPending</c> — but the whole decision is made HERE, where
-        /// the merged layers can be inspected.
-        ///
-        /// It has to be, and the first version proved it the hard way: the mesh this was written
-        /// for carries a shape named "Blink" AND one named "vrc.Blink". Deciding the shape first
-        /// (descriptor pass) and hunting its writers second (merge pass) picked "Blink" from an
-        /// expression clip, wired the native blink to it, found no strippable writer of it — and
-        /// the real receiver went on driving "vrc.Blink" to 100 forever. So: find the strippable
-        /// BLINK LAYER first, and let IT name the shape.
-        ///
-        /// A blink layer is one whose animation does nothing but blink: every float curve is a
-        /// blendshape, the ONLY shape it ever raises above zero matches /blink/i, no objects, no
-        /// materials. Expression layers raise other shapes and stay — an expression closing the
-        /// eyes over the native blink is exactly what it did over the animator blink. The weight-0
-        /// generator that flips the trigger parameter animates nothing and is left alone; its
-        /// pulses land on a parameter nothing reads any more.
-        ///
-        /// Why the animator system can't just be kept: its "eyes open" states are EMPTY in VRChat,
-        /// relying on Write Defaults to reopen the lids. Empty states crash Unity's graph builder,
-        /// so conversion must fill them; a state with a motion stops writing defaults; the first
-        /// blink then writes the shape to 100 and nothing ever writes it back. Eyes shut from the
-        /// first blink onward — measured on the mesh itself, resting weight 0 in the prefab and
-        /// 100 in the running scene.
-        /// </summary>
         static void ReplaceAnimatorBlink(AnimatorController master, BridgeContext ctx)
         {
             if (!ctx.AnimatorBlinkPending || ctx.CvrAvatar == null || ctx.CvrAvatar.bodyMesh == null)
@@ -4469,14 +3691,12 @@ namespace AvatarBridge
 
             if (blinkShape == null)
             {
-                // Nothing safely strippable. Leave the avatar's own system in place and say so —
-                // adding the native blink on top would put two systems on one pair of eyes.
+                // Nothing safely strippable. Leave the avatar's own
+                // system; a native blink on top doubles up the eyes.
                 //
-                // But FILL THE SHAPE SLOTS anyway. They are inert while the tickbox is off, and
-                // leaving them empty made the recovery worse than the problem: a tester whose eyes
-                // never blinked had to work out for themselves which of nine blink-ish shapes on a
-                // 239-shape mesh the client wanted, when detection had already picked them. Now the
-                // fix is the one tick the report names, and the shapes are already in place.
+                // Fill the shape slots anyway. Inert while the tickbox
+                // is off, and detection already picked them. The fix
+                // becomes the one tick the report names.
                 AvatarFeatureDetect.DetectBlinkShapes(mesh, out string fbLeft, out string fbRight,
                     out string fbCombined);
                 string prefilled = null;
@@ -4521,18 +3741,13 @@ namespace AvatarBridge
             master.layers = layers.ToArray();
             EditorUtility.SetDirty(master);
 
-            // ChilloutVR's blink is NOT an animation layer, and that changes who wins.
-            // EyeMovementController.ProcessBlinking runs in LateUpdate and writes the weight
-            // straight onto the mesh, after the animator has finished — so whichever shape is
-            // handed to it, the client owns that shape outright, every frame. Pointing it at a
-            // shape an expression still animates does not lose an occasional frame; it flattens
-            // that expression for good, and the eyes simply stop closing on that gesture.
+            // CVR's blink is not an animation layer. The client writes
+            // the weight in LateUpdate, after the animator, and owns
+            // the shape outright. A shape an expression still animates
+            // would be flattened for good.
             //
-            // Meshes that blink usually offer more than one way to do it — a separate L/R pair
-            // beside the combined shape, which is what a "for best blink use two" label on a mesh
-            // is telling authors. So when the removed layer's shape is contested, move the native
-            // blink onto a family nothing else drives: the eyes still blink, and the expression
-            // still closes them its own way.
+            // When the removed layer's shape is contested, move the
+            // native blink onto a family nothing else drives.
             var contested = RaisedFaceShapes(master, ctx.CvrAvatar);
             string pairLeft = null, pairRight = null;
             string chosen = blinkShape;
@@ -4579,10 +3794,9 @@ namespace AvatarBridge
                 cvrAvatar.blinkBlendshape[0] = chosen;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
             }
-            // Live weights may be whatever the old system last wrote — the source scene arrives
-            // mid-blink if a previous session stuck it closed. Native blink owns these now, and
-            // its rest is open. The removed layer's own shape is zeroed too even when the blink
-            // moved off it, because nothing writes it until an expression does.
+            // Live weights may be whatever the old system last wrote.
+            // Native blink owns these now, and its rest is open.
+            // The removed layer's shape is zeroed too.
             foreach (string shape in new[] { blinkShape, chosen, pairLeft, pairRight })
             {
                 int index = string.IsNullOrEmpty(shape) ? -1 : mesh.GetBlendShapeIndex(shape);
@@ -4631,15 +3845,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Every blendshape name some surviving clip drives above zero on the avatar's face mesh.
-        ///
-        /// Held-at-zero curves deliberately do not count: a clip that only ever writes 0 to a
-        /// shape is asking for the same thing ChilloutVR's blink asks for between blinks, so
-        /// nothing is lost by sharing it. The path filter matters because avatars carry the same
-        /// shape names on several meshes — a "Blink" on a spare head is not competition for the
-        /// one the client will drive.
-        /// </summary>
         static HashSet<string> RaisedFaceShapes(AnimatorController master, CVRAvatar cvrAvatar)
         {
             var raised = new HashSet<string>(StringComparer.Ordinal);
@@ -4677,36 +3882,9 @@ namespace AvatarBridge
             return raised;
         }
 
-        /// <summary>
-        /// Rebuilds a VRChat Action feature's pose states inside ChilloutVR's own
-        /// Locomotion/Emotes layer, which is the one place on this platform a full-body pose can
-        /// both assert and let go.
-        ///
-        /// The problem it solves: VRChat's Action playable rests at weight 0 and is raised at
-        /// runtime by behaviours while a sequence plays. ChilloutVR has no runtime layer-weight
-        /// control, and a SEPARATE layer has no way to yield — inert states with Write Defaults
-        /// off hold the last written muscles, Write Defaults on asserts rest pose over locomotion.
-        /// Five versions of state surgery hit that wall. Inside the locomotion layer the wall does
-        /// not exist: when the pose states aren't active, the layer's own locomotion states are,
-        /// still writing muscles every frame. Handing back IS yielding.
-        ///
-        /// What moves is the LIVE WINDOW — the states reachable from a behaviour that raises the
-        /// Action weight (goalWeight 1) without passing one that fades it (goalWeight 0), read
-        /// from the SOURCE layer's behaviours before they're stripped. Those are exactly the
-        /// states VRChat ever showed. Entry: each source transition from outside the window into a
-        /// raise-state becomes a transition FROM the locomotion resting state carrying the same conditions — the avatar's
-        /// own arming logic, gestures and all. Exit: each transition from a window state to a
-        /// fade-state becomes a transition to the locomotion layer's default state. Behaviours are
-        /// NOT copied: the original layer stays merged at weight 0, where its parameter drivers
-        /// keep firing exactly as VRChat's did.
-        /// </summary>
-        /// <summary>States whose SOURCE behaviours fade the Action playable to 0 — where VRChat
-        /// stopped showing the layer.</summary>
         static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
             => LayerWeightStates(source, on: false);
 
-        /// <summary>States whose behaviours raise the Action playable to 1 — where VRChat started
-        /// showing it. The entry points of the live window.</summary>
         static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
             => LayerWeightStates(source, on: true);
 
@@ -4728,11 +3906,9 @@ namespace AvatarBridge
                     }
                     foreach (var behaviour in state.behaviours)
                     {
-                        // BOTH behaviour types: VRCPlayableLayerControl drives the whole playable's
-                        // weight (the standard way an Action system runs itself), and
-                        // VRCAnimatorLayerControl drives one layer inside a playable. Only the
-                        // Action playable counts either way — a state may also drive FX or Gesture
-                        // weights, and those say nothing about this layer's visibility.
+                        // Both behaviour types count, Action playable only.
+                        // FX or Gesture weights say nothing about this
+                        // layer's visibility.
                         bool matches =
                             (behaviour is VRC.SDK3.Avatars.Components.VRCPlayableLayerControl playable
                                 && playable.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action
@@ -4811,16 +3987,12 @@ namespace AvatarBridge
                 {
                     var src = byName[name];
                     var copy = locoMachine.AddState($"[AB] {name}");
-                    // Pose states get the clip without baked TRAVEL: a VRChat feature that moved
-                    // the player did it by animating the body (VRChat allows nothing else), and
-                    // here that displaces the wearer's camera with no input. Root motion that
-                    // returns home — a backflip's flip, a dance's sway — is kept: stripping it
-                    // broke the animations while removing nothing a player could feel.
-                    // keepVertical: a transformation lowering the body to the floor is the avatar
-                    // changing its own HEIGHT, not travelling — flattening that left it standing
-                    // through the whole transition and snapping down at the end. Rotation is NOT
-                    // kept: the client's capsule is always upright, so a RootQ curve does nothing
-                    // in game and keeping it only made editor and game disagree.
+                    // Pose states get the clip without baked travel;
+                    // that would displace the camera with no input.
+                    // Root motion that returns home is kept.
+                    // keepVertical: lowering the body is height change,
+                    // not travel. Rotation is dropped; the client's
+                    // capsule is always upright.
                     copy.motion = src.motion is AnimationClip poseClip
                         ? LocomotionGrafter.WithoutRootMotion(poseClip, onlyIfTravels: true,
                             keepPose: true)
@@ -4865,9 +4037,9 @@ namespace AvatarBridge
                     }
                 }
 
-                // Arming: every way the source machine could ENTER the window from outside it
-                // becomes an AnyState transition with the same conditions. Unconditional entries
-                // are skipped — an AnyState transition with no conditions would fire every frame.
+                // Arming: every outside entry into the window becomes an
+                // AnyState transition with the same conditions.
+                // Unconditional entries would fire every frame; skipped.
                 int armed = 0;
                 var armedSignatures = new HashSet<string>();
                 var armedEntries = new List<(AnimatorStateTransition entry, AnimatorCondition[] conditions)>();
@@ -4879,14 +4051,11 @@ namespace AvatarBridge
                     {
                         return;
                     }
-                    // From the locomotion layer's RESTING state, never AnyState. AnyState re-fires
-                    // from INSIDE the window — canTransitionToSelf only blocks the entry state
-                    // re-entering itself, so with the arming parameter still set the machine looped
-                    // Transformation → Car_Idle → AnyState → Transformation, visibly flickering.
-                    // In the source graph re-entry was impossible POSITIONALLY: the arming
-                    // transition left a state the window never returns to. Arming from the resting
-                    // state reproduces that: once inside, nothing can re-fire until the pose has
-                    // handed back AND the conditions have gone false and true again.
+                    // From the locomotion layer's resting state, never
+                    // AnyState. AnyState re-fires from inside the window
+                    // and the machine loops visibly. Arming from rest
+                    // reproduces the source's positional guarantee:
+                    // nothing re-fires until hand-back plus a fresh rise.
                     string signature = dst.name + "|" + string.Join(",",
                         transition.conditions.Select(c => $"{c.parameter}{(int)c.mode}{c.threshold}"));
                     if (!armedSignatures.Add(signature))
@@ -4932,21 +4101,16 @@ namespace AvatarBridge
                     return 0;
                 }
 
-                // ---- edge-triggered arming ------------------------------------------------
-                // Arming on a LEVEL replays forever: a dropdown-style menu HOLDS its value, so
-                // the moment a played-once pose hands back to the resting state, its conditions
-                // are still true and it re-enters — Wave forever. VRChat never replays because
-                // its graph PARKS after an emote in a state whose only way back requires the
-                // value to return to zero: entry fires on the RISE of the conditions, once.
+                // ---- edge-triggered arming ----
+                // Arming on a level replays forever: a dropdown holds its
+                // value, so a played-once pose re-enters on hand-back.
+                // Entry must fire on the rise of the conditions, once.
                 //
-                // Reproduced in parameter form. A "#" ready flag (local — every client computes
-                // its own from the synced inputs) gates every arming transition, and a weight-0
-                // memory layer manages it: its Ready state raises the flag; the instant any
-                // arming signature's conditions come true it moves to an Engaged state that
-                // drops the flag; it returns to Ready — re-raising the flag — only when those
-                // conditions have gone FALSE again. The window itself evaluates before the
-                // memory layer (lower index), so the one frame of flag-up is exactly enough to
-                // arm once per rise.
+                // A "#" ready flag gates every arming transition, run by
+                // a weight-0 memory layer: Ready raises it, Engaged drops
+                // it while conditions hold, Ready re-raises only after
+                // they go false. The window evaluates first, so one frame
+                // of flag-up arms once per rise.
                 string readyName = "#AB_Ready_" + SanitizeParameterName(clone.name);
                 if (master.parameters.All(p => p.name != readyName))
                 {
@@ -4954,8 +4118,7 @@ namespace AvatarBridge
                     withReady.Add(new AnimatorControllerParameter
                     {
                         name = readyName,
-                        // DISARMED at load. See the "Rest" prologue below: this used to default
-                        // to 1, which assumed the arming conditions are false at rest.
+                        // Disarmed at load; see the Rest prologue below.
                         type = AnimatorControllerParameterType.Float,
                         defaultFloat = 0f
                     });
@@ -5023,9 +4186,9 @@ namespace AvatarBridge
                     engagedCount++;
                     var parameters = conditions.Select(c => c.parameter).Distinct().ToList();
 
-                    // Capture: drop the flag and remember the values that armed. A separate
-                    // state, because Engaged re-enters itself every tick to re-run its check —
-                    // capturing there would re-baseline every cycle and never see a change.
+                    // Capture: drop the flag and remember the armed values.
+                    // Separate state; Engaged re-enters itself every tick,
+                    // and capturing there would re-baseline every cycle.
                     var capture = memory.AddState($"Capture {engagedCount}");
                     capture.writeDefaultValues = false;
                     capture.motion = armingTick;
@@ -5073,12 +4236,10 @@ namespace AvatarBridge
                     loop.hasFixedDuration = true;
                     loop.duration = 0f;
 
-                    // Release and re-raise the flag when the arming conditions have gone FALSE —
-                    // the complement of (A AND B) is (!A OR !B), one transition per negation —
-                    // OR when any armed parameter has CHANGED while they stayed true. The change
-                    // release is what lets a held menu switch straight from one emote to the
-                    // next: Wave -> Dab used to need a trip through None, because "0 < VRCEmote
-                    // < 9" never went false between them.
+                    // Release when the arming conditions go false, one
+                    // transition per negation, or when any armed
+                    // parameter changes while they stay true. The change
+                    // release lets a held menu switch emotes directly.
                     foreach (var condition in conditions)
                     {
                         var release = engaged.AddTransition(ready);
@@ -5094,24 +4255,14 @@ namespace AvatarBridge
                     changed.duration = 0f;
                     changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
                 }
-                // ---- disarmed until something actually changes ----------------------------
-                // The ready flag used to default to 1, which assumes the arming conditions are
-                // FALSE when the avatar loads. Plenty are not. A VRChat Action layer sits at
-                // WEIGHT 0 until its feature raises it, so conditions inside it are free to be
-                // permanently true — nothing plays, because the whole layer is silent. This
-                // transplant reproduces the transitions but not the weight gate, so the same
-                // condition fires the instant the avatar loads in CVR's always-on locomotion
-                // layer.
+                // ---- disarmed until something actually changes ----
+                // Arming conditions can be true at load. A VRChat Action
+                // layer sits at weight 0, so its conditions may hold
+                // permanently; the transplant has no weight gate.
                 //
-                // Two ways that presented, both found by the regression corpus: an inflation rig
-                // whose window exit was ALSO true at rest ping-ponged between the pose and
-                // LocIdle forever, and a second one whose states chain on exit time walked up
-                // its stages at load and parked there — a bicycle pose nobody asked for.
-                //
-                // So the machine starts DISARMED, snapshots the values it woke up with, and arms
-                // only once one of them departs from that snapshot: a real user action, rather
-                // than the mere fact of the avatar existing. Everything after the first arm is
-                // unchanged — Engaged still releases on conditions-false or value-change.
+                // The machine starts disarmed, snapshots the values it
+                // woke with, and arms only when one departs from that
+                // snapshot: a real user action, not the avatar existing.
                 var restParameters = armedEntries
                     .SelectMany(e => e.Item2.Select(c => c.parameter))
                     .Distinct()
@@ -5198,11 +4349,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// The condition that is true exactly when the given one is false. Greater/Less get a
-        /// hair's-width shift so integers on the boundary land on the right side: the complement
-        /// of "&gt; 0" must accept 0 itself.
-        /// </summary>
         static (AnimatorConditionMode mode, float threshold) InvertCondition(AnimatorCondition condition)
         {
             switch (condition.mode)
@@ -5220,33 +4366,12 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat's built-ins that an Action layer legitimately waits on while doing nothing but
-        /// playing emotes. Anything OUTSIDE this set means the avatar is driving the layer itself.
-        /// </summary>
         static readonly HashSet<string> EmotePlayerParameters = new HashSet<string>
         {
             "VRCEmote", "VRCFaceBlendH", "VRCFaceBlendV", "AFK", "Seated", "InStation",
             "IsLocal", "Upright", "Grounded", "Supine", "Voice", "Sitting", "TrackingType",
         };
 
-        /// <summary>
-        /// Whether an Action layer is a FEATURE the avatar drives, rather than VRChat's emote
-        /// player. The distinction decides whether the layer may be merged live.
-        ///
-        /// VRChat keeps the Action playable layer at weight 0 and raises it only while an emote
-        /// runs, so its idle state can hold a full-body clip and harm nothing. ChilloutVR has no
-        /// playable layers, so an Action layer merged at weight 1 asserts that idle over locomotion
-        /// — hence the blanket weight 0, which is right for emotes and fatal for anything else.
-        ///
-        /// "Anything else" is real and not rare: a transforming robot avatar put its entire
-        /// car-mode sequence in an Action layer gated on its own CarMode/TransformMode parameters.
-        /// Every parameter converted, the menu toggled them correctly, and nothing happened,
-        /// because the layer holding the animation could not reach any weight.
-        ///
-        /// The test is what the layer WAITS ON. A transition naming a parameter that isn't one of
-        /// VRChat's emote/state built-ins is the avatar asking for this layer on purpose.
-        /// </summary>
         static bool ActionLayerDrivesOwnFeature(AnimatorControllerLayer layer, out string byWhat)
         {
             byWhat = null;
@@ -5295,7 +4420,6 @@ namespace AvatarBridge
             byWhat = string.Join(", ", own.Take(4)) + (own.Count > 4 ? ", …" : "");
             return true;
         }
-        /// <summary>True if a blend tree blends on this parameter, or a clip writes it (AAP).</summary>
         static bool MotionUsesParameter(Motion motion, string param)
         {
             if (motion is BlendTree tree)
@@ -5332,27 +4456,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Every parameter name the controller actually touches — conditions, blend trees,
-        /// motion time/speed/mirror/cycle offset, driver targets and operands, and animated
-        /// animator parameters written by clips. Anything absent from this cannot affect the
-        /// avatar no matter what its menu control does.
-        /// </summary>
-        /// <summary>
-        /// VRChat built-ins ChilloutVR never writes, and the value each should rest at.
-        ///
-        /// Zero is not "neutral" for these — it is a specific and usually impossible state.
-        /// TrackingType 0 means "tracking not yet initialised", which VRChat leaves within a
-        /// frame of load; Upright 0 means lying flat on the floor. An avatar that keeps them at
-        /// 0 forever is being told something untrue about the player.
-        ///
-        /// Values are VRChat's own resting readings: TrackingType 3 = head and two hands, the
-        /// most common real configuration and, being above zero, "initialised"; Upright 1 =
-        /// standing; IsLocal 1 = this is the wearer's own copy; scale 1 = unscaled; eye height
-        /// 1.6m = VRChat's default. Parameters whose honest resting value IS zero — AFK,
-        /// VelocityMagnitude, GroundProximity, InStation, ScaleModified, Earmuffs, AngularY —
-        /// are deliberately absent.
-        /// </summary>
         static readonly Dictionary<string, float> UnsupportedBuiltInDefaults = new Dictionary<string, float>
         {
             { "IsLocal", 1f },
@@ -5366,19 +4469,6 @@ namespace AvatarBridge
             { "EyeHeightAsMeters", 1.6f },
         };
 
-        /// <summary>
-        /// Gives those built-ins their resting value when nothing in the animator writes them.
-        ///
-        /// AvatarBridge already reported these as "kept at their default value", which read like
-        /// a safe non-action and was the opposite. A FinalIK quadruped converted cleanly and then
-        /// lay flat on the floor: both of its Initialize states were gated on
-        /// "#TrackingType &gt; 0", nothing ever raised it above 0, so the drivers that switch its
-        /// puppet rig on never ran and 84 blend trees stayed at weight 0. The head still tracked,
-        /// because head and face tracking don't route through them.
-        ///
-        /// Only applied where no layer drives the parameter itself — logic that sets it knows
-        /// better than this table does — and each one is named in the report.
-        /// </summary>
         static void DefaultUnsupportedBuiltIns(AnimatorController master, BridgeContext ctx)
         {
             var parameters = master.parameters;
@@ -5406,9 +4496,6 @@ namespace AvatarBridge
                 "stream or ChilloutVR itself drives takes over from here; this only decides the first frame.");
         }
 
-        /// <summary>
-        /// Sets a parameter's default, unless the animator drives it or it is already non-zero.
-        /// </summary>
         static bool ApplyRestingValue(AnimatorController master, AnimatorControllerParameter param, float value)
         {
             // Per type: Unity keeps defaultBool/defaultInt/defaultFloat as three independent
@@ -5469,23 +4556,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Declares any parameter that transitions, blend trees or drivers still reference but
-        /// the controller never defines.
-        ///
-        /// This is damage control, not a cure. Something upstream fails to carry certain
-        /// declarations across on some avatars — a FinalIK quadruped arrived with a whole
-        /// "Controls/Synced/*" family referenced by blend trees while not one of them was
-        /// declared — and I have not found which pass drops them. What is certain is the cost of
-        /// leaving it: ChilloutVR DROPS a transition whose condition names an unknown parameter,
-        /// so a layer can stop advancing entirely, and Unity reports nothing.
-        ///
-        /// Declaring the missing name makes the controller self-consistent. A blend tree reading
-        /// it gets 0, exactly as it did before, but transitions survive and behave predictably
-        /// instead of silently disappearing. The parameters land as Float, which every reference
-        /// kind can read, and every one is named in the report — if that list is ever long, or
-        /// the same names recur across avatars, that is the trail to the real bug.
-        /// </summary>
         static void DeclareDanglingParameters(AnimatorController master, BridgeContext ctx)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
@@ -5534,20 +4604,6 @@ namespace AvatarBridge
                 "feature on this avatar is dead, start here.");
         }
 
-        /// <summary>
-        /// The default a dangling parameter should carry, taken from the parameter it mirrors.
-        ///
-        /// VRCFury copies a parameter it needs to read into its own namespace —
-        /// "VF87_AvatarLimbScaling_Arms" alongside the real "AvatarLimbScaling_Arms" — and those
-        /// copies are frequently the ones left undeclared. Declaring them 0 like any other
-        /// dangling name is not neutral: Avatar Limb Scaling's sliders are 0.5 at rest, where 0
-        /// means fully shrunk, and the body-shape sliders on the same avatar behave the same way.
-        /// The result is an avatar that arrives visibly deformed rather than merely missing a
-        /// feature — which is exactly how this was found.
-        ///
-        /// So: strip the "VF&lt;id&gt;_" tag, find whatever the copy shadows, and take its default.
-        /// Falls back to 0, which is right for a genuinely unknown parameter.
-        /// </summary>
         static float MirroredDefault(string name, AnimatorController master, BridgeContext ctx)
         {
             string bare = name.StartsWith("#", StringComparison.Ordinal) ? name.Substring(1) : name;
@@ -5583,23 +4639,6 @@ namespace AvatarBridge
             return 0f;
         }
 
-        /// <summary>
-        /// Points references at the "#"-prefixed parameter when the bare name they name doesn't
-        /// exist and the prefixed one does.
-        ///
-        /// Non-synced parameters get a leading "#" (ChilloutVR's local-only convention). A
-        /// reference left on the bare name after that is simply broken — Unity treats an unknown
-        /// parameter as 0 and ChilloutVR drops the transition, so the feature silently stops
-        /// working. Branwen showed "GestureLeftWeight" in ten blend trees while the declared,
-        /// stream-fed parameter was "#GestureLeftWeight", used seven times as motion time: the
-        /// same value, half the references renamed.
-        ///
-        /// This repairs the result rather than the cause. That's deliberate — the rewrite is
-        /// only ever applied where the bare name is undeclared AND the prefixed one exists, which
-        /// is exactly the broken shape and nothing else, so it holds regardless of which pass
-        /// dropped the reference. Anything it changes is reported, so a pass that keeps needing
-        /// this stays visible instead of being quietly papered over.
-        /// </summary>
         static void RepairPrefixedReferences(AnimatorController master, BridgeContext ctx)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
@@ -5703,18 +4742,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Removes parameters left declared but inert once the menu is settled.
-        ///
-        /// Kept only if something in the animator touches it, a menu entry drives it, a contact
-        /// writes it, or ChilloutVR supplies it (core, gesture and stream-fed parameters).
-        ///
-        /// Deliberately does NOT honour ctx.PreserveParameters, unlike SystemStripper's earlier
-        /// pass: that set exists to stop the RENAME pass altering synced names, which says
-        /// nothing about whether a parameter should still exist. And a synced VRChat parameter
-        /// doesn't carry its sync across anyway — in ChilloutVR a parameter syncs only via an
-        /// Advanced Settings entry, so once that entry is gone the parameter is inert.
-        /// </summary>
         static void PruneOrphanedParameters(AnimatorController master, BridgeContext ctx)
         {
             var referenced = CollectReferencedParameters(master);
@@ -5748,25 +4775,19 @@ namespace AvatarBridge
         static HashSet<string> CollectReferencedParameters(AnimatorController master)
         {
             var referenced = new HashSet<string>();
-            // Humanoid MUSCLE curves bind the same way an animated animator parameter does —
-            // type Animator, empty path — so a locomotion clip otherwise contributes hundreds of
-            // names like RootQ.x and LeftFootT.y. Requiring the name to be a declared parameter
-            // separates them; a clip writing to an undeclared parameter does nothing anyway.
+            // Muscle curves bind like animated animator parameters.
+            // Requiring a declared name separates them; a clip writing
+            // an undeclared parameter does nothing anyway.
             var declaredNames = new HashSet<string>(master.parameters.Select(p => p.name));
 
             void NoteMotion(Motion motion)
             {
                 if (motion is BlendTree tree)
                 {
-                    // Only the fields this blend type actually reads. blendParameter defaults to
-                    // "Blend" on every tree Unity creates and survives as a leftover on Direct
-                    // trees (VRCFury's are full of them), and blendParameterY is ignored by 1D
-                    // trees. Counting the vestigial fields invented phantom references: every
-                    // avatar with a Fury Direct tree "referenced" a parameter called Blend, and
-                    // the scaler template "referenced" Smooth Amount and Value off a Direct
-                    // tree's dead XY fields — which DeclareDanglingParameters then declared as
-                    // Float 0 with a warning telling the user to investigate their avatar. The
-                    // warning was AvatarBridge reporting its own reflection.
+                    // Only the fields this blend type actually reads.
+                    // "Blend" survives as a leftover on Direct trees and
+                    // blendParameterY is ignored by 1D trees. Counting
+                    // vestigial fields invents phantom references.
                     if (tree.blendType != BlendTreeType.Direct)
                     {
                         referenced.Add(tree.blendParameter);
@@ -5844,15 +4865,6 @@ namespace AvatarBridge
             return referenced;
         }
 
-        /// <summary>
-        /// Moves every comparison onto the compacted numbering.
-        ///
-        /// Exact matches follow the map. Boundaries move by counting instead: because the map
-        /// is order-preserving, "&gt; t" still selects the same values if the threshold becomes
-        /// the index of the last kept value that does NOT exceed t. Worked through on a real
-        /// avatar — kept values [0,1,2,3,4,5,9,19,24,29], "&gt; 9" becomes "&gt; 6", which selects
-        /// indices 7,8,9 = values 19,24,29: the same set as before.
-        /// </summary>
         static void RemapIntConditions(AnimatorController master, string param,
             Dictionary<int, int> map, List<int> ordered)
         {
@@ -5947,7 +4959,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Contact triggers that set this parameter must follow the renumbering too.</summary>
         static void RemapTriggerValues(BridgeContext ctx, string param, Dictionary<int, int> map)
         {
             foreach (var trigger in ctx.CvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
@@ -5964,11 +4975,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// CVR Parameter Streams feed values VRChat provided as built-in parameters:
-        /// trigger squeeze (GestureLeft/RightWeight), mute state and VR mode. Entries are
-        /// created via reflection because enum member layouts vary between CCK versions.
-        /// </summary>
         static void CreateParameterStreams(AnimatorController master, BridgeContext ctx)
         {
             // "app"/"lo"/"hi" describe how the raw stream value reaches the parameter. Override
@@ -5981,26 +4987,20 @@ namespace AvatarBridge
                 (bare: "MuteSelf", streamType: "LocalPlayerMuted", app: "Override", lo: 0f, hi: 0f),
                 (bare: "VRMode", streamType: "DeviceMode", app: "Override", lo: 0f, hi: 0f),
 
-                // AvatarUpright is Clamp01(currentHeight / avatarHeight) and rests at 1, which is
-                // VRChat's Upright exactly — same range, same meaning, no conversion needed.
+                // AvatarUpright matches VRChat's Upright exactly.
+                // Same range, same meaning, no conversion needed.
                 (bare: "Upright", streamType: "AvatarUpright", app: "Override", lo: 0f, hi: 0f),
 
-                // ChilloutVR only reports whether full-body tracking is on, so the six VRChat
-                // states collapse to the two that matter: 3 = head and hands, 6 = full body.
-                // Both are above zero, which is what most avatars actually test for.
-                //
-                // (VelocityX/Y/Z need no stream and must never get one: they are CLIENT CORE
-                // parameters — BetterBetterCharacterController feeds the local player, and
-                // PuppetMaster feeds every remote copy from its root velocity — and core
-                // parameters are read-only to streams anyway. VelocityMagnitude is different:
-                // the client does not compute it, so FeedVelocityMagnitude derives it in the
-                // animator from the native three.)
+                // CVR only reports whether full-body tracking is on, so
+                // the six VRChat states collapse to 3 and 6. Both above
+                // zero, which is what most avatars test for.
+                // VelocityX/Y/Z are client core parameters; never
+                // streamed. VelocityMagnitude is derived in the animator.
                 (bare: "TrackingType", streamType: "LocalPlayerFullBodyEnabled", app: "Remap", lo: 3f, hi: 6f),
 
-                // ChilloutVR's AvatarHeight is the calibrated avatar height in metres — the same
-                // measure AvatarUpright divides by. It is the platform's closest reading of
-                // VRChat's EyeHeightAsMeters, and everything else in VRChat's scale family
-                // (ScaleFactor and friends) is derived from this one value by FeedScaleParameters.
+                // AvatarHeight is the calibrated height in metres, the
+                // closest reading of EyeHeightAsMeters. The rest of the
+                // scale family derives from it in FeedScaleParameters.
                 (bare: "EyeHeightAsMeters", streamType: "AvatarHeight", app: "Override", lo: 0f, hi: 0f)
             };
             var wanted = new List<(string paramName, string streamType, string bare, string app, float lo, float hi)>();
@@ -6031,13 +5031,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // The serialized field is an int; the CLIENT is what reads it back. When the
-            // installed CCK's enum predates a name, writing the client's numeric value still
-            // round-trips perfectly — the decompiled client's numbers are the contract
-            // (ApplicationType: Override=0, Remap=201, ClampRemap=202; Type: DeviceMode=20,
-            // LocalPlayerMuted=210, LocalPlayerFullBodyEnabled=260, TriggerLeftValue=270,
-            // TriggerRightValue=280, AvatarUpright=401). Before this, a CCK without "Remap"
-            // silently cost the TrackingType stream.
+            // The serialized field is an int the client reads back.
+            // When the installed CCK's enum predates a name, writing the
+            // client's numeric value still round-trips. The client's
+            // numbers are the contract.
             var clientEnumValues = new Dictionary<string, int>
             {
                 { "Override", 0 }, { "Remap", 201 }, { "ClampRemap", 202 },
@@ -6114,11 +5111,9 @@ namespace AvatarBridge
                     SetField(entry, "staticValue", w.lo);
                     SetField(entry, "staticValue2", w.hi);
                 }
-                // TargetType.Animator is the CCK's "Sub Animator" — an Animator on some target
-                // GameObject you nominate. Left as that, every entry sat with an empty target and
-                // the inspector's "Target object does not have an Animator component!" warning, so
-                // nothing was ever fed. AvatarAnimator is the avatar's own animator, which is what
-                // these parameters need; fall back to the old value if a CCK version lacks it.
+                // TargetType.Animator is the CCK's "Sub Animator" and
+                // needs a nominated target. AvatarAnimator is the
+                // avatar's own animator, which is what these need.
                 SetField(entry, "targetType",
                     ParseEnum(targetEnum, "AvatarAnimator") ?? ParseEnum(targetEnum, "Animator"));
                 SetField(entry, "applicationType", appValue);
@@ -6134,36 +5129,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(stream);
         }
 
-        /// <summary>
-        /// VRChat's VelocityMagnitude has no ChilloutVR source, but its three components do:
-        /// VelocityX/Y/Z are CLIENT CORE parameters, fed for the local player by
-        /// BetterBetterCharacterController and for every remote copy by PuppetMaster (both
-        /// decompiled). So the magnitude is derived inside the animator: a minimal
-        /// self-looping state whose AnimatorDriver recomputes sqrt(x² + y² + z²) every cycle.
-        ///
-        /// The parameter keeps its "#" local prefix deliberately: every client runs the
-        /// animator, so every client computes the value for every copy — exactly how the
-        /// VRChat built-in behaved, at zero sync cost. GoGo Loco gates much of its locomotion
-        /// on this parameter; frozen at 0 it read as "never moving" and a kept GoGo install
-        /// sat half-dead.
-        /// </summary>
-        /// <summary>
-        /// Disables "Can Transition To Self" on merged AnyState transitions whose conditions
-        /// carry no Trigger — because with only level conditions, that flag means "re-enter the
-        /// destination EVERY FRAME the conditions hold", restarting its motion each time.
-        ///
-        /// Unity defaults the flag to on and authors rarely touch it, so nearly every avatar
-        /// carries dozens of these. VRChat never shows the problem: the states involved are
-        /// mostly EMPTY there (behaviour-only gates), and restarting nothing looks like nothing.
-        /// Conversion must fill empty states (they crash Unity's graph builder), and a filled
-        /// state restarted every frame strobes its clip — reported as animations rapidly
-        /// flickering, characteristically on OTHER players' screens: remote copies hold "#"
-        /// local parameters at their defaults forever, so a condition the wearer's live values
-        /// keep false can sit permanently true for everyone else.
-        ///
-        /// A transition conditioned on a Trigger is the one legitimate re-entry idiom — fire
-        /// once per pulse — and is left alone. The CCK's own protected layers are not touched.
-        /// </summary>
         static void SuppressAnyStateSelfRestarts(AnimatorController master, BridgeContext ctx)
         {
             var triggers = new HashSet<string>(master.parameters
@@ -6185,30 +5150,21 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        // Only states that HOLD STILL lose the flag. The every-frame restart
-                        // pins a state at its first frame — and for a state with a real,
-                        // animated clip, that pin IS the behaviour the avatar shipped with:
-                        // its author saw frame 0 held in VRChat, however the clip's later
-                        // frames look. The first version of this pass cleared the flag
-                        // everywhere, and every multi-frame toggle animation on the next
-                        // avatar started actually PLAYING — looping grow and hue cycles the
-                        // author never saw. The strobe this pass exists to kill only ever
-                        // came from states whose motion is constant or conversion-added
-                        // (VRChat kept them empty; the filler is what restarts visibly), and
-                        // for those the pin and the play are identical — so only those
-                        // change.
+                        // Only states that hold still lose the flag.
+                        // The every-frame restart pins a state at frame 0.
+                        // For a real animated clip that pin is shipped
+                        // behaviour. The strobe only ever comes from
+                        // constant or conversion-added motions, where pin
+                        // and play are identical.
                         var destination = transition.destinationState;
                         if (destination != null && !MotionHoldsStill(destination.motion))
                         {
                             continue;
                         }
-                        // A destination with an exit-time transition DEPENDS on the restart to
-                        // stay alive: every re-entry resets the clock, so the timed exit never
-                        // fires — that is the whole mechanism holding the state. Clear the flag
-                        // and the state plays through, the timed exit fires, and the same
-                        // AnyState re-enters it from outside: a visible on/off cycle at clip
-                        // length. One avatar's every clothing toggle was built this way
-                        // (AnyState toSelf in, exit-time out), and 3.5.6 set them all cycling.
+                        // A destination with an exit-time transition
+                        // depends on the restart to stay alive; every
+                        // re-entry resets the clock. Clearing the flag
+                        // would set it cycling at clip length.
                         if (destination != null
                             && destination.transitions.Any(t => t != null && t.hasExitTime))
                         {
@@ -6239,12 +5195,6 @@ namespace AvatarBridge
                 "pulse-retriggering is the one thing it is for.");
         }
 
-        /// <summary>
-        /// Whether a motion never visibly changes while it plays: no motion at all, a clip whose
-        /// every curve holds one value, or a tree of such clips. For these, being restarted every
-        /// frame and playing through are the same picture — so the self-restart suppressor can
-        /// act on them without changing anything an author ever saw.
-        /// </summary>
         static bool MotionHoldsStill(Motion motion)
         {
             if (motion == null)
@@ -6293,26 +5243,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Makes VRChat's avatar-scale family live: ScaleFactor, ScaleFactorInverse,
-        /// EyeHeightAsPercent and ScaleModified, derived from EyeHeightAsMeters — which
-        /// CreateParameterStreams feeds from ChilloutVR's AvatarHeight, the calibrated avatar
-        /// height in metres that AvatarUpright divides by.
-        ///
-        /// The baseline ("what scale 1.0 means") is the avatar's viewpoint height at conversion
-        /// time — the same number VRChat uses for its default scale. Every derivation is exact
-        /// arithmetic run by a CCK AnimatorDriver each cycle:
-        ///
-        ///   ScaleFactor        = EyeHeightAsMeters / baseline
-        ///   ScaleFactorInverse = baseline / EyeHeightAsMeters
-        ///   EyeHeightAsPercent = (EyeHeightAsMeters − 0.2) / 4.8   (VRChat's 0.2–5 m range)
-        ///   ScaleModified      = |ScaleFactor − 1| &gt; 1 %
-        ///
-        /// Derived values are kept local ("#") and recomputed per client — the input syncs, the
-        /// arithmetic is deterministic, so every viewer computes identical values at zero extra
-        /// sync cost, exactly the FeedVelocityMagnitude trade. Only runs when the avatar
-        /// actually references one of the four; EyeHeightAsMeters alone needs no driver.
-        /// </summary>
         static void FeedScaleParameters(AnimatorController master, BridgeContext ctx)
         {
             var derived = new[] { "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsPercent", "ScaleModified" };
@@ -6437,18 +5367,15 @@ namespace AvatarBridge
             if (present.TryGetValue("ScaleModified", out var modified))
             {
                 master.parameters = AppendScratch(master.parameters, Delta);
-                // Squared distance from 1, compared against (1 %)² — an exact-equality check
-                // on a streamed float would flicker.
+                // Squared distance from 1, compared against one percent
+                // squared. Exact equality on a streamed float flickers.
                 tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Subtraction,
                     Factor, 0f, null, 1f));
                 tasks.Add(Task(Delta, Float, AnimatorDriverTask.Operator.Multiplication,
                     Delta, 0f, Delta, 0f));
-                // Resolved BY NAME rather than written as AnimatorDriverTask.Operator.MoreThan,
-                // because the CCK has shipped both spellings: "MoreThan"/"LessThan" in the version
-                // this was written against, "MoreThen"/"LessThen" in others. Naming either one
-                // directly makes AvatarBridge fail to COMPILE for everyone on the other — reported
-                // by a user on 3.7.1 as CS0117, and invisible here because the compile check builds
-                // against whichever CCK this machine happens to have.
+                // Resolved by name. The CCK has shipped both spellings,
+                // "MoreThan" and "MoreThen"; naming either directly
+                // fails to compile against the other.
                 if (TryOperator(out var moreThan, "MoreThan", "MoreThen"))
                 {
                     tasks.Add(Task(modified.name,
@@ -6568,9 +5495,9 @@ namespace AvatarBridge
                 return task;
             }
 
-            // A 1/60 s clip whose only curve targets an undeclared animator parameter — it
-            // exists to give the state a length, so the exit-time self-transition below cycles
-            // and the enter tasks re-run every cycle.
+            // A 1/60 s clip targeting an undeclared parameter. It gives
+            // the state a length, so the exit-time self-transition
+            // cycles and the enter tasks re-run.
             var tick = new AnimationClip { name = "VelocityMagnitude Tick" };
             tick.SetCurve("", typeof(Animator), Scratch + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
 
@@ -6635,20 +5562,6 @@ namespace AvatarBridge
             return result;
         }
 
-        /// <summary>
-        /// Copies an asset a clip points at out of Fury's temp and into the output, returning the
-        /// copy — or the original when it was never volatile.
-        ///
-        /// Two cases, and getting them confused copies the wrong thing entirely.
-        ///
-        /// A standalone file is copied with CopyAsset, which preserves import settings and works
-        /// for any type. But VRCFury also embeds generated materials *inside* its controllers as
-        /// sub-assets, and GetAssetPath on a sub-asset returns the containing file — so CopyAsset
-        /// duplicates a whole animator controller into the output, and loading a Material back out
-        /// of that path returns null because the main asset is a controller. The reference is then
-        /// left pointing at the doomed original: exactly the failure this was written to fix,
-        /// wearing a disguise. Sub-assets are therefore cloned as objects instead.
-        /// </summary>
         static UnityEngine.Object RehomeReferencedAsset(UnityEngine.Object value, BridgeContext ctx,
             Dictionary<UnityEngine.Object, UnityEngine.Object> done)
         {
@@ -6686,8 +5599,8 @@ namespace AvatarBridge
             }
             else
             {
-                // Embedded in something else — clone the object itself, or we'd drag its whole
-                // container along and still not rescue the thing that was actually referenced.
+                // Embedded in something else. Clone the object itself,
+                // not its whole container.
                 var clone = UnityEngine.Object.Instantiate(value);
                 clone.name = value.name;
                 string extension = value is Material ? ".mat"
@@ -6701,11 +5614,10 @@ namespace AvatarBridge
 
             done[value] = copy;
 
-            // A material is not a leaf. VRCFury repacks textures into its own container assets in
-            // temp, so a rescued material can still point every texture slot at something about to
-            // be deleted — which doesn't render magenta like a missing material, it renders as an
-            // untextured wash. On "Kaides Expie" that was a white face with no eyes, from a
-            // material that had copied across perfectly.
+            // A material is not a leaf. VRCFury repacks textures into
+            // temp containers, so a rescued material can still point
+            // slots at something about to be deleted. That renders as
+            // an untextured wash, not magenta.
             if (copy is Material material)
             {
                 RehomeMaterialContents(material, ctx, done);
@@ -6721,10 +5633,6 @@ namespace AvatarBridge
             return copy;
         }
 
-        /// <summary>
-        /// Rescues the shader and textures a re-homed material depends on, so the material is
-        /// still whole once VRCFury clears its temp folder.
-        /// </summary>
         static void RehomeMaterialContents(Material material, BridgeContext ctx,
             Dictionary<UnityEngine.Object, UnityEngine.Object> done)
         {
@@ -6768,14 +5676,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRCFury bakes its generated clips and masks into Packages/com.vrcfury.temp,
-        /// which Fury DELETES on the next build — leaving every reference as "None".
-        /// Copy anything volatile into our own controller so the output is self-contained.
-        ///
-        /// That covers the clips themselves and, since a clip's object-reference curves point at
-        /// assets living in the same doomed folder, whatever those curves assign.
-        /// </summary>
         static void RehomeVolatileAssets(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
             var clipMap = new Dictionary<AnimationClip, AnimationClip>();
@@ -6788,12 +5688,10 @@ namespace AvatarBridge
                     return false;
                 }
                 string path = AssetDatabase.GetAssetPath(obj);
-                // No asset path = an in-memory object. A Fury bake that errors partway (its
-                // ErrorDialogBoundary swallows the exception and carries on) leaves its generated
-                // clips unsaved and flagged DontSave — Unity's persistence then REFUSES them at
-                // save time ("kDontSaveInEditor" assertions) and the controller keeps dangling
-                // references: "Missing (Motion)" in every affected tree, 61 gutted states on the
-                // avatar that found this. Anything not an asset must be cloned to survive saving.
+                // No asset path means an in-memory object. A Fury bake
+                // that errors partway leaves clips unsaved and DontSave;
+                // Unity refuses those at save time and references dangle.
+                // Anything not an asset must be cloned to survive saving.
                 if (string.IsNullOrEmpty(path))
                 {
                     return true;
@@ -6824,12 +5722,10 @@ namespace AvatarBridge
                 return clone;
             }
 
-            // Copying the clip is only half of it. A clip that swaps a material carries that
-            // material as an object-reference curve, and cloning the clip copies the *reference*,
-            // which still points into Fury's temp. The clip then survives the next Fury build and
-            // the material it assigns does not — so the toggle works right up until it is used,
-            // and the mesh turns magenta. Found on "Kaides Expie": a "Milky" toggle that had
-            // converted cleanly weeks running, then broke with nothing about it having changed.
+            // Copying the clip is only half of it. A material-swap clip
+            // carries the material as an object-reference curve, and the
+            // cloned reference still points into Fury's temp. The toggle
+            // then breaks the moment it is used, mesh gone magenta.
             void RehomeClipReferences(AnimationClip clone)
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clone))
@@ -6866,12 +5762,9 @@ namespace AvatarBridge
                 }
                 if (motion is BlendTree tree)
                 {
-                    // A volatile tree must be CLONED, not repaired in place. The old code rescued
-                    // the children and then handed back the SAME temp tree object — so the
-                    // controller kept referencing an asset inside Packages/com.vrcfury.temp, and
-                    // Fury's next build (which play mode triggers on the original avatar still in
-                    // the scene) wiped it. One avatar lost 283 motion references exactly this way:
-                    // worked on the first play, gutted on the second.
+                    // A volatile tree must be cloned, not repaired in
+                    // place. The controller must never keep referencing
+                    // an asset inside Fury's temp folder.
                     if (IsVolatile(tree))
                     {
                         if (!treeMap.TryGetValue(tree, out var cloneTree))
@@ -6885,11 +5778,9 @@ namespace AvatarBridge
                                 hideFlags = HideFlags.HideInHierarchy
                             };
                             treeMap[tree] = cloneTree;
-                            // Same threshold discipline as AnimatorDeepCopier: Unity clamps child
-                            // thresholds into [min,max] the moment those are assigned, and manual
-                            // trees ship min = max = 0 — assigning them first crushes every
-                            // threshold. Only automatic trees get min/max, and automatic is
-                            // restored after the children are in.
+                            // Same threshold discipline as AnimatorDeepCopier.
+                            // Unity clamps child thresholds into [min,max]
+                            // on assignment, and manual trees ship 0/0.
                             cloneTree.useAutomaticThresholds = false;
                             if (tree.useAutomaticThresholds)
                             {
@@ -6960,12 +5851,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRCFury bakes bool menu parameters as FLOAT animator parameters. CVR writes
-        /// menu values using the entry's declared type — writing Bool into a Float
-        /// animator parameter silently does nothing, which kills every toggle. Align
-        /// each menu entry's type with the actual animator parameter type.
-        /// </summary>
         static void ReconcileAasInputTypes(AnimatorController master, BridgeContext ctx)
         {
             var types = new Dictionary<string, AnimatorControllerParameterType>();
@@ -7012,10 +5897,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// FX-sourced layers that animate body muscles or transforms fight ChilloutVR's
-        /// locomotion. Flag them so the user knows exactly which layer is responsible.
-        /// </summary>
         static readonly HashSet<string> MuscleCurveNames = new HashSet<string>(HumanTrait.MuscleName.Select(name =>
         {
             var match = System.Text.RegularExpressions.Regex.Match(name, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (.*)$");
@@ -7028,7 +5909,6 @@ namespace AvatarBridge
             property.StartsWith("RootT") || property.StartsWith("RootQ") ||
             property.StartsWith("MotionT") || property.StartsWith("MotionQ");
 
-        /// <summary>What a layer's clips actually touch on the humanoid rig.</summary>
         static void InspectLayerCurves(AnimatorControllerLayer layer, out bool body, out bool fingers)
         {
             bool foundBody = false, foundFingers = false;
@@ -7060,34 +5940,6 @@ namespace AvatarBridge
             fingers = foundFingers;
         }
 
-        /// <summary>
-        /// Stops merged VRChat layers writing over ChilloutVR's locomotion.
-        ///
-        /// In VRChat, FX is its own playable layer and simply cannot drive humanoid muscles.
-        /// Everything here ends up in one controller instead, where that protection doesn't
-        /// exist — and a state with Write Defaults on writes default values for every property
-        /// animated anywhere in that controller, which now includes the muscles ChilloutVR's own
-        /// locomotion clips animate. An unmasked FX layer sitting above Locomotion at weight 1
-        /// therefore re-asserts the rest pose every frame and fights it. One avatar arrived with
-        /// 40 layers, 35 of them unmasked, 128 states and Write Defaults on in every one, its
-        /// legs cycling as though pedalling while it stood still.
-        ///
-        /// An avatar mask restores the separation: humanoid parts off means the layer cannot
-        /// touch muscles, while an empty transform list leaves object toggles, blendshapes and
-        /// material animation exactly as they were.
-        ///
-        /// Applied only to layers whose clips animate no muscles themselves, so it can never
-        /// remove animation the avatar intended. Layers that do animate fingers get a hands mask
-        /// instead of losing them, and layers that genuinely animate the body are left alone for
-        /// WarnLocomotionOverrides to report.
-        /// </summary>
-        /// <summary>
-        /// Names merged layers that can write humanoid muscles while carrying no mask to stop them.
-        ///
-        /// Reported rather than fixed, because masking is not always right: a layer may animate the
-        /// body on purpose, and the pass that does the masking skips exactly those. This only says
-        /// what it found and which switch addresses it.
-        /// </summary>
         static void ReportUnmaskedMuscleLayers(AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
@@ -7100,13 +5952,8 @@ namespace AvatarBridge
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
-                // Everything the masking pass would act on — which is every merged layer that
-                // does not deliberately animate the body. This used to read `!body && fingers`,
-                // which named only the finger-animating layers: on the avatar that confirmed the
-                // bicycle-pose fix, 18 of the 20 layers masking repaired were finger-free, so the
-                // report was silent about the bulk of the problem and would have said nothing at
-                // all on an avatar with no finger layers — precisely the avatars that need the
-                // switch pointed out.
+                // Everything the masking pass would act on: every merged
+                // layer that does not deliberately animate the body.
                 if (!body)
                 {
                     suspects.Add(layer.name);
@@ -7140,27 +5987,12 @@ namespace AvatarBridge
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
-                // A [Base] layer is masked even when it DOES animate the body, which is the one
-                // exception to "deliberate body animation is left alone".
-                //
-                // In VRChat the Base playable is the bottom of the stack — the thing that provides
-                // the body pose. ChilloutVR's equivalent is its own Locomotion/Emotes layer, and
-                // that layer is not optional: the stance buttons and movement sliders are answered
-                // there and nowhere else. A merged [Base] layer lands ABOVE it on Override at
-                // weight 1, so it cannot supplement CVR's locomotion — only replace it, and only
-                // with whatever VRChat's Base happened to be doing.
-                //
-                // That is rarely locomotion. On the avatar that forced this, the [Base] layer was
-                // a calibration utility whose three states are "measure me", "Preview" and
-                // "reinitialize"; unmasked at weight 1 it held the body in a measurement pose,
-                // movement animated nothing, and Airborne/Flying/Sitting/Swimming did nothing
-                // because the layer answering them had been overridden. Genuine locomotion
-                // REPLACEMENTS fare no better: they lean on runtime layer-weight control, which
-                // ChilloutVR has no equivalent for, so they cannot run here either way.
-                //
-                // Masked, the layer keeps everything it can actually deliver — object toggles,
-                // blendshapes, materials, parameters, additive floating — and CVR's locomotion
-                // stays authoritative. Enabling "Base / locomotion" can no longer break an avatar.
+                // A [Base] layer is masked even when it animates the
+                // body. Merged, it lands above CVR's Locomotion/Emotes
+                // on Override at weight 1, so it can only replace the
+                // locomotion, never supplement it. Masked, the layer
+                // keeps everything it can actually deliver and CVR's
+                // locomotion stays authoritative.
                 bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
                 if (body && !baseLayer)
                 {
@@ -7170,21 +6002,10 @@ namespace AvatarBridge
                 {
                     maskedBaseBody.Add(layer.name);
                 }
-                // Finger curves get NO special treatment — they are blocked with the rest.
-                //
-                // Narrowing such a layer to a hands-only mask looked generous: keep whatever
-                // finger animation the FX layer had. It is actually the opposite. The premise of
-                // this whole pass is that VRChat's FX playable layer CANNOT drive humanoid
-                // muscles — so those finger curves never moved a finger in VRChat either. A
-                // hands mask hands them a power VRChat denied them, and every merged FX layer
-                // sits ABOVE the CCK's LeftHand/RightHand layers in the stack, so on Override at
-                // weight 1 they overwrite the hand pose the moment it plays.
-                //
-                // That is exactly how a converted avatar ends up with the CCK Debugger reporting
-                // "LeftHand — weight 1.00, playing Thumbs Up 1.00" while the fingers sit in their
-                // rest pose: two material-swap layers, of all things, were masked to fingers-only
-                // and stomping the gesture every frame. Gestures matter; a dead finger curve on a
-                // material swap does not.
+                // Finger curves are blocked with the rest. VRChat's FX
+                // playable cannot drive muscles, so those curves never
+                // moved a finger there. A hands-only mask would let them
+                // overwrite the gesture pose from above.
                 layer.avatarMask = GetNoMuscleMask(ctx);
                 masked++;
                 if (fingers)
@@ -7226,25 +6047,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Removes the avatar mask from any layer whose clips swap object references.
-        ///
-        /// A layer wearing ANY AvatarMask applies only the FIRST object-reference binding of
-        /// its clips — every slot after that is silently dropped, in play mode and in game,
-        /// even when the mask's transform list grants the target's path at full weight.
-        /// Measured on a three-slot material swap: an identical fresh layer applied all three
-        /// slots without a mask and exactly one with it, and the shipped avatar showed the
-        /// same — body turned milky, fur stayed black. The Animation window samples clips
-        /// through a different path and applies everything, which is why the fault only
-        /// appears when the animator itself runs the toggle.
-        ///
-        /// Only layers that animate NOTHING humanoid are freed, so unmasking cannot hand a
-        /// layer power over the rig. A layer that both swaps and drives muscles keeps its mask
-        /// and is reported instead: deleting its humanoid curves would be the obvious repair
-        /// and is forbidden, because clips are SHARED — one edit reaches every other layer and
-        /// every other avatar playing that clip. A mask the AUTHOR placed is likewise reported,
-        /// never edited.
-        /// </summary>
         static void UnmaskObjectSwapLayers(AnimatorController master, BridgeContext ctx)
         {
             var layers = master.layers;
@@ -7266,12 +6068,10 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool body, out bool fingers);
                 if (body || fingers)
                 {
-                    // Not this one. Unmasked, its humanoid curves would drive the rig the mask
-                    // exists to protect — and deleting those curves instead is NOT an option,
-                    // because clips are SHARED: editing one in place damages every other layer,
-                    // and every other avatar, that plays it. That was learned by doing it — a
-                    // strip here emptied the SDK's own proxy_hands_idle for the whole project,
-                    // and every avatar converted afterwards lost its hand poses.
+                    // Not this one. Unmasked, its humanoid curves would
+                    // drive the rig the mask protects. Deleting the
+                    // curves is not an option: clips are shared, and
+                    // editing one in place damages every user of it.
                     conflicted.Add(layer.name);
                     continue;
                 }
@@ -7311,7 +6111,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Whether any clip played by this layer carries an object-reference curve.</summary>
         static bool LayerSwapsObjectReferences(AnimatorControllerLayer layer)
         {
             if (layer.stateMachine == null)
@@ -7340,44 +6139,16 @@ namespace AvatarBridge
             return found;
         }
 
-        /// <summary>
-        /// The last line of defence for hand gestures, and the reason this exists is worth
-        /// writing down: a tester spent five rounds on an avatar whose CCK Debugger read
-        /// "LeftHand — Layer Weight 1.00, playing Thumbs Up 1.00" while the fingers sat in
-        /// their rest pose. The animator was right every time it was checked. Two MATERIAL
-        /// SWAP layers above it carried a fingers-only mask, and on Override at weight 1 they
-        /// rewrote the finger muscles every frame — with no finger curves of their own, purely
-        /// by writing defaults into channels their mask let through.
-        ///
-        /// The rule is exact. When the CCK's own LeftHand/RightHand layers survive — which is
-        /// whenever the avatar's Gesture layer was not converted — posing the fingers is THEIR
-        /// job, and any layer above them that may write finger muscles is damage. MaskMergedLayers
-        /// covers the case it owns, merged layers that arrive with NO mask; a layer that arrives
-        /// WITH one is skipped by it, and injected layers never pass through it at all. So this
-        /// checks the finished stack rather than trusting the passes that built it.
-        /// </summary>
         internal static void AuditHandPoseConflictsForTest(AnimatorController master, BridgeContext ctx)
             => AuditHandPoseConflicts(master, ctx);
 
         static void AuditHandPoseConflicts(AnimatorController master, BridgeContext ctx)
         {
-            // This used to return early when the gesture layer was being converted, reasoning that
-            // "the avatar's own gesture layers ARE the hand pose, so there is nothing to protect".
-            // That confuses the SOURCE of the pose with its SAFETY. The promoted LeftHand/RightHand
-            // layers are indeed the avatar's own — and something merged in above them can still
-            // overwrite the fingers they just posed.
-            //
-            // Reported from the wild on two avatars whose FX layer ALSO carried layers called
-            // "Left Hand" and "Right Hand". Both copies survived: the promoted pair at 2 and 3, the
-            // FX duplicates at 5 and 6, all unmasked and all at weight 1, so the FX pair won. On one
-            // of them the winning copy had no Idle state at all and a fist band starting at -0.9,
-            // which parks the hand in a fist at rest — reported as "gestures are just wrong, with
-            // the wrong thresholds". The promoted layer's own bands were correct throughout.
-            //
-            // It cannot happen in VRChat, which is why an avatar can ship like this and look fine:
-            // the FX playable layer there cannot drive humanoid muscles at all, so those FX hand
-            // layers never touched a finger. Merging everything into one controller hands them
-            // muscles they never had.
+            // Runs even when the gesture layer converts. The promoted
+            // LeftHand/RightHand layers are the avatar's own, and a
+            // layer merged in above them can still overwrite the
+            // fingers they just posed. VRChat never shows this: its FX
+            // playable cannot drive muscles at all.
             var layers = master.layers;
             int handTop = -1;
             for (int i = 0; i < layers.Length; i++)
@@ -7412,18 +6183,16 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool body, out bool fingers);
                 if (body)
                 {
-                    // A layer that deliberately drives the body — a kept GoGo locomotion
-                    // replacement, say. Silently stripping its fingers would be us overruling
-                    // the author, so this one is the user's call.
+                    // A layer that deliberately drives the body.
+                    // Stripping its fingers is the user's call, not the tool's.
                     warned.Add(layer.name);
                     continue;
                 }
                 if (mask == null)
                 {
-                    // No mask at all, so nothing to edit — and this is the case that mattered.
-                    // Only act when the layer really animates fingers: giving a mask to a layer
-                    // that has none is a bigger intervention than editing one, and for a layer
-                    // with no finger curves it would change nothing anyway.
+                    // No mask at all, so nothing to edit. Only act when
+                    // the layer really animates fingers; adding a mask
+                    // is a bigger intervention than editing one.
                     if (!fingers)
                     {
                         continue;
@@ -7484,33 +6253,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Toggles that share parts inside one Direct blend tree are moved into their own layers.
-        ///
-        /// A Direct tree SUMS its always-on children, so when two toggles in it animate the same
-        /// object — a "swap style" and a "hide all" over the same whiskers, an outfit preset over
-        /// its garments — no restore can be written for the shared property: the toggle switched
-        /// ON writes 0, the other's restore writes 1, and the sum reads as on. For a long time the
-        /// honest answer was to refuse and report, which in ChilloutVR means those toggles stick:
-        /// with no Write Defaults there is nothing else to bring the property back.
-        ///
-        /// Stacked as OVERRIDE layers instead, the same toggles just work, and it is the
-        /// configuration this project has already measured end to end: the top layer wins while
-        /// it asserts, the lowest layer that animates a property restores it, and everything
-        /// comes back. So each contested toggle subtree is lifted out of the Direct tree into its
-        /// own layer above the source — same mask, weight 1 — and the ordinary restore passes,
-        /// which run after this, treat them like any other layers. When two are on at once the
-        /// higher layer's look applies, where VRChat showed the arithmetic sum of both; that
-        /// corner is the price, and single-toggle behaviour — the part that was broken — is what
-        /// it buys.
-        ///
-        /// Deliberately narrow: only direct children of a Direct tree, only the two-child toggle
-        /// shape, only when the shared property is contested with another TOGGLE (a binding also
-        /// animated by the layer's non-toggle content is a radial or gesture matter and is left
-        /// alone), and only when the child's direct weight parameter rests at 1 — a dynamically
-        /// weighted child is real blending, and lifting it to a full-weight layer would change
-        /// what the author built.
-        /// </summary>
         static void HoistContestedTreeToggles(AnimatorController master, BridgeContext ctx)
         {
             var hoisted = new List<string>();
@@ -7643,45 +6385,8 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Why the empty-state filler did what it did, per layer, for the coverage checker to
-        /// print beside a violation. A violation without its refusal reason cost three
-        /// reconversion round-trips on one avatar; with it, the fix is named in the report.
-        /// </summary>
         static readonly Dictionary<string, string> restoreVerdicts = new Dictionary<string, string>();
 
-        /// <summary>
-        /// Gives every empty "off" state a real clip that restores what its layer animates.
-        ///
-        /// The VRChat idiom for a toggle is two states: one holding the clip that changes
-        /// something, and one holding NOTHING, whose job is to put it back. That empty state
-        /// only works because Write Defaults writes each property's captured default, and the
-        /// avatar arrives relying on it — which is why the source plays correctly in VRChat and
-        /// in Gesture Manager.
-        ///
-        /// Converted, the same layer can turn a toggle ON and never off again: the "off" state
-        /// has no animation in it, so there is nothing to undo the change. Every toggle on the
-        /// avatar behaves the same way, because they are all built the same way.
-        ///
-        /// Rather than depend on Write Defaults behaving identically on both platforms, the
-        /// default is MEASURED off the converted avatar and baked into a clip. Whatever the
-        /// property is at conversion time — the object active, the blendshape at 0, the material
-        /// as authored — becomes an explicit curve, so the off state restores it by playing
-        /// animation rather than by relying on an implicit rule.
-        ///
-        /// Only properties the layer's own other states animate are restored, so a state stays
-        /// silent about everything it was already silent about, and layers keep their
-        /// independence.
-        /// </summary>
-        /// <param name="writtenPaths">
-        /// Deterministic file names, so reconverting REPLACES last time's restore clips instead of
-        /// parking a numbered copy beside them. One avatar had 200 of them.
-        ///
-        /// SHARED with the blend tree pass rather than local, because both write " restore" clips
-        /// into one folder and both name them after the thing they restore. A nativized toggle
-        /// layer and the tree Fury built from that same toggle carry the same name often enough
-        /// that the second pass would otherwise overwrite the first pass's clip.
-        /// </param>
         static void FillEmptyStatesWithRestoreClips(AnimatorController master, BridgeContext ctx,
             HashSet<string> writtenPaths)
         {
@@ -7689,10 +6394,8 @@ namespace AvatarBridge
             string dir = $"{ctx.OutputDir}/RehomedAssets";
             restoreVerdicts.Clear();
             int filled = 0, layersTouched = 0, reused = 0, sharedSkipped = 0, candidates = 0, routers = 0;
-            // Bindings that named something this avatar no longer has. Counted because the two
-            // skips below used to be silent, and when EVERY binding took one of them the pass
-            // reported "found candidates and produced nothing" with no way to tell which — see
-            // the failure branch at the bottom, where that question is finally answerable.
+            // Bindings that named something this avatar no longer has.
+            // Counted so the failure branch can say which skip fired.
             int unresolved = 0;
             var unresolvedPaths = new SortedSet<string>(StableSampleOrder.Instance);
             var names = new List<string>();
@@ -7700,12 +6403,9 @@ namespace AvatarBridge
             // Layers whose empty states are structural rather than a toggle.s off half.
             var notToggles = new SortedSet<string>(StableSampleOrder.Instance);
 
-            // Snapshot ONCE. master.layers hands back a fresh array of fresh wrappers on every
-            // access, so an index looked up against one call is meaningless against another —
-            // Array.IndexOf(master.layers, layer) never matches and quietly returns -1, which
-            // is how an earlier revision decided no layer owned anything and generated nothing
-            // at all. Layer names are unique by construction (MakeUniqueLayerName), so they are
-            // the identity to key on.
+            // Snapshot once. master.layers hands back fresh wrappers on
+            // every access, so indexes only mean anything within one
+            // call. Layer names are unique by construction; key on them.
             var layers = master.layers;
             var indexByName = new Dictionary<string, int>();
             for (int i = 0; i < layers.Length; i++)
@@ -7717,11 +6417,9 @@ namespace AvatarBridge
             }
             BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven, out _);
 
-            // Every layer of the finished controller except the ones that must not be touched —
-            // NOT the merged-layer list. ToggleNativizer takes a toggle's layer OUT of that list
-            // when it gives it its own name, so keying on it silently skipped exactly the layers
-            // most likely to need this: six plain wardrobe toggles, four of them reported broken.
-            // A layer is still the avatar's toggle after it has been renamed.
+            // Every layer of the finished controller, not the merged-layer
+            // list. A layer is still the avatar's toggle after
+            // ToggleNativizer renames it.
             foreach (var layer in layers)
             {
                 if (IsProtectedLayer(layer.name))
@@ -7743,13 +6441,8 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        // A curve-less clip IS an empty state. VRCFury does not leave its empty
-                        // toggle halves null — it parks a shared clip with no curves in them —
-                        // and the tree collector has accepted that spelling since the day it was
-                        // written, while this one demanded null. On a Fury avatar whose toggles
-                        // are state pairs, that asymmetry made every single one invisible here:
-                        // 'found candidates and produced nothing' with the candidates being only
-                        // the states some later strip had genuinely nulled.
+                        // A curve-less clip is an empty state. VRCFury
+                        // parks a shared empty clip rather than null.
                         if (state.motion == null || IsCurveless(state.motion, null))
                         {
                             // An empty state is only an "off" state if the layer can REST in it.
@@ -7778,15 +6471,10 @@ namespace AvatarBridge
                 // one state holding the clip, and that shape is the only one where a snapshot of
                 // the avatar is the right thing to put in the empty half.
                 //
-                // Anything larger is a machine, and its empty states are structural. Two have now
-                // shipped as bugs: a local/remote gate given the values of the branch it leads to,
-                // and a slider layer's "Reset/Pause" state given a snapshot that pinned seven chest
-                // blendshapes to 0 — which flattened the avatar's chest the moment the layer rested
-                // there. Neither was an "off" state; both merely had no motion.
-                //
-                // Erring toward doing nothing is cheap here: an unfilled off state behaves exactly
-                // as it did in VRChat, which is the situation this pass improves on rather than
-                // rescues. Erring the other way changes what the avatar looks like.
+                // Anything larger is a machine, and its empty states are
+                // structural, not "off" halves. Erring toward doing
+                // nothing is cheap: an unfilled off state behaves as it
+                // did in VRChat. Erring the other way changes the avatar.
                 if (stateCount != 2)
                 {
                     restoreVerdicts[layer.name] = $"not a two-state toggle ({stateCount} states)";
@@ -7798,24 +6486,16 @@ namespace AvatarBridge
                 var clip = new AnimationClip { name = SanitizeFileName($"{layer.name} restore") };
                 int curves = 0, shared = 0;
 
-                // Where several layers animate one property, only the LOWEST of them may restore
-                // it. Depth decides, not exclusivity.
-                //
-                // A dress toggle and a shirt toggle both animate the shirt object. Let both
-                // restore it and the higher one — the dress — asserts "shirt on" every frame and
-                // the shirt can never be switched off. Let neither restore it and the shirt can
-                // never be switched back on. Give it to the lower layer and every combination is
-                // right: the shirt layer restores the shirt, and the dress layer stays silent, so
-                // when the dress is ON its own clip still wins from above, and when it is off the
-                // shirt layer decides. Silence at the top, authority at the bottom.
+                // Where several layers animate one property, only the
+                // lowest may restore it. With the lower layer restoring
+                // and the higher silent, every combination comes out
+                // right. Silence at the top, authority at the bottom.
                 int here = indexByName.TryGetValue(layer.name, out int found) ? found : -1;
                 bool Owns(EditorCurveBinding binding)
                 {
-                    // A blend tree in ANOTHER layer drives this: leave it to the tree, because the
-                    // two blend and a constant here would fight a parameter-driven value. A tree
-                    // in a sibling state of THIS layer is a different matter — only one state
-                    // plays at a time, so it is not running while the layer rests here, and
-                    // deferring to it leaves the property to nobody.
+                    // A tree in another layer drives this: leave it to
+                    // the tree. A sibling tree in this layer is not
+                    // running while the layer rests here.
                     if (TreeDrivenElsewhere(treeDriven, binding, here))
                     {
                         return false;
@@ -7839,9 +6519,8 @@ namespace AvatarBridge
                     }
                     if (!AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
                     {
-                        // The clip names an object or property the converted avatar does not have
-                        // — stripped with a VRChat-only system, or renamed by a baker. There is no
-                        // current value to snapshot, so nothing can be restored here.
+                        // The clip names something this avatar no longer
+                        // has. No current value, nothing to restore.
                         unresolved++;
                         unresolvedPaths.Add($"{binding.path}:{binding.propertyName}");
                         continue;
@@ -7878,11 +6557,9 @@ namespace AvatarBridge
                 restoreVerdicts[layer.name] = $"filled ({curves} curve(s))"
                     + (shared > 0 ? $", {shared} refused as owned elsewhere or tree-driven" : "");
 
-                // Prefer the avatar's OWN animation. If the author already ships a clip that
-                // sets these same properties to these same values — the "on" half of a pair
-                // that was simply never wired into the empty state — use theirs. A generated
-                // clip is a last resort, not a default: theirs may carry curves and timing this
-                // snapshot cannot know about, and one asset is better than two that agree.
+                // Prefer the avatar's own animation. A generated clip is
+                // a last resort: an authored clip may carry curves and
+                // timing a snapshot cannot know about.
                 var existing = FindEquivalentClip(clip, allClips);
                 if (existing != null)
                 {
@@ -7904,9 +6581,9 @@ namespace AvatarBridge
                     System.IO.Directory.CreateDirectory(dir);
                     AssetDatabase.Refresh();
                 }
-                // A stable name per layer, uniquified only against THIS run. GenerateUniqueAssetPath
-                // uniquifies against the folder, so every reconversion parked another numbered copy
-                // next to the last — one avatar's output folder had reached "restore 9".
+                // A stable name per layer, uniquified only against this
+                // run. Folder-wide uniquifying stacks numbered copies
+                // on every reconversion.
                 string path = $"{dir}/{clip.name}.anim";
                 for (int n = 2; !writtenPaths.Add(path); n++)
                 {
@@ -7929,16 +6606,12 @@ namespace AvatarBridge
 
             if (filled == 0)
             {
-                // Candidates but no fills is not a quiet "nothing to do" — it is the shape of a
-                // bug in this pass, and one that already shipped once by saying nothing at all.
-                // A toggle that switches on and never off is the visible symptom, so say it here
-                // rather than leave the report silent about a pass that ran and achieved zero.
+                // Candidates but no fills is the shape of a bug in this
+                // pass. A toggle that switches on and never off is the
+                // symptom; report it rather than stay silent.
                 if (candidates > 0)
                 {
-                    // Say WHY, which this used to leave out entirely — it counted the candidates,
-                    // asked to be told about it, and threw away the two numbers that answer the
-                    // question. Reported from an avatar whose seven toggles all switched on and
-                    // stayed on, where the report could only say that something had gone wrong.
+                    // Say why, with the numbers that answer the question.
                     string because =
                         unresolved > 0 && sharedSkipped > 0
                             ? $" {unresolved} propert(ies) named something this avatar no longer has, and " +
@@ -7967,9 +6640,9 @@ namespace AvatarBridge
                 }
                 return;
             }
-            // Spare EVERYTHING the shared registry knows about, not just this pass's own files —
-            // writtenPaths carries the partial-off topping's clips too, written moments before
-            // this sweep, referenced by live states, and deleted by it for four versions.
+            // Spare everything the shared registry knows about, not just
+            // this pass's own files. writtenPaths carries the partial-off
+            // topping's clips too.
             int stale = DeleteStaleRestoreClips(dir, writtenPaths);
             AssetDatabase.SaveAssets();
             ctx.Report.Converted(Category,
@@ -8018,18 +6691,6 @@ namespace AvatarBridge
                     : ""));
         }
 
-        /// <summary>
-        /// Is this binding driven by a blend tree in some layer OTHER than the one asking?
-        ///
-        /// That is the only case where a constant assertion fights a parameter-driven value: two
-        /// layers blend, so both are live at once. Within one layer the states are mutually
-        /// exclusive — the tree in the "on" state is not running while the layer rests in "off" —
-        /// so the resting state must still say what it owns, or ChilloutVR leaves the property
-        /// wherever the tree last put it.
-        ///
-        /// Called with the asking layer's index; -1 means "not found", and is treated as any other
-        /// layer so an unidentifiable caller stays with the cautious old behaviour.
-        /// </summary>
         static bool TreeDrivenElsewhere(Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
             EditorCurveBinding binding, int askingLayer)
         {
@@ -8047,15 +6708,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Which layer OWNS each animated property, and every clip the controller already holds.
-        ///
-        /// Ownership is by DEPTH: the lowest layer index that animates a property owns it, and only
-        /// the owner may restore it. Shared by both restore passes — the animator-state one and the
-        /// blend tree one — because a property written from a state in one layer and from a tree in
-        /// another layer poses exactly the same conflict, and answering it two different ways would
-        /// let both of them restore it.
-        /// </summary>
         static void BuildRestoreOwnership(AnimatorControllerLayer[] layers,
             out Dictionary<EditorCurveBinding, int> owner, out HashSet<AnimationClip> allClips,
             out Dictionary<EditorCurveBinding, HashSet<int>> treeDriven,
@@ -8067,22 +6719,14 @@ namespace AvatarBridge
             // Every clip the avatar already has, so an authored one can be preferred over a
             // generated one.
             var clips = new HashSet<AnimationClip>();
-            // Bindings that any BLEND TREE anywhere animates. Ownership is awarded from plain
-            // clip states only, and tree-driven bindings are exempt from state restores entirely:
-            // a tree's curves are parameter-driven and continuously blended, so a constant
-            // assertion from any plain state — above OR below — fights the tree whenever it is
-            // live. The measured case: a low gesture layer's weight trees touched hundreds of
-            // bindings, claimed ownership of all of them, was rightly refused permission to
-            // assert them (the slider rule), and thereby orphaned every wardrobe toggle above it
-            // — nobody restored anything, and the whole avatar was one-way in game.
+            // Bindings any blend tree animates. Ownership is awarded from
+            // plain clip states only; tree-driven bindings are exempt
+            // from state restores, since a constant assertion fights a
+            // parameter-driven value whenever the tree is live.
             var trees = new Dictionary<EditorCurveBinding, HashSet<int>>();
-            // Ownership over EVERYTHING a layer animates, trees included — the arbitration the
-            // TREE repair needs. Removing tree bindings from the plain-state map above was right
-            // for the state passes, but the tree pass inherited the same map and read "absent"
-            // as "nobody claims it": on a real avatar the higher all-clothing-off preset tree was
-            // then given a restore that asserted two garments visible from above, and both
-            // garments' own toggles stopped touching anything. The exact configuration the
-            // two-layer play-mode probe had already measured as broken.
+            // Ownership over everything a layer animates, trees included.
+            // The tree repair needs this full map; the plain-state map
+            // reads "absent" as "nobody claims it".
             var anyOwners = new Dictionary<EditorCurveBinding, int>();
             int layerIndex = -1;
             foreach (var candidate in layers)
@@ -8092,14 +6736,10 @@ namespace AvatarBridge
                 var objectsHere = new HashSet<EditorCurveBinding>();
                 var anythingHere = new HashSet<EditorCurveBinding>();
                 var treesHere = new HashSet<EditorCurveBinding>();
-                // Ownership only counts states Unity can actually reach. A library layer (see
-                // LibraryDefaultState) claimed a whole wardrobe on a real avatar: 75 orphan
-                // states at layer 4, each holding one toggle's clip, awarded every property to
-                // a layer that can never play — so every live toggle above it was refused as
-                // "owned by a lower layer", the library restored nothing, and every toggle on
-                // the avatar switched off and never back on in game. Clips are still collected
-                // from everywhere: a library is exactly where an authored clip worth reusing
-                // by FindEquivalentClip lives.
+                // Ownership only counts states Unity can actually reach.
+                // A library layer must not claim properties it can never
+                // play. Clips are still collected from everywhere; a
+                // library is where authored clips worth reusing live.
                 var onlyPlayable = LibraryDefaultState(candidate);
                 WalkMachines(candidate.stateMachine, machine =>
                 {
@@ -8109,8 +6749,8 @@ namespace AvatarBridge
                         CollectClips(motion, clips);
                         if (motion is BlendTree)
                         {
-                            // Trees feed the exemption map and the any-ownership map, never
-                            // plain-state ownership — see above.
+                            // Trees feed the exemption and any-ownership
+                            // maps, never plain-state ownership.
                             CollectBindings(motion, treesHere, treesHere);
                             if (onlyPlayable == null || child.state == onlyPlayable)
                             {
@@ -8125,13 +6765,10 @@ namespace AvatarBridge
                         }
                     }
                 });
-                // WHICH layer's tree drives it, not merely that one does. Within a single layer
-                // only one state plays at a time, so a tree in a sibling state cannot be fighting
-                // a constant written into the state the layer is resting in — it is not running.
-                // Exempting there left the property to something switched off: measured on an
-                // avatar whose "Toot" and "Buttplug drive" layers each hold a tree in one state
-                // and rest in another, and whose objects stayed on for the rest of the session.
-                // Across layers the exemption is still right, because those genuinely do blend.
+                // Which layer's tree drives it, not merely that one does.
+                // Within one layer only one state plays at a time, so a
+                // sibling tree is not running while the layer rests.
+                // Across layers the exemption holds; those really blend.
                 foreach (var binding in treesHere)
                 {
                     if (!trees.TryGetValue(binding, out var owning))
@@ -8161,22 +6798,6 @@ namespace AvatarBridge
             anyOwner = anyOwners;
         }
 
-        /// <summary>
-        /// The single state a layer can ever play, or null when the layer genuinely runs.
-        ///
-        /// A machine holding several states and not one transition anywhere — no state-to-state,
-        /// no AnyState, no Entry, none in any sub-machine — can only rest in its default state
-        /// forever. The rest is an animation LIBRARY: a place authors park clips so they are easy
-        /// to find and preview, common enough in VRChat FX controllers that one real avatar
-        /// shipped 75 of its toggles' clips this way. Unity cannot enter those states, so nothing
-        /// they animate can ever fight anything at runtime — which is exactly why they must not
-        /// take part in deciding which layer restores a property.
-        ///
-        /// Deliberately this narrow: zero transitions in the whole layer. A layer with even one
-        /// transition somewhere gets full ownership of everything it animates, reachable or not,
-        /// because partial reachability needs real graph analysis through entry/exit semantics and
-        /// a wrong answer here silently re-breaks toggles. Widen it only on evidence.
-        /// </summary>
         static AnimatorState LibraryDefaultState(AnimatorControllerLayer layer)
         {
             var root = layer != null ? layer.stateMachine : null;
@@ -8207,7 +6828,7 @@ namespace AvatarBridge
             return states > 1 && transitions == 0 ? root.defaultState : null;
         }
 
-        /// <summary>A 1D blend tree shaped like a toggle: one child animates, the other is empty.</summary>
+        // A 1D blend tree shaped like a toggle: one child animates, the other is empty.
         struct ToggleTree
         {
             public BlendTree Tree;
@@ -8216,32 +6837,6 @@ namespace AvatarBridge
             public HashSet<EditorCurveBinding> Objects;
         }
 
-        /// <summary>
-        /// The blend tree half of the off-state restore, for toggles VRCFury turned into trees.
-        ///
-        /// FillEmptyStatesWithRestoreClips repairs the toggle whose off half is an empty animator
-        /// STATE. VRCFury's LayerToTreeService rewrites whole toggle layers into 1D blend trees
-        /// nested under one Direct tree, and then the off half is an empty CHILD instead — the same
-        /// idiom with the same defect, and invisible to a pass that only reads <c>state.motion</c>.
-        /// Measured on the avatar that reported it: 53 of its 94 empty motion slots were tree
-        /// children, its wardrobe toggles switched on and never off in game, and the state pass
-        /// found exactly one layer to work on.
-        ///
-        /// The shape accepted here is the tree spelling of the two-state toggle and nothing else: a
-        /// 1D tree, exactly two children, exactly one of which animates nothing. 1D trees NORMALISE,
-        /// so the empty child plays at full weight when the parameter sits at its threshold — which
-        /// is what makes a snapshot placed there restore the property rather than merely dilute it.
-        /// Fury's Direct parent weights each toggle by a constant-1 parameter (Toggle_Weight), so
-        /// the subtree runs at full strength.
-        ///
-        /// ONE EXTRA RULE the state pass does not need. A Direct tree SUMS its children rather than
-        /// choosing between them, so two sibling toggles animating one property would fight the
-        /// moment both assert: the toggle switched ON writes 0, the other's restore writes 1, and
-        /// the sum reads as on. So a property is restored only where exactly ONE toggle in the layer
-        /// animates it, and nothing else in that layer does. A wardrobe with an "all clothing off"
-        /// preset overlapping four garment toggles is the ordinary case — those four keep VRChat's
-        /// behaviour rather than put the preset at risk.
-        /// </summary>
         static void FillEmptyTreeSlotsWithRestoreClips(AnimatorController master, BridgeContext ctx,
             HashSet<string> writtenPaths)
         {
@@ -8324,12 +6919,10 @@ namespace AvatarBridge
                         {
                             return false;
                         }
-                        // Cross-layer arbitration uses the ANY-ownership map — trees included —
-                        // because this pass's own repairs live inside trees. The plain-state map
-                        // stopped listing tree bindings, this check read absent as unclaimed, and
-                        // a higher all-clothing-off preset tree was handed a restore that
-                        // asserted two garments visible from above their own toggles. Unknown
-                        // binding in THIS map: genuinely nobody's, so this layer may restore it.
+                        // Cross-layer arbitration uses the any-ownership
+                        // map, trees included; this pass's repairs live
+                        // inside trees. Unknown binding here: nobody's,
+                        // so this layer may restore it.
                         return !anyOwner.TryGetValue(binding, out int lowest) || lowest == here;
                     }
 
@@ -8337,10 +6930,9 @@ namespace AvatarBridge
                     int curves = 0, shared = 0;
                     foreach (var binding in candidate.Floats)
                     {
-                        // Fury's AAP trees animate animator PARAMETERS rather than the avatar, and
-                        // share this exact two-child shape. Snapshotting one would pin a value the
-                        // math behind it exists to compute — and humanoid muscles are masked off
-                        // these layers anyway.
+                        // Fury's AAP trees animate parameters, not the
+                        // avatar, in this same two-child shape.
+                        // Snapshotting one would pin a computed value.
                         if (binding.type == typeof(Animator))
                         {
                             continue;
@@ -8382,8 +6974,7 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    // Prefer the avatar's OWN animation over a generated one, exactly as the state
-                    // pass does — theirs may carry curves and timing a snapshot cannot know about.
+                    // Prefer the avatar's own animation, as the state pass does.
                     Motion restore;
                     var existing = FindEquivalentClip(clip, allClips);
                     if (existing != null)
@@ -8466,11 +7057,6 @@ namespace AvatarBridge
         internal static void FillEmptyTreeSlotsWithRestoreClipsForTest(AnimatorController master,
             BridgeContext ctx) => FillEmptyTreeSlotsWithRestoreClips(master, ctx, new HashSet<string>());
 
-        /// <summary>
-        /// Every toggle-shaped 1D tree reachable from a motion. A tree that qualifies is NOT
-        /// descended into: it is taken as the toggle, and whatever its ON half contains belongs to
-        /// that toggle rather than being a toggle of its own.
-        /// </summary>
         static void CollectToggleTrees(Motion motion, HashSet<BlendTree> seen, List<ToggleTree> into)
         {
             if (!(motion is BlendTree tree) || !seen.Add(tree))
@@ -8478,13 +7064,10 @@ namespace AvatarBridge
                 return;
             }
             var children = tree.children;
-            // Two children is the toggle; more is a SELECTOR — a body-shape or outfit-style
-            // chooser whose "none" option is the empty child. Same idiom, one size up: at the
-            // empty option the tree asserts nothing, VRChat's runtime filled the silence, and
-            // ChilloutVR's does not — a belly toggle summed against a body selector resting on
-            // its empty option could switch on and never revert, because nobody wrote the shape
-            // back. The empty child gets the union of its SIBLINGS' properties at rest, so the
-            // selector restores whenever it rests there, exactly as a toggle's off half does.
+            // Two children is the toggle; more is a selector whose
+            // "none" option is the empty child. At that option the tree
+            // asserts nothing, and CVR fills no silence. The empty child
+            // gets the union of its siblings' properties at rest.
             if (tree.blendType == BlendTreeType.Simple1D && children.Length >= 2)
             {
                 int empty = -1;
@@ -8533,11 +7116,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// What a layer animates OUTSIDE the toggles found in it — the trees themselves are stepped
-        /// over, so what is left is everything with a claim on a property that no single toggle can
-        /// answer for.
-        /// </summary>
         static void CollectOutsideToggles(Motion motion, HashSet<BlendTree> toggles,
             HashSet<EditorCurveBinding> into)
         {
@@ -8560,11 +7138,6 @@ namespace AvatarBridge
             into.UnionWith(objects);
         }
 
-        /// <summary>
-        /// What to call a toggle tree in the report and on disk. Fury names them after the toggle,
-        /// which is what a reader recognises; length is capped because some carry a whole object
-        /// path and the file name has a project path in front of it.
-        /// </summary>
         static string ToggleTreeLabel(BlendTree tree, string layerName)
         {
             string name = tree != null ? tree.name : null;
@@ -8575,12 +7148,6 @@ namespace AvatarBridge
             return name.Length > 60 ? name.Substring(0, 60).TrimEnd() : name;
         }
 
-        /// <summary>
-        /// Removes restore clips left in the output folder by an earlier conversion of this same
-        /// avatar. Only files this pass names, only in this avatar's own output folder, and only
-        /// ones the controller just built does not reference — so what goes is exactly the litter
-        /// from a previous run, which reconverting has already replaced.
-        /// </summary>
         static int DeleteStaleRestoreClips(string dir, HashSet<string> keep)
         {
             if (!AssetDatabase.IsValidFolder(dir))
@@ -8595,7 +7162,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // " restore.anim" and " restore 4.anim" — the shapes this pass has ever written.
+                // " restore.anim" and " restore 4.anim" are the shapes this pass writes.
                 string file = System.IO.Path.GetFileNameWithoutExtension(path);
                 int cut = file.LastIndexOf(" restore", StringComparison.Ordinal);
                 if (cut < 0)
@@ -8615,30 +7182,6 @@ namespace AvatarBridge
             return removed;
         }
 
-        /// <summary>
-        /// Whether an empty state is a ROUTER — somewhere the layer passes through — rather than an
-        /// "off" state it comes to rest in. Only the second kind may be given a restore clip.
-        ///
-        /// VRChat avatars are full of routers. The common one is a local/remote gate: an empty
-        /// default state named something like "LocalCheck" whose outgoing transitions split on
-        /// <c>IsLocal</c>, one branch driven by the wearer's own controls and the other by a synced
-        /// dropdown. It is empty ON PURPOSE — it exists to choose, not to assert. Handing it the
-        /// values of whatever it happens to lead to makes it hold those values for as long as the
-        /// layer sits there, and on any avatar whose gate condition never resolves, that is forever.
-        /// A hat grab layer was found doing exactly this.
-        ///
-        /// Two shapes say "you cannot stay here", and neither can occur in the toggle idiom:
-        ///
-        ///   - an outgoing transition with NO conditions, which always fires;
-        ///   - the same parameter compared Greater in one transition and Less in another, which
-        ///     between them cover every value it can hold.
-        ///
-        /// The second is deliberately measured ACROSS transitions, not within one. A single
-        /// transition carrying both — <c>GestureLeft &gt; 3.9 &amp;&amp; &lt; 4.1</c> — is a band
-        /// asking for one specific value, which is a perfectly ordinary way for a toggle's off
-        /// state to wait for a gesture. Counting that as a router would skip the very layers this
-        /// pass exists for.
-        /// </summary>
         static bool IsPassThroughState(AnimatorState state)
         {
             var transitions = state != null ? state.transitions : null;
@@ -8684,11 +7227,6 @@ namespace AvatarBridge
             return openedAbove.Count > 0;
         }
 
-        /// <summary>
-        /// An existing clip that does exactly what the generated one would: the same bindings,
-        /// held at the same values. Requires an EXACT match on both — a clip that restores most
-        /// of what is needed would leave the rest changed, which is the bug being fixed.
-        /// </summary>
         static AnimationClip FindEquivalentClip(AnimationClip generated, HashSet<AnimationClip> candidates)
         {
             var wantFloats = AnimationUtility.GetCurveBindings(generated);
@@ -8719,13 +7257,10 @@ namespace AvatarBridge
                         same = false;
                         break;
                     }
-                    // EVERY key, not just the ends. Comparing only the first and last let a clip
-                    // that returns to where it began pass as a constant, and the shape that does
-                    // that is a loop — a throb, a bounce, a pulse. One avatar's arousal throb was
-                    // adopted as the restore for its own off state, so the toggle's "off" half
-                    // played the very animation it was meant to undo and nothing could stop it.
-                    // The middle of the curve is the whole difference between a rest pose and an
-                    // oscillation around one.
+                    // Every key, not just the ends. A loop returns to
+                    // where it began and would pass as a constant.
+                    // The middle of the curve is the whole difference
+                    // between a rest pose and an oscillation around one.
                     foreach (var key in theirs.keys)
                     {
                         if (!Mathf.Approximately(key.value, mine.keys[0].value))
@@ -8798,10 +7333,8 @@ namespace AvatarBridge
                 InspectLayerCurves(layer, out bool animatesBody, out _);
                 if (animatesBody)
                 {
-                    // In keep-GoGo mode the Base/Additive/Action layers are SUPPOSED to drive
-                    // the body — ChilloutVR's own locomotion layer was removed for them — so
-                    // warning "this can override CVR's locomotion" about the layers doing the
-                    // replacing is pure noise.
+                    // In keep-GoGo mode Base/Additive/Action are supposed
+                    // to drive the body; warning about them is noise.
                     bool gogoReplacement = !ctx.Settings.stripGogoLoco && SystemStripper.AvatarUsesGogo(ctx)
                         && (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
                             || layer.name.StartsWith("[Action]"));
@@ -8828,21 +7361,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// True for asset paths that some bake framework will DELETE on its next run — which
-        /// entering play mode triggers, because both frameworks process the original avatar still
-        /// sitting in the scene. Anything referenced from these folders must be cloned or it dies
-        /// between the first play and the second.
-        ///
-        ///   * Packages/com.vrcfury — Fury's own temp, used when Fury runs standalone.
-        ///   * Packages/nadena.dev.ndmf/__Generated — NDMF's `TemporaryAssetRoot`
-        ///     (`AvatarProcessor.CleanTemporaryAssets` deletes the whole folder, and
-        ///     `ApplyOnPlay` calls it). The moment Modular Avatar/NDMF is installed, VRCFury
-        ///     runs as an NDMF plugin and bakes HERE instead of its own temp — which is how a
-        ///     project that converted fine for weeks broke on the first avatar converted after
-        ///     installing MA: every defence was watching com.vrcfury while the assets lived and
-        ///     died in __Generated.
-        /// </summary>
         internal static bool IsDoomedGeneratedPath(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -8850,60 +7368,13 @@ namespace AvatarBridge
                 return false;
             }
             path = path.Replace('\\', '/');
-            // Only the TEMP roots. The broad "Packages/com.vrcfury" prefix also matched the
-            // installed package (com.vrcfury.vrcfury) — and clips that animate Fury component
-            // properties legitimately reference its script GUIDs, so the audit flagged a stable
-            // reference as doomed on every SPS avatar. The wiped folders, verified against both
-            // frameworks' own code, are exactly these two:
+            // Only the temp roots. A broad "com.vrcfury" prefix also
+            // matches the installed package, whose GUIDs are stable.
+            // The wiped folders are exactly these two:
             return path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("Packages/nadena.dev.ndmf/__Generated", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>
-        /// Reads the SAVED controller off disk and resolves every external GUID it references.
-        /// Two kinds of reference have destroyed avatars silently and both are named here:
-        /// anything under Packages/com.vrcfury (Fury deletes that folder on its next build — and
-        /// entering play mode with the original avatar still in the scene triggers exactly that
-        /// build, which is how a conversion works on the first play and dies on the second), and
-        /// anything that resolves to nothing at all. The serialized file is the ground truth the
-        /// in-memory object graph can lie about, so this reads the text, not the objects.
-        /// </summary>
-        /// <summary>
-        /// Teaches toggle animations to reach the generated physics.
-        ///
-        /// A MagicaCloth conversion hosts each chain on its own holder object at the avatar
-        /// root, because MagicaCloth2 measures inertia at the cloth object (see
-        /// MagicaClothWriter). The cost surfaced on an avatar with four hairstyles: the
-        /// hair-swap animations activate each hairstyle's own objects, the PhysBone used to
-        /// ride along with them, but the holder — on a path no animation had ever heard of —
-        /// stayed disabled forever. Three of four hairstyles wore stiff hair in game.
-        ///
-        /// So, for every clip the final controller references: a GameObject active-state curve
-        /// whose target is a converted PhysBone's object (or any ancestor of it) is copied onto
-        /// the holder's own path — but ONLY when it activates (see the comment at the skip for
-        /// why deactivations must not be mirrored) — and a VRCPhysBone m_Enabled curve is
-        /// retargeted at the generated component's type, both directions. Added curves are
-        /// byte-for-byte the original, so with Write Defaults the holder falls back to its
-        /// scene default exactly like the hair objects themselves (an inactive style's holder
-        /// is created inactive). Clips are cloned before modification; they may be the source
-        /// avatar's own assets.
-        /// </summary>
-        /// <summary>
-        /// Names the chains whose size is driven by a blendshape rather than by their bones.
-        ///
-        /// A converted chain's collision radius is measured once, from the mesh as the avatar is
-        /// saved. Where a size slider scales BONES the cloth follows for free — the bones it
-        /// simulates are the ones being scaled. Where the slider is a pure blendshape the bones
-        /// never move, so the radius stays at whatever the saved pose measured and collision is
-        /// right at exactly one slider position.
-        ///
-        /// This cannot be fixed by driving the radius from the same animation. MagicaCloth2 does
-        /// evaluate its radius curve per frame, so the value is live, but the only properties its
-        /// animation wrapper forwards to the solver are animationPoseRatio, gravity, damping,
-        /// world and local inertia, wind influence and blend weight. A curve on the radius lands
-        /// in the serialized data and is never read. So the honest thing is to say so, and say
-        /// which slider.
-        /// </summary>
         static void AuditSizeBlendshapes(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
@@ -8917,11 +7388,10 @@ namespace AvatarBridge
             var driven = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
             var seen = new HashSet<AnimationClip>();
 
-            // How far each shape travels across the WHOLE controller, not within one clip. A
-            // toggle is a pair of clips each holding a constant — "on" pins the shape to 100 and
-            // "off" pins it to 0 — so judged clip by clip nothing ever moves and this found
-            // nothing on an avatar whose sliders visibly resize it. The span that matters is
-            // between the extremes any state can reach.
+            // How far each shape travels across the whole controller,
+            // not within one clip. A toggle is a pair of constants, so
+            // judged clip by clip nothing ever moves. The span that
+            // matters is between the extremes any state can reach.
             var span = new Dictionary<EditorCurveBinding, Vector2>();
 
             void Inspect(AnimationClip clip)
@@ -9138,11 +7608,10 @@ namespace AvatarBridge
 
             var rewired = new Dictionary<AnimationClip, AnimationClip>();
             int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0, offsAsserted = 0;
-            // Which cloth bindings each rewired clip switches ON, and which of those may be
-            // asserted OFF elsewhere at all. A target is off-safe only while EVERY container
-            // that activates it passed the shared-rider test — one style that shares the chain
-            // with something still visible disqualifies the binding everywhere, because this
-            // pass cannot tell which of the two a given resting state meant.
+            // Which cloth bindings each rewired clip switches on, and
+            // which may be asserted off elsewhere. A target is off-safe
+            // only while every activating container passed the
+            // shared-rider test.
             var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
             var offSafe = new Dictionary<EditorCurveBinding, bool>();
             var physicslessStyles = new HashSet<Transform>();
@@ -9151,16 +7620,10 @@ namespace AvatarBridge
             // rather than mysterious.
             var sharedChains = new SortedSet<string>(StringComparer.Ordinal);
 
-            // PhysBone on/off curves with nowhere to land: the chain they name produced no
-            // physics, so there is no component to retarget them at. The curve then points at a
-            // VRCPhysBone that gets deleted with the rest of the VRC components, and the toggle
-            // that drives it does nothing at all — silently, because every OTHER part of it
-            // converts perfectly. The menu entry appears, the parameter syncs, the layer plays.
-            //
-            // Found via a tester whose ear, butt and tail scaling toggles "did nothing": all
-            // three chains had been skipped earlier for constraint conflicts, each with its own
-            // report entry saying so — but nothing connected those skips to the toggles that
-            // depended on them, so the two facts sat in the same report and never met.
+            // PhysBone on/off curves with nowhere to land: the chain
+            // produced no physics, so there is no component to retarget.
+            // The toggle then does nothing, silently, while every other
+            // part of it converts. Reported with the skip that caused it.
             var strandedToggles = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
             bool ChainInSubtree(Transform container)
@@ -9176,10 +7639,9 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Everything that depends on a chain's simulated bones: a skinned mesh weighted to
-            // any bone at or under the chain root, and anything parented beneath one of those
-            // bones — a clip, a bell, a prop riding a hair strand. Built once per chain, because
-            // deciding whether a chain may be switched off is the only question that needs it.
+            // Everything that depends on a chain's simulated bones:
+            // meshes weighted to them, and anything parented beneath.
+            // Built once per chain.
             var ridersByChain = new Dictionary<BridgeContext.ConvertedPhysicsChain, List<Transform>>();
             List<Transform> RidersOf(BridgeContext.ConvertedPhysicsChain chain)
             {
@@ -9217,10 +7679,9 @@ namespace AvatarBridge
                 return riders;
             }
 
-            // True when a mesh OUTSIDE the toggled object rides this chain — the one case where
-            // switching the cloth off with the object is wrong, because something still visible
-            // needs those bones moving. Anything inside the toggled object is hidden along with
-            // it, so its physics can stop.
+            // True when a mesh outside the toggled object rides this
+            // chain. Something still visible needs those bones moving,
+            // so the cloth must not stop with the object.
             bool ChainSharedOutside(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
             {
                 foreach (var rider in RidersOf(chain))
@@ -9233,11 +7694,9 @@ namespace AvatarBridge
                 return false;
             }
 
-            // A "self-contained rig": the majority of the container's skinned-mesh bones live
-            // inside the container itself (an add-on hairstyle with its own little armature).
-            // Clothing skinned to body bones doesn't qualify — its bones live outside. The rig
-            // root reported back is the deepest common ancestor of the inside bones, which is
-            // where a synthesized cloth would anchor.
+            // A self-contained rig: most of the container's skinned-mesh
+            // bones live inside it. Clothing skinned to body bones does
+            // not qualify. The rig root is the deepest common ancestor.
             bool IsSelfContainedRig(Transform container, out Transform rigRoot)
             {
                 rigRoot = null;
@@ -9278,11 +7737,9 @@ namespace AvatarBridge
                 return true;
             }
 
-            // A toggled container carrying its own self-contained rig with no converted chain
-            // never had physics in the source either — VRChat had nothing simulating those
-            // bones. Saying so in the report turns "this hairstyle is broken" into "this
-            // hairstyle was always rigid" without three rounds of testing: a tester's "Vampy"
-            // hair is exactly this, 31 bare transforms and a mesh.
+            // A toggled container with its own rig and no converted
+            // chain never had physics in the source either. Reported,
+            // so "broken" reads as "always rigid".
             void NotePhysicslessStyle(Transform container)
             {
                 if (!physicslessStyles.Add(container) || ChainInSubtree(container))
@@ -9361,15 +7818,11 @@ namespace AvatarBridge
                             {
                                 continue;
                             }
-                            // Onto the COMPONENT, not the holder's active flag. Holders are
-                            // created active now, with a cloth that starts off carrying that
-                            // state on its own enabled flag (see MagicaClothWriter) — so an
-                            // activation copied onto m_IsActive lands on an object that is
-                            // already active and changes nothing, leaving the cloth off forever.
-                            //
-                            // Measured on an avatar whose Belly, Butt, Thigh, Loin, Tail, Tongue
-                            // and Lace physics were all still off after the animator had settled,
-                            // with every one of their menu toggles defaulting to ON.
+                            // Onto the component, not the holder's active
+                            // flag. Holders are created active, with the
+                            // cloth carrying the off state on its own
+                            // enabled flag. An activation on m_IsActive
+                            // would change nothing.
                             target = chain.Physics != null
                                 ? EditorCurveBinding.FloatCurve(
                                     AnimationUtility.CalculateTransformPath(host, root),
@@ -9412,29 +7865,14 @@ namespace AvatarBridge
                         }
                         if (objectToggle && !CurveActivates(curve))
                         {
-                            // A DEACTIVATION. This used to be dropped unconditionally, which
-                            // left every cloth a toggle switched on running forever: the ON
-                            // curve is the only one that reaches the component, so the first
-                            // time the style appears the physics latches on and no later state
-                            // takes it back. ChilloutVR does not restore Write Defaults, so
-                            // there is no fallback to a scene value the way there is in
-                            // VRChat — a binding nothing writes simply keeps its last value.
-                            // Measured on an avatar where "Tail-alt" and "V-killer" each left
-                            // a cloth enabled after being switched off again.
+                            // A deactivation, mirrored rather than dropped.
+                            // CVR never restores Write Defaults, so a cloth
+                            // switched on would otherwise run forever.
                             //
-                            // The reason the blanket drop existed is real, just far narrower
-                            // than the rule that implemented it: a tester's "Vampy" hair has
-                            // no PhysBone of its own, its rig rides the base hair's simulated
-                            // bones, and switching that chain off with the base style's mesh
-                            // left the visible add-on rigid.
-                            //
-                            // That risk needs a CONTAINER being hidden. When the animation
-                            // switches the PhysBone's OWN object, it is not hiding anything —
-                            // it is stopping that one chain, which is precisely what VRChat
-                            // did with the same curve, and what a menu entry named
-                            // "Belly-physics" is for. The mesh stays on screen and goes
-                            // rigid, deliberately. So only a container deactivation has to
-                            // prove that nothing still visible rides these bones.
+                            // Switching the PhysBone's own object stops
+                            // that one chain deliberately. Only a container
+                            // deactivation must prove nothing still
+                            // visible rides these bones.
                             if (source != animated && ChainSharedOutside(chain, animated))
                             {
                                 sharedChains.Add(chain.Source.name);
@@ -9445,20 +7883,12 @@ namespace AvatarBridge
                         }
                         else
                         {
-                            // An ACTIVATION. Whether this binding may later be asserted off is
-                            // the same question the mirroring above asks, asked now: a chain
-                            // something outside the toggled object rides must keep running when
-                            // that object hides. Recorded rather than acted on, because the
-                            // states that would carry the off-assertion are not known until
-                            // every clip in every layer has been through this.
-                            //
-                            // BOTH kinds of toggle, which is the whole point. A PhysBone-component
-                            // curve only ever matches its own chain (source == animated above), so
-                            // it is always safe to stop — it hides nothing. Scoping this to object
-                            // toggles left exactly those chains unfixed: an avatar whose "Lick" and
-                            // "ButtplugOn" switch the COMPONENT had every one of its cloth curves
-                            // written as an activation and not one as a stop, while the guard that
-                            // would have explained it was never consulted.
+                            // An activation. Recorded rather than acted
+                            // on; the off-asserting states are not known
+                            // until every clip has been through this.
+                            // Both kinds of toggle count. A component
+                            // curve only matches its own chain and is
+                            // always safe to stop.
                             bool safe = source == animated || !ChainSharedOutside(chain, animated);
                             if (!safe)
                             {
@@ -9475,10 +7905,8 @@ namespace AvatarBridge
                         additions[target] = curve;
                     }
 
-                    // Nothing to retarget at, so this curve dies with the VRC components. Both
-                    // facts are needed to make it actionable: which clip, and which PhysBone
-                    // object — the physics section's skip entry for that same path says WHY it
-                    // was not converted.
+                    // Nothing to retarget at; this curve dies with the
+                    // VRC components. Report which clip and which object.
                     if (physBoneToggle && !physBoneRetargeted)
                     {
                         if (!strandedToggles.TryGetValue(binding.path, out var clipNames))
@@ -9573,13 +8001,11 @@ namespace AvatarBridge
             }
 
 #if AVATARBRIDGE_MAGICA
-            // Phase 1, before any curve is copied: "Add physics to toggled rigs that have
-            // none". Every container an animation ACTIVATES is a style; a style that is a
-            // self-contained rig with no converted chain gets a synthesized MagicaCloth. Done
-            // here rather than in the physics pass because "toggled" is the narrowing fact —
-            // it is what separates an add-on hairstyle from every rigged prop on the avatar —
-            // and only the animator knows it. The new chain registers itself, so phase 2 below
-            // wires its holder to the style's activation curves like any other chain.
+            // Phase 1, before any curve is copied: "Add physics to
+            // toggled rigs that have none". A toggled self-contained rig
+            // with no converted chain gets a synthesized MagicaCloth.
+            // Done here because only the animator knows what is toggled.
+            // The new chain registers itself for phase 2 wiring.
             if (ctx.Settings.addPhysicsToRiggedStyles
                 && ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
@@ -9650,12 +8076,9 @@ namespace AvatarBridge
             // for a binding nothing ever takes back; where the avatar's own animation takes it back
             // already, adding one is at best redundant and at worst destructive.
             //
-            // Measured on an avatar with TWO PhysBones per breast — one tuned for clothed, one for
-            // naked — where putting a top on enables the first and disables the second, and the
-            // defaults clip swaps them back. Both directions were converted correctly. The stop
-            // written on top turned the first off without turning the second on, so taking the top
-            // off left BOTH disabled and the breasts stopped moving entirely. In the editor nothing
-            // runs, so it looked perfect; it only died in play mode.
+            // Paired chains exist: one enabled while the other disables,
+            // swapped back by a defaults clip. A synthetic stop on top of
+            // that leaves both disabled.
             var alreadySwitchedOff = new HashSet<EditorCurveBinding>();
             foreach (var pair in rewired)
             {
@@ -9672,26 +8095,14 @@ namespace AvatarBridge
                 }
             }
 
-            // Every pass that fills an empty off state — RestorePartialOffStates,
-            // FillEmptyStatesWithRestoreClips, AssertOwnedBindingsEverywhere — has already run by
-            // the time this one exists, so the m_Enabled bindings created above were invisible to
-            // all of them. The ON curve reaches the component and nothing ever takes it back:
-            // ChilloutVR restores nothing, so the cloth latches on the first time the toggle is
-            // used and stays on for the rest of the session.
+            // The restore passes have already run, so the m_Enabled
+            // bindings created above were invisible to them. Nothing
+            // ever takes the on curve back, and CVR restores nothing.
+            // A toggle with an empty off state has nothing to mirror.
             //
-            // Mirroring a deactivation only helps when the source clip HAD one to copy. A VRChat
-            // toggle whose off state is empty — the Write Defaults idiom — has nothing to mirror,
-            // and that is the common shape. Measured on an avatar whose "Lick" and "ButtplugOn"
-            // both left their cloth running, both on plain two-state layers that the filler would
-            // have handled had the binding existed when it ran.
-            //
-            // Scoped deliberately, because the alternative is worse. Asserting these bindings off
-            // generally — by moving the assert pass after this one — would write a stop into every
-            // resting state of every layer that touches them, knowing nothing about who rides the
-            // chain, and would leave a visible add-on rigid on any avatar whose mesh is skinned to
-            // another style's simulated bones. So: only bindings THIS pass switched on, only in a
-            // layer that switches them on, only into states holding a plain clip, and only where
-            // the same shared-rider guard that governs mirroring says the chain may stop at all.
+            // Scoped tightly: only bindings this pass switched on, only
+            // in a layer that switches them, only into plain-clip states,
+            // and only where the shared-rider guard allows a stop.
             foreach (var layer in master.layers)
             {
                 var activatedHere = new HashSet<EditorCurveBinding>();
@@ -9710,15 +8121,9 @@ namespace AvatarBridge
                 });
                 activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok
                                                || alreadySwitchedOff.Contains(b));
-                // TWO-STATE LAYERS ONLY, for the same reason the empty-state filler restricts
-                // itself: on a bigger machine the "other states" are not the off half of a
-                // toggle, they are unrelated states that happen to share a layer.
-                //
-                // Shipped as a bug first. An avatar whose wardrobe and expressions live in one
-                // large layer had a clothing state switch its breast cloth ON, so every other
-                // state in that layer — Wink, Widen, Tongue, Stumped, tummy sliders — was given
-                // a stop, and the breasts stopped simulating the moment any of them played.
-                // 282 stops on that avatar, and the physics were dead in normal use.
+                // Two-state layers only, like the empty-state filler.
+                // On a bigger machine the other states are unrelated,
+                // not the off half of a toggle.
                 if (activatedHere.Count == 0 || states.Count != 2)
                 {
                     continue;
@@ -9730,9 +8135,8 @@ namespace AvatarBridge
                 var perLayer = new Dictionary<AnimationClip, AnimationClip>();
                 foreach (var state in states)
                 {
-                    // A blend tree is left alone. Its children are blended rather than chosen,
-                    // so a constant stop in one of them fights the tree instead of resting it —
-                    // the same reason the restore filler defers to trees.
+                    // A blend tree is left alone. A constant stop in a
+                    // blended child fights the tree instead of resting it.
                     if (!(state.motion is AnimationClip clip))
                     {
                         continue;
@@ -9820,9 +8224,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>True when every segment of the path is purely digits — a pre-hashed path.
-        /// ChilloutVR's own locomotion clips ship this way (the client binds them by hash), so
-        /// they can neither be audited nor repaired by string comparison.</summary>
         static bool IsHashedPath(string path)
         {
             if (string.IsNullOrEmpty(path))
@@ -9846,18 +8247,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Repairs curve paths broken by a renamed bone, when the repair is provable.
-        ///
-        /// The motivating case: a tail-wag clip binding "Armature/Hips/Tail_Root/Tail.001"
-        /// against an avatar whose bone is "Armature/Hips/Tail" — someone renamed the bone
-        /// after the animation was authored, every tail curve went silent, and it played as
-        /// silence in VRChat too. The repair rule is deliberately strict: a dead path is
-        /// rewritten only when the avatar contains EXACTLY ONE transform at the same depth
-        /// whose path matches every segment but one. One candidate is a proof; two is a guess,
-        /// and a guess would wag the wrong bones — ambiguous paths are left for the audit to
-        /// report. Clips are cloned before modification, as everywhere else.
-        /// </summary>
         static void RepairClipPaths(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
@@ -10051,16 +8440,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Warns when a game-fed parameter is animated by a clip as an animated animator
-        /// parameter. The client builds each parameter's definition with
-        /// Animator.IsParameterControlledByCurve (decompiled: AvatarParam → IsReadOnly), and it
-        /// REFUSES to write read-only parameters — so a single AAP curve on GestureLeftIdx or
-        /// MovementX freezes that parameter in game forever, on this avatar only, while the
-        /// editor (where the tester tool writes directly) behaves perfectly. That exact
-        /// asymmetry burned days of tester rounds; whether or not it is any given avatar's
-        /// fault, the report must name it.
-        /// </summary>
         static void AuditCurveControlledGameParameters(AnimatorController master, BridgeContext ctx)
         {
             var gameFed = new HashSet<string>(CvrCoreParameters);
@@ -10131,32 +8510,14 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Names every clip whose curves target paths that don't exist on this avatar.
-        ///
-        /// Unity plays such curves as silence: no error, no log line, the feature just doesn't
-        /// happen — and crucially it didn't happen in VRChat either, UNLESS a build-time tool
-        /// was rewriting the paths at upload. A tester's tail-wag clip bound "Tail.001/…"
-        /// against a tail living at "Armature/Hips/Tail/…": authored for a different root,
-        /// only ever functional through VRCFury-style path rewriting, and the conversion —
-        /// which faithfully preserved both the clip and the hierarchy — inherited the mismatch
-        /// invisibly. This audit can't fix a path (guessing would move the wrong bones); it
-        /// makes the mismatch loud and says what to check.
-        /// </summary>
         static void AuditClipBindings(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
 
-            // The SOURCE hierarchy, so a dead path can be blamed correctly.
-            //
-            // "44 clips animate paths that don't exist" is the loudest thing this report says, and
-            // on a healthy avatar it is usually not our doing — a quadruped base fired it 44 times
-            // for clips addressing a configuration that prefab simply wasn't in, all of them
-            // equally inert in VRChat. Shouting about those buries the cases that matter and makes
-            // a clean conversion look broken. So each dead path is checked against the avatar as it
-            // arrived: still missing there, and it was already silent before AvatarBridge touched
-            // it; present there but not here, and something in this conversion moved or stripped
-            // it, which is a real defect and is reported as one.
+            // The source hierarchy, so a dead path can be blamed
+            // correctly. Missing in the source too: already silent
+            // before conversion. Present there but not here: a real
+            // defect, reported as one.
             var sourceRoot = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.transform : null;
             var sourceCache = new Dictionary<string, bool>();
             bool ResolvedBefore(string path)
@@ -10188,7 +8549,8 @@ namespace AvatarBridge
 
             var seen = new HashSet<AnimationClip>();
             var broken = new List<(string clip, int dead, int total, string example)>();
-            // Clips whose dead paths DID resolve before conversion — the ones we are responsible for.
+            // Clips whose dead paths resolved before conversion.
+            // Those breaks belong to this tool.
             var lostClips = new List<(string clip, int dead, int total, string example)>();
 
             void Audit(Motion motion)
@@ -10279,10 +8641,8 @@ namespace AvatarBridge
             broken.Sort((a, b) => b.dead.CompareTo(a.dead));
             var lines = broken.Take(8)
                 .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
-            // NOT a warning. These paths were already missing on the source avatar, so the curves
-            // were silent in VRChat too and nothing was lost in conversion. Flagging them as
-            // problems made healthy conversions look broken — one quadruped base tripped this 44
-            // times for clips addressing a configuration that prefab wasn't set up for.
+            // Not a warning. These paths were already missing on the
+            // source avatar, so the curves were silent in VRChat too.
             ctx.Report.Converted(Category,
                 $"{broken.Count} clip(s) animate paths that were ALREADY missing in VRChat",
                 string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Checked against the " +
@@ -10295,27 +8655,6 @@ namespace AvatarBridge
                 "for, which is normal and harmless.");
         }
 
-        /// <summary>
-        /// Material animations that write to a property their own shader does not have.
-        ///
-        /// This is the quietest failure on the platform. The toggle appears in the menu, the
-        /// parameter syncs, the layer plays its clip at weight 1 — the CCK Debugger and this
-        /// tool's own layer readout both show it working — and nothing happens on screen,
-        /// because the value is being written to a uniform that does not exist.
-        ///
-        /// The usual cause is a LOCKED (optimised) Poiyomi/Thry shader. Locking inlines every
-        /// property that was not flagged animated AT LOCK TIME as a literal constant and deletes
-        /// it from the shader. Flagging a property afterwards sets `_<Name>Animated` on the
-        /// material but changes nothing until the material is unlocked and locked again — so a
-        /// material can claim a property is animated while its shader has no such property. On
-        /// the avatar that prompted this, a "wet skin" toggle wrote _DetailNormalMapScale and
-        /// _Matcap3Intensity to a shader whose entire Properties block was 46 lines and
-        /// contained neither.
-        ///
-        /// Nothing here can be fixed by conversion — the same animation is equally dead in
-        /// VRChat — but saying so precisely is the difference between a five-minute re-lock and
-        /// a day spent looking at the animator, which is where every other clue points.
-        /// </summary>
         static void AuditMaterialProperties(AnimatorController master, BridgeContext ctx)
         {
             var root = ctx.Target.transform;
@@ -10390,11 +8729,10 @@ namespace AvatarBridge
                             {
                                 locked.Add(property);
                             }
-                            // Poiyomi records "animate this" as an override tag. Finding one
-                            // here means the author already did the thing the usual advice
-                            // tells them to do, and the property STILL is not in the shader —
-                            // so the advice is wrong for this property and saying it again
-                            // would send them round the same loop.
+                            // Poiyomi records "animate this" as an override
+                            // tag. Present here, the usual advice was
+                            // already followed and still failed; do not
+                            // repeat it.
                             if (!string.IsNullOrEmpty(material.GetTag(property + "Animated", false, "")))
                             {
                                 flaggedAndStillMissing.Add(property);
@@ -10463,15 +8801,6 @@ namespace AvatarBridge
                 "upload) that this project isn't running.");
         }
 
-        /// <summary>
-        /// Says what happened to the avatar's OWN face tracking when the user chose to keep it.
-        ///
-        /// The report used to answer that question with "Face tracking not set up (chosen) —
-        /// mode is None", which is true of the setting and badly misleading about the outcome:
-        /// the window calls that choice "Keep the avatar's own rig", and a reader who has just
-        /// watched their VRCFT parameters not appear anywhere reads "None" as "it was dropped".
-        /// Counting what actually survived the merge answers it directly.
-        /// </summary>
         static void ReportKeptFaceTracking(AnimatorController master, BridgeContext ctx)
         {
             if (ctx.Settings.faceTrackingMode != FaceTrackingMode.None)
@@ -10513,11 +8842,9 @@ namespace AvatarBridge
                 {
                     return;
                 }
-                // Full PPtr syntax only — {fileID: N, guid: X, type: N}. A bare "guid:" grep
-                // matched guid-LOOKING text inside string fields: an avatar with a missing
-                // prefab gets Unity's literal "(Missing Prefab with guid: …)" object name,
-                // that name lands in generated mask transform paths, and the audit read its
-                // own mask's path string as a dead asset reference.
+                // Full PPtr syntax only: {fileID: N, guid: X, type: N}.
+                // A bare "guid:" grep matches guid-looking text inside
+                // string fields, like missing-prefab object names.
                 foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex
                     .Matches(System.IO.File.ReadAllText(full),
                         @"\{fileID: -?\d+, guid: ([0-9a-f]{32}), type: \d+\}"))
@@ -10531,61 +8858,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Removes animation that provably cannot do anything, and everything that existed only
-        /// to drive it.
-        ///
-        /// A locked Poiyomi shader deletes the properties it baked, so a clip writing to one is
-        /// writing into nowhere — in ChilloutVR and equally in VRChat, which is where these
-        /// avatars normally arrive from already broken. AuditMaterialProperties names them;
-        /// leaving them in place means shipping a menu full of sliders that do nothing, and the
-        /// next person to test the avatar spends their evening on the animator.
-        ///
-        /// Only the individually dead CURVES go. A clip animating a property across thirty
-        /// renderers where nine still have it keeps those nine. A clip left with no curves at
-        /// all, in a layer where every state is likewise empty, means the layer cannot do
-        /// anything either — and once the layer goes, the parameter is unread and the existing
-        /// menu pruning takes the control with it. That cascade is the point: it is what turns
-        /// "the slider does nothing" into "there is no slider".
-        ///
-        /// Runs after AnimationSelfContainer, so every clip touched is the conversion's own copy
-        /// in the output folder. The source avatar's clips are never modified.
-        /// </summary>
-        /// <summary>
-        /// Puts "Emote" in the name of every clip grafted into ChilloutVR's Locomotion/Emotes
-        /// layer from VRChat's Action layer, because the CLIP NAME is how the client decides what
-        /// an emote is.
-        ///
-        /// Read out of the shipped client rather than the docs, which do not mention it:
-        ///
-        ///   AvatarAnimatorManager.IsLegacyEmotePlaying()   // the clip playing on Locomotion/Emotes
-        ///       isEmote = name.Contains("Emote") || DefaultEmoteNames.Contains(name);
-        ///   PlayerBase.LegacyEmoteCheck()
-        ///       if (isEmote) { SetLayerWeight("LeftHand", 0f); SetLayerWeight("RightHand", 0f); }
-        ///       else         { both back to 1f }
-        ///
-        /// So the client already solves the problem this tool has been documenting as unsolvable:
-        /// in VRChat the Action layer sits ABOVE Gesture and an emote outranks your hand pose,
-        /// while here emotes are grafted BELOW the hand layers and the gesture wins. It mutes both
-        /// hand layers for the duration — but only for clips it recognises, and ours were named
-        /// after whatever VRChat called them, so it never recognised one.
-        ///
-        /// Deliberately narrow, in two directions:
-        ///
-        /// ONLY the states this tool grafted from the Action layer ("[AB] " prefixed). ChilloutVR's
-        /// own locomotion lives in the same layer — jumping, sitting, flying — and a clip named so
-        /// the client reads it as an emote would mute the wearer's hands every time they jumped.
-        ///
-        /// ONLY clips inside the output folder. Renaming reaches the asset, and a clip that is
-        /// still the author's own is not ours to rename; the self-container has run by now, so in
-        /// practice everything here is a copy we made.
-        ///
-        /// The match is case-sensitive and a substring, so "Emote" anywhere in the name does it.
-        /// Worth knowing while reading a converted avatar: the client ALSO matches the eight stock
-        /// names — Wave, Bow, Die, Backflip, Point, Sad, Salute, Dance — so an author's clip
-        /// innocently called "Point" already triggers this, which is its own small mystery for
-        /// anyone whose hands go slack unexpectedly.
-        /// </summary>
         internal static void NameGraftedEmoteClips(BridgeContext ctx)
         {
             var master = ctx.MergedController;
@@ -10598,12 +8870,10 @@ namespace AvatarBridge
             {
                 return;
             }
-            // COPIED, never renamed in place. The first version renamed the asset, and a rename
-            // reaches every reference the controller holds: on one avatar the same resting clip
-            // sat in a grafted state AND at the centre of a grafted puppet tree, so the tree's
-            // centre started reading as an emote — hands muted whenever the puppet rested near
-            // the middle, for a feature that is not an emote at all. A copy assigned to just the
-            // grafted state gives that state its recognisable name and leaves every other
+            // Copied, never renamed in place. A rename reaches every
+            // reference the controller holds; the same clip can sit in
+            // a grafted state and a puppet tree at once. A copy gives
+            // just the grafted state its name and leaves every other
             // reference exactly as it was. One copy per source clip, shared by the states that
             // shared the original.
             var copies = new Dictionary<AnimationClip, AnimationClip>();
@@ -10664,10 +8934,9 @@ namespace AvatarBridge
             }
             var root = ctx.Target.transform;
 
-            // Renderers whose material SLOTS are animated are off limits. A clip that swaps in a
-            // different material makes "the current material has no such property" a statement
-            // about this instant, not about the avatar — the swapped-in material may well have
-            // it, and stripping would break a working effect.
+            // Renderers with animated material slots are off limits.
+            // "No such property" is only true of this instant; the
+            // swapped-in material may well have it.
             var swapped = new HashSet<Renderer>();
             var clips = new HashSet<AnimationClip>();
             foreach (var layer in master.layers)
@@ -10783,11 +9052,6 @@ namespace AvatarBridge
                 "the conversion's own copies of the clips were edited.");
         }
 
-        /// <summary>
-        /// Layers whose every state now animates nothing. Deliberately narrow: a layer with any
-        /// state behaviour is left alone (a driver still fires), as are the CCK's own layers and
-        /// anything injected, because "does nothing visible" is not the same as "does nothing".
-        /// </summary>
         static int RemoveEmptyToggleLayers(AnimatorController master, BridgeContext ctx)
         {
             var keep = new List<AnimatorControllerLayer>();
@@ -10879,14 +9143,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Reads the FINAL saved controller file and judges every serialized guid. Runs from
-        /// BridgeConverter after AnimationSelfContainer, so it sees the file the user will
-        /// actually upload. Three verdicts: a reference into bake-temp or one the conversion
-        /// introduced is OUR bug (Error, don't upload); a reference that was already dead in
-        /// the source controllers is inherited (Warning — the same motion was None in VRChat
-        /// too, nothing broke here).
-        /// </summary>
         internal static void AuditSerializedReferences(BridgeContext ctx)
         {
             string controllerPath = ctx.MergedController != null
@@ -10960,12 +9216,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Counts every non-null motion reference reachable from the controller's layers — state
-        /// motions and blend-tree children, recursively. Cheap, and comparing the count across a
-        /// save is the only reliable detector for Unity's silent DontSave amputation: a dangling
-        /// reference reloads as null, so the delta IS the number of motions that died in transit.
-        /// </summary>
         static int CountMotionReferences(AnimatorController controller)
         {
             int count = 0;
@@ -11016,11 +9266,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Two layers must never share one state machine: the later layer sits in its
-        /// default (usually empty) state and, with write-defaults on, overwrites whatever
-        /// the earlier one animates — silently killing that toggle.
-        /// </summary>
         static void DeduplicateLayers(AnimatorController master, BridgeContext ctx)
         {
             var seenMachines = new HashSet<AnimatorStateMachine>();
@@ -11045,12 +9290,6 @@ namespace AvatarBridge
 
         static int _gestureConditionsRedirected;
 
-        /// <summary>
-        /// Both Native and DragonSkyRunner modes replace the avatar's face tracking, so the
-        /// existing FT rig baked in from a VRCFury FT template (VRCFaceTracking / Jerry's /
-        /// Pawlygon / OSCmooth) is removed — its FT-dominated animator layers and their
-        /// now-unreferenced FT parameters. None mode keeps them.
-        /// </summary>
         static void StripExistingFaceTracking(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
@@ -11081,12 +9320,10 @@ namespace AvatarBridge
                     .ToArray();
             }
 
-            // Dropping the FT layers isn't enough on its own. VRCFury emits a "Defaults" layer as
-            // one big Direct blend tree that writes every parameter on the avatar, FT included —
-            // so every FT parameter stays "still referenced" by a layer that is only ~2% FT and is
-            // rightly kept. That left the whole FT/v2 parameter set in the converted avatar even
-            // though its rig was gone. Pruning the stripped parameters out of Direct blend trees
-            // first — the same treatment GoGo and SPS already get — releases them.
+            // Dropping the FT layers is not enough. VRCFury's Defaults
+            // layer writes every parameter from one Direct tree, keeping
+            // FT parameters "referenced". Prune them out of Direct trees
+            // first, like GoGo and SPS.
             SystemStripper.PruneDirectBlendTrees(ctx, master, vrcLayers, IsFt);
 
             var stillReferenced = new HashSet<string>();
@@ -11114,25 +9351,12 @@ namespace AvatarBridge
             _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
                 : BuildMask("AvatarBridge_HandsOnly", AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
 
-        /// <summary>
-        /// Blocks humanoid muscles while leaving everything else alone.
-        ///
-        /// Every transform in the avatar is listed and explicitly enabled rather than leaving the
-        /// list empty. An empty transform list is ambiguous — Unity can read it as "no transform
-        /// restriction" or as "no transforms at all", and the difference is the whole rig for an
-        /// avatar driven through IK target transforms rather than muscles, which is exactly what
-        /// a FinalIK quadruped is. Spelling every transform out removes the question.
-        ///
-        /// Blendshape, GameObject-active and material curves are unaffected either way; avatar
-        /// masks only ever govern transforms and muscles.
-        /// </summary>
         static AvatarMask GetNoMuscleMask(BridgeContext ctx)
         {
             return _noMuscleMask != null ? _noMuscleMask
                 : _noMuscleMask = BuildRigMask("AvatarBridge_NoMuscles", ctx);
         }
 
-        /// <summary>Fingers, for layers that pose hands and nothing else. Same reasoning.</summary>
         static AvatarMask GetFingersOnlyMask(BridgeContext ctx)
         {
             return _fingersOnlyMask != null ? _fingersOnlyMask
@@ -11140,14 +9364,6 @@ namespace AvatarBridge
                     AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
         }
 
-        /// <summary>
-        /// Everything EXCEPT fingers, for a layer that would otherwise overwrite a hand pose.
-        ///
-        /// Needed for layers that arrive with no mask at all. The hand-pose audit could only ever
-        /// edit an existing mask, so an unmasked layer sailed through it — and unmasked is exactly
-        /// what a merged FX layer full of finger curves ends up as, because MaskMergedLayers reads
-        /// muscle curves as deliberate body animation and leaves it alone.
-        /// </summary>
         static AvatarMask GetNoFingersMask(BridgeContext ctx)
         {
             if (_noFingersMask != null)

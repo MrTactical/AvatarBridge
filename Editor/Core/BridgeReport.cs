@@ -22,21 +22,19 @@ namespace AvatarBridge
         public string Detail;
     }
 
-    /// <summary>
-    /// Orders report samples so the SAME example is shown every time the same avatar converts.
-    ///
-    /// Report details usually show a handful of entries out of many ("e.g. these six of 172"),
-    /// taken from a SortedSet so the choice is at least ordered. That is not enough on its own:
-    /// VRCFury stamps its generated objects with a component id — "[VF397] Assjob" — and it
-    /// assigns those ids fresh on every bake. Sorting on the raw string therefore reorders the
-    /// set whenever Fury renumbers, and a different example surfaces although nothing about the
-    /// avatar changed. The regression harness redacts "[VF397]" to "[VF#]" before comparing, so
-    /// the digest shows two identical-looking lines naming different paths — a diff that costs a
-    /// reader real attention and means nothing. It happened twice in one day.
-    ///
-    /// So ordering ignores those ids: two strings differing only by a Fury number sort as equal
-    /// text and fall back to a plain comparison, which keeps the set stable and total.
-    /// </summary>
+    // Orders report samples so the SAME example is shown every time the same avatar converts.
+    //
+    // Report details usually show a handful of entries out of many ("e.g. these six of 172"),
+    // taken from a SortedSet so the choice is at least ordered. That is not enough on its own:
+    // VRCFury stamps its generated objects with a component id. "[VF397] Assjob"; and it
+    // assigns those ids fresh on every bake. Sorting on the raw string therefore reorders the
+    // set whenever Fury renumbers, and a different example surfaces although nothing about the
+    // avatar changed. The regression harness redacts "[VF397]" to "[VF#]" before comparing, so
+    // the digest shows two identical-looking lines naming different paths; a diff that costs a
+    // reader real attention and means nothing. It happened twice in one day.
+    //
+    // So ordering ignores those ids: two strings differing only by a Fury number sort as equal
+    // text and fall back to a plain comparison, which keeps the set stable and total.
     public sealed class StableSampleOrder : IComparer<string>
     {
         public static readonly StableSampleOrder Instance = new StableSampleOrder();
@@ -56,43 +54,20 @@ namespace AvatarBridge
         }
     }
 
-    /// <summary>
-    /// Collects everything that happened during a conversion so the user gets a single
-    /// honest summary of what carried over, what was approximated and what was lost.
-    /// </summary>
+    // Collects everything that happened during a conversion so the user gets a single
+    // honest summary of what carried over, what was approximated and what was lost.
     public class BridgeReport
     {
         public readonly List<ReportEntry> Entries = new List<ReportEntry>();
 
-        /// <summary>Asset path of the saved ConversionReport.md (set once written).</summary>
         public string SavedReportPath;
 
-        /// <summary>Asset path of the web report beside it — the one a person reads.</summary>
         public string SavedHtmlPath;
 
-        /// <summary>Ready-made store listing text for the CCK's Description box (see AvatarDescription).</summary>
         public string StoreDescription;
 
-        /// <summary>
-        /// Factual dump of the converted avatar, appended to the end of the report inside a
-        /// collapsed &lt;details&gt; block. Every bug diagnosed on this project so far needed
-        /// someone to grep the generated .controller by hand — which parameters exist, what
-        /// reads them, which conditions compare what. This puts those answers in the file the
-        /// reporter already attaches, so a bug report arrives answerable.
-        /// </summary>
         public string Appendix;
 
-        /// <summary>
-        /// The converted avatar, so the window can turn an entry back into something clickable.
-        ///
-        /// Most entries already carry an object path or an object name in <see cref="ReportEntry.Subject"/>
-        /// — hundreds of call sites put it there — and with a root to resolve them against, the
-        /// window can offer "Show" on the ones that resolve without a single one of those sites
-        /// changing. Entries whose subject is prose simply don't resolve and get no button.
-        ///
-        /// Not serialized into the markdown: a scene reference means nothing in a file someone
-        /// attaches to a bug report.
-        /// </summary>
         [System.NonSerialized] public GameObject ConvertedRoot;
 
         public void Add(ReportStatus status, string category, string subject, string detail = "")
@@ -103,8 +78,8 @@ namespace AvatarBridge
             // file regardless, which is the thing worth reading.
             //
             // Every entry used to be logged. The editor captures a full managed stack trace for
-            // each Debug call, so a large conversion — which routinely produces thousands of
-            // entries, one per cloth chain, parameter and menu control — wrote tens of thousands
+            // each Debug call, so a large conversion; which routinely produces thousands of
+            // entries, one per cloth chain, parameter and menu control; wrote tens of thousands
             // of stack frames into the editor log and pushed it past 38 MB. Skipped in particular
             // was a warning, and a conversion legitimately skips a great deal.
             if (status != ReportStatus.Error && status != ReportStatus.Warning)
@@ -138,7 +113,7 @@ namespace AvatarBridge
             sb.AppendLine($"# AvatarBridge conversion report: {avatarName}");
             sb.AppendLine();
             // Stamp the build that produced this. A report is the main thing users send when
-            // something's wrong, and without this there's no way to tell which version ran —
+            // something's wrong, and without this there's no way to tell which version ran .
             // which has already cost time chasing a "broken" fix that simply wasn't installed.
             sb.AppendLine($"*AvatarBridge v{BridgeDefines.Version} · Unity {Application.unityVersion} · " +
                           $"{System.DateTime.Now:yyyy-MM-dd HH:mm}*");

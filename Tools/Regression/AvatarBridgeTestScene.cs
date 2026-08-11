@@ -1,4 +1,4 @@
-// Builds one scene holding every converted avatar, for eyeballing a whole corpus run at once —
+// Builds one scene holding every converted avatar, for eyeballing a whole corpus run at once .
 // DEVELOPMENT ONLY, never shipped in the .unitypackage.
 //
 // A digest catches what changed between runs. It cannot catch an avatar that converted "cleanly"
@@ -83,7 +83,7 @@ namespace AvatarBridge.Regression
                     var instance = (GameObject)PrefabUtility.InstantiatePrefab(asset, scene);
                     if (instance == null) { failed++; log.AppendLine($"  could not instantiate {name}"); continue; }
 
-                    // Lay out by measured width rather than a fixed grid — a corpus runs from
+                    // Lay out by measured width rather than a fixed grid; a corpus runs from
                     // chibis to dragons, and a fixed pitch either overlaps the big ones or scatters
                     // the small ones so far apart you cannot see them together.
                     var size = MeasuredSize(instance);
@@ -117,13 +117,6 @@ namespace AvatarBridge.Regression
                       (log.Length > 0 ? "\n" + log : ""));
         }
 
-        /// <summary>
-        /// World-space size from the renderers, falling back to a person-sized box.
-        ///
-        /// Renderer bounds are only meaningful once the object is in a scene and its skinning has
-        /// been evaluated; an avatar whose meshes are all disabled (a toggled-off outfit variant)
-        /// legitimately measures nothing, and must not collapse the layout onto its neighbour.
-        /// </summary>
         static Vector3 MeasuredSize(GameObject instance)
         {
             var renderers = instance.GetComponentsInChildren<Renderer>(false);

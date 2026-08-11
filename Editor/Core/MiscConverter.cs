@@ -9,43 +9,12 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Small component conversions plus the final VRC-component cleanup:
-    ///   VRCHeadChop           -> FPRExclusion (CVR first-person hiding/showing)
-    ///   VRCSpatialAudioSource -> plain AudioSource spatial settings
-    ///   leftover VRC.* components + PipelineManager -> deleted
-    /// </summary>
+    // Small component conversions plus the final VRC-component cleanup:
+    //   VRCHeadChop           -> FPRExclusion (CVR first-person hiding/showing)
+    //   VRCSpatialAudioSource -> plain AudioSource spatial settings
+    //   leftover VRC.* components + PipelineManager -> deleted
     public static class MiscConverter
     {
-        /// <summary>
-        /// Turns ON a particle emitter that was authored OFF and switched on only by animation.
-        ///
-        /// Reported in the wild: a headpat effect nobody but the wearer could see, on an avatar
-        /// whose nose-boop effect — same contact, same kind of tree, same everything — worked for
-        /// everyone. The two were built differently, and that was the whole difference:
-        ///
-        ///   nose boop  clips animate ONLY m_IsActive; the emitter is enabled in the prefab
-        ///   headpat    clips animate m_IsActive AND EmissionModule.enabled; emitter authored OFF
-        ///
-        /// Switching a GameObject on is something every client's animator does. Animating a
-        /// ParticleSystem MODULE property is not the same kind of write, and where it fails to
-        /// land the object dutifully activates and emits nothing — invisible, while looking
-        /// perfectly correct on the rare occasion it does show.
-        ///
-        /// So this removes the dependency rather than chasing it: where a clip animates emission
-        /// on an object whose emitter is authored off, AND the same clip already drives that
-        /// object's m_IsActive, the emitter is enabled for good and the object's own active state
-        /// gates the effect — exactly the shape that already works.
-        ///
-        /// THE m_IsActive REQUIREMENT IS THE SAFETY, not a convenience. An emitter enabled on an
-        /// object that nothing switches off would simply run forever. Requiring the clip to drive
-        /// m_IsActive means there is already something turning it off; the measured avatar's
-        /// "Headpat OFF" sets m_IsActive 0 and the object rests inactive, so nothing emits at rest.
-        ///
-        /// Only EMISSION is touched. Other modules were left alone deliberately: emission off is
-        /// the one that means "nothing comes out at all", and the rest are refinements whose
-        /// failure is visible but not fatal. They are counted and reported instead of guessed at.
-        /// </summary>
         public static void EnableAnimatedParticleEmitters(BridgeContext ctx)
         {
             var controller = ctx.MergedController;
@@ -54,7 +23,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // Which paths each clip drives m_IsActive on — the gate that makes enabling safe.
+            // Which paths each clip drives m_IsActive on.
+            // The gate that makes enabling safe.
             var enabled = new List<string>();
             var otherModules = new SortedSet<string>(StableSampleOrder.Instance);
             var seen = new HashSet<ParticleSystem>();
@@ -97,17 +67,12 @@ namespace AvatarBridge
                         enabled.Add(binding.path);
                     }
 
-                    // And take the curve OUT, which is the half this was missing. Forcing the
-                    // component on is undone the moment the OFF clip plays and writes the module
-                    // back to false — which is at rest, always — so the emitter was never
-                    // "on permanently" the way the report claimed. The object's own m_IsActive
-                    // gates the effect; a module curve alongside it can only fight that.
-                    //
-                    // ONLY on a clip this conversion owns. Editing a clip in place reaches
-                    // whatever asset it really is, and a source avatar's clips — or worse, an SDK
-                    // package's — are shared by everything that references them. A pass that
-                    // stripped curves without this check once emptied a VRChat SDK proxy clip for
-                    // the whole project.
+                    // And take the curve out. The object's own m_IsActive
+                    // gates the effect; a module curve beside it can
+                    // only fight that.
+                    // Only on a clip this conversion owns. Clips are
+                    // shared, and editing one in place reaches every
+                    // user of the real asset.
                     if (togglesActive.Contains(binding.path) && OwnedByThisConversion(ctx, clip))
                     {
                         AnimationUtility.SetEditorCurve(clip, binding, null);
@@ -146,36 +111,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Names particle systems rendering on Unity's built-in default material.
-        ///
-        /// "Blank coloured squares" is what that looks like in game, and it is invisible in the
-        /// editor unless someone thinks to click the renderer. Reported in the wild on an avatar
-        /// whose nose-boop effect drew as plain quads: its "Buffer Particle" pointed at Unity's
-        /// Default-ParticleSystem, and it had done so in the SOURCE avatar all along — conversion
-        /// carried across exactly what was there. Establishing that took a hunt through GUIDs that
-        /// one line of report would have answered.
-        ///
-        /// So this accuses nobody and fixes nothing: it says which systems are on the default
-        /// material, so the author can decide whether that was intended. A missing material counts
-        /// too — same symptom, same question.
-        ///
-        /// Matched by NAME rather than by asset path, deliberately. The rehoming pass has already
-        /// copied the material into this conversion's own folder by the time this runs, so the
-        /// built-in path is gone; "Default-ParticleSystem" is Unity's fixed name for it and
-        /// survives the copy.
-        /// </summary>
-        /// <summary>
-        /// True only for a clip this conversion created and owns, which is the one kind safe to
-        /// edit in place.
-        ///
-        /// Everything else is shared by reference: a source avatar's clips belong to the avatar,
-        /// and an SDK package's belong to every project that imported it. A pass that stripped
-        /// curves without asking this question reached into the VRChat SDK's own
-        /// proxy_hands_idle.anim and emptied it — for the whole project, silently, so every avatar
-        /// converted afterwards lost its hand poses. An unsaved clip is ours by construction (it
-        /// has been built in memory this run); a saved one has to live under the output folder.
-        /// </summary>
         static bool OwnedByThisConversion(BridgeContext ctx, AnimationClip clip)
         {
             string path = AssetDatabase.GetAssetPath(clip);
@@ -239,28 +174,6 @@ namespace AvatarBridge
             GroundAnimationPoseRatio(ctx);
         }
 
-        /// <summary>
-        /// Clears MagicaCloth2's <c>animationPoseRatio</c> on chains that nothing actually animates.
-        ///
-        /// The ratio picks what the cloth RESTORES TOWARD: 0 the bind pose, 1 the animated pose
-        /// ("復元を基本姿勢で行うかアニメーション後の姿勢で行うかの判定" in MagicaCloth2's own
-        /// distance constraint). The physics pass sets it to 1 whenever the source PhysBone had
-        /// "Is Animated" ticked, so a chest slider that scales its bones wins over the cloth
-        /// instead of fighting it.
-        ///
-        /// But "Is Animated" is the AUTHOR'S CLAIM, not evidence. When nothing drives those bones
-        /// — the author ticked it speculatively, or the animation belonged to a system this
-        /// conversion stripped — the "animated pose" is just wherever the transform currently
-        /// sits, which is what the cloth itself wrote last frame. The restore target then chases
-        /// its own output, no restoring force exists, and the chain rotates freely forever.
-        ///
-        /// Reported as a rear that span on its own, with the tell that made it obvious: playing
-        /// ANY animation stopped it dead, and stopping the animation started it again. That is
-        /// this loop being broken by an authoritative pose and then handed back to itself.
-        ///
-        /// Runs after the merge because only the FINAL controller knows what survived. Reflection
-        /// rather than a direct reference so this file needs no MagicaCloth2 define.
-        /// </summary>
         static void GroundAnimationPoseRatio(BridgeContext ctx)
         {
             if (ctx.ConvertedPhysicsChains == null || ctx.ConvertedPhysicsChains.Count == 0
@@ -325,21 +238,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat-parity clamps for avatar AudioSources. VRChat force-limits avatar audio
-        /// (doppler zeroed, distance floors/caps), so avatars are AUTHORED against those
-        /// clamps and never feel them. ChilloutVR instead routes every fully-3D avatar
-        /// source straight into Steam Audio with its authored settings (decompiled
-        /// SharedFilter.ProcessAudioSource: spatialize = spatialBlend >= 1) — and an
-        /// unclamped source can take the whole mix down: minDistance 0 puts a divide-by-
-        /// distance in the spatializer's attenuation for a source mounted on the wearer's
-        /// own body, where the listener can reach distance ~0; one inf/NaN gain poisons the
-        /// master bus and EVERY sound in the game goes silent until the avatar unloads.
-        /// Observed in the wild: wearing one converted avatar muted voice, video players
-        /// and prop music game-wide, recovering on avatar switch. Doppler goes to zero for
-        /// the same reason VRChat zeroes it — sources ride animated and simulated bones,
-        /// whose frame-to-frame velocity is pitch chaos.
-        /// </summary>
         static void SanitizeAudioSources(BridgeContext ctx)
         {
             int clamped = 0, flattened = 0;
@@ -350,12 +248,11 @@ namespace AvatarBridge
             {
                 bool changed = false;
 
-                // 2D audio is not merely "unpositioned" here, it is DROPPED. ChilloutVR decides
-                // whether to spatialize from the blend itself — SharedFilter.ProcessAudioSource
-                // sets spatialize = spatialBlend >= 1 — and a source that fails that test is not
-                // handed to Steam Audio, so it can go unheard by everyone but the wearer. Which is
-                // exactly how a 2D sound presents: it plays perfectly for you and never for them.
-                // An avatar sound is attached to a body in a room and has no business being flat.
+                // 2D audio is dropped, not merely unpositioned. CVR
+                // decides whether to spatialize from the blend itself,
+                // and a failing source is never handed to the
+                // spatializer: perfect for the wearer, silent for
+                // everyone else.
                 if (source.spatialBlend < 1f)
                 {
                     source.spatialBlend = 1f;
@@ -386,9 +283,9 @@ namespace AvatarBridge
                     source.maxDistance = source.minDistance;
                     changed = true;
                 }
-                // Not changed — the author's reach is the author's call. But a sound that stops
-                // carrying inside arm's length is worth saying out loud, because it presents as
-                // "nobody else can hear it" and looks like a conversion fault.
+                // Not changed; the author's reach is the author's call.
+                // But a sound that dies inside arm's length presents as
+                // a conversion fault, so it is named.
                 if (source.maxDistance < 5f && nearby.Count < 6)
                 {
                     nearby.Add($"{source.gameObject.name} ({source.maxDistance:0.#} m)");
@@ -441,42 +338,15 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// How far past the avatar's own silhouette a box reaches, as a fraction of its height.
-        /// 0.3 is half a metre on a 1.65 m avatar — enough for hair, a skirt or a tail to swing
-        /// into — and it scales, where a flat 0.5 m would be most of the box on a 40 cm chibi
-        /// and nothing at all on a five-metre dragon.
-        /// </summary>
         const float BoundsPaddingFraction = 0.3f;
 
-        /// <summary>
-        /// Unity culls a skinned mesh by its AUTHORED bounding box, not by where animation,
-        /// physics or cloth actually put the vertices — the box is baked from the bind pose and
-        /// never follows. The moment the stale box leaves the camera frustum the whole mesh blinks
-        /// out: classically at screen edges, or for another player looking from the side.
-        ///
-        /// The fix is a box that is generous but SHAPED LIKE THE AVATAR. This used to be a cube of
-        /// the avatar's eye height in every direction centred on each mesh's root bone, which was
-        /// generous and nothing else: on a 1.7 m avatar it is a 3.4 m cube reaching as far below
-        /// the hips as above the head, most of it empty. Now every mesh gets the avatar's own
-        /// measured volume plus <see cref="BoundsPaddingFraction"/> of its height, which is both
-        /// smaller and better placed.
-        ///
-        /// It now SHRINKS boxes that were authored larger, where before those were left alone.
-        /// That direction is the one that can cause culling rather than prevent it, so it is
-        /// deliberate: the envelope is the whole avatar plus a swing margin, and a mesh with
-        /// vertices outside that is a prop that flies away from the body — rare, and visible
-        /// immediately if it happens. Only wearing the avatar in ChilloutVR can confirm it.
-        /// </summary>
         static void NormalizeSkinnedBounds(BridgeContext ctx)
         {
             float height = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
 
             if (!MeasureAvatarVolume(ctx.Target, out var envelope)
-                // A measurement shorter than half the avatar means the geometry did not give a
-                // usable answer — a mesh with broken bounds, an armature with no skin. Shrinking
-                // every box to THAT would make the avatar disappear, which is the failure this
-                // pass exists to prevent, so it declines rather than guesses.
+                // Shorter than half the avatar means the geometry gave
+                // no usable answer. Decline rather than guess.
                 || envelope.size.y < height * 0.5f)
             {
                 ctx.Report.Warning("Meshes", "Bounding boxes left as the avatar had them",
@@ -491,12 +361,9 @@ namespace AvatarBridge
             int changed = 0;
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                // localBounds is expressed in the ROOT BONE's space, so the envelope — measured in
-                // world metres — has to be carried into that space before it means anything here.
-                // Without this the same number meant 1.5 m on an ordinary rig, 1.5 cm on a bone
-                // scaled to 0.01, and 150 m on one scaled to 100 (Second Life conversions run
-                // around 100x). Reported once as "sometimes too small or too big", which is
-                // exactly what a unit mismatch looks like from outside.
+                // localBounds is in the root bone's space, so the
+                // world-metre envelope must be carried into that space
+                // first. Bones ship at wildly different scales.
                 var space = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
                 var wanted = ToLocalBounds(space, envelope);
 
@@ -523,32 +390,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// The space the avatar occupies, in world metres, measured from the bones that skin it.
-        ///
-        /// Three sources were tried on a real avatar (BHFBunny, 26 skinned meshes, root scaled 2×)
-        /// and only one of them is trustworthy:
-        ///
-        ///   <c>Renderer.bounds</c> / <c>localBounds</c> — circular. On a skinned mesh that IS the
-        ///   culling box this pass exists to correct, so it hands back whatever wrong answer the
-        ///   avatar arrived with. Measured 4.05 × 4.99 × 4.16 m: the bad box, read back.
-        ///
-        ///   <c>sharedMesh.bounds</c> — a different field, and not stale, but it is expressed in
-        ///   the mesh's own authoring space, which is NOT the root bone's and NOT metres. On that
-        ///   avatar the whole body mesh reads 0.11 × 0.13 × 0.13, because the scale to world lives
-        ///   in the bindposes. Mapping it through the root bone gave 1.40 × 0.41 × 1.72 — a
-        ///   40 cm tall four-metre avatar — and mapping it through a bindpose still came out at
-        ///   the wrong scale.
-        ///
-        ///   The BONES — 1.33 × 4.02 × 1.31 m, which is that avatar. Bone positions are read
-        ///   straight from the transforms, so there is no stale field and no space to convert out
-        ///   of. Every skinning bone counts, and only skinning bones: an ordinary child transform
-        ///   might be a world-space prop parked at the origin or an effect anchor, and one of
-        ///   those would swallow the measurement whole. What deforms the mesh is the mesh's size.
-        ///
-        /// The skin does reach past its bones — a wide skirt, a shoulder pad. That is what the
-        /// padding at the call site is for, and it is the reason the padding is generous.
-        /// </summary>
         static bool MeasureAvatarVolume(GameObject root, out Bounds world)
         {
             // A local rather than the out parameter directly: C# won't let a local function
@@ -590,13 +431,6 @@ namespace AvatarBridge
             return any;
         }
 
-        /// <summary>
-        /// An axis-aligned box through a matrix, via its eight corners.
-        ///
-        /// The result is the AABB of the transformed corners, which under rotation is slightly
-        /// larger than the true bound of the contents. That is the safe direction here: too large
-        /// draws a mesh that was about to leave the screen, too small blinks it out.
-        /// </summary>
         static Bounds TransformBounds(Matrix4x4 matrix, Bounds local)
         {
             var min = local.min;
@@ -615,15 +449,9 @@ namespace AvatarBridge
         static Bounds ToLocalBounds(Transform space, Bounds world) =>
             TransformBounds(space.worldToLocalMatrix, world);
 
-        /// <summary>
-        /// Millimetre tolerance, so a box that is already right isn't rewritten every conversion.
-        /// Comparing Bounds with == would call a float a hair off "different" and dirty every
-        /// renderer on the avatar for nothing.
-        /// </summary>
         static bool Approximately(Bounds a, Bounds b) =>
             (a.center - b.center).sqrMagnitude < 1e-6f && (a.extents - b.extents).sqrMagnitude < 1e-6f;
 
-        /// <summary>Test seam — HeadChopCurveTest asserts the per-type m_Enabled polarity.</summary>
         internal static void ConvertHeadChopsForTest(BridgeContext ctx) => ConvertHeadChops(ctx);
 
         static void ConvertHeadChops(BridgeContext ctx)
@@ -686,12 +514,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat toggles Head Chop by animating the VRCHeadChop component (scale factor 1=shown,
-        /// 0=hidden). CVR's FPRExclusion exposes that as an animatable `isShown` bool, so we clone
-        /// the driving clips and rebind the head-chop curves onto each FPRExclusion's isShown —
-        /// scale factor maps straight across (1→shown, 0→hidden); a `m_Enabled` curve is inverted.
-        /// </summary>
         static void RewriteHeadChopAnimations(BridgeContext ctx, Dictionary<string, List<(Transform t, bool shownWhenActive)>> map)
         {
             var controller = ctx.MergedController;
@@ -721,11 +543,9 @@ namespace AvatarBridge
                     AssetDatabase.AddObjectToAsset(kv.Value, controller);
                 }
             }
-            // Every clone leaves its original behind inside the controller, still carrying the
-            // head-chop curves that now point at a component this pass is about to delete. Nothing
-            // references them once the states have been re-pointed, but they stay in the file and
-            // read as live conversion bugs to anyone grepping it — one avatar shipped 22 dead
-            // globalScaleFactor curves in copies no state could reach.
+            // Every clone leaves its original behind in the controller,
+            // unreferenced but still carrying dead head-chop curves
+            // that read as live bugs to anyone grepping the file.
             int orphans = RemoveUnreferencedSubAssets(controller,
                 cache.Where(kv => kv.Key != kv.Value).Select(kv => kv.Key));
             // Animated exclusions start Shown, so the toggle drives them from a sensible baseline.
@@ -750,15 +570,6 @@ namespace AvatarBridge
                     : ""));
         }
 
-        /// <summary>
-        /// Deletes sub-assets of a controller that nothing in it points at any more. Used after a
-        /// pass that replaces clips with rewritten copies: the originals are dead weight, and dead
-        /// weight inside a controller is indistinguishable from a broken reference when someone
-        /// reads the file to work out why something doesn't animate.
-        ///
-        /// Only objects handed in are considered, and only if the controller genuinely no longer
-        /// reaches them — a clip still used by one state and replaced in another must stay.
-        /// </summary>
         static int RemoveUnreferencedSubAssets(AnimatorController controller,
             IEnumerable<AnimationClip> suspects)
         {
@@ -805,7 +616,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Only ever our own controller's sub-assets: never touch a clip that lives in the
+                // Only ever this controller's own sub-assets: never touch a clip that lives in the
                 // user's project as a file of its own.
                 if (!AssetDatabase.IsSubAsset(clip) || AssetDatabase.GetAssetPath(clip) != controllerPath)
                 {
@@ -892,8 +703,8 @@ namespace AvatarBridge
                 AnimationUtility.SetEditorCurve(clone, b, null); // drop the (dead) head-chop binding
                 if (!map.TryGetValue(b.path, out var exclusions))
                 {
-                    // The chop this drove produced no exclusion (every target bone skipped, or a
-                    // fractional scale factor). Silently dead until now — say so instead.
+                    // The chop this drove produced no exclusion.
+                    // Dead either way; say so.
                     ctx.Report.Warning("Head chop",
                         $"\"{clip.name}\" animated a head chop that was not converted",
                         $"{b.path} ({b.propertyName}) — the head chop there was skipped, so this " +
@@ -902,12 +713,10 @@ namespace AvatarBridge
                 }
                 foreach (var (fpr, shownWhenActive) in exclusions)
                 {
-                    // Polarity is PER EXCLUSION, not global. A hiding chop (scale 0) is INACTIVE
-                    // by default, so enabling it hides: m_Enabled inverts into isShown. A showing
-                    // chop (scale 1, the keep-my-accessory-visible-in-first-person idiom) is the
-                    // opposite: enabling it SHOWS, so m_Enabled maps straight across — the old
-                    // unconditional inversion played those exactly backwards. Scale-factor curves
-                    // mirror isShown directly for both types (1 = shown, 0 = hidden).
+                    // Polarity is per exclusion. A hiding chop inverts
+                    // m_Enabled into isShown; a showing chop maps it
+                    // straight across. Scale-factor curves mirror
+                    // isShown directly for both.
                     var mapped = b.propertyName == "m_Enabled" && !shownWhenActive
                         ? Invert(curve)
                         : curve;
@@ -960,15 +769,14 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Removes every remaining VRC component. Run this last.</summary>
         public static void DeleteVrcComponents(BridgeContext ctx)
         {
             const string category = "Cleanup";
 
-            // Seats get a named goodbye before the generic sweep eats them. VRCStation is the
-            // sit-on-me chair — 102 across the wild census — and the decompiled client's avatar
-            // whitelist has no seat type at all, so this is a platform gap, not a conversion
-            // gap: the honest ceiling is saying so. Counted HERE, after the strips, so GoGo
+            // Seats get a named goodbye before the generic sweep.
+            // The client's avatar whitelist has no seat type at all,
+            // so this is a platform gap, not a conversion gap.
+            // Counted here, after the strips, so GoGo
             // Loco's own stations (most of the wild count) vanish with GoGo instead of alarming
             // anyone. Uses the SDKBase type so SDK2-era stations are caught too.
             var stations = ctx.Target.GetComponentsInChildren<VRC.SDKBase.VRCStation>(true);
@@ -1024,15 +832,6 @@ namespace AvatarBridge
             StripMissingScripts(ctx, category);
         }
 
-        /// <summary>
-        /// Cameras (and their AudioListener companions) on an avatar break ChilloutVR:
-        /// its asset filter walks every Camera to sanitise render textures
-        /// (SharedFilter.HandleRenderTextureForCamera), and a stray/half-set camera makes
-        /// that NRE, aborting the whole avatar filter — the avatar then shows as the "Error"
-        /// robot. Avatars have no business carrying a Camera or AudioListener in CVR, so drop
-        /// them. The GameObjects (often constraint targets, e.g. a "3rd Person Camera" rig)
-        /// stay; only these components go.
-        /// </summary>
         static void StripCamerasAndListeners(BridgeContext ctx, string category)
         {
             int cameras = 0, listeners = 0;
@@ -1059,12 +858,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Missing scripts (e.g. a VRChat component whose script isn't present in this project)
-        /// survive the VRC sweep as null component slots — the sweep skips nulls — and then
-        /// trip CVR up on load ("The referenced script on this Behaviour ... is missing!").
-        /// Strip them from every GameObject.
-        /// </summary>
         static void StripMissingScripts(BridgeContext ctx, string category)
         {
             int removed = 0;

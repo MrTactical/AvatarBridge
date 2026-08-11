@@ -1,36 +1,23 @@
-// AvatarBridge regression harness — DEVELOPMENT ONLY, never shipped in the .unitypackage.
+// Regression harness. Development only, never shipped.
 //
-// Why this exists: the AnyState self-restart suppressor took four attempts (3.5.2 -> 3.5.6 ->
-// 3.5.7 -> 3.5.8) and root-motion stripping took three (3.5.2 -> 3.5.4 -> 3.5.5). Every wrong
-// attempt was correct reasoning about the avatar in front of us that silently broke a different
-// avatar. Nothing caught that except wearing each one in game, one at a time, after release.
+// Converts every avatar in the project. Reduces each result to a
+// deterministic text digest. Diffs against the last accepted run.
+// Unintended changes show as text, before any in-game test.
 //
-// So: convert every avatar in the project, reduce each result to a deterministic text digest,
-// and diff those against the last accepted run. A change that was not intended shows up as a
-// line of text before the headset goes on.
+// The digest is not the .controller YAML. That is GUID noise.
+// This records behaviour only: layers, states, transitions,
+// conditions, motions by name, parameters, CVR components.
 //
-// The digest is deliberately NOT the .controller YAML — that is full of GUIDs, node positions
-// and creation-order noise, and a diff of it is unreadable. This describes behaviour only:
-// layers, states, transitions, conditions, motions by name, parameters, and the CVR-side
-// components. If two runs differ here, something the avatar actually DOES has changed.
+// Deploy into the test project's Assets/Editor/ to run.
 //
-// Canonical copy lives in D:\AvatarBridge\Tools\Regression\ (version-controlled with the tool,
-// pruned from the package build). Deployed into the test project's Assets/Editor/ to run.
-//
-// RUN IT HEADLESS for anything past the quick set:
+// Run headless for anything past the quick set:
 //   Unity.exe -batchmode -quit -projectPath "<project>" \
 //     -executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch
 //
-// Not for speed — for determinism. Two of the modals that interrupt an interactive run come
-// from VRCFury and the VRCSDK, and one of them, "VRCFury has detected a (likely) broken mix of
-// Write Defaults", CHANGES THE AVATAR depending on which button is pressed. WD on/off per layer
-// is exactly what AnimatorMerger reasons about, so answering Auto-Fix one run and Skip the next
-// moves the digest for reasons that have nothing to do with our code, and the baseline becomes
-// noise. Batchmode answers every dialog the same way (the first button, i.e. Auto-Fix) without
-// a human in the loop, which is the only way a corpus stays comparable.
-//
-// If you do run interactively: always Auto-Fix, and never "Skip and stop asking" — that one
-// persists, silently, and then the editor and headless runs disagree forever after.
+// Headless is for determinism. VRCFury's Write Defaults dialog
+// changes the avatar per button pressed. Batchmode always answers
+// Auto-Fix, so runs stay comparable.
+// Interactive runs: always Auto-Fix, never "Skip and stop asking".
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
@@ -51,105 +38,100 @@ namespace AvatarBridge.Regression
 {
     public static class RegressionRunner
     {
-        // Digests live beside the tool, not in the Unity project: they are the tool's test data,
-        // and they must survive a delete-and-reimport of Assets/AvatarBridge.
-        const string Root = "D:/AvatarBridge/Regression";
+        // Digests live beside the tool, not in the Unity project.
+        // They must survive a reimport of Assets/AvatarBridge.
+        // Set AVATARBRIDGE_REPO to the checkout path before running.
+        static string Root
+        {
+            get
+            {
+                var repo = Environment.GetEnvironmentVariable("AVATARBRIDGE_REPO");
+                if (string.IsNullOrEmpty(repo))
+                    throw new InvalidOperationException(
+                        "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
+                return repo.Replace('\\', '/').TrimEnd('/') + "/Regression";
+            }
+        }
         static string BaselineDir => Root + "/Baseline";
         static string CurrentDir => Root + "/Current";
         // Written when a run is cancelled. A partial Current/ looks exactly like a complete one,
         // and accepting it would silently shrink the corpus to however far the run got.
         static string PartialMarker => CurrentDir + "/PARTIAL-DO-NOT-ACCEPT";
 
-        // Scenes that are not avatars, or are our own output. Matched as path substrings.
-        static readonly string[] Excluded =
+        // Scenes that are never avatars. Matched as path substrings.
+        static readonly string[] BuiltInExcluded =
         {
             "/AvatarBridgeOutput/", "/CVR.CCK/", "/MagicaCloth2/", "/UnityTechnologies/",
             "/Samples/", "/Scenes/SampleScene", "/MISC/",
-
-            // Avatars VRCFury cannot bake. Their conversions start from a half-built avatar, so
-            // their digests describe Fury's failure rather than ours and every diff on them is
-            // noise. Put each back the moment the avatar itself is repaired — that is the only
-            // reason this list is spelt out per avatar rather than filtered by symptom.
-            //
-            // RE-TESTED 2026-08-03 by running all seven through RunSubsetBatch, which bypasses this
-            // list. CowBotNSFW and CowBotSFW now bake with zero Fury build errors and were removed
-            // from it. Two of the remaining reasons had gone stale and are corrected below: nothing
-            // here is inherited, each is what the avatar's own report said on that run.
-            //
-            // "NO VALID ANIMATIONS" layers are NOT a reason to exclude — Saavi and Roxxie both
-            // carry one and convert perfectly. The criterion is a VRCFury BUILD error.
-            "/0.Kimmi/",     // Kimmi   — Fury wants GoLocoBaseWD.controller, GoLocoActionWD.controller
-                             //           and GoBeyondParameters.asset; the GoGo package now in the
-                             //           project has none of them (it replaced a custom build that did)
-            "/hypsi/",       // hypsi   — its "GogoLoco All (VRCFury)" prefab is missing outright after
-                             //           that same GoGo swap, so it converts as a 23-entry shell
-            "/!Arlo/",       // Arlo    — missing Wholesome SPS Configurator 2.0.11 (AAC_SFX.controller)
-            "/Satin Snake",  // Satin Snake — same Wholesome package
-            "/!BRANWEN/",    // Branwen — NOT the shader, that reason was stale: Fury wants Dismay PCS
-                             //           "#GENERATED/Thotty 2025 Amour/", the per-avatar folder the PCS
-                             //           tool writes at setup. Same cause as BHFBunny/Bimbo/OPEN ME
         };
 
-        // The quick set: every avatar that has taught us something, so a fix can be checked in
-        // five minutes instead of forty. Each line says what it is watching, because a canary
-        // nobody can explain gets deleted by the next person who finds it slow.
-        //
-        // The CONTROL matters as much as the targets. Sally_PC_SPS is the same avatar as the two
-        // broken Sallys with a healthy source value, and it is here precisely because it should
-        // NOT change — the prefab-override revert was invisible on it, so if it starts moving,
-        // the revert was masking something else as well.
-        //
-        // The full run still covers every scene; this is only the tight loop while working.
-        // The quick set: every avatar that has taught us something, so a fix can be checked in
-        // six minutes instead of forty. Each line says what it is watching, because a canary
-        // nobody can explain gets deleted by the next person who finds it slow.
-        //
-        // It was briefly narrowed to the three Sallys while that bug was chased, and narrowing it
-        // was a mistake worth not repeating: a quick set covering only the bug currently in hand
-        // is not a regression check. The wider set is what showed six other avatars still
-        // converting correctly through four failed attempts at the Sally one — which is the only
-        // reason those attempts could be made confidently.
-        //
-        // The CONTROL matters as much as the targets. Sally_PC_SPS is the same avatar as the two
-        // broken Sallys with a healthy source value, and it is here precisely because it should
-        // NOT change.
-        static readonly string[] QuickSet =
+        // Per-project scene lists live in Regression/corpus.cfg beside
+        // the digests. Local test data, kept out of the repo like the
+        // digests. Sections [excluded] and [quickset], "#" comments.
+        static string CorpusConfigPath => Root + "/corpus.cfg";
+
+        static string[] ReadCorpusSection(string section)
         {
-            // STILL FAILING as of 3.5.16 — the Animator link is null while every CVR-side field
-            // is correct, so these convert and work in game but do not preview in the editor.
-            // Four fixes have missed; the next step is a live experiment, not another guess.
-            "Assets/SallyShopkeeper/Sally_PC.unity",
-            "Assets/SallyShopkeeper/Sally_Quest.unity",
-            // The control: same avatar, healthy source value, must stay correct.
-            "Assets/SallyShopkeeper/Sally_PC_SPS.unity",
+            if (!File.Exists(CorpusConfigPath))
+            {
+                return null;
+            }
+            var entries = new List<string>();
+            string current = null;
+            foreach (var raw in File.ReadAllLines(CorpusConfigPath))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (line.StartsWith("[", StringComparison.Ordinal)
+                    && line.EndsWith("]", StringComparison.Ordinal))
+                {
+                    current = line.Substring(1, line.Length - 2).ToLowerInvariant();
+                    continue;
+                }
+                if (current == section)
+                {
+                    entries.Add(line);
+                }
+            }
+            return entries.ToArray();
+        }
 
-            // 3.5.10 — Action transplant armed at load. Oscillated between pose and idle...
-            "Assets/lemur/lumar_ROUND_setup_release.unity",
-            // ...and walked up its stages into a pose nobody chose.
-            "Assets/Rytu_assets/Rytu_setup.unity",
+        static string[] Excluded()
+        {
+            var extra = ReadCorpusSection("excluded");
+            return extra == null ? BuiltInExcluded : BuiltInExcluded.Concat(extra).ToArray();
+        }
 
-            // 3.5.9 — crash guard read a GUID out of a "Missing Prefab" object NAME and refused
-            // to assign a perfectly good controller. Both carry such a placeholder.
-            "Assets/BHFBunny/BHFBUNNY.unity",
-            "Assets/Bimbo Base.unity",              // avatar inside is "Sultry Snake"
+        // The quick set: the most regression-prone scenes, so a fix can
+        // be checked in minutes instead of a full run. Keep a healthy
+        // control scene in it; a control that starts moving means a fix
+        // was masking something.
+        static string[] QuickSet()
+        {
+            var set = ReadCorpusSection("quickset");
+            if (set == null || set.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"No [quickset] section in {CorpusConfigPath}. List scene paths there, one per line.");
+            }
+            return set;
+        }
 
-            // 3.5.6 -> 3.5.8 — the AnyState self-restart arc, four attempts. Toggle layers here
-            // are the most sensitive thing in the corpus to a change in transition handling.
-            "Assets/Avatars/Others Characters/Kar/!!!OPEN ME SCENE/Kar.unity",
-        };
+        [MenuItem("Tools/AvatarBridge Dev/Regression: run quick set")]
+        public static void RunQuick() => Run(QuickSet(), "quick");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression — run quick set")]
-        public static void RunQuick() => Run(QuickSet, "quick");
-
-        [MenuItem("Tools/AvatarBridge Dev/Regression — run all scenes")]
+        [MenuItem("Tools/AvatarBridge Dev/Regression: run all scenes")]
         public static void RunAll() => Run(AllAvatarScenes(), "all");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression — accept current as baseline")]
+        [MenuItem("Tools/AvatarBridge Dev/Regression: accept current as baseline")]
         public static void AcceptCurrent()
         {
             if (!Directory.Exists(CurrentDir))
             {
-                Debug.LogError("[Regression] nothing in Current/ to accept — run first.");
+                Debug.LogError("[Regression] nothing in Current/ to accept. Run first.");
                 return;
             }
             if (File.Exists(PartialMarker))
@@ -170,18 +152,14 @@ namespace AvatarBridge.Regression
                 n++;
             }
 
-            // Copy, never wipe: accepting after a QUICK run must update those avatars and leave
-            // the other forty-odd baselines alone. Said out loud all the same, because "accepted
-            // 8" after a quick run and "accepted 49" after a full one look identical at a glance
-            // and mean very different things about what is now pinned.
+            // Copy, never wipe. A quick-run accept must leave the other
+            // baselines alone. The note tells partial from full accepts.
             string note = existing > n
-                ? $" ({existing - n} other baseline(s) left untouched — this was a partial run)"
+                ? $" ({existing - n} other baseline(s) left untouched; this was a partial run)"
                 : "";
             Debug.Log($"[Regression] accepted {n} digest(s) as the new baseline{note}.");
         }
 
-        /// <summary>Batch entry: Unity.exe -batchmode -quit -executeMethod
-        /// AvatarBridge.Regression.RegressionRunner.RunAllBatch</summary>
         public static void RunAllBatch()
         {
             int changed = Run(AllAvatarScenes(), "all");
@@ -190,19 +168,10 @@ namespace AvatarBridge.Regression
 
         public static void RunQuickBatch()
         {
-            int changed = Run(QuickSet, "quick");
+            int changed = Run(QuickSet(), "quick");
             EditorApplication.Exit(changed == 0 ? 0 : 1);
         }
 
-        /// <summary>
-        /// Batch entry for an ARBITRARY subset, listed one scene path per line in the file named
-        /// by AVATARBRIDGE_SUBSET. For chasing a handful of avatars a check just fired on without
-        /// paying forty minutes for the other forty-five — the quick set is a fixed list of
-        /// canaries and cannot answer "re-run exactly these".
-        ///
-        /// Like the quick set, this writes only the avatars it ran; Accept copies rather than
-        /// wipes, so the untouched baselines survive.
-        /// </summary>
         public static void RunSubsetBatch()
         {
             string listFile = Environment.GetEnvironmentVariable("AVATARBRIDGE_SUBSET");
@@ -230,10 +199,11 @@ namespace AvatarBridge.Regression
 
         static string[] AllAvatarScenes()
         {
+            var excluded = Excluded();
             return AssetDatabase.FindAssets("t:Scene")
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(p => !string.IsNullOrEmpty(p) && p.StartsWith("Assets/", StringComparison.Ordinal))
-                .Where(p => !Excluded.Any(x => p.Replace('\\', '/').Contains(x)))
+                .Where(p => !excluded.Any(x => p.Replace('\\', '/').Contains(x)))
                 .OrderBy(p => p, StringComparer.Ordinal)
                 .ToArray();
         }
@@ -251,16 +221,13 @@ namespace AvatarBridge.Regression
             var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
             System.Threading.Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
 
-            // A big interactive run is a trap, and it is not our dialogs that spring it:
-            // VRCFury pops a modal on a failed bake and the VRCSDK pops another when its
-            // preprocess hook reports that failure, so a full corpus run stops dead on the first
-            // avatar with a broken Fury component and waits for a click. Batchmode makes
-            // EditorUtility.DisplayDialog return immediately instead of blocking, which is the
-            // only reason RunAllBatch exists.
+            // VRCFury and the VRCSDK pop modals on failed bakes, so a
+            // big interactive run stops dead at the first broken avatar.
+            // Batchmode auto-answers dialogs; that is why RunAllBatch exists.
             if (!Application.isBatchMode && scenes.Count > 4)
             {
                 Debug.LogWarning(
-                    "[Regression] running " + scenes.Count + " scenes interactively — VRCFury and " +
+                    "[Regression] running " + scenes.Count + " scenes interactively: VRCFury and " +
                     "the VRCSDK will block on modal dialogs for any avatar that fails to bake. " +
                     "Close Unity and run headless instead:\n" +
                     "  Unity.exe -batchmode -quit -projectPath \"<project>\" " +
@@ -297,13 +264,9 @@ namespace AvatarBridge.Regression
                     var scenePath = scenes[i];
                     string name = Path.GetFileNameWithoutExtension(scenePath);
 
-                    // Progress is per avatar, not smoother, because a conversion is one long
-                    // blocking call — pretending otherwise would be a lie drawn at 60fps. It is a
-                    // no-op in batchmode, so the headless path is unaffected.
-                    //
-                    // Cancelable on purpose: a full corpus run is half an hour, and a run you
-                    // cannot abort is its own trap. Cancelling is handled honestly below rather
-                    // than leaving a half-finished Current/ that looks complete.
+                    // Progress is per avatar; a conversion is one long
+                    // blocking call. No-op in batchmode.
+                    // Cancelable on purpose; the cancel is handled below.
                     if (!Application.isBatchMode)
                     {
                         var elapsed = DateTime.Now - started;
@@ -311,7 +274,7 @@ namespace AvatarBridge.Regression
                             ? $", ~{TimeSpan.FromTicks(elapsed.Ticks / i * (scenes.Count - i)):mm\\:ss} left"
                             : "";
                         if (EditorUtility.DisplayCancelableProgressBar(
-                                $"AvatarBridge regression — {i + 1}/{scenes.Count}",
+                                $"AvatarBridge regression {i + 1}/{scenes.Count}",
                                 $"{name}   ({elapsed:mm\\:ss} elapsed{eta})",
                                 (float)i / scenes.Count))
                         {
@@ -328,8 +291,8 @@ namespace AvatarBridge.Regression
                     }
                     catch (Exception e)
                     {
-                        // A thrown conversion is itself a result worth recording and diffing —
-                        // "started throwing" and "stopped throwing" are both regressions.
+                        // A thrown conversion is a result worth diffing.
+                        // Starting and stopping throwing both regress.
                         digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
                         failed++;
                     }
@@ -339,7 +302,7 @@ namespace AvatarBridge.Regression
                     // Belt and braces on the naming rule below: if two scenes ever collide again
                     // the run must say so, not silently cover one of them.
                     if (!written.Add(file))
-                        Debug.LogError($"[Regression] digest name collision on '{file}' — " +
+                        Debug.LogError($"[Regression] digest name collision on '{file}': " +
                                        $"'{scenePath}' has overwritten an earlier scene's digest.");
                     File.WriteAllText(Path.Combine(CurrentDir, file), digest);
 
@@ -371,14 +334,12 @@ namespace AvatarBridge.Regression
 
             if (cancelled)
             {
-                // Said loudly and last. Current/ now holds a partial set that is indistinguishable
-                // from a complete one by looking at it, and accepting it as a baseline would
-                // quietly shrink the corpus to however far the run got — every avatar after the
-                // cancel would read as "no baseline yet" forever after, and nobody would notice.
+                // Said loudly and last. A partial Current/ looks
+                // complete, and accepting it would shrink the corpus.
                 File.WriteAllText(PartialMarker,
                     $"Cancelled after {ran} of {scenes.Count} scenes at {DateTime.Now:yyyy-MM-dd HH:mm}.\n" +
                     "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
-                sb.AppendLine($"  CANCELLED after {ran} of {scenes.Count} — Current/ is PARTIAL. " +
+                sb.AppendLine($"  CANCELLED after {ran} of {scenes.Count}. Current/ is PARTIAL. " +
                               "Do not accept it as a baseline; re-run.");
                 Debug.LogError(sb.ToString());
                 return changes.Count;
@@ -399,14 +360,6 @@ namespace AvatarBridge.Regression
             return $"-{removed.Count} +{added.Count}";
         }
 
-        /// <summary>
-        /// Digest filename from the scene's full path, not its basename.
-        ///
-        /// The first full run converted 56 avatars and left 51 files: this project has "OPEN ME",
-        /// "OPENME", "OpenMe" and "Open_Me" scenes in four different folders, and Windows compares
-        /// filenames case-insensitively, so five digests silently overwrote each other. Coverage
-        /// vanished without a word — the worst thing a test harness can do.
-        /// </summary>
         static string DigestName(string scenePath)
         {
             var rel = scenePath.Replace('\\', '/');
@@ -425,9 +378,9 @@ namespace AvatarBridge.Regression
 
         static string ConvertAndDigest(string scenePath)
         {
-            // OpenScene from script discards unsaved changes without prompting — which is what we
-            // want, and what makes this safe to run in batchmode. The conversion mutates the
-            // scene heavily and none of it is ever saved back.
+            // OpenScene from script discards unsaved changes without
+            // prompting. Wanted here: the conversion mutates the scene
+            // heavily and none of it is ever saved back.
             var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
             var reset = ResetScene(scene);
 
@@ -441,10 +394,10 @@ namespace AvatarBridge.Regression
             }
             if (descriptor == null) return null;
 
-            // Re-activate the source and everything above it. A conversion deactivates the avatar
-            // it cloned from, so any scene saved after a conversion holds its source switched OFF
-            // — and converting a deactivated avatar is not what a user does. Found by noticing the
-            // original greyed out in the hierarchy next to a leftover conversion.
+            // Re-activate the source and everything above it. A saved
+            // scene can hold its source switched off from a previous
+            // conversion, and converting a deactivated avatar is not
+            // what a user does.
             for (var t = descriptor.transform; t != null; t = t.parent)
             {
                 if (t.gameObject.activeSelf) continue;
@@ -460,12 +413,10 @@ namespace AvatarBridge.Regression
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
             sb.Append("scene: ").Append(scenePath).Append('\n');
-            // Deliberately no timestamp, no Unity version and NO AVATARBRIDGE VERSION: all three
-            // change without the conversion changing, and every line in here has to earn its
-            // place in a diff. The version was in here until 3.5.21 and was the worst of them —
-            // it differs on literally every avatar after any release, so the first diff after a
-            // bump reported all forty-nine as changed and buried whatever really moved. It is
-            // written once per run to Current/_run.info instead, which nothing compares.
+            // No timestamp, no Unity version, no AvatarBridge version.
+            // All three change without the conversion changing, and a
+            // version bump would diff every avatar at once. The version
+            // goes once per run into Current/_run.info instead.
             sb.Append('\n');
 
             AppendReset(sb, reset);
@@ -475,29 +426,6 @@ namespace AvatarBridge.Regression
             return Stable(sb.ToString());
         }
 
-        /// <summary>
-        /// Removes VRCFury's per-bake salt from generated names.
-        ///
-        /// Fury numbers the parameters and objects it generates with a value that changes on
-        /// EVERY bake — "#VF_146434155_True" one run, "#VF_353841827_True" the next, and
-        /// "[VF871] Blowjob" becoming "[VF895] Blowjob". Nothing about the avatar has changed.
-        /// Left alone this made 23 of 49 digests differ on every run, which is not a regression
-        /// signal — it is a coin toss with a diff attached, and it would have buried the one real
-        /// change this corpus was run to find.
-        ///
-        /// The salt is also why the ORDER moved: the parameter list sorts by name, so a new
-        /// number re-sorts the list. Callers sort on Stable() for that reason; this pass then
-        /// cleans the text itself, which catches the same ids inside paths, conditions and layer
-        /// names without having to find every place one can appear.
-        ///
-        /// Two distinct ids can collapse to one string here. That is acceptable: they collapse
-        /// identically in both runs being compared, so a real difference still shows.
-        /// </summary>
-        /// <summary>
-        /// Parameter names a state-machine behaviour writes, read reflectively so this works
-        /// whatever the installed CCK calls its task list. Sorted and de-duplicated: the digest
-        /// is a diff surface, and driver task order is not meaningful.
-        /// </summary>
         static List<string> DriverTargets(StateMachineBehaviour behaviour)
         {
             var found = new SortedSet<string>(StringComparer.Ordinal);
@@ -541,25 +469,6 @@ namespace AvatarBridge.Regression
             public string avatar = "";
         }
 
-        /// <summary>
-        /// Puts the scene back to how it was BEFORE anyone ever converted in it.
-        ///
-        /// Converting leaves two marks on a scene, and both persist if it is then saved: the
-        /// converted avatar is added, and the SOURCE is switched off (BridgeConverter deactivates
-        /// whatever it cloned from). A corpus run over scenes in that state is not measuring what
-        /// a user does — it converts a deactivated avatar alongside a stale copy of its own
-        /// previous output, whose asset references have since been regenerated and now dangle.
-        /// 29 of the 48 controller references across these scenes were already broken that way.
-        ///
-        /// Nothing is saved back, so this is a per-run, in-memory reset: the scene files on disk
-        /// are untouched and every run starts from the same place regardless of what state they
-        /// were left in. That is the property the corpus actually needs — it makes the input
-        /// deterministic without asking anyone to hand-clean 34 scenes.
-        ///
-        /// A leftover is identified by carrying a CVRAvatar and NO VRChat descriptor, which is
-        /// exactly what conversion produces: it deletes the VRC components from its output. An
-        /// avatar carrying both is someone's genuine work-in-progress and is left alone.
-        /// </summary>
         static SceneReset ResetScene(Scene scene)
         {
             var result = new SceneReset();
@@ -579,32 +488,14 @@ namespace AvatarBridge.Regression
 
         static void AppendReset(StringBuilder sb, SceneReset reset)
         {
-            // In the digest because it describes the INPUT. If a scene is later cleaned up by
-            // hand these numbers change, the digest diffs, and the cause is named on the line —
-            // rather than surfacing as unexplained movement somewhere in the animator sections.
+            // In the digest because it describes the input. A hand-edited
+            // scene then diffs here, with the cause named on the line.
             sb.Append("[scene reset]\n");
             sb.Append("  leftover conversions removed: ").Append(reset.leftovers).Append('\n');
             sb.Append("  objects re-activated: ").Append(reset.reactivated).Append('\n');
             sb.Append('\n');
         }
 
-        /// <summary>
-        /// The profile the corpus converts with. Deliberately NOT `new BridgeSettings()`.
-        ///
-        /// Two reasons every field is written out rather than only the ones that differ from the
-        /// defaults. First, coverage: seven options are off by default, which means the locomotion
-        /// grafter, the Action transplanter, native contacts and the SPI shader patcher — the code
-        /// that shipped nine versions in one day — were never once exercised by the corpus.
-        /// Turning them on puts 56 avatars through them. Second, and more important, PINNING: if a
-        /// default in BridgeSettings is ever changed, an implicit corpus would silently change
-        /// meaning and every digest would diff at once, looking exactly like a catastrophic
-        /// regression. Stated in full, a defaults change moves the shipped product and leaves the
-        /// corpus alone, which is what you want when you are trying to read a diff.
-        ///
-        /// This is NOT what a typical user gets. A digest change says "something moved with
-        /// everything switched on", not "the default experience changed". For finding regressions
-        /// that is the better trade; just don't read these digests as the out-of-the-box result.
-        /// </summary>
         static BridgeSettings CorpusSettings() => new BridgeSettings
         {
             cloneAvatar = true,
@@ -628,7 +519,7 @@ namespace AvatarBridge.Regression
             fitToPhysBone = true,
             derivePhysicsFromPhysBone = true,
             capParticleRadius = true,
-            // The two that invent physics the author never made — on here for coverage.
+            // The two that invent physics the author never made. On for coverage.
             autoAssignNearbyColliders = true,
             addPhysicsToRiggedStyles = true,
             // Left off deliberately: both wreck specific avatars rather than exercising a path.
@@ -641,8 +532,8 @@ namespace AvatarBridge.Regression
 
             convertContacts = true,
             createDefaultColliderPointers = true,
-            useNativeContacts = true,      // BETA — talks to a component internal to the game
-            patchNonSpiShaders = true,     // BETA — writes patched shader copies
+            useNativeContacts = true,      // BETA: talks to a component internal to the game
+            patchNonSpiShaders = true,     // BETA: writes patched shader copies
 
             convertConstraints = true,
             convertHeadChop = true,
@@ -654,10 +545,9 @@ namespace AvatarBridge.Regression
 
         static void AppendSettings(StringBuilder sb, BridgeSettings s)
         {
-            // In the digest so a profile change is LOUD. Change CorpusSettings and all 56 digests
-            // diff on these lines — which is correct, because all 56 conversions changed meaning.
-            // Without this the same event would show up as unexplained churn deep in the animator
-            // sections, and cost an afternoon.
+            // In the digest so a profile change is loud. Changing
+            // CorpusSettings diffs every digest at once, correctly:
+            // every conversion changed meaning.
             sb.Append("[settings]\n");
             foreach (var f in typeof(BridgeSettings).GetFields()
                          .OrderBy(f => f.Name, StringComparer.Ordinal))
@@ -681,13 +571,9 @@ namespace AvatarBridge.Regression
             // their exact wording churns constantly; the counts above catch a change in volume,
             // which is the part that matters.
             //
-            // Detail is TRUNCATED, and that is the whole point. These are documentation
-            // paragraphs — the Kar digest had thirteen of them, the longest 1239 characters. They
-            // get reworded whenever a message is improved, which is often and which changes
-            // nothing about the conversion. Left whole, the first docs edit would light up every
-            // avatar in the corpus as "changed" and the diff would stop being worth reading.
-            // Category and Subject carry the behaviour; the opening of Detail is kept only to
-            // tell two entries apart.
+            // Detail is truncated on purpose. Report wording churns
+            // whenever a message improves, changing nothing about the
+            // conversion. Category and Subject carry the behaviour.
             var notable = report.Entries
                 .Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning)
                 .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
@@ -741,9 +627,8 @@ namespace AvatarBridge.Regression
         static void AppendComponents(StringBuilder sb, GameObject target)
         {
             sb.Append("[components]\n");
-            // Type name and count only. Which cloth got which damping value belongs in a physics
-            // digest, not this one — this is here to catch a pass that stops emitting a component
-            // type altogether, which is how several regressions presented.
+            // Type name and count only. This catches a pass that stops
+            // emitting a component type altogether.
             var counts = target.GetComponentsInChildren<Component>(true)
                 .Where(c => c != null)
                 .Select(c => c.GetType().FullName)
@@ -764,30 +649,6 @@ namespace AvatarBridge.Regression
         const string MagicaClothType = "MagicaCloth2.MagicaCloth";
         const string NativeContactAnimator = "NAK.Contacts.ContactAnimator";
 
-        /// <summary>
-        /// Physics and contact routing as FIELDS, read off the finished prefab.
-        ///
-        /// Written because three physics bugs in a row passed a clean corpus. The stuck wardrobe
-        /// chain, the breast chain rooted on a collider anchor and the toggle that never switched
-        /// its cloth back off were all invisible here — one of them produced a digest that was
-        /// BYTE-IDENTICAL before and after the fix that restored the avatar's physics. Every fact
-        /// below did exist somewhere at the time, but only inside a Converted report entry, which
-        /// this digest drops on purpose: those entries are documentation paragraphs, they get
-        /// reworded constantly, and keeping them would light up all seventy-four avatars on the
-        /// first docs edit. The lesson is not "keep the prose" — it is that a number a human
-        /// would notice changing has to be its own field, because a diff over fields is the one
-        /// thing this harness is good at.
-        ///
-        /// Everything here is read from the CONVERTED OBJECT, never from the report. The report
-        /// says what a pass believed it did; the prefab is what ChilloutVR loads. Those came
-        /// apart once already — a report read "honoured by rooting at 2 branches" while the
-        /// promoted branch sat seven joints down the chain, so the claim was true and the outcome
-        /// was wrong. Only one of the two is worth diffing.
-        ///
-        /// NOTE FOR WHOEVER LANDS THIS: adding a block invalidates every baseline. The first run
-        /// reports all of them as changed, and that diff has to be read and accepted rather than
-        /// waved through, because a real regression landing in the same run would hide inside it.
-        /// </summary>
         static void AppendPhysics(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
             sb.Append("[physics]\n");
@@ -820,12 +681,9 @@ namespace AvatarBridge.Regression
               .Append($"componentOff={componentOff} objectOff={objectOff}\n");
             foreach (var line in clothLines) sb.Append(line).Append('\n');
 
-            // Curves that switch cloth on or off, counted across the merged controller. An OFF
-            // curve is the thing ChilloutVR needs and VRChat never did: with no Write Defaults to
-            // undo the switch, a chain that is only ever switched ON latches the first time its
-            // toggle is used and runs forever. The count moving is the signal — a pass that stops
-            // writing them, or one that writes hundreds into states it has no business touching,
-            // both show up here as a number, and the second of those shipped once.
+            // Curves that switch cloth on or off, counted across the
+            // merged controller. The count moving is the signal, in
+            // either direction.
             var animator = target.GetComponent<Animator>();
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
             if (runtime == null && avatar != null) runtime = avatar.overrides;
@@ -908,17 +766,6 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        /// <summary>
-        /// The AnimatorController behind whatever the Animator is holding.
-        ///
-        /// A converted avatar's root Animator holds the OVERRIDE controller — ChilloutVR runs the
-        /// avatar off it — so "as AnimatorController" is null on every avatar in the corpus, not
-        /// on some exotic one. The first run of the physics block reported "no controller to
-        /// read" for an avatar with 112 cloth chains and a full merged controller sitting right
-        /// behind the override, which took the cloth curve counts, the bridge layer count and the
-        /// entire bridged contact route down with it. Nothing about that failure was visible from
-        /// the fact that it compiled.
-        /// </summary>
         static AnimatorController BaseController(RuntimeAnimatorController runtime)
         {
             for (int guard = 0; runtime != null && guard < 8; guard++)
@@ -934,16 +781,6 @@ namespace AvatarBridge.Regression
             return null;
         }
 
-        /// <summary>
-        /// The local parameter each contact-sync bridge carries, read from the CONDITIONS on the
-        /// bridge layer's own transitions.
-        ///
-        /// The obvious alternative — take the synced name out of the layer's title and rebuild
-        /// the local twin as "#name_contact" — would be a guess dressed as a fact, because the
-        /// title is put through filename sanitising on the way in and a name with a character
-        /// that does not survive that would rebuild wrong. The conditions are what the layer
-        /// actually reads.
-        /// </summary>
         static HashSet<string> BridgedLocalNames(AnimatorController controller)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
@@ -972,13 +809,6 @@ namespace AvatarBridge.Regression
             return names;
         }
 
-        /// <summary>
-        /// The bones a cloth chain hangs from, in the order the writer chose.
-        ///
-        /// Deliberately NOT sorted. The order is the branch walk's own, and a change in it means
-        /// the walk changed — which is the entire failure of the chain that ended up rooted on a
-        /// collider anchor seven joints below where it belonged. Sorting would have hidden it.
-        /// </summary>
         static string ClothRoots(Component cloth)
         {
             var data = cloth.GetType().GetProperty("SerializeData")?.GetValue(cloth);
@@ -994,7 +824,6 @@ namespace AvatarBridge.Regression
             return names.Count == 0 ? "<none>" : string.Join(",", names);
         }
 
-        /// <summary>Every parameter a CCK trigger writes, across all three task lists.</summary>
         static IEnumerable<string> TriggerParameters(CVRAdvancedAvatarSettingsTrigger trigger)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
@@ -1027,18 +856,11 @@ namespace AvatarBridge.Regression
 
         static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
-            // EVERY Animator in the hierarchy, not just the root's — and its controller reported
-            // as null when it is null. The digest used to read only the root and silently skip a
-            // null, which is exactly how five avatars shipped with a broken or absent Animator
-            // controller and produced no diff at all: a dangling asset reference deserialises to
-            // null, and skipping nulls made "broken" and "fine" render identically. A test that
-            // cannot see a failure is not testing for it.
-            // Judged on the SERIALIZED m_Controller, not the C# getter. The Sally investigation
-            // established that the two can disagree: the getter answers from the native binding,
-            // which both lags serialized writes and lies outright on a component whose rebind
-            // failed — while the serialized value is what the prefab saves and what ChilloutVR
-            // loads. When they disagree, both are printed, because a disagreement is itself a
-            // finding worth diffing.
+            // Every Animator in the hierarchy, nulls included. A test
+            // that cannot see a failure is not testing for it.
+            // Judged on the serialized m_Controller, not the getter;
+            // the two can disagree, and the serialized value is what
+            // the prefab saves. Disagreements print both.
             sb.Append("[animators]\n");
             foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StringComparer.Ordinal))
             {
@@ -1142,8 +964,8 @@ namespace AvatarBridge.Regression
                   .Append(' ').Append(Conds(t)).Append('\n');
             }
 
-            // States sorted by name. Unity's array order is creation order, which shifts whenever
-            // a pass adds a state earlier in its loop — a diff of that tells you nothing.
+            // States sorted by name. Unity's array order is creation
+            // order, and a diff of that tells you nothing.
             foreach (var cs in sm.states.OrderBy(s => s.state.name, StringComparer.Ordinal))
             {
                 var st = cs.state;
@@ -1250,9 +1072,7 @@ namespace AvatarBridge.Regression
 
             if (motion is AnimationClip clip)
             {
-                // Length and loop flag both matter and both have been the bug: 3.5.1 shipped
-                // grafted clips that carried their FBX loop settings, and 3.5.4 shipped a wing
-                // flap loop-matched to a state that never ended.
+                // Length and loop flag both matter; both have been the bug.
                 return $"clip:{clip.name}(len={F(clip.length)},loop={clip.isLooping})";
             }
 
@@ -1261,8 +1081,8 @@ namespace AvatarBridge.Regression
 
         // ---------------------------------------------------------------- formatting
 
-        // Fixed precision, invariant, and negative zero folded away — Unity hands back -0 for
-        // plenty of computed values and it flips sign between runs for no reason at all.
+        // Fixed precision, invariant, negative zero folded away.
+        // Unity flips -0 sign between runs for no reason at all.
         static string F(float f)
         {
             if (float.IsNaN(f)) return "NaN";
@@ -1289,7 +1109,6 @@ namespace AvatarBridge.Regression
             return flat.Length <= 70 ? flat : flat.Substring(0, 70) + "…";
         }
 
-        /// <summary>Hierarchy path of a component relative to the avatar root, "&lt;root&gt;" for the root itself.</summary>
         static string HierarchyPath(GameObject root, Component c)
         {
             if (c == null || c.transform == root.transform) return "<root>";

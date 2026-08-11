@@ -7,16 +7,14 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Why AvatarBuilder.BuildHumanAvatar refuses to rebuild a rig without its Jaw.
-    ///
-    /// Three static explanations for this have been wrong, so this stops explaining and measures:
-    /// it dumps what the baked HumanDescription actually contains, checks every name in it against
-    /// the LIVE hierarchy, and then tries the rebuild several ways to see which the builder accepts.
-    /// The variants are the point — one of them working names the cause without any theory.
-    ///
-    /// Set AVATARBRIDGE_JAW_SCENE to the scene to open. Dev tooling; never ships.
-    /// </summary>
+    // Why AvatarBuilder.BuildHumanAvatar refuses to rebuild a rig without its Jaw.
+    //
+    // Three static explanations for this have been wrong, so this stops explaining and measures:
+    // it dumps what the baked HumanDescription actually contains, checks every name in it against
+    // the LIVE hierarchy, and then tries the rebuild several ways to see which the builder accepts.
+    // The variants are the point; one of them working names the cause without any theory.
+    //
+    // Set AVATARBRIDGE_JAW_SCENE to the scene to open. Dev tooling; never ships.
     public static class JawRebuildProbe
     {
         public static void RunBatch()

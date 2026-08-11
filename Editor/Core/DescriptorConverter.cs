@@ -12,15 +12,12 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Converts the VRCAvatarDescriptor basics onto a CVRAvatar component:
-    /// viewpoint, voice position, face mesh, visemes and blinking.
-    /// </summary>
+    // Converts the VRCAvatarDescriptor basics onto a CVRAvatar component:
+    // viewpoint, voice position, face mesh, visemes and blinking.
     public static class DescriptorConverter
     {
         const string Category = "Avatar descriptor";
 
-        /// <summary>Positions in report text, short enough to read in a sentence.</summary>
         static string Vec(Vector3 v) => $"({v.x:0.###}, {v.y:0.###}, {v.z:0.###})";
 
         public static void Run(BridgeContext ctx)
@@ -34,44 +31,23 @@ namespace AvatarBridge
             }
             ctx.CvrAvatar = cvrAvatar;
 
-            // --- Viewpoint -----------------------------------------------------------
-            // The CCK's own Auto placement (between the eye bones) — maintainer's call: one
-            // convention for every avatar beats per-source derivation. The author's VRChat
-            // viewpoint stays as the fallback for rigs the Auto chain can't read.
+            // --- Viewpoint ---
+            // The CCK's Auto placement is the fallback for rigs whose
+            // authored viewpoint cannot be used.
             var animator = ctx.TargetAnimator;
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
 
-            // The AUTHOR'S viewpoint wins when there is one.
-            //
-            // This used to prefer the CCK's Auto placement, for one convention across every
-            // avatar. The convention is worth less than being right: Auto reads the humanoid eye
-            // bones, and on rigs where those bones are not where the eyes are — a robot avatar
-            // whose eye mapping sat 6 cm off-centre and 9 cm behind the face — it produces a
-            // confidently wrong answer, and so does the CCK's own button. The descriptor value is
-            // the one a human placed by eye and then shipped, and on that avatar it matched the
-            // hand-corrected position on X exactly and Z to half a millimetre.
-            //
-            // Copied, NOT scaled. An earlier revision multiplied this by the root's localScale,
-            // on the reasoning that VRChat stores an unscaled local offset — that reasoning was
-            // wrong. VRChat's viewpoint is authored against the avatar at the size it ships at,
-            // so it is already the world-metre offset ChilloutVR stores. On a scale-1 avatar the
-            // two are identical, which is why it went unnoticed; on a root scaled 1.374 it put
-            // the viewpoint 70 cm above the head. The avatar that caught it settles it in two
-            // axes: unscaled Z is 0.1105 against a hand-corrected 0.1095, and X is 0 in both.
+            // The author's viewpoint wins when there is one. Auto reads
+            // the eye bones, which are not always where the eyes are.
+            // Copied, not scaled: VRChat's value is authored at shipping
+            // size, already the world-metre offset CVR stores.
             bool haveAuthored = vrc.ViewPosition != Vector3.zero;
             var authored = vrc.ViewPosition;
 
-            // ...but only when it is anywhere near the head.
-            //
-            // Preferring the author's value assumes a human placed it by eye and shipped it. That
-            // holds right up until it doesn't: a taur base shipped a viewpoint at its HIPS, 0.6 m
-            // from its head bone, while the CCK's Auto placement landed on the face. The check
-            // that catches this already ran — the report warned "Viewpoint lands 0.6 m from the
-            // head bone" — it just warned about a value we had already chosen and written.
-            //
-            // A viewpoint is not a matter of taste: it is where the player's eyes go, and a rig
-            // whose head bone is half a head-height away from it is not expressing a preference.
-            // So when the authored value fails that check and Auto passes it, Auto wins.
+            // ...but only when it is anywhere near the head. A viewpoint
+            // is where the player's eyes go, not a matter of taste.
+            // When the authored value fails the head check and Auto
+            // passes it, Auto wins.
             bool authoredIsWrong = false;
             string autoOverrideNote = null;
             if (haveAuthored && autoView
@@ -81,10 +57,8 @@ namespace AvatarBridge
                 authoredIsWrong = authoredOff > tolerance && autoOff <= tolerance;
                 if (authoredIsWrong)
                 {
-                    // Written, not reported, until the decoy check below has had its say. Reporting
-                    // here printed two contradictory viewpoint lines on a decoy rig — "Auto was used
-                    // instead" followed by "measured on the visible head", which is what actually
-                    // happened. Whichever wins should be the only one that speaks.
+                    // Held, not reported, until the decoy check below
+                    // has its say. Whichever wins speaks alone.
                     autoOverrideNote =
                         $"The viewpoint this avatar shipped with in VRChat lands {authoredOff:0.##} m from its " +
                         $"head bone, past the {tolerance:0.##} m this rig's own proportions allow, so it is in " +
@@ -95,10 +69,8 @@ namespace AvatarBridge
                         "settles. Drag the gizmo on the CVRAvatar if neither is right.";
                 }
             }
-            // The check above measures against the HIPS, and hips are mis-mapped as often as any
-            // other optional slot — one rig pointed them at the armature root on the floor, which
-            // stretched the tolerance to 0.89 m and would have accepted a viewpoint anywhere in
-            // the avatar's upper half. The eyes answer for themselves.
+            // The check above measures against the hips, which can be
+            // mis-mapped too. The eyes answer for themselves.
             if (haveAuthored && autoView && !authoredIsWrong
                 && AvatarFeatureDetect.ViewpointSitsAboveEyes(ctx.Target, animator, authored,
                     out float aboveEyes, out float eyeSeparation))
@@ -121,7 +93,7 @@ namespace AvatarBridge
             // ...unless the humanoid rig is a DECOY and none of the above is looking at the
             // avatar at all. See AvatarFeatureDetect.DecoyRigAnchors: on a quadruped whose
             // humanoid map points at a hidden stand-in skeleton, the author's VRChat viewpoint,
-            // the CCK's Auto button and our own estimate all agree with each other and all sit on
+            // the CCK's Auto button and the local estimate all agree with each other and all sit on
             // the stand-in. The 5 cm gate keeps this silent on every rig where the relay exists
             // but changes nothing, so an ordinary avatar's conversion is untouched.
             bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
@@ -226,7 +198,7 @@ namespace AvatarBridge
             bool autoVoice = AvatarFeatureDetect.CckAutoVoicePosition(ctx.Target, animator, out var voiceAuto);
             if (decoyRig)
             {
-                // Reported together with the viewpoint above — the two share one cause and one fix.
+                // Reported with the viewpoint above; one cause, one fix.
                 cvrAvatar.voicePosition = decoyVoice;
             }
             else if (autoVoice)
@@ -241,21 +213,15 @@ namespace AvatarBridge
                 MouthLocator.Report(ctx, Category, cvrAvatar.voicePosition, mouthMethod, mouthDetail, badJaw);
             }
 
-            // Said out loud whenever the humanoid rig moves no geometry, because everything above
-            // is then measured against a skeleton nobody can see. Three quadrupeds have now hit
-            // this from three unrelated directions — a decoy relay rig, a poseclone puppet, and a
-            // humanoid map pointing into a FinalIK VRIK proxy — and in each case every internal
-            // check passed while the viewpoint sat half a metre from the avatar's face. A check
-            // that passes on the wrong skeleton is worth nothing, so the fact gets reported even
-            // when nothing here can act on it.
+            // Reported whenever the humanoid rig moves no geometry;
+            // everything above then measured a skeleton nobody can see.
+            // A check that passes on the wrong skeleton is worth nothing.
             AvatarFeatureDetect.HumanoidDeformShare(ctx.Target, animator, out int mappedBones, out int deformingBones);
 
-            // Last line of defence, and the only one that doesn't consult the skeleton: if the
-            // viewpoint isn't inside the avatar's own renderer bounds, it is not on the avatar,
-            // whatever measured well to put it there. Only runs when the humanoid rig drives no
-            // geometry — on an ordinary avatar the humanoid answer is the right one and this never
-            // looks — and only when the current answer is demonstrably off the body, so an avatar
-            // that is already correct cannot be disturbed.
+            // Last line of defence, skeleton-free: a viewpoint outside
+            // the renderer bounds is not on the avatar. Only runs when
+            // the rig drives no geometry and the current answer is
+            // demonstrably off the body.
             if (!decoyRig && mappedBones > 0 && deformingBones == 0
                 && AvatarFeatureDetect.RescueViewpointOffBody(ctx.Target, animator,
                     cvrAvatar.viewPosition, out var rescued, out string rescueDetail))
@@ -316,7 +282,7 @@ namespace AvatarBridge
             }
             if (!haveAuthored && (autoView || autoVoice) && !decoyRig)
             {
-                // "Usable", not merely mapped — a Jaw pointing at a hair bone is neither.
+                // Usable, not merely mapped. A Jaw on a hair bone is neither.
                 var jawBone = animator != null && animator.isHuman
                     ? animator.GetBoneTransform(HumanBodyBones.Jaw) : null;
                 bool hasJaw = jawBone != null &&
@@ -330,13 +296,11 @@ namespace AvatarBridge
                         : "voice measured from the viseme mesh") +
                     " — the same positions the Auto buttons on the CVRAvatar inspector produce.");
             }
-            // Only when the CCK-Auto path placed the voice. When it didn't, MouthLocator has
-            // already reported where the voice went AND how it got there, and a second line here
-            // said "no jaw bone on this rig" — which is wrong on a rig whose jaw was rejected
-            // rather than absent, and duplicated the entry above it either way.
+            // Only when the CCK-Auto path placed the voice. Otherwise
+            // MouthLocator already reported where and how.
             else if (haveAuthored && autoVoice)
             {
-                // "Usable", not merely mapped — a Jaw pointing at a hair bone is neither.
+                // Usable, not merely mapped. A Jaw on a hair bone is neither.
                 var jawBone = animator != null && animator.isHuman
                     ? animator.GetBoneTransform(HumanBodyBones.Jaw) : null;
                 bool hasJaw = jawBone != null &&
@@ -351,13 +315,9 @@ namespace AvatarBridge
                     "always derived. Check it with the CVRAvatar gizmo before uploading.");
             }
 
-            // ChilloutVR has all three of VRChat's lip-sync styles, not just visemes:
-            // CVRAvatarVisemeMode is { Visemes, SingleBlendshape, JawBone }. The field was never
-            // written before, so every avatar relied on Visemes happening to be the zero value —
-            // and a jaw-flap avatar was told, wrongly, that ChilloutVR couldn't do it.
-            //
-            // An explicit jaw-flap choice is honoured ahead of viseme auto-detection. The author
-            // saying "this avatar flaps its jaw" outranks a name match on the face mesh.
+            // CVR has all three lip-sync styles: Visemes,
+            // SingleBlendshape, JawBone. An explicit jaw-flap choice
+            // outranks a name match on the face mesh.
             if (vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone)
             {
                 WireJawBoneLipSync(ctx, cvrAvatar);
@@ -405,9 +365,8 @@ namespace AvatarBridge
             // --- Blinking ------------------------------------------------------------
             if (vrc.customEyeLookSettings.eyelidType == VRCAvatarDescriptor.EyelidType.Bones)
             {
-                // Names the CAUSE before the fallback runs — the eventual "none found" warning
-                // otherwise reads like the avatar has no blink at all, when it blinks fine in
-                // VRChat with bones.
+                // Name the cause before the fallback runs, or "none
+                // found" reads like the avatar has no blink at all.
                 ctx.Report.Approximated(Category, "Eyelids are bone-driven",
                     "This avatar blinks by rotating eyelid BONES, which ChilloutVR's blink cannot " +
                     "drive — its native blink is blendshape-only. Blink blendshapes are searched " +
@@ -442,25 +401,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(cvrAvatar);
         }
 
-        /// <summary>
-        /// Converts VRChat's eye look into ChilloutVR's eye movement — the gaze itself, not
-        /// blinking, which is wired separately.
-        ///
-        /// The two describe the same thing in different encodings. VRChat stores five POSES:
-        /// quaternions for straight/up/down/left/right per eye. ChilloutVR stores four LIMITS:
-        /// degrees of travel up/down/in/out per eye, applied to an eye transform. A pose is a
-        /// limit in disguise — the angle between looking-straight and looking-up IS the up
-        /// limit — so each limit is measured with Quaternion.Angle rather than assumed.
-        ///
-        /// In/out need the side taken into account: an eye looking toward the nose is looking
-        /// "in", so the LEFT eye's "in" comes from VRChat's looking-RIGHT pose and its "out"
-        /// from looking-LEFT — mirrored for the right eye. ChilloutVR's own `isLeft` flag
-        /// exists exactly to apply that asymmetry at runtime.
-        ///
-        /// Also honoured in the negative: a VRChat avatar with eye look DISABLED gets
-        /// `useEyeMovement = false`, where the CCK's default is true — without this, every such
-        /// avatar gained idle eye darting its author had turned off.
-        /// </summary>
         static void ConvertEyeLook(BridgeContext ctx, CVRAvatar cvrAvatar, VRCAvatarDescriptor vrc)
         {
             if (!vrc.enableEyeLook)
@@ -514,12 +454,9 @@ namespace AvatarBridge
                 var inward = isLeft ? settings.eyesLookingRight : settings.eyesLookingLeft;
                 var outward = isLeft ? settings.eyesLookingLeft : settings.eyesLookingRight;
 
-                // ChilloutVR's limits are SIGNED euler bounds, not magnitudes. The client clamps
-                // pitch to [-Up, -Down] and yaw to [In, Out] (mirrored for the left eye) — read
-                // straight out of EyeMovementEye.UpdateEyeRotation. Down and In must therefore be
-                // NEGATIVE for the range to be a range: four positive values collapse both clamps
-                // to a point, and Clamp(x, -30, -30) pins the eyes 30° upward permanently — which
-                // is exactly how the first in-game test of this conversion looked.
+                // CVR's limits are signed euler bounds, not magnitudes.
+                // Down and In must be negative or both clamps collapse
+                // to a point and pin the eyes.
                 eyes.Add(new CVRAvatar.EyeMovementInfoEye
                 {
                     isLeft = isLeft,
@@ -558,21 +495,6 @@ namespace AvatarBridge
                 "wants Down and In negative.)");
         }
 
-        /// <summary>
-        /// Fallback when the descriptor declares no visemes: match the 15 standard viseme
-        /// blendshapes on the face mesh by their conventional names. Avatars that shipped
-        /// without lip sync configured get it for free in ChilloutVR.
-        /// </summary>
-        /// <summary>
-        /// VRChat's "Jaw Flap Bone" lip sync, which ChilloutVR supports with no wiring at all.
-        ///
-        /// CVRLipSyncJawBone takes the jaw straight off the humanoid rig — GetBoneTransform(Jaw)
-        /// — and drives the "Jaw Close" muscle through a HumanPoseHandler from voice loudness.
-        /// VRChat's own lipSyncJawBone reference isn't needed and isn't transferable; setting the
-        /// mode is the entire conversion. It does require a humanoid rig with a mapped Jaw bone,
-        /// which is the one thing worth checking, because without it the module silently does
-        /// nothing.
-        /// </summary>
         static void WireJawBoneLipSync(BridgeContext ctx, CVRAvatar cvrAvatar)
         {
             cvrAvatar.useVisemeLipsync = true;
@@ -596,13 +518,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat's "Jaw Flap Blend Shape" lip sync.
-        ///
-        /// CVRLipSyncSingleBlendshape scans visemeBlendshapes for the first entry that is neither
-        /// empty nor "-none-" and resolves it against bodyMesh, so the single shape goes in slot
-        /// 0 and the rest stay clear.
-        /// </summary>
         static void WireSingleBlendshapeLipSync(BridgeContext ctx, CVRAvatar cvrAvatar, string shapeName)
         {
             cvrAvatar.useVisemeLipsync = true;
@@ -639,26 +554,12 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Fallback when the VRChat descriptor has no eyelid/blink blendshape: detect blink
-        /// shapes on the face mesh by name (e.g. "Blink L"/"Blink R" or a single "Blink") and
-        /// turn on CVR's Eye Blink Settings. This also makes the CVR-VRCFT rig's
-        /// "eye-tracking off" state blink — its ON/OFF clips drive useBlinkBlendshapes, which
-        /// does nothing until blink shapes are wired here.
-        /// </summary>
-        /// <summary>
-        /// Whether some layer of the converted animator already animates a blink blendshape. Names
-        /// the clip so the report can point at it — "your avatar blinks" is only useful if the user
-        /// can go and look at the thing doing it.
-        /// </summary>
         static bool AnimatedBlinkShape(BridgeContext ctx, VRCAvatarDescriptor vrc, out string drivenShape, out string drivenBy)
         {
             drivenShape = null;
             drivenBy = null;
-            // The SOURCE controllers, off the descriptor. This pass runs long before AnimatorMerger,
-            // so ctx.MergedController is still null here — the first version of this check read it
-            // anyway, silently found nothing, and shipped a "fix" that changed nothing. What the
-            // avatar's layers animate is the same either way; the descriptor just holds them first.
+            // The source controllers, off the descriptor. This runs long
+            // before AnimatorMerger; ctx.MergedController is still null.
             var clips = new HashSet<AnimationClip>();
             void Collect(VRCAvatarDescriptor.CustomAnimLayer[] layers)
             {
@@ -732,13 +633,10 @@ namespace AvatarBridge
                 return false;
             }
 
-            // An avatar that already blinks itself gets its system REPLACED with ChilloutVR's
-            // native blink — but the decision is DEFERRED. This pass runs before the merge, and
-            // choosing the shape here by name picked "Blink" off an expression clip while the real
-            // receiver drove "vrc.Blink" (the mesh carries both), so the takeover missed. All this
-            // pass records is that a takeover is wanted; AnimatorMerger.ReplaceAnimatorBlink finds
-            // the layer whose only job is blinking, lets IT name the shape, strips it, and wires
-            // the native blink. Native blink stays off here so the two never overlap.
+            // An avatar that blinks itself gets the native blink, but
+            // the decision defers to the merge: the blinking layer
+            // names the shape, not a name match here. Native blink
+            // stays off here so the two never overlap.
             if (AnimatedBlinkShape(ctx, vrc, out _, out _))
             {
                 cvrAvatar.useBlinkBlendshapes = false;
@@ -770,7 +668,7 @@ namespace AvatarBridge
             }
             else
             {
-                // Half a pair and no combined shape — this can only ever close one eye.
+                // Half a pair and no combined shape closes one eye only.
                 string single = left ?? right;
                 cvrAvatar.blinkBlendshape[0] = single;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
@@ -783,21 +681,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>
-        /// Wires CVR's Eye Blink Settings from the shape the VRChat descriptor named.
-        ///
-        /// VRChat has exactly one eyelid slot; ChilloutVR has two — Left Blink and Right Blink —
-        /// plus a mode saying how to read them. So the descriptor can only ever describe half of
-        /// what CVR wants, and what it names says little about what the mesh actually offers:
-        /// authors point that single slot at one half of a pair ("vrc.blink_left") or at a
-        /// both-eyes shape, in both cases because VRChat gives them no other choice.
-        ///
-        /// A separate L/R pair is therefore preferred whenever the mesh has one, whatever the
-        /// descriptor named — CVR can drive the eyes independently, which is strictly more than
-        /// the single slot could express. The mode is always set explicitly, because inheriting
-        /// the CCK's default of Separate while filling only slot 0 closes one eye and nothing
-        /// says why.
-        /// </summary>
         static void WireDescriptorBlink(BridgeContext ctx, CVRAvatar cvrAvatar, string blinkShape, Mesh eyelidMesh)
         {
             cvrAvatar.useBlinkBlendshapes = true;

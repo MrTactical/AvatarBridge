@@ -9,20 +9,18 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Everything Unity will say about why ChilloutVR's native contact components can or can't be
-    /// authored, in one menu click and without touching the project.
-    ///
-    /// Exists because four separate explanations for this failure have now been wrong, each
-    /// plausible enough to ship, and because diagnosing it by conversion rewrites a folder of
-    /// assets to answer a single question. Reasoning from symptoms has a poor record here, so this
-    /// prints facts and leaves the reasoning until afterwards.
-    ///
-    /// The state to explain: the script assets exist and resolve to the right classes with the
-    /// right source, the types load from Assembly-CSharp with no duplicate or stale definition,
-    /// and yet a live component gets a MonoScript with no asset path and no source text — which is
-    /// what makes the CCK report a broken script reference and ChilloutVR report a missing one.
-    /// </summary>
+    // Everything Unity will say about why ChilloutVR's native contact components can or can't be
+    // authored, in one menu click and without touching the project.
+    //
+    // Exists because four separate explanations for this failure have now been wrong, each
+    // plausible enough to ship, and because diagnosing it by conversion rewrites a folder of
+    // assets to answer a single question. Reasoning from symptoms has a poor record here, so this
+    // prints facts and leaves the reasoning until afterwards.
+    //
+    // The state to explain: the script assets exist and resolve to the right classes with the
+    // right source, the types load from Assembly-CSharp with no duplicate or stale definition,
+    // and yet a live component gets a MonoScript with no asset path and no source text; which is
+    // what makes the CCK report a broken script reference and ChilloutVR report a missing one.
     public static class ContactDiagnostics
     {
         const string Menu = "Tools/Avatar Bridge/Diagnose native contacts";
@@ -217,7 +215,7 @@ namespace AvatarBridge
                 finally { UnityEngine.Object.DestroyImmediate(probe); }
             }
 
-            // Is the Type the script asset reports the same object reflection handed us? If they
+            // Is the Type the script asset reports the same object reflection returned? If they
             // differ, two definitions are live and only one has a script behind it.
             var assetScript = AssetDatabase.LoadAssetAtPath<MonoScript>(RuntimeDir + "/ContactReceiver.cs");
             var assetType = assetScript != null ? assetScript.GetClass() : null;

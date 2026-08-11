@@ -10,72 +10,51 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>What a piece of advice is asking of the reader.</summary>
+    // What a piece of advice is asking of the reader.
     public enum AdviceKind
     {
-        /// <summary>A setting whose value is wrong for this avatar, with the fix attached.</summary>
         Change,
-        /// <summary>Already right for this avatar. Worth saying so — silence reads as "not checked".</summary>
         Confirm,
-        /// <summary>Nothing on this avatar for the setting to act on, whichever way it is set.</summary>
         Inert,
-        /// <summary>
-        /// A judgement the analysis cannot make, reported with the evidence so the reader can.
-        /// These are the manual options: an avatar's toe physics are either deliberate or an
-        /// oversight and nothing in the file says which.
-        /// </summary>
         Manual,
-        /// <summary>The setting cannot do what it says here — a missing package, usually.</summary>
         Blocked,
     }
 
-    /// <summary>One finding about one setting.</summary>
+    // One finding about one setting.
     public sealed class Advice
     {
         public AdviceKind Kind;
-        /// <summary>The window's label for the setting, verbatim, so the two can be matched up.</summary>
         public string Setting;
-        /// <summary>What was measured, and what it means for the conversion.</summary>
         public string Finding;
-        /// <summary>Applies the recommendation. Null when there is nothing to change.</summary>
         public Action<BridgeSettings> Apply;
 
-        /// <summary>
-        /// What the finding is about, so the window can select it in the Hierarchy or Project.
-        ///
-        /// "3 chains run through toe bones" is a number until you can see WHICH three. Counting
-        /// something and then leaving the reader to find it by hand is half a finding — and on an
-        /// avatar with two hundred objects, the half that was actually hard.
-        /// </summary>
         public UnityEngine.Object[] Targets;
     }
 
-    /// <summary>
-    /// Reads an avatar and says which settings its own contents decide.
-    ///
-    /// The point is a division of labour, not cleverness. Most of the options in this window
-    /// have a right answer that the avatar itself gives away — an avatar with no PhysBones does
-    /// not need a physics target, one whose face mesh carries fifty Unified Expressions shapes
-    /// wants ChilloutVR's native face tracking, one whose shaders never declare stereo will lose
-    /// an eye in VR. Those are measurements, and asking a user to make them by reading tooltips
-    /// is asking them to do arithmetic the tool can do. What is left over is genuinely theirs:
-    /// whether the toe physics were deliberate, whether a rigid prop is rigid on purpose,
-    /// whether to accept a patched shader that compiles but has not been looked at in VR.
-    ///
-    /// Two rules this must keep:
-    ///
-    /// Every check asks the CONVERTER'S question, through the converter's own code — hence
-    /// FaceTrackingConverter.DetectShapes, ShaderSpiPatcher.DeclaresStereo,
-    /// SystemStripper.AvatarUsesGogo and ConstraintConverter.VrcConstraintTypeNames being
-    /// reachable from here. A second opinion assembled out of this file's own guesses would
-    /// recommend a box and then convert as if it had not been ticked, which is worse than
-    /// saying nothing.
-    ///
-    /// And it reads the avatar AS IT SITS IN THE SCENE. VRCFury and Modular Avatar add most of
-    /// their content during the bake, so on those avatars every count here is a floor and the
-    /// analysis says so out loud rather than quietly recommending "no physics" to someone whose
-    /// baked outfit brings twenty PhysBones.
-    /// </summary>
+    // Reads an avatar and says which settings its own contents decide.
+    //
+    // The point is a division of labour, not cleverness. Most of the options in this window
+    // have a right answer that the avatar itself gives away; an avatar with no PhysBones does
+    // not need a physics target, one whose face mesh carries fifty Unified Expressions shapes
+    // wants ChilloutVR's native face tracking, one whose shaders never declare stereo will lose
+    // an eye in VR. Those are measurements, and asking a user to make them by reading tooltips
+    // is asking them to do arithmetic the tool can do. What is left over is genuinely theirs:
+    // whether the toe physics were deliberate, whether a rigid prop is rigid on purpose,
+    // whether to accept a patched shader that compiles but has not been looked at in VR.
+    //
+    // Two rules this must keep:
+    //
+    // Every check asks the CONVERTER'S question, through the converter's own code; hence
+    // FaceTrackingConverter.DetectShapes, ShaderSpiPatcher.DeclaresStereo,
+    // SystemStripper.AvatarUsesGogo and ConstraintConverter.VrcConstraintTypeNames being
+    // reachable from here. A second opinion assembled out of this file's own guesses would
+    // recommend a box and then convert as if it had not been ticked, which is worse than
+    // saying nothing.
+    //
+    // And it reads the avatar AS IT SITS IN THE SCENE. VRCFury and Modular Avatar add most of
+    // their content during the bake, so on those avatars every count here is a floor and the
+    // analysis says so out loud rather than quietly recommending "no physics" to someone whose
+    // baked outfit brings twenty PhysBones.
     public static class AvatarAdvisor
     {
         public static List<Advice> Analyse(VRCAvatarDescriptor descriptor, BridgeSettings settings)
@@ -115,11 +94,6 @@ namespace AvatarBridge
             return advice;
         }
 
-        /// <summary>
-        /// One failed check must not cost the reader the other five. A check that throws is
-        /// reported as a check that threw — an analysis that silently drops a setting is how
-        /// someone ends up believing their avatar has no face tracking.
-        /// </summary>
         static void Safe(List<Advice> advice, string what, Action check)
         {
             try
@@ -149,7 +123,7 @@ namespace AvatarBridge
             {
                 // Deliberately NOT recommending "None" on a baker's avatar. The commonest shape
                 // in the corpus is a base body with no PhysBones of its own whose hair and
-                // clothing — every chain it has — arrive during the bake.
+                // clothing; every chain it has; arrive during the bake.
                 advice.Add(new Advice
                 {
                     Kind = baked ? AdviceKind.Manual : AdviceKind.Change,
@@ -226,11 +200,6 @@ namespace AvatarBridge
             Toes(advice, root, physBones, settings);
         }
 
-        /// <summary>
-        /// Toe chains, counted through PhysBoneChainData's own exclusion rule rather than a
-        /// name test written here — the whole point is that the number shown is the number the
-        /// conversion will skip.
-        /// </summary>
         static void Toes(List<Advice> advice, GameObject root, VRCPhysBone[] physBones, BridgeSettings settings)
         {
             if (settings.physicsTarget == PhysicsTarget.None || settings.convertToePhysBones)
@@ -377,7 +346,7 @@ namespace AvatarBridge
                               "Base, Additive and Action must all be ticked or the avatar has no " +
                               "locomotion at all. Poses will not lock movement and the viewpoint stays " +
                               "at standing height in floor poses — neither has an equivalent here.",
-                    // Puts the way back one press away. Keeping GoGo stays a choice — this is a
+                    // Puts the way back one press away. Keeping GoGo stays a choice; this is a
                     // Manual, so the apply-everything button still leaves it alone.
                     Apply = s => s.stripGogoLoco = true,
                 });
@@ -388,7 +357,7 @@ namespace AvatarBridge
             // Action and Additive are reported but never RECOMMENDED, because neither is a clear
             // win: Action takes full body control and its emote triggers have no ChilloutVR
             // equivalent, so states can be unreachable, and a misfire is very visible. Saying
-            // nothing was the worse failure though — an avatar with a custom Action controller
+            // nothing was the worse failure though; an avatar with a custom Action controller
             // sitting there unmentioned reads as "checked, nothing here", which is how a copter
             // avatar's whole Action layer went unnoticed.
             var actionLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Action);
@@ -513,11 +482,6 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------------- components ----
 
-        /// <summary>
-        /// The component settings, as one line rather than four. Each of them is on by default
-        /// and correct either way; all the reader wants to know is whether this avatar has
-        /// anything for them to do, and four rows saying "nothing here" reads like four problems.
-        /// </summary>
         static void Components(List<Advice> advice, GameObject root, bool baked)
         {
             var present = new List<string>();
@@ -601,7 +565,6 @@ namespace AvatarBridge
                 .Select(p => p.name);
         }
 
-        /// <summary>The window's spelling of a physics target, so advice and dropdown agree.</summary>
         static string Nice(PhysicsTarget target) =>
             target == PhysicsTarget.MagicaCloth2 ? "MagicaCloth2"
             : target == PhysicsTarget.DynamicBone ? "DynamicBone"

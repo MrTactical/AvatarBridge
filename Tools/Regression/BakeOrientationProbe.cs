@@ -6,20 +6,18 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Probe: does flipping a clip's "Bake Into Pose" orientation flag actually move the turn out
-    /// of root motion and into the bones?
-    ///
-    /// The theory to test — height already works this way. Tachy's clip carries
-    /// LoopBlendPositionY = 1 (bake Y into pose), which is why the descent survives in game where
-    /// root motion is discarded. Its orientation twin, LoopBlendOrientation, is unset, so the turn
-    /// stayed root motion and died. If setting it moves the rotation into the hips, the fix is a
-    /// clip-settings change rather than curve surgery.
-    ///
-    /// Measured, not assumed: samples the clip on the real avatar and reports the HIPS' rotation
-    /// relative to the root. If the turn is in the pose, hip-vs-root angle sweeps ~90 degrees. If
-    /// it is still root motion, that angle stays flat.
-    /// </summary>
+    // Probe: does flipping a clip's "Bake Into Pose" orientation flag actually move the turn out
+    // of root motion and into the bones?
+    //
+    // The theory to test; height already works this way. Tachy's clip carries
+    // LoopBlendPositionY = 1 (bake Y into pose), which is why the descent survives in game where
+    // root motion is discarded. Its orientation twin, LoopBlendOrientation, is unset, so the turn
+    // stayed root motion and died. If setting it moves the rotation into the hips, the fix is a
+    // clip-settings change rather than curve surgery.
+    //
+    // Measured, not assumed: samples the clip on the real avatar and reports the HIPS' rotation
+    // relative to the root. If the turn is in the pose, hip-vs-root angle sweeps ~90 degrees. If
+    // it is still root motion, that angle stays flat.
     public static class BakeOrientationProbe
     {
         [MenuItem("Tools/AvatarBridge Dev/Probe — bake orientation into pose")]

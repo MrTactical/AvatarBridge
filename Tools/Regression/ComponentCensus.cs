@@ -8,27 +8,25 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Census of every VRC-namespace component actually present on the corpus avatars — the
-    /// component-level companion to AnimatedVrcPropertyScan's curve-level one.
-    ///
-    /// The parity deep dive found seven SDK component types no converter file references
-    /// (VRCStation, VRCAnimatorPlayAudio, VRCAnimatorTemporaryPoseSpace, VRCImpostorSettings,
-    /// VRCImpostorEnvironment, VRCRaycast, VRCPhysBoneRoot). All are removed by the final
-    /// delete-VRC-components sweep, so nothing breaks — but whether that silently costs a
-    /// feature depends on whether real avatars carry them, which is what this measures.
-    ///
-    /// Opens every scene under Assets (excluding output), tallies component types under every
-    /// root, and never saves anything.
-    ///
-    /// COUNTS HERE ARE AUTHORED, PRE-BAKE, and behaviour counts were once badly wrong: reading
-    /// only Animator slots missed the descriptor's own layer lists, where a VRChat avatar actually
-    /// keeps Base/Additive/Gesture/Action/FX. That reported VRCAnimatorTemporaryPoseSpace as 2 in
-    /// the wild while a single GoGo-based avatar's conversion report found over a hundred, and the
-    /// parity matrix used the small number to judge the feature not worth building. Fixed — but
-    /// the lesson generalises: when an instrument and the reports disagree, THE REPORTS WIN. They
-    /// count what a pass actually met; this counts what a scene appears to hold.
-    /// </summary>
+    // Census of every VRC-namespace component actually present on the corpus avatars; the
+    // component-level companion to AnimatedVrcPropertyScan's curve-level one.
+    //
+    // The parity deep dive found seven SDK component types no converter file references
+    // (VRCStation, VRCAnimatorPlayAudio, VRCAnimatorTemporaryPoseSpace, VRCImpostorSettings,
+    // VRCImpostorEnvironment, VRCRaycast, VRCPhysBoneRoot). All are removed by the final
+    // delete-VRC-components sweep, so nothing breaks; but whether that silently costs a
+    // feature depends on whether real avatars carry them, which is what this measures.
+    //
+    // Opens every scene under Assets (excluding output), tallies component types under every
+    // root, and never saves anything.
+    //
+    // COUNTS HERE ARE AUTHORED, PRE-BAKE, and behaviour counts were once badly wrong: reading
+    // only Animator slots missed the descriptor's own layer lists, where a VRChat avatar actually
+    // keeps Base/Additive/Gesture/Action/FX. That reported VRCAnimatorTemporaryPoseSpace as 2 in
+    // the wild while a single GoGo-based avatar's conversion report found over a hundred, and the
+    // parity matrix used the small number to judge the feature not worth building. Fixed; but
+    // the lesson generalises: when an instrument and the reports disagree, THE REPORTS WIN. They
+    // count what a pass actually met; this counts what a scene appears to hold.
     public static class ComponentCensus
     {
         [MenuItem("Tools/AvatarBridge Dev/Scan — VRC components on corpus avatars")]
@@ -104,8 +102,8 @@ namespace AvatarBridge.Regression
                     // the whole question, and getting it wrong is why this instrument lied.
                     //
                     // It used to read only animator.runtimeAnimatorController. A VRChat avatar
-                    // barely uses that: its five real layers — Base, Additive, Gesture, Action, FX
-                    // — hang off the DESCRIPTOR's baseAnimationLayers, and the sitting/TPose/IKPose
+                    // barely uses that: its five real layers. Base, Additive, Gesture, Action, FX
+                    //; hang off the DESCRIPTOR's baseAnimationLayers, and the sitting/TPose/IKPose
                     // ones off specialAnimationLayers. The Animator slot is often empty or holds
                     // one of them at most. So the census reported VRCAnimatorTemporaryPoseSpace as
                     // 2 occurrences in the wild while conversion reports were finding 100+ on a
@@ -154,17 +152,6 @@ namespace AvatarBridge.Regression
             }
         }
 
-        /// <summary>
-        /// Every animator controller an avatar under this root actually uses: the Animator slots
-        /// AND the descriptor's own layer lists, which is where a VRChat avatar really keeps them.
-        ///
-        /// These are the AUTHORED controllers, before VRCFury or Modular Avatar bake. That is the
-        /// right question for "what do avatar authors put on avatars", which is what this census
-        /// answers. It is NOT the same as what conversion sees — a bake generates layers and
-        /// behaviours of its own — and the honest source for post-bake numbers is the conversion
-        /// reports, which count what each pass actually met. Where the two disagree, the reports
-        /// win; see docs/ParityMatrix.md.
-        /// </summary>
         static IEnumerable<RuntimeAnimatorController> ControllersOn(GameObject root)
         {
             foreach (var animator in root.GetComponentsInChildren<Animator>(true))

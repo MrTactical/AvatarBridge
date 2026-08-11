@@ -10,50 +10,39 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Optional avatar scaler. Injects the bundled **Linear Smoothing Layer** (constant-speed
-    /// float smoothing so size changes glide instead of snapping — JustSleightly's
-    /// ControllerTemplates blend-tree math), then GENERATES a **Size** layer calibrated to this
-    /// avatar.
-    ///
-    /// The menu control is a **Slider**, 0..1, mapped GEOMETRICALLY onto 0.25×–4× of the
-    /// avatar's measured height, so scale 1× sits at exactly mid-slider (0.25 × 16^0.5 = 1).
-    ///
-    /// It used to be an InputSingle reading in metres — a nicer unit, and unusable: the CCK's
-    /// InputSingle carries only a defaultValue, no min/max/step, and ChilloutVR's quick menu
-    /// renders it as a raw numeric keypad. A tester typing on it got 9999 and 0000, and the
-    /// constant-speed smoothing then glided toward the garbage so slowly the avatar looked
-    /// frozen. A slider drags normally on the quick menu.
-    ///
-    /// Geometric rather than linear because scale is multiplicative: on a linear 0.25×–4× the
-    /// whole useful zone around 1× collapses into a sliver of travel, while geometric gives
-    /// every doubling the same slider distance. The blend tree approximates the exponential
-    /// with a knot at each √2 step (9 children), which keeps the error between knots under two
-    /// percent — invisible next to the smoothing.
-    /// </summary>
+    // Optional avatar scaler. Injects the bundled **Linear Smoothing Layer** (constant-speed
+    // float smoothing so size changes glide instead of snapping. JustSleightly's
+    // ControllerTemplates blend-tree math), then GENERATES a **Size** layer calibrated to this
+    // avatar.
+    //
+    // The menu control is a **Slider**, 0..1, mapped GEOMETRICALLY onto 0.25×-4× of the
+    // avatar's measured height, so scale 1× sits at exactly mid-slider (0.25 × 16^0.5 = 1).
+    //
+    // It used to be an InputSingle reading in metres; a nicer unit, and unusable: the CCK's
+    // InputSingle carries only a defaultValue, no min/max/step, and ChilloutVR's quick menu
+    // renders it as a raw numeric keypad. A tester typing on it got 9999 and 0000, and the
+    // constant-speed smoothing then glided toward the garbage so slowly the avatar looked
+    // frozen. A slider drags normally on the quick menu.
+    //
+    // Geometric rather than linear because scale is multiplicative: on a linear 0.25×-4× the
+    // whole useful zone around 1× collapses into a sliver of travel, while geometric gives
+    // every doubling the same slider distance. The blend tree approximates the exponential
+    // with a knot at each √2 step (9 children), which keeps the error between knots under two
+    // percent; invisible next to the smoothing.
     public static class AvatarScalerInjector
     {
         const string Category = "Avatar scaler";
         const string ControllerGuid = "6d4ab2eb671c40f69f40f9d3f7e70cf2";
         const string HeightMenu = "Height";
 
-        /// <summary>
-        /// The menu-driven parameter. This was "Input" (the smoothing template's own name) until a
-        /// re-uploaded avatar came back with its height slider reading 250%: ChilloutVR saves AAS
-        /// values to a per-avatar profile BY PARAMETER NAME, and the old metres-based scaler had
-        /// also called its parameter "Input" — so the profile resurrected 2.5 (metres) into the
-        /// new 0..1 slider. A version-distinct name means old profiles simply don't match.
-        /// </summary>
         const string HeightParam = "Height";
         const string TemplateParam = "Input";
         const string SmoothingLayer = "Linear Smoothing Layer";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;
 
-        /// <summary>Slider ends, as multiples of the measured height. 16 = 0.25 × 16^1.</summary>
         const float ScaleAtZero = 0.25f;
         const float ScaleRange = 16f;
-        /// <summary>The slider position that is exactly 1× — dead centre, by construction.</summary>
         const float DefaultSlider = 0.5f;
 
         public static void Inject(AnimatorController master, BridgeContext ctx)
@@ -87,7 +76,7 @@ namespace AvatarBridge
                 var clone = copier.CloneLayer(srcLayer);
                 clone.name = UniqueName(srcLayer.name, existing);
                 clone.defaultWeight = srcLayer.defaultWeight <= 0f ? 1f : srcLayer.defaultWeight;
-                // The bundled template still says "Input" internally; our parameter is renamed
+                // The bundled template still says "Input" internally; the parameter is renamed
                 // (see HeightParam), so every reference in the clone has to follow.
                 RenameParameterReferences(clone.stateMachine, TemplateParam, HeightParam);
                 layers.Add(clone);
@@ -105,7 +94,7 @@ namespace AvatarBridge
             var collisions = new List<string>();
             foreach (var p in source.parameters)
             {
-                // The template's menu parameter is called "Input"; ours is renamed — see the
+                // The template's menu parameter is called "Input"; ours is renamed; see the
                 // HeightParam comment for the 250%-slider story that forced it.
                 string targetName = p.name == TemplateParam ? HeightParam : p.name;
                 if (have.Add(targetName))
@@ -120,7 +109,7 @@ namespace AvatarBridge
                 }
                 else if (targetName == HeightParam || targetName == "Output")
                 {
-                    // Already present — retarget its default too.
+                    // Already present; retarget its default too.
                     var existingParam = parameters.First(x => x.name == targetName);
                     existingParam.defaultFloat = DefaultSlider;
                 }
@@ -153,9 +142,6 @@ namespace AvatarBridge
                 note);
         }
 
-        /// <summary>Avatar eye height in metres (the CVR/VRChat "height"), from the viewpoint.
-        /// Also the bounds normalizer's size reference, so "how big is this avatar" has one
-        /// answer everywhere.</summary>
         internal static float MeasureHeight(BridgeContext ctx)
         {
             if (ctx.CvrAvatar != null)
@@ -170,13 +156,6 @@ namespace AvatarBridge
             return FallbackHeight;
         }
 
-        /// <summary>
-        /// 1D blend tree on `Output` (the smoothed 0..1 slider) driving the root's localScale
-        /// along scale(s) = ScaleAtZero × ScaleRange^s — the geometric curve. A 1D tree lerps
-        /// linearly between neighbouring children, so the exponential is approximated with a
-        /// knot every √2 step: nine children from 0.25× to 4×, worst-case error between knots
-        /// about 1.5%, which the smoothing layer hides entirely.
-        /// </summary>
         static AnimatorControllerLayer BuildSizeLayer(Vector3 baseScale, float height)
         {
             var tree = new BlendTree
@@ -215,30 +194,6 @@ namespace AvatarBridge
             return clip;
         }
 
-        /// <summary>
-        /// CONSTRAINT OFFSETS ARE NOT HANDLED HERE — see <see cref="ConstraintScaleRelay"/>, which
-        /// runs as its own pass after the constraints have been converted.
-        ///
-        /// The history is worth keeping, because the obvious fix is the wrong one. A parent
-        /// constraint holds its target a fixed number of metres from its source and Unity never
-        /// scales that, so props drift off a shrinking avatar. 3.4.5 tried to correct it by writing
-        /// scaled copies of every offset into the nine generated scale clips. It made an avatar
-        /// render pure white in play mode and crashed the editor on scene reload; reverted in 3.4.6.
-        ///
-        /// Two things were wrong with it, and the second is the one to think about:
-        ///
-        ///   1. ORDER. The scaler runs inside AnimatorMerger (pass 65); ConstraintConverter runs
-        ///      at 67. So the constraints were read before VRC ones had been converted into Unity
-        ///      ones, and before AlignLocalSpaceRelays re-parents transforms — which changes the
-        ///      very paths being baked into the curves.
-        ///   2. The Size layer's state has Write Defaults ON and sits LAST, so it has the final
-        ///      say over everything. Widening what its clips animate widens what it asserts every
-        ///      frame, and that is not a small change to make blindly on a blend tree the whole
-        ///      avatar hangs off.
-        ///
-        /// 3.4.7 fixed it in the hierarchy instead: the offset becomes a real child of the source
-        /// bone, so scale reaches it the ordinary way and no clip, layer or curve is involved.
-        /// </summary>
 
         static string UniqueName(string name, HashSet<string> taken)
         {
@@ -251,12 +206,6 @@ namespace AvatarBridge
             return candidate;
         }
 
-        /// <summary>
-        /// Rewrites every reference to an animator parameter inside a (cloned) state machine:
-        /// blend tree parameters (1D/2D/direct), transition conditions, and the per-state
-        /// time/speed/mirror/cycle-offset bindings. Only ever called on clones, never on the
-        /// bundled template asset.
-        /// </summary>
         static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
         {
             if (machine == null)
@@ -350,7 +299,7 @@ namespace AvatarBridge
                 return; // already exposed
             }
             // A Slider, not an InputSingle: the quick menu renders InputSingle as an unclamped
-            // numeric keypad (the CCK type carries only a defaultValue — no min, max or step),
+            // numeric keypad (the CCK type carries only a defaultValue; no min, max or step),
             // which in practice meant typing 9999 and watching nothing happen. Sliders drag.
             settings.Add(new CVRAdvancedSettingsEntry
             {

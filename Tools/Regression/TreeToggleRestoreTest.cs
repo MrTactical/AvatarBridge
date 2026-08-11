@@ -6,25 +6,23 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for the blend-tree half of the off-state restore.
-    ///
-    /// VRCFury rewrites toggle LAYERS into 1D blend trees nested under one Direct tree, so the
-    /// toggle's off half stops being an empty animator state and becomes an empty tree CHILD.
-    /// FillEmptyStatesWithRestoreClips only ever read state.motion, so those toggles switched on
-    /// and never off — reported in the wild on an avatar whose whole wardrobe was one-way.
-    ///
-    /// The gates being pinned here are the ones that decide whether this is a repair or a new bug:
-    ///
-    ///   - only 1D trees, because they NORMALISE — a restore in a Direct child would merely add
-    ///     itself to whatever else the parent is summing;
-    ///   - only two children with exactly one empty, the tree spelling of VRChat's toggle idiom;
-    ///   - a property animated by TWO toggles in one layer is restored by NEITHER, because a
-    ///     Direct parent sums its children rather than letting the top one win: the toggle
-    ///     switched ON would write 0, the sibling's restore would write 1, and the sum reads on;
-    ///   - Animator-type bindings are never snapshotted — Fury's AAP trees wear this exact shape
-    ///     and pinning one would freeze a value the math exists to compute.
-    /// </summary>
+    // Known-answer test for the blend-tree half of the off-state restore.
+    //
+    // VRCFury rewrites toggle LAYERS into 1D blend trees nested under one Direct tree, so the
+    // toggle's off half stops being an empty animator state and becomes an empty tree CHILD.
+    // FillEmptyStatesWithRestoreClips only ever read state.motion, so those toggles switched on
+    // and never off; reported in the wild on an avatar whose whole wardrobe was one-way.
+    //
+    // The gates being pinned here are the ones that decide whether this is a repair or a new bug:
+    //
+    //   - only 1D trees, because they NORMALISE; a restore in a Direct child would merely add
+    //     itself to whatever else the parent is summing;
+    //   - only two children with exactly one empty, the tree spelling of VRChat's toggle idiom;
+    //   - a property animated by TWO toggles in one layer is restored by NEITHER, because a
+    //     Direct parent sums its children rather than letting the top one win: the toggle
+    //     switched ON would write 0, the sibling's restore would write 1, and the sum reads on;
+    //   - Animator-type bindings are never snapshotted. Fury's AAP trees wear this exact shape
+    //     and pinning one would freeze a value the math exists to compute.
     public static class TreeToggleRestoreTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — blend-tree toggle restore")]

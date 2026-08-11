@@ -6,44 +6,20 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Takes the humanoid Jaw mapping off a bone that is not a jaw, and rebuilds the rig without
-    /// it.
-    ///
-    /// A mis-mapped Jaw is not cosmetic in ChilloutVR. The jaw bone is what the CCK's Auto button
-    /// places Voice Position on, and it is what jaw-bone viseme mode animates while you speak — so
-    /// an avatar whose Jaw points at a hair strand or a mask talks out of its hair and waggles it
-    /// with every syllable. Both avatars in the corpus that map a Jaw at all map it wrongly
-    /// ("Mask_L" and "Hair.002"), which is the whole reason this exists: it is not a rare
-    /// authoring slip, it is what happens when someone clicks Auto-Map in Unity's avatar
-    /// configurator and does not check the face.
-    ///
-    /// THE REBUILD, and the thing that blocked this for a version:
-    ///
-    /// The obstacle was this pass. skeleton[0] records the MODEL PREFAB's root as it was at import
-    /// — "Gen5Base(Clone)" under a live root called "Cobra" — and that is not staleness to repair,
-    /// it is what AvatarBuilder.BuildHumanAvatar expects to be handed back. An earlier revision
-    /// read the mismatch as the fault, renamed the entry to the live root, and turned a rebuild
-    /// that worked into one Unity refused. Every "Unity refused the rebuild" line this pass printed
-    /// was reporting damage it had done itself, and the console message it quoted — "Parent for
-    /// 'Armature' differs" — was the consequence, not the cause.
-    ///
-    /// Settled by building six variants against a real avatar rather than by reasoning about the
-    /// message: the unchanged description builds, dropping the Jaw builds, renaming the root
-    /// refuses, an empty skeleton refuses, and a skeleton regenerated from the live hierarchy
-    /// builds. So the Jaw was never the obstacle, and the rename was the whole of it.
-    ///
-    /// The rig's own skeleton is therefore passed through untouched, with a regenerated one as a
-    /// fallback for descriptions that genuinely have diverged from the hierarchy. That fallback
-    /// carries the pose the avatar is standing in rather than the T-pose it was configured in, so
-    /// it is second and it says so in the report.
-    /// </summary>
+    // Takes the humanoid Jaw mapping off a bone that is not a jaw and
+    // rebuilds the rig without it. A mis-mapped Jaw talks out of the
+    // wrong object and waggles it; Unity's Auto-Map assigns one to
+    // whatever is nearest when it cannot read a face.
+    //
+    // skeleton[0] records the model prefab's root as imported, and
+    // AvatarBuilder wants it back exactly as recorded; renaming it to
+    // the live root makes the rebuild fail. The rig's skeleton passes
+    // through untouched, with a live-hierarchy regeneration as the
+    // fallback (that one carries the current pose, so it is second).
     public static class JawUnmapper
     {
         const string Category = "Humanoid rig";
 
-        /// <summary>Names a real jaw goes by. Anything else mapped to Jaw is the accident this
-        /// pass exists for — checked as whole words so "Hair.002" cannot match on "ai".</summary>
         static readonly string[] JawWords = { "jaw", "chin", "mandible", "mouth", "kuchi", "ago" };
 
         public static void Run(BridgeContext ctx)
@@ -70,11 +46,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // What a wrong Jaw actually costs, stated once so both messages below can be honest
-            // about it. NOT the voice position: that is measured from the viseme mesh's own
-            // vertices, so it lands on the mouth whatever the rig claims. The real exposure is
-            // jaw-bone lip sync, which drives the Jaw Close muscle off voice loudness and would
-            // waggle whatever this bone happens to be — and only avatars that use that mode.
+            // What a wrong Jaw actually costs. Not the voice position;
+            // that is measured from the viseme mesh. The exposure is
+            // jaw-bone lip sync, and only avatars using that mode.
             bool jawLipSync = ctx.CvrAvatar != null
                 && ctx.CvrAvatar.visemeMode == CVRAvatar.CVRAvatarVisemeMode.JawBone;
             string cost = jawLipSync
@@ -95,16 +69,11 @@ namespace AvatarBridge
                 return;   // the mapping is not in the description; nothing this pass can do
             }
 
-            // The baked skeleton is passed THROUGH, stale-looking root name and all.
+            // The baked skeleton passes through, stale-looking root
+            // name and all. That name is not stale: Unity wants it
+            // exactly as recorded, and renaming it makes the rebuild fail.
             //
-            // That name is not stale. skeleton[0] records the model prefab's root as it was at
-            // import — "Gen5Base(Clone)" under a live root called "Cobra" — and Unity wants it
-            // exactly as recorded. Renaming it to match the live object is what made the rebuild
-            // fail, which is worth stating plainly because this pass used to do that deliberately,
-            // and every "Unity refused the rebuild" line it printed was describing damage the
-            // workaround was doing.
-            //
-            // Measured rather than reasoned. Six variants were built against a real avatar: the
+            // Measured rather than reasoned. Six variants were built: the
             // unchanged description builds, dropping the Jaw builds, renaming the root refuses,
             // and a skeleton regenerated from the live hierarchy builds. So the Jaw was never the
             // obstacle and the rename was the whole of it.
@@ -129,12 +98,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // Detached first. With the old rig still assigned, BuildHumanAvatar kept validating
-            // against IT rather than against the description handed in: the skeleton root passed
-            // in read "Sally_PC (ChilloutVR)" — the live root, correct — and Unity still refused,
-            // naming "Sally(Clone)", a string that by then existed nowhere except inside the
-            // avatar asset already on the animator. The description is the argument; the assigned
-            // avatar should not get a vote.
+            // Detached first. With the old rig still assigned,
+            // BuildHumanAvatar validates against it rather than the
+            // description handed in. The description is the argument;
+            // the assigned avatar should not get a vote.
             var previous = animator.avatar;
             animator.avatar = null;
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
@@ -145,11 +112,9 @@ namespace AvatarBridge
             // the avatar in front of it has no stale entries to object to. Measured as building on
             // a real avatar, so it is a real fallback rather than a hopeful retry.
             //
-            // Second, not first: the baked skeleton carries the T-POSE the rig was configured in,
-            // and this one carries whatever pose the avatar is standing in now. Identical for an
-            // avatar sitting at its bind pose, and a changed rest pose if it is not — worth having
-            // when the alternative is keeping a jaw mapped to a hair strand, not worth taking
-            // when the baked skeleton was going to work anyway.
+            // Second, not first. The baked skeleton carries the
+            // configured T-pose; this one carries the current pose.
+            // Worth having, not worth taking when the baked one works.
             bool usedLiveSkeleton = false;
             if (rebuilt == null || !rebuilt.isValid)
             {
@@ -191,22 +156,14 @@ namespace AvatarBridge
             // Saved, because an Avatar built in memory does not survive the scene: the animator
             // would come back with a null rig and the avatar would stop being humanoid at all.
             //
-            // The name comes from "previous", not from animator.avatar, which is NULL here — it
-            // was cleared before the build so the old rig could not answer for the description.
-            // That line read animator.avatar.name from the day this pass was written and never
-            // once threw, because the build never succeeded: every avatar took the early return
-            // above. Making the rebuild work ran the success path for the first time, and it
-            // failed instantly, taking the whole conversion down with it.
+            // The name comes from "previous"; animator.avatar is null
+            // here, cleared before the build.
             rebuilt.name = previous.name;
             string safe = new string(rebuilt.name.Select(c =>
                 System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            // Claim, not GenerateUniqueAssetPath. "Unique" is the wrong question in the output
-            // folder: it compares against everything on disk, INCLUDING the last conversion's
-            // rig, so reconverting never reused the name — it parked "…_NoJaw 1.asset" beside
-            // it, then " 2", one rig per run, none of them referenced by anything. Every other
-            // write site moved off it when OutputAssetPaths was written; this one was missed
-            // because the pass had never once reached its success path, so nobody had ever seen
-            // it write a second file.
+            // Claim, not GenerateUniqueAssetPath. Unique-against-disk
+            // includes the last conversion's rig, and reconverting
+            // would park numbered copies forever.
             string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}_NoJaw.asset");
             AssetDatabase.CreateAsset(rebuilt, assetPath);
             int orphans = DeleteStaleRigs(ctx.OutputDir, assetPath);
@@ -232,15 +189,6 @@ namespace AvatarBridge
                     : ""));
         }
 
-        /// <summary>
-        /// Removes rigs this pass left in the output folder on earlier runs.
-        ///
-        /// Claiming the un-numbered name stops NEW copies accumulating, but it cannot reach the
-        /// ones already on disk — those keep the numbered names forever, referenced by nothing,
-        /// and the folder never shrinks back. Same sweep the restore clips get: match only the
-        /// shapes this pass has ever written ("<name>_NoJaw" and "<name>_NoJaw 4"), and keep the
-        /// one just written.
-        /// </summary>
         static int DeleteStaleRigs(string dir, string keep)
         {
             if (!AssetDatabase.IsValidFolder(dir))
@@ -274,9 +222,6 @@ namespace AvatarBridge
             return removed;
         }
 
-        /// <summary>The first mapped bone name that exists more than once under the root, or null.
-        /// Unity resolves humanoid bones by NAME, so a second transform sharing one makes the rig
-        /// unbuildable — "PhysColliders/Armature" beside the real "Armature" is the shape of it.</summary>
         static string AmbiguousBoneNames(Transform root, HumanDescription description)
         {
             var wanted = new System.Collections.Generic.HashSet<string>(

@@ -6,14 +6,12 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Samples a clip on the real converted avatar and reports how high the HIPS actually sit at
-    /// each point through it.
-    ///
-    /// Written because every indirect signal disagreed: the RootT.y curve varies by 87 cm, root
-    /// motion is enabled, and the clip's Y is set to Bake Into Pose — yet the tester sees no
-    /// descent. Curves and flags describe intent; this measures the outcome.
-    /// </summary>
+    // Samples a clip on the real converted avatar and reports how high the HIPS actually sit at
+    // each point through it.
+    //
+    // Written because every indirect signal disagreed: the RootT.y curve varies by 87 cm, root
+    // motion is enabled, and the clip's Y is set to Bake Into Pose; yet the tester sees no
+    // descent. Curves and flags describe intent; this measures the outcome.
     public static class PoseHeightSampler
     {
         [MenuItem("Tools/AvatarBridge Dev/Inspect — pose height through a clip")]

@@ -7,19 +7,17 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Census of every animated property that targets a component type conversion deletes or
-    /// replaces — VRC.* components, DynamicBone — across every AnimationClip in the project.
-    ///
-    /// This is the evidence base for the animated-property parity audit. The contact m_Enabled
-    /// gap (a toggle that switches a contact off in VRChat and silently does nothing converted)
-    /// sat unnoticed because nothing enumerated what avatars actually animate on the components
-    /// we remove. Constraints and PhysBones were each handled when a specific avatar broke;
-    /// this asks the question wholesale instead of waiting for the next tester.
-    ///
-    /// Static clips only: VRCFury generates more at bake time, so a zero here is necessary but
-    /// not sufficient. A non-zero here is a real avatar doing it in the wild.
-    /// </summary>
+    // Census of every animated property that targets a component type conversion deletes or
+    // replaces. VRC.* components, DynamicBone; across every AnimationClip in the project.
+    //
+    // This is the evidence base for the animated-property parity audit. The contact m_Enabled
+    // gap (a toggle that switches a contact off in VRChat and silently does nothing converted)
+    // sat unnoticed because nothing enumerated what avatars actually animate on the components
+    // removed here. Constraints and PhysBones were each handled when a specific avatar broke;
+    // this asks the question wholesale instead of waiting for the next tester.
+    //
+    // Static clips only: VRCFury generates more at bake time, so a zero here is necessary but
+    // not sufficient. A non-zero here is a real avatar doing it in the wild.
     public static class AnimatedVrcPropertyScan
     {
         [MenuItem("Tools/AvatarBridge Dev/Scan — animated VRC-component properties")]

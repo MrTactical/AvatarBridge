@@ -1,4 +1,4 @@
-// One-time cleanup for a project that has been converted in repeatedly — DEVELOPMENT ONLY,
+// One-time cleanup for a project that has been converted in repeatedly. DEVELOPMENT ONLY,
 // never shipped in the .unitypackage.
 //
 // Converting leaves the converted avatar in the scene and switches the source off. Save the
@@ -7,7 +7,7 @@
 // what "Missing (Runtime Animator Controller)" in the Inspector means, and this project had 29
 // of 48 controller references across its scenes already dangling that way.
 //
-// The regression harness resets this in memory on every run, which is right for a test — the
+// The regression harness resets this in memory on every run, which is right for a test; the
 // scene files must not change underneath it. This is the other half: a deliberate, one-off pass
 // that fixes the scenes on disk so manual inspection stops turning up week-old corpses.
 //
@@ -106,7 +106,7 @@ namespace AvatarBridge.Regression
                         }
 
                         // Only re-activate where a conversion is demonstrably why it was switched
-                        // off — i.e. this scene HAD a leftover. Turning every descriptor on
+                        // off; i.e. this scene HAD a leftover. Turning every descriptor on
                         // unconditionally would override deliberate choices in scenes holding
                         // several avatars, and that is the user's call, not ours.
                         foreach (var root in scene.GetRootGameObjects())
