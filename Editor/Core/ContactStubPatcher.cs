@@ -39,7 +39,7 @@ namespace AvatarBridge
         const string StubTypeName = "NAK.Contacts.ContactBase";
         const string MarkerInterface = "AvatarBridge.IGeneratedContactStub";
 
-        const string StubVersion = "7";
+        const string StubVersion = "8";
         const string VersionTag = "// AvatarBridge generated contact declaration, revision " + StubVersion;
 
         const string VerifiedCckVersion = "4.0.2";
@@ -278,8 +278,8 @@ namespace AvatarBridge
 // MonoBehaviour with a script asset on that basis, and without it the component has no usable
 // script reference at all.
 //
-// Field names, types, defaults and order are copied from the system author's own source:
-// https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts
+// Field names, types, defaults and order are read off the decompiled shipped client, which is
+// the only authority; the system author's public repository is a diverged work-in-progress.
 // Importing that repository's real NAK.Contacts folder replaces these automatically.
 ";
 

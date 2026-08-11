@@ -552,6 +552,22 @@ namespace AvatarBridge
                 : "Constant";
             SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
 
+            // The client overloads contactValue per receiver type; on an
+            // OnEnter receiver it is the minimum contact velocity. The
+            // declaration default is 1, and a receiver authored at 0.05
+            // becomes twenty times harder to trigger if it stands.
+            if (nativeType == "OnEnter")
+            {
+                SetMember(contact, "contactValue", receiver.minVelocity);
+                if (!Mathf.Approximately(receiver.paramValue, 1f))
+                {
+                    ctx.Report.Approximated(Category, PathOf(ctx, receiver.transform),
+                        $"OnEnter receiver \"{receiver.parameter}\" wrote {receiver.paramValue:0.###} in " +
+                        "VRChat; the native receiver always writes 1 for its one frame. Anything " +
+                        "conditioning on the exact value needs a look.");
+                }
+            }
+
             // A native contact must drive a local parameter. A synced
             // name has its default streamed back over the contact's
             // writes. Local, every client runs the contact and reaches

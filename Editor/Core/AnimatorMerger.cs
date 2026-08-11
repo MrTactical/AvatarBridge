@@ -1798,11 +1798,12 @@ namespace AvatarBridge
                     $"{ConvertedPlayAudio.Count} animator-played audio player(s) wired to ChilloutVR",
                     string.Join("; ", ConvertedPlayAudio.Take(6)) +
                     (ConvertedPlayAudio.Count > 6 ? "; …" : "") +
-                    ". VRChat plays these from a state behaviour ChilloutVR does not have, so " +
-                    "each AudioSource is set to Play On Awake and its enabled flag is animated " +
-                    "instead: entering the state switches the sound on, and every other state in " +
-                    "that layer switches it back off through the same restore machinery every " +
-                    "toggle uses. The sound plays for as long as the state plays.");
+                    ". VRChat plays these from a state behaviour ChilloutVR does not have. " +
+                    "Looping sounds get a Play On Awake source whose enabled flag the state " +
+                    "animates: entering switches the sound on, every other state in the layer " +
+                    "switches it back off. One-shots play through ChilloutVR's own " +
+                    "CVRAudioDriver instead: entering the state pulses the clip index, and the " +
+                    "sound plays to completion however quickly the state exits.");
             }
             if (ApproximatedPlayAudio.Count > 0)
             {
@@ -1889,11 +1890,12 @@ namespace AvatarBridge
             }
 
             string path = playAudio.SourcePath;
+            bool effectiveLoop = source.loop;
+            var clips = (playAudio.Clips ?? new AudioClip[0]).Where(c => c != null).Distinct().ToList();
             if (play)
             {
                 // Enum names, not values: NeverApply means the source keeps its own setting.
                 bool Apply(System.Enum setting) => setting.ToString() != "NeverApply";
-                var clips = (playAudio.Clips ?? new AudioClip[0]).Where(c => c != null).Distinct().ToList();
                 if (Apply(playAudio.ClipsApplySettings) && clips.Count > 0)
                 {
                     source.clip = clips[0];
@@ -1907,6 +1909,7 @@ namespace AvatarBridge
                 {
                     source.loop = playAudio.Loop;
                 }
+                effectiveLoop = source.loop;
                 if (Apply(playAudio.VolumeApplySettings))
                 {
                     source.volume = (playAudio.Volume.x + playAudio.Volume.y) * 0.5f;
@@ -1933,6 +1936,37 @@ namespace AvatarBridge
                 {
                     ApproximatedPlayAudio.Add($"{where}: exit actions dropped; the sound follows the state instead");
                 }
+            }
+
+            // A one-shot must play to completion, and an enable window
+            // on a momentary state cuts it to a click. The CCK's own
+            // CVRAudioDriver plays on an index change and lets the clip
+            // finish, so the state pulses the index instead: 0 on entry,
+            // back to -1 a frame later, rearmed for the next entry.
+            if (play && !effectiveLoop)
+            {
+                source.playOnAwake = false;
+                source.enabled = true;
+                var pulse = host.GetComponent<CVRAudioDriver>();
+                if (pulse == null)
+                {
+                    pulse = host.gameObject.AddComponent<CVRAudioDriver>();
+                }
+                pulse.audioSource = source;
+                if (clips.Count > 0 && (pulse.audioClips == null || pulse.audioClips.Count == 0))
+                {
+                    pulse.audioClips = new List<AudioClip>(clips);
+                }
+                pulse.selectedAudioClip = -1;
+                pulse.playOnSwitch = true;
+                EditorUtility.SetDirty(pulse);
+                state.motion = AudioPulseMotion(state.motion as AnimationClip, state.name, path);
+                EditorUtility.SetDirty(state);
+                ConvertedPlayAudio.Add($"{where} (one-shot, audio driver pulse)");
+                return;
+            }
+            if (play)
+            {
                 source.playOnAwake = true;
             }
 
@@ -1977,6 +2011,37 @@ namespace AvatarBridge
             state.motion = AudioWindowMotion(current, state.name, path, value);
             EditorUtility.SetDirty(state);
             ConvertedPlayAudio.Add(where);
+        }
+
+        // The pulse rearms itself: frame 0 writes the index, the next
+        // frame writes -1, so re-entering the state plays again even
+        // when nothing else animates the driver.
+        static Motion AudioPulseMotion(AnimationClip current, string stateName, string path)
+        {
+            var key = ((Motion)current, "pulse:" + path, 0f);
+            if (AudioWindowClones.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+            AnimationClip clone;
+            if (current != null)
+            {
+                clone = UnityEngine.Object.Instantiate(current);
+                clone.name = current.name + " audio";
+            }
+            else
+            {
+                clone = new AnimationClip { name = SanitizeFileName($"{stateName} audio") };
+            }
+            clone.hideFlags = HideFlags.None;
+            var curve = new AnimationCurve(
+                new Keyframe(0f, 0f) { outTangent = float.PositiveInfinity },
+                new Keyframe(1f / 60f, -1f) { inTangent = float.PositiveInfinity });
+            AnimationUtility.SetEditorCurve(clone,
+                EditorCurveBinding.FloatCurve(path, typeof(CVRAudioDriver), "selectedAudioClip"),
+                curve);
+            AudioWindowClones[key] = clone;
+            return clone;
         }
 
         static Motion AudioWindowMotion(AnimationClip current, string stateName, string path, float value)
