@@ -269,14 +269,19 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    foreach (bool asSender in new[] { false, true })
+                    // Ancestors count: deactivating a parent killed every
+                    // contact below it, and toggles usually switch the
+                    // group object rather than each component's own.
+                    foreach (var entry in ctx.ContactHosts)
                     {
-                        if (!ctx.ContactHosts.TryGetValue((binding.path, asSender), out var gated))
+                        string owner = entry.Key.path;
+                        if (owner != binding.path
+                            && !owner.StartsWith(binding.path + "/", System.StringComparison.Ordinal))
                         {
                             continue;
                         }
                         var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
-                        foreach (var hostPath in gated)
+                        foreach (var hostPath in entry.Value)
                         {
                             var hostBinding = UnityEditor.EditorCurveBinding.FloatCurve(
                                 hostPath, typeof(GameObject), "m_IsActive");
