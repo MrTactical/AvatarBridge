@@ -387,9 +387,26 @@ namespace AvatarBridge
                 var trees = new List<UnityEditor.Animations.BlendTree>();
                 var clips = new HashSet<AnimationClip>();
                 var clipsInTrees = new HashSet<AnimationClip>();
+                var clipsInServiceTrees = new HashSet<AnimationClip>();
                 var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
 
-                void Collect(Motion motion, bool viaTree)
+                // A tree a menu control drives is a toggle. A Direct tree,
+                // or one keyed on an internal parameter (VRCFury's
+                // counters and math), is service plumbing; a zone write
+                // inside one is baked residue, never the user's switch.
+                var menuParameters = new HashSet<string>();
+                if (ctx.CvrAvatar?.avatarSettings?.settings != null)
+                {
+                    foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+                    {
+                        if (entry != null && !string.IsNullOrEmpty(entry.machineName))
+                        {
+                            menuParameters.Add(entry.machineName);
+                        }
+                    }
+                }
+
+                void Collect(Motion motion, bool viaTree, bool viaService)
                 {
                     if (motion is AnimationClip clip)
                     {
@@ -398,13 +415,20 @@ namespace AvatarBridge
                         {
                             clipsInTrees.Add(clip);
                         }
+                        if (viaService)
+                        {
+                            clipsInServiceTrees.Add(clip);
+                        }
                     }
                     else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
                     {
                         trees.Add(tree);
+                        bool service = viaService
+                            || tree.blendType == UnityEditor.Animations.BlendTreeType.Direct
+                            || !menuParameters.Contains(tree.blendParameter);
                         foreach (var child in tree.children)
                         {
-                            Collect(child.motion, true);
+                            Collect(child.motion, true, service);
                         }
                     }
                 }
@@ -422,7 +446,7 @@ namespace AvatarBridge
                             continue;
                         }
                         states.Add(child.state);
-                        Collect(child.state.motion, false);
+                        Collect(child.state.motion, false, false);
                     }
                     foreach (var sub in machine.stateMachines)
                     {
@@ -431,9 +455,7 @@ namespace AvatarBridge
                 }
                 Walk(layer.stateMachine);
 
-                // What this layer says about each zone, across all its clips.
-                var lowest = new Dictionary<UnityEditor.EditorCurveBinding, float>();
-                var highest = new Dictionary<UnityEditor.EditorCurveBinding, float>();
+                // Every clip in this layer writing a zone.
                 var carriers = new Dictionary<UnityEditor.EditorCurveBinding, List<AnimationClip>>();
                 foreach (var clip in clips)
                 {
@@ -449,10 +471,6 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        float top = curve.keys.Max(k => k.value);
-                        float bottom = curve.keys.Min(k => k.value);
-                        highest[binding] = highest.TryGetValue(binding, out float h) ? Mathf.Max(h, top) : top;
-                        lowest[binding] = lowest.TryGetValue(binding, out float l) ? Mathf.Min(l, bottom) : bottom;
                         if (!carriers.TryGetValue(binding, out var list))
                         {
                             carriers[binding] = list = new List<AnimationClip>();
@@ -460,17 +478,47 @@ namespace AvatarBridge
                         list.Add(clip);
                     }
                 }
-                if (highest.Count == 0)
+                if (carriers.Count == 0)
                 {
                     continue;
                 }
 
-                var toStrip = new List<UnityEditor.EditorCurveBinding>();
+                var stripPairs = new List<(AnimationClip clip, UnityEditor.EditorCurveBinding binding)>();
                 var toFill = new List<UnityEditor.EditorCurveBinding>();
-                foreach (var binding in highest.Keys)
+                foreach (var binding in carriers.Keys)
                 {
-                    bool switchesOn = highest[binding] > 0.5f;
-                    bool switchesOff = lowest[binding] <= 0.5f;
+                    // Service writes go regardless of value; the toggle
+                    // verdict is taken from what remains.
+                    var owned = new List<AnimationClip>();
+                    foreach (var clip in carriers[binding])
+                    {
+                        if (clipsInServiceTrees.Contains(clip))
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
+                        else
+                        {
+                            owned.Add(clip);
+                        }
+                    }
+                    if (owned.Count == 0)
+                    {
+                        continue;
+                    }
+                    float top = float.MinValue;
+                    float bottom = float.MaxValue;
+                    foreach (var clip in owned)
+                    {
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        top = Mathf.Max(top, curve.keys.Max(k => k.value));
+                        bottom = Mathf.Min(bottom, curve.keys.Min(k => k.value));
+                    }
+                    bool switchesOn = top > 0.5f;
+                    bool switchesOff = bottom <= 0.5f;
                     if (switchesOn && switchesOff)
                     {
                         continue;   // a real toggle; it owns the zone
@@ -479,15 +527,21 @@ namespace AvatarBridge
                     {
                         // Asserts rest and nothing else: Write Defaults
                         // residue, and it overrides real toggles below it.
-                        toStrip.Add(binding);
+                        foreach (var clip in owned)
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
                         continue;
                     }
                     // Off with no way back.
-                    if (carriers[binding].Any(c => clipsInTrees.Contains(c)))
+                    if (owned.Any(c => clipsInTrees.Contains(c)))
                     {
                         // A constant restore in a sibling slot fights the
                         // blend; drop the suppression instead.
-                        toStrip.Add(binding);
+                        foreach (var clip in owned)
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
                     }
                     else
                     {
@@ -500,7 +554,7 @@ namespace AvatarBridge
                         }
                     }
                 }
-                if (toStrip.Count == 0 && toFill.Count == 0)
+                if (stripPairs.Count == 0 && toFill.Count == 0)
                 {
                     continue;
                 }
@@ -523,13 +577,10 @@ namespace AvatarBridge
                     return owned;
                 }
 
-                foreach (var binding in toStrip)
+                foreach (var (clip, binding) in stripPairs)
                 {
-                    foreach (var clip in carriers[binding])
-                    {
-                        UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding, null);
-                        stripped++;
-                    }
+                    UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding, null);
+                    stripped++;
                 }
                 foreach (var clip in clips)
                 {
