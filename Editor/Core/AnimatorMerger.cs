@@ -114,6 +114,9 @@ namespace AvatarBridge
             LocomotionGrafter.ResetClones();
             DroppedPlayAudio.Clear();
             DroppedPlayAudioCount = 0;
+            ConvertedPlayAudio.Clear();
+            ApproximatedPlayAudio.Clear();
+            AudioWindowClones.Clear();
             DroppedPoseSpace.Clear();
             DroppedPoseSpaceCount = 0;
 
@@ -779,7 +782,17 @@ namespace AvatarBridge
 
         static void BridgeNativeContacts(AnimatorController master, BridgeContext ctx)
         {
-            if (ctx.BridgedContacts == null || ctx.BridgedContacts.Count == 0)
+            bool onOff = ctx.BridgedContacts != null && ctx.BridgedContacts.Count > 0;
+            bool analog = ctx.AnalogBridgedContacts != null && ctx.AnalogBridgedContacts.Count > 0;
+            if (!onOff && !analog)
+            {
+                return;
+            }
+            if (analog)
+            {
+                CombineAnalogContacts(master, ctx);
+            }
+            if (!onOff)
             {
                 return;
             }
@@ -854,6 +867,315 @@ namespace AvatarBridge
                     "simply carrying a value nothing ever wrote. On/off contacts only — any " +
                     "proximity contact was left as it was, and is listed separately.");
             }
+        }
+
+        // A proximity contact and a menu control sharing one parameter.
+        // The contact drives a local name, the menu keeps the synced
+        // one, and every reader moves to a per-frame maximum of the
+        // two. Contacts run on every client, so the smooth value never
+        // needs to cross the network; only the menu value syncs.
+        static void CombineAnalogContacts(AnimatorController master, BridgeContext ctx)
+        {
+            // Resolved by name; the CCK has shipped both spellings.
+            if (!TryOperator(out var moreThan, "MoreThan", "MoreThen"))
+            {
+                ctx.Report.Warning("Contacts",
+                    "Proximity contacts could not be combined with their menu controls",
+                    "This ChilloutVR CCK spells its animator-driver comparison operators in a " +
+                    "way AvatarBridge does not recognise, so the per-frame maximum could not be " +
+                    "built. The contacts drive their local names and the menus keep the synced " +
+                    "ones, but the two are not combined. Please report the CCK version.");
+                return;
+            }
+
+            var combined = new List<string>();
+            foreach (var (local, syncedRaw) in ctx.AnalogBridgedContacts)
+            {
+                // Runs after RenamePass; follow any sanitising rename the menu name took.
+                string synced = ctx.AppliedParameterRenames.TryGetValue(syncedRaw, out var renamed)
+                    ? renamed : syncedRaw;
+                var syncedParam = master.parameters.FirstOrDefault(p => p.name == synced);
+                if (syncedParam == null)
+                {
+                    continue;   // the menu entry went; nothing to combine with
+                }
+                if (syncedParam.type == AnimatorControllerParameterType.Int)
+                {
+                    // A dropdown selects a position; a proximity value is
+                    // a quantity. A maximum of the two means nothing.
+                    ctx.Report.Skipped("Contacts", $"Proximity contact on \"{synced}\" left uncombined",
+                        "The menu control on this parameter is a dropdown, and a smooth proximity " +
+                        "reading cannot be merged with a position selection. The contact drives " +
+                        $"\"{local}\" locally; wire it up yourself if the combination is deliberate.");
+                    continue;
+                }
+                bool syncedIsBool = syncedParam.type == AnimatorControllerParameterType.Bool;
+                if (master.parameters.All(p => p.name != local))
+                {
+                    master.AddParameter(local, AnimatorControllerParameterType.Float);
+                }
+                string bare = synced.TrimStart('#');
+                string max = "#" + bare + "_max";
+                string gate = "#AB_CGate_" + SanitizeParameterName(bare);
+                string tmp = "#AB_CTmp_" + SanitizeParameterName(bare);
+                foreach (var name in new[] { max, gate, tmp })
+                {
+                    if (master.parameters.All(p => p.name != name))
+                    {
+                        master.AddParameter(name, AnimatorControllerParameterType.Float);
+                    }
+                }
+
+                int repointed = RepointParameterReads(master, synced, max, syncedIsBool);
+
+                master.AddLayer(SanitizeFileName($"Contact max {bare}"));
+                var layers = master.layers;
+                var layer = layers[layers.Length - 1];
+                layer.defaultWeight = 1f;
+                layer.blendingMode = AnimatorLayerBlendingMode.Override;
+                var machine = layer.stateMachine;
+                var state = machine.AddState("Recompute");
+                state.writeDefaultValues = false;
+                // A 1/60 s clip on an undeclared parameter gives the
+                // state a length, so the self-transition cycles and the
+                // enter tasks re-run every frame.
+                var tick = new AnimationClip { name = SanitizeFileName($"Contact max {bare} Tick") };
+                tick.SetCurve("", typeof(Animator), tmp + "Tick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+                state.motion = tick;
+                machine.defaultState = state;
+                var cycle = state.AddTransition(state);
+                cycle.hasExitTime = true;
+                cycle.exitTime = 1f;
+                cycle.hasFixedDuration = true;
+                cycle.duration = 0f;
+
+                AnimatorDriverTask T(string targetName, AnimatorDriverTask.Operator op,
+                    string aParam, float aStatic, string bParam, float bStatic)
+                {
+                    var task = new AnimatorDriverTask
+                    {
+                        targetType = AnimatorDriverTask.ParameterType.Float,
+                        targetName = targetName,
+                        op = op
+                    };
+                    // Reads must match the declared type, or the client
+                    // logs a mismatch and hands the driver a zero.
+                    AnimatorDriverTask.ParameterType TypeOf(string name) =>
+                        name == synced && syncedIsBool
+                            ? AnimatorDriverTask.ParameterType.Bool
+                            : AnimatorDriverTask.ParameterType.Float;
+                    if (aParam != null)
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Parameter;
+                        task.aParamType = TypeOf(aParam);
+                        task.aName = aParam;
+                    }
+                    else
+                    {
+                        task.aType = AnimatorDriverTask.SourceType.Static;
+                        task.aValue = aStatic;
+                    }
+                    if (bParam != null)
+                    {
+                        task.bType = AnimatorDriverTask.SourceType.Parameter;
+                        task.bParamType = TypeOf(bParam);
+                        task.bName = bParam;
+                    }
+                    else
+                    {
+                        task.bType = AnimatorDriverTask.SourceType.Static;
+                        task.bValue = bStatic;
+                    }
+                    return task;
+                }
+
+                var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+                // Remote copies must compute too; their contact runs locally.
+                driver.localOnly = false;
+                // max(a, b) as gate arithmetic, tasks running in order:
+                // gate = a > b; tmp = a * gate; gate = 1 - gate;
+                // gate = b * gate; max = tmp + gate.
+                driver.EnterTasks.Add(T(gate, moreThan, synced, 0f, local, 0f));
+                driver.EnterTasks.Add(T(tmp, AnimatorDriverTask.Operator.Multiplication, synced, 0f, gate, 0f));
+                driver.EnterTasks.Add(T(gate, AnimatorDriverTask.Operator.Subtraction, null, 1f, gate, 0f));
+                driver.EnterTasks.Add(T(gate, AnimatorDriverTask.Operator.Multiplication, local, 0f, gate, 0f));
+                driver.EnterTasks.Add(T(max, AnimatorDriverTask.Operator.Addition, tmp, 0f, gate, 0f));
+
+                master.layers = layers;   // write the weight and blend mode back
+                combined.Add($"\"{synced}\" ({repointed} reader(s) now follow \"{max}\")");
+            }
+
+            if (combined.Count > 0)
+            {
+                ctx.Report.Converted("Contacts",
+                    $"{combined.Count} proximity contact(s) combined with their menu control",
+                    string.Join("; ", combined) + ". The contact writes a local parameter, the " +
+                    "menu keeps the synced one, and everything that read the shared name now " +
+                    "reads a per-frame maximum of the two. Contacts run on every client, so the " +
+                    "smooth proximity value needs no sync at all: each client computes the " +
+                    "maximum for itself, and only the menu value crosses the network. With the " +
+                    "menu slider raised, the contact can push the value higher but never below " +
+                    "the slider.");
+            }
+        }
+
+        static int RepointParameterReads(AnimatorController master, string from, string to,
+            bool fromWasBool)
+        {
+            int moved = 0;
+            var seenTrees = new HashSet<BlendTree>();
+
+            void InMotion(Motion motion)
+            {
+                if (!(motion is BlendTree tree) || !seenTrees.Add(tree))
+                {
+                    return;
+                }
+                // Only the fields this blend type reads; vestigial names
+                // must not be counted as readers.
+                if (tree.blendType != BlendTreeType.Direct)
+                {
+                    if (tree.blendParameter == from)
+                    {
+                        tree.blendParameter = to;
+                        moved++;
+                    }
+                    if (tree.blendType != BlendTreeType.Simple1D && tree.blendParameterY == from)
+                    {
+                        tree.blendParameterY = to;
+                        moved++;
+                    }
+                }
+                var children = tree.children;
+                bool changed = false;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    if (tree.blendType == BlendTreeType.Direct && children[i].directBlendParameter == from)
+                    {
+                        children[i].directBlendParameter = to;
+                        moved++;
+                        changed = true;
+                    }
+                    InMotion(children[i].motion);
+                }
+                if (changed)
+                {
+                    bool auto = tree.useAutomaticThresholds;
+                    tree.useAutomaticThresholds = false;
+                    tree.children = children;
+                    tree.useAutomaticThresholds = auto;
+                }
+            }
+
+            void InConditions(AnimatorTransitionBase[] transitions)
+            {
+                if (transitions == null)
+                {
+                    return;
+                }
+                foreach (var transition in transitions)
+                {
+                    if (transition == null)
+                    {
+                        continue;
+                    }
+                    var conditions = transition.conditions;
+                    bool changed = false;
+                    for (int i = 0; i < conditions.Length; i++)
+                    {
+                        if (conditions[i].parameter != from)
+                        {
+                            continue;
+                        }
+                        conditions[i].parameter = to;
+                        // The maximum is a Float; bool modes must become
+                        // threshold checks or CVR drops the transition.
+                        if (fromWasBool && conditions[i].mode == AnimatorConditionMode.If)
+                        {
+                            conditions[i].mode = AnimatorConditionMode.Greater;
+                            conditions[i].threshold = 0.5f;
+                        }
+                        else if (fromWasBool && conditions[i].mode == AnimatorConditionMode.IfNot)
+                        {
+                            conditions[i].mode = AnimatorConditionMode.Less;
+                            conditions[i].threshold = 0.5f;
+                        }
+                        moved++;
+                        changed = true;
+                    }
+                    if (changed)
+                    {
+                        transition.conditions = conditions;
+                    }
+                }
+            }
+
+            void InDriver(StateMachineBehaviour behaviour)
+            {
+                if (!(behaviour is AnimatorDriver driver))
+                {
+                    return;
+                }
+                // Reads only. Writes stay on the synced name, which
+                // still feeds the maximum.
+                foreach (var task in (driver.EnterTasks ?? Enumerable.Empty<AnimatorDriverTask>())
+                         .Concat(driver.ExitTasks ?? Enumerable.Empty<AnimatorDriverTask>()))
+                {
+                    if (task == null)
+                    {
+                        continue;
+                    }
+                    if (task.aName == from)
+                    {
+                        task.aName = to;
+                        task.aParamType = AnimatorDriverTask.ParameterType.Float;
+                        moved++;
+                    }
+                    if (task.bName == from)
+                    {
+                        task.bName = to;
+                        task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                        moved++;
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null)
+                        {
+                            continue;
+                        }
+                        if (state.timeParameter == from) { state.timeParameter = to; moved++; }
+                        if (state.speedParameter == from) { state.speedParameter = to; moved++; }
+                        if (state.mirrorParameter == from) { state.mirrorParameter = to; moved++; }
+                        if (state.cycleOffsetParameter == from) { state.cycleOffsetParameter = to; moved++; }
+                        InMotion(state.motion);
+                        InConditions(state.transitions);
+                        foreach (var behaviour in state.behaviours)
+                        {
+                            InDriver(behaviour);
+                        }
+                    }
+                    InConditions(machine.anyStateTransitions);
+                    InConditions(machine.entryTransitions);
+                    foreach (var behaviour in machine.behaviours)
+                    {
+                        InDriver(behaviour);
+                    }
+                    foreach (var childMachine in machine.stateMachines)
+                    {
+                        var transitions = machine.GetStateMachineTransitions(childMachine.stateMachine);
+                        InConditions(transitions);
+                    }
+                });
+            }
+            return moved;
         }
 
         static bool TryOperator(out AnimatorDriverTask.Operator op, params string[] names)
@@ -1470,17 +1792,38 @@ namespace AvatarBridge
                 ctx.Report.Skipped(Category, pair.Key, $"{pair.Value}x removed (no ChilloutVR equivalent).");
             }
 
+            if (ConvertedPlayAudio.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{ConvertedPlayAudio.Count} animator-played audio player(s) wired to ChilloutVR",
+                    string.Join("; ", ConvertedPlayAudio.Take(6)) +
+                    (ConvertedPlayAudio.Count > 6 ? "; …" : "") +
+                    ". VRChat plays these from a state behaviour ChilloutVR does not have, so " +
+                    "each AudioSource is set to Play On Awake and its enabled flag is animated " +
+                    "instead: entering the state switches the sound on, and every other state in " +
+                    "that layer switches it back off through the same restore machinery every " +
+                    "toggle uses. The sound plays for as long as the state plays.");
+            }
+            if (ApproximatedPlayAudio.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{ApproximatedPlayAudio.Count} audio playback detail(s) simplified",
+                    string.Join("; ", ApproximatedPlayAudio.Take(8)) +
+                    (ApproximatedPlayAudio.Count > 8 ? "; …" : "") +
+                    ". A state behaviour could randomise clips, volume and pitch per play and " +
+                    "delay the start; an enable window cannot. The sound still plays, with the " +
+                    "fixed settings named here.");
+            }
             if (DroppedPlayAudioCount > 0)
             {
                 ctx.Report.Skipped(Category,
                     $"{DroppedPlayAudioCount} animator-driven audio player(s) removed",
                     string.Join("; ", DroppedPlayAudio) + (DroppedPlayAudioCount > DroppedPlayAudio.Count ? "; …" : "") +
-                    " — VRChat plays these from the animator state itself (music toggles, sound " +
-                    "effects), and ChilloutVR has no equivalent state behaviour. The AudioSource " +
-                    "each one pointed at is still on the avatar, so the sound can be wired by " +
-                    "hand: a toggle animating the AudioSource's enabled flag with Play On Awake " +
-                    "set plays and stops it, and ChilloutVR's own CVRAudioDriver can switch " +
-                    "between clips from an animated index.");
+                    " — these could not be wired to a state window, for the reason named on each. " +
+                    "The AudioSource is still on the avatar, so the sound can be wired by hand: " +
+                    "a toggle animating the AudioSource's enabled flag with Play On Awake set " +
+                    "plays and stops it, and ChilloutVR's own CVRAudioDriver can switch between " +
+                    "clips from an animated index.");
             }
             if (DroppedPoseSpaceCount > 0)
             {
@@ -1496,8 +1839,173 @@ namespace AvatarBridge
 
         static readonly List<string> DroppedPlayAudio = new List<string>();
         static int DroppedPlayAudioCount;
+        static readonly List<string> ConvertedPlayAudio = new List<string>();
+        static readonly List<string> ApproximatedPlayAudio = new List<string>();
+        static readonly Dictionary<(Motion motion, string path, float value), AnimationClip> AudioWindowClones
+            = new Dictionary<(Motion, string, float), AnimationClip>();
         static readonly List<string> DroppedPoseSpace = new List<string>();
         static int DroppedPoseSpaceCount;
+
+        // VRChat plays audio from a state behaviour; CVR has none.
+        // The window approximation: the AudioSource plays on awake and
+        // the state that carried the behaviour animates its enabled
+        // flag. The restore passes assert the off in every other state.
+        static void ConvertPlayAudio(BridgeContext ctx, AnimatorState state,
+            VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio playAudio)
+        {
+            string where = $"state \"{state?.name ?? "(machine)"}\" -> \"{playAudio.SourcePath}\"";
+            void Drop(string reason)
+            {
+                if (DroppedPlayAudio.Count < 6)
+                {
+                    DroppedPlayAudio.Add($"{where} ({reason})");
+                }
+                DroppedPlayAudioCount++;
+            }
+
+            var host = string.IsNullOrEmpty(playAudio.SourcePath)
+                ? null : ctx.Target.transform.Find(playAudio.SourcePath);
+            var source = host != null ? host.GetComponent<AudioSource>() : null;
+            if (source == null)
+            {
+                Drop("no AudioSource at that path");
+                return;
+            }
+            if (state == null)
+            {
+                Drop("sits on a state machine, not a state");
+                return;
+            }
+            bool play = playAudio.PlayOnEnter;
+            if (!play && !playAudio.StopOnEnter)
+            {
+                Drop("only acts on state exit");
+                return;
+            }
+            if (state.motion is BlendTree)
+            {
+                Drop("the state plays a blend tree");
+                return;
+            }
+
+            string path = playAudio.SourcePath;
+            if (play)
+            {
+                // Enum names, not values: NeverApply means the source keeps its own setting.
+                bool Apply(System.Enum setting) => setting.ToString() != "NeverApply";
+                var clips = (playAudio.Clips ?? new AudioClip[0]).Where(c => c != null).Distinct().ToList();
+                if (Apply(playAudio.ClipsApplySettings) && clips.Count > 0)
+                {
+                    source.clip = clips[0];
+                    if (clips.Count > 1)
+                    {
+                        ApproximatedPlayAudio.Add(
+                            $"{where}: played one of {clips.Count} clips ({playAudio.PlaybackOrder}); plays \"{clips[0].name}\" here");
+                    }
+                }
+                if (Apply(playAudio.LoopApplySettings))
+                {
+                    source.loop = playAudio.Loop;
+                }
+                if (Apply(playAudio.VolumeApplySettings))
+                {
+                    source.volume = (playAudio.Volume.x + playAudio.Volume.y) * 0.5f;
+                    if (!Mathf.Approximately(playAudio.Volume.x, playAudio.Volume.y))
+                    {
+                        ApproximatedPlayAudio.Add(
+                            $"{where}: volume was randomised {playAudio.Volume.x:0.##}..{playAudio.Volume.y:0.##}; fixed at the midpoint");
+                    }
+                }
+                if (Apply(playAudio.PitchApplySettings))
+                {
+                    source.pitch = (playAudio.Pitch.x + playAudio.Pitch.y) * 0.5f;
+                    if (!Mathf.Approximately(playAudio.Pitch.x, playAudio.Pitch.y))
+                    {
+                        ApproximatedPlayAudio.Add(
+                            $"{where}: pitch was randomised {playAudio.Pitch.x:0.##}..{playAudio.Pitch.y:0.##}; fixed at the midpoint");
+                    }
+                }
+                if (playAudio.DelayInSeconds > 0f)
+                {
+                    ApproximatedPlayAudio.Add($"{where}: {playAudio.DelayInSeconds:0.##} s start delay dropped");
+                }
+                if (playAudio.PlayOnExit || playAudio.StopOnExit)
+                {
+                    ApproximatedPlayAudio.Add($"{where}: exit actions dropped; the sound follows the state instead");
+                }
+                source.playOnAwake = true;
+            }
+
+            // The avatar's own wiring wins where it exists. A clip that
+            // already toggles the object or the component is the gate;
+            // only the source setup above is needed then.
+            var current = state.motion as AnimationClip;
+            bool drivesActive = false, drivesEnabled = false;
+            if (current != null)
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(current))
+                {
+                    if (binding.path != path)
+                    {
+                        continue;
+                    }
+                    drivesActive |= binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+                    drivesEnabled |= binding.type == typeof(AudioSource) && binding.propertyName == "m_Enabled";
+                }
+            }
+            if (play && drivesActive)
+            {
+                source.enabled = true;
+                ConvertedPlayAudio.Add($"{where} (object toggle already wired)");
+                return;
+            }
+            if (drivesEnabled)
+            {
+                if (play)
+                {
+                    source.enabled = false;
+                }
+                ConvertedPlayAudio.Add($"{where} (enable curve already wired)");
+                return;
+            }
+
+            float value = play ? 1f : 0f;
+            if (play)
+            {
+                source.enabled = false;
+            }
+            state.motion = AudioWindowMotion(current, state.name, path, value);
+            EditorUtility.SetDirty(state);
+            ConvertedPlayAudio.Add(where);
+        }
+
+        static Motion AudioWindowMotion(AnimationClip current, string stateName, string path, float value)
+        {
+            var key = ((Motion)current, path, value);
+            if (AudioWindowClones.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+            AnimationClip clone;
+            float length;
+            if (current != null)
+            {
+                clone = UnityEngine.Object.Instantiate(current);
+                clone.name = current.name + " audio";
+                length = Mathf.Max(current.length, 1f / 60f);
+            }
+            else
+            {
+                clone = new AnimationClip { name = SanitizeFileName($"{stateName} audio") };
+                length = 1f / 60f;
+            }
+            clone.hideFlags = HideFlags.None;
+            AnimationUtility.SetEditorCurve(clone,
+                EditorCurveBinding.FloatCurve(path, typeof(AudioSource), "m_Enabled"),
+                AnimationCurve.Constant(0f, length, value));
+            AudioWindowClones[key] = clone;
+            return clone;
+        }
 
         static StateMachineBehaviour[] ConvertBehaviours(AnimatorController master, StateMachineBehaviour[] behaviours,
             AnimatorState state, BridgeContext ctx, Dictionary<string, int> skipped, BodyControlStats bodyStats)
@@ -1541,18 +2049,7 @@ namespace AvatarBridge
                 }
                 else if (behaviour is VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio playAudio)
                 {
-                    // Animator-driven audio. Not converted yet: a play/stop
-                    // approximation needs the off-state restore machinery.
-                    // The AudioSource itself survives untouched.
-                    if (DroppedPlayAudio.Count < 6)
-                    {
-                        string clips = playAudio.Clips == null ? "no clips"
-                            : string.Join(", ", playAudio.Clips.Where(c => c != null).Select(c => c.name).Take(3));
-                        DroppedPlayAudio.Add(
-                            $"state \"{state?.name ?? "(machine)"}\" ← \"{playAudio.SourcePath}\" ({clips}"
-                            + (playAudio.Loop ? ", looping" : "") + ")");
-                    }
-                    DroppedPlayAudioCount++;
+                    ConvertPlayAudio(ctx, state, playAudio);
                     UnityEngine.Object.DestroyImmediate(behaviour, true);
                 }
                 else if (behaviour.GetType().Name == "VRCAnimatorTemporaryPoseSpace")

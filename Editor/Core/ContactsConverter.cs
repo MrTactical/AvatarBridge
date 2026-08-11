@@ -587,18 +587,17 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    // Analog AND menu-driven: neither route exists. It cannot be made local
-                    // without taking the menu entry off the network, and a driver writes on
-                    // entering a state, so it can carry an on/off reading exactly and a smooth
-                    // one only in steps. Left alone and named rather than quietly degraded.
-                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
-                        $"\"{driven}\" is a proximity contact whose parameter a MENU control also " +
-                        "drives, and those two cannot both be satisfied. The menu needs the name " +
-                        "synced; the contact needs it local, or the sync stream writes the " +
-                        "declared default back over whatever it sets. A driver would bridge the " +
-                        "gap for an on/off contact but can only carry this one's smooth range in " +
-                        "steps. Give the menu control its own parameter, or move this contact to " +
-                        "the legacy path, which has neither problem.");
+                    // Analog and menu-driven. The contact gets a local
+                    // name; the menu keeps the synced one; every reader
+                    // moves to a per-frame maximum of the two, computed
+                    // on every client. Contacts run per client, so the
+                    // smooth value needs no sync at all.
+                    string local = "#" + driven + "_contact";
+                    if (!ctx.AnalogBridgedContacts.Contains((local, driven)))
+                    {
+                        ctx.AnalogBridgedContacts.Add((local, driven));
+                    }
+                    driven = local;
                 }
             }
 
@@ -610,7 +609,9 @@ namespace AvatarBridge
             ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                 $"{typeName} receiver -> native ContactReceiver driving \"{driven}\"" +
                 (driven != receiver.parameter
-                    ? $", carried to \"{receiver.parameter}\" by a driver so other players see it"
+                    ? (analog
+                        ? $", combined with the menu's \"{receiver.parameter}\" as a per-frame maximum"
+                        : $", carried to \"{receiver.parameter}\" by a driver so other players see it")
                     : "") +
                 (receiver.localOnly ? " (localOnly preserved)" : ""));
             Object.DestroyImmediate(receiver);

@@ -57,6 +57,11 @@ namespace AvatarBridge
 
         public System.Collections.Generic.List<(string local, string synced)> BridgedContacts =
             new System.Collections.Generic.List<(string, string)>();
+
+        // Proximity contacts whose parameter a menu also drives.
+        // Readers move to a per-frame max of the two.
+        public System.Collections.Generic.List<(string local, string synced)> AnalogBridgedContacts =
+            new System.Collections.Generic.List<(string, string)>();
         public List<string> ParameterOrder = new List<string>();
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =

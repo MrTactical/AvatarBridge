@@ -257,6 +257,7 @@ defines.
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 | Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps — and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
+| Animator-played audio (`VRCAnimatorPlayAudio`) | AudioSource set to *Play On Awake*, its enabled flag animated by the state that carried the behaviour | the sound plays for as long as the state plays, and every other state in the layer switches it off through the same restore machinery every toggle uses. One clip at a fixed volume/pitch — randomised choice, ranges and start delays can't ride along and are listed in the report |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
@@ -490,8 +491,8 @@ with pointers and triggers.
 **AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
 **Advanced** and contacts convert one to one: real proximity, tags verbatim, and each parameter
 [routed](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work) to whichever
-of the three cases it is in — local for almost all of them, a driver where a menu control needs the
-same name synced, and named in the report for the one combination that has no answer.
+of the three cases it is in — local for almost all of them, a driver where a menu control needs an
+on/off name synced, and a per-frame maximum where a menu control shares a *proximity* parameter.
 
 ### Grabbing a chain
 
@@ -558,9 +559,13 @@ stay synced to reach anyone. Those take the other route automatically: the conta
 of its own and a **driver** copies the value into the synced one, because a driver's writes *do* go
 out. Nothing to choose — the converter can see which case each parameter is in.
 
-The only combination with no answer is a **proximity** contact whose parameter a menu control also
-drives: a driver can carry an on/off reading exactly but a smooth range only in steps. That one is
-named in the report and left alone.
+A **proximity** contact sharing a menu control's parameter takes a third route: the contact drives
+its local name, the menu keeps the synced one, and everything that *read* the parameter now reads a
+per-frame **maximum** of the two. Contacts run on every client, so the smooth value never needs to
+cross the network — each client computes the maximum for itself, and only the menu value syncs. With
+the slider raised, a touch can push the value higher but never below the slider. (A dropdown sharing
+a proximity parameter is the one shape still left alone: a maximum of a position selection and a
+distance means nothing, and the report says so.)
 
 <details><summary>Why results differ between clients, and the call chain</summary>
 
@@ -584,8 +589,10 @@ this reason. Turning the bridge on satisfies that — the contact drives a `#` n
 driver carries the value into the synced one.
 
 A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
-one only in steps — hence on/off receivers only, rather than trade the wearer's smooth proximity
-value for a stepped one. Receivers the author marked local-only are left alone either way.
+one only in steps — which is why on/off receivers take the driver and proximity receivers take the
+maximum instead: a generated layer recomputes `max(menu, contact)` each cycle on every client, the
+same tick idiom the scale parameters use. Receivers the author marked local-only are left alone
+either way.
 
 </details>
 

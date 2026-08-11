@@ -27,8 +27,14 @@ namespace AvatarBridge.Regression
     // MonoBehaviour cannot live in an Editor folder. Edit-mode
     // driving has reproduced a real in-game fault, but the subsets
     // differ, so a clean result means "found nothing", not "nothing
-    // is wrong". Structurally blind to on-direction failures of
-    // default-off parameters.
+    // is wrong".
+    //
+    // The on direction is checked too: while a parameter is held
+    // away from rest, every constant claim the playing clips make
+    // (float curves and material swaps) is compared against the
+    // scene. A masked layer dropping slots, or a write that never
+    // lands, reports as NOT APPLIED. Intent stays invisible; only
+    // claims the controller itself makes can be verified.
     //
     // This moves things in the open scene and does not put them back.
     // Reload the scene before doing anything else with it.
@@ -144,10 +150,20 @@ namespace AvatarBridge.Regression
                       "afterwards.");
 
             var stuck = new List<string>();
+            var notApplied = new List<string>();
             // How many parameters visibly did anything when driven.
             // Distinguishes "every toggle came back" from "nothing was
             // ever moved"; the two must not report identically.
             int responded = 0;
+
+            // Mismatches already present at rest belong to the rest
+            // pose, not to whichever parameter is swept first.
+            var knownMismatches = new HashSet<string>(VerifyApplied(animator, controller, root));
+            foreach (var finding in knownMismatches)
+            {
+                Debug.LogWarning($"[Sweep] NOT APPLIED at rest: {finding}");
+            }
+
             foreach (var parameter in parameters)
             {
                 float original = DefaultOf(controller, parameter);
@@ -168,6 +184,25 @@ namespace AvatarBridge.Regression
                     // the converted physics at all".
                     Debug.Log($"[Sweep] MOVES \"{parameter}\": {string.Join("; ", whileOn.Take(6))}" +
                               (whileOn.Count > 6 ? $" (+{whileOn.Count - 6} more)" : ""));
+                }
+
+                // What the playing clips claim versus what the scene
+                // holds. This is the on-direction check: a masked layer
+                // that drops material slots, or a curve that lands on
+                // nothing, shows up here as a claim the scene refuses.
+                bool claimsFailed = false;
+                foreach (var finding in VerifyApplied(animator, controller, root))
+                {
+                    if (!knownMismatches.Add(finding))
+                    {
+                        continue;
+                    }
+                    claimsFailed = true;
+                    Debug.LogWarning($"[Sweep] NOT APPLIED while \"{parameter}\" driven: {finding}");
+                }
+                if (claimsFailed)
+                {
+                    notApplied.Add(parameter);
                 }
 
                 Drive(controller, animator, parameter, original);
@@ -200,19 +235,138 @@ namespace AvatarBridge.Regression
                                "Animator.Update is the likely culprit and this result says NOTHING about " +
                                "the avatar. Do not read the line below as a pass.");
             }
-            else if (stuck.Count == 0)
+            else if (stuck.Count == 0 && notApplied.Count == 0)
             {
                 Debug.Log($"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where " +
-                          $"they started, and {responded} of them demonstrably moved something while on, " +
-                          "so the sweep was really driving the avatar. Still not the same as \"nothing is " +
-                          "wrong\": anything outside the watchlist is invisible to it.");
+                          $"they started, every claim the playing clips made held on the scene, and " +
+                          $"{responded} of them demonstrably moved something while on, so the sweep was " +
+                          "really driving the avatar. Still not the same as \"nothing is wrong\": " +
+                          "anything outside the watchlist is invisible to it.");
             }
             else
             {
-                Debug.Log($"[Sweep] {stuck.Count} of {parameters.Length} left something stuck " +
-                          $"({responded} moved something while on): {string.Join(", ", stuck)}");
+                Debug.Log($"[Sweep] {stuck.Count} of {parameters.Length} left something stuck" +
+                          (notApplied.Count > 0
+                              ? $", {notApplied.Count} made a claim the scene refused ({string.Join(", ", notApplied)})"
+                              : "") +
+                          $" ({responded} moved something while on)" +
+                          (stuck.Count > 0 ? $": {string.Join(", ", stuck)}" : "."));
             }
-            return stuck.Count;
+            return stuck.Count + notApplied.Count;
+        }
+
+        // Compares what the currently playing clips assert against what
+        // the scene actually holds. Constant curves only; a toggle's
+        // claim is a constant. Catches a masked layer dropping material
+        // slots, and any curve whose write never lands.
+        static List<string> VerifyApplied(Animator animator, AnimatorController controller, GameObject root)
+        {
+            var findings = new List<string>();
+            var claimed = new HashSet<string>();
+            var layers = controller.layers;
+            int count = Mathf.Min(layers.Length, animator.layerCount);
+
+            // Top-down: where several layers animate one property, the
+            // highest live layer owns the result.
+            for (int i = count - 1; i >= 0; i--)
+            {
+                var layer = layers[i];
+                if (layer == null || animator.IsInTransition(i))
+                {
+                    continue;
+                }
+                float weight = i == 0 ? 1f : animator.GetLayerWeight(i);
+                if (weight < 0.5f || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                {
+                    continue;
+                }
+                foreach (var info in animator.GetCurrentAnimatorClipInfo(i))
+                {
+                    if (info.clip == null || info.weight < 0.99f)
+                    {
+                        continue;
+                    }
+                    foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
+                    {
+                        if (binding.type == typeof(Animator))
+                        {
+                            continue;   // parameters and muscles, not scene properties
+                        }
+                        string key = binding.path + "|" + binding.type.Name + "|" + binding.propertyName;
+                        if (!claimed.Add(key))
+                        {
+                            continue;
+                        }
+                        var curve = AnimationUtility.GetEditorCurve(info.clip, binding);
+                        if (curve == null || curve.keys.Length == 0)
+                        {
+                            continue;
+                        }
+                        float want = curve.keys[0].value;
+                        bool constant = true;
+                        foreach (var k in curve.keys)
+                        {
+                            if (Mathf.Abs(k.value - want) > 0.0001f)
+                            {
+                                constant = false;
+                                break;
+                            }
+                        }
+                        if (!constant)
+                        {
+                            continue;   // animated over time; no single claim to hold
+                        }
+                        if (!AnimationUtility.GetFloatValue(root, binding, out float live))
+                        {
+                            continue;   // dead path; the reference audits own that
+                        }
+                        if (Mathf.Abs(live - want) > 0.05f * Mathf.Max(1f, Mathf.Abs(want)))
+                        {
+                            findings.Add($"{binding.path} ({binding.propertyName}): clip " +
+                                         $"\"{info.clip.name}\" says {want:0.###}, scene reads {live:0.###} " +
+                                         $"(layer \"{layer.name}\")");
+                        }
+                    }
+                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(info.clip))
+                    {
+                        string key = binding.path + "|" + binding.type.Name + "|" + binding.propertyName;
+                        if (!claimed.Add(key))
+                        {
+                            continue;
+                        }
+                        var keys = AnimationUtility.GetObjectReferenceCurve(info.clip, binding);
+                        if (keys == null || keys.Length == 0)
+                        {
+                            continue;
+                        }
+                        var want = keys[0].value;
+                        bool constant = true;
+                        foreach (var k in keys)
+                        {
+                            if (k.value != want)
+                            {
+                                constant = false;
+                                break;
+                            }
+                        }
+                        if (!constant || want == null)
+                        {
+                            continue;
+                        }
+                        if (!AnimationUtility.GetObjectReferenceValue(root, binding, out var live))
+                        {
+                            continue;
+                        }
+                        if (live != want)
+                        {
+                            findings.Add($"{binding.path} ({binding.propertyName}): clip " +
+                                         $"\"{info.clip.name}\" assigns \"{want.name}\", scene holds " +
+                                         $"\"{(live != null ? live.name : "nothing")}\" (layer \"{layer.name}\")");
+                        }
+                    }
+                }
+            }
+            return findings;
         }
 
         static void Drive(AnimatorController controller, Animator animator, string name, float value)
