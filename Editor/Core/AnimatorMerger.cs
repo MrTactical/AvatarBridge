@@ -7870,28 +7870,11 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Bindings a moving layer animates; asserting rest over one
-            // of these would override that layer.
-            var movedElsewhere = new Dictionary<EditorCurveBinding, int>();
-            for (int i = 0; i < layers.Length; i++)
-            {
-                if (!MovesSomething(layerClips[i].clips))
-                {
-                    continue;   // assert-only, owns nothing
-                }
-                foreach (var clip in layerClips[i].clips.Distinct())
-                {
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        movedElsewhere[binding] = movedElsewhere.TryGetValue(binding, out int owner) && owner != i
-                            ? -1 : i;   // -1 marks two moving layers
-                    }
-                }
-            }
-
-            var revived = new List<string>();
+            // Which layers can actually be rebuilt, decided up front:
+            // bindings that only revived layers fight over still need a
+            // rest assert somewhere, because none of them writes at rest.
+            var restStatesByLayer = new Dictionary<int, List<AnimatorState>>();
             var unrevivable = new List<string>();
-            int curvesAdded = 0;
             for (int i = 0; i < layers.Length; i++)
             {
                 var layer = layers[i];
@@ -7899,7 +7882,6 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-
                 var defaultState = layer.stateMachine != null ? layer.stateMachine.defaultState : null;
                 var restStates = new List<AnimatorState>();
                 bool defaultRaises = false;
@@ -7923,6 +7905,39 @@ namespace AvatarBridge
                     unrevivable.Add($"\"{layer.name}\"");
                     continue;
                 }
+                restStatesByLayer[i] = restStates;
+            }
+
+            // Bindings a moving layer animates; asserting rest over one
+            // of these would override that layer. Movers that are being
+            // revived don't count against each other: none of them
+            // writes at rest, so each asserts the same sampled value.
+            var movedElsewhere = new Dictionary<EditorCurveBinding, int>();
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (restStatesByLayer.ContainsKey(i) || !MovesSomething(layerClips[i].clips))
+                {
+                    continue;   // revived, or assert-only: owns nothing at rest
+                }
+                foreach (var clip in layerClips[i].clips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        movedElsewhere[binding] = movedElsewhere.TryGetValue(binding, out int owner) && owner != i
+                            ? -1 : i;   // -1 marks two moving layers
+                    }
+                }
+            }
+
+            var revived = new List<string>();
+            int curvesAdded = 0;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (!restStatesByLayer.TryGetValue(i, out var restStates))
+                {
+                    continue;
+                }
+                var layer = layers[i];
 
                 var mine = new List<EditorCurveBinding>();
                 foreach (var clip in layerClips[i].clips.Distinct())
@@ -7933,7 +7948,7 @@ namespace AvatarBridge
                         {
                             continue;   // parameters, not properties
                         }
-                        if (!movedElsewhere.TryGetValue(binding, out int owner) || owner == i)
+                        if (!movedElsewhere.ContainsKey(binding))
                         {
                             mine.Add(binding);
                         }

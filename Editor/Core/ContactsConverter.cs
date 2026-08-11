@@ -252,9 +252,43 @@ namespace AvatarBridge
             }
 
             int repointed = 0;
+            int mirrored = 0;
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
+                // A toggle that animates the contact's OBJECT rather than
+                // the component gated the contact just as hard in VRChat:
+                // the component died with its container. The host is
+                // parented at the shape's anchor, not under the container,
+                // so the curve is copied onto it — copied, not moved,
+                // because the container often holds the reaction's sound
+                // and particles too.
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
+                    {
+                        continue;
+                    }
+                    foreach (bool asSender in new[] { false, true })
+                    {
+                        if (!ctx.ContactHosts.TryGetValue((binding.path, asSender), out var gated))
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        foreach (var hostPath in gated)
+                        {
+                            var hostBinding = UnityEditor.EditorCurveBinding.FloatCurve(
+                                hostPath, typeof(GameObject), "m_IsActive");
+                            if (UnityEditor.AnimationUtility.GetEditorCurve(clip, hostBinding) == null)
+                            {
+                                UnityEditor.AnimationUtility.SetEditorCurve(clip, hostBinding, curve);
+                                mirrored++;
+                            }
+                        }
+                    }
+                }
+
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
                     bool sender = binding.type == typeof(VRCContactSender);
@@ -313,13 +347,20 @@ namespace AvatarBridge
                 }
             }
 
-            if (repointed > 0)
+            if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed} contact animation(s) rewired",
+                ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
                     "Curves that switched a VRChat contact on and off now toggle the converted " +
                     "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
                     "body part) now drive the converted contact's offset — the forms ChilloutVR " +
-                    "honours. Without this the toggle's menu entry, parameter and " +
+                    "honours. " +
+                    (mirrored > 0
+                        ? $"{mirrored} of them switched the contact's parent object rather than " +
+                          "the component — in VRChat the contact died with its container, and " +
+                          "the converted zone lives at the shape's anchor instead, so those " +
+                          "curves now reach it too. "
+                        : "") +
+                    "Without this the toggle's menu entry, parameter and " +
                     "layer all convert and the contact just never switches or moves.");
             }
             if (dropped.Count > 0)
