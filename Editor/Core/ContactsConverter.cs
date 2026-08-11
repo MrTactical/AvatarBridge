@@ -464,8 +464,13 @@ namespace AvatarBridge
                     else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
                     {
                         trees.Add(tree);
-                        bool service = viaService
-                            || tree.blendType == UnityEditor.Animations.BlendTreeType.Direct
+                        // Not inherited: VRCFury reuses the same toggle
+                        // tree as a child of its math layer, and a menu
+                        // gated tree is a toggle wherever it sits. Its
+                        // clips are shared with the toggle's own layer,
+                        // so stripping them through the service route
+                        // would break the toggle everywhere at once.
+                        bool service = tree.blendType == UnityEditor.Animations.BlendTreeType.Direct
                             || !menuParameters.Contains(tree.blendParameter);
                         foreach (var child in tree.children)
                         {
