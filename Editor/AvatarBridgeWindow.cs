@@ -721,7 +721,11 @@ namespace AvatarBridge
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
-                "Non-synced VRC parameters get CVR's '#' local-only prefix.",
+                "Non-synced VRC parameters get CVR's '#' local-only prefix — except ones a menu " +
+                "control drives, which sync regardless. VRChat's tight budget made de-syncing " +
+                "menu parameters a common trick (VRCFury carries them through machinery that " +
+                "doesn't survive conversion), and a control others can't see the effect of is a " +
+                "broken feature. CVR's 3200-bit budget can afford them.",
                 settings.preserveParameterSyncState, v => settings.preserveParameterSyncState = v));
             b.Add(BridgeElements.Bind("Expose menu-less synced parameters",
                 "Synced parameters without a menu control still get an Advanced Avatar Settings " +

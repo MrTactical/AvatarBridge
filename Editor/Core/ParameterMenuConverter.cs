@@ -100,6 +100,40 @@ namespace AvatarBridge
             var puppets = new List<PuppetPair>();
             WalkMenu(vrc.expressionsMenu, "", uses, visited, ctx, puppets);
 
+            // Outward-facing beats the flag. VRChat's 256-bit budget
+            // taught authors and VRCFury to de-sync menu parameters and
+            // carry them through side channels that do not survive
+            // conversion, so "not synced" is untrustworthy on anything
+            // a menu drives. A control whose effect nobody else can see
+            // is a broken feature, and ChilloutVR's budget is 3200
+            // bits: menu-driven parameters sync here regardless.
+            if (ctx.Settings.preserveParameterSyncState
+                && vrcParams != null && vrcParams.parameters != null)
+            {
+                var resynced = new List<string>();
+                foreach (var p in vrcParams.parameters)
+                {
+                    if (!string.IsNullOrEmpty(p.name) && uses.ContainsKey(p.name)
+                        && !ctx.PreserveParameters.Contains(p.name))
+                    {
+                        ctx.PreserveParameters.Add(p.name);
+                        resynced.Add(p.name);
+                    }
+                }
+                if (resynced.Count > 0)
+                {
+                    ctx.Report.Converted(Category,
+                        $"{resynced.Count} menu parameter(s) synced although VRChat marked them local",
+                        string.Join(", ", resynced.Take(12)) + (resynced.Count > 12 ? ", …" : "") +
+                        " — every one of these is driven by a menu control, and a control whose " +
+                        "effect other players cannot see is a broken feature. VRChat's tight sync " +
+                        "budget made de-syncing menu parameters a common trick, usually with " +
+                        "VRCFury syncing them through machinery that does not survive conversion. " +
+                        "ChilloutVR's budget is 3200 bits, so they simply sync. Parameters no menu " +
+                        "drives keep their imported local/synced state.");
+                }
+            }
+
             var entries = new List<CVRAdvancedSettingsEntry>();
             var usedNames = new HashSet<string>();
 
