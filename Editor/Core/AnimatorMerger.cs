@@ -7940,6 +7940,9 @@ namespace AvatarBridge
                     }
                 }
 
+                // Left loose on purpose: the controller is not saved yet,
+                // and the asset saver embeds every orphaned motion it
+                // finds in the graph.
                 var rest = new AnimationClip { name = SanitizeFileName($"{layer.name} rest") };
                 int added = 0;
                 foreach (var binding in mine)
@@ -7951,7 +7954,6 @@ namespace AvatarBridge
                         added++;
                     }
                 }
-                AssetDatabase.AddObjectToAsset(rest, master);
                 foreach (var state in restStates)
                 {
                     state.motion = rest;
