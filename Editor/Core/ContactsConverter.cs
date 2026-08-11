@@ -333,14 +333,25 @@ namespace AvatarBridge
             }
         }
 
-        // Runs after both repoint passes. VRCFury's contact fix service
-        // switches every receiver off for the first frames after load
-        // and lets Write Defaults switch them back on; ChilloutVR
-        // restores nothing a state does not write, so the rewired zone
-        // curves parked every contact off forever, on every client.
-        // The merge's own restore passes cannot see this: they run
-        // before the rewiring exists, on bindings that still name
-        // deleted VRChat components they cannot sample.
+        // Runs after both repoint passes, because the merge's own restore
+        // passes ran before the rewiring existed, on bindings naming
+        // deleted VRChat components they could not sample.
+        //
+        // The rewiring folds two VRChat properties into one zone binding,
+        // and layers that never fought before now write over each other.
+        // ChilloutVR restores nothing a state does not write, so each
+        // layer is settled by what it says across ALL its clips:
+        //   on and off  -> a real toggle; untouched, and it owns the zone.
+        //   on only     -> VRCFury's baked Write Defaults residue,
+        //                  asserting rest from a later layer every frame,
+        //                  which is what overrode the toggles. Stripped.
+        //   off only    -> a switch-off nothing takes back. In a blend
+        //                  tree (the spawn-time receiver guard) the off
+        //                  curve is removed; suppression for a few load
+        //                  frames is not worth zones dead forever. In
+        //                  plain states the other states get the rest
+        //                  value written in, the same answer the old
+        //                  Write Defaults gave.
         internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -362,6 +373,7 @@ namespace AvatarBridge
             }
 
             int balanced = 0;
+            int stripped = 0;
             int layersTouched = 0;
             foreach (var layer in ctx.MergedController.layers)
             {
@@ -374,20 +386,25 @@ namespace AvatarBridge
                 var states = new List<UnityEditor.Animations.AnimatorState>();
                 var trees = new List<UnityEditor.Animations.BlendTree>();
                 var clips = new HashSet<AnimationClip>();
+                var clipsInTrees = new HashSet<AnimationClip>();
                 var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
 
-                void Collect(Motion motion)
+                void Collect(Motion motion, bool viaTree)
                 {
                     if (motion is AnimationClip clip)
                     {
                         clips.Add(clip);
+                        if (viaTree)
+                        {
+                            clipsInTrees.Add(clip);
+                        }
                     }
                     else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
                     {
                         trees.Add(tree);
                         foreach (var child in tree.children)
                         {
-                            Collect(child.motion);
+                            Collect(child.motion, true);
                         }
                     }
                 }
@@ -405,7 +422,7 @@ namespace AvatarBridge
                             continue;
                         }
                         states.Add(child.state);
-                        Collect(child.state.motion);
+                        Collect(child.state.motion, false);
                     }
                     foreach (var sub in machine.stateMachines)
                     {
@@ -414,9 +431,10 @@ namespace AvatarBridge
                 }
                 Walk(layer.stateMachine);
 
-                // A zone binding is balanced when some clip in the layer
-                // switches it back on. Only 0-with-no-way-back is filled.
+                // What this layer says about each zone, across all its clips.
+                var lowest = new Dictionary<UnityEditor.EditorCurveBinding, float>();
                 var highest = new Dictionary<UnityEditor.EditorCurveBinding, float>();
+                var carriers = new Dictionary<UnityEditor.EditorCurveBinding, List<AnimationClip>>();
                 foreach (var clip in clips)
                 {
                     foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
@@ -432,48 +450,104 @@ namespace AvatarBridge
                             continue;
                         }
                         float top = curve.keys.Max(k => k.value);
-                        highest[binding] = highest.TryGetValue(binding, out float seen)
-                            ? Mathf.Max(seen, top) : top;
+                        float bottom = curve.keys.Min(k => k.value);
+                        highest[binding] = highest.TryGetValue(binding, out float h) ? Mathf.Max(h, top) : top;
+                        lowest[binding] = lowest.TryGetValue(binding, out float l) ? Mathf.Min(l, bottom) : bottom;
+                        if (!carriers.TryGetValue(binding, out var list))
+                        {
+                            carriers[binding] = list = new List<AnimationClip>();
+                        }
+                        list.Add(clip);
                     }
                 }
-                var unbalanced = highest.Where(kv => kv.Value <= 0.5f).Select(kv => kv.Key)
-                    .Where(b =>
+                if (highest.Count == 0)
+                {
+                    continue;
+                }
+
+                var toStrip = new List<UnityEditor.EditorCurveBinding>();
+                var toFill = new List<UnityEditor.EditorCurveBinding>();
+                foreach (var binding in highest.Keys)
+                {
+                    bool switchesOn = highest[binding] > 0.5f;
+                    bool switchesOff = lowest[binding] <= 0.5f;
+                    if (switchesOn && switchesOff)
+                    {
+                        continue;   // a real toggle; it owns the zone
+                    }
+                    if (switchesOn)
+                    {
+                        // Asserts rest and nothing else: Write Defaults
+                        // residue, and it overrides real toggles below it.
+                        toStrip.Add(binding);
+                        continue;
+                    }
+                    // Off with no way back.
+                    if (carriers[binding].Any(c => clipsInTrees.Contains(c)))
+                    {
+                        // A constant restore in a sibling slot fights the
+                        // blend; drop the suppression instead.
+                        toStrip.Add(binding);
+                    }
+                    else
                     {
                         // Restore to what the avatar rests at. A zone
                         // authored inactive rests off; 0 is already right.
-                        var t = ctx.Target.transform.Find(b.path);
-                        return t != null && t.gameObject.activeSelf;
-                    })
-                    .ToList();
-                if (unbalanced.Count == 0)
+                        var t = ctx.Target.transform.Find(binding.path);
+                        if (t != null && t.gameObject.activeSelf)
+                        {
+                            toFill.Add(binding);
+                        }
+                    }
+                }
+                if (toStrip.Count == 0 && toFill.Count == 0)
                 {
                     continue;
                 }
 
                 // Cloned per layer, never shared: the same clip (the
                 // empty-slot filler especially) sits in other layers too,
-                // and a restore written into the shared asset would have
-                // an unrelated layer switching zones it knows nothing about.
+                // and an edit written into the shared asset would have an
+                // unrelated layer changing zones it knows nothing about.
                 var perLayer = new Dictionary<AnimationClip, AnimationClip>();
+                AnimationClip Owned(AnimationClip clip)
+                {
+                    if (!perLayer.TryGetValue(clip, out var owned))
+                    {
+                        owned = Object.Instantiate(clip);
+                        owned.name = clip.name;
+                        owned.hideFlags = HideFlags.None;
+                        UnityEditor.AssetDatabase.AddObjectToAsset(owned, ctx.MergedController);
+                        perLayer[clip] = owned;
+                    }
+                    return owned;
+                }
+
+                foreach (var binding in toStrip)
+                {
+                    foreach (var clip in carriers[binding])
+                    {
+                        UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding, null);
+                        stripped++;
+                    }
+                }
                 foreach (var clip in clips)
                 {
+                    // Blend-tree children are left alone: a constant in a
+                    // blended slot fights the tree instead of resting it.
+                    if (clipsInTrees.Contains(clip))
+                    {
+                        continue;
+                    }
                     var drives = new HashSet<UnityEditor.EditorCurveBinding>(
                         UnityEditor.AnimationUtility.GetCurveBindings(clip));
-                    foreach (var binding in unbalanced)
+                    foreach (var binding in toFill)
                     {
                         if (drives.Contains(binding))
                         {
                             continue;   // this motion says its own piece already
                         }
-                        if (!perLayer.TryGetValue(clip, out var owned))
-                        {
-                            owned = Object.Instantiate(clip);
-                            owned.name = clip.name;
-                            owned.hideFlags = HideFlags.None;
-                            UnityEditor.AssetDatabase.AddObjectToAsset(owned, ctx.MergedController);
-                            perLayer[clip] = owned;
-                        }
-                        UnityEditor.AnimationUtility.SetEditorCurve(owned, binding,
+                        UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding,
                             AnimationCurve.Constant(0f, 1f / 60f, 1f));
                         balanced++;
                     }
@@ -514,17 +588,18 @@ namespace AvatarBridge
                 }
             }
 
-            if (balanced > 0)
+            if (balanced > 0 || stripped > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{balanced} contact zone restore(s) written into {layersTouched} layer(s)",
-                    "An animation switches these converted contact or collider objects off and " +
-                    "nothing ever switched them back on. VRChat undid it through Write Defaults " +
-                    "— VRCFury's fix service turns every receiver off for the first frames after " +
-                    "load and relies on exactly that — but ChilloutVR restores nothing a state " +
-                    "does not write, so the zones went off at spawn and stayed off: contacts " +
-                    "that never fire, for anyone. Every state and blend-tree slot in those " +
-                    "layers that left the zone alone now switches it back on.");
+                    $"Contact zone ownership settled across {layersTouched} layer(s)",
+                    $"{stripped} curve(s) that only asserted a zone's resting state were removed and " +
+                    $"{balanced} restore(s) were written in. VRChat let several layers write a " +
+                    "contact's enabled flags and reconciled them through Write Defaults; " +
+                    "ChilloutVR restores nothing a state does not write, so those same curves " +
+                    "here either held every zone off from the moment the avatar loaded (VRCFury " +
+                    "disables all receivers for the first frames after load) or held them on " +
+                    "over the menu toggle that should switch them off. A layer that switches a " +
+                    "zone both off and on is a real toggle and now owns it outright.");
             }
         }
 
