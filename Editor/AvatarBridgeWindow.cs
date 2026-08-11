@@ -759,56 +759,7 @@ namespace AvatarBridge
                 "These are yours: the avatar doesn't say which way they should go, so nothing " +
                 "sets them for you. Leaving them all alone converts fine."));
 
-            b.Add(BridgeElements.SubHeading("Contacts & shaders"));
-            var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
-                "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
-                "of approximating them with pointers and triggers: real proximity, box shapes and " +
-                "collision tags kept as-is.\n\n" +
-                "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system writes " +
-                "its parameter straight at the Animator, and the sync cache only fills when " +
-                "something writes through the avatar's animator manager, so the value never " +
-                "leaves your machine.\n\n" +
-                "An effect left permanently ON still appears for everyone — every client is " +
-                "already running it and it never needed the parameter. Only what the contact has " +
-                "to switch on is lost. The legacy pointer/trigger path writes through the manager " +
-                "and does sync, which is why it is the default.\n\n" +
-                "The components also aren't in the CCK: AvatarBridge declares them itself, " +
-                "verified field-for-field against the decompiled game client. Nothing obliges " +
-                "ChilloutVR to keep them as they are, so an avatar built on them can be broken by " +
-                "a client update. Take them only for a shape or receiver type the legacy triggers " +
-                "cannot do.",
-                settings.useNativeContacts, v =>
-                {
-                    settings.useNativeContacts = v;
-                    // No longer forces the driver bridge on with it. That pairing existed while
-                    // the bridge was the only thing making native contacts reach other players;
-                    // driving a local parameter does that on its own now, and the bridge is the
-                    // fallback for menu-driven parameters rather than the default path.
-                    ScheduleRebuild();
-                });
-            native.SetEnabled(settings.convertContacts);
-            b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
-            if (!settings.convertContacts)
-            {
-                b.Add(BridgeElements.Hint(
-                    "Contact conversion is off under Automated options, so this does nothing."));
-            }
-            if (settings.convertContacts && settings.useNativeContacts)
-            {
-                // Native contacts drive "#" locals now and behave.
-                // The one remaining caveat is the client-internal
-                // component itself.
-                b.Add(new HelpBox(
-                    "Experimental — this talks to a component internal to the game rather than the " +
-                    "CCK, so any ChilloutVR update can break it, possibly for good. Take it for a " +
-                    "shape or receiver type the legacy triggers cannot do.\n\n" +
-                    "Contacts drive a local \"#\" parameter, which is what the system needs: every " +
-                    "client runs the contact itself and reaches the same answer. A parameter a menu " +
-                    "control also drives cannot be made local, and the report names those.",
-                    HelpBoxMessageType.Info));
-
-            }
-
+            b.Add(BridgeElements.SubHeading("Shaders"));
             b.Add(BridgeElements.Row(
                 BridgeElements.Bind("Patch non-SPI shaders for VR",
                     "Shaders that don't support single-pass instanced stereo draw into one eye only in " +

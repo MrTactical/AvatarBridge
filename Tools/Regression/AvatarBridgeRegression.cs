@@ -532,7 +532,6 @@ namespace AvatarBridge.Regression
 
             convertContacts = true,
             createDefaultColliderPointers = true,
-            useNativeContacts = true,      // BETA: talks to a component internal to the game
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
 
             convertConstraints = true,
@@ -641,13 +640,12 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        // MagicaCloth and ChilloutVR's native contacts are both reached by NAME rather than by a
-        // compile-time reference, so this block renders identically in every scripting-define
-        // configuration. That is not fussiness: a digest whose SHAPE depends on which packages
-        // happen to be installed cannot be diffed across machines, and a missing define would
-        // present as "this avatar lost all its cloth" rather than as "this build cannot see it".
+        // MagicaCloth is reached by NAME rather than by a compile-time reference, so this block
+        // renders identically in every scripting-define configuration. That is not fussiness: a
+        // digest whose SHAPE depends on which packages happen to be installed cannot be diffed
+        // across machines, and a missing define would present as "this avatar lost all its
+        // cloth" rather than as "this build cannot see it".
         const string MagicaClothType = "MagicaCloth2.MagicaCloth";
-        const string NativeContactAnimator = "NAK.Contacts.ContactAnimator";
 
         static void AppendPhysics(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
@@ -746,16 +744,6 @@ namespace AvatarBridge.Regression
                 foreach (string parameter in TriggerParameters(trigger).OrderBy(p => p, StringComparer.Ordinal))
                 {
                     Record(path, "trigger", parameter);
-                }
-            }
-            var nativeType = FindTypeByName(NativeContactAnimator);
-            if (nativeType != null)
-            {
-                var field = nativeType.GetField("parameter",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                foreach (var c in target.GetComponentsInChildren(nativeType, true))
-                {
-                    Record(HierarchyPath(target, c), "native", field?.GetValue(c) as string ?? "<unreadable>");
                 }
             }
             contacts.Sort(StringComparer.Ordinal);

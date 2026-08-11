@@ -830,33 +830,6 @@ namespace AvatarBridge
                     removed++;
                 }
             }
-            // The native contact components too. An inert native
-            // contact costs every client in the instance a collision
-            // test per frame. Only stripped parameters are removed
-            // here; anything else is reported, not deleted.
-            var nativeContact = ContactsConverter.NativeContactAnimatorType;
-            if (nativeContact != null)
-            {
-                var field = nativeContact.GetField("parameter",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (field != null)
-                {
-                    foreach (var contact in ctx.Target.GetComponentsInChildren(nativeContact, true))
-                    {
-                        string name = field.GetValue(contact) as string;
-                        if (string.IsNullOrEmpty(name)) continue;
-                        // Both spellings: this runs inside the merge, and whether the rename pass
-                        // has already given the name its local "#" depends on ordering that is
-                        // not this sweep's business to depend on.
-                        string bare = name.StartsWith("#", StringComparison.Ordinal) ? name.Substring(1) : name;
-                        if (isStripped(name) || isStripped(bare))
-                        {
-                            UnityEngine.Object.DestroyImmediate(contact.gameObject);
-                            removed++;
-                        }
-                    }
-                }
-            }
             if (removed > 0)
             {
                 ctx.Report.Converted(Category, $"Removed {removed} orphaned pointer/trigger/exclusion object(s)");

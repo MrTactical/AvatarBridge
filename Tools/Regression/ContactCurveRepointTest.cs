@@ -7,15 +7,13 @@ using VRC.SDK3.Dynamics.Contact.Components;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the widened contact-curve repointing (task #19): position curves
-    // follow the converted contact, filter curves follow it on the native path only.
+    // Known-answer test for the widened contact-curve repointing (task #19): enable curves
+    // follow the converted contact's object, position curves its transform.
     //
-    // The mapping is per PATH because the offset lives in different places, both verified from
-    // the shipped client: the legacy host carries the offset in its TRANSFORM (curves map 1:1
-    // onto m_LocalPosition), the native host sits at identity with the offset in the component's
-    // localPosition FIELD (animatable because ContactBase carries
-    // OnDidApplyAnimationProperties). Legacy filters bake once at TriggerToContact.Create, so
-    // those drop with the warning.
+    // Both verdicts are from the shipped client: the host registers in OnEnable so m_Enabled
+    // maps onto m_IsActive, and the host carries the authored offset in its TRANSFORM, so
+    // position curves map 1:1 onto m_LocalPosition. Filters bake once at TriggerToContact
+    // Create and are never read again, so those drop with the warning.
     public static class ContactCurveRepointTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — contact curve repointing")]
@@ -31,62 +29,45 @@ namespace AvatarBridge.Regression
             string path = "Assets/__ContactCurveRepointTest.controller";
             var curve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(1f, 0.25f));
 
-            foreach (bool native in new[] { false, true })
+            AssetDatabase.DeleteAsset(path);
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            var clip = new AnimationClip { name = "Boobs Bigger" };
+            foreach (var prop in new[] { "m_Enabled", "position.y", "allowSelf" })
             {
-                string mode = native ? "native" : "legacy";
-                AssetDatabase.DeleteAsset(path);
-                var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
-                var clip = new AnimationClip { name = "Boobs Bigger" };
-                foreach (var prop in new[] { "m_Enabled", "position.y", "allowSelf" })
-                {
-                    AnimationUtility.SetEditorCurve(clip,
-                        new EditorCurveBinding { path = "Chest/Pats", type = typeof(VRCContactReceiver), propertyName = prop },
-                        curve);
-                }
-                controller.AddMotion(clip);
-
-                var ctx = new BridgeContext
-                {
-                    MergedController = controller,
-                    Report = new BridgeReport(),
-                    Settings = new BridgeSettings { useNativeContacts = native },
-                };
-                ctx.ContactHosts[("Chest/Pats", false)] =
-                    new System.Collections.Generic.List<string> { "Chest/Pats/Contact_Pats" };
-                ContactsConverter.RepointContactEnableCurves(ctx);
-
-                var bindings = AnimationUtility.GetCurveBindings(clip);
-                fail += Check($"{mode}: m_Enabled -> host m_IsActive",
-                    bindings.Any(b => b.path == "Chest/Pats/Contact_Pats"
-                                      && b.type == typeof(GameObject) && b.propertyName == "m_IsActive"));
-                fail += Check($"{mode}: no VRC contact binding survives",
-                    !bindings.Any(b => b.type == typeof(VRCContactReceiver)));
-
-                if (native)
-                {
-                    fail += Check("native: position.y -> NAK field localPosition.y",
-                        bindings.Any(b => b.type != null && b.type.FullName == "NAK.Contacts.ContactReceiver"
-                                          && b.propertyName == "localPosition.y"));
-                    fail += Check("native: allowSelf -> NAK field",
-                        bindings.Any(b => b.type != null && b.type.FullName == "NAK.Contacts.ContactReceiver"
-                                          && b.propertyName == "allowSelf"));
-                }
-                else
-                {
-                    fail += Check("legacy: position.y -> host Transform m_LocalPosition.y",
-                        bindings.Any(b => b.type == typeof(Transform)
-                                          && b.propertyName == "m_LocalPosition.y"
-                                          && b.path == "Chest/Pats/Contact_Pats"));
-                    fail += Check("legacy: allowSelf dropped WITH warning (baked at Create)",
-                        !bindings.Any(b => b.propertyName == "allowSelf")
-                        && ctx.Report.Entries.Any(e => e.Status == ReportStatus.Warning
-                            && e.Detail != null && e.Detail.Contains("allowSelf")));
-                }
-                AssetDatabase.DeleteAsset(path);
+                AnimationUtility.SetEditorCurve(clip,
+                    new EditorCurveBinding { path = "Chest/Pats", type = typeof(VRCContactReceiver), propertyName = prop },
+                    curve);
             }
+            controller.AddMotion(clip);
+
+            var ctx = new BridgeContext
+            {
+                MergedController = controller,
+                Report = new BridgeReport(),
+                Settings = new BridgeSettings(),
+            };
+            ctx.ContactHosts[("Chest/Pats", false)] =
+                new System.Collections.Generic.List<string> { "Chest/Pats/Contact_Pats" };
+            ContactsConverter.RepointContactEnableCurves(ctx);
+
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            fail += Check("m_Enabled -> host m_IsActive",
+                bindings.Any(b => b.path == "Chest/Pats/Contact_Pats"
+                                  && b.type == typeof(GameObject) && b.propertyName == "m_IsActive"));
+            fail += Check("no VRC contact binding survives",
+                !bindings.Any(b => b.type == typeof(VRCContactReceiver)));
+            fail += Check("position.y -> host Transform m_LocalPosition.y",
+                bindings.Any(b => b.type == typeof(Transform)
+                                  && b.propertyName == "m_LocalPosition.y"
+                                  && b.path == "Chest/Pats/Contact_Pats"));
+            fail += Check("allowSelf dropped WITH warning (baked at Create)",
+                !bindings.Any(b => b.propertyName == "allowSelf")
+                && ctx.Report.Entries.Any(e => e.Status == ReportStatus.Warning
+                    && e.Detail != null && e.Detail.Contains("allowSelf")));
+            AssetDatabase.DeleteAsset(path);
 
             Debug.Log(fail == 0
-                ? "[ContactCurveRepointTest] PASS — position follows the contact on both paths, filters native-only, drops loud."
+                ? "[ContactCurveRepointTest] PASS — position follows the contact, filters drop loud."
                 : $"[ContactCurveRepointTest] FAIL — {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }

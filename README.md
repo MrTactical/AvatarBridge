@@ -43,7 +43,7 @@ sit along it — because that's the trip your avatar is making.</em></p>
 [What gets converted](#what-gets-converted) ·
 [Constraints](#constraints-that-drive-another-object) ·
 [Physics](#physbones--magicacloth2) ·
-[Contacts](#native-contacts) ·
+[Contacts](#contacts) ·
 [Shaders](#shaders-that-only-draw-into-one-eye) ·
 [Parameter types](#parameter-types) ·
 [Face tracking](#face-tracking) ·
@@ -74,7 +74,7 @@ mid-2026:
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([experimental](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
+| Contacts | pointers + triggers with [tags widened](#contacts) so ordinary CVR players' hands fire them, proximity receivers driven from distance, anchors and animated switches carried | emulated with `CVRPointer` + trigger |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
@@ -135,13 +135,10 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts, working for everyone** — one-to-one, with real proximity and box
-  shapes, using a system the CCK doesn't expose. Every client runs the contact itself, so most of
-  the parameters they drive are made local: a synced one would have the sync stream overwrite
-  whatever the contact set, which is what used to make converted contacts fire for the wearer
-  alone. A parameter a menu control also drives has to stay synced, so those take a driver route
-  instead — decided [per parameter](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work),
-  with nothing to choose ([experimental](#native-contacts), off by default).
+- **Contacts a stranger can actually set off** — boops, headpats and proximity effects become
+  pointers and triggers, with [tags widened](#contacts) so the hands and fingers every ChilloutVR
+  player carries fire them, proximity receivers driven from real distance, and contacts anchored
+  to the same bone VRChat anchored them to.
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -244,7 +241,7 @@ defines.
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
 | Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
-| Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
+| Contacts | `CVRPointer` / trigger | see [below](#contacts) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
@@ -481,18 +478,27 @@ come along; the report names each chain that had one.
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
-## Native contacts
+## Contacts
 
-ChilloutVR's contact system is a near-exact match for VRChat's — the same Sphere/Capsule shapes,
-the same `allowSelf` / `allowOthers` / collision tags under the same names. It lives inside the
-game client and the CCK ships no way to author it, so converters have always had to approximate it
-with pointers and triggers.
+VRChat contacts convert onto the CCK's own primitives: each **sender** becomes a `CVRPointer` per
+collision tag, each **receiver** an Advanced Avatar Trigger driving its parameter. The mapping
+covers what avatars actually do with contacts — *OnEnter* receivers get an enter pulse, *Constant*
+receivers a matching enter/exit pair, and *Proximity* receivers are driven from real distance by
+the trigger's stay task. `allowSelf` / `allowOthers` map onto the trigger's local/network
+interaction flags, and the parameter writes go through the game's animator manager, so **they
+sync** — what a contact sets off is seen by everyone.
 
-**AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim, and each parameter
-[routed](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work) to whichever
-of the three cases it is in — local for almost all of them, a driver where a menu control needs an
-on/off name synced, and a per-frame maximum where a menu control shares a *proximity* parameter.
+The approximations: the trigger's area is a box sized from the authored sphere or capsule, a
+minimum-velocity threshold has no equivalent (a slow touch fires), and a *Constant* receiver
+resets to zero when any pointer leaves, even if a second one is still inside. Each is called out
+in the conversion report when it happens.
+
+ChilloutVR also has a contact system of its own inside the game client, a near-exact match for
+VRChat's. Earlier versions could convert onto it directly; that path is gone. The CCK ships no way
+to author those components, and avatars built on them stopped being wired up by the client — the
+receivers register and simulate, but what they detect never reaches the animator, for anyone in
+the instance. If ChilloutVR ever exposes the system through the CCK, conversion onto it can come
+back on a supported footing.
 
 ### Grabbing a chain
 
@@ -539,104 +545,18 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-### Native contacts drive a local parameter, because that's what makes them work
-
-A native contact writes its parameter **straight at the Animator** and transmits nothing — and it
-doesn't need to. The contact runs on **every** client, so each one sees the same collision and
-reaches the same answer by itself.
-
-That only holds while the parameter is **local**. Give the contact a *synced* parameter and the
-sync stream writes the declared default straight back over whatever the contact set, so the effect
-misfires for other people and can misfire for you too. AvatarBridge used to do exactly that, which
-is why converted native contacts had a reputation for firing only for the wearer. Contact
-parameters now become `#` names — the system's author is explicit that they must be — and the
-contact components are repointed to follow the rename.
-
-*Confirmed in game: sound and particles reaching other players reliably.*
-
-The one parameter that can't be made local is one a **menu control** also drives, since that has to
-stay synced to reach anyone. Those take the other route automatically: the contact gets a local name
-of its own and a **driver** copies the value into the synced one, because a driver's writes *do* go
-out. Nothing to choose — the converter can see which case each parameter is in.
-
-A **proximity** contact sharing a menu control's parameter takes a third route: the contact drives
-its local name, the menu keeps the synced one, and everything that *read* the parameter now reads a
-per-frame **maximum** of the two. Contacts run on every client, so the smooth value never needs to
-cross the network — each client computes the maximum for itself, and only the menu value syncs. With
-the slider raised, a touch can push the value higher but never below the slider. (A dropdown sharing
-a proximity parameter is the one shape still left alone: a maximum of a position selection and a
-distance means nothing, and the report says so.)
-
-<details><summary>Why results differ between clients, and the call chain</summary>
-
-`ContactAnimator.ApplyValue` → `animator.SetFloat`, which never fills the outbound sync cache. The
-legacy pointer/trigger path does the opposite: `TriggerToContact` → `PlayerSetup.ChangeAnimatorParam`
-goes through the manager and **does** sync, which is why it remains the default. The bridge's driver
-works because `CVRAnimatorDriver.ApplyAnimatorChange` → `AnimatorManager.SetParameter` is transmitted
-as well.
-
-Nothing is broken in the contact system — it was never built to transmit. Every client simulates
-every avatar's contacts locally, so two clients agree only when both observe the same collision.
-An effect left permanently **on** appears for everyone because it never needed the parameter at all.
-An effect the contact has to **switch on** appears wherever that collision was seen, and nowhere
-else. That is why two effects on one avatar behave differently, and why the same effect can reach
-one person and not another.
-
-There is a second way to lose it, and it is worse: if the parameter the contact drives is **synced**
-(no `#` prefix), the AAS stream keeps writing the declared default over the top of what the contact
-just wrote. The system's author is explicit that a native contact must drive a `#` parameter for
-this reason. Turning the bridge on satisfies that — the contact drives a `#` name of its own and a
-driver carries the value into the synced one.
-
-A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
-one only in steps — which is why on/off receivers take the driver and proximity receivers take the
-maximum instead: a generated layer recomputes `max(menu, contact)` each cycle on every client, the
-same tick idiom the scale parameters use. Receivers the author marked local-only are left alone
-either way.
-
-</details>
-
-**Detection itself costs no sync** — the system is by
-[NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer, and every client simulates every avatar's contact *shapes* itself.
-
 **Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
 override when one is set — the component itself often lives somewhere central while the shape
 follows a bone, which is how head-pat receivers and VRCFury-baked contacts are built (about a
-quarter of all contacts measured in the wild). Converted contacts are parented at that anchor on
-both paths, so they follow the same bone they did in VRChat.
+quarter of all contacts measured in the wild). Converted contacts are parented at that anchor,
+so they follow the same bone they did in VRChat.
 
-**Animated contact switches follow their contact** — on the legacy path and the native one. VRChat
-avatars animate a contact's enabled flag to switch it off ("disable head pats" is built this way);
-that component is deleted by conversion, so the curve used to play as silence while its menu entry,
-parameter and layer all converted. Those curves now toggle the converted contact's own object, the
-form the client honours everywhere (read from the decompiled `ContactBase`, which registers in
-`OnEnable` and de-registers in `OnDisable`). Curves animating a contact's shape or filters have no
-equivalent and are removed with a report line naming each.
-
-**How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
-each component's assembly, namespace and class name, resolved against the player's own assemblies at
-load. The contact implementation already ships *inside the ChilloutVR client*; the CCK simply
-provides no way to author it. AvatarBridge generates matching declarations into
-`AvatarBridge/Runtime`, verified **field-for-field against the decompiled client**, and the game's
-own implementation runs. Nothing is reimplemented and nothing extra is bundled into the avatar.
-
-> ✅ **Confirmed in a live instance:** validation clean, uploaded, contacts triggered by other
-> players, CVR's own runtime gizmos drawing the components.
->
-> ⚠️ **Experimental, and off by default.** This talks to a component internal to the game rather
-> than the CCK, so any ChilloutVR update can break it, possibly for good. The conversion falls back
-> to the legacy path by itself if anything is wrong.
-
-Two practical notes:
-
-- **Don't import the author's public repository** into a conversion project. It's a diverged
-  work-in-progress whose current layout drops fields the shipped client still reads — including the
-  flag that lets other players' hands trigger receivers.
-- **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene**
-  before converting again. Unity manufactures a placeholder script for a dangling reference, and it
-  then captures every new component of that class — one bad conversion poisons the next. AvatarBridge
-  detects this and refuses; *Tools → Avatar Bridge → Diagnose native contacts* shows what Unity holds.
+**Animated contact switches follow their contact.** VRChat avatars animate a contact's enabled
+flag to switch it off ("disable head pats" is built this way); that component is deleted by
+conversion, so the curve used to play as silence while its menu entry, parameter and layer all
+converted. Those curves now toggle the converted contact's own object, and curves that moved a
+contact drive its transform. Curves animating a contact's shape or filters have no equivalent and
+are removed with a report line naming each.
 
 ## Shaders that only draw into one eye
 
@@ -824,7 +744,6 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -859,7 +778,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything |
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
-| **Convert contact senders/receivers** | on | VRChat contacts become pointers and triggers, or [native contacts](#native-contacts) below |
+| **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
 | **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
@@ -1406,10 +1325,10 @@ out with the rest of it, rather than left standing to be tested forever by every
 
 Three causes, and the report distinguishes them.
 
-**A sound a native contact sets off.** **Reconvert on 3.7.2 or later**, which fixes this by
-default — the contact was driving a *synced* parameter, so the sync stream wrote the declared
-default back over whatever the contact set.
-[Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
+**A sound a contact sets off, converted before 3.7.5.** **Reconvert on the current release.**
+Older versions could convert contacts onto ChilloutVR's client-internal contact system, which
+stopped being wired up by the game; contacts now convert through [pointers and
+triggers](#contacts), which sync.
 
 **Flat (2D) audio.** ChilloutVR decides whether to spatialize a source from its **Spatial Blend**
 alone — anything short of fully 3D is never handed to the spatializer and can go unheard by
@@ -1427,9 +1346,9 @@ whoever set it off.
 **Reconvert on a current release.** Two separate causes produce this symptom, and the report
 distinguishes them.
 
-**A native contact switched it on** — fixed by default in **3.7.2**. The contact was driving a
-*synced* parameter, so the sync stream wrote the declared default back over whatever the contact
-set. [Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
+**A contact switched it on, converted before 3.7.5** — reconvert. Older versions could convert
+contacts onto ChilloutVR's client-internal contact system, which stopped being wired up by the
+game; contacts now convert through [pointers and triggers](#contacts), which sync.
 
 **The emitter was animated instead of the object** — fixed in **3.5.38**.
 Effects are built two ways, and only one of them travels. If the clip switches the effect's

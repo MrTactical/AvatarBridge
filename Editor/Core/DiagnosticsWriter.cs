@@ -97,7 +97,6 @@ namespace AvatarBridge
                 Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarInformation")),
                 Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth")),
                 Row("DynamicBone", VersionOf("DynamicBone")),
-                Row("Native contacts (NAK)", VersionOf("NAK.Contacts.ContactReceiver")),
             };
             return Table(new[] { "Package", "Assembly / version" }, rows);
         }

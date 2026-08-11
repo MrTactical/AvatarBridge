@@ -52,16 +52,6 @@ namespace AvatarBridge
         public HashSet<string> PreserveParameters = new HashSet<string>();
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
-
-        public HashSet<string> LocalContactParameters = new HashSet<string>();
-
-        public System.Collections.Generic.List<(string local, string synced)> BridgedContacts =
-            new System.Collections.Generic.List<(string, string)>();
-
-        // Proximity contacts whose parameter a menu also drives.
-        // Readers move to a per-frame max of the two.
-        public System.Collections.Generic.List<(string local, string synced)> AnalogBridgedContacts =
-            new System.Collections.Generic.List<(string, string)>();
         public List<string> ParameterOrder = new List<string>();
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =
@@ -71,8 +61,6 @@ namespace AvatarBridge
             new Dictionary<string, List<string>>();
 
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
-
-        public Dictionary<string, string> AppliedParameterRenames = new Dictionary<string, string>();
 
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 

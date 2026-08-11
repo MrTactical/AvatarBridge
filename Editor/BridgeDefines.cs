@@ -14,8 +14,6 @@ namespace AvatarBridge
     // Defines managed here:
     //   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
     //   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
-    //   AVATARBRIDGE_CONTACTS - ChilloutVR's native NAK.Contacts components can be authored,
-    //                           whether from a future CCK or from ContactStubPatcher's output
     //
     // The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
     // CVR_CCK_EXISTS) which the rest of this package is gated behind.
@@ -27,6 +25,7 @@ namespace AvatarBridge
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
 
+        // Retired define, still cleared from projects that carry it.
         public const string ContactsDefine = "AVATARBRIDGE_CONTACTS";
 
         static BridgeDefines()
@@ -37,7 +36,6 @@ namespace AvatarBridge
 
         public static bool HasMagicaCloth2 => TypeExists("MagicaCloth2.MagicaCloth");
         public static bool HasDynamicBone => TypeExists("DynamicBone");
-        public static bool HasNativeContacts => TypeExists("NAK.Contacts.ContactReceiver");
         public static bool HasVrcAvatarSdk => TypeExists("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
         public static bool HasCck => TypeExists("ABI.CCK.Components.CVRAvatar");
 
@@ -63,8 +61,8 @@ namespace AvatarBridge
             bool changed = false;
             changed |= SetDefine(defines, MagicaDefine, HasMagicaCloth2);
             changed |= SetDefine(defines, DynamicBoneDefine, HasDynamicBone);
-            // Always false: see ContactsDefine. Passing it through SetDefine rather than simply
-            // dropping the line is what clears it out of projects that still have it.
+            // Always false. Passing it through SetDefine rather than dropping
+            // the line is what clears it out of projects that still have it.
             changed |= SetDefine(defines, ContactsDefine, false);
 
             if (changed)

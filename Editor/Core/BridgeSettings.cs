@@ -145,18 +145,6 @@ namespace AvatarBridge
         // receivers keep reacting to other players' hands.
         public bool createDefaultColliderPointers = true;
 
-        // Use CVR's native contact components instead of the
-        // pointer/trigger approximation. Near field-for-field match:
-        // same shapes, same tags, real proximity. Contacts are
-        // per-client by design; every client simulates every avatar.
-        //
-        // Off by default and experimental. Talks to a component
-        // internal to the game, declared here and verified against the
-        // decompiled client, the only authority. The author's public
-        // repo disagrees with the shipped game; never import it into
-        // a conversion project.
-        public bool useNativeContacts = false;
-
         // Copy shaders lacking single-pass instanced support into
         // RehomedAssets with the macros added, and repoint materials.
         // Originals are never modified; a copy that fails to compile

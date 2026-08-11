@@ -59,28 +59,6 @@ namespace AvatarBridge.Regression
                 }
             }
 
-            // The contact components, since the parameter they address is a plain string and is
-            // the other half of any "it fires twice" question.
-            var animatorType = System.Type.GetType("NAK.Contacts.ContactAnimator, Assembly-CSharp")
-                ?? System.AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("NAK.Contacts.ContactAnimator")).FirstOrDefault(t => t != null);
-            if (animatorType != null)
-            {
-                foreach (var go in Object.FindObjectsOfType<GameObject>(true))
-                {
-                    foreach (var c in go.GetComponents(animatorType))
-                    {
-                        var f = animatorType.GetField("parameter",
-                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                        string p = f?.GetValue(c) as string;
-                        if (!string.IsNullOrEmpty(p) && p.Contains(wanted))
-                        {
-                            Debug.Log($"[Fanout] contact component on \"{go.name}\" drives \"{p}\"");
-                        }
-                    }
-                }
-            }
-
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
 
