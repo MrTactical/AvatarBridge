@@ -81,7 +81,10 @@ Shader "AvatarBridge/SPS Light Probe"
                 if (c == 2) return float3(0.25, 0.45, 1.0);   // front
                 if (c == 3) return float3(1.0, 0.2, 1.0);     // tip
                 if (c == 4) return float3(1.0, 0.65, 0.1);    // unrecognised
-                return float3(0.85, 0.85, 0.85);              // ordinary
+                // Amber, deliberately not grey: grey must mean "slot is
+                // empty" and nothing else, or a report of "it went grey"
+                // is ambiguous between no light and a world light.
+                return float3(0.95, 0.8, 0.25);               // ordinary
             }
 
             v2f vert(appdata v)

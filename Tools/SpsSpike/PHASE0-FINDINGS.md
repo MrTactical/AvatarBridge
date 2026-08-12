@@ -17,7 +17,92 @@ colours — hole (red), ring (green), front (blue), tip (magenta) — which mean
   within-pass half of R2 is clear; cross-pass (ForwardAdd/shadow) is still untested.
 - Confirmed working mounted on an avatar as well as on a prop.
 
-## S2b — cross-content: **strong positive, one confirmation left**
+## S2b — cross-content: **CONFIRMED 2026-08-13**
+
+Setup: the protocol lights rode **one player's avatar** (BalloonDog). The other player wore a
+plain avatar with no lights. Two receiver-only cubes — one spawned by each player — carrying
+no lights of their own.
+
+| Condition | Readout |
+|---|---|
+| No light-bearing avatar in the instance | **completely dark** — every row empty |
+| Light-bearing avatar present and in frame | protocol colours, **distance bars reading metres** |
+| That player switches to a plain avatar | **goes dark again** |
+
+Airtight in both directions, and it establishes two distinct crossings:
+
+- **Avatar → prop**: a cube with no lights displays lights carried by an avatar, metres away.
+  Separate uploads, separate bundles.
+- **Remote avatar → another player's prop**: the *second* player's cube, on the *second*
+  player's client, lit up from the first player's **remote** avatar. That is the topology the
+  deform needs — content B's shader reading content A's socket on a third machine — and it is
+  the result that matters most.
+
+Confirmed from both participants' viewpoints and in two different worlds.
+
+**Not yet directly tested: avatar → avatar.** Props and avatars sit on different layers
+(`PlayerLocal` / `PlayerNetwork` vs the prop layer), and the spike rig deliberately sets
+`cullingMask = Everything` so a layer mismatch could not masquerade as a failure. Real socket
+lights come from the VRCFury bake, whose culling mask has not been checked — and the CCK ships
+`CheckIfMisconfiguredPlayerLight`, which flags lights hitting one player layer but not the
+other and auto-fixes by OR-ing both in. That validator existing is strong evidence the layer
+question is real.
+
+**Checked the same day:** `VRCFuryHapticSocketBaker` never assigns `cullingMask` at all, so
+the baked socket lights keep Unity's default of `-1` (Everything) — both player layers
+included. Avatar→avatar should therefore work untouched. The converter should still assert
+it and say so in the report: it is one line of insurance against an author, or a future
+VRCFury, narrowing the mask.
+
+**Socket light geometry, read from the same method** (drives the decoder):
+- Root light at the socket origin; range `0.4106` (hole) or `0.4206` (ring/ring-one-way).
+- Front light at **`forward * 0.01 / worldScale.x`** — a **1 cm** baseline — range `0.4506`.
+- Both `LightType.Point`, `Color.black`, `LightShadows.None`, `ForceVertex`.
+- Whole rig offset by `up * 0.03` when the socket uses a radius offset.
+
+That 1 cm baseline is what the socket's forward axis must be reconstructed from
+(`normalize(front − root)`), so it is inherently low-precision and sensitive to any jitter in
+either light's transform. SPS ships with it, so it works, but the decoder should normalise
+defensively and fall back to the plug-to-socket direction if the two positions land closer
+than a sane epsilon.
+
+### The limitation this exposed, and why it is survivable
+
+Reported alongside the pass: the readout flickers, and *"the cube only turns on when I look
+at you"* — at the avatar carrying the lights. Looking straight at the cube instead sends
+rows grey.
+
+Cause: **Unity culls lights per camera.** Vertex-light slots are filled from the camera's
+visible-light set, and a protocol light is a sphere of radius 0.41 m — trivially small, so
+it leaves the frustum the moment the avatar wearing it does, and the slot empties. CVR's own
+remote-avatar hiding (`PuppetMaster.ProcessAvatarVisibility` → `AvatarObject.SetActive`)
+is **distance**-gated, not view-gated, so it explains nothing here; it will, however, kill
+the lights outright past `disablePlayerAtDistance`, which is worth knowing.
+
+Why this is survivable, and why the tiered design was the right call:
+- At real working distance the plug and socket are within ~0.4 m of each other, so a light
+  sphere that size is in frame whenever the plug is. Culling only bites during *approach*,
+  at ranges where the deform is barely engaged.
+- The other two channels are **immune**: shader globals are uniforms and the discrete
+  contact channel writes material properties — neither is frustum-culled.
+
+**Improved fallback ladder** (supersedes the plan's two-tier continuous channel):
+1. **P1 lights** — frame-accurate exact frame, when in frustum.
+2. **Discrete channel last-known** — exact-ish, 10 Hz, never culled. Holds the last good
+   socket position when the lights blink out, instead of snapping.
+3. **P0 globals** — approximate, always present, ultimate floor.
+
+The deform must therefore ease between sources rather than switch hard, or a light entering
+and leaving frustum will pop the mesh.
+
+### Probe change
+
+Ordinary (non-protocol) lights now read **amber** instead of light grey, so grey means
+"slot empty" and nothing else — "two of them went grey" was ambiguous between an empty slot
+and a world light taking it, and that distinction decides whether culling frees the slot or
+something else claims it.
+
+## S2b — earlier inference (superseded by the confirmation above)
 
 Two probe rigs in one instance, one spawned locally and one spawned by another player.
 Each rig carries exactly one light per class, so a single rig can only ever show one red,
