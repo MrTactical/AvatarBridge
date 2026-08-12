@@ -40,7 +40,7 @@ namespace AvatarBridge.Spike
             var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = "Probe Cube";
             cube.transform.SetParent(root.transform, false);
-            Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
+            UnityEngine.Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
             cube.GetComponent<MeshRenderer>().sharedMaterial = ProbeMaterial();
 
             // Spread them so each occupies its own slot and the swatch
@@ -78,7 +78,7 @@ namespace AvatarBridge.Spike
             var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = "Probe Cube";
             cube.transform.SetParent(root.transform, false);
-            Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
+            UnityEngine.Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
             cube.GetComponent<MeshRenderer>().sharedMaterial = ProbeMaterial();
 
             Selection.activeGameObject = root;
@@ -118,7 +118,7 @@ namespace AvatarBridge.Spike
             cube.transform.SetParent(root.transform, false);
             cube.transform.localPosition = new Vector3(0f, 0.5f, 0f);
             cube.transform.localScale = Vector3.one * 0.6f;
-            Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
+            UnityEngine.Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
             cube.GetComponent<MeshRenderer>().sharedMaterial = ProbeMaterial();
 
             var avatarType = FindType("ABI.CCK.Components.CVRAvatar");
