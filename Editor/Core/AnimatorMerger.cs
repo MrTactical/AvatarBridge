@@ -99,7 +99,13 @@ namespace AvatarBridge
         {
             var vrcControllers = GetSelectedVrcControllers(ctx);
             ReportSkippedLayers(ctx);
-            bool convertingGestureLayer = vrcControllers.Any(c => c.id == VRCAvatarDescriptor.AnimLayerType.Gesture);
+            // Only a gesture layer that actually claims a hand slot costs
+            // ChilloutVR its own hand layers. A proxy-only one claims
+            // nothing, so the CCK's poses must survive.
+            bool convertingGestureLayer = vrcControllers.Any(c =>
+                c.id == VRCAvatarDescriptor.AnimLayerType.Gesture
+                && c.controller != null
+                && c.controller.layers.Any(l => GetCvrHandLayerName(c.id, l) != null));
 
             // Captured before merging. The saved-controller audit uses
             // these to tell inherited dead references from introduced ones.
@@ -154,6 +160,25 @@ namespace AvatarBridge
                     {
                         ctx.Report.Skipped(Category, $"{id} layer \"{srcLayer.name}\"",
                             "Synced layers cannot survive merging into one controller.");
+                        continue;
+                    }
+
+                    // A gesture layer holding nothing but VRChat's proxy
+                    // placeholders is dropped rather than merged. Kept, it
+                    // would play the stand-ins over ChilloutVR's own hand
+                    // poses from a later slot and snap the fingers to them.
+                    if (id == VRCAvatarDescriptor.AnimLayerType.Gesture && IsProxyOnlyLayer(srcLayer))
+                    {
+                        ctx.Report.Converted(Category,
+                            $"Gesture layer \"{srcLayer.name}\" left to ChilloutVR's own hand poses",
+                            "Every clip in it is one of VRChat's \"proxy_\" placeholders, which means " +
+                            "this avatar never authored hand poses of its own — those files are " +
+                            "stand-ins that the VRChat CLIENT swaps its real animations into at " +
+                            "runtime, so what ships in the project is not the pose you see in " +
+                            "VRChat. Merging them would play the stand-in literally and, because " +
+                            "the layer takes ChilloutVR's hand slot, would replace working finger " +
+                            "poses with one nobody authored. ChilloutVR's own hand set is this " +
+                            "platform's version of those animations and is kept instead.");
                         continue;
                     }
 
@@ -10155,7 +10180,7 @@ namespace AvatarBridge
 
         static string GetCvrHandLayerName(VRCAvatarDescriptor.AnimLayerType id, AnimatorControllerLayer srcLayer)
         {
-            if (id != VRCAvatarDescriptor.AnimLayerType.Gesture)
+            if (id != VRCAvatarDescriptor.AnimLayerType.Gesture || IsProxyOnlyLayer(srcLayer))
             {
                 return null;
             }
@@ -10170,6 +10195,69 @@ namespace AvatarBridge
                 return "RightHand";
             }
             return null;
+        }
+
+        // A gesture layer that only ever plays VRChat's proxy_* clips has
+        // no hand poses of its own. Those files are placeholders: the
+        // VRChat CLIENT swaps its real hand animations in at runtime, so
+        // what ships in the project is a stand-in. Merged here they play
+        // literally, and taking ChilloutVR's hand layers out for them
+        // replaces working poses with the stand-in - fingers snapping to
+        // a pose nobody authored. ChilloutVR's own hand set is what this
+        // platform has instead, exactly as with the locomotion proxies.
+        static bool IsProxyOnlyLayer(AnimatorControllerLayer srcLayer)
+        {
+            if (srcLayer?.stateMachine == null)
+            {
+                return false;
+            }
+            int clips = 0;
+            bool authored = false;
+            void Look(Motion motion)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    clips++;
+                    if (!IsVrchatProxyClip(clip))
+                    {
+                        authored = true;
+                    }
+                }
+                else if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        Look(child.motion);
+                    }
+                }
+            }
+            WalkMachines(srcLayer.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    if (child.state != null)
+                    {
+                        Look(child.state.motion);
+                    }
+                }
+            });
+            return clips > 0 && !authored;
+        }
+
+        internal static bool IsVrchatProxyClip(AnimationClip clip)
+        {
+            if (clip == null)
+            {
+                return false;
+            }
+            if (clip.name.StartsWith("proxy_", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            // Rehomed copies keep the name; a package path only proves
+            // where the original sat, so the name is checked first.
+            string path = AssetDatabase.GetAssetPath(clip) ?? "";
+            return path.IndexOf("com.vrchat.", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         static string MakeUniqueLayerName(List<AnimatorControllerLayer> layers, string name)

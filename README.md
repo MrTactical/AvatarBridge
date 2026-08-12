@@ -783,7 +783,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
-| **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom |
+| **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
 | **Base / locomotion** | off | Brings across what VRChat kept in Base — toggles, blendshapes, materials, additive motion — and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo |
 | **Additive** | off | VRChat's additive layer, usually breathing |
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
@@ -1443,6 +1443,20 @@ Worth knowing: **most VRChat avatars don't ship walking animations at all** — 
 `proxy_*` placeholders the VRChat *client* replaces at runtime. ChilloutVR's own animation set is this
 platform's equivalent, and the report says which case your avatar is. Genuine locomotion replacements
 lean on runtime layer-weight control, which ChilloutVR has no equivalent for, so they can't be rescued.
+
+### Converted fingers snap to a pose nobody authored
+
+**Reconvert on 3.7.5 or later.** The avatar's Gesture layer held nothing but VRChat's `proxy_*`
+placeholders — the stand-in files whose real animations the VRChat *client* substitutes at runtime.
+Converted, that layer used to take over ChilloutVR's hand-pose slot, which means the CCK's own
+working hand poses were removed and the stand-ins played literally: fingers snapping to a pose that
+exists in no animation anyone made. Most avatars that never authored custom hand poses are built
+exactly this way, so it was easy to hit and hard to see — the file is there, it has finger curves in
+it, and it still isn't the pose VRChat shows you.
+
+A Gesture layer like that is now left behind entirely and ChilloutVR's hand set kept, the same rule
+already used for locomotion proxies. Layers with hand poses the avatar really authored take the slot
+as before; the report says which happened.
 
 ### An animation flickers rapidly — often only on other players' screens
 
