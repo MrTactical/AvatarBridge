@@ -1,5 +1,23 @@
 # Spike results
 
+## S1 — the globals resolve, and they are positioned correctly (2026-08-13)
+
+First look at the globals probe: a **chest marker appeared at chest height on an avatar**.
+That answers the two questions that gated the redesign — `_CVR_PlayerChestPositions` (and by
+extension the rest of the family) **resolves for uploaded content in game**, and the value is
+in the right place, not garbage or an offset frame.
+
+The markers were hard to see, because the first build drew solid depth-tested cubes that end
+up buried inside bodies. Rebuilt as an **overlay gizmo**: `ZTest Always` in the Overlay queue
+so nothing occludes them, wireframe edges with dim faces so they never hide the body part they
+are measuring, a minimum apparent size so a player across the room stays visible, and the
+local player's own set drawn at 35% so it does not fill a first-person view from the inside.
+
+Still to read off the rebuilt probe: tracking quality while walking/crouching, whether local
+is index 0, whether remote players' markers follow *them*, and — the one that matters most —
+**whether a mirror shows the markers in the same places as the direct view**, which is the
+property lights failed and the whole reason position moved here.
+
 ## S2c — the decisive one: **the light channel is camera-dependent**
 
 Session 2026-08-13, probe worn as an avatar. Results in order:
