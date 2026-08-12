@@ -574,6 +574,7 @@ namespace AvatarBridge.Regression
 
             convertContacts = true,
             createDefaultColliderPointers = true,
+            sizeContactZonesForLargest = true,
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
 
             convertConstraints = true,
