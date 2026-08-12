@@ -952,8 +952,13 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "parent");
                 return true; // keep the first constraint's rest/axis; just merge these sources in
             }
-            unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            var parentDriven = DrivenBy(ctx, vrc);
+            unity.translationAtRest = parentDriven != vrc.transform
+                ? parentDriven.localPosition
+                : Get(vrc, "PositionAtRest", vrc.transform.localPosition);
+            unity.rotationAtRest = parentDriven != vrc.transform
+                ? parentDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
@@ -974,8 +979,11 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "position");
                 return true;
             }
+            var posDriven = DrivenBy(ctx, vrc);
             unity.translationOffset = Get(vrc, "PositionOffset", Vector3.zero);
-            unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
+            unity.translationAtRest = posDriven != vrc.transform
+                ? posDriven.localPosition
+                : Get(vrc, "PositionAtRest", vrc.transform.localPosition);
             unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1004,6 +1012,7 @@ namespace AvatarBridge
             // result = source.rotation * Euler(offset), hence
             // offset = Inverse(source.rotation) * current.rotation. World rotations throughout,
             // so AlignLocalSpaceRelays re-parenting cannot disturb the measurement.
+            var driven = DrivenBy(ctx, vrc);
             var rotSources = ReadSources(vrc);
             bool rotMeasured = Get(vrc, "IsActive", true)
                 && Mathf.Approximately(Get(vrc, "GlobalWeight", 1f), 1f)
@@ -1011,14 +1020,16 @@ namespace AvatarBridge
                 && rotSources[0].Transform != null
                 && vrc.gameObject.activeInHierarchy;
             unity.rotationOffset = rotMeasured
-                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * vrc.transform.rotation).eulerAngles
+                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * driven.rotation).eulerAngles
                 : Get(vrc, "RotationOffset", Vector3.zero);
             // A bone AlignLocalSpaceRelays moved has a new parent, so
             // the authored RotationAtRest no longer describes it.
             // Its rest is where it sits now; the move preserved world
-            // rotation.
-            unity.rotationAtRest = reparented.Contains(vrc.transform)
-                ? vrc.transform.localEulerAngles
+            // rotation. A relocated constraint reads the target's rest
+            // for the same reason: the authored field describes whatever
+            // the VRC component was driving, which is the target.
+            unity.rotationAtRest = reparented.Contains(driven) || driven != vrc.transform
+                ? driven.localEulerAngles
                 : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
@@ -1043,7 +1054,10 @@ namespace AvatarBridge
                 return true;
             }
             unity.scaleOffset = Get(vrc, "ScaleOffset", Vector3.one);
-            unity.scaleAtRest = Get(vrc, "ScaleAtRest", vrc.transform.localScale);
+            var scaleDriven = DrivenBy(ctx, vrc);
+            unity.scaleAtRest = scaleDriven != vrc.transform
+                ? scaleDriven.localScale
+                : Get(vrc, "ScaleAtRest", vrc.transform.localScale);
             unity.scalingAxis = AxesFrom(vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1063,9 +1077,12 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "aim");
                 return true;
             }
+            var aimDriven = DrivenBy(ctx, vrc);
             unity.aimVector = Get(vrc, "AimAxis", Vector3.forward);
             unity.upVector = Get(vrc, "UpAxis", Vector3.up);
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            unity.rotationAtRest = aimDriven != vrc.transform
+                ? aimDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             ctx.Report.Approximated(Category, ctx.PathInTarget(vrc.transform),
                 "Aim constraint: world-up mode settings are not transferred; verify behaviour.");
@@ -1093,7 +1110,10 @@ namespace AvatarBridge
                 unity.worldUpObject = upTransform;
                 unity.useUpObject = Get(vrc, "UseUpTransform", true);
             }
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            var lookDriven = DrivenBy(ctx, vrc);
+            unity.rotationAtRest = lookDriven != vrc.transform
+                ? lookDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1120,6 +1140,20 @@ namespace AvatarBridge
                 relocated[ctx.PathInTarget(vrc.transform)] = ctx.PathInTarget(target);
             }
             return target.gameObject;
+        }
+
+        // The transform the converted constraint actually drives. With
+        // VRC's 'Target Transform' that is the target, not the object the
+        // VRC component sat on, and Unity's constraint only ever affects
+        // the object it sits on. Every rest value and every measured
+        // offset has to describe THAT transform: measuring the component's
+        // own instead pins the driven bone to a pose belonging to another
+        // object entirely, which is how a hand-swap rig's finger
+        // constraints snapped the fingers into a pose nobody authored.
+        static Transform DrivenBy(BridgeContext ctx, Component vrc)
+        {
+            var host = HostFor(ctx, vrc);
+            return host != null ? host.transform : vrc.transform;
         }
 
         static T GetOrAdd<T>(BridgeContext ctx, Component vrc, out bool existed) where T : Component

@@ -333,6 +333,14 @@ prefab — it silently stops it working while everything still *looks* wired up.
 A Target Transform pointing outside the avatar can't be honoured (it wouldn't survive an upload);
 the report says so plainly.
 
+**Rest values and offsets describe the target, not the object the VRC component sat on** — fixed in
+3.7.5. When the constraint is moved onto the target, everything that positions it has to be measured
+from the target too; measured from the original object it pins the driven bone to a pose belonging to
+something else entirely. A hand-swap rig whose paw constraints drive the real finger bones showed
+this best: converted, the fingers snapped into a pose that appears in no animation on the avatar, and
+because Unity's constraints solve **in the editor** while VRC's only solve at runtime, it was visible
+the moment the conversion finished.
+
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped — its sources are kept.
 
