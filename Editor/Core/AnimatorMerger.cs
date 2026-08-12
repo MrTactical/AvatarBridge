@@ -347,6 +347,7 @@ namespace AvatarBridge
             SafeguardBlendParameters(master, ctx);
 
             ReviveWeightGatedLayers(master, ctx);
+            BalanceMenuTreeActives(master, ctx);
 
             // Right before saving: animations that toggled a converted
             // PhysBone must reach the generated physics too.
@@ -7978,6 +7979,103 @@ namespace AvatarBridge
                 revived.Add($"\"{layer.name}\"");
                 curvesAdded += added;
             }
+
+            // The other half of a contested binding. A reaction wins it
+            // while playing and abandons it after; the normal layer that
+            // shares it must say the rest value from its own resting
+            // state, or nothing ever does — eyes a headpat closed stayed
+            // closed until an expression happened to write them.
+            var revivedBindings = new HashSet<EditorCurveBinding>();
+            foreach (int i in restStatesByLayer.Keys)
+            {
+                foreach (var clip in layerClips[i].clips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type != typeof(Animator))
+                        {
+                            revivedBindings.Add(binding);
+                        }
+                    }
+                }
+            }
+            int handedBack = 0;
+            for (int j = 0; j < layers.Length; j++)
+            {
+                if (restStatesByLayer.ContainsKey(j)
+                    || layers[j].blendingMode == AnimatorLayerBlendingMode.Additive
+                    || layers[j].defaultWeight < 0.5f)
+                {
+                    continue;
+                }
+                var defaultState = layers[j].stateMachine != null
+                    ? layers[j].stateMachine.defaultState : null;
+                // A tree already answers with a value at every input; a
+                // constant beside it would fight the blend.
+                if (defaultState == null || defaultState.motion is BlendTree)
+                {
+                    continue;
+                }
+
+                var needs = new List<EditorCurveBinding>();
+                foreach (var clip in layerClips[j].clips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Animator) || needs.Contains(binding)
+                            || !revivedBindings.Contains(binding))
+                        {
+                            continue;
+                        }
+                        // Sole normal mover only; two normal layers keep
+                        // their existing arbitration.
+                        if (movedElsewhere.TryGetValue(binding, out int owns) && owns == j)
+                        {
+                            needs.Add(binding);
+                        }
+                    }
+                }
+                if (needs.Count == 0)
+                {
+                    continue;
+                }
+
+                var existing = defaultState.motion as AnimationClip;
+                var drives = existing != null
+                    ? new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(existing))
+                    : new HashSet<EditorCurveBinding>();
+                AnimationClip target = null;
+                foreach (var binding in needs)
+                {
+                    if (drives.Contains(binding)
+                        || !AnimationUtility.GetFloatValue(ctx.Target, binding, out float value))
+                    {
+                        continue;
+                    }
+                    if (target == null)
+                    {
+                        if (existing == null)
+                        {
+                            target = new AnimationClip { name = SanitizeFileName($"{layers[j].name} rest") };
+                        }
+                        else
+                        {
+                            // Cloned, never shared: the clip may sit in
+                            // other layers that must not gain asserts.
+                            target = UnityEngine.Object.Instantiate(existing);
+                            target.name = existing.name;
+                            target.hideFlags = HideFlags.None;
+                        }
+                    }
+                    AnimationUtility.SetEditorCurve(target, binding,
+                        AnimationCurve.Constant(0f, 1f / 60f, value));
+                    handedBack++;
+                }
+                if (target != null)
+                {
+                    defaultState.motion = target;
+                }
+            }
             master.layers = layers;
 
             if (revived.Count > 0 || unrevivable.Count > 0)
@@ -7994,12 +8092,190 @@ namespace AvatarBridge
                     "animates are left to it — the reaction still overrides those while it " +
                     "plays, exactly as the raised weight did. Fade-in durations from the " +
                     "removed behaviours have no equivalent and become instant." +
+                    (handedBack > 0
+                        ? $" {handedBack} shared propert(ies) — eyes a reaction closes, mouths it " +
+                          "moves — are asserted at rest by the normal layer that also animates " +
+                          "them, so a finished reaction hands them back instead of leaving them " +
+                          "where it stopped."
+                        : "") +
                     (unrevivable.Count > 0
                         ? " NOT rebuilt, still invisible: " + string.Join(", ", unrevivable) +
                           " — each rests inside its own reaction with no state to return to, " +
                           "so at full weight it would show constantly. The gating that " +
                           "revealed it lived outside the layer and did not survive conversion."
                         : ""));
+            }
+        }
+
+        // A discrete active curve in a blend tree does not blend against
+        // defaults; it latches. A menu-gated tree whose ON branch
+        // switches an object off while the rest branch never mentions it
+        // leaves the object off forever after the first use — VRChat's
+        // Write Defaults put it back. Every branch of such a tree now
+        // carries the binding, missing sides filled with the avatar's
+        // rest value.
+        static void BalanceMenuTreeActives(AnimatorController master, BridgeContext ctx)
+        {
+            var menuParameters = new HashSet<string>();
+            if (ctx.CvrAvatar?.avatarSettings?.settings != null)
+            {
+                foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+                {
+                    if (entry != null && !string.IsNullOrEmpty(entry.machineName))
+                    {
+                        menuParameters.Add(entry.machineName);
+                    }
+                }
+            }
+            if (menuParameters.Count == 0)
+            {
+                return;
+            }
+
+            int added = 0;
+            var balanced = new SortedSet<string>(StableSampleOrder.Instance);
+            var seen = new HashSet<BlendTree>();
+
+            void CollectActives(Motion motion, HashSet<EditorCurveBinding> into)
+            {
+                if (motion is AnimationClip clip)
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")
+                        {
+                            into.Add(binding);
+                        }
+                    }
+                }
+                else if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children)
+                    {
+                        CollectActives(child.motion, into);
+                    }
+                }
+            }
+
+            void Fill(BlendTree tree, int index, List<(EditorCurveBinding binding, float rest)> missing)
+            {
+                var children = tree.children;
+                if (children[index].motion is AnimationClip clip)
+                {
+                    var drives = new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(clip));
+                    AnimationClip owned = null;
+                    foreach (var (binding, rest) in missing)
+                    {
+                        if (drives.Contains(binding))
+                        {
+                            continue;
+                        }
+                        if (owned == null)
+                        {
+                            // Cloned, never shared; the same sampled clip
+                            // can sit in unrelated trees.
+                            owned = UnityEngine.Object.Instantiate(clip);
+                            owned.name = clip.name;
+                            owned.hideFlags = HideFlags.None;
+                        }
+                        AnimationUtility.SetEditorCurve(owned, binding,
+                            AnimationCurve.Constant(0f, 1f / 60f, rest));
+                        added++;
+                    }
+                    if (owned != null)
+                    {
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        children[index].motion = owned;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+                else if (children[index].motion is BlendTree sub)
+                {
+                    for (int i = 0; i < sub.children.Length; i++)
+                    {
+                        Fill(sub, i, missing);
+                    }
+                }
+            }
+
+            void Walk(Motion motion, string layerName)
+            {
+                if (!(motion is BlendTree tree) || !seen.Add(tree))
+                {
+                    return;
+                }
+                foreach (var child in tree.children)
+                {
+                    Walk(child.motion, layerName);
+                }
+                if (tree.blendType != BlendTreeType.Simple1D
+                    || !menuParameters.Contains(tree.blendParameter))
+                {
+                    return;
+                }
+
+                var union = new HashSet<EditorCurveBinding>();
+                CollectActives(tree, union);
+                if (union.Count == 0)
+                {
+                    return;
+                }
+                var children = tree.children;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    if (children[i].motion == null)
+                    {
+                        continue;   // the empty-slot filler owns those
+                    }
+                    var has = new HashSet<EditorCurveBinding>();
+                    CollectActives(children[i].motion, has);
+                    var missing = new List<(EditorCurveBinding, float)>();
+                    foreach (var binding in union)
+                    {
+                        if (has.Contains(binding))
+                        {
+                            continue;
+                        }
+                        var at = ctx.Target.transform.Find(binding.path);
+                        if (at != null)
+                        {
+                            missing.Add((binding, at.gameObject.activeSelf ? 1f : 0f));
+                        }
+                    }
+                    if (missing.Count > 0)
+                    {
+                        Fill(tree, i, missing);
+                        balanced.Add($"\"{tree.blendParameter}\" ({layerName})");
+                    }
+                }
+            }
+
+            foreach (var layer in master.layers)
+            {
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            Walk(child.state.motion, layer.name);
+                        }
+                    }
+                });
+            }
+
+            if (added > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{added} object switch(es) balanced across {balanced.Count} menu tree(s)",
+                    string.Join(", ", balanced) + " — one side of each control switches an object " +
+                    "and the other side never mentioned it. An active flag in a blend tree does " +
+                    "not fall back to anything: it stays wherever the last write left it, so the " +
+                    "object latched after the first use — VRChat's Write Defaults put it back, " +
+                    "and ChilloutVR restores nothing a state does not write. Every side of these " +
+                    "controls now writes the flag, missing sides at the avatar's resting value.");
             }
         }
 
