@@ -26,6 +26,7 @@ namespace AvatarBridge
         static BridgeContext owner;
         static Dictionary<string, float> reach;
         static Dictionary<string, Vector3[]> deformed;
+        static Dictionary<string, string> groupParent;
 
         // World metres the animator's blendshapes can push the surface
         // around a point outward, 0 when they cannot. A ratio of far
@@ -207,6 +208,37 @@ namespace AvatarBridge
         internal static float ReachOf(BridgeContext ctx, string shapeKey)
             => Reach(ctx).TryGetValue(shapeKey, out float weight) ? weight : 0f;
 
+        // Shapes raised together in the same clip move together: one
+        // slider driving the body and its clothing is one group, not a
+        // contribution split against itself. Keyed to the same "path|
+        // shape" names as Reach.
+        internal static string GroupOf(BridgeContext ctx, string shapeKey)
+        {
+            Reach(ctx);
+            return Find(shapeKey);
+        }
+
+        static string Find(string key)
+        {
+            if (groupParent == null || !groupParent.TryGetValue(key, out var parent) || parent == key)
+            {
+                return key;
+            }
+            string root = Find(parent);
+            groupParent[key] = root;
+            return root;
+        }
+
+        static void Union(string a, string b)
+        {
+            string ra = Find(a);
+            string rb = Find(b);
+            if (ra != rb)
+            {
+                groupParent[rb] = ra;
+            }
+        }
+
         static float Percentile(List<float> sorted, float p)
             => sorted[Mathf.Clamp(Mathf.RoundToInt((sorted.Count - 1) * p), 0, sorted.Count - 1)];
 
@@ -221,6 +253,7 @@ namespace AvatarBridge
             owner = ctx;
             deformed = new Dictionary<string, Vector3[]>(StringComparer.Ordinal);
             reach = new Dictionary<string, float>(StringComparer.Ordinal);
+            groupParent = new Dictionary<string, string>(StringComparer.Ordinal);
             var seen = new HashSet<AnimationClip>();
             foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
             {
@@ -234,6 +267,10 @@ namespace AvatarBridge
                     {
                         continue;
                     }
+                    // Only shapes a clip meaningfully raises are grouped:
+                    // VRCFury's rest-assert clips write every shape at 0
+                    // and would union unrelated sliders into one blob.
+                    var raised = new List<string>();
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
                         if (binding.type != typeof(SkinnedMeshRenderer)
@@ -253,6 +290,14 @@ namespace AvatarBridge
                         }
                         string name = binding.path + "|" + binding.propertyName.Substring("blendShape.".Length);
                         reach[name] = reach.TryGetValue(name, out var had) ? Mathf.Max(had, high) : high;
+                        if (high > 0.5f)
+                        {
+                            raised.Add(name);
+                        }
+                    }
+                    for (int i = 1; i < raised.Count; i++)
+                    {
+                        Union(raised[0], raised[i]);
                     }
                 }
             }

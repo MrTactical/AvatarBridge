@@ -247,39 +247,60 @@ namespace AvatarBridge
             // that hurls vertices cannot make a zone the size of a room.
             float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
 
-            // One shape responsible for the bulk of the push means the
-            // zone can follow that slider live instead of sitting at the
-            // grown size while the body is small.
-            string dominant = null;
-            float dominantPush = 0f, totalPush = 0f;
+            // One slider responsible for the bulk of the push means the
+            // zone can follow it live instead of sitting at the grown
+            // size while the body is small. Contributions are grouped by
+            // what animates together — one slider driving the same shape
+            // on the body and three clothing meshes is one owner, not
+            // four rivals — and dominance is judged against the measured
+            // total, so shapes grazing the capture edge cannot dilute it.
+            var groups = new Dictionary<string, float>();
+            var reps = new Dictionary<string, (string key, float push)>();
             foreach (var pair in perShape)
             {
-                totalPush += pair.Value;
-                if (pair.Value > dominantPush)
+                string g = MeshGrowth.GroupOf(ctx, pair.Key);
+                groups.TryGetValue(g, out float sum);
+                groups[g] = sum + pair.Value;
+                if (!reps.TryGetValue(g, out var rep) || pair.Value > rep.push)
                 {
-                    dominantPush = pair.Value;
-                    dominant = pair.Key;
+                    reps[g] = (pair.Key, pair.Value);
                 }
             }
-            if (dominant != null && totalPush > 0f && dominantPush / totalPush >= 0.7f)
+            string bestGroup = null;
+            float bestSum = 0f;
+            foreach (var pair in groups)
             {
-                float reach = MeshGrowth.ReachOf(ctx, dominant);
+                if (pair.Value > bestSum)
+                {
+                    bestSum = pair.Value;
+                    bestGroup = pair.Key;
+                }
+            }
+            if (bestGroup != null && bestSum >= 0.7f * push)
+            {
+                string representative = reps[bestGroup].key;
+                float reach = MeshGrowth.ReachOf(ctx, representative);
                 if (reach > 0.01f)
                 {
                     ctx.ZoneSliderGrowth.Add((
                         BridgeContext.RelativePath(ctx.Target.transform, zone.transform),
-                        dominant, growth, reach, reportPath));
+                        representative, growth, reach, reportPath));
                     return;
                 }
             }
 
+            string contributors = perShape.Count == 0
+                ? "no single animated shape could be attributed"
+                : "largest: " + string.Join(", ", perShape
+                    .OrderByDescending(p => p.Value).Take(3)
+                    .Select(p => $"\"{p.Key.Substring(p.Key.LastIndexOf('|') + 1)}\" {p.Value * 100f:0.#} cm"));
             GrowStatically(zone, growth);
             ctx.Report.Converted(Category, reportPath,
                 $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
                 "the sliders make the body — an animated blendshape can push the mesh past the " +
                 "authored size, and a zone inside the body cannot be touched. The growth here is " +
-                "spread across several shapes, so the zone holds the grown size instead of " +
-                "following one slider.");
+                $"spread across shapes ({contributors}), so the zone holds the grown size instead " +
+                "of following one slider.");
         }
 
         internal static void GrowStatically(GameObject zone, float growth)
