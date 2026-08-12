@@ -5,12 +5,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for the seat goodbye (task #28). VRCStation is the sit-on-me chair; the
-    /// decompiled client's avatar whitelist has no seat type, so the honest ceiling is a Skipped
-    /// entry naming each — counted after the strips, so GoGo Loco's own stations never alarm
-    /// anyone (that half is verified in the wild on a GoGo corpus avatar).
-    /// </summary>
+    // Known-answer test for the seat goodbye (task #28). VRCStation is the sit-on-me chair; the
+    // decompiled client's avatar whitelist has no seat type, so the honest ceiling is a Skipped
+    // entry naming each; counted after the strips, so GoGo Loco's own stations never alarm
+    // anyone (that half is verified in the wild on a GoGo corpus avatar).
     public static class StationReportTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — seat report")]

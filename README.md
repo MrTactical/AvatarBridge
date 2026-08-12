@@ -9,7 +9,7 @@ finish by hand.
 
 > ## ✅ It actually works
 >
-> **75+ avatars converted, uploaded and worn in ChilloutVR** — by the author and by independent
+> **80 avatars converted, uploaded and worn in ChilloutVR** — by the author and by independent
 > testers, on other people's models, not just tidy test cases. Heavy ones too: 400k-triangle
 > avatars with 56 material slots, full VRCFury rigs, face tracking, the lot.
 >
@@ -18,7 +18,9 @@ finish by hand.
 > original, a parameter reaching nobody. None of that shows in the editor. So each of these was
 > confirmed in a live instance, by wearing it:
 >
-> - contacts triggered by other players, with real proximity and zero sync cost
+> - contacts fired by other players' hands — reaction, sound and particles visible to the whole room
+> - contact zones toggled off and on from the quick menu, mid-instance
+> - menu toggles and sliders whose effects other players actually see
 > - stereo shaders rendering correctly **in both eyes**
 > - prefab constraints driving real bones — Avatar Limb Scaling working end to end
 > - PhysBone chains moving like their originals, derived from both solvers' source
@@ -43,7 +45,7 @@ sit along it — because that's the trip your avatar is making.</em></p>
 [What gets converted](#what-gets-converted) ·
 [Constraints](#constraints-that-drive-another-object) ·
 [Physics](#physbones--magicacloth2) ·
-[Contacts](#native-contacts) ·
+[Contacts](#contacts) ·
 [Shaders](#shaders-that-only-draw-into-one-eye) ·
 [Parameter types](#parameter-types) ·
 [Face tracking](#face-tracking) ·
@@ -74,7 +76,7 @@ mid-2026:
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
-| Contacts | **ChilloutVR's own contact components** — real proximity, tags verbatim, no sync bits spent ([experimental](#native-contacts)) | emulated with `CVRPointer` + trigger, which fire on collision rather than on proximity |
+| Contacts | pointers + triggers with [tags widened](#contacts) so ordinary CVR players' hands fire them, proximity receivers driven from distance, anchors and animated switches carried | emulated with `CVRPointer` + trigger |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
@@ -135,13 +137,16 @@ actually running.
   sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
-- **ChilloutVR's native contacts, working for everyone** — one-to-one, with real proximity and box
-  shapes, using a system the CCK doesn't expose. Every client runs the contact itself, so most of
-  the parameters they drive are made local: a synced one would have the sync stream overwrite
-  whatever the contact set, which is what used to make converted contacts fire for the wearer
-  alone. A parameter a menu control also drives has to stay synced, so those take a driver route
-  instead — decided [per parameter](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work),
-  with nothing to choose ([experimental](#native-contacts), off by default).
+- **Contacts a stranger can actually set off** — boops, headpats and proximity effects become
+  pointers and triggers, with [tags widened](#contacts) so the hands and fingers every ChilloutVR
+  player carries fire them, proximity receivers driven from real distance, and contacts anchored
+  to the same bone VRChat anchored them to.
+- **What your menu does, everyone sees.** Parameters a menu control drives are
+  [always synced](#parameter-types) — VRChat's tight budget taught tools to de-sync them and smuggle
+  the values through machinery that doesn't survive conversion, leaving wardrobes and sliders only
+  the wearer could see. And reactions VRChat gated by layer weight — the usual build for headpat
+  hearts and boop sounds — are rebuilt to actually play, since ChilloutVR can't raise a layer's
+  weight mid-session.
 - **Shaders that lose an eye get fixed** — CVR renders single-pass instanced where VRChat renders
   double-wide, so shaders that never opted in draw into one eye only.
 - **Diagnostics that know ChilloutVR** — the report names components CVR silently deletes on load,
@@ -226,7 +231,7 @@ defines.
    analysis sets it.
 4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` — a sibling of the tool's
    folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
-   the report, then test in game. From 3.6.3 the report is also written as a **web page**
+   the report, then test in game. The report is also written as a **web page**
    (`ConversionReport.html`, "Open web report" in the window): what happened drawn as charts,
    every entry filterable, and the technical appendix rendered — self-contained, so it opens
    from disk and can be shared as-is. The markdown beside it stays the file to attach to bug
@@ -238,30 +243,32 @@ defines.
 |---|---|---|
 | Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured. On a [quadruped decoy rig](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) both are re-measured on the bones you can actually see |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
-| Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
-| Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types) |
+| Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
+| Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types), including why menu-driven parameters always sync |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
+| Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
-| Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
-| PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
-| Contacts | native contacts, or `CVRPointer` / trigger | see [below](#native-contacts) |
-| VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
-| VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
-| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
-| VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation. Head, pelvis, arms, legs and locomotion map exactly; eyes, mouth and **fingers** have no ChilloutVR mask yet — see [emote hand poses](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) |
+| Weight-gated reaction layers (`VRCAnimatorLayerControl`) | rebuilt at full weight, states asserting the layer's resting values | VRChat holds these layers at weight 0 and raises them from a state behaviour when a contact or control fires — headpats and boop reactions are usually built this way. ChilloutVR can't change layer weights, so carried as-is the reaction played invisibly. Fade durations become instant; properties shared with other layers are left to them |
 | Base / Action / Sitting locomotion animations | grafted into CVR's own `Locomotion/Emotes` layer | custom walk/crouch/crawl/fall/sit clips, matched by blend-tree position, loop settings matched to the slot; VRChat `proxy_*` placeholders skipped — those live in the VRChat client, and CVR's animation set is their equivalent here |
 | VRChat flight / copter systems | pose grafted onto CVR's `LocFlying` state | ChilloutVR flies natively (keybind or double-jump where the world allows), so the VRChat system's speed logic isn't needed — the avatar's flight pose plays whenever the wearer actually flies |
+| VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation. Head, pelvis, arms, legs and locomotion map exactly; eyes, mouth and **fingers** have no ChilloutVR mask yet — see [emote hand poses](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) |
 | VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
+| PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
+| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
+| Contacts | `CVRPointer` / trigger | see [below](#contacts) |
+| VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
+| VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
+| Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
 | A humanoid **Jaw** mapped to something that isn't a jaw | rig rebuilt without it | Unity's Auto-Map assigns a Jaw to whatever is nearest when it can't read a face, and ChilloutVR takes that bone literally: it's where the **Auto** voice position goes and what jaw-bone visemes animate, so the voice comes out of that object and the object waggles while you speak. With no Jaw, voice falls back to a measured mouth and visemes stay on blendshapes. Reported when it happens; the source avatar is untouched |
-| VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
-| Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
-| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps — and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
-| PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
-| Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
+| Avatar audio sources | clamped to VRChat's limits — doppler 0, distance floors/caps — and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
+| Animator-played audio (`VRCAnimatorPlayAudio`) | looping: AudioSource enable window animated by the state · one-shots: a `CVRAudioDriver` index pulse | a looping sound plays for as long as its state plays; a one-shot plays to completion however quickly the state exits, which is how contact-triggered sounds behave. One clip at a fixed volume/pitch — randomised choice, ranges and start delays can't ride along and are listed in the report |
 | Shaders without stereo support | patched copy in `RehomedAssets` | optional — see [below](#shaders-that-only-draw-into-one-eye) |
 | VRCFury temp materials/shaders | rescued into `RehomedAssets` | Fury deletes its temp folder on its next build |
+| VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
+| FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
+| Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
@@ -292,7 +299,7 @@ path. The strip removes GoGo's Base/Additive/Action layers *whole* — a locomot
 left half-alive overrides CVR's locomotion with dead animation, which is worse than either
 extreme.
 
-**GoGo installed through a VRCFury prefab is stripped too, from 3.5.40.** Installed by hand it
+**GoGo installed through a VRCFury prefab is stripped too.** Installed by hand it
 names its layers "GoGo Loco …"; installed through Fury it names them after its parameters, as
 `Go/Beyond`. Earlier versions matched only the first spelling, so on a Fury avatar the layer
 outlived a strip that had already disabled its parameters — and it was not idle. It sat at full
@@ -325,7 +332,11 @@ that's worth reporting. Every case so far has been a fixable gap in AvatarBridge
 A VRC constraint can sit on one object and drive a **different** one, through its `Target
 Transform` field. Unity's constraints have no equivalent — they always affect the transform they're
 attached to. AvatarBridge honours it by putting the Unity constraint **on the target** instead,
-carrying the same sources.
+carrying the same sources — and everything that positions it, the rest values and the measured
+offset, is taken from the target too, because those numbers describe the bone being driven, not
+the proxy the component happened to sit on. Measured from the proxy they pin the driven bone to a
+pose belonging to another object entirely: a hand-swap rig built this way came out with its fingers
+snapped into a pose that appears in no animation on the avatar.
 
 That matters more than it sounds: prefabs routinely put constraints on proxy objects inside their
 own hierarchy and point them at your real bones. Dropping the redirection doesn't weaken such a
@@ -449,9 +460,13 @@ than numeric:
 Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
 naming the field to change if that chain wants it.
 
-**Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
-of simulation, so that path maps values 1:1. With **one deliberate exception: gravity is written to
-`m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
+**Using DynamicBone instead?** Almost none of this applies — PhysBones and DynamicBone *are* the
+same kind of simulation, so that path maps values 1:1. Two exceptions. First, *Size for the
+largest a slider makes the body* still applies: chain radii and converted colliders grow by the
+same mesh measurement, since a slider that grows the body past an authored radius breaks the
+collision identically on both solvers (inside-bound "cage" colliders are left alone — growing the
+body a cage contains would shrink the room inside it). Second, deliberately: **gravity is written
+to `m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
 ChilloutVR on any avatar that isn't at scale exactly 1.0 — the client cancels the rest-pose share
 of gravity with one factor of scale too many, so the gravity term comes out as `g × scale − g`.
 That's zero at scale 1, and **negative below it**, which lifts hair and tails toward the sky. A
@@ -472,7 +487,7 @@ come along; the report names each chain that had one.
 | **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
 | **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. It can *firm* the matched preset with the source's own character but never soften it below that preset's baseline — MagicaCloth2's own presets are the floor of a spring that still reads as one, and a very loose PhysBone converts faithfully to mush without it. The report says when the floor held. Turn it off to get the preset exactly as authored |
 | **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped — the same size on a breast as on a hair strand — so collision covers a fraction of what you see. This measures the mesh those bones move — with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it — and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
-| **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all — so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing — the saved reading simply wins |
+| **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all — so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing — the saved reading simply wins. On the DynamicBone path the same measurement grows chain radii and converted colliders |
 | **Fit colliders to the mesh** | on | A PhysBone collider carries *one* radius from end to end, so an author covering a thigh has to choose between fitting the hip and fitting the knee. MagicaCloth2's capsule takes a start and an end radius separately, so the converted one can taper the way the limb does. This measures the body part the collider sits on and fits the capsule to it. The measurement *replaces* the source's numbers: a PhysBone collider's size is invisible in VRChat unless something collides with it, so it's routinely one default stamped onto every collider on the avatar. Only the host bone's own vertices are read, so a leg collider can only come out leg-sized. The report gives the before and after for each |
 | **Cap particle radius to bone spacing** | off | Bounds each particle to half the gap between its bones. Off since the radius above became a measurement rather than a guess — on a soft-body chain, where two or three bones carry a large volume, this throws most of that measurement away. The overlap it guards against only bites with self-collision, which MagicaCloth2 leaves off. Turn on if a long chain of closely-spaced bones misbehaves |
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
@@ -480,18 +495,38 @@ come along; the report names each chain that had one.
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
-## Native contacts
+## Contacts
 
-ChilloutVR's contact system is a near-exact match for VRChat's — the same Sphere/Capsule shapes,
-the same `allowSelf` / `allowOthers` / collision tags under the same names. It lives inside the
-game client and the CCK ships no way to author it, so converters have always had to approximate it
-with pointers and triggers.
+VRChat contacts convert onto the CCK's own primitives: each **sender** becomes a `CVRPointer` per
+collision tag, each **receiver** an Advanced Avatar Trigger driving its parameter. The mapping
+covers what avatars actually do with contacts — *OnEnter* receivers get an enter pulse, *Constant*
+receivers a matching enter/exit pair, and *Proximity* receivers are driven from real distance by
+the trigger's stay task. `allowSelf` / `allowOthers` map onto the trigger's local/network
+interaction flags, and the parameter writes go through the game's animator manager, so **they
+sync** — what a contact sets off is seen by everyone.
 
-**AvatarBridge can author it directly.** Turn on *Use ChilloutVR's native contacts* under
-**Advanced** and contacts convert one to one: real proximity, tags verbatim, and each parameter
-[routed](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work) to whichever
-of the three cases it is in — local for almost all of them, a driver where a menu control needs the
-same name synced, and named in the report for the one combination that has no answer.
+The approximations: the trigger's area is a box sized from the authored sphere or capsule, a
+minimum-velocity threshold has no equivalent (a slow touch fires), and a *Constant* receiver
+resets to zero when any pointer leaves, even if a second one is still inside. Each is called out
+in the conversion report when it happens.
+
+**Zones follow the body's growth sliders.** A slap zone authored on a body a blendshape can double
+stays authored-size while the mesh grows past it — every touch lands inside the body, short of the
+zone, and the contact reads as broken exactly when the slider is up. Each zone is measured the way
+the [physics sizes](#physbones--magicacloth2) are — the mesh around it at rest, then with every
+animated shape at full reach. A zone whose growth one slider owns then **follows that slider
+live**: its scale is animated inside the slider's own clips, so it sits at the authored size at
+rest and at the measured growth at full reach, never oversized at either end. Only when the growth
+is spread across several shapes does the zone instead hold the grown size — a little generous at
+low slider values rather than unreachable at high ones. The report names each zone and which was
+done; *Grow contact zones with the body's sliders* turns it off.
+
+ChilloutVR also has a contact system of its own inside the game client, a near-exact match for
+VRChat's. Earlier versions could convert onto it directly; that path is gone. The CCK ships no way
+to author those components, and avatars built on them stopped being wired up by the client — the
+receivers register and simulate, but what they detect never reaches the animator, for anyone in
+the instance. If ChilloutVR ever exposes the system through the CCK, conversion onto it can come
+back on a supported footing.
 
 ### Grabbing a chain
 
@@ -538,108 +573,38 @@ everyone else those receivers are inert. That's usually deliberate, so nothing i
 report lists them so it isn't a surprise. Add a body-part tag to a receiver if you want strangers to
 be able to set it off.
 
-### Native contacts drive a local parameter, because that's what makes them work
-
-A native contact writes its parameter **straight at the Animator** and transmits nothing — and it
-doesn't need to. The contact runs on **every** client, so each one sees the same collision and
-reaches the same answer by itself.
-
-That only holds while the parameter is **local**. Give the contact a *synced* parameter and the
-sync stream writes the declared default straight back over whatever the contact set, so the effect
-misfires for other people and can misfire for you too. AvatarBridge used to do exactly that, which
-is why converted native contacts had a reputation for firing only for the wearer. Contact
-parameters now become `#` names — the system's author is explicit that they must be — and the
-contact components are repointed to follow the rename.
-
-*Confirmed in game: sound and particles reaching other players reliably.*
-
-The one parameter that can't be made local is one a **menu control** also drives, since that has to
-stay synced to reach anyone. Those take the other route automatically: the contact gets a local name
-of its own and a **driver** copies the value into the synced one, because a driver's writes *do* go
-out. Nothing to choose — the converter can see which case each parameter is in.
-
-The only combination with no answer is a **proximity** contact whose parameter a menu control also
-drives: a driver can carry an on/off reading exactly but a smooth range only in steps. That one is
-named in the report and left alone.
-
-<details><summary>Why results differ between clients, and the call chain</summary>
-
-`ContactAnimator.ApplyValue` → `animator.SetFloat`, which never fills the outbound sync cache. The
-legacy pointer/trigger path does the opposite: `TriggerToContact` → `PlayerSetup.ChangeAnimatorParam`
-goes through the manager and **does** sync, which is why it remains the default. The bridge's driver
-works because `CVRAnimatorDriver.ApplyAnimatorChange` → `AnimatorManager.SetParameter` is transmitted
-as well.
-
-Nothing is broken in the contact system — it was never built to transmit. Every client simulates
-every avatar's contacts locally, so two clients agree only when both observe the same collision.
-An effect left permanently **on** appears for everyone because it never needed the parameter at all.
-An effect the contact has to **switch on** appears wherever that collision was seen, and nowhere
-else. That is why two effects on one avatar behave differently, and why the same effect can reach
-one person and not another.
-
-There is a second way to lose it, and it is worse: if the parameter the contact drives is **synced**
-(no `#` prefix), the AAS stream keeps writing the declared default over the top of what the contact
-just wrote. The system's author is explicit that a native contact must drive a `#` parameter for
-this reason. Turning the bridge on satisfies that — the contact drives a `#` name of its own and a
-driver carries the value into the synced one.
-
-A driver writes its value on entering a state, so it carries a binary reading exactly and an analog
-one only in steps — hence on/off receivers only, rather than trade the wearer's smooth proximity
-value for a stepped one. Receivers the author marked local-only are left alone either way.
-
-</details>
-
-**Detection itself costs no sync** — the system is by
-[NotAKidoS](https://github.com/NotAKidoS/Misc-Unity-Stuffs/tree/main/NAK.Contacts), a ChilloutVR
-developer, and every client simulates every avatar's contact *shapes* itself.
-
 **Contacts anchor where VRChat anchored them.** A contact's shape rides its `Root Transform`
 override when one is set — the component itself often lives somewhere central while the shape
 follows a bone, which is how head-pat receivers and VRCFury-baked contacts are built (about a
-quarter of all contacts measured in the wild). Converted contacts are parented at that anchor on
-both paths, so they follow the same bone they did in VRChat.
+quarter of all contacts measured in the wild). Converted contacts are parented at that anchor,
+so they follow the same bone they did in VRChat.
 
-**Animated contact switches follow their contact** — on the legacy path and the native one. VRChat
-avatars animate a contact's enabled flag to switch it off ("disable head pats" is built this way);
-that component is deleted by conversion, so the curve used to play as silence while its menu entry,
-parameter and layer all converted. Those curves now toggle the converted contact's own object, the
-form the client honours everywhere (read from the decompiled `ContactBase`, which registers in
-`OnEnable` and de-registers in `OnDisable`). Curves animating a contact's shape or filters have no
-equivalent and are removed with a report line naming each.
+**Animated contact switches follow their contact.** VRChat avatars animate a contact's enabled
+flag to switch it off ("disable head pats" is built this way); that component is deleted by
+conversion, so the curve used to play as silence while its menu entry, parameter and layer all
+converted. Those curves now toggle the converted contact's own object, and curves that moved a
+contact drive its transform. Curves animating a contact's shape or filters have no equivalent and
+are removed with a report line naming each.
 
-**How it works without CCK support.** An uploaded asset bundle carries no script assemblies — only
-each component's assembly, namespace and class name, resolved against the player's own assemblies at
-load. The contact implementation already ships *inside the ChilloutVR client*; the CCK simply
-provides no way to author it. AvatarBridge generates matching declarations into
-`AvatarBridge/Runtime`, verified **field-for-field against the decompiled client**, and the game's
-own implementation runs. Nothing is reimplemented and nothing extra is bundled into the avatar.
-
-> ✅ **Confirmed in a live instance:** validation clean, uploaded, contacts triggered by other
-> players, CVR's own runtime gizmos drawing the components.
->
-> ⚠️ **Experimental, and off by default.** This talks to a component internal to the game rather
-> than the CCK, so any ChilloutVR update can break it, possibly for good. The conversion falls back
-> to the legacy path by itself if anything is wrong.
-
-Two practical notes:
-
-- **Don't import the author's public repository** into a conversion project. It's a diverged
-  work-in-progress whose current layout drops fields the shipped client still reads — including the
-  flag that lets other players' hands trigger receivers.
-- **If a conversion leaves broken `Contact_*` components behind, delete them and reopen the scene**
-  before converting again. Unity manufactures a placeholder script for a dangling reference, and it
-  then captures every new component of that class — one bad conversion poisons the next. AvatarBridge
-  detects this and refuses; *Tools → Avatar Bridge → Diagnose native contacts* shows what Unity holds.
+**One layer ends up owning each zone's switch.** VRChat lets several layers write a contact's
+enabled flags and reconciles them through Write Defaults: VRCFury disables every receiver for the
+first frames after load, its baked clips re-assert the resting state from later layers, and the
+avatar's own toggle sits underneath. ChilloutVR restores nothing a state doesn't write, so carried
+across as-is those same curves either held every zone off from the moment the avatar loaded —
+contacts that never fire, for anyone — or held them on over the menu toggle meant to switch them
+off. Conversion settles it: curves that only assert a zone's rest are removed, a switch-off with
+no way back gets the restore written in, and a layer that switches a zone both ways — the actual
+toggle — keeps it outright. The report says what was settled.
 
 ## Shaders that only draw into one eye
 
 **ChilloutVR renders single-pass instanced; VRChat renders double-wide single-pass.** Both SDKs
 force their own mode unconditionally.
 
-From 3.6.4 the check reads the shader's *whole* include chain, the way the compiler does — so a
-shader that keeps its stereo handling in include files (lilToon, most modern toon shaders) is
-recognised as already correct instead of flagged. The CCK's own upload warning still judges the
-one file and may keep naming such shaders; that warning is theirs, and safe to ignore for them.
+The check reads the shader's *whole* include chain, the way the compiler does — so a shader that
+keeps its stereo handling in include files (lilToon, most modern toon shaders) is recognised as
+already correct instead of flagged. The CCK's own upload warning still judges the one file and may
+keep naming such shaders; that warning is theirs, and safe to ignore for them.
 
 Under double-wide a shader gets both eyes without asking. Under instancing it has to declare that it
 knows which eye it's drawing — so a shader that never opted in looked perfectly fine in VRChat and
@@ -712,6 +677,15 @@ So each parameter is retyped from what the avatar's logic says it is: the **menu
 clip — stays `float`, and is named in the report so you can see the tool declined rather than
 missed it.
 
+**Parameters a menu control drives are always synced**, whatever the imported flag says. VRChat's
+256-bit budget taught authors and VRCFury to mark menu parameters *not synced* and carry the values
+through side machinery that doesn't survive conversion — so trusted literally, the flag turns a
+whole wardrobe local, working for the wearer and invisible to everyone else. A control other
+players can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford
+the honest version. Parameters no menu drives keep their imported local/synced state — internal
+smoothing values and counters stay local, costing nothing — and the report lists every parameter
+this re-synced. `#` in ChilloutVR marks a local parameter; that's the spelling you'll see.
+
 ## Face tracking
 
 Pick one in the **Face tracking** dropdown. The two set-up modes remove whatever FT rig the avatar
@@ -750,7 +724,7 @@ a starting point out of what the conversion actually produced:
 
                         ← your own words go here
 
-Vap
+Comet
 8 toggles · 9 sliders · 9 physics chains (MagicaCloth 2) · blink and lip sync
 
 Converted from VRChat with AvatarBridge
@@ -817,7 +791,6 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
-| **Use ChilloutVR's native contacts** | off · BETA | One-to-one onto CVR's own contact components — real proximity, box shapes, tags verbatim — instead of approximating with pointers and triggers. **What they switch on is visible only to you**: the native system writes its parameter straight at the Animator, and only writes through the animator manager reach the network. An effect left permanently *on* still shows for everyone, since it never needed the parameter — which is why two effects on one avatar can differ. Also talks to a component internal to the game, so a client update can break it. The legacy path syncs and is the default |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -846,18 +819,27 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
-| **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom |
+| **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
 | **Base / locomotion** | off | Brings across what VRChat kept in Base — toggles, blendshapes, materials, additive motion — and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo |
 | **Additive** | off | VRChat's additive layer, usually breathing |
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
-| **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything |
+| **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything — **except parameters a menu control drives, which always sync**. VRChat's tight budget made de-syncing menu parameters a common trick, usually with VRCFury syncing them through machinery that doesn't survive conversion, so "not synced" is untrustworthy on anything with a control; a toggle others can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford it. The report lists every parameter this re-synced |
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
-| **Convert contact senders/receivers** | on | VRChat contacts become pointers and triggers, or [native contacts](#native-contacts) below |
+| **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
+| **Grow contact zones with the body's sliders** | on | A zone authored on a body part a blendshape slider can grow stays authored-size while the mesh grows past it, so the touch lands inside the body short of the zone. Measured like the physics sizes — the mesh around each zone at rest and with every animated shape at full reach. A zone one slider grows follows that slider live; growth spread across shapes holds the grown size. The report names each zone and what was done |
 | **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
 | **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
+
+**Base, Additive and Action switch themselves off when you pick an avatar with no such layer** — the
+slot is empty or holds VRChat's default. These settings persist between avatars, so a tick meant for
+the last one would otherwise ride along and claim this avatar has an Action layer when it doesn't;
+nothing converts differently either way, but the box should be true. The window says which ones it
+switched, and you can tick any back. **Avatars built by VRCFury or Modular Avatar are left alone**:
+those bakers build controllers during the bake, where the conversion actually reads them, so an
+empty slot in the scene proves nothing — Analyse notes it instead.
 
 ## Known limitations
 
@@ -1037,6 +1019,20 @@ themselves in it.
 
 Many entries below say *reconvert on a current release*. That is the whole fix: the cause was in
 the converter and is repaired, and your source avatar was never touched.
+
+Find your symptom:
+
+| Where it bites | Entries |
+|---|---|
+| **Project setup & compiling** | [ImageDownloader](#nothing-compiles--imagedownloader-does-not-contain-a-definition-for-getimage) · [Poiyomi's ABI scripts](#nothing-compiles--poiyomis-abiautoanchorcs--abiautolockcs-abi-could-not-be-found) · [VRCFury didn't compile](#vrcfury-is-installed-but-did-not-compile--conversion-refuses-to-start) · [no Convert tab](#theres-no-convert-a-vrchat-avatar-tab) · [extra recompile](#one-extra-recompile-after-importing) |
+| **Converting** | [Unity crashes on Convert](#unity-crashes-when-you-press-convert) · [VRCFury errored](#the-report-says-vrcfury-errored-or-that-files-are-missing) · [protected clips](#a-limb-lock-sit-or-flight-toggle-does-nothing-and-the-report-mentions-protected-clips) · [conversions broke after updating](#converted-avatars-broke-after-updating-avatarbridge--missing-controllers-pink-particles) |
+| **In the editor afterwards** | [crashes on Play](#unity-crashes-when-you-press-play-or-the-avatar-renders-with-the-wrong-materials-there) · [console floods](#the-console-floods-in-play-mode--statemachine-for-layer-is-missing-or-parameter-type-does-not-match) · [magenta](#something-is-bright-magenta) · [white mesh](#a-mesh-renders-white-washed-out-or-loses-its-eyes) · [fingers snap](#converted-fingers-snap-to-a-pose-nobody-authored) |
+| **Body & animation in game** | [bicycle pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me) · [movement doesn't animate](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) · [gestures freeze](#gestures-freeze-in-game-or-on-another-pc) · [wrong hand pose](#gestures-play-the-wrong-pose-or-a-hand-sits-in-a-fist-at-rest) · [emote hands](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) · [emote replays](#an-emote-replays-forever-instead-of-playing-once) · [movement speed](#i-move-slower-or-faster-than-i-expect-and-nothing-in-the-avatar-does-that) · [drifting props](#a-hat-or-held-item-drifts-off-when-i-resize-myself) |
+| **Physics in game** | [broken chain](#a-bone-chain-hangs-broken-or-magicacloth-throws-in-the-scene-view) · [floating hair](#hair-or-a-tail-floats-upward-in-game-and-im-using-dynamicbone) · [moves differently than Unity](#a-chain-moves-differently-in-game-than-in-unity) |
+| **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
+| **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs--and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all--for-anyone-including-you) |
+| **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing--i-dont) · [rapid flicker](#an-animation-flickers-rapidly--often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
+| **Uploading** | [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles — `'ImageDownloader' does not contain a definition for 'GetImage'`
 
@@ -1365,17 +1361,17 @@ the author.
 The dance plays, the body is right, and the hands hold whatever gesture your controller is
 reporting instead of the pose the emote wants.
 
-This one is ChilloutVR's, not the conversion's. VRChat's tracking control can hand **fingers** over
-to animation for the length of an emote; ChilloutVR's Body Control has no finger mask yet — its own
-CCK carries the note *"TODO: Add FingerTracking masks when GS is ready"*. There is nothing to map
-it onto until that lands.
+**Reconvert on a current release for the layer-order half of this.** ChilloutVR decides whether
+something is an emote by reading the name of the clip playing on its `Locomotion/Emotes` layer, and
+mutes both hand-pose layers while one is on. Converted emotes were named after whatever they were
+called in VRChat, so the client never recognised them and your gesture kept winning. They are named
+so it does now, and your hands are released for the length of the emote.
 
-The layer order compounds it. In VRChat the Action layer sits **above** Gesture, so an emote
-outranks your hand pose anyway. In ChilloutVR emotes are grafted into `Locomotion/Emotes`, which
-sits **below** the hand-pose layers — so the gesture wins.
-
-**Workaround:** hold an open or neutral gesture while the emote plays. Everything else about the
-emote — body, head, locomotion — converts and behaves normally.
+What remains is ChilloutVR's, not the conversion's: VRChat's tracking control can hand **individual
+fingers** to animation, and ChilloutVR's Body Control has no finger mask yet — its own CCK carries
+the note *"TODO: Add FingerTracking masks when GS is ready"*. So an emote can stop your gesture
+overriding it, but cannot pose your fingers the way VRChat's could. Everything else — body, head,
+locomotion — converts and behaves normally.
 
 Eyes and mouth are in the same boat and it matters far less: those channels stay with the avatar's
 own animation and face tracking, which is usually where you want them.
@@ -1399,10 +1395,10 @@ out with the rest of it, rather than left standing to be tested forever by every
 
 Three causes, and the report distinguishes them.
 
-**A sound a native contact sets off.** **Reconvert on 3.7.2 or later**, which fixes this by
-default — the contact was driving a *synced* parameter, so the sync stream wrote the declared
-default back over whatever the contact set.
-[Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
+**A sound a contact sets off, converted before 3.8.2.** **Reconvert on the current release.**
+Older versions could convert contacts onto ChilloutVR's client-internal contact system, which
+stopped being wired up by the game; contacts now convert through [pointers and
+triggers](#contacts), which sync.
 
 **Flat (2D) audio.** ChilloutVR decides whether to spatialize a source from its **Spatial Blend**
 alone — anything short of fully 3D is never handed to the spatializer and can go unheard by
@@ -1420,9 +1416,9 @@ whoever set it off.
 **Reconvert on a current release.** Two separate causes produce this symptom, and the report
 distinguishes them.
 
-**A native contact switched it on** — fixed by default in **3.7.2**. The contact was driving a
-*synced* parameter, so the sync stream wrote the declared default back over whatever the contact
-set. [Full explanation](#native-contacts-drive-a-local-parameter-because-thats-what-makes-them-work).
+**A contact switched it on, converted before 3.8.2** — reconvert. Older versions could convert
+contacts onto ChilloutVR's client-internal contact system, which stopped being wired up by the
+game; contacts now convert through [pointers and triggers](#contacts), which sync.
 
 **The emitter was animated instead of the object** — fixed in **3.5.38**.
 Effects are built two ways, and only one of them travels. If the clip switches the effect's
@@ -1498,6 +1494,20 @@ Worth knowing: **most VRChat avatars don't ship walking animations at all** — 
 `proxy_*` placeholders the VRChat *client* replaces at runtime. ChilloutVR's own animation set is this
 platform's equivalent, and the report says which case your avatar is. Genuine locomotion replacements
 lean on runtime layer-weight control, which ChilloutVR has no equivalent for, so they can't be rescued.
+
+### Converted fingers snap to a pose nobody authored
+
+**Reconvert on 3.8.2 or later.** The avatar's Gesture layer held nothing but VRChat's `proxy_*`
+placeholders — the stand-in files whose real animations the VRChat *client* substitutes at runtime.
+Converted, that layer used to take over ChilloutVR's hand-pose slot, which means the CCK's own
+working hand poses were removed and the stand-ins played literally: fingers snapping to a pose that
+exists in no animation anyone made. Most avatars that never authored custom hand poses are built
+exactly this way, so it was easy to hit and hard to see — the file is there, it has finger curves in
+it, and it still isn't the pose VRChat shows you.
+
+A Gesture layer like that is now left behind entirely and ChilloutVR's hand set kept, the same rule
+already used for locomotion proxies. Layers with hand poses the avatar really authored take the slot
+as before; the report says which happened.
 
 ### An animation flickers rapidly — often only on other players' screens
 

@@ -8,34 +8,32 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Gives every parameter the animator type its own logic implies.
-    ///
-    /// VRCFury bakes menu parameters as FLOAT regardless of what they are, because a float
-    /// can carry a bool or an int and it saves it having to reason about intent. That is fine
-    /// in VRChat and wrong in ChilloutVR: CVR writes a menu value using the entry's declared
-    /// type, and writing a Bool into a Float animator parameter silently does nothing — the
-    /// classic "toggle does nothing in game" report.
-    ///
-    /// Two sources decide the real type, and neither is a guess:
-    ///
-    ///   1. The MENU CONTROL the parameter is bound to. A Toggle is a bool, a Dropdown is an
-    ///      int, a Slider is a float — that is what the author built, carried over from the
-    ///      VRChat menu. Advanced Settings entries are used rather than the VRChat expression
-    ///      parameters because their machineName is kept in step with the CCK-safe renames,
-    ///      so it still matches the animator by the time this runs.
-    ///
-    ///   2. For parameters with no menu control, how the ANIMATOR compares them. A parameter
-    ///      matched with Equals/NotEqual against whole numbers reaching 2 or more is a
-    ///      selector, whatever its declared type; nothing else about a float behaves that way.
-    ///
-    /// Against both sits one veto: anything read as a QUANTITY — a blend tree, motion time,
-    /// speed, cycle offset, or a parameter an animation clip writes — stays float, because
-    /// those need values between the whole numbers. The veto is checked first and is absolute.
-    ///
-    /// Conditions are rewritten to match whatever the parameter becomes, so no transition is
-    /// left comparing a bool with "&gt; 0.5".
-    /// </summary>
+    // Gives every parameter the animator type its own logic implies.
+    //
+    // VRCFury bakes menu parameters as FLOAT regardless of what they are, because a float
+    // can carry a bool or an int and it saves it having to reason about intent. That is fine
+    // in VRChat and wrong in ChilloutVR: CVR writes a menu value using the entry's declared
+    // type, and writing a Bool into a Float animator parameter silently does nothing; the
+    // classic "toggle does nothing in game" report.
+    //
+    // Two sources decide the real type, and neither is a guess:
+    //
+    //   1. The MENU CONTROL the parameter is bound to. A Toggle is a bool, a Dropdown is an
+    //      int, a Slider is a float; that is what the author built, carried over from the
+    //      VRChat menu. Advanced Settings entries are used rather than the VRChat expression
+    //      parameters because their machineName is kept in step with the CCK-safe renames,
+    //      so it still matches the animator by the time this runs.
+    //
+    //   2. For parameters with no menu control, how the ANIMATOR compares them. A parameter
+    //      matched with Equals/NotEqual against whole numbers reaching 2 or more is a
+    //      selector, whatever its declared type; nothing else about a float behaves that way.
+    //
+    // Against both sits one veto: anything read as a QUANTITY; a blend tree, motion time,
+    // speed, cycle offset, or a parameter an animation clip writes; stays float, because
+    // those need values between the whole numbers. The veto is checked first and is absolute.
+    //
+    // Conditions are rewritten to match whatever the parameter becomes, so no transition is
+    // left comparing a bool with "> 0.5".
     public static class ParameterTypeInference
     {
         const string Category = "Animator";
@@ -119,10 +117,6 @@ namespace AvatarBridge
                 "quantity, which needs the values in between. Retyping would have broken that.");
         }
 
-        /// <summary>
-        /// What each parameter should be: the menu control it drives, or failing that, the
-        /// shape of the comparisons made against it.
-        /// </summary>
         static Dictionary<string, AnimatorControllerParameterType> WantedTypes(
             BridgeContext ctx, Dictionary<string, HashSet<float>> exactMatches)
         {
@@ -157,7 +151,7 @@ namespace AvatarBridge
 
             // No menu control: a parameter only ever matched exactly, against whole numbers
             // that reach 2 or more, is a selector. One matched only against 0 and 1 is left
-            // alone — that shape is just as likely to be a float someone compares to 1.
+            // alone; that shape is just as likely to be a float someone compares to 1.
             foreach (var pair in exactMatches)
             {
                 if (wanted.ContainsKey(pair.Key))
@@ -177,10 +171,6 @@ namespace AvatarBridge
             return Mathf.Approximately(value, Mathf.Round(value));
         }
 
-        /// <summary>
-        /// Walks the controller for the two things that matter: parameters read as quantities
-        /// (which can never be retyped) and the thresholds of exact comparisons.
-        /// </summary>
         static void Collect(AnimatorController master, HashSet<string> quantity,
             Dictionary<string, HashSet<float>> exactMatches)
         {
@@ -253,10 +243,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Brings every condition into line with its parameter's new type, so nothing is left
-        /// comparing a bool numerically or an int fractionally.
-        /// </summary>
         static void RewriteConditions(AnimatorController master,
             Dictionary<string, AnimatorControllerParameterType> changed, BridgeContext ctx)
         {
@@ -271,7 +257,7 @@ namespace AvatarBridge
                     var conditions = transition.conditions;
                     bool touched = false;
                     // A condition the parameter's new domain can NEVER satisfy was already dead
-                    // in VRChat, and mapping its operator anyway would resurrect it — a "< 0"
+                    // in VRChat, and mapping its operator anyway would resurrect it; a "< 0"
                     // guard that never fired becomes "is false", which fires half the time. That
                     // is how a working avatar arrives with an animator layer that fights itself.
                     bool unreachable = false;
@@ -335,7 +321,7 @@ namespace AvatarBridge
                         else
                         {
                             // Int comparisons are whole-number only, and If/IfNot don't exist
-                            // for them — they become "not zero" / "is zero".
+                            // for them; they become "not zero" / "is zero".
                             switch (condition.mode)
                             {
                                 case AnimatorConditionMode.If:

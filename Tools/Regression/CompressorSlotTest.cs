@@ -7,28 +7,26 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for VRCFury parameter-compressor detection (task #16).
-    ///
-    /// The compressor beats VRChat's 256-parameter limit by marking your real parameters NOT
-    /// SYNCED and rotating copies of them through a couple of slots twice a second. ChilloutVR
-    /// syncs straight from the animator, so conversion strips the compressor and must then tell
-    /// the rename pass that those parameters are really synced after all — otherwise
-    /// preserveParameterSyncState copies the compressor's lie and every one gets the local "#".
-    ///
-    /// Reported in the wild as "all parameters became local": 131 of 170, the entire wardrobe
-    /// among them, with no "Removed VRCFury's parameter compressor" line in the report at all.
-    ///
-    /// Detection has two independent routes — MIRRORS (VF&lt;n&gt;_&lt;RealName&gt; shadowing a declared
-    /// parameter) and SLOTS (VF&lt;n&gt;_SyncIndex0, VF&lt;n&gt;_SyncDataBool0). A normal compressed avatar
-    /// has dozens of mirrors, so the pass succeeded on those and nobody noticed that the slot
-    /// pattern demanded digits straight after "Data" and therefore missed every SyncDataBool,
-    /// SyncDataFloat and SyncDataInt. On one real avatar it saw 2 slots out of ~28.
-    ///
-    /// So the case that matters here is SLOTS WITH NO MIRRORS. That is the shape where the miss
-    /// stops being cosmetic: both lists come back empty, the pass returns before doing anything,
-    /// and every parameter goes local.
-    /// </summary>
+    // Known-answer test for VRCFury parameter-compressor detection (task #16).
+    //
+    // The compressor beats VRChat's 256-parameter limit by marking your real parameters NOT
+    // SYNCED and rotating copies of them through a couple of slots twice a second. ChilloutVR
+    // syncs straight from the animator, so conversion strips the compressor and must then tell
+    // the rename pass that those parameters are really synced after all; otherwise
+    // preserveParameterSyncState copies the compressor's lie and every one gets the local "#".
+    //
+    // Reported in the wild as "all parameters became local": 131 of 170, the entire wardrobe
+    // among them, with no "Removed VRCFury's parameter compressor" line in the report at all.
+    //
+    // Detection has two independent routes. MIRRORS (VF<n>_<RealName> shadowing a declared
+    // parameter) and SLOTS (VF<n>_SyncIndex0, VF<n>_SyncDataBool0). A normal compressed avatar
+    // has dozens of mirrors, so the pass succeeded on those and nobody noticed that the slot
+    // pattern demanded digits straight after "Data" and therefore missed every SyncDataBool,
+    // SyncDataFloat and SyncDataInt. On one real avatar it saw 2 slots out of ~28.
+    //
+    // So the case that matters here is SLOTS WITH NO MIRRORS. That is the shape where the miss
+    // stops being cosmetic: both lists come back empty, the pass returns before doing anything,
+    // and every parameter goes local.
     public static class CompressorSlotTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — parameter compressor slots")]
@@ -52,7 +50,7 @@ namespace AvatarBridge.Regression
                 // A real, user-facing parameter the compressor has de-synced...
                 controller.AddParameter("Accessories", AnimatorControllerParameterType.Bool);
                 // ...and the compressor's own slots. NOTE: no VF<n>_Accessories mirror, which is
-                // exactly the avatar shape that broke — slots are the only evidence available.
+                // exactly the avatar shape that broke; slots are the only evidence available.
                 foreach (var slot in new[]
                 {
                     "VF89_SyncIndex0", "VF89_SyncIndex1",
@@ -62,7 +60,7 @@ namespace AvatarBridge.Regression
                 {
                     controller.AddParameter(slot, AnimatorControllerParameterType.Float);
                 }
-                // A VRCFury working value that shadows nothing — must NOT be taken for a slot or
+                // A VRCFury working value that shadows nothing; must NOT be taken for a slot or
                 // a mirror, or the pass would start deleting Fury's own machinery.
                 controller.AddParameter("VF113_frameTime", AnimatorControllerParameterType.Float);
 

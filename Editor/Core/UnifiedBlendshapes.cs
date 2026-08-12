@@ -7,7 +7,7 @@ namespace AvatarBridge
 {
     public enum ShapeOp { Redirect, Expand }
 
-    /// <summary>One shape's reconciliation: rename to a combined shape, or fan out to splits.</summary>
+    // One shape's reconciliation: rename to a combined shape, or fan out to splits.
     public struct ShapeAction
     {
         public ShapeOp Op;
@@ -15,24 +15,22 @@ namespace AvatarBridge
         public float Scale;        // Redirect → 1 / (components collapsing onto the target)
     }
 
-    /// <summary>
-    /// Unified Expressions "blended shapes" reconciliation (see
-    /// https://docs.vrcft.io/docs/tutorial-avatars/tutorial-avatars-extras/unified-blendshapes).
-    ///
-    /// The face-tracking rig drives a fixed set of shape names, but avatars only carry a subset
-    /// at a given granularity: some ship a single combined shape (e.g. "LipFunnel"), others the
-    /// directional components ("MouthUpperUpLeft/Right"). This maps a combined shape to its
-    /// components so AvatarBridge can, per shape the mesh is missing, either COLLAPSE the driven
-    /// components onto the combined shape the mesh has, or EXPAND a driven combined shape onto
-    /// the split shapes the mesh has.
-    ///
-    /// It's an approximation: the rig's Direct blend tree *sums* contributions, so collapsing
-    /// N components onto one shape scales each by 1/N (symmetric expressions reach full strength;
-    /// asymmetric ones land at a fraction — which a combined-only mesh can't represent anyway).
-    /// </summary>
+    // Unified Expressions "blended shapes" reconciliation (see
+    // https://docs.vrcft.io/docs/tutorial-avatars/tutorial-avatars-extras/unified-blendshapes).
+    //
+    // The face-tracking rig drives a fixed set of shape names, but avatars only carry a subset
+    // at a given granularity: some ship a single combined shape (e.g. "LipFunnel"), others the
+    // directional components ("MouthUpperUpLeft/Right"). This maps a combined shape to its
+    // components so AvatarBridge can, per shape the mesh is missing, either COLLAPSE the driven
+    // components onto the combined shape the mesh has, or EXPAND a driven combined shape onto
+    // the split shapes the mesh has.
+    //
+    // It's an approximation: the rig's Direct blend tree *sums* contributions, so collapsing
+    // N components onto one shape scales each by 1/N (symmetric expressions reach full strength;
+    // asymmetric ones land at a fraction; which a combined-only mesh can't represent anyway).
     public static class UnifiedBlendshapes
     {
-        // Combined shape → its directional components. Bilateral (Left/Right) unless quadranted.
+        // Combined shape -> its directional components. Bilateral (Left/Right) unless quadranted.
         static readonly Dictionary<string, string[]> Combined = new Dictionary<string, string[]>
         {
             { "MouthUpperUp",   new[] { "MouthUpperUpLeft", "MouthUpperUpRight" } },
@@ -77,7 +75,7 @@ namespace AvatarBridge
         // shape resolves against any of these. Only entries whose names actually DIFFER from UE
         // beyond capitalization need listing (pure case differences are handled directly).
         // ARKit's 52 shapes are Apple-fixed, so this mapping is stable; extend with SRanipal /
-        // Meta Movement here if needed. (Applied defensively — only used when the alt name is
+        // Meta Movement here if needed. (Applied defensively; only used when the alt name is
         // actually present on the mesh, so a wrong entry simply never fires.)
         static readonly Dictionary<string, string[]> AltNames =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -93,10 +91,6 @@ namespace AvatarBridge
                 { "MouthRaiserLower", new[] { "mouthShrugLower" } },
             };
 
-        /// <summary>
-        /// Returns the mesh's actual shape name for a UE shape, matching case-insensitively and
-        /// through the alternate-name table (ARKit etc.); null if the mesh has no equivalent.
-        /// </summary>
         static string ResolveOnMesh(string ueName, Dictionary<string, string> meshActual)
         {
             if (meshActual.TryGetValue(ueName.ToLowerInvariant(), out var exact))
@@ -116,11 +110,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Decides, for each shape the rig drives, how to reconcile it against the mesh's actual
-        /// shapes — matching by exact name, case, ARKit-vs-UE alias, or combined/split rules.
-        /// <paramref name="meshActual"/> maps a lowercased shape name to its real casing.
-        /// </summary>
         public static Dictionary<string, ShapeAction> BuildPlan(
             IEnumerable<string> rigShapes, Dictionary<string, string> meshActual, out List<string> unmapped)
         {
@@ -128,7 +117,7 @@ namespace AvatarBridge
             unmapped = new List<string>();
             var plan = new Dictionary<string, ShapeAction>();
 
-            // How many driven components collapse onto each combined target — sets the scale so
+            // How many driven components collapse onto each combined target; sets the scale so
             // simultaneous components sum to full, not N×full, through the Direct blend tree.
             var collapseCount = new Dictionary<string, int>();
             foreach (var shape in rig)
@@ -146,7 +135,7 @@ namespace AvatarBridge
                 var actual = ResolveOnMesh(shape, meshActual);
                 if (actual != null)
                 {
-                    // Present as-is → keep; present under a different name/case → redirect to it.
+                    // Present as-is -> keep; present under a different name/case -> redirect to it.
                     if (actual != shape)
                     {
                         plan[shape] = new ShapeAction { Op = ShapeOp.Redirect, Targets = new[] { actual }, Scale = 1f };

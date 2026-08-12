@@ -11,15 +11,13 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Converts simple GameObject on/off toggles into NATIVE ChilloutVR menu toggles.
-    ///
-    /// VRCFury bakes each toggle as an FX layer (or blend tree) animating m_IsActive via
-    /// a float parameter. In CVR the far better home is the CCK's own animator builder:
-    /// a GameObjectToggle entry with explicit targets, generated at upload as a clean
-    /// bool. This pass finds layers that do nothing but flip objects, moves their targets
-    /// into the menu entry, deletes the layer and lets the parameter become a real bool.
-    /// </summary>
+    // Converts simple GameObject on/off toggles into NATIVE ChilloutVR menu toggles.
+    //
+    // VRCFury bakes each toggle as an FX layer (or blend tree) animating m_IsActive via
+    // a float parameter. In CVR the far better home is the CCK's own animator builder:
+    // a GameObjectToggle entry with explicit targets, generated at upload as a clean
+    // bool. This pass finds layers that do nothing but flip objects, moves their targets
+    // into the menu entry, deletes the layer and lets the parameter become a real bool.
     public static class ToggleNativizer
     {
         const string Category = "Native toggles";
@@ -82,7 +80,7 @@ namespace AvatarBridge
 
                 if (!useNativeTargets)
                 {
-                    // The layer is already a working Off/On toggle — just give it a
+                    // The layer is already a working Off/On toggle; just give it a
                     // human name instead of VRCFury's "[FX] [VF121] ..." label.
                     string friendly = "Toggle " + entry.name;
                     if (layer.name != friendly && !LayerNameExists(master, new List<AnimatorControllerLayer>(), friendly))
@@ -108,7 +106,7 @@ namespace AvatarBridge
 
             // Modern VRCFury merges many toggles as branches of shared direct blend
             // trees; pull pure object toggles out of those too. Only needed for the
-            // CVR-native style — the layer style expands every branch below instead.
+            // CVR-native style; the layer style expands every branch below instead.
             bool aborted = false;
             if (useNativeTargets)
             {
@@ -329,17 +327,6 @@ namespace AvatarBridge
             return master.layers.Any(l => l.name == name) || pending.Any(l => l.name == name);
         }
 
-        /// <summary>
-        /// Builds the clip the Off state needs when the On clip swaps materials.
-        ///
-        /// Write Defaults restores every NUMERIC property when a state stops animating it —
-        /// floats, blendshapes, GameObject active — but never object-reference curves, so a
-        /// material assignment sticks at whatever was last written. In VRChat these toggles
-        /// lived in a Fury direct blend tree, where weight zero simply stops the curve applying;
-        /// expanded into states, the restore has to be explicit. The original material for each
-        /// animated slot is read off the converted avatar itself, whose edit-time state is the
-        /// resting state.
-        /// </summary>
         static AnimationClip BuildRestoreClip(BridgeContext ctx, AnimationClip onClip, string name)
         {
             AnimationClip restore = null;
@@ -375,7 +362,6 @@ namespace AvatarBridge
             return restore;
         }
 
-        /// <summary>A per-toggle layer exactly like a hand-authored Unity toggle.</summary>
         static AnimatorControllerLayer BuildToggleLayer(AnimatorController master,
             CVRAdvancedSettingsEntry entry, string parameter, AnimationClip clip, AnimationClip restoreClip)
         {
@@ -442,7 +428,6 @@ namespace AvatarBridge
             };
         }
 
-        /// <summary>Targets of a clip that ONLY flips GameObjects on/off; null otherwise.</summary>
         static List<TargetInfo> ExtractPureToggleTargets(AnimationClip clip)
         {
             var bindings = AnimationUtility.GetCurveBindings(clip);
@@ -476,10 +461,6 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------------- analysis ----
 
-        /// <summary>
-        /// Returns the objects this layer toggles, or null when the layer does anything
-        /// beyond flipping GameObjects on/off (then it must stay an animator layer).
-        /// </summary>
         static List<TargetInfo> AnalyzeToggleLayer(AnimatorStateMachine machine, string param)
         {
             var states = machine.states.Select(c => c.state).ToArray();
@@ -595,7 +576,7 @@ namespace AvatarBridge
                 // Shape C: plain ON/OFF states.
                 if (!onness.TryGetValue(state, out var stateOn))
                 {
-                    // A state with curves we cannot attribute to on or off: play safe.
+                    // A state whose curves attribute to neither on nor off: play safe.
                     if (AnimationUtility.GetCurveBindings(clip).Length > 0)
                     {
                         return null;
@@ -635,7 +616,7 @@ namespace AvatarBridge
             var toggle = (CVRAdvancesAvatarSettingGameObjectToggle)entry.setting;
 
             // Field layout differs slightly between CCK versions; reflection keeps this
-            // compiling and lets us fall back to animator-based toggles cleanly.
+            // compiling and falls back to animator-based toggles cleanly.
             var field = toggle.GetType().GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
             if (field == null || !field.FieldType.IsGenericType)
             {
@@ -675,11 +656,6 @@ namespace AvatarBridge
 
         static bool _dumpedTargetFields;
 
-        /// <summary>
-        /// CCK target entry field names vary between versions, so assign by TYPE:
-        /// the GameObject field gets the object, the bool field gets the on-state,
-        /// a string field mentioning "path" gets the hierarchy path.
-        /// </summary>
         static void AssignTargetMembers(object item, GameObject go, bool onState, string path)
         {
             var fields = item.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);

@@ -10,39 +10,15 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Patches shaders that don't support single-pass instanced stereo into copies that do.
-    ///
-    /// The two platforms do not render VR the same way, and this is one of the few places where
-    /// that difference reaches the avatar. ChilloutVR forces single-pass **instanced**
-    /// (`CCK_EnvConfig.cs`: `StereoRenderingPath.Instancing`); VRChat forces plain single-pass,
-    /// the double-wide one (`EnvConfig.cs`: `StereoRenderingPath.SinglePass`). Both are
-    /// unconditional.
-    ///
-    /// That matters because under double-wide a shader gets both eyes without having to ask —
-    /// so a shader that never opted into instancing looks perfectly fine in VRChat, and its
-    /// author had no reason to notice. Under instancing the same shader draws into one eye only.
-    /// It is a conversion problem rather than a broken shader, which is exactly the kind of thing
-    /// worth fixing here. The CCK reports them; this fixes the ones fixable mechanically.
-    ///
-    /// Three rules make that safe enough to do automatically:
-    ///
-    /// **Never touch the original.** A patched copy goes in the output's RehomedAssets folder
-    /// beside the other rescued assets, under its own shader name, and only this avatar's
-    /// materials are repointed at it. The source shader usually belongs to somebody else.
-    ///
-    /// **Refuse anything not plainly written.** Surface shaders have no vertex function to patch,
-    /// locked and generated shaders can't be parsed, and structs shared across includes can't be
-    /// edited from one file. Those are reported, not attempted.
-    ///
-    /// **Prove it compiles.** The copy is imported and checked with ShaderUtil before any material
-    /// is repointed; if it has errors the copy is deleted and the original left alone. That turns
-    /// the worst case from silently wrong pixels into a report line.
-    ///
-    /// Compilation is the only thing that can be verified here — that the result *looks* right is
-    /// not something an editor script can judge, so the report says what was patched and asks for
-    /// it to be checked in VR.
-    /// </summary>
+    // Patches shaders without single-pass instanced support into
+    // copies that have it. CVR forces instanced; VRChat forces
+    // double-wide, where shaders get both eyes for free.
+    //
+    // Three rules: never touch the original (copy into RehomedAssets,
+    // repoint this avatar's materials only); refuse anything not
+    // plainly written (surface, locked, shared-include structs);
+    // prove the copy compiles before repointing, or delete it.
+    // Only compilation is verifiable here; looks need VR eyes.
     public static class ShaderSpiPatcher
     {
         const string Category = "Shaders";
@@ -94,12 +70,9 @@ namespace AvatarBridge
                     string source = SourcePathOf(shader);
                     if (source == null)
                     {
-                        // Engine shaders (Standard, Hidden/Internal-…) have no source file on
-                        // disk to read or patch, and Unity's own ship stereo-correct. Generated
-                        // avatar shaders — Poiyomi lock-in and SPS live at Hidden/Locked/… —
-                        // DO have source, so they fall through to the honest check below. A
-                        // name-based "Hidden/ belongs to the engine" skip used to silently
-                        // ignore exactly the shaders people then asked about.
+                        // Engine shaders have no source on disk and ship
+                        // stereo-correct. Generated avatar shaders do
+                        // have source and fall through to the real check.
                         patched[shader] = null;
                         continue;
                     }
@@ -137,20 +110,11 @@ namespace AvatarBridge
                 }
             }
 
-            // Materials that arrive by an animated SWAP, which are on no renderer at this moment
-            // and were therefore invisible to the loop above. A hypno overlay, a transformation
-            // skin, a costume recolour — the whole point of them is that they are not assigned
-            // until a toggle assigns them, and a shader that draws into one eye does so just as
-            // badly then.
-            //
-            // Reported by a user whose hypno shader came through unpatched with the setting ON and
-            // NOTHING in the report, because a shader never considered produces no entry: the
-            // reader cannot tell "nothing needed patching" from "we never looked". The rehoming
-            // pass has always followed these curves, so the two passes disagreed about what counts
-            // as a material this avatar uses.
-            //
-            // The curve is rewritten to the patched clone as well. Patching the shader without
-            // repointing the swap would fix nothing — the toggle would still assign the original.
+            // Materials that arrive by animated swap sit on no renderer
+            // right now, invisible to the loop above, and draw into one
+            // eye just as badly when assigned. The curve is rewritten
+            // to the patched clone too; otherwise the toggle would
+            // still assign the original.
             int swapsRepointed = 0;
             foreach (var clip in ClipsOf(ctx.MergedController))
             {
@@ -267,9 +231,8 @@ namespace AvatarBridge
                     "only attempted on plainly written vertex/fragment shaders; anything else needs doing by " +
                     "hand or replacing with a different shader.");
             }
-            // The verdict that used to be silence. "Why wasn't my shader patched" has one of
-            // three answers — patched, refused, or didn't need it — and the report should give
-            // whichever applies rather than leaving the third to be mistaken for a miss.
+            // Every shader gets a verdict: patched, refused, or did
+            // not need it. Silence reads as a miss.
             if (alreadyCorrect.Count > 0)
             {
                 ctx.Report.Converted(Category,
@@ -282,11 +245,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Internal rather than private so AvatarAdvisor can count the shaders this pass would
-        /// act on without running it. Same question, same answer — an advisor with its own
-        /// notion of "supports stereo" would recommend the box and then patch nothing.
-        /// </summary>
         internal static string SourcePathOf(Shader shader)
         {
             string path = AssetDatabase.GetAssetPath(shader);
@@ -296,14 +254,9 @@ namespace AvatarBridge
 
         internal static bool DeclaresStereo(string path)
         {
-            // The WHOLE unit, not the one file — through the same ReadUnit the patcher itself
-            // uses, so the question "does this shader handle stereo" and the files that get
-            // patched can never disagree. Judging the .shader alone called lilToon broken:
-            // lts_fur.shader is a thousand lines of pass declarations whose every line of real
-            // code — including all five stereo macros, wrapped as LIL_* — lives in Includes/.
-            // The advisor then recommended patching the most widely used avatar shader there
-            // is, and the patcher wasted a compile discovering the vertex stage it wanted to
-            // edit was not in the file it was reading.
+            // The whole include unit, not the one file, through the
+            // same ReadUnit the patcher uses. Modern toon shaders keep
+            // their real code, stereo macros included, in includes.
             var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
             try
             {
@@ -317,16 +270,10 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// One file of a shader's source: the .shader itself, or a .cginc it pulls in.
-        ///
-        /// A shader's vertex stage is often not in the .shader at all — Cancerspace declares
-        /// "#pragma vertex vert" and keeps vert, and the structs, in Cancercore.cginc. Editing
-        /// somebody's shared include in place would reach every other shader using it, so the
-        /// includes are cloned alongside the shader and the copies are what get edited. The
-        /// clone's #include lines are repointed at the clones, so the original files are never
-        /// touched and never read by the patched copy.
-        /// </summary>
+        // One file of a shader's source: the .shader, or a .cginc it
+        // pulls in. The vertex stage often lives in an include, and
+        // editing a shared include reaches every shader using it, so
+        // includes are cloned and the clones are what get edited.
         class SourceFile
         {
             public string OriginalPath;   // as on disk
@@ -336,11 +283,6 @@ namespace AvatarBridge
             public bool Crlf;
         }
 
-        /// <summary>
-        /// The shader plus every local include it reaches, depth first. Includes that don't
-        /// resolve next to their includer are Unity's own (UnityCG.cginc and friends) and are
-        /// left alone — they already handle stereo, and they are not ours to copy.
-        /// </summary>
         static List<SourceFile> ReadUnit(string shaderPath)
         {
             var unit = new List<SourceFile>();
@@ -381,7 +323,6 @@ namespace AvatarBridge
             return unit;
         }
 
-        /// <summary>Finds the first file in the unit matching a pattern, or null.</summary>
         static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
             foreach (var file in unit)
@@ -397,9 +338,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Writes a patched copy, or returns null with the reason it was refused.
-        /// </summary>
         static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
             out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact, out bool grabPassLimited)
         {
@@ -415,8 +353,8 @@ namespace AvatarBridge
             var shaderFile = unit[0];
             string text = shaderFile.Text;
 
-            // Taken before a single edit, so the fingerprint identifies the file as the user has
-            // it — not as we are about to leave it.
+            // Taken before a single edit, so the fingerprint identifies
+            // the file as the user has it.
             var recipe = ShaderFixRecipes.Find(shaderName, text, out bool exactRecipeRevision);
 
             // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
@@ -429,23 +367,11 @@ namespace AvatarBridge
                 reason = "surface shader — Unity generates the vertex stage, nothing to patch";
                 return null;
             }
-            // A GrabPass is refused on purpose, and early. Under single-pass instanced the
-            // grabbed screen is a texture ARRAY with one slice per eye, so every sampler2D /
-            // tex2D read of it takes the wrong slice — adding the four macros would produce a
-            // shader that compiles, passes the CCK's check, and still shows one eye the other
-            // eye's view. The correct rewrite (UNITY_DECLARE/SAMPLE_SCREENSPACE_TEXTURE) has to
-            // be verified against a real HLSL compile, and an unverified guess here is worse
-            // than an honest refusal: it was tried, and produced a copy Unity rejected.
-            // A GrabPass is patched like anything else — the four macros make the effect DRAW in
-            // both eyes, which is the bigger half of the problem — but its screen grab cannot be
-            // made eye-correct here, and the report has to say so.
-            //
-            // Learned the hard way: rewriting the grab reads to the screen-space macros compiles
-            // and renders GREY in VR, because those declare a per-eye Texture2DArray and a
-            // GrabPass under single-pass instanced does not produce one. Desktop looked perfect
-            // throughout, since it takes the plain-sampler branch. Left alone, the grab returns
-            // one eye's view shown to both — imperfect parallax on the refraction, but visible
-            // and stable, which beats grey.
+            // A GrabPass is patched like anything else; the macros make
+            // the effect draw in both eyes. Its screen grab cannot be
+            // made eye-correct here: the screen-space macros expect a
+            // per-eye array a GrabPass never produces and render grey.
+            // One eye's view shown to both beats grey.
             grabPassLimited = Regex.IsMatch(text, @"GrabPass\s*\{");
             var vertPragma = Regex.Match(text, @"#pragma\s+vertex\s+(\w+)");
             var fragPragma = Regex.Match(text, @"#pragma\s+fragment\s+(\w+)");
@@ -475,26 +401,19 @@ namespace AvatarBridge
                 return null;
             }
 
-            // 1 & 2 — the struct members, each in whichever file declares it.
+            // 1 and 2: the struct members, in whichever file declares each.
             inFile.Text = Regex.Replace(inFile.Text, $@"(struct\s+{Regex.Escape(inType)}\s*\{{)",
                 "$1\n\t\t\t\tUNITY_VERTEX_INPUT_INSTANCE_ID");
             v2fFile.Text = Regex.Replace(v2fFile.Text, $@"(struct\s+{Regex.Escape(v2fType)}\s*\{{)",
                 "$1\n\t\t\t\tUNITY_VERTEX_OUTPUT_STEREO");
 
-            // 3 & 4 — located AFTER the struct edits, and that order is load-bearing.
+            // 3 and 4: located after the struct edits; that order is
+            // load-bearing. Insertion is by index, and the edits above
+            // shift everything below them.
             //
-            // These are inserted by INDEX, and in a self-contained shader the structs live in
-            // this same file — so the two edits above push everything below them along by their
-            // own length. An index taken before them lands ~68 characters early, which put the
-            // macros INSIDE the identifier "vdir" and produced a shader whose only complaint was
-            // "undeclared identifier 'r'". (The old code replaced a matched substring, which is
-            // position-independent; switching to an index made the ordering matter and nothing
-            // said so.) Everything below therefore reads the text as it now stands.
-            //
-            // The output struct is found ANYWHERE in the function body, not just as its first
-            // statement: authors routinely compute normals, tangents and view directions before
-            // declaring the output ("Burning Glasses" declares four float3s first), and an
-            // initialiser is just as common ("v2f o = (v2f)0;"). The body is delimited by brace
+            // The output struct is found anywhere in the function body,
+            // not just as its first statement; authors routinely compute
+            // values before declaring it. The body is delimited by brace
             // matching rather than a regex so a declaration in the NEXT function can't be
             // mistaken for this one's.
             int vertStart = vertFile.Text.IndexOf(sig.Value, StringComparison.Ordinal);
@@ -528,7 +447,7 @@ namespace AvatarBridge
             vertFile.Text = vertFile.Text.Insert(insertAt,
                 $"\n\t\t\t\tUNITY_SETUP_INSTANCE_ID({inArg});\n\t\t\t\tUNITY_INITIALIZE_VERTEX_OUTPUT_STEREO({outVar});");
 
-            // 5 — the eye index in the fragment stage, wherever frag lives.
+            // 5: the eye index in the fragment stage, wherever frag lives.
             var fragFile = FindIn(unit,
                 $@"\w+\s+{Regex.Escape(fragName)}\s*\(\s*{Regex.Escape(v2fType)}\s+(\w+)\s*\)[^{{]*\{{",
                 out var fragSig);
@@ -539,10 +458,9 @@ namespace AvatarBridge
                     $"\n\t\t\t\tUNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX({fragArg});");
             }
 
-            // 6 — screen-space depth, which the CCK's four-macro test does not cover. Under
-            // single-pass instanced _CameraDepthTexture is an array, so a sampler2D read of it is
-            // wrong however many macros are present. Common in soft-particle and effect shaders,
-            // and it can be in any file of the unit.
+            // 6: screen-space depth, which the four-macro test misses.
+            // _CameraDepthTexture is an array under instancing, so a
+            // sampler2D read is wrong whatever macros exist.
             foreach (var file in unit)
             {
                 file.Text = Regex.Replace(file.Text, @"sampler2D\s+_CameraDepthTexture\s*;",
@@ -552,16 +470,14 @@ namespace AvatarBridge
                     "SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, $1)");
             }
 
-            // 7 — the hand-written recipe for this exact file, if one exists. Applied last, so it
-            // edits a shader that already carries the generic macros and only has to describe
-            // what the generic pass cannot derive.
+            // 7: the hand-written recipe for this exact file, applied
+            // last, describing only what the generic pass cannot derive.
             if (recipe != null)
             {
                 if (!ShaderFixRecipes.TryApply(recipe, shaderFile.Text, out string patched, out string failure))
                 {
-                    // Every anchor was present in the ORIGINAL file, so this means our own
-                    // generic edits moved one. Refusing keeps the promise that a recipe applies
-                    // whole or not at all.
+                    // Every anchor existed in the original, so a generic
+                    // edit moved one. A recipe applies whole or not at all.
                     reason = $"its stereo recipe no longer fits after the generic patch ({failure})";
                     return null;
                 }
@@ -633,13 +549,9 @@ namespace AvatarBridge
                 written.Add(path);
             }
 
-            // Includes first, shader last, and a refresh in between.
-            //
-            // Unity tracks .cginc files as ShaderInclude assets, and importing the shader is what
-            // compiles it. Import the shader before its includes exist in the AssetDatabase and
-            // the compile fails on an include it cannot open — reported under the name in the
-            // source, which reads as though the repointing never happened. It had; only the
-            // ordering was wrong.
+            // Includes first, shader last. Importing the shader is what
+            // compiles it, and it fails on includes not yet in the
+            // AssetDatabase.
             foreach (string path in written.Skip(1))
             {
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
@@ -652,9 +564,8 @@ namespace AvatarBridge
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             if (result == null || ShaderUtil.ShaderHasError(result))
             {
-                // The message ALONE is not enough to fix anything — "undeclared identifier 'r'"
-                // sent three rounds of guesswork chasing the wrong edit. The line number says
-                // which edit, and the platform says which #if branch of the macros was taken.
+                // The message alone fixes nothing. The line number says
+                // which edit; the platform says which #if branch ran.
                 string errors = result != null
                     ? string.Join("; ", ShaderUtil.GetShaderMessages(result)
                         .Where(m => m.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error)
@@ -679,8 +590,8 @@ namespace AvatarBridge
                     File.WriteAllText(kept, unit[0].Text);
                 }
                 catch { kept = null; }
-                // Every file of the unit goes, not just the shader — a failed patch must not
-                // leave orphaned include copies sitting in the output folder.
+                // Every file of the unit goes, not just the shader.
+                // No orphaned include copies in the output folder.
                 foreach (string path in written)
                 {
                     AssetDatabase.DeleteAsset(path);
@@ -696,19 +607,6 @@ namespace AvatarBridge
             return result;
         }
 
-        /// <summary>
-        /// A copy of the material pointing at the patched shader, so other avatars sharing the
-        /// original material are unaffected. Cloned once and reused for every slot that had the
-        /// same material, which is what keeps those slots batching together.
-        /// </summary>
-        /// <summary>
-        /// Every clip the merged controller plays, including the ones inside blend trees.
-        ///
-        /// Clips the avatar's AUTHOR owns are excluded. This pass runs before the self-contain
-        /// step, so a clip here can still be a file living beside the source avatar, and rewriting
-        /// one would repair the ChilloutVR copy by editing the VRChat original — the same rule the
-        /// constraint and contact repointers follow.
-        /// </summary>
         static IEnumerable<AnimationClip> ClipsOf(AnimatorController controller)
         {
             if (controller == null)

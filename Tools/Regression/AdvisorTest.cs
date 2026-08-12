@@ -7,25 +7,23 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for AvatarAdvisor (task #8).
-    ///
-    /// The advisor's whole value is that its recommendation and the conversion that follows agree,
-    /// so what is worth pinning here is not the wording but the decisions:
-    ///
-    ///   - it recommends turning physics OFF only when there is genuinely nothing to convert;
-    ///   - it recommends turning physics ON when there are chains and a solver to take them, and
-    ///     says BLOCKED rather than recommending a solver that is not installed;
-    ///   - the judgement calls come back as Manual with no claim of a right answer, and Manual is
-    ///     what keeps them out of "Apply all" — an advisor that quietly ticked "Convert toe
-    ///     PhysBones" would be deciding exactly the question it just said it could not;
-    ///   - Apply actually writes the setting it advertises. A row that recommends something and
-    ///     then applies nothing is worse than no row.
-    ///
-    /// Face tracking is asserted on the empty case only. Its detection is FaceTrackingConverter's,
-    /// tested through the corpus on avatars that really carry the shapes, and a synthetic mesh with
-    /// twelve plausibly-named blendshapes would only be testing this file's guess at the naming.
-    /// </summary>
+    // Known-answer test for AvatarAdvisor (task #8).
+    //
+    // The advisor's whole value is that its recommendation and the conversion that follows agree,
+    // so what is worth pinning here is not the wording but the decisions:
+    //
+    //   - it recommends turning physics OFF only when there is genuinely nothing to convert;
+    //   - it recommends turning physics ON when there are chains and a solver to take them, and
+    //     says BLOCKED rather than recommending a solver that is not installed;
+    //   - the judgement calls come back as Manual with no claim of a right answer, and Manual is
+    //     what keeps them out of "Apply all"; an advisor that quietly ticked "Convert toe
+    //     PhysBones" would be deciding exactly the question it just said it could not;
+    //   - Apply actually writes the setting it advertises. A row that recommends something and
+    //     then applies nothing is worse than no row.
+    //
+    // Face tracking is asserted on the empty case only. Its detection is FaceTrackingConverter's,
+    // tested through the corpus on avatars that really carry the shapes, and a synthetic mesh with
+    // twelve plausibly-named blendshapes would only be testing this file's guess at the naming.
     public static class AdvisorTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — avatar advisor")]

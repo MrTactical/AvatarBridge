@@ -12,24 +12,21 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Runs last, and does two things the rest of the converter doesn't.
-    ///
-    /// **Validates.** Every check here is for something that produces a silently broken avatar
-    /// rather than an error — a condition on a parameter that no longer exists, a menu entry
-    /// whose type can't drive its parameter, a cloth with no bones. ChilloutVR does not complain
-    /// about any of these; it just quietly does nothing, which is how they reach a user.
-    ///
-    /// **Dumps.** Every bug diagnosed on this project so far started with someone grepping the
-    /// generated .controller by hand: does anything read this parameter, what compares it, what
-    /// do the drivers write. Those answers now go into the report itself, so a bug report is
-    /// answerable without a round trip asking for the controller.
-    /// </summary>
+    // Runs last, and does two things the rest of the converter doesn't.
+    //
+    // **Validates.** Every check here is for something that breaks
+    // silently rather than erroring. CVR does not complain about any
+    // of these; it quietly does nothing.
+    //
+    // **Dumps.** Every bug diagnosed on this project so far started with someone grepping the
+    // generated .controller by hand: does anything read this parameter, what compares it, what
+    // do the drivers write. Those answers now go into the report itself, so a bug report is
+    // answerable without a round trip asking for the controller.
     public static class BridgeDiagnostics
     {
         const string Category = "Diagnostics";
 
-        /// <summary>How a parameter is touched, which is the question that keeps coming up.</summary>
+        // How a parameter is touched, which is the question that keeps coming up.
         class Usage
         {
             public int Conditions, BlendTrees, MotionTime, DriverWrites, DriverReads, ClipWrites;
@@ -69,10 +66,9 @@ namespace AvatarBridge
             // Declared but inert. Not broken, but it is how a dead menu entry or a half-stripped
             // system shows up, and it costs sync bits if it's synced.
             //
-            // Parameters ChilloutVR drives itself are excluded: the CCK's own animator declares
-            // GestureLeft, Grounded, IsLocal and friends whether or not this avatar's logic reads
-            // them, so flagging those would fire on every single conversion — and a check that
-            // always fires is a check people learn to scroll past.
+            // Parameters CVR drives itself are excluded; flagging those
+            // fires on every conversion, and a check that always fires
+            // is a check people learn to scroll past.
             var inert = master.parameters
                 .Where(p => !usage.ContainsKey(p.name) || !usage[p.name].Any)
                 .Select(p => p.name)
@@ -307,11 +303,9 @@ namespace AvatarBridge
         static Dictionary<string, Usage> CollectUsage(AnimatorController master)
         {
             var map = new Dictionary<string, Usage>();
-            // An "animated animator parameter" binding is type Animator with an empty path — but
-            // so is every humanoid MUSCLE curve Unity bakes into a locomotion clip: RootQ.x,
-            // LeftFootT.y, unknown_2 and hundreds more. They are not parameters and never appear
-            // in master.parameters, so requiring the name to be declared separates the two. A
-            // clip writing to an undeclared parameter does nothing anyway.
+            // Muscle curves bind like animated animator parameters.
+            // Requiring a declared name separates the two; an
+            // undeclared parameter write does nothing anyway.
             var declaredNames = new HashSet<string>(master.parameters.Select(p => p.name));
             Usage For(string name)
             {
@@ -331,10 +325,9 @@ namespace AvatarBridge
             {
                 if (motion is BlendTree tree)
                 {
-                    // Count only the axis fields this blend type reads — Direct trees read
-                    // neither, 1D trees only X. The leftover "Blend"/"Smooth Amount"/"Value"
-                    // names on Direct trees otherwise show up in this table as live references
-                    // on every avatar, which is how they ended up in every bug report.
+                    // Count only the axis fields this blend type reads.
+                    // Direct trees read neither, 1D trees only X;
+                    // leftover names would read as live references.
                     if (tree.blendType != BlendTreeType.Direct)
                     {
                         For(tree.blendParameter).BlendTrees++;
@@ -429,28 +422,6 @@ namespace AvatarBridge
             return map;
         }
 
-        /// <summary>
-        /// Finds layers that re-enter a state every frame once every parameter is at its
-        /// SERIALIZED DEFAULT — the state a remote copy of the avatar is in.
-        ///
-        /// Remote copies differ from the wearer's in ways that all point the same direction: "#"
-        /// local parameters never sync and sit at their defaults forever, CVRParameterStream is
-        /// stripped from remote copies, localOnly drivers don't run, and at load NOTHING has
-        /// replicated yet — so for the first seconds every parameter reads its default. A layer
-        /// the wearer never sees move, because their live value parks it, can at those defaults
-        /// satisfy a loop of transitions and thrash.
-        ///
-        /// Reported by a tester as a body cycling through every colour with a pulsing outline,
-        /// for about thirty seconds after putting the avatar on, visible ONLY to other people —
-        /// two material properties driven by one runaway layer, ending the moment the real values
-        /// replicated. The wearer's own hue slider never moved, which is exactly why this is worth
-        /// a static check: the author cannot see it, cannot reproduce it, and the avatar is
-        /// correct on their screen the entire time.
-        ///
-        /// Only INSTANT re-entry counts. A cycle whose transitions all wait on exit time is an
-        /// animation sequence playing in order, which is what sequences are for; a cycle where
-        /// some transition fires with no exit time re-evaluates the same frame and never settles.
-        /// </summary>
         static void CheckRemoteDefaultLoops(BridgeContext ctx, AnimatorController master)
         {
             var defaults = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
@@ -467,12 +438,9 @@ namespace AvatarBridge
                 // drives its core parameters on every copy, remote ones included, so reading
                 // their defaults here describes no machine that exists.
                 //
-                // IsLocal is the one with an answer rather than an unknown: this check is about
-                // the remote copy, and on a remote copy IsLocal is FALSE by definition. Reading
-                // its declared default (1, the resting value given for the WEARER) inverted every
-                // local/remote gate on the avatar and turned VRCFury's Remote Trap — a state that
-                // exists to hold a layer still on remotes — into a reported thrash. Three of the
-                // first five hits were that mistake.
+                // IsLocal has an answer rather than an unknown: on a
+                // remote copy it is false by definition. Reading its
+                // declared default would invert every local/remote gate.
                 string bare = c.parameter.TrimStart('#');
                 if (bare == "IsLocal")
                 {
@@ -584,12 +552,10 @@ namespace AvatarBridge
                     }
                 });
 
-                // A cycle only matters if the layer can REACH it at these values. VRCFury parks
-                // its generated layers in a "Remote Trap" state whose only exit tests IsLocal —
-                // false on a remote copy, so the layer never leaves and the busy little cycle of
-                // driver states behind it never runs. Fury is defending against this exact bug,
-                // and without a reachability check the defence reads as the bug: the trap was
-                // three of the first ten hits, all of them wrong.
+                // A cycle only matters if the layer can reach it at
+                // these values. VRCFury parks layers in a Remote Trap
+                // state on remotes; without a reachability check the
+                // defence reads as the bug.
                 var reachable = new HashSet<AnimatorState>();
                 var queue = new Queue<AnimatorState>();
                 void Reach(AnimatorState s)
@@ -623,9 +589,9 @@ namespace AvatarBridge
                 string found = selfLoop;
                 if (found == null && edges.Count > 0)
                 {
-                    // Depth-first cycle search. A cycle only counts if at least one of its edges
-                    // is instant — otherwise every step waits for a clip to finish and the layer
-                    // is a sequence, not a thrash.
+                    // Depth-first cycle search. A cycle only counts with
+                    // at least one instant edge; otherwise the layer is
+                    // a sequence, not a thrash.
                     var state = new Dictionary<AnimatorState, int>();   // 0 unseen, 1 on stack, 2 done
                     var stack = new List<AnimatorState>();
                     bool Visit(AnimatorState node)
@@ -719,31 +685,9 @@ namespace AvatarBridge
             return n;
         }
 
-        /// <summary>
-        /// Parameters the CCK's own base animator declares, which ChilloutVR writes from the
-        /// player rather than the avatar's logic. Kept here ungated because Setup mode has no
-        /// VRChat SDK and still copies that animator; the conversion path additionally defers to
-        /// <see cref="AnimatorMerger.IsGameDrivenParameter"/>, which knows about the
-        /// stream-fed ones too.
-        /// </summary>
-        /// <summary>
-        /// Every component type ChilloutVR keeps on an avatar, transcribed from the client's
-        /// SharedFilter whitelists and the conditional branches in AssetFilter.FilterAvatar.
-        ///
-        /// The client walks GetComponentsInChildren over the whole avatar and calls
-        /// DestroyComponentWithRequirements on anything it doesn't recognise. There is no message,
-        /// no fallback, and nothing about the converted asset looks wrong beforehand — the
-        /// component is simply gone the moment the avatar loads. A quadruped arrived with ten
-        /// GrounderVRIK components driving its leg placement, none of which appear in any list.
-        ///
-        /// The union deliberately includes types allowed only conditionally, on a viewer setting
-        /// (audio, lights, cameras), and the local-only set that survives on the wearer's copy but
-        /// not on remote ones. Flagging those would fire constantly and teach people to ignore
-        /// this. Only components with no route through the filter at all are reported.
-        /// </summary>
         static readonly HashSet<string> CvrAvatarComponentWhitelist = new HashSet<string>
         {
-            // RootComponents — permitted anywhere, despite the name.
+            // RootComponents: permitted anywhere, despite the name.
             "Animator", "CVRAssetInfo", "CVRLuaClientBehaviour", "LookAtIK", "Transform",
             "TwistRelaxer", "VRIK", "WasmRuntimeBehaviour", "WasmVMAnchor",
             // AvatarWhitelist.
@@ -759,7 +703,7 @@ namespace AvatarBridge
             "Rigidbody", "RotationConstraint", "RotationLimitAngle", "RotationLimitHinge",
             "RotationLimitPolygonal", "RotationLimitSpline", "ScaleConstraint", "Sensor",
             "SkinnedMeshRenderer", "Skybox", "SpringJoint", "TrailRenderer",
-            // LocalComponentWhitelist — the wearer's copy only, but not destroyed outright.
+            // LocalComponentWhitelist: the wearer's copy only, but not destroyed outright.
             "CVRAdvancedAvatarSettingsTrigger", "CVRHapticAreaChest", "CVRParameterStream",
             "CVRSnappingPoint", "CVRToggleStateTrigger", "FPRExclusion",
             // Colliders, dynamics and dynamics colliders.
@@ -784,32 +728,6 @@ namespace AvatarBridge
             "CVRMovementParent", "CVRAvatar",
         };
 
-        /// <summary>
-        /// Names the components ChilloutVR will delete the moment this avatar loads.
-        /// </summary>
-        /// <summary>
-        /// States the avatar can enter and then never leave.
-        ///
-        /// A gesture that switches an expression on and never hands it back, a toggle that sticks:
-        /// from the wearer's side it reads as "the animation played and got stuck", and it is
-        /// invisible in the editor because entering the state works perfectly. What is broken is
-        /// the way OUT.
-        ///
-        /// Reported only when a state HAS exit transitions and every one of them is
-        /// unsatisfiable — someone plainly intended an exit and it cannot fire. A state with no
-        /// outgoing transitions at all is deliberately terminal on plenty of avatars (a one-shot
-        /// layer parked on its last pose), so flagging those would bury the real finding. The
-        /// remote-thrash check earlier in this file fired on ten of fifty avatars before it was
-        /// narrowed the same way; a detector nobody trusts is worse than none.
-        ///
-        /// Exit time is an escape by itself — a transition with hasExitTime leaves on the clock
-        /// regardless of conditions — so any of those clears the state immediately.
-        /// </summary>
-        /// <summary>
-        /// Test seam for <see cref="CheckStuckStates"/>. It returned clean on all fifty corpus
-        /// avatars, which proves nothing on its own — a check that never fires looks identical to
-        /// a healthy corpus. StuckStateDetectorTest drives known-answer controllers through this.
-        /// </summary>
         internal static void RunStuckStateCheckForTest(BridgeContext ctx, AnimatorController master)
             => CheckStuckStates(ctx, master);
 
@@ -833,8 +751,8 @@ namespace AvatarBridge
 
                 foreach (var machine in machines)
                 {
-                    // AnyState reaches every state in its machine, so it is an escape route from
-                    // all of them — except where it only targets the state we are standing in.
+                    // AnyState is an escape route from every state,
+                    // except where it only targets the current one.
                     var anyEscapes = machine.anyStateTransitions ?? new AnimatorStateTransition[0];
                     foreach (var child in machine.states)
                     {
@@ -876,11 +794,6 @@ namespace AvatarBridge
                 "than\" again to leave is the common shape.");
         }
 
-        /// <summary>
-        /// Whether any parameter values could satisfy this transition at once. Contradictions
-        /// within one transition are what make an exit dead: "Greater 3.9 AND Less 3.9" is
-        /// enterable-looking and unsatisfiable.
-        /// </summary>
         static bool CanEverFire(AnimatorStateTransition transition,
             Dictionary<string, AnimatorControllerParameter> declared)
         {
@@ -997,11 +910,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// The four macros a shader needs to render correctly under single-pass instanced stereo,
-        /// which is how both ChilloutVR and VRChat draw in VR. Taken from the CCK's own
-        /// ShaderStereoSupportStep so this reports the same shaders its uploader will.
-        /// </summary>
         static readonly string[] StereoMacros =
         {
             "UNITY_VERTEX_INPUT_INSTANCE_ID",
@@ -1010,34 +918,9 @@ namespace AvatarBridge
             "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
         };
 
-        /// <summary>Shaders the CCK treats as known-good without scanning.</summary>
         static bool IsKnownStereoShader(string name) =>
             name == "Standard" || name.StartsWith("Hidden/PostProcessing/", StringComparison.Ordinal);
 
-        /// <summary>
-        /// Names shaders that will not draw correctly in VR.
-        ///
-        /// Single-pass instanced renders both eyes in one pass, and a shader has to opt in with
-        /// four macros to know which eye it is drawing. Without them the effect typically appears
-        /// in one eye only, or at the wrong offset.
-        ///
-        /// This *is* a ChilloutVR-specific problem, and an earlier version of this comment had it
-        /// backwards. The two SDKs force different stereo modes, both unconditionally: the CCK
-        /// sets `StereoRenderingPath.Instancing` (`CCK_EnvConfig.cs`), while the VRChat SDK sets
-        /// `StereoRenderingPath.SinglePass` — the double-wide one (`EnvConfig.cs`). Under
-        /// double-wide a shader gets both eyes without opting in, so one of these shaders looks
-        /// correct in VRChat and its author had no reason to know. Converting is what exposes it.
-        ///
-        /// Worth catching before upload because of what happens if the avatar is ever treated as
-        /// legacy content: NonSpiHelper replaces shaders by looking the name up in the game's own
-        /// build, and CVRTools.ReplaceShaders falls back to "Standard" when the name isn't found.
-        /// A particle shader nobody else ships would not merely render oddly, it would become an
-        /// opaque surface.
-        ///
-        /// Same detection the CCK uses — a text scan of the shader source, following includes —
-        /// so nothing is reported here that its uploader would pass, and vice versa. Shaders with
-        /// no readable source (built-in, or inside a package) are skipped rather than guessed at.
-        /// </summary>
         static void CheckStereoShaders(BridgeContext ctx)
         {
             var missingCache = new Dictionary<string, List<string>>();
@@ -1081,10 +964,8 @@ namespace AvatarBridge
             }
             var listed = offenders.Select(kv => $"{kv.Key} ({Join(kv.Value, 4)})");
             ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
-                // Short on purpose. This used to carry a paragraph of hand-editing instructions
-                // that only an HLSL author could use, in front of everyone who just wanted to
-                // know what to do — so nobody read any of it. The edit itself lives in the
-                // README now; the report says what breaks and what to press.
+                // Short on purpose. The hand-edit lives in the README;
+                // the report says what breaks and what to press.
                 $"{Join(listed, 6)} — these draw into ONE EYE ONLY under ChilloutVR's rendering mode. " +
                 "It looked fine in VRChat because VRChat's mode hands a shader both eyes without it asking, " +
                 "so expect this to be new. " +
@@ -1095,16 +976,6 @@ namespace AvatarBridge
                 " Otherwise swap the shader, or accept how it looks; the README has the hand-edit.");
         }
 
-        /// <summary>
-        /// Which of the four macros the shader never mentions, following includes.
-        ///
-        /// Naming them turns "review this for compatibility" into something actionable: each one
-        /// belongs in a specific place, so the list doubles as the edit needed —
-        /// UNITY_VERTEX_INPUT_INSTANCE_ID in the vertex input struct,
-        /// UNITY_VERTEX_OUTPUT_STEREO in the interpolator struct, and
-        /// UNITY_SETUP_INSTANCE_ID plus UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO at the top of the
-        /// vertex function.
-        /// </summary>
         static List<string> MissingStereoMacros(string path)
         {
             var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
@@ -1148,14 +1019,6 @@ namespace AvatarBridge
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
         const int AasBitBudget = 3200;
 
-        /// <summary>
-        /// AvatarDefinitions.CoreParameters, exactly as the client spells it.
-        ///
-        /// Deliberately not reusing CckBaseParameters or AnimatorMerger.CvrCoreParameters: both
-        /// carry Swimming and AFK, which the client writes but does NOT mark core. That makes
-        /// them writable and — the part that matters here — they DO consume sync bits. Counting
-        /// with the wrong set silently under-reports the budget.
-        /// </summary>
         static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Crouching", "Prone", "Flying", "Sitting",
@@ -1164,23 +1027,6 @@ namespace AvatarBridge
             "IsFriend", "VelocityX", "VelocityY", "VelocityZ"
         };
 
-        /// <summary>
-        /// Reproduces ChilloutVR's sync-slot allocation so the report can say when parameters
-        /// fall off the end of it.
-        ///
-        /// A parameter syncs when it is not "#"-prefixed, not a Trigger, and not one of the
-        /// client's core parameters — a menu entry has nothing to do with it. Slots are handed
-        /// out walking the animator's parameter list in declaration order, and the budget is
-        /// tested BEFORE each one is admitted, so the parameter that crosses the line still gets
-        /// in and everything after it is dropped. Nothing warns about this in game: the
-        /// parameters simply never replicate.
-        ///
-        /// Costs are the client's: Float and Int 32 bits each, Bool 1.
-        ///
-        /// The client also exempts parameters an animation curve drives. That is a runtime test
-        /// with no static equivalent, and skipping it can only make this estimate too high, which
-        /// is the safe direction for a budget warning.
-        /// </summary>
         static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
         {
             int used = 0;
@@ -1246,7 +1092,6 @@ namespace AvatarBridge
             return CckBaseParameters.Contains(bare);
         }
 
-        /// <summary>Comma-joined, capped so one runaway list can't bury the rest of the report.</summary>
         static string Join(IEnumerable<string> items, int max = 12)
         {
             var list = items.ToList();

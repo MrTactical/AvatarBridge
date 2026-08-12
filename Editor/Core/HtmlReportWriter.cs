@@ -9,22 +9,20 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// The conversion report as a single self-contained web page, written beside the markdown.
-    ///
-    /// The markdown stays the artefact for bug reports — grep-able, diff-able, attachable. This
-    /// is the page a person actually reads: what happened, how much of it, and where to look,
-    /// with the numbers drawn instead of listed. Everything is inline — no CDN, no external
-    /// fonts, no script includes — because the file gets opened from disk and shared around,
-    /// and a report that needs the internet to render is a report that renders blank.
-    ///
-    /// Chart rules followed deliberately: outcome colours are STATUS colours and each slice is
-    /// also named and counted in text, so identity never rides on colour alone; the category
-    /// chart is one measure across categories, so it uses one hue rather than a rainbow; dark
-    /// mode is its own palette step, not an inversion. The palette validator could not run on
-    /// this machine (no Node), so the risky adjacency — amber beside orange — is avoided by
-    /// construction instead: "approximated" is blue.
-    /// </summary>
+    // The conversion report as a single self-contained web page, written beside the markdown.
+    //
+    // The markdown stays the artefact for bug reports; grep-able, diff-able, attachable. This
+    // is the page a person actually reads: what happened, how much of it, and where to look,
+    // with the numbers drawn instead of listed. Everything is inline; no CDN, no external
+    // fonts, no script includes; because the file gets opened from disk and shared around,
+    // and a report that needs the internet to render is a report that renders blank.
+    //
+    // Chart rules followed deliberately: outcome colours are STATUS colours and each slice is
+    // also named and counted in text, so identity never rides on colour alone; the category
+    // chart is one measure across categories, so it uses one hue rather than a rainbow; dark
+    // mode is its own palette step, not an inversion. The palette validator could not run on
+    // this machine (no Node), so the risky adjacency; amber beside orange; is avoided by
+    // construction instead: "approximated" is blue.
     public static class HtmlReportWriter
     {
         public static void Write(BridgeContext ctx)
@@ -169,11 +167,6 @@ namespace AvatarBridge
               .Append(count).Append("</button>");
         }
 
-        /// <summary>
-        /// An SVG donut with a 2° surface gap between slices and the total in the middle. The
-        /// legend beside it carries every name and count in text ink, so a reader who cannot
-        /// tell two slices apart loses nothing.
-        /// </summary>
         static void Donut(StringBuilder sb, string title, int total, (string Name, int Count, string Colour)[] slices)
         {
             sb.Append("<div class=\"card\"><h2>").Append(H(title)).Append("</h2><div class=\"donutrow\">");
@@ -291,12 +284,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------- tiny markdown ----
 
-        /// <summary>
-        /// Renders the appendix's OWN generated markdown — headings, pipe tables, bold, code
-        /// spans, list items — nothing more. It is not a markdown engine and must not become
-        /// one; the appendix is machine-written and well-formed, which is the only reason this
-        /// is safe.
-        /// </summary>
         static void AppendMiniMarkdown(StringBuilder sb, string md)
         {
             bool inTable = false;
@@ -333,7 +320,7 @@ namespace AvatarBridge
         static string Inline(string text)
         {
             string s = H(text);
-            // `code` then **bold** — on escaped text, so nothing here can open a tag itself.
+            // `code` then **bold**; on escaped text, so nothing here can open a tag itself.
             var code = new System.Text.RegularExpressions.Regex("`([^`]+)`");
             s = code.Replace(s, "<code>$1</code>");
             var bold = new System.Text.RegularExpressions.Regex(@"\*\*([^*]+)\*\*");

@@ -6,20 +6,18 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for the GoGo layer strip (task #12).
-    ///
-    /// GoGo Loco installed BY HAND names its layers "GoGo Loco ..." and the word hints catch it.
-    /// Installed through a VRCFury prefab it names them after its parameters — "Go/Beyond" — which
-    /// contains none of "gogo", "go loco" or "goloco", so the layer outlived a strip that had
-    /// already neutered its parameters. Nine of fifty-three corpus avatars carried the survivor,
-    /// and it was not inert: weight 1 on Override, transitions reading ChilloutVR's own Sitting /
-    /// Grounded / AFK, playing GoGo's chair clip over the station pose the moment the wearer sat.
-    ///
-    /// The trap on the other side is over-matching. "Cargo/Rack" contains "go/" and has nothing to
-    /// do with GoGo, so the match has to be anchored to a word start — that case is pinned here
-    /// precisely because a substring test would look like it worked.
-    /// </summary>
+    // Known-answer test for the GoGo layer strip (task #12).
+    //
+    // GoGo Loco installed BY HAND names its layers "GoGo Loco ..." and the word hints catch it.
+    // Installed through a VRCFury prefab it names them after its parameters. "Go/Beyond"; which
+    // contains none of "gogo", "go loco" or "goloco", so the layer outlived a strip that had
+    // already neutered its parameters. Nine of fifty-three corpus avatars carried the survivor,
+    // and it was not inert: weight 1 on Override, transitions reading ChilloutVR's own Sitting /
+    // Grounded / AFK, playing GoGo's chair clip over the station pose the moment the wearer sat.
+    //
+    // The trap on the other side is over-matching. "Cargo/Rack" contains "go/" and has nothing to
+    // do with GoGo, so the match has to be anchored to a word start; that case is pinned here
+    // precisely because a substring test would look like it worked.
     public static class GogoLayerStripTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — GoGo layer strip")]
@@ -54,7 +52,7 @@ namespace AvatarBridge.Regression
                     var state = layers[i].stateMachine.AddState("s" + i);
                     var t = state.AddTransition(state);
                     // Every layer reads Sitting, so nothing here is removed for referencing
-                    // stripped parameters — the NAME is what has to decide.
+                    // stripped parameters; the NAME is what has to decide.
                     t.AddCondition(AnimatorConditionMode.If, 0f, "Sitting");
                 }
                 controller.layers = layers;

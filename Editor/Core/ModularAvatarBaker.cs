@@ -7,19 +7,17 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Modular Avatar support. Like VRCFury, MA applies its features (merge armature, menus,
-    /// parameters, reactive toggles, mesh cutters…) only at build time, via NDMF's pipeline.
-    /// Converting an MA avatar directly would lose all of that.
-    ///
-    /// So we invoke NDMF's own manual bake (nadena.dev.ndmf.AvatarProcessor.ManualProcessAvatar),
-    /// which clones the avatar, runs the full NDMF/MA pipeline, and hands back a baked copy with
-    /// plain VRChat components. AvatarBridge then converts that copy exactly like any other.
-    ///
-    /// Note: a VRCFury "Build a Test Copy" already runs NDMF internally, so avatars that use MA
-    /// *and* VRCFury are handled by the Fury bake — this baker is for MA-only avatars. All
-    /// reflection-based: NDMF/MA may be absent and its editor API is internal.
-    /// </summary>
+    // Modular Avatar support. Like VRCFury, MA applies its features (merge armature, menus,
+    // parameters, reactive toggles, mesh cutters...) only at build time, via NDMF's pipeline.
+    // Converting an MA avatar directly would lose all of that.
+    //
+    // So this invokes NDMF's own manual bake (nadena.dev.ndmf.AvatarProcessor.ManualProcessAvatar),
+    // which clones the avatar, runs the full NDMF/MA pipeline, and hands back a baked copy with
+    // plain VRChat components. AvatarBridge then converts that copy exactly like any other.
+    //
+    // Note: a VRCFury "Build a Test Copy" already runs NDMF internally, so avatars that use MA
+    // *and* VRCFury are handled by the Fury bake; this baker is for MA-only avatars. All
+    // reflection-based: NDMF/MA may be absent and its editor API is internal.
     public static class ModularAvatarBaker
     {
         const string Category = "Modular Avatar";
@@ -27,7 +25,6 @@ namespace AvatarBridge
             "Bake it manually instead: Tools → Modular Avatar (or NDM Framework) → 'Manual bake avatar' " +
             "with the avatar selected, then run AvatarBridge on the baked copy.";
 
-        /// <summary>True if the avatar carries Modular Avatar (or other NDMF) components.</summary>
         public static bool HasModularAvatarComponents(GameObject avatar)
         {
             if (avatar == null)
@@ -44,10 +41,6 @@ namespace AvatarBridge
                    || ns.StartsWith("nadena.dev.ndmf", StringComparison.Ordinal);
         }
 
-        /// <summary>
-        /// Bakes the avatar with NDMF's manual processor. Returns the baked scene copy, or null
-        /// when there's nothing to bake or the bake failed (already reported).
-        /// </summary>
         public static GameObject TryBake(VRCAvatarDescriptor source, BridgeReport report)
         {
             if (!HasModularAvatarComponents(source.gameObject))
@@ -82,7 +75,7 @@ namespace AvatarBridge
             GameObject baked;
             try
             {
-                // ManualProcessAvatar(GameObject, INDMFPlatformProvider = null) — null platform
+                // ManualProcessAvatar(GameObject, INDMFPlatformProvider = null); null platform
                 // resolves to the default (VRChat) platform, giving plain VRChat components to convert.
                 object[] args = bake.GetParameters().Length == 1
                     ? new object[] { source.gameObject }

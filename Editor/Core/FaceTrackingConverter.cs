@@ -8,21 +8,19 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Detects VRChat face-tracking blendshapes (VRCFaceTracking / SRanipal or Unified
-    /// Expressions naming) and wires up ChilloutVR's native CVRFaceTracking component.
-    ///
-    /// VRChat face tracking is driven by an OSC app writing blendshape parameters into the
-    /// FX layer; that plumbing doesn't exist in CVR. But the *blendshapes themselves*
-    /// (JawOpen, MouthClosed, TongueOut, …) carry over on the mesh, and CVR reads them
-    /// directly through CVRFaceTracking — no OSC, no per-shape animator layers. So if the
-    /// mesh has the shapes, we can switch the avatar to native CVR face tracking for free.
-    /// </summary>
+    // Detects VRChat face-tracking blendshapes (VRCFaceTracking / SRanipal or Unified
+    // Expressions naming) and wires up ChilloutVR's native CVRFaceTracking component.
+    //
+    // VRChat face tracking is driven by an OSC app writing blendshape parameters into the
+    // FX layer; that plumbing doesn't exist in CVR. But the *blendshapes themselves*
+    // (JawOpen, MouthClosed, TongueOut, ...) carry over on the mesh, and CVR reads them
+    // directly through CVRFaceTracking; no OSC, no per-shape animator layers. So if the
+    // mesh has the shapes, the avatar can switch to native CVR face tracking for free.
     public static class FaceTrackingConverter
     {
         const string Category = "Face tracking";
 
-        // Minimum distinct tracked shapes on a mesh before we treat it as face-tracked.
+        // Minimum distinct tracked shapes before a mesh counts as face-tracked.
         // Real setups match dozens; this only rules out avatars with a few stray matches.
         const int DetectionThreshold = 12;
 
@@ -83,7 +81,7 @@ namespace AvatarBridge
                 // Says HOW CLOSE it got and on which mesh. "Nothing was detected" is where a
                 // report like this stops being useful: an avatar that scored nothing has no
                 // tracking shapes, and one that scored just under the bar has them under a naming
-                // scheme this could not read — the same sentence for two different problems, and
+                // scheme this could not read; the same sentence for two different problems, and
                 // no way to tell which from the outside.
                 string near = bestMesh != null
                     ? $"The closest was \"{bestMesh.name}\", which matched {bestScore} of the " +
@@ -129,21 +127,6 @@ namespace AvatarBridge
                     : ""));
         }
 
-        /// <summary>
-        /// Fills the slots ChilloutVR's matcher leaves empty on a rig that names its shapes
-        /// without sides, and returns how many.
-        ///
-        /// CVRFaceTracking.AutoSelectFaceTrackingShapes asks only whether a shape's name CONTAINS
-        /// the slot's name, and every slot name it looks for carries a side: EyeLookDownLeft,
-        /// MouthUpperUpRight. A rig with one "EyeLookDown" for the pair therefore matches nothing,
-        /// and an avatar carrying a full Unified Expressions set came out with ten of eighty-eight
-        /// slots filled. The unsided name is the sided one with the side removed, so it is a
-        /// PREFIX — and the longest matching prefix is the right shape, so that "EyeLookDown"
-        /// wins over a hypothetical "EyeLook".
-        ///
-        /// Both the left and the right slot get the same shape. That is what the rig means: there
-        /// is one shape, and it moves for either side.
-        /// </summary>
         static int FillUnsidedShapes(CVRFaceTracking faceTracking, SkinnedMeshRenderer mesh)
         {
             var targets = faceTracking.CurrentShapeNames;
@@ -189,18 +172,6 @@ namespace AvatarBridge
             return filled;
         }
 
-        /// <summary>
-        /// Which mesh carries face-tracking blendshapes, and in whose naming scheme.
-        ///
-        /// Split out of Run so AvatarAdvisor can ask the question before a conversion exists.
-        /// The advisor recommending a face-tracking mode from its own shape list would be a
-        /// second opinion that drifts from this one the first time either changes — the point
-        /// of a recommendation is that the conversion then does what it said it would.
-        ///
-        /// <paramref name="named"/> is the mesh the CCK descriptor already names, which outranks
-        /// any score; it is null before conversion, where only the scoring pass is available.
-        /// Returns false when nothing reaches DetectionThreshold.
-        /// </summary>
         internal static bool DetectShapes(GameObject root, SkinnedMeshRenderer named,
             out SkinnedMeshRenderer mesh, out bool unified, out int score)
         {
@@ -261,23 +232,6 @@ namespace AvatarBridge
             return names;
         }
 
-        /// <summary>
-        /// Counts target shapes present on the mesh, case-insensitively and ignoring the
-        /// punctuation rigs differ on.
-        ///
-        /// Two relationships count, and missing the second one is why an avatar carrying a full
-        /// Unified Expressions set was read as having no face tracking at all:
-        ///
-        /// The shape CONTAINS the target — "FT_JawOpen", "JawOpen_v2". This is what the matcher
-        /// was written for and it handles every prefixed or suffixed scheme.
-        ///
-        /// The target is the shape with only a SIDE added — an unsided shape driving both sides
-        /// at once. ChilloutVR's list is sided throughout ("EyeLookDownLeft", "EyeLookDownRight",
-        /// "MouthUpperUpLeft"), while a great many rigs ship one "EyeLookDown" for the pair, which
-        /// is never a substring match. A reported avatar scored 10 against a threshold of 12 while
-        /// carrying 42 tracking shapes under a separator named "Unified Expressions FT". See
-        /// IsSideVariant for why this is not simply "is a prefix of".
-        /// </summary>
         static int CountMatches(List<string> loweredShapeNames, string[] targets)
         {
             int count = 0;
@@ -303,20 +257,6 @@ namespace AvatarBridge
             return count;
         }
 
-        /// <summary>
-        /// True when the shape is the tracking name with only a SIDE taken off it.
-        ///
-        /// "Is a prefix of" on its own is far too generous, and the corpus said so immediately: a
-        /// single shape called "Tongue" is a prefix of TongueOut, TongueRoll, TongueSquish,
-        /// TongueTwistLeft and eight more, which is twelve slots from one shape — exactly the
-        /// detection threshold — so five avatars with no face tracking at all were about to be
-        /// given a component whose every slot pointed at the same tongue.
-        ///
-        /// What was actually being claimed is narrower: an unsided name is the sided one with the
-        /// side REMOVED, so what is left over after the shape's name has to be a side and nothing
-        /// else. "EyeLookDown" leaves "left" of "EyeLookDownLeft" and counts; "Tongue" leaves
-        /// "out" of "TongueOut" and does not.
-        /// </summary>
         static bool IsSideVariant(string targetPlain, string shapePlain)
         {
             if (shapePlain.Length < 4
@@ -328,24 +268,12 @@ namespace AvatarBridge
             return System.Array.IndexOf(SideWords, rest) >= 0;
         }
 
-        /// <summary>
-        /// Everything ChilloutVR may add to a shape's name to point at one part of it, and nothing
-        /// else. Unified Expressions splits some shapes into quadrants as well as sides —
-        /// LipFunnelUpperLeft, LipPuckerLowerRight — and a rig with a single "LipFunnel" is in the
-        /// same position as one with a single "EyeLookDown": one shape where ChilloutVR wants four.
-        ///
-        /// Whole words only, which is the whole defence. An avatar of anime expression shapes had
-        /// "Eye.close" read as EyeClosedLeft, leaving "dleft" — half of one word and the whole of
-        /// another — and scored 29 matches while carrying no tracking shapes whatsoever.
-        /// </summary>
         static readonly string[] SideWords =
         {
             "", "left", "right", "upper", "lower",
             "upperleft", "upperright", "lowerleft", "lowerright",
         };
 
-        /// <summary>Down to letters and digits, so "Mouth_Ape_Shape", "mouth ape shape" and
-        /// "MouthApeShape" are one name.</summary>
         static string Simplify(string s)
         {
             var sb = new System.Text.StringBuilder(s.Length);
@@ -370,15 +298,6 @@ namespace AvatarBridge
             return fallback;
         }
 
-        /// <summary>
-        /// VRCFury's Unified-Expressions debug window and similar non-face meshes.
-        ///
-        /// This has to be excluded rather than out-scored: the debug panel exists to show every
-        /// tracked shape, so it carries the COMPLETE shape set and beats the real face on any
-        /// count-based test. An avatar converted without this had its face tracking wired to the
-        /// debug window — every expression driving a floating panel while the face sat still.
-        /// The blendtree path has guarded against it since 0.6.8; this one had not.
-        /// </summary>
         static bool IsDebugMesh(SkinnedMeshRenderer smr)
         {
             string name = smr.name.ToLowerInvariant();

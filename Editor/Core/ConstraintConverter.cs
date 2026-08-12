@@ -9,35 +9,19 @@ using UnityEngine.Animations;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// VRC Constraints -> Unity constraints (which ChilloutVR runs natively).
-    ///
-    /// VRC constraints mirror Unity's, so sources/weights/offsets/rest values transfer
-    /// almost 1:1. Access to the VRC components is via reflection so this file compiles
-    /// against any VRChat SDK version; missing members degrade to report entries.
-    /// </summary>
+    // VRC Constraints -> Unity constraints (which ChilloutVR runs natively).
+    //
+    // VRC constraints mirror Unity's, so sources/weights/offsets/rest values transfer
+    // almost 1:1. Access to the VRC components is via reflection so this file compiles
+    // against any VRChat SDK version; missing members degrade to report entries.
     public static class ConstraintConverter
     {
         const string Category = "Constraints";
 
-        /// <summary>
-        /// Transforms AlignLocalSpaceRelays moved this run. Their VRChat RotationAtRest was
-        /// expressed against the parent they USED to have, so it must not be copied across.
-        /// </summary>
         static HashSet<Transform> reparented = new HashSet<Transform>();
 
-        /// <summary>
-        /// Old path -> new path for constraints that had to move because they used VRC's
-        /// 'Target Transform'. <see cref="HostFor"/> fills it; <see cref="RepointConstraintCurves"/>
-        /// uses it so the clips animating them keep working. Reset per conversion.
-        /// </summary>
         static Dictionary<string, string> relocated = new Dictionary<string, string>();
 
-        /// <summary>
-        /// Every VRChat constraint this pass converts, matched by type name because the SDK
-        /// versions that predate VRC constraints don't ship the types to compile against.
-        /// This gates <see cref="Run"/>'s loop, so it is the one list — see the comment there.
-        /// </summary>
         internal static readonly string[] VrcConstraintTypeNames =
         {
             "VRCParentConstraint", "VRCPositionConstraint", "VRCRotationConstraint",
@@ -92,9 +76,9 @@ namespace AvatarBridge
                 }
                 catch (Exception e)
                 {
-                    // One malformed constraint must not abort the whole conversion.
-                    // The throwing site goes into the REPORT (not just the console) so the
-                    // report alone is enough to diagnose — no Editor.log needed.
+                    // One malformed constraint must not abort the whole
+                    // conversion. The throwing site goes into the report
+                    // so the report alone diagnoses it.
                     ctx.Report.Warning(Category, component.name,
                         $"{typeName} conversion failed and was skipped: {e.GetType().Name}: {e.Message} [{TopFrame(e)}]");
                     Debug.LogWarning($"[AvatarBridge] {typeName} on '{component.name}' " +
@@ -118,32 +102,13 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
             }
-            // NOT here any more. This rewrites curves in place, and at this point in the pipeline
-            // the clips are still the avatar author's own files — see RepointCurvesOnOurCopies.
+            // Curve rewriting happens later, on owned copies.
+            // See RepointCurvesOnOurCopies.
             ReportLocalSpace(ctx, localSpaceRelays);
             ReportMirrored(ctx, mirrored);
             ReportDisabledLocalSpace(ctx, disabledLocalSpace);
         }
 
-        /// <summary>
-        /// A local-space rotation relay that could NOT be re-parented converts into a constraint
-        /// that is wrong whenever its two parent chains move apart — and when an animation also
-        /// poses the constrained bone, the wrong constraint OVERRIDES the right animation, because
-        /// constraints evaluate after animators. So in exactly that case the converted constraint
-        /// is disabled: the animation stands, and a bone posed correctly without eye-tracking
-        /// beats one yanked 77 degrees off with it.
-        ///
-        /// The case that forced the choice: a transforming avatar's windshield pupils
-        /// (CarEye_L/R) mirror its face eye bones through local-space rotation constraints, and
-        /// its Car_Idle animation ALSO poses them. Converted world-space, the constraint folded
-        /// the pupils edge-on the moment the body folded into the car; disabled, the animation
-        /// shows them exactly where the author keyed them.
-        ///
-        /// Deliberately narrow: rotation constraints only, only when unmovable, and only when a
-        /// clip in the final controller animates that bone's rotation — a bone nothing animates
-        /// keeps the world-space follow, which at least tracks its source somehow, and that is
-        /// the behaviour the walking quadruped shipped with.
-        /// </summary>
         static void DisableUnfollowableLocalSpace(BridgeContext ctx, Component vrc, string typeName,
             List<string> disabled)
         {
@@ -168,8 +133,6 @@ namespace AvatarBridge
 
         static HashSet<string> animatedRotationPaths;
 
-        /// <summary>Paths whose rotation some clip in the final controller animates. Cached per
-        /// conversion; Run() resets it alongside the other per-run state.</summary>
         static HashSet<string> AnimatedRotationPaths(BridgeContext ctx)
         {
             if (animatedRotationPaths != null)
@@ -228,55 +191,8 @@ namespace AvatarBridge
                 "bones stay posed by the car animation instead of tracking eye movement.");
         }
 
-        /// <summary>
-        /// Repoints every animation curve that drove a VRC constraint at the Unity constraint
-        /// that replaced it.
-        ///
-        /// Converting the component is only half the job. A curve carries the TYPE it animates
-        /// and the SERIALIZED property name, and neither survives the swap: a clip saying
-        /// "VRCParentConstraint.IsActive" finds no such component afterwards, and Unity plays a
-        /// binding it cannot resolve as silence — no error, no warning, nothing in the animator
-        /// to look at.
-        ///
-        /// That silence is expensive, because animating a constraint on and off is how a whole
-        /// category of avatar feature works. On the quadruped this was found on, every "Lock"
-        /// toggle — one limb, both front legs, both back, the whole body — every sit, lay-down,
-        /// loaf and rear-up pose, and flight mode, all worked by releasing the relay constraints
-        /// so an animation could take the bones over. All of them were dead, and the report had
-        /// nothing to say about it.
-        ///
-        /// The names differ throughout, which is why nothing worked by accident:
-        ///
-        ///     IsActive     -> m_Active        GlobalWeight -> m_Weight
-        ///     Locked       -> m_IsLocked      Sources[i].Weight -> m_Sources.Array.data[i].weight
-        ///
-        /// <c>FreezeToWorld</c> has no Unity equivalent at all — the component-level conversion
-        /// already reports dropping it, and a curve driving it is dropped here for the same
-        /// reason rather than left pointing at nothing.
-        /// </summary>
-        /// <summary>
-        /// Repoints the curves that switch constraints on and off, AFTER AnimationSelfContainer has
-        /// copied every clip into this conversion's own folder.
-        ///
-        /// Split out of Run for that reason alone. Run creates the Unity constraints and populates
-        /// the relocation map; this rewrites clips, which may only happen once the clips are ours.
-        /// Run used to do both, which meant it edited the source avatar's animations — and a
-        /// package's, in one real project — because it sits nine passes before self-containment.
-        /// The SafeToRewrite guard inside still stands as a net, but the ordering is now the actual
-        /// protection rather than the apology for its absence.
-        /// </summary>
         public static void RepointCurvesOnOurCopies(BridgeContext ctx) => RepointConstraintCurves(ctx);
 
-        /// <summary>
-        /// Whether a clip may be rewritten in place: it must be OURS, not the avatar author's.
-        ///
-        /// Three things qualify. A clip with no asset path at all lives inside a controller we
-        /// built or in memory. A clip already inside this conversion's output folder is a copy we
-        /// made. And a clip under a bake's generated folder belongs to VRCFury or Modular Avatar's
-        /// throwaway test copy, which is regenerated on every bake and owned by nobody.
-        ///
-        /// Everything else is the avatar as its author keeps it, and is off limits.
-        /// </summary>
         static bool SafeToRewrite(AnimationClip clip, BridgeContext ctx, out string sourcePath)
         {
             sourcePath = AssetDatabase.GetAssetPath(clip);
@@ -347,23 +263,13 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    // NEVER write into the avatar author's own asset. This pass rewrites curves in
-                    // place, and it runs BEFORE AnimationSelfContainer has copied anything into the
-                    // output folder — so unlike every other clip-editing pass, which BridgeConverter
-                    // deliberately orders after self-containment, the clips here can still be the
-                    // source avatar's files on disk.
-                    //
-                    // Nothing has ever been damaged, and the reason is luck rather than design:
-                    // VRCFury and Modular Avatar bake to a test copy first and their clips are
-                    // either in memory or under a generated folder. An avatar with NEITHER has no
-                    // such step, and stripping its VRC constraint bindings would break the VRChat
-                    // original, not just the conversion — the one failure this tool must never have.
-                    //
-                    // Checked HERE rather than per clip, deliberately. Asked per clip it fired on
-                    // every animation the avatar owns whether or not it had a constraint curve in
-                    // it — 110 of them on one corpus avatar, including AvatarBridge's own shipped
-                    // clips — which is a guard that reports constantly and protects nothing anyone
-                    // can act on. It should speak only when it actually had work to refuse.
+                    // Never write into the author's own asset. This runs
+                    // before AnimationSelfContainer copies anything, so
+                    // clips here can still be source files on disk.
+                    // Breaking the VRChat original is the one failure
+                    // this tool must never have.
+                    // Checked here, not per clip, so the guard speaks
+                    // only when it actually refused work.
                     if (!mayRewrite)
                     {
                         protectedSources.Add(sourcePath);
@@ -372,11 +278,10 @@ namespace AvatarBridge
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
                     string property = MapConstraintProperty(binding.propertyName);
 
-                    // Follow the constraint if it moved. A VRC constraint using 'Target Transform'
-                    // is rebuilt on the object it drives, because Unity's constraints only affect
-                    // the object they sit on — so the clip's path names somewhere the constraint no
-                    // longer is. Without this the curve is simply lost, and one quadruped lost 445
-                    // of them: every clip that switched its leveler rig on or off.
+                    // Follow the constraint if it moved. A Target
+                    // Transform constraint is rebuilt on the object it
+                    // drives, so the clip's path names somewhere the
+                    // constraint no longer is.
                     string path = binding.path;
                     var replacement = ConstraintTypeOnPath(ctx, path, binding.type.Name);
                     if (replacement == null && relocated.TryGetValue(path, out string movedTo))
@@ -400,24 +305,20 @@ namespace AvatarBridge
                     }
                     if (replacement == null)
                     {
-                        // Two very different situations, and telling them apart is the difference
-                        // between "report this" and "fix your bake". If the object is not there at
-                        // all, something in this conversion removed it. If it is there but carries
-                        // no constraint, nothing ever put one on it — on the avatar that prompted
-                        // this, VRCFury generated the ear, tongue, wrist and toe constraint sets
-                        // and never generated the finger set, so 140 clips addressed constraints
-                        // that had never existed to convert.
+                        // Two different situations. Object missing:
+                        // this conversion removed it. Object present but
+                        // constraint-less: nothing ever put one there,
+                        // usually a partial bake.
                         if (ObjectExists(ctx, binding.path))
                         {
                             neverBuilt.Add(where);
                         }
                         else if (ElsewhereByName(ctx, binding.path, out string actualPath))
                         {
-                            // Same object, different parent. VRCFury moves its generated objects
-                            // into place at UPLOAD time and clips are authored against where they
-                            // end up; a test-copy bake doesn't always perform that move, so the
-                            // paths miss by a parent. Blaming the conversion for it — which the
-                            // "GONE" wording did — sends people hunting a bug on the wrong side.
+                            // Same object, different parent. VRCFury
+                            // moves generated objects at upload time,
+                            // and a test-copy bake may not. Not this
+                            // conversion's bug; say so.
                             movedByBake.Add($"{where} — found at `{actualPath}`");
                         }
                         else
@@ -513,15 +414,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Finds an object with the same LEAF NAME as an unresolvable curve path, elsewhere on the
-        /// avatar — the signature of a build step that didn't move things where the clips expect.
-        ///
-        /// Only when the name is unique, because a leaf name shared by several objects identifies
-        /// nothing and a wrong guess here would be worse than no guess. Used for diagnosis only:
-        /// the path is reported, never rewritten, since an object at the wrong path usually also
-        /// lacks the constraint the curve wanted.
-        /// </summary>
         static bool ElsewhereByName(BridgeContext ctx, string path, out string actualPath)
         {
             actualPath = null;
@@ -552,7 +444,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>Whether a curve's path still resolves to an object on the converted avatar.</summary>
         static bool ObjectExists(BridgeContext ctx, string path)
         {
             if (ctx.Target == null)
@@ -562,10 +453,6 @@ namespace AvatarBridge
             return string.IsNullOrEmpty(path) || ctx.Target.transform.Find(path) != null;
         }
 
-        /// <summary>
-        /// VRC constraint property names to Unity's serialized ones. Null for anything Unity has
-        /// no equivalent for, which the caller drops.
-        /// </summary>
         static string MapConstraintProperty(string vrcProperty)
         {
             switch (vrcProperty)
@@ -576,14 +463,10 @@ namespace AvatarBridge
                 case "Enabled":
                 case "m_Enabled": return "m_Enabled";
             }
-            // Per-source weights. The spelling that actually occurs in the wild is
-            // "Sources.source0.Weight": VRC's source list is not a plain array — it is a class
-            // with sixteen FIXED FIELDS named source0..source15, which is precisely what makes
-            // the weights animatable in VRChat. A census of every clip in the 50-avatar test
-            // project found ~400 curves in this spelling (prop hand-offs between hands, eye
-            // puppets, dance props) and ZERO in the "Sources.Array.data[N].Weight" form this
-            // mapper matched before — that form never occurs, so every one of those curves was
-            // being dropped as unmappable.
+            // Per-source weights. The spelling in the wild is
+            // "Sources.source0.Weight": VRC's source list is a class
+            // with sixteen fixed fields, which is what makes the
+            // weights animatable. The array form never occurs.
             const string fieldPrefix = "Sources.source";
             const string suffix = ".Weight";
             if (vrcProperty.StartsWith(fieldPrefix, StringComparison.Ordinal) &&
@@ -609,11 +492,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// The Unity constraint now sitting where a VRC one used to. Prefers the same kind
-        /// ("VRCRotationConstraint" -> "RotationConstraint") and falls back to any constraint on
-        /// the object, since a curve driving the wrong kind still beats a curve driving nothing.
-        /// </summary>
         static Type ConstraintTypeOnPath(BridgeContext ctx, string path, string vrcTypeName)
         {
             var transform = string.IsNullOrEmpty(path)
@@ -641,18 +519,6 @@ namespace AvatarBridge
             return any;
         }
 
-        /// <summary>
-        /// VRChat corrects a constraint's result for a MIRRORED parent and Unity does not.
-        ///
-        /// <c>VRCConstraintJob.CorrectQuaternion</c> runs whenever the parent's lossy scale has
-        /// mixed sign — at least one axis negative and one not — and negates the quaternion
-        /// components the flipped axes invert (x &lt; 0 negates y and z). Unity's constraints have
-        /// no such step, so the result lands reflected: mirrored along the negative axis.
-        ///
-        /// Nothing on this side can add the correction. Unity's constraint computes and applies
-        /// its own rotation internally; there is no hook between "read the source" and "write the
-        /// transform", and ChilloutVR ships no constraint type that has one.
-        /// </summary>
         static void NoteMirrored(BridgeContext ctx, Component vrc, List<string> mirrored)
         {
             var target = Get<Transform>(vrc, "TargetTransform", null);
@@ -693,31 +559,6 @@ namespace AvatarBridge
                 string.Join("\n", mirrored));
         }
 
-        /// <summary>
-        /// Makes a local-space rotation relay reproducible by moving its target under the SAME
-        /// parent as its source.
-        ///
-        /// A world-space constraint equals a local-space one exactly when the two transforms'
-        /// parents hold the same world rotation, because that rotation then appears on both sides
-        /// and cancels. Aligning the parents is therefore not an approximation — it turns the one
-        /// constraint Unity cannot express into one it can, and it cascades: once a chain's root
-        /// pair matches, every pair below it matches too.
-        ///
-        /// This is how a decoy-rig quadruped's hind legs are driven — a second leg rig copying the
-        /// humanoid legs' articulation, so one biped walk cycle moves four legs.
-        ///
-        /// Moving a bone is only safe when nothing depends on where it IS, so all of these must
-        /// hold, and every one of them is checked:
-        ///
-        /// * the relay is rotation-only — nothing reads the moved transform's position;
-        /// * no SkinnedMeshRenderer binds the subtree, so no mesh deforms with it;
-        /// * no animation curve addresses the subtree, since curves are matched by PATH and a
-        ///   moved bone would silently stop being animated (they are driven by the constraint
-        ///   here, which is the whole point of the rig);
-        /// * source and target are both inside the avatar.
-        ///
-        /// Anything failing a check is left alone and reported instead.
-        /// </summary>
         static HashSet<Transform> AlignLocalSpaceRelays(BridgeContext ctx)
         {
             var moved = new HashSet<Transform>();
@@ -795,19 +636,6 @@ namespace AvatarBridge
             return moved;
         }
 
-        /// <summary>
-        /// Bones that actually deform something: a vertex somewhere carries a non-zero weight for
-        /// them.
-        ///
-        /// NOT simply everything in <c>SkinnedMeshRenderer.bones</c> — an FBX puts the WHOLE
-        /// skeleton in that array whether or not a vertex is weighted to it, so testing membership
-        /// asks "is this in the armature", which every bone is. A decoy rig exists precisely to be
-        /// in the armature while deforming nothing, so that test rejected the exact case it was
-        /// written to allow.
-        ///
-        /// Reading weights off an imported mesh is fine here: the Read/Write flag only governs
-        /// whether the data survives into a build, and editor code always sees it.
-        /// </summary>
         static HashSet<Transform> SkinningBones(GameObject root)
         {
             var used = new HashSet<Transform>();
@@ -855,22 +683,6 @@ namespace AvatarBridge
             return used;
         }
 
-        /// <summary>
-        /// Refuses a move that would cross a MIRROR.
-        ///
-        /// A negative axis scale flips handedness, and re-parenting cannot carry that across:
-        /// Unity keeps world position and rotation, but a mirrored basis is not something a
-        /// different parent can express, so the bone lands reflected.
-        ///
-        /// This is not a corner case. A quadruped's hind rig is routinely the front rig mirrored —
-        /// which is exactly why its relays cross left to right — so the mirrored bones are the
-        /// same ones a local-space relay wants moved.
-        ///
-        /// It also marks where the conversion is lossy for a reason nothing here can repair:
-        /// VRChat's solver corrects the result quaternion for mixed-sign lossy scale
-        /// (VRCConstraintJob.CorrectQuaternion negates y and z when x is negative) and Unity's
-        /// constraints have no equivalent step.
-        /// </summary>
         static string BlocksMirroredMove(Transform constrained, Transform newParent)
         {
             bool Mirrored(Vector3 s) => s.x < 0f || s.y < 0f || s.z < 0f;
@@ -892,7 +704,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>Null when the transform may be moved; otherwise the reason it may not.</summary>
         static string BlocksMove(BridgeContext ctx, Transform root, HashSet<Transform> skinned,
                                  HashSet<string> animatedPaths)
         {
@@ -922,10 +733,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Avatar masks enumerate transform PATHS, and the merge has already written them. A path
-        /// a move invalidated would silently drop that transform out of every mask that lists it.
-        /// </summary>
         static void RepointMaskPaths(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -980,36 +787,15 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// VRChat's constraints can solve in LOCAL space — <c>VRCConstraintJob</c> reads the
-        /// source's <c>localPosition</c>/<c>localRotation</c> rather than its world pose — and
-        /// that is the default in the SDK's own inspector. Unity's constraints have no such mode:
-        /// they always solve in world space, and ChilloutVR ships no local-space equivalent (its
-        /// constraint types are Unity's own).
-        ///
-        /// The two agree exactly while the constrained transform and its source hang off the SAME
-        /// parent, because that parent's rotation appears on both sides and cancels. They diverge
-        /// by <c>inverse(targetParent.rotation) * sourceParent.rotation</c> the moment the two sit
-        /// in different chains — so only those are worth naming.
-        ///
-        /// Which is precisely how a "hidden rig" quadruped is built: a decoy humanoid skeleton
-        /// nothing renders, relayed bone by bone onto the real one. Every source is in the other
-        /// chain, so solving in world space hands each real bone the biped's orientation instead
-        /// of its pose.
-        /// </summary>
         static void NoteLocalSpace(BridgeContext ctx, Component vrc, List<string> crossChain)
         {
             if (!Get(vrc, "SolveInLocalSpace", false))
             {
                 return;
             }
-            // The Unity constraint may have been placed on TargetTransform rather than here.
-            //
-            // NOT "?? vrc.transform": an unassigned Transform field comes back as Unity's FAKE
-            // null — a live C# reference whose overloaded == reports null while ?? does not, so
-            // ?? hands back the fake and the next .parent throws UnassignedReferenceException.
-            // Every other TargetTransform read in this file already compares with !=; this one
-            // has to as well.
+            // The Unity constraint may sit on TargetTransform instead.
+            // Not "?? vrc.transform": an unassigned Transform is
+            // Unity's fake null, and ?? passes it through.
             var target = Get<Transform>(vrc, "TargetTransform", null);
             var constrained = target != null ? target : vrc.transform;
             bool isScale = vrc.GetType().Name == "VRCScaleConstraint";
@@ -1020,16 +806,11 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // A SCALE constraint asks a different question, and answering it the rotation way
-                // cried wolf on a perfectly good avatar. VRChat's local-space scale constraint
-                // copies the source's localScale; Unity's copies its lossyScale. Those are the
-                // same number whenever every ancestor of the source is unit-scaled — which is the
-                // normal case, because a limb-scaling rig hangs its reference objects off an
-                // unscaled holder. One avatar was told its arm and leg scaling was "a gap in the
-                // conversion, worth reporting" when all twelve constraints converted exactly.
-                //
-                // Same shape as the parent-alignment identity used for rotation above: when the
-                // two spaces provably coincide, there is nothing to warn about.
+                // A scale constraint asks a different question. VRChat
+                // copies localScale, Unity lossyScale; identical while
+                // every ancestor of the source is unit-scaled, the
+                // normal case. When the spaces provably coincide,
+                // there is nothing to warn about.
                 if (isScale && AncestorsAreUnitScaled(ctx, s.Transform))
                 {
                     continue;
@@ -1039,12 +820,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Whether every ancestor of a transform, up to the avatar root, has unit localScale — in
-        /// which case its lossyScale equals its localScale and world/local scale are the same
-        /// value. Its OWN scale is irrelevant: that is the thing being copied, not the space it is
-        /// measured in.
-        /// </summary>
         static bool AncestorsAreUnitScaled(BridgeContext ctx, Transform t)
         {
             var root = ctx.Target != null ? ctx.Target.transform : null;
@@ -1177,8 +952,13 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "parent");
                 return true; // keep the first constraint's rest/axis; just merge these sources in
             }
-            unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            var parentDriven = DrivenBy(ctx, vrc);
+            unity.translationAtRest = parentDriven != vrc.transform
+                ? parentDriven.localPosition
+                : Get(vrc, "PositionAtRest", vrc.transform.localPosition);
+            unity.rotationAtRest = parentDriven != vrc.transform
+                ? parentDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
@@ -1199,8 +979,11 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "position");
                 return true;
             }
+            var posDriven = DrivenBy(ctx, vrc);
             unity.translationOffset = Get(vrc, "PositionOffset", Vector3.zero);
-            unity.translationAtRest = Get(vrc, "PositionAtRest", vrc.transform.localPosition);
+            unity.translationAtRest = posDriven != vrc.transform
+                ? posDriven.localPosition
+                : Get(vrc, "PositionAtRest", vrc.transform.localPosition);
             unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1220,18 +1003,16 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "rotation");
                 return true;
             }
-            // MEASURED from the live pose whenever the constraint's output is unambiguous; the
-            // VRChat field is only the fallback. Copying the field trusts that both engines apply
-            // a rotation offset in the same space, and that held right up until a constraint
-            // crossed two very differently oriented bones: a car avatar's windshield pupils mirror
-            // its face eye bones through rotation constraints, and the copied offset left them 77
-            // degrees off — rotated edge-on, invisible. The scene pose at conversion time IS
-            // VRChat's own solver output (VRC constraints evaluate in the editor), so for an
-            // active, full-weight, single-source constraint the offset that reproduces that pose
-            // is derivable with no cross-engine belief at all: Unity evaluates
+            // Measured from the live pose whenever the constraint's
+            // output is unambiguous; the VRChat field is the fallback.
+            // Copying the field trusts both engines to apply the offset
+            // in the same space, which fails across differently
+            // oriented bones. The scene pose at conversion time is
+            // VRChat's own solver output, so:
             // result = source.rotation * Euler(offset), hence
             // offset = Inverse(source.rotation) * current.rotation. World rotations throughout,
             // so AlignLocalSpaceRelays re-parenting cannot disturb the measurement.
+            var driven = DrivenBy(ctx, vrc);
             var rotSources = ReadSources(vrc);
             bool rotMeasured = Get(vrc, "IsActive", true)
                 && Mathf.Approximately(Get(vrc, "GlobalWeight", 1f), 1f)
@@ -1239,13 +1020,16 @@ namespace AvatarBridge
                 && rotSources[0].Transform != null
                 && vrc.gameObject.activeInHierarchy;
             unity.rotationOffset = rotMeasured
-                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * vrc.transform.rotation).eulerAngles
+                ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * driven.rotation).eulerAngles
                 : Get(vrc, "RotationOffset", Vector3.zero);
-            // A bone AlignLocalSpaceRelays moved has a new parent, so VRChat's authored
-            // RotationAtRest — measured against the old one — no longer describes it. Its rest IS
-            // where it sits now: the move preserved world rotation, so this is the same pose.
-            unity.rotationAtRest = reparented.Contains(vrc.transform)
-                ? vrc.transform.localEulerAngles
+            // A bone AlignLocalSpaceRelays moved has a new parent, so
+            // the authored RotationAtRest no longer describes it.
+            // Its rest is where it sits now; the move preserved world
+            // rotation. A relocated constraint reads the target's rest
+            // for the same reason: the authored field describes whatever
+            // the VRC component was driving, which is the target.
+            unity.rotationAtRest = reparented.Contains(driven) || driven != vrc.transform
+                ? driven.localEulerAngles
                 : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
@@ -1270,7 +1054,10 @@ namespace AvatarBridge
                 return true;
             }
             unity.scaleOffset = Get(vrc, "ScaleOffset", Vector3.one);
-            unity.scaleAtRest = Get(vrc, "ScaleAtRest", vrc.transform.localScale);
+            var scaleDriven = DrivenBy(ctx, vrc);
+            unity.scaleAtRest = scaleDriven != vrc.transform
+                ? scaleDriven.localScale
+                : Get(vrc, "ScaleAtRest", vrc.transform.localScale);
             unity.scalingAxis = AxesFrom(vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1290,9 +1077,12 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "aim");
                 return true;
             }
+            var aimDriven = DrivenBy(ctx, vrc);
             unity.aimVector = Get(vrc, "AimAxis", Vector3.forward);
             unity.upVector = Get(vrc, "UpAxis", Vector3.up);
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            unity.rotationAtRest = aimDriven != vrc.transform
+                ? aimDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             ctx.Report.Approximated(Category, ctx.PathInTarget(vrc.transform),
                 "Aim constraint: world-up mode settings are not transferred; verify behaviour.");
@@ -1320,7 +1110,10 @@ namespace AvatarBridge
                 unity.worldUpObject = upTransform;
                 unity.useUpObject = Get(vrc, "UseUpTransform", true);
             }
-            unity.rotationAtRest = Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
+            var lookDriven = DrivenBy(ctx, vrc);
+            unity.rotationAtRest = lookDriven != vrc.transform
+                ? lookDriven.localEulerAngles
+                : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
             unity.rotationOffset = Get(vrc, "RotationOffset", Vector3.zero);
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
@@ -1330,39 +1123,6 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------------- helpers ----
 
-        /// <summary>
-        /// Unity's constraint components are [DisallowMultipleComponent], but a VRChat object
-        /// can carry several VRC constraints of the same kind. Reuse an existing Unity
-        /// constraint (from converting the first of its kind) instead of letting
-        /// AddComponent return null and NRE on the next use.
-        /// </summary>
-        /// <summary>
-        /// Which object the Unity constraint goes on.
-        ///
-        /// A VRC constraint can sit on one object and drive another through its Target Transform.
-        /// Unity's constraints have no such field — they always affect the transform they are
-        /// attached to — so the redirection is honoured by moving the component instead: put the
-        /// Unity constraint on the target, with the same sources.
-        ///
-        /// This is how Avatar Limb Scaling works, and it is not a niche trick. Its scale
-        /// constraints live on proxy objects inside its own prefab and point at the avatar's real
-        /// arm and leg bones. Dropping the redirection left each constraint scaling a hidden proxy,
-        /// so the menu sliders moved, synced, and changed nothing anyone could see.
-        ///
-        /// Only redirected inside the avatar. A target somewhere else in the scene is not ours to
-        /// add components to, and would not survive the upload anyway.
-        /// </summary>
-        /// <summary>
-        /// Where a VRC constraint's Unity replacement goes, and — when that is not where the VRC
-        /// one lived — a note of the move so animation curves can follow it.
-        ///
-        /// Unity's constraints only ever affect the object they sit on, so a VRC constraint using
-        /// 'Target Transform' to drive something else has to be rebuilt ON that something else.
-        /// The clips animating it don't know that: their path still names the old host, and a
-        /// curve whose path resolves to an object with no constraint plays as silence. One
-        /// quadruped lost 445 curves that way — its entire leveler system, switched off by clips
-        /// that could no longer find what they were switching.
-        /// </summary>
         static GameObject HostFor(BridgeContext ctx, Component vrc)
         {
             var target = Get<Transform>(vrc, "TargetTransform", null);
@@ -1382,6 +1142,20 @@ namespace AvatarBridge
             return target.gameObject;
         }
 
+        // The transform the converted constraint actually drives. With
+        // VRC's 'Target Transform' that is the target, not the object the
+        // VRC component sat on, and Unity's constraint only ever affects
+        // the object it sits on. Every rest value and every measured
+        // offset has to describe THAT transform: measuring the component's
+        // own instead pins the driven bone to a pose belonging to another
+        // object entirely, which is how a hand-swap rig's finger
+        // constraints snapped the fingers into a pose nobody authored.
+        static Transform DrivenBy(BridgeContext ctx, Component vrc)
+        {
+            var host = HostFor(ctx, vrc);
+            return host != null ? host.transform : vrc.transform;
+        }
+
         static T GetOrAdd<T>(BridgeContext ctx, Component vrc, out bool existed) where T : Component
         {
             var host = HostFor(ctx, vrc);
@@ -1398,7 +1172,6 @@ namespace AvatarBridge
                 $"(the first constraint's offsets and rest values are kept).");
         }
 
-        /// <summary>First AvatarBridge frame of an exception's stack, for the report line.</summary>
         static string TopFrame(Exception e)
         {
             if (string.IsNullOrEmpty(e.StackTrace))

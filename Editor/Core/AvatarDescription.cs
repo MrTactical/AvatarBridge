@@ -9,37 +9,25 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Writes a store-listing description for the converted avatar, out of what the conversion
-    /// actually produced.
-    ///
-    /// It is written to a file and offered on the clipboard rather than filled into the CCK's field
-    /// directly, and that is not laziness — the CCK has nowhere durable to put one. `CVRAssetInfo`,
-    /// the per-avatar component, carries no description; the Content Manager keeps it in Unity's
-    /// `SessionState` under `CCK.Builder.Description`, which is lost on an editor restart, and
-    /// `BuilderTab.SelectContent` calls `ClearFields()` whenever the chosen content changes — so a
-    /// value written here would be wiped by the CCK itself the moment the user picked their avatar
-    /// in the Builder tab. Reaching into another tool's session keys to lose the race anyway is
-    /// worse than handing over text that is one click from pasted.
-    ///
-    /// Everything it claims is counted from the finished avatar, so it cannot drift from what was
-    /// built. Lines that would read as zero are left out entirely rather than printed as "0".
-    /// </summary>
+    // Writes a store-listing description for the converted avatar, out of what the conversion
+    // actually produced.
+    //
+    // It is written to a file and offered on the clipboard rather than filled into the CCK's field
+    // directly, and that is not laziness; the CCK has nowhere durable to put one. `CVRAssetInfo`,
+    // the per-avatar component, carries no description; the Content Manager keeps it in Unity's
+    // `SessionState` under `CCK.Builder.Description`, which is lost on an editor restart, and
+    // `BuilderTab.SelectContent` calls `ClearFields()` whenever the chosen content changes; so a
+    // value written here would be wiped by the CCK itself the moment the user picked their avatar
+    // in the Builder tab. Reaching into another tool's session keys to lose the race anyway is
+    // worse than handing over text that is one click from pasted.
+    //
+    // Everything it claims is counted from the finished avatar, so it cannot drift from what was
+    // built. Lines that would read as zero are left out entirely rather than printed as "0".
     public static class AvatarDescription
     {
         const string Category = "Store description";
         public const string FileName = "Description.txt";
 
-        /// <summary>
-        /// Builds the text and writes it next to the report. Returns it for the clipboard.
-        ///
-        /// The whole thing is inside one try, <em>including</em> building the string. This runs at
-        /// the very end of a conversion, after every real piece of work has succeeded, and it
-        /// produces a nicety — so there is no failure here worth losing an avatar over. It walks
-        /// renderers, meshes and settings written by a dozen other passes; one unexpected null in
-        /// any of them would otherwise throw out of the last line of the conversion and lose the
-        /// lot. A missing description is a line in the report; a lost conversion is an evening.
-        /// </summary>
         public static string Write(BridgeContext ctx)
         {
             string text = null;
@@ -66,18 +54,8 @@ namespace AvatarBridge
             return text;
         }
 
-        /// <summary>
-        /// ChilloutVR's description box holds 256 characters — `max-length="256"` on the
-        /// `input-description` field in the CCK's own `ContentBuilder2.uxml`. Nothing in the
-        /// upload path enforces it, but that is the box people paste into, so anything longer is
-        /// silently cut off mid-sentence.
-        /// </summary>
         public const int MaxLength = 256;
 
-        /// <summary>
-        /// How much of the box to leave for the user's own words. The generated text is a footer,
-        /// not the listing — taking the whole budget would make it one.
-        /// </summary>
         const int ReservedForUser = 90;
 
         public static string Build(BridgeContext ctx)
@@ -87,7 +65,7 @@ namespace AvatarBridge
             string name = DisplayName(ctx.Target.name);
 
             // Two blank lines first, deliberately. Whoever pastes this almost always has something
-            // of their own to say — who made the model, where it came from, what it costs — and a
+            // of their own to say; who made the model, where it came from, what it costs; and a
             // block of generated text starting hard against the top of the box invites them to
             // either delete it or leave the listing sounding machine-written. The cursor lands in
             // the gap, and ReservedForUser keeps room for what they type there.
@@ -124,16 +102,11 @@ namespace AvatarBridge
             return text.Length <= MaxLength ? text : text.Substring(0, MaxLength).TrimEnd();
         }
 
-        /// <summary>The box is 256 characters; "https://" is eight of them for no information.</summary>
         static string ShortLink(string url)
         {
             return url.StartsWith("https://") ? url.Substring("https://".Length) : url;
         }
 
-        /// <summary>
-        /// The bullet list. Ordered by what someone browsing avatars actually cares about, and
-        /// silent about anything the avatar hasn't got.
-        /// </summary>
         static List<string> Features(BridgeContext ctx)
         {
             var lines = new List<string>();
@@ -152,8 +125,8 @@ namespace AvatarBridge
             }
 
             // Checked against the avatar, never against the setting that asked for it. A mode can
-            // be selected and produce nothing — no compatible blendshapes, a mesh it couldn't read
-            // — and a listing that claims face tracking on an avatar without the component is a
+            // be selected and produce nothing; no compatible blendshapes, a mesh it couldn't read
+            //; and a listing that claims face tracking on an avatar without the component is a
             // false advertisement written by this tool, under someone else's name. The setting is
             // a request; only the component is evidence.
             if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null
@@ -180,7 +153,7 @@ namespace AvatarBridge
 
             // Blink and lip sync are separate features on separate fields, and were being claimed
             // together off the blink flag alone. Each is now only stated if its own switch is on
-            // AND it names a shape to drive — the flag can be set with an empty array.
+            // AND it names a shape to drive; the flag can be set with an empty array.
             bool blinks = ctx.CvrAvatar != null && ctx.CvrAvatar.useBlinkBlendshapes
                           && HasAny(ctx.CvrAvatar.blinkBlendshape);
             bool lipSync = ctx.CvrAvatar != null && ctx.CvrAvatar.useVisemeLipsync
@@ -200,13 +173,11 @@ namespace AvatarBridge
             return lines;
         }
 
-        /// <summary>True when at least one entry in the array names a shape.</summary>
         static bool HasAny(string[] shapes)
         {
             return shapes != null && shapes.Any(s => !string.IsNullOrEmpty(s));
         }
 
-        /// <summary>Is a named control actually on the finished avatar's menu?</summary>
         static bool HasMenuEntry(BridgeContext ctx, string name)
         {
             var settings = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
@@ -215,7 +186,6 @@ namespace AvatarBridge
             return settings != null && settings.Any(e => e != null && e.name == name);
         }
 
-        /// <summary>Depth-first search by exact name, since these sit at a rig-dependent depth.</summary>
         static Transform FindDeep(Transform root, string name)
         {
             if (root.name == name)
@@ -265,11 +235,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Counts whichever physics system was actually written, by name, so the description can
-        /// say which one without the caller knowing. Both are looked up reflectively because
-        /// either package may be absent from the project.
-        /// </summary>
         static int CountPhysics(BridgeContext ctx, out string physicsName)
         {
             physicsName = null;
@@ -370,10 +335,6 @@ namespace AvatarBridge
             return indices / 3;
         }
 
-        /// <summary>
-        /// The conversion appends " (ChilloutVR)" to tell the copy apart from the original in the
-        /// scene. That is a working name, not something anyone wants heading their store listing.
-        /// </summary>
         static string DisplayName(string name)
         {
             const string suffix = " (ChilloutVR)";
@@ -393,7 +354,6 @@ namespace AvatarBridge
             return count == 1 ? $"1 {noun}" : $"{count:N0} {noun}s";
         }
 
-        /// <summary>"107k tris" rather than "107,050 triangles" — this is a 256-character box.</summary>
         static string Triangles(int count)
         {
             return count >= 10000 ? $"{count / 1000}k tris" : $"{count:N0} tris";

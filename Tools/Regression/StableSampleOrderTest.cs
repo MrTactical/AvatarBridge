@@ -6,20 +6,18 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for report sample ordering (task #13).
-    ///
-    /// Report details show a few entries out of many, taken from a SortedSet. That was already
-    /// ordered, and still churned: VRCFury stamps generated objects with a component id —
-    /// "[VF397] Assjob" — and assigns those ids fresh on every bake, so sorting the raw string
-    /// reordered the set whenever Fury renumbered. The harness redacts "[VF397]" to "[VF#]" before
-    /// comparing digests, so two runs of an unchanged avatar produced a diff naming a different
-    /// path with an identical count. Seen on Angela_PC_SPS and Sally_PC_SPS on the same day.
-    ///
-    /// The ordering therefore ignores Fury ids. The second case below is the one that matters:
-    /// ignoring them must NOT make two different strings compare equal, or a SortedSet would
-    /// silently drop one and the report would under-count.
-    /// </summary>
+    // Known-answer test for report sample ordering (task #13).
+    //
+    // Report details show a few entries out of many, taken from a SortedSet. That was already
+    // ordered, and still churned: VRCFury stamps generated objects with a component id .
+    // "[VF397] Assjob"; and assigns those ids fresh on every bake, so sorting the raw string
+    // reordered the set whenever Fury renumbered. The harness redacts "[VF397]" to "[VF#]" before
+    // comparing digests, so two runs of an unchanged avatar produced a diff naming a different
+    // path with an identical count. Seen on Angela_PC_SPS and Sally_PC_SPS on the same day.
+    //
+    // The ordering therefore ignores Fury ids. The second case below is the one that matters:
+    // ignoring them must NOT make two different strings compare equal, or a SortedSet would
+    // silently drop one and the report would under-count.
     public static class StableSampleOrderTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — stable report sample order")]
@@ -50,7 +48,7 @@ namespace AvatarBridge.Regression
                 StableSampleOrder.Key(firstA) == StableSampleOrder.Key(firstB));
 
             // Ordinal ordering would have put VF122 before VF397 in bake A and VF605 before VF801
-            // in bake B — different paths. That is exactly the bug.
+            // in bake B; different paths. That is exactly the bug.
             var ordinalA = new SortedSet<string>(bakeA, System.StringComparer.Ordinal);
             var ordinalB = new SortedSet<string>(bakeB, System.StringComparer.Ordinal);
             fail += Check("plain ordinal ordering WOULD have churned (proving the case is real)",

@@ -10,18 +10,16 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// VRCFury support. Fury avatars only get their real FX layers / parameters / menus /
-    /// PhysBones at build time, so converting them directly would lose every Fury feature.
-    ///
-    /// Instead of reimplementing VRCFury, we invoke VRCFury's own "Build a Test Copy"
-    /// pipeline: it produces a fully-baked avatar with all Fury components applied and
-    /// stripped. AvatarBridge then converts that baked copy.
-    ///
-    /// Everything is reflection-based: VRCFury may not be installed, and its editor API
-    /// is internal and changes between versions. Missing/incompatible versions degrade to
-    /// a clear "build a test copy manually" instruction instead of a compile error.
-    /// </summary>
+    // VRCFury support. Fury avatars only get their real FX layers / parameters / menus /
+    // PhysBones at build time, so converting them directly would lose every Fury feature.
+    //
+    // Instead of reimplementing VRCFury, this invokes its own "Build a Test Copy"
+    // pipeline: it produces a fully-baked avatar with all Fury components applied and
+    // stripped. AvatarBridge then converts that baked copy.
+    //
+    // Everything is reflection-based: VRCFury may not be installed, and its editor API
+    // is internal and changes between versions. Missing/incompatible versions degrade to
+    // a clear "build a test copy manually" instruction instead of a compile error.
     public static class VRCFuryBaker
     {
         const string Category = "VRCFury";
@@ -50,10 +48,6 @@ namespace AvatarBridge
             return ns == "VF" || ns.StartsWith("VF.") || type.Name.StartsWith("VRCFury");
         }
 
-        /// <summary>
-        /// Bakes the avatar with VRCFury's own builder. Returns the baked scene copy,
-        /// or null when there is nothing to bake or the bake failed (already reported).
-        /// </summary>
         public static GameObject TryBake(VRCAvatarDescriptor source, BridgeReport report)
         {
             if (!HasFuryComponents(source.gameObject))
@@ -75,13 +69,13 @@ namespace AvatarBridge
             GameObject directResult = null;
 
             // Fury wraps each feature in an ErrorDialogBoundary that catches the exception, shows
-            // a dialog, logs, and CARRIES ON — so a bake can fail ten times and still return
+            // a dialog, logs, and CARRIES ON; so a bake can fail ten times and still return
             // normally. One real avatar did exactly that: ten feature failures, a half-built
             // result, and a conversion report reading "Errors: 0" while every toggle was dead.
             // Listen to the log during the bake and count what Fury swallowed.
             int furyErrors = 0;
             // Every DISTINCT message, not just the first. A tester's report said "2 error(s)" and
-            // quoted one of them, cut off mid-path at "…/ControllersWD/GoLocoB" — so the filename
+            // quoted one of them, cut off mid-path at ".../ControllersWD/GoLocoB"; so the filename
             // Fury was asking for was unreadable and the second failure was invisible. Fury names
             // the missing file, and that name IS the fix, so it has to survive into the report.
             var furyMessages = new List<string>();
@@ -169,21 +163,6 @@ namespace AvatarBridge
             return baked;
         }
 
-        /// <summary>
-        /// Names the VRCFury components pointing at assets this project doesn't have, BEFORE the
-        /// bake runs on them.
-        ///
-        /// Fury's own failure says which FILES are missing but never which component wants them,
-        /// and it arrives as a modal dialog mid-bake — so the reader gets a path and no way back
-        /// to the thing that asked for it. A tester hit exactly this and read the message as
-        /// "VRCFury is not installed", when Fury was installed and running: the missing package
-        /// was GoGo Loco, which the erroring component referenced.
-        ///
-        /// A missing asset keeps its GUID in the serialized data, so the property still holds an
-        /// instance ID that resolves to nothing — that mismatch is the whole test. The GUID can't
-        /// be turned back into a path (nothing in the project has it), which is why this reports
-        /// the OBJECT and leaves the filenames to Fury's own message.
-        /// </summary>
         static void ReportBrokenFuryReferences(GameObject avatar, BridgeReport report)
         {
             var broken = new List<string>();
@@ -307,7 +286,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>VRCFury wraps GameObject in its own VFGameObject; convert via its implicit operator.</summary>
         static object CoerceArgument(GameObject avatar, Type parameterType)
         {
             if (parameterType.IsInstanceOfType(avatar))

@@ -5,15 +5,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting — testers' reports and logs are how nearly every bug in this tool has been found.
+        Thanks for reporting; testers' reports and logs are how nearly every bug in this tool has been found.
 
         **The conversion report is the single most useful thing you can attach.** Most issues are diagnosed straight from it.
 
         > ℹ️ Reports and logs contain your Unity project's file paths, and ChilloutVR logs contain your display name.
-        > Have a skim before posting if that matters to you — feel free to redact.
+        > Have a skim before posting if that matters to you; feel free to redact.
 
         For a quick question rather than a bug, the maintainer is **`mrtactical`** on Discord.
-        Please keep actual bugs here though — issues get tracked and closed with a release, Discord messages get lost.
+        Please keep actual bugs here though; issues get tracked and closed with a release, Discord messages get lost.
 
   - type: textarea
     id: what_happened
@@ -62,7 +62,7 @@ body:
         - **In-game problem** → ChilloutVR's **`Player.log`**, *not* the Unity log
           (`%USERPROFILE%\AppData\LocalLow\ChilloutVR\ChilloutVR\Player.log`)
 
-        A clean Unity log tells us nothing about an in-game failure — the CVR client log is where those live.
+        A clean Unity log tells us nothing about an in-game failure; the CVR client log is where those live.
       options:
         - label: I attached `ConversionReport.md` (found in `Assets/AvatarBridge/Output/<avatar name>/`)
         - label: I attached the relevant log for the stage I picked above

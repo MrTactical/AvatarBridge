@@ -10,70 +10,42 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Drives every toggle a converted avatar exposes and reports anything that does not come back.
-    ///
-    /// This exists because reading the controller is not enough. A wardrobe toggle that switches on
-    /// and never off again was chased three times through the generated asset — blend tree shapes,
-    /// layer indices, Write Defaults, ownership rules — and every static explanation was wrong. The
-    /// sweep found the real failures on the first run, in about fifteen minutes, by the crude method
-    /// of moving each parameter and looking at the avatar afterwards.
-    ///
-    /// Method, and each part of it is there because the first version got it wrong:
-    ///
-    ///   Each parameter is measured against the state settled IMMEDIATELY BEFORE that parameter
-    ///   moves, never against one baseline taken at the start. The controller legitimately turns
-    ///   things off as it reaches its resting pose, and a global baseline reads all of that as
-    ///   damage — the first attempt reported twenty-seven failures, every one of them an artefact.
-    ///
-    ///   Nothing is ever put back by hand. The animator owns these objects; setting one behind its
-    ///   back means the next parameter is measured against a state the animator is still fighting,
-    ///   and the contamination spreads down the whole run.
-    ///
-    ///   Parameters the GAME drives (movement, gestures, AFK…) and local machinery ("#"-prefixed,
-    ///   which includes the constant-1 weights a Direct tree needs) are left alone. Sweeping those
-    ///   measures ChilloutVR, or breaks the avatar outright.
-    ///
-    ///   Four kinds of state are watched, not just object activity. The first version only checked
-    ///   GameObject.activeSelf and came back clean on an avatar whose toggles were reported broken —
-    ///   which proves nothing either way, because a toggle that drives a BLENDSHAPE, swaps a
-    ///   material or flips Renderer.enabled was invisible to it. "Toggles something off and not back
-    ///   on" describes all four equally.
-    ///
-    /// Edit mode rather than play mode, driving <c>Animator.Update</c> by hand: the harness lives in
-    /// an Editor folder, so a runtime MonoBehaviour cannot ship with it.
-    ///
-    /// THAT SUBSTITUTION IS PARTIALLY PROVEN, in both directions. Edit-mode driving reproduced a
-    /// real in-game fault once (2026-08-05: the masked-layer material swap that lost every slot
-    /// but its first on Kaides Expie failed identically under edit-mode <c>Animator.Update</c>) —
-    /// so the method has teeth. But the SUBSETS differ: on the same avatar, edit mode dropped
-    /// slots 1 and 2 where play mode dropped only slot 1's visible effect, so edit-mode results
-    /// do not transfer curve-for-curve. A clean result from this tool still means "found
-    /// nothing", NOT "nothing is wrong" — and remember this tool is structurally blind to
-    /// ON-direction failures of default-off parameters, which is exactly what that swap bug was.
-    /// The known answer to check against, Saavi_NSFW: WhiskersOff, WhiskerSwap, Unsheath,
-    /// HeadPat and Tail leave something stuck.
-    ///
-    /// This MOVES THINGS in the open scene and does not put them back. Nothing is saved, but reload
-    /// the scene before doing anything else with it.
-    /// </summary>
+    // Drives every toggle a converted avatar exposes and reports
+    // anything that does not come back. Reading the controller is not
+    // enough; the sweep moves each parameter and looks at the avatar.
+    //
+    // Method:
+    //   Each parameter measures against the state settled immediately
+    //   before it moves, never a global baseline; the controller
+    //   legitimately turns things off while settling.
+    //   Nothing is put back by hand; the animator owns these objects.
+    //   Game-driven parameters and "#" locals are left alone.
+    //   Four kinds of state are watched: object activity, blendshape,
+    //   material, Renderer.enabled.
+    //
+    // Edit mode, driving Animator.Update by hand; a runtime
+    // MonoBehaviour cannot live in an Editor folder. Edit-mode
+    // driving has reproduced a real in-game fault, but the subsets
+    // differ, so a clean result means "found nothing", not "nothing
+    // is wrong".
+    //
+    // The on direction is checked too: while a parameter is held
+    // away from rest, every constant claim the playing clips make
+    // (float curves and material swaps) is compared against the
+    // scene. A masked layer dropping slots, or a write that never
+    // lands, reports as NOT APPLIED. Intent stays invisible; only
+    // claims the controller itself makes can be verified.
+    //
+    // This moves things in the open scene and does not put them back.
+    // Reload the scene before doing anything else with it.
     public static class ToggleSweep
     {
-        /// <summary>Frames to let the controller settle after each change. 12 at 60 Hz is plenty for
-        /// a toggle; transitions with real duration need more, and are reported as noise if not.</summary>
         const int SettleFrames = 12;
 
-        /// <summary>Frames before the first measurement, so the controller reaches its resting pose.</summary>
         const int Warmup = 40;
 
-        /// <summary>Blendshape weights run 0..100, so this is a hundredth of a percent.</summary>
         const float Epsilon = 0.01f;
 
-        /// <summary>
-        /// Driven by ChilloutVR itself. Sweeping one of these measures the game rather than the
-        /// avatar, and several of them (Grounded, Sitting) put the avatar into a pose that changes
-        /// half the rig on its own.
-        /// </summary>
         static readonly HashSet<string> GameOwned = new HashSet<string>
         {
             "MovementX", "MovementY", "Movement", "GestureLeft", "GestureRight",
@@ -83,6 +55,17 @@ namespace AvatarBridge.Regression
             "VelocityX", "VelocityY", "VelocityZ", "TrackingType", "Seated", "Earmuffs",
             "ScaleFactor", "ScaleModified", "Output", "Height",
         };
+
+        public struct SweepResult
+        {
+            public int Parameters;
+            public int Responded;
+            public List<string> Stuck;
+            public List<string> Refused;
+            public bool Invalid;
+        }
+
+        public static SweepResult LastResult;
 
         [MenuItem("Tools/AvatarBridge Dev/Sweep every toggle for stuck objects")]
         public static void Run()
@@ -96,10 +79,6 @@ namespace AvatarBridge.Regression
             Sweep(avatar);
         }
 
-        /// <summary>
-        /// Batch entry: opens AVATARBRIDGE_SWEEP_SCENE, converts the VRChat avatar in it, and sweeps
-        /// the result. The scene is never written.
-        /// </summary>
         public static void RunBatch()
         {
             string scene = System.Environment.GetEnvironmentVariable("AVATARBRIDGE_SWEEP_SCENE");
@@ -124,7 +103,6 @@ namespace AvatarBridge.Regression
             if (Application.isBatchMode) EditorApplication.Exit(stuck > 0 ? 1 : 0);
         }
 
-        /// <summary>Returns how many parameters left something stuck, or -1 if it could not run.</summary>
         public static int Sweep(GameObject root)
         {
             var animator = root.GetComponent<Animator>() ?? root.GetComponentInChildren<Animator>(true);
@@ -140,10 +118,27 @@ namespace AvatarBridge.Regression
                 return -1;
             }
 
+            // A "#" local is user-facing when a menu control drives it;
+            // the zone toggles are all built that way. Locals with no
+            // menu entry stay excluded: those are internal scratch.
+            var menuNames = new HashSet<string>();
+            var cvrAvatar = root.GetComponentInParent<ABI.CCK.Components.CVRAvatar>()
+                ?? root.GetComponent<ABI.CCK.Components.CVRAvatar>();
+            if (cvrAvatar?.avatarSettings?.settings != null)
+            {
+                foreach (var entry in cvrAvatar.avatarSettings.settings)
+                {
+                    if (entry != null && !string.IsNullOrEmpty(entry.machineName))
+                    {
+                        menuNames.Add(entry.machineName);
+                    }
+                }
+            }
+
             var parameters = controller.parameters
                 .Where(p => p.type != AnimatorControllerParameterType.Trigger)
                 .Select(p => p.name)
-                .Where(n => !n.StartsWith("#") && !GameOwned.Contains(n))
+                .Where(n => (!n.StartsWith("#") || menuNames.Contains(n)) && !GameOwned.Contains(n))
                 .Distinct()
                 .ToArray();
             if (parameters.Length == 0)
@@ -183,21 +178,28 @@ namespace AvatarBridge.Regression
                       "afterwards.");
 
             var stuck = new List<string>();
-            // How many parameters visibly did ANYTHING when driven. Without this the tool cannot
-            // tell "every toggle came back" from "I never moved a thing", and reports the two
-            // identically — which is how it came back clean twice on an avatar with a toggle that
-            // is broken in game, and neither result meant anything.
+            var notApplied = new List<string>();
+            // How many parameters visibly did anything when driven.
+            // Distinguishes "every toggle came back" from "nothing was
+            // ever moved"; the two must not report identically.
             int responded = 0;
+
+            // Mismatches already present at rest belong to the rest
+            // pose, not to whichever parameter is swept first.
+            var knownMismatches = new HashSet<string>(VerifyApplied(animator, controller, root));
+            foreach (var finding in knownMismatches)
+            {
+                Debug.LogWarning($"[Sweep] NOT APPLIED at rest: {finding}");
+            }
+
             foreach (var parameter in parameters)
             {
                 float original = DefaultOf(controller, parameter);
                 var before = watch.Capture();
 
-                // AWAY from rest, not always to 1. A parameter that already rests at 1 — and
-                // default-true toggles are ordinary, "Belly-physics" and friends on the avatar
-                // this was written against — was being "driven" to the value it already held,
-                // so the sweep moved nothing, saw nothing, and reported it as a parameter that
-                // does nothing. It was testing that 1 equals 1.
+                // Away from rest, not always to 1. Default-true toggles
+                // are ordinary; driving one to the value it already
+                // holds tests that 1 equals 1.
                 float away = original > 0.5f ? 0f : 1f;
                 Drive(controller, animator, parameter, away);
                 Settle(animator, SettleFrames);
@@ -205,12 +207,30 @@ namespace AvatarBridge.Regression
                 bool moves = whileOn.Count > 0;
                 if (moves)
                 {
-                    // What a toggle DOES, not only what it fails to put back. Without this the
-                    // sweep can confirm a parameter drives something and still not say whether
-                    // it drove the thing being asked about — which is no use when the question
-                    // is "does this toggle reach the converted physics at all".
+                    // What a toggle does, not only what it fails to put
+                    // back. Needed to answer "does this toggle reach
+                    // the converted physics at all".
                     Debug.Log($"[Sweep] MOVES \"{parameter}\": {string.Join("; ", whileOn.Take(6))}" +
                               (whileOn.Count > 6 ? $" (+{whileOn.Count - 6} more)" : ""));
+                }
+
+                // What the playing clips claim versus what the scene
+                // holds. This is the on-direction check: a masked layer
+                // that drops material slots, or a curve that lands on
+                // nothing, shows up here as a claim the scene refuses.
+                bool claimsFailed = false;
+                foreach (var finding in VerifyApplied(animator, controller, root))
+                {
+                    if (!knownMismatches.Add(finding))
+                    {
+                        continue;
+                    }
+                    claimsFailed = true;
+                    Debug.LogWarning($"[Sweep] NOT APPLIED while \"{parameter}\" driven: {finding}");
+                }
+                if (claimsFailed)
+                {
+                    notApplied.Add(parameter);
                 }
 
                 Drive(controller, animator, parameter, original);
@@ -233,43 +253,161 @@ namespace AvatarBridge.Regression
 
             animator.cullingMode = culling;
 
+            // For the harness: the numbers and names of this run, values
+            // dropped so digests stay stable.
+            LastResult = new SweepResult
+            {
+                Parameters = parameters.Length,
+                Responded = responded,
+                Stuck = new List<string>(stuck),
+                Refused = new List<string>(notApplied),
+                Invalid = responded == 0,
+            };
+
             if (responded == 0)
             {
-                // Not a clean bill of health — the opposite. Driving 65 parameters and observing
-                // nothing move even WHILE they were held at 1 means the avatar was never actually
-                // animated, so every "came back fine" below it is vacuous.
-                Debug.LogError($"[Sweep] INVALID RUN — none of the {parameters.Length} parameters changed " +
+                // Not a clean bill of health; the opposite. Nothing
+                // moving at all means nothing was really driven, and
+                // every "came back fine" below is vacuous.
+                Debug.LogError($"[Sweep] INVALID RUN: none of the {parameters.Length} parameters changed " +
                                "anything even while held on, so nothing was really being driven. Edit-mode " +
                                "Animator.Update is the likely culprit and this result says NOTHING about " +
                                "the avatar. Do not read the line below as a pass.");
             }
-            else if (stuck.Count == 0)
+            else if (stuck.Count == 0 && notApplied.Count == 0)
             {
                 Debug.Log($"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where " +
-                          $"they started, and {responded} of them demonstrably moved something while on, " +
-                          "so the sweep was really driving the avatar. Still not the same as \"nothing is " +
-                          "wrong\": anything outside the watchlist is invisible to it.");
+                          $"they started, every claim the playing clips made held on the scene, and " +
+                          $"{responded} of them demonstrably moved something while on, so the sweep was " +
+                          "really driving the avatar. Still not the same as \"nothing is wrong\": " +
+                          "anything outside the watchlist is invisible to it.");
             }
             else
             {
-                Debug.Log($"[Sweep] {stuck.Count} of {parameters.Length} left something stuck " +
-                          $"({responded} moved something while on): {string.Join(", ", stuck)}");
+                Debug.Log($"[Sweep] {stuck.Count} of {parameters.Length} left something stuck" +
+                          (notApplied.Count > 0
+                              ? $", {notApplied.Count} made a claim the scene refused ({string.Join(", ", notApplied)})"
+                              : "") +
+                          $" ({responded} moved something while on)" +
+                          (stuck.Count > 0 ? $": {string.Join(", ", stuck)}" : "."));
             }
-            return stuck.Count;
+            return stuck.Count + notApplied.Count;
         }
 
-        /// <summary>
-        /// Moves a parameter by rewriting its DEFAULT on the controller and reattaching, rather
-        /// than through Animator.SetFloat.
-        ///
-        /// Not a preference. VRCFury Harmony-patches Animator.SetBool/SetFloat editor-wide
-        /// (FixAnimatorPreviewBreakingInPlayModeHook), and its shim dereferences a null playable
-        /// in batch mode — so every sweep of a project with VRCFury installed died on the first
-        /// parameter with an ArgumentNullException, which reads as the sweep being broken rather
-        /// than as the sweep being blocked. Reattaching leaves no instance setter to intercept.
-        ///
-        /// The animator still owns every object it drives; nothing here is set behind its back.
-        /// </summary>
+        // Compares what the currently playing clips assert against what
+        // the scene actually holds. Constant curves only; a toggle's
+        // claim is a constant. Catches a masked layer dropping material
+        // slots, and any curve whose write never lands.
+        static List<string> VerifyApplied(Animator animator, AnimatorController controller, GameObject root)
+        {
+            var findings = new List<string>();
+            var claimed = new HashSet<string>();
+            var layers = controller.layers;
+            int count = Mathf.Min(layers.Length, animator.layerCount);
+
+            // Top-down: where several layers animate one property, the
+            // highest live layer owns the result.
+            for (int i = count - 1; i >= 0; i--)
+            {
+                var layer = layers[i];
+                if (layer == null || animator.IsInTransition(i))
+                {
+                    continue;
+                }
+                float weight = i == 0 ? 1f : animator.GetLayerWeight(i);
+                if (weight < 0.5f || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                {
+                    continue;
+                }
+                foreach (var info in animator.GetCurrentAnimatorClipInfo(i))
+                {
+                    if (info.clip == null || info.weight < 0.99f)
+                    {
+                        continue;
+                    }
+                    foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
+                    {
+                        if (binding.type == typeof(Animator))
+                        {
+                            continue;   // parameters and muscles, not scene properties
+                        }
+                        string key = binding.path + "|" + binding.type.Name + "|" + binding.propertyName;
+                        if (!claimed.Add(key))
+                        {
+                            continue;
+                        }
+                        var curve = AnimationUtility.GetEditorCurve(info.clip, binding);
+                        if (curve == null || curve.keys.Length == 0)
+                        {
+                            continue;
+                        }
+                        float want = curve.keys[0].value;
+                        bool constant = true;
+                        foreach (var k in curve.keys)
+                        {
+                            if (Mathf.Abs(k.value - want) > 0.0001f)
+                            {
+                                constant = false;
+                                break;
+                            }
+                        }
+                        if (!constant)
+                        {
+                            continue;   // animated over time; no single claim to hold
+                        }
+                        if (!AnimationUtility.GetFloatValue(root, binding, out float live))
+                        {
+                            continue;   // dead path; the reference audits own that
+                        }
+                        if (Mathf.Abs(live - want) > 0.05f * Mathf.Max(1f, Mathf.Abs(want)))
+                        {
+                            findings.Add($"{binding.path} ({binding.propertyName}): clip " +
+                                         $"\"{info.clip.name}\" says {want:0.###}, scene reads {live:0.###} " +
+                                         $"(layer \"{layer.name}\")");
+                        }
+                    }
+                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(info.clip))
+                    {
+                        string key = binding.path + "|" + binding.type.Name + "|" + binding.propertyName;
+                        if (!claimed.Add(key))
+                        {
+                            continue;
+                        }
+                        var keys = AnimationUtility.GetObjectReferenceCurve(info.clip, binding);
+                        if (keys == null || keys.Length == 0)
+                        {
+                            continue;
+                        }
+                        var want = keys[0].value;
+                        bool constant = true;
+                        foreach (var k in keys)
+                        {
+                            if (k.value != want)
+                            {
+                                constant = false;
+                                break;
+                            }
+                        }
+                        if (!constant || want == null)
+                        {
+                            continue;
+                        }
+                        if (!AnimationUtility.GetObjectReferenceValue(root, binding, out var live))
+                        {
+                            continue;
+                        }
+                        if (live != want)
+                        {
+                            findings.Add($"{binding.path} ({binding.propertyName}): clip " +
+                                         $"\"{info.clip.name}\" assigns \"{want.name}\", scene holds " +
+                                         $"\"{(live != null ? live.name : "nothing")}\" (layer \"{layer.name}\")");
+                        }
+                    }
+                }
+            }
+            return findings;
+        }
+
         static void Drive(AnimatorController controller, Animator animator, string name, float value)
         {
             var parameters = controller.parameters;
@@ -291,8 +429,6 @@ namespace AvatarBridge.Regression
             animator.Rebind();
         }
 
-        /// <summary>The value a parameter rests at, read from the controller rather than from the
-        /// animator, so restoring it does not depend on a getter either.</summary>
         static float DefaultOf(AnimatorController controller, string name)
         {
             foreach (var p in controller.parameters)
@@ -319,14 +455,9 @@ namespace AvatarBridge.Regression
             }
         }
 
-        /// <summary>
-        /// Everything a toggle can plausibly leave behind, addressed once so each sweep is a cheap
-        /// array read rather than another walk of the hierarchy.
-        ///
-        /// Labels are built once and reused, because they are only wanted when something has already
-        /// gone wrong — building a few thousand strings per parameter to describe a clean result is
-        /// most of the run time for no benefit.
-        /// </summary>
+        // Everything a toggle can plausibly leave behind, addressed
+        // once so each sweep is a cheap array read. Labels are built
+        // once; they are only wanted when something went wrong.
         sealed class Watchlist
         {
             readonly string[] labels;
@@ -343,11 +474,9 @@ namespace AvatarBridge.Regression
                 objects = root.GetComponentsInChildren<Transform>(true);
                 renderers = root.GetComponentsInChildren<Renderer>(true);
                 skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                // Components switched on and off, which is how converted physics is toggled: a
-                // MagicaCloth lives on its own holder and the clip drives its enabled flag, not
-                // the object's. Without this the sweep reports a cloth toggle as "nothing moved"
-                // and means only that it was not looking — the same blind spot that made it come
-                // back clean twice on an avatar with a broken toggle.
+                // Components switched on and off, which is how converted
+                // physics is toggled: the clip drives the cloth's
+                // enabled flag, not the object's.
                 behaviours = root.GetComponentsInChildren<Behaviour>(true);
 
                 var names = new List<string>();
@@ -381,10 +510,6 @@ namespace AvatarBridge.Regression
                 labels = names.ToArray();
             }
 
-            /// <summary>
-            /// One reading of every watched property. Numbers and object references are kept apart
-            /// so a material swap is compared by identity rather than by anything derived from it.
-            /// </summary>
             public Reading Capture()
             {
                 var numbers = new float[objects.Length + behaviours.Length + renderers.Length + blendShapeTotal];
@@ -420,10 +545,6 @@ namespace AvatarBridge.Regression
                 return new Reading { Numbers = numbers, References = references };
             }
 
-            /// <summary>
-            /// What changed since that reading, named. The label array interleaves numbers and
-            /// references, so both cursors walk it in the order the constructor built it.
-            /// </summary>
             public List<string> Differences(Reading before)
             {
                 var now = Capture();
@@ -462,10 +583,6 @@ namespace AvatarBridge.Regression
             public Object[] References;
         }
 
-        /// <summary>
-        /// The converted avatar in the scene. A conversion scene usually holds the greyed-out
-        /// original as well, so the one with a controller wins — same rule CckAnimatorTester uses.
-        /// </summary>
         static GameObject Resolve()
         {
             var selected = Selection.activeGameObject;

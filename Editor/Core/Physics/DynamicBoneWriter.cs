@@ -6,21 +6,19 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Fallback writer: VRCPhysBone -> DynamicBone (ChilloutVR supports DynamicBone
-    /// natively; the VRLabs stub also works for conversion-only projects).
-    ///
-    /// Mapping notes:
-    ///   pull      -> m_Elasticity (scaled; DB's useful elasticity range is much smaller)
-    ///   spring    -> m_Damping (inverted)
-    ///   stiffness -> m_Stiffness
-    ///   immobile  -> m_Inert
-    ///   gravity   -> m_Force only, scaled by ElasticityScale so the force/restore balance —
-    ///                and therefore the resting pose — matches VRChat; m_Gravity is forced to
-    ///                zero because ChilloutVR's rest-pose cancellation for it is
-    ///                scale-dependent (see the comment on the gravity block below)
-    ///   curves    -> distribution curves (identical multiplier-along-chain semantics)
-    /// </summary>
+    // Fallback writer: VRCPhysBone -> DynamicBone (ChilloutVR supports DynamicBone
+    // natively; the VRLabs stub also works for conversion-only projects).
+    //
+    // Mapping notes:
+    //   pull      -> m_Elasticity (scaled; DB's useful elasticity range is much smaller)
+    //   spring    -> m_Damping (inverted)
+    //   stiffness -> m_Stiffness
+    //   immobile  -> m_Inert
+    //   gravity   -> m_Force only, scaled by ElasticityScale so the force/restore balance .
+    //                and therefore the resting pose; matches VRChat; m_Gravity is forced to
+    //                zero because ChilloutVR's rest-pose cancellation for it is
+    //                scale-dependent (see the comment on the gravity block below)
+    //   curves    -> distribution curves (identical multiplier-along-chain semantics)
     public static class DynamicBoneWriter
     {
         const string Category = "PhysBones -> DynamicBone";
@@ -80,6 +78,26 @@ namespace AvatarBridge
             {
                 db.m_RadiusDistrib = new AnimationCurve(data.RadiusCurve.keys);
             }
+            // The same growth the MagicaCloth path applies: a slider
+            // that grows the body past the authored radius leaves the
+            // chain colliding with a body that is not the one shown.
+            if (ctx.Settings.sizePhysicsForLargest && data.Root != null)
+            {
+                var rootScale = data.Root.lossyScale;
+                float rootMean = (Mathf.Abs(rootScale.x) + Mathf.Abs(rootScale.y) + Mathf.Abs(rootScale.z)) / 3f;
+                float worldRadius = data.Radius * Mathf.Max(rootMean, 1e-4f);
+                float push = MeshGrowth.Around(ctx, data.Root.position,
+                    Mathf.Max(worldRadius * 2.5f, 0.06f));
+                if (push >= 0.005f && worldRadius > 0f)
+                {
+                    float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
+                    db.m_Radius *= growth;
+                    ctx.Report.Converted(Category, data.Root.name,
+                        $"Chain radius grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
+                        "for the largest the sliders make the body — measured at rest and with " +
+                        "every animated shape at full reach.");
+                }
+            }
 
             // PhysBone gravity, applied entirely through m_Force.
             //
@@ -102,18 +120,18 @@ namespace AvatarBridge
             // "CVR doesn't play nicely with them at all".
             //
             // The two halves were collinear parts of one magnitude, so collapsing them into one
-            // field means the full magnitude — summing the halves would overshoot it by up to 41%.
+            // field means the full magnitude; summing the halves would overshoot it by up to 41%.
             // Added rather than assigned so any force already on the component still composes.
             //
             // Scaled by ElasticityScale, and that factor is load-bearing: where a chain settles
             // is the BALANCE of constant force against elastic restore, and the restore was
             // already scaled down by ElasticityScale to sit in DynamicBone's useful range.
             // Carrying the force over at full strength made every gravity-tinted chain deflect
-            // ~5x further than VRChat — a tester's tail with gravity -0.07 (a gentle upward
+            // ~5x further than VRChat; a tester's tail with gravity -0.07 (a gentle upward
             // bias in VRChat) converted to a force that pinned the tail at the sky. Scaling
             // force and restore by the same factor preserves the resting pose exactly.
             // Asserted for EVERY chain, not only the ones carrying gravity. Zero is DynamicBone's
-            // own default, so this changed nothing the day it was written — but it was relying on
+            // own default, so this changed nothing the day it was written; but it was relying on
             // that default rather than stating the requirement, and the requirement is hard:
             // anything that reaches m_Gravity on a scaled avatar goes through ChilloutVR's broken
             // path and can be pushed UPWARD.
@@ -122,7 +140,7 @@ namespace AvatarBridge
             // m_LocalGravity through the root's world-to-local matrix WITHOUT the renormalisation
             // stock DynamicBone applies (".normalized * m_Gravity.magnitude"), and
             // UpdateParticlesJob.GetForce then divides the rest-pose cancellation by scale to
-            // compensate — one factor too many, because local-to-world already put that scale
+            // compensate; one factor too many, because local-to-world already put that scale
             // back. The gravity term works out to (g * scale - g), which is zero only at scale 1:
             // at 0.376 it is -0.62g, upward. m_Force is added after the cancellation and only ever
             // multiplied by scale, so it is correct at every size.
@@ -237,6 +255,29 @@ namespace AvatarBridge
                 round.m_Bound = pbCollider.insideBounds
                     ? DynamicBoneColliderBase.Bound.Inside
                     : DynamicBoneColliderBase.Bound.Outside;
+                // An inside-bound collider is a cage; growing the body
+                // it contains would shrink the room inside, so only
+                // ordinary colliders follow the sliders.
+                if (ctx.Settings.sizePhysicsForLargest
+                    && round.m_Bound == DynamicBoneColliderBase.Bound.Outside)
+                {
+                    var goScale = go.transform.lossyScale;
+                    float goMean = (Mathf.Abs(goScale.x) + Mathf.Abs(goScale.y) + Mathf.Abs(goScale.z)) / 3f;
+                    float worldRadius = round.m_Radius * Mathf.Max(goMean, 1e-4f);
+                    float push = MeshGrowth.Around(ctx,
+                        go.transform.TransformPoint(round.m_Center),
+                        Mathf.Max(worldRadius * 2.5f, 0.06f));
+                    if (push >= 0.005f && worldRadius > 0f)
+                    {
+                        float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
+                        round.m_Radius *= growth;
+                        round.m_Height *= growth;
+                        ctx.Report.Converted("PhysBone colliders", parent.name,
+                            $"Collider grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
+                            "for the largest the sliders make the body — measured at rest and with " +
+                            "every animated shape at full reach.");
+                    }
+                }
                 collider = round;
             }
 

@@ -10,18 +10,10 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// The AvatarBridge control panel.
-    ///
-    /// Two modes, because only half of what this tool does actually needs VRChat:
-    ///   Convert  — a VRChat avatar into a ChilloutVR one (needs the VRChat SDK).
-    ///   Set up   — prepare ANY humanoid for ChilloutVR (needs only the CCK).
-    /// With no VRChat SDK installed the window still works; it just offers Setup.
-    ///
-    /// Built with UI Toolkit, which is what both the CCK and the VRChat SDK use — matching them
-    /// is the point, since this window's job is to sit between the two. See BridgeTheme for where
-    /// the colours come from.
-    /// </summary>
+    // The AvatarBridge control panel. Two modes: Convert (needs the
+    // VRChat SDK) and Set up (any humanoid, CCK only). Without the
+    // VRChat SDK the window still works and offers Setup.
+    // UI Toolkit, like the CCK and the SDK; see BridgeTheme.
     public class AvatarBridgeWindow : EditorWindow
     {
         const string PrefsKey = "AvatarBridge.Settings";
@@ -53,14 +45,11 @@ namespace AvatarBridge
 #endif
 
 #if VRC_SDK_VRCSDK3
-        // Convert-mode only, so without the VRChat SDK nothing reads these — and an ungated
-        // field earns a CS0414 "assigned but never used" in every CCK-only project. A warning
-        // in a tester's console reads like something is wrong with the tool.
+        // Convert-mode only. Ungated, these earn CS0414 warnings in
+        // every CCK-only project.
         bool showManual = true;
         bool showAutomated;
         bool showPhysics = true;
-        /// <summary>Closed by default: these are escape hatches for a chain that converted wrong,
-        /// not a set of decisions to be made before the first conversion.</summary>
         bool showPhysicsTuning = false;
         // What the last Analyse found, or null if it hasn't been run for the current avatar.
         // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
@@ -90,9 +79,9 @@ namespace AvatarBridge
                     settings = new BridgeSettings();
                 }
             }
-            // Saved settings from before 2.59.0 carry the old default, which pointed INSIDE
-            // the tool's folder — where a delete-and-reimport update erases every conversion.
-            // Only the old DEFAULT is rewritten; a deliberately customised path is the user's.
+            // Old saved settings can point inside the tool's folder,
+            // where an update erases every conversion. Only the old
+            // default is rewritten; a customised path is the user's.
             if (settings.outputFolder == "Assets/AvatarBridge/Output")
             {
                 settings.outputFolder = "Assets/AvatarBridgeOutput";
@@ -121,8 +110,7 @@ namespace AvatarBridge
             {
                 root.styleSheets.Add(sheet);
             }
-            // If it didn't load, everything below still works — it just looks plain. An unstyled
-            // window that converts beats a styled one that doesn't exist.
+            // If it didn't load, everything below still works, plainly.
 
             root.Add(BridgeElements.Banner("AvatarBridge",
                 "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version));
@@ -136,8 +124,7 @@ namespace AvatarBridge
 
             var scroll = new ScrollView();
             scroll.AddToClassList("ab-scroll");
-            // Nothing here wants to scroll sideways — long tooltips and labels wrap. Without this
-            // a narrow window grows a horizontal bar that only ever gets in the way.
+            // Nothing here wants to scroll sideways; labels wrap.
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             root.Add(scroll);
 
@@ -146,22 +133,11 @@ namespace AvatarBridge
             Rebuild();
         }
 
-        /// <summary>
-        /// Rebuilds on the next frame rather than immediately.
-        ///
-        /// Every caller is a control's own value-changed callback, and a rebuild destroys the
-        /// control that is still dispatching it. Deferring by one frame lets the event finish
-        /// against a live element first. It also stops a text field losing focus mid-keystroke.
-        /// </summary>
         void ScheduleRebuild()
         {
             rootVisualElement?.schedule.Execute(Rebuild);
         }
 
-        /// <summary>
-        /// Rebuilds the body. Cheap enough to do wholesale, and it keeps every "when this changes,
-        /// that section looks different" case correct without a web of update callbacks.
-        /// </summary>
         void Rebuild()
         {
             if (body == null)
@@ -243,6 +219,7 @@ namespace AvatarBridge
                 // swap would show one avatar's shader and PhysBone counts under another's name.
                 advice = null;
                 adviceFilter = null;
+                MatchOptionalLayersToAvatar();
                 ScheduleRebuild();
             });
             parent.Add(field);
@@ -272,18 +249,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ analyse ----
 
-        /// <summary>
-        /// Reads the avatar and offers the settings its own contents decide.
-        ///
-        /// Greyed out rather than hidden until an avatar is picked: a control that isn't drawn
-        /// yet teaches nobody that the step exists, and someone who never learns this button is
-        /// here is exactly the person who converts on defaults that didn't suit their avatar.
-        ///
-        /// Nothing is applied without a press. The analysis is a measurement and a
-        /// recommendation, and the two are shown separately — the reader can see what was found
-        /// before deciding to act on it, which also means a wrong recommendation is arguable
-        /// rather than silent.
-        /// </summary>
         void BuildAnalyseSection(VisualElement parent)
         {
             parent.Add(BridgeElements.Hint(
@@ -341,9 +306,9 @@ namespace AvatarBridge
                 }
             }
 
-            // Deliberately the same shape as the conversion report below — banner, then chips,
-            // then rows. They answer the same kind of question at opposite ends of the job, and
-            // two different-looking lists in one window is two things to learn instead of one.
+            // Same shape as the conversion report below: banner, chips,
+            // rows. Two different-looking lists in one window is two
+            // things to learn instead of one.
             int blocked = CountOf(AdviceKind.Blocked);
             int yours = CountOf(AdviceKind.Manual);
             parent.Add(new HelpBox(
@@ -399,22 +364,38 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Which kind the findings are filtered to, or null for all of them.
-        ///
-        /// Unlike the conversion report this defaults to showing EVERYTHING, including the rows
-        /// that agree. The report hides its successes because there are hundreds of them; there
-        /// are six findings here, and "already set" is load-bearing — it is the difference
-        /// between "checked, and it's right" and "never looked at".
-        /// </summary>
         AdviceKind? adviceFilter;
 
-        /// <summary>
-        /// Re-measures and drops any filter with it. Applying one setting can change what the
-        /// others should be, so every path that changes a setting comes back through here rather
-        /// than marking a row done — and a filter left pointing at a kind the new findings have
-        /// none of shows an empty list with an unclickable chip to clear it.
-        /// </summary>
+        // Named for the hint under the layer list. Cleared and re-decided
+        // on every avatar swap, so it always describes the current one.
+        readonly List<string> autoOffLayers = new List<string>();
+
+        // The optional layer settings persist between avatars, so a tick
+        // meant for the last one rides along and claims this avatar has a
+        // layer it does not. Runs on selection only, never on rebuild: a
+        // box the user ticks deliberately must stay ticked.
+        //
+        // Skipped entirely for a baker's avatar. VRCFury and Modular
+        // Avatar build controllers during the bake, and the conversion
+        // reads the slot afterwards; unticking on the strength of an
+        // empty slot here would drop a layer that does arrive.
+        void MatchOptionalLayersToAvatar()
+        {
+            autoOffLayers.Clear();
+            if (avatar == null || AvatarAdvisor.LayersDecidedByBaker(avatar.gameObject))
+            {
+                return;
+            }
+            foreach (var (type, setting) in AvatarAdvisor.OptionalLayers)
+            {
+                if (AvatarAdvisor.IsOn(settings, type) && !AvatarAdvisor.SuppliesOwnLayer(avatar, type))
+                {
+                    AvatarAdvisor.SetOn(settings, type, false);
+                    autoOffLayers.Add($"\"{setting}\"");
+                }
+            }
+        }
+
         void Reanalyse()
         {
             advice = AvatarAdvisor.Analyse(avatar, settings);
@@ -449,12 +430,6 @@ namespace AvatarBridge
                 count > 0));
         }
 
-        /// <summary>
-        /// A recommendation is something measured. A Manual row also carries an Apply — it is a
-        /// one-press shortcut for a decision the reader has just made — but it must never be
-        /// swept up by "apply all", or the tool would be quietly deciding the questions it just
-        /// finished saying it cannot answer.
-        /// </summary>
         static bool IsRecommendation(Advice a) => a.Apply != null && a.Kind != AdviceKind.Manual;
 
         VisualElement AdviceRow(Advice a, bool alternate)
@@ -510,15 +485,10 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>Spaces out an enum identifier, the way IMGUI's EnumPopup did.</summary>
+        // Spaces out an enum identifier, the way IMGUI's EnumPopup did.
         static string Nicify(Enum value) =>
             value == null ? string.Empty : ObjectNames.NicifyVariableName(value.ToString());
 
-        /// <summary>
-        /// A dropdown over an enum showing spaced-out names. EnumField would be the obvious
-        /// choice but has no format hooks in 2022.3, so it shows the raw identifier —
-        /// "MagicaCloth2" where IMGUI gave "Magica Cloth 2".
-        /// </summary>
         static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set)
             where T : Enum
         {
@@ -543,17 +513,6 @@ namespace AvatarBridge
             return popup;
         }
 
-        /// <summary>
-        /// Physics in one place, and out in the open.
-        ///
-        /// It used to be split across both cards: the solver choice and the feel defaults under
-        /// "Automated", the departures from the source under "Manual". That split is true on
-        /// paper — some of these the avatar answers and some it cannot — but it is the wrong cut
-        /// for the person using the window. Which solver an avatar converts into is not something
-        /// the avatar decides; it depends on what the wearer has installed and what they want,
-        /// and burying it behind a warning that says "you don't need to touch anything in here"
-        /// is exactly backwards. Everything downstream of that choice belongs beside it.
-        /// </summary>
         void BuildPhysicsCard(VisualElement parent)
         {
             var card = new BridgeElements.Card("Physics",
@@ -603,9 +562,8 @@ namespace AvatarBridge
                     "to be turned off when a specific chain converts wrong, not to be chosen between. " +
                     "Whatever they do is named in the report."));
 
-                // Closed by default. Eight checkboxes nobody should have to reason about on a first
-                // conversion is a wall, and reading it as a decision to make is the wrong reading —
-                // these are escape hatches for a chain that came out wrong.
+                // Closed by default. These are escape hatches for a
+                // chain that came out wrong, not decisions to make.
                 var feel = new Foldout { text = "Advanced physics tuning", value = showPhysicsTuning };
                 feel.AddToClassList("ab-field");
                 feel.RegisterValueChangedCallback(e =>
@@ -714,15 +672,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Everything the avatar decides for itself, folded away behind a warning.
-        ///
-        /// These are not "advanced" in the sense of being for experts — they are settings with a
-        /// right answer that this avatar already gives, which is exactly why they should not be
-        /// the first thing anyone reads. The old flat list of forty-odd toggles gave no way to
-        /// tell the two kinds apart, so people either changed nothing and hoped, or changed the
-        /// wrong ones. Analyse sets these; opening the card is for overriding it deliberately.
-        /// </summary>
         void BuildAutomatedCard(VisualElement parent)
         {
             var card = new BridgeElements.Card("Automated options",
@@ -743,11 +692,8 @@ namespace AvatarBridge
 
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);
-            // VRCFury/Modular Avatar baking, VRC-component cleanup, Fury toggle rebuilding and
-            // humanoid masking used to be toggles here. Every off-state produced a conversion
-            // that was broken or read as broken — an avatar still wearing its VRC descriptor
-            // convinced even the maintainer that "it just didn't convert". Necessary steps
-            // aren't options; they always run now.
+            // Baking, cleanup, toggle rebuilding and masking always
+            // run. Necessary steps are not options.
 
             b.Add(BridgeElements.SubHeading("Remove VRChat-only systems"));
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
@@ -758,13 +704,9 @@ namespace AvatarBridge
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
             if (!settings.stripGogoLoco)
             {
-                // The verdict after several tester rounds and a client decompile: GoGo cannot
-                // fully function in ChilloutVR. Its pose/flight machinery leans on VRChat-only
-                // primitives with no CVR equivalent — VRCAnimatorLocomotionControl (poses would
-                // slide with the capsule), TemporaryPoseSpace (viewpoint shifts, removed at
-                // conversion), PlayableLayerControl — and CVR's own IK overrides limbs wherever
-                // no tracking-control existed to convert. CVR ships locomotion, emotes, AFK and
-                // flight natively. Say all of this where the decision is made.
+                // GoGo cannot fully function in CVR; it leans on
+                // VRChat-only animator primitives. Say so where the
+                // decision is made.
                 b.Add(BridgeElements.Hint(
                     "⚠ Keeping GoGo Loco is EXPERIMENTAL: GoGo fully replaces ChilloutVR's own " +
                     "locomotion (that layer is removed), so Base, Additive and Action must be " +
@@ -807,10 +749,22 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Action (emotes, AFK)",
                 "VRC emote triggers have no CVR equivalent; states may be unreachable.",
                 settings.convertActionLayer, v => { settings.convertActionLayer = v; ScheduleRebuild(); }));
+            if (autoOffLayers.Count > 0)
+            {
+                b.Add(BridgeElements.Hint(
+                    $"{string.Join(" and ", autoOffLayers)} switched off: this avatar has no layer " +
+                    "of its own in " + (autoOffLayers.Count == 1 ? "that slot" : "those slots") +
+                    ". These settings persist between avatars, so the tick came from another one. " +
+                    "Nothing converts differently either way — tick it back if you want it on."));
+            }
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
-                "Non-synced VRC parameters get CVR's '#' local-only prefix.",
+                "Non-synced VRC parameters get CVR's '#' local-only prefix — except ones a menu " +
+                "control drives, which sync regardless. VRChat's tight budget made de-syncing " +
+                "menu parameters a common trick (VRCFury carries them through machinery that " +
+                "doesn't survive conversion), and a control others can't see the effect of is a " +
+                "broken feature. CVR's 3200-bit budget can afford them.",
                 settings.preserveParameterSyncState, v => settings.preserveParameterSyncState = v));
             b.Add(BridgeElements.Bind("Expose menu-less synced parameters",
                 "Synced parameters without a menu control still get an Advanced Avatar Settings " +
@@ -824,6 +778,16 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Recreate built-in VRC colliders as pointers",
                 "Head/hands/fingers pointers so converted receivers keep reacting to other players.",
                 settings.createDefaultColliderPointers, v => settings.createDefaultColliderPointers = v));
+            b.Add(BridgeElements.Bind("Grow contact zones with the body's sliders",
+                "A zone authored on a body part a blendshape slider can grow keeps its authored " +
+                "size while the mesh grows past it — so the touch lands inside the body, short of " +
+                "the zone, and the contact reads as broken at high slider values. Each zone is " +
+                "measured like the physics sizes are: the mesh around it at rest and with every " +
+                "animated shape at full reach. A zone one slider grows follows that slider live — " +
+                "authored size at rest, the measured growth at full reach; only growth spread " +
+                "across several shapes holds the grown size instead. The report names each zone " +
+                "and what was done.",
+                settings.sizeContactZonesForLargest, v => settings.sizeContactZonesForLargest = v));
 
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,
                 settings.convertConstraints, v => settings.convertConstraints = v));
@@ -837,17 +801,6 @@ namespace AvatarBridge
             parent.Add(card);
         }
 
-        /// <summary>
-        /// The options nothing in the avatar file can settle.
-        ///
-        /// Every one of these is either a departure from the source avatar (inventing physics an
-        /// author never made, improving on collisions they never wired), a judgement about intent
-        /// that only they know (were the toe physics deliberate?), a workflow choice about how
-        /// YOU finish the avatar (toggle style decides whether "Create Controller" is needed), or
-        /// something whose result can only be judged by wearing it (a patched shader compiles;
-        /// whether it looks right is a different question). Analyse counts the evidence for each
-        /// and says which way it leans — it never ticks them for you.
-        /// </summary>
         void BuildManualCard(VisualElement parent)
         {
             var card = new BridgeElements.Card("Manual options",
@@ -859,60 +812,7 @@ namespace AvatarBridge
                 "These are yours: the avatar doesn't say which way they should go, so nothing " +
                 "sets them for you. Leaving them all alone converts fine."));
 
-            b.Add(BridgeElements.SubHeading("Contacts & shaders"));
-            var native = BridgeElements.Bind("Use ChilloutVR's native contacts",
-                "Converts contacts one-to-one onto ChilloutVR's own contact components instead " +
-                "of approximating them with pointers and triggers: real proximity, box shapes and " +
-                "collision tags kept as-is.\n\n" +
-                "WHAT A NATIVE CONTACT SWITCHES ON, ONLY YOU WILL SEE. The native system writes " +
-                "its parameter straight at the Animator, and the sync cache only fills when " +
-                "something writes through the avatar's animator manager, so the value never " +
-                "leaves your machine.\n\n" +
-                "An effect left permanently ON still appears for everyone — every client is " +
-                "already running it and it never needed the parameter. Only what the contact has " +
-                "to switch on is lost. The legacy pointer/trigger path writes through the manager " +
-                "and does sync, which is why it is the default.\n\n" +
-                "The components also aren't in the CCK: AvatarBridge declares them itself, " +
-                "verified field-for-field against the decompiled game client. Nothing obliges " +
-                "ChilloutVR to keep them as they are, so an avatar built on them can be broken by " +
-                "a client update. Take them only for a shape or receiver type the legacy triggers " +
-                "cannot do.",
-                settings.useNativeContacts, v =>
-                {
-                    settings.useNativeContacts = v;
-                    // No longer forces the driver bridge on with it. That pairing existed while
-                    // the bridge was the only thing making native contacts reach other players;
-                    // driving a local parameter does that on its own now, and the bridge is the
-                    // fallback for menu-driven parameters rather than the default path.
-                    ScheduleRebuild();
-                });
-            native.SetEnabled(settings.convertContacts);
-            b.Add(BridgeElements.Row(native, BridgeElements.BetaTag()));
-            if (!settings.convertContacts)
-            {
-                b.Add(BridgeElements.Hint(
-                    "Contact conversion is off under Automated options, so this does nothing."));
-            }
-            if (settings.convertContacts && settings.useNativeContacts)
-            {
-                // No alarm here any more. The long warning this used to carry described contacts
-                // firing for the wearer alone, and that turned out to be damage this tool was
-                // doing: it handed the native system a SYNCED parameter, and the sync stream
-                // wrote the declared default back over every value the contact set. Driving a
-                // local "#" parameter — what the system's author said to do all along — makes
-                // them behave, and a tester confirmed sound and particles reaching other players
-                // reliably in game. What is left is the one caveat the fix does not touch.
-                b.Add(new HelpBox(
-                    "Experimental — this talks to a component internal to the game rather than the " +
-                    "CCK, so any ChilloutVR update can break it, possibly for good. Take it for a " +
-                    "shape or receiver type the legacy triggers cannot do.\n\n" +
-                    "Contacts drive a local \"#\" parameter, which is what the system needs: every " +
-                    "client runs the contact itself and reaches the same answer. A parameter a menu " +
-                    "control also drives cannot be made local, and the report names those.",
-                    HelpBoxMessageType.Info));
-
-            }
-
+            b.Add(BridgeElements.SubHeading("Shaders"));
             b.Add(BridgeElements.Row(
                 BridgeElements.Bind("Patch non-SPI shaders for VR",
                     "Shaders that don't support single-pass instanced stereo draw into one eye only in " +
@@ -1155,11 +1055,6 @@ namespace AvatarBridge
             parent.Add(card);
         }
 
-        /// <summary>
-        /// The face-tracking control without a card around it. Setup mode gives it its own card;
-        /// in Convert mode it is one section of the automated list, because which mode fits is
-        /// something the avatar's own blendshapes and parameters answer.
-        /// </summary>
         void AddFaceTrackingOptions(VisualElement b)
         {
             int index = Mathf.Max(0, Array.IndexOf(FtModes, settings.faceTrackingMode));
@@ -1208,10 +1103,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- report ---
 
-        /// <summary>
-        /// Which status the report list is filtered to, or null for the default view — everything
-        /// that isn't a plain success. Clicking the selected chip again clears it.
-        /// </summary>
         ReportStatus? reportFilter;
 
         void AddFilterChip(VisualElement parent, ReportStatus status, string noun, Color colour, bool emphasise)
@@ -1349,9 +1240,8 @@ namespace AvatarBridge
                 parent.Add(actions);
             }
 
-            // The full list lives in the report file; this shows whatever the chips select. By
-            // default that's everything needing a look — an unfiltered dump would be hundreds of
-            // "converted fine" lines with the useful entries lost in them.
+            // The full list lives in the report file; this shows what
+            // the chips select. Default: everything needing a look.
             var list = new ScrollView();
             list.AddToClassList("ab-report-list");
             int shown = 0;
@@ -1366,9 +1256,8 @@ namespace AvatarBridge
                 }
                 var row = BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
                     StatusColour(entry.Status), shown % 2 == 1);
-                // Most subjects are an object path or an object name — the field's own comment
-                // says so — so the ones that still resolve on the converted avatar become
-                // clickable for free, and prose subjects simply don't and get no button.
+                // Most subjects are object paths or names. Ones that
+                // still resolve become clickable; prose ones do not.
                 var found = ResolveSubject(entry.Subject);
                 if (found != null)
                 {
@@ -1386,17 +1275,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Turns a report entry's subject back into the object it is about, or null.
-        ///
-        /// Two ways, both exact: the subject as a path from the converted root, then as the name
-        /// of exactly one descendant. "Exactly one" is the whole safety rule — an avatar with
-        /// four objects called "Body" cannot tell you which one an entry meant, and selecting the
-        /// wrong one is worse than offering nothing, because the reader believes it.
-        ///
-        /// Never guesses, never fuzzy-matches, never strips punctuation to try harder. A subject
-        /// that is a sentence resolves to nothing and the row keeps its old shape.
-        /// </summary>
         UnityEngine.Object ResolveSubject(string subject)
         {
             var root = lastReport != null ? lastReport.ConvertedRoot : null;
@@ -1427,10 +1305,6 @@ namespace AvatarBridge
             return single != null ? single.gameObject : null;
         }
 
-        /// <summary>
-        /// Selects and pings, so the object is both highlighted in place and left selected for
-        /// whatever the reader wants to do to it next.
-        /// </summary>
         static void Ping(UnityEngine.Object[] targets)
         {
             if (targets == null || targets.Length == 0)
@@ -1473,11 +1347,6 @@ namespace AvatarBridge
             return button;
         }
 
-        /// <summary>
-        /// The footer only carries what the report's own button row isn't already showing.
-        /// Two "Report an issue" buttons a few pixels apart, doing the same thing, is worse than
-        /// either one alone.
-        /// </summary>
         VisualElement Footer(bool reportShown)
         {
             var footer = new VisualElement();

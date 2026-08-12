@@ -6,21 +6,14 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// SDK-agnostic snapshot of one VRCPhysBone chain, so the MagicaCloth2 and
-    /// DynamicBone writers don't each need to know the VRC API.
-    /// All 0..1 factors keep VRChat semantics; the writers do the mapping.
-    /// </summary>
+    // SDK-agnostic snapshot of one VRCPhysBone chain, so the MagicaCloth2 and
+    // DynamicBone writers don't each need to know the VRC API.
+    // All 0..1 factors keep VRChat semantics; the writers do the mapping.
     public class PhysBoneChainData
     {
         public VRCPhysBone Source;
         public GameObject SourceGameObject;
         public Transform Root;
-        /// <summary>
-        /// True when this chain was invented by "Add physics to toggled rigs that have none" —
-        /// there is no source PhysBone, so every value-derivation step must be skipped and the
-        /// preset stands as authored.
-        /// </summary>
         public bool Synthesized;
         // VRChat avatars often stack several PhysBones on the same chain and toggle
         // between them via the animator; converted physics must start in the same state.
@@ -52,27 +45,14 @@ namespace AvatarBridge
         public float MaxSquish;
         public string Parameter;          // PhysBone -> animator parameter feature
 
-        /// <summary>Animation is allowed to move the chain's rest pose.</summary>
         public bool IsAnimated;
-        /// <summary>Ignore / First / Average — how a root with several children behaves.</summary>
         public string MultiChildTypeName;
-        /// <summary>True when the root actually has more than one child, which is the only
-        /// case where MultiChildType means anything.</summary>
         public bool RootHasMultipleChildren;
 
         public List<VRCPhysBoneCollider> Colliders = new List<VRCPhysBoneCollider>();
 
-        /// <summary>
-        /// Transforms excluded because they are humanoid-mapped, not because the PhysBone author
-        /// listed them — kept separate so the report can say which rule fired.
-        /// </summary>
         public List<Transform> HumanoidExclusions = new List<Transform>();
 
-        /// <summary>
-        /// Toe bones excluded because simulated toes read as broken in ChilloutVR — kept apart
-        /// from the humanoid list because most of them are NOT humanoid-mapped (a rig maps
-        /// "Toes", not the individual digits).
-        /// </summary>
         public List<Transform> ToeExclusions = new List<Transform>();
 
         public static PhysBoneChainData Read(VRCPhysBone pb) => Read(pb, null);
@@ -136,13 +116,13 @@ namespace AvatarBridge
             }
 
             // Humanoid-mapped bones must never SIMULATE. The animator and IK write them every
-            // frame — locomotion curls the toes, IK plants the feet — and a physics solver
+            // frame; locomotion curls the toes, IK plants the feet; and a physics solver
             // writing the same transform fights them for it. VRChat semi-tolerates a PhysBone
             // there; MagicaCloth2 and DynamicBone stomp the animated pose outright. Anchoring is
             // different and stays allowed: a chain ROOTED at a humanoid bone (hair on Head, tail
             // on Hips) is correct, because the root is kinematic and only its descendants
             // simulate. So the rule is: any humanoid bone strictly BELOW the root joins the
-            // ignore list, exactly as if the author had excluded it — the MagicaCloth2 writer
+            // ignore list, exactly as if the author had excluded it; the MagicaCloth2 writer
             // roots around it (its non-humanoid children still simulate, re-anchored) and the
             // DynamicBone writer turns it into an exclusion.
             if (animator != null && animator.isHuman)
@@ -161,7 +141,7 @@ namespace AvatarBridge
             }
 
             // Toes, wherever they sit in the chain. The humanoid rule above only catches MAPPED
-            // bones, and a rig maps "Toes" — not Toe1_1, Toe2_1, or the digits under it — so a
+            // bones, and a rig maps "Toes"; not Toe1_1, Toe2_1, or the digits under it; so a
             // chain rooted higher up (a leg, a skirt, a whole-body wobble) still ran the solver
             // through every toe joint. That is what busted feet look like after a DynamicBone
             // conversion: the digits splay and swing while the foot itself is planted by IK.
@@ -221,11 +201,6 @@ namespace AvatarBridge
             return data;
         }
 
-        /// <summary>
-        /// Reads a float the VRChat SDK may or may not expose under this name. Newer PhysBone
-        /// fields are read this way so a renamed or absent member degrades to the fallback
-        /// instead of breaking the build against a different SDK version.
-        /// </summary>
         static float ReadFloat(object source, string fieldName, float fallback)
         {
             var type = source.GetType();

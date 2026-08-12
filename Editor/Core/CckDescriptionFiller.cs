@@ -6,42 +6,36 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Types the generated description into the CCK Content Manager's Description box.
-    ///
-    /// There is no supported route to this. ChilloutVR keeps no description on the avatar —
-    /// `CVRAssetInfo` has no such field — and the Content Manager holds the value in Unity's
-    /// `SessionState`, which `BuilderTab.SelectContent` wipes through `ClearFields()` every time
-    /// the chosen content changes. Writing that key at conversion time loses the race against the
-    /// user's own next click, so it is not attempted.
-    ///
-    /// What does work is the UI itself. The panel is a UI Toolkit window and the box is a
-    /// `TextField` named `input-description` (CCK `ContentBuilder2.uxml`). Assigning its `value`
-    /// fires the CCK's own `RegisterValueChangedCallback`, which sets `State.Description` exactly
-    /// as typing would — so the value travels the CCK's normal path to upload with nothing here
-    /// reaching into its internals.
-    ///
-    /// The costs are real and worth naming, since they decide the design:
-    ///
-    ///   * It depends on an element name inside someone else's UXML. A CCK release that renames
-    ///     it breaks this, and the break is invisible unless it is reported — hence a result the
-    ///     caller must show, and never a silent best-effort during conversion.
-    ///   * It only works while the panel is open on the Builder tab. That makes it a button the
-    ///     user presses when they are looking at the box, not a step in the conversion.
-    ///   * It must never overwrite what someone has written. An empty box is an invitation; a
-    ///     full one is a decision.
-    /// </summary>
+    // Types the generated description into the CCK Content Manager's Description box.
+    //
+    // There is no supported route to this. ChilloutVR keeps no description on the avatar .
+    // `CVRAssetInfo` has no such field; and the Content Manager holds the value in Unity's
+    // `SessionState`, which `BuilderTab.SelectContent` wipes through `ClearFields()` every time
+    // the chosen content changes. Writing that key at conversion time loses the race against the
+    // user's own next click, so it is not attempted.
+    //
+    // What does work is the UI itself. The panel is a UI Toolkit window and the box is a
+    // `TextField` named `input-description` (CCK `ContentBuilder2.uxml`). Assigning its `value`
+    // fires the CCK's own `RegisterValueChangedCallback`, which sets `State.Description` exactly
+    // as typing would; so the value travels the CCK's normal path to upload with nothing here
+    // reaching into its internals.
+    //
+    // The costs are real and worth naming, since they decide the design:
+    //
+    //   * It depends on an element name inside someone else's UXML. A CCK release that renames
+    //     it breaks this, and the break is invisible unless it is reported; hence a result the
+    //     caller must show, and never a silent best-effort during conversion.
+    //   * It only works while the panel is open on the Builder tab. That makes it a button the
+    //     user presses when they are looking at the box, not a step in the conversion.
+    //   * It must never overwrite what someone has written. An empty box is an invitation; a
+    //     full one is a decision.
     public static class CckDescriptionFiller
     {
         public enum Result
         {
-            /// <summary>Text is in the box.</summary>
             Filled,
-            /// <summary>The box already had something in it — left alone, deliberately.</summary>
             AlreadyWritten,
-            /// <summary>The CCK Control Panel isn't open.</summary>
             PanelClosed,
-            /// <summary>Panel open, but no description field on screen — wrong tab, or renamed.</summary>
             FieldMissing
         }
 
@@ -67,7 +61,6 @@ namespace AvatarBridge
             return Result.Filled;
         }
 
-        /// <summary>A sentence for the user, naming the next move rather than just the outcome.</summary>
         public static string Explain(Result result)
         {
             switch (result)
@@ -94,11 +87,6 @@ namespace AvatarBridge
                 .Any(w => w != null && w.GetType().Name == PanelTypeName);
         }
 
-        /// <summary>
-        /// Found by type NAME rather than by referencing the type, so this compiles and runs
-        /// whatever assembly the CCK ships its editor UI in, and simply finds nothing if a future
-        /// CCK drops the window entirely.
-        /// </summary>
         static TextField FindDescriptionField()
         {
             foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>())

@@ -8,23 +8,21 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Makes the merged controller self-contained: every animation clip and avatar mask it
-    /// references is copied into the conversion's RehomedAssets folder and the controller is
-    /// repointed at the copies.
-    ///
-    /// Born from a tester's frozen fingers. A converted controller referenced its clips
-    /// wherever the source avatar kept them — 71 of one avatar's 116 clips lived in the
-    /// source's own folders, including every hand-pose clip. Move that conversion to a project
-    /// without those folders and each reference silently resolves to None: the state machine
-    /// still runs, transitions still fire, and every pose "plays" as stillness, with no error
-    /// anywhere. Gestures frozen in game while the same controller works on the author's PC is
-    /// exactly how that presents.
-    ///
-    /// Two deliberate exclusions: the CCK's own assets (uploading requires the CCK installed,
-    /// so they are guaranteed present in any project that can upload), and anything already in
-    /// the output folder (ours, travels with the conversion).
-    /// </summary>
+    // Makes the merged controller self-contained: every animation clip and avatar mask it
+    // references is copied into the conversion's RehomedAssets folder and the controller is
+    // repointed at the copies.
+    //
+    // Born from a tester's frozen fingers. A converted controller referenced its clips
+    // wherever the source avatar kept them. 71 of one avatar's 116 clips lived in the
+    // source's own folders, including every hand-pose clip. Move that conversion to a project
+    // without those folders and each reference silently resolves to None: the state machine
+    // still runs, transitions still fire, and every pose "plays" as stillness, with no error
+    // anywhere. Gestures frozen in game while the same controller works on the author's PC is
+    // exactly how that presents.
+    //
+    // Two deliberate exclusions: the CCK's own assets (uploading requires the CCK installed,
+    // so they are guaranteed present in any project that can upload), and anything already in
+    // the output folder (ours, travels with the conversion).
     public static class AnimationSelfContainer
     {
         const string Category = "Animator";
@@ -39,7 +37,7 @@ namespace AvatarBridge
             string controllerPath = AssetDatabase.GetAssetPath(controller);
             if (string.IsNullOrEmpty(controllerPath))
             {
-                // Nothing on disk to keep consistent with — the saver ran before the
+                // Nothing on disk to keep consistent with; the saver ran before the
                 // controller was persisted, which is an ordering bug worth hearing about.
                 ctx.Report.Warning(Category, "Self-containment skipped",
                     "The merged controller isn't a saved asset yet, so clips were not copied.");
@@ -159,7 +157,7 @@ namespace AvatarBridge
             }
             if (motion is BlendTree tree)
             {
-                // A tree owned by some other asset can't be edited in place — that would
+                // A tree owned by some other asset can't be edited in place; that would
                 // reach into somebody else's controller. Clone it into ours first.
                 string treePath = AssetDatabase.GetAssetPath(tree);
                 if (treePath != controllerPath && NeedsCopy(treePath, outputDir, controllerPath))

@@ -5,21 +5,19 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for the pass-ordering invariant (task #5).
-    ///
-    /// The rule: a pass that rewrites animation clips must run AFTER the pass that copies those
-    /// clips into the conversion's own folder. Before this was checked, BridgeConverter carried
-    /// the rule as a comment — correct, and violated three lines above it. ConstraintConverter
-    /// rewrote curves nine passes before self-containment and edited the avatar author's own
-    /// animation files, which broke three of GoGo Loco's shipped flight clips for VRChat in a real
-    /// project. It went unseen because VRCFury bakes to a throwaway copy on most avatars, so the
-    /// bake regenerated the damage away on every run.
-    ///
-    /// The case that matters is the FIRST one: a deliberately mis-ordered pipeline must be
-    /// rejected. A validator that only ever says "fine" would have passed review and caught
-    /// nothing, which is exactly what the comment did.
-    /// </summary>
+    // Known-answer test for the pass-ordering invariant (task #5).
+    //
+    // The rule: a pass that rewrites animation clips must run AFTER the pass that copies those
+    // clips into the conversion's own folder. Before this was checked, BridgeConverter carried
+    // the rule as a comment; correct, and violated three lines above it. ConstraintConverter
+    // rewrote curves nine passes before self-containment and edited the avatar author's own
+    // animation files, which broke three of GoGo Loco's shipped flight clips for VRChat in a real
+    // project. It went unseen because VRCFury bakes to a throwaway copy on most avatars, so the
+    // bake regenerated the damage away on every run.
+    //
+    // The case that matters is the FIRST one: a deliberately mis-ordered pipeline must be
+    // rejected. A validator that only ever says "fine" would have passed review and caught
+    // nothing, which is exactly what the comment did.
     public static class PipelineOrderTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — pass ordering invariant")]
@@ -66,7 +64,7 @@ namespace AvatarBridge.Regression
             fail += Check("pipeline that edits no clips is accepted",
                 BridgePipeline.Validate(inert) == null);
 
-            // And the real thing must be sound — this is the assertion that would have caught the
+            // And the real thing must be sound; this is the assertion that would have caught the
             // shipped bug, and it runs against the pipeline BridgeConverter actually declares.
             string live = BridgeConverter.ValidateLivePipelineForTest();
             fail += Check($"the SHIPPING pipeline validates ({live ?? "sound"})", live == null);

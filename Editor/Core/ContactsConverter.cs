@@ -9,14 +9,12 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// VRC Contact system -> ChilloutVR pointers/triggers:
-    ///
-    ///   VRCContactSender    -> CVRPointer (one per collision tag) + trigger collider
-    ///   VRCContactReceiver  -> CVRAdvancedAvatarSettingsTrigger driving the parameter
-    ///   VRChat's built-in hand/head/torso colliders -> CVRPointers with standard tags,
-    ///     created only for tags the avatar's receivers actually listen to.
-    /// </summary>
+    // VRC Contact system -> ChilloutVR pointers/triggers:
+    //
+    //   VRCContactSender    -> CVRPointer (one per collision tag) + trigger collider
+    //   VRCContactReceiver  -> CVRAdvancedAvatarSettingsTrigger driving the parameter
+    //   VRChat's built-in hand/head/torso colliders -> CVRPointers with standard tags,
+    //     created only for tags the avatar's receivers actually listen to.
     public static class ContactsConverter
     {
         const string Category = "Contacts";
@@ -40,14 +38,13 @@ namespace AvatarBridge
                 }
             }
 
-            bool native = UseNativeContacts(ctx);
             foreach (var sender in senders)
             {
-                if (native) { ConvertSenderNative(ctx, sender); } else { ConvertSender(ctx, sender); }
+                ConvertSender(ctx, sender);
             }
             foreach (var receiver in receivers)
             {
-                if (native) { ConvertReceiverNative(ctx, receiver); } else { ConvertReceiver(ctx, receiver); }
+                ConvertReceiver(ctx, receiver);
             }
 
             ReportUnreachableTags(ctx, listenedTags);
@@ -62,42 +59,6 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{senders.Length} sender(s), {receivers.Length} receiver(s) converted");
             }
 
-            if (receivers.Length > 0 && UseNativeContacts(ctx))
-            {
-                // Both halves of this are read off the shipping client, and they are the reason
-                // native contacts are not the default.
-                //
-                // NAK.Contacts.ContactAnimator.ApplyValue writes the parameter with
-                // animator.SetFloat / SetBool — straight at the Animator. The outbound sync cache
-                // is only updated inside CVRAnimatorManager's own setters, so a value written that
-                // way never leaves the machine. The legacy path does the opposite:
-                // TriggerToContact calls PlayerSetup.ChangeAnimatorParam, which goes through the
-                // manager and therefore syncs.
-                //
-                // Reported by a user who could see their own headpat sparkles and pop sound and
-                // could not work out why nobody else could. The particle that DID work for
-                // everyone turned out to be one that is simply always on.
-                //
-                // Corrected after the system's author described the model: the contact is not
-                // wearer-only, it runs on EVERY client, and the clients simply disagree. He is
-                // also explicit that a native contact must drive a "#" parameter, because a synced
-                // one has the AAS default written back over it.
-                ctx.Report.Approximated(Category,
-                    $"Native contacts are on for {receivers.Length} receiver(s)",
-                    "ChilloutVR's native contact system writes its parameter directly at the " +
-                    "Animator and transmits nothing — it does not need to, because every client " +
-                    "runs the contact itself and reaches the same answer from the same collision. " +
-                    "That only holds while the parameter is LOCAL: a synced one has the declared " +
-                    "default streamed back over whatever the contact set, which is why this " +
-                    "conversion moves contact parameters to \"#\" names. Confirmed in game, with " +
-                    "sound and particles reaching other players. " +
-                    "These components are also INTERNAL TO THE GAME — the CCK does not ship them, " +
-                    "AvatarBridge declares them itself against the decompiled client, and nothing " +
-                    "obliges ChilloutVR to keep them as they are. An avatar built on them can be " +
-                    "broken by a client update with no warning and no fix but reconverting. " +
-                    "That is the reason to prefer the legacy pointer/trigger path unless you need " +
-                    "a box shape or a receiver type it does not have — not the sync, which works.");
-            }
         }
 
         static void ConvertSender(BridgeContext ctx, VRCContactSender sender)
@@ -114,6 +75,7 @@ namespace AvatarBridge
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
+                GrowZoneForSliders(ctx, contactObject, PathOf(ctx, sender.transform));
                 RecordHost(ctx, sender, isSender: true, contactObject);
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
@@ -121,16 +83,6 @@ namespace AvatarBridge
             Object.DestroyImmediate(sender);
         }
 
-        /// <summary>
-        /// Names the receivers only another copy of this same avatar can ever set off.
-        ///
-        /// A contact tag is just a word, and a receiver fires only when something SENDS that word.
-        /// Body-part tags are fine — everyone has hands. A tag the author invented ("pump",
-        /// "Balloon", a system's own private name) exists nowhere else in the game, so that
-        /// receiver is dead to every player who isn't wearing this avatar. That is often exactly
-        /// what the author intended, and just as often a surprise, so it is worth stating plainly
-        /// instead of leaving someone to wonder why nobody can trigger it.
-        /// </summary>
         static void ReportUnreachableTags(BridgeContext ctx, HashSet<string> listenedTags)
         {
             var custom = listenedTags
@@ -155,7 +107,6 @@ namespace AvatarBridge
                 "pointer names.");
         }
 
-        /// <summary>Body-part tags every player carries, whichever platform the avatar came from.</summary>
         static readonly HashSet<string> UniversalTags = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
         {
             "Head", "Torso", "Foot", "FootL", "FootR",
@@ -164,26 +115,6 @@ namespace AvatarBridge
             "FingerLittle", "FingerLittleL", "FingerLittleR",
         };
 
-        /// <summary>
-        /// VRChat contact tag -> the ChilloutVR pointer type that means the same thing, so an
-        /// ordinary ChilloutVR player can trigger a converted receiver.
-        ///
-        /// A receiver only ever fires for a tag something else is actually SENDING, and the two
-        /// platforms name the same body parts differently. Everyone in ChilloutVR carries pointers
-        /// on their hands and index fingers whatever avatar they're wearing — the client turns each
-        /// CVRPointer into a contact sender tagged with its <c>type</c> string
-        /// (<c>PointerToContact.Create</c>) — but those types are "LeftHand", "RightHand", "index",
-        /// where VRChat says "HandL", "HandR", "FingerIndexL". A converted head-pat receiver
-        /// listening for "HandR" therefore sits there forever, because nothing in the game sends
-        /// that word.
-        ///
-        /// "Hand" happens to be spelled the same on both platforms, which is why some converted
-        /// contacts work and others don't — a difference that looks arbitrary until you see the
-        /// list.
-        ///
-        /// Adding rather than replacing: the VRChat tags stay so converted avatars still trigger
-        /// each other exactly as they did, and the ChilloutVR names are extra ways in.
-        /// </summary>
         static readonly Dictionary<string, string[]> ChilloutVrPointerTypes =
             new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
             {
@@ -233,6 +164,7 @@ namespace AvatarBridge
 
             var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
+            GrowZoneForSliders(ctx, contactObject, PathOf(ctx, receiver.transform));
             RecordHost(ctx, receiver, isSender: false, contactObject);
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
@@ -262,14 +194,9 @@ namespace AvatarBridge
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                     settingName = receiver.parameter
-                    // No min/max. This used to set minValue = 1, maxValue = 0 to "invert" the
-                    // range, on the belief that ChilloutVR measures distance outward while VRChat
-                    // reads 1 at the centre. That belief was wrong: the client computes
-                    // 1 - saturate(distance / extent), which is 1 at the centre exactly like
-                    // VRChat. The inversion was only ever harmless because SetFromDistance writes
-                    // the proximity value raw — min/max are read solely by Add, Subtract and
-                    // SetFromPosition. Left in, it was a trap waiting for the day the CCK started
-                    // honouring them here.
+                    // No min/max. The client computes proximity as
+                    // 1 at the centre, exactly like VRChat, and
+                    // SetFromDistance writes the value raw.
                 });
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                     $"Proximity receiver -> distance-driven \"{receiver.parameter}\"");
@@ -277,6 +204,118 @@ namespace AvatarBridge
 
             ctx.ContactParameters.Add(receiver.parameter);
             Object.DestroyImmediate(receiver);
+        }
+
+        // A boop zone authored at 7 mm on the nose is fine; a slap zone
+        // authored on a body a slider doubles is not - the mesh grows
+        // past it and every touch lands inside the body, short of the
+        // zone. Measured the way the physics sizes are: the mesh around
+        // the zone at rest and with every animated shape at full reach.
+        // When one slider owns the growth the zone is left authored-size
+        // and ScaleZonesWithSliders animates it along; only growth spread
+        // across shapes falls back to statically sizing for the largest.
+        static void GrowZoneForSliders(BridgeContext ctx, GameObject zone, string reportPath)
+        {
+            if (!ctx.Settings.sizeContactZonesForLargest)
+            {
+                return;
+            }
+            var sphere = zone.GetComponent<SphereCollider>();
+            var capsule = zone.GetComponent<CapsuleCollider>();
+            float radius = sphere != null ? sphere.radius : capsule != null ? capsule.radius : 0f;
+            if (radius <= 0f)
+            {
+                return;
+            }
+            var scale = zone.transform.lossyScale;
+            float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
+            if (mean <= 0f)
+            {
+                return;
+            }
+            // Capture enough mesh to say what the body does here; a tiny
+            // authored zone still needs the surrounding surface read.
+            float worldRadius = radius * mean;
+            float capture = Mathf.Max(worldRadius * 2.5f, 0.06f);
+            float push = MeshGrowth.Around(ctx, zone.transform.position, capture, out var perShape);
+            if (push < 0.005f)
+            {
+                return;   // within measurement noise
+            }
+            // The surface can travel this far past where it rests, so
+            // the zone extends by the same distance. Capped so a shape
+            // that hurls vertices cannot make a zone the size of a room.
+            float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
+
+            // One slider responsible for the bulk of the push means the
+            // zone can follow it live instead of sitting at the grown
+            // size while the body is small. Contributions are grouped by
+            // what animates together — one slider driving the same shape
+            // on the body and three clothing meshes is one owner, not
+            // four rivals — and dominance is judged against the measured
+            // total, so shapes grazing the capture edge cannot dilute it.
+            var groups = new Dictionary<string, float>();
+            var reps = new Dictionary<string, (string key, float push)>();
+            foreach (var pair in perShape)
+            {
+                string g = MeshGrowth.GroupOf(ctx, pair.Key);
+                groups.TryGetValue(g, out float sum);
+                groups[g] = sum + pair.Value;
+                if (!reps.TryGetValue(g, out var rep) || pair.Value > rep.push)
+                {
+                    reps[g] = (pair.Key, pair.Value);
+                }
+            }
+            string bestGroup = null;
+            float bestSum = 0f;
+            foreach (var pair in groups)
+            {
+                if (pair.Value > bestSum)
+                {
+                    bestSum = pair.Value;
+                    bestGroup = pair.Key;
+                }
+            }
+            if (bestGroup != null && bestSum >= 0.7f * push)
+            {
+                string representative = reps[bestGroup].key;
+                float reach = MeshGrowth.ReachOf(ctx, representative);
+                if (reach > 0.01f)
+                {
+                    ctx.ZoneSliderGrowth.Add((
+                        BridgeContext.RelativePath(ctx.Target.transform, zone.transform),
+                        representative, growth, reach, reportPath));
+                    return;
+                }
+            }
+
+            string contributors = perShape.Count == 0
+                ? "no single animated shape could be attributed"
+                : "largest: " + string.Join(", ", perShape
+                    .OrderByDescending(p => p.Value).Take(3)
+                    .Select(p => $"\"{p.Key.Substring(p.Key.LastIndexOf('|') + 1)}\" {p.Value * 100f:0.#} cm"));
+            GrowStatically(zone, growth);
+            ctx.Report.Converted(Category, reportPath,
+                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
+                "the sliders make the body — an animated blendshape can push the mesh past the " +
+                "authored size, and a zone inside the body cannot be touched. The growth here is " +
+                $"spread across shapes ({contributors}), so the zone holds the grown size instead " +
+                "of following one slider.");
+        }
+
+        internal static void GrowStatically(GameObject zone, float growth)
+        {
+            var sphere = zone.GetComponent<SphereCollider>();
+            var capsule = zone.GetComponent<CapsuleCollider>();
+            if (sphere != null)
+            {
+                sphere.radius *= growth;
+            }
+            if (capsule != null)
+            {
+                capsule.radius *= growth;
+                capsule.height *= growth;
+            }
         }
 
         static CVRAdvancedAvatarSettingsTriggerTask MakeTask(string parameter, float value, float delay)
@@ -291,493 +330,6 @@ namespace AvatarBridge
             };
         }
 
-        // --- ChilloutVR's native contact system ---------------------------------------
-        //
-        // The components line up with VRChat's almost field for field, so this is a copy rather
-        // than an impersonation: same shapes, same collision tags, same allowSelf/allowOthers/
-        // localOnly, real proximity. They also need no Unity collider — the shape lives on the
-        // component — and contacts are per-client by design (confirmed in game): every client
-        // simulates every avatar's contacts itself, so reactions cross the network with no sync
-        // involved and nothing here costs sync bits; whether a driven parameter's VALUE
-        // replicates is its own AAS declaration's business. The field layout comes from the
-        // DECOMPILED SHIPPED CLIENT, never from the author's public repo — see ContactStubPatcher
-        // for the revision-5 incident where trusting the repo made every receiver deaf.
-        //
-        // ContactStubPatcher supplies the declarations; the game holds the implementation.
-
-        // ChilloutVR's native contact components, reached entirely through reflection.
-        //
-        // Deliberately NOT behind a scripting define. An earlier version gated this on
-        // AVATARBRIDGE_CONTACTS and named NAK.Contacts directly, which deadlocks: the define is
-        // set from a generated file in Assembly-CSharp while this file lives in the editor
-        // assembly, and the moment those two disagree the editor assembly stops compiling — which
-        // takes BridgeDefines with it, so the one piece of code that could clear the define can no
-        // longer run. The only way out was editing Player Settings by hand. Reflection removes the
-        // possibility entirely: nothing here needs those types at compile time, so a missing or
-        // half-written stub degrades to the legacy path instead of bricking the project.
-        //
-        // Same approach CreateParameterStreams already takes with the CCK.
-
-        const string NakSender = "NAK.Contacts.ContactSender";
-        const string NakReceiver = "NAK.Contacts.ContactReceiver";
-        const string NakAnimator = "NAK.Contacts.ContactAnimator";
-
-        /// <summary>The native contact component type, or null when the game's stubs are absent.
-        /// Internal so the system stripper can find the same components without naming the type
-        /// at compile time either — see the comment above for why nothing here may.</summary>
-        internal static System.Type NativeContactAnimatorType => FindType(NakAnimator);
-
-        internal static System.Type FindType(string fullName)
-        {
-            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var type = assembly.GetType(fullName, false);
-                    if (type != null)
-                    {
-                        return type;
-                    }
-                }
-                catch
-                {
-                    // Reflection-only or broken assemblies can throw; ignore them.
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Native contact components address their parameter by NAME, so every rename the animator
-        /// merge applied has to be followed here too. Runs after the merge for that reason.
-        ///
-        /// Without it a contact whose parameter was sanitised for the CCK — or made local, which
-        /// the native system requires — kept pointing at a name the finished controller no longer
-        /// declares, and drove nothing. Nothing in the controller looks wrong when this happens:
-        /// it renamed itself consistently, and the component is not part of it.
-        /// </summary>
-        public static void RepointContactParameters(BridgeContext ctx)
-        {
-            var type = FindType(NakAnimator);
-            if (type == null)
-            {
-                return;
-            }
-            var field = type.GetField("parameter", BindingFlags.Public | BindingFlags.Instance);
-            if (field == null)
-            {
-                return;
-            }
-            if (ctx.AppliedParameterRenames.Count == 0)
-            {
-                // Nothing was renamed, so nothing needs following — but a contact can still be
-                // addressing a name that does not exist, and that question is asked either way.
-                ReportInertContacts(ctx, type, field);
-                return;
-            }
-            var moved = new SortedSet<string>(System.StringComparer.Ordinal);
-            foreach (var component in ctx.Target.GetComponentsInChildren(type, true))
-            {
-                string current = field.GetValue(component) as string;
-                if (string.IsNullOrEmpty(current)
-                    || !ctx.AppliedParameterRenames.TryGetValue(current, out string final)
-                    || final == current)
-                {
-                    continue;
-                }
-                field.SetValue(component, final);
-                moved.Add($"\"{current}\" -> \"{final}\"");
-            }
-            if (moved.Count > 0)
-            {
-                ctx.Report.Converted(Category,
-                    $"{moved.Count} native contact(s) repointed at their renamed parameter",
-                    string.Join(", ", moved) + " — a contact component addresses its parameter by " +
-                    "name, and the animator renamed those while making them CCK-safe or local. " +
-                    "The component is not part of the controller, so it does not follow along by " +
-                    "itself, and one left behind drives a parameter nothing declares.");
-            }
-
-            ReportInertContacts(ctx, type, field);
-        }
-
-        /// <summary>
-        /// Names contacts whose parameter the finished controller does not have.
-        ///
-        /// The write is a no-op — nothing declares the name, so nothing can read it — which is why
-        /// this is a warning about a lost feature rather than a fault to fix. It is worth saying
-        /// out loud because a contact that does nothing looks exactly like a contact that is
-        /// broken, and the avatar's owner is the only one who can tell which they meant.
-        ///
-        /// Contacts belonging to a system this conversion STRIPPED are already gone by here — the
-        /// stripper removes those with the rest of the system. What reaches this point is a
-        /// receiver whose parameter was missing in the source too.
-        ///
-        /// Asked of the controller rather than of the menu: a menu entry drives a controller
-        /// parameter, so a name absent from the controller is absent everywhere that matters.
-        /// </summary>
-        static void ReportInertContacts(BridgeContext ctx, System.Type type, FieldInfo field)
-        {
-            if (ctx.MergedController == null)
-            {
-                return;
-            }
-            var declared = new HashSet<string>(
-                ctx.MergedController.parameters.Select(p => p.name), System.StringComparer.Ordinal);
-            var inert = new SortedSet<string>(System.StringComparer.Ordinal);
-            foreach (var component in ctx.Target.GetComponentsInChildren(type, true))
-            {
-                string name = field.GetValue(component) as string;
-                if (!string.IsNullOrEmpty(name) && !declared.Contains(name))
-                {
-                    inert.Add(name);
-                }
-            }
-            if (inert.Count == 0)
-            {
-                return;
-            }
-            ctx.Report.Warning(Category,
-                $"{inert.Count} contact(s) drive a parameter nothing on this avatar reads",
-                string.Join(", ", inert.Select(n => $"\"{n}\"")) + " — the animator has no such " +
-                "parameter, so touching these does nothing. That is how they arrived: the " +
-                "receiver is in the source avatar but whatever used to read it is not, usually " +
-                "because the layer was part of a system removed before the avatar was shared. " +
-                "Nothing is broken by leaving them, though every client that can see you tests " +
-                "them for collisions anyway. Delete the contact objects, or wire the parameter " +
-                "back up if the feature is one you wanted.");
-        }
-
-        static void SetMember(object target, string field, object value)
-        {
-            if (target == null || value == null)
-            {
-                return;
-            }
-            var f = target.GetType().GetField(field, BindingFlags.Public | BindingFlags.Instance);
-            if (f != null)
-            {
-                try { f.SetValue(target, value); } catch { }
-            }
-        }
-
-        static object EnumValue(System.Type sibling, string enumName, string member)
-        {
-            var enumType = sibling.Assembly.GetType("NAK.Contacts." + enumName, false);
-            if (enumType == null)
-            {
-                return null;
-            }
-            try { return System.Enum.Parse(enumType, member, true); } catch { return null; }
-        }
-
-        /// <summary>
-        /// Every flag ContentType defines, OR'd together — computed from the live enum rather
-        /// than a literal, so a client build adding a flag is included automatically.
-        /// </summary>
-        static object AllContentTypes(System.Type sibling)
-        {
-            var enumType = sibling.Assembly.GetType("NAK.Contacts.ContentType", false);
-            if (enumType == null)
-            {
-                return null;
-            }
-            try
-            {
-                int all = 0;
-                foreach (var v in System.Enum.GetValues(enumType))
-                {
-                    all |= System.Convert.ToInt32(v);
-                }
-                return System.Enum.ToObject(enumType, all);
-            }
-            catch { return null; }
-        }
-
-        static bool UseNativeContacts(BridgeContext ctx)
-        {
-            if (!ctx.Settings.useNativeContacts)
-            {
-                return false;
-            }
-            var receiver = FindType(NakReceiver);
-            if (receiver != null && FindType(NakSender) != null && FindType(NakAnimator) != null)
-            {
-                // The type resolving is not enough. A component only survives serialization if
-                // Unity can tie it back to a script asset, and it can't when the declarations
-                // exist solely in a stale compiled assembly — the .cs having been deleted, or not
-                // yet imported. AddComponent still succeeds there, and writes a script reference
-                // with no GUID at all, which fails in the CCK's validator and again in ChilloutVR
-                // as "the referenced script on this Behaviour is missing". The avatar looks
-                // perfectly converted right up until it doesn't work.
-                //
-                // So prove it on a throwaway object before committing the whole conversion to it.
-                var probe = new GameObject("AvatarBridge_ContactProbe") { hideFlags = HideFlags.HideAndDontSave };
-                try
-                {
-                    // Exactly the CCK's own test, from its BrokenMonoBehaviourStep validator:
-                    // MonoScript.FromMonoBehaviour(...).text must be non-empty. Checking only for
-                    // a non-null MonoScript is not enough and let this through once already — when
-                    // Assembly-CSharp has failed to compile, Unity keeps the last good assembly
-                    // loaded, so the type still resolves and AddComponent still succeeds, but it
-                    // binds to something with no script asset behind it. The reference serializes
-                    // without a GUID, the CCK rejects the avatar, and ChilloutVR reports the script
-                    // as missing. Empty source text is what distinguishes that from a real binding.
-                    var added = probe.AddComponent(receiver) as MonoBehaviour;
-                    var script = added != null ? UnityEditor.MonoScript.FromMonoBehaviour(added) : null;
-                    if (script != null && !string.IsNullOrEmpty(script.text))
-                    {
-                        return true;
-                    }
-                    // Almost always the same cause, so name it rather than describe symptoms.
-                    //
-                    // A scene holding a MonoBehaviour whose script reference is dangling makes
-                    // Unity manufacture a placeholder MonoScript for that class — no asset, no
-                    // source text, a negative instance id. That placeholder then wins when
-                    // AddComponent looks the class up, so every NEW component is bound to it and
-                    // is born broken too. One bad conversion left in the scene therefore poisons
-                    // every conversion after it, including ones that would otherwise be correct,
-                    // and no amount of fixing the generated declarations helps while it is there.
-                    bool phantom = HasPhantomContactScript(out string phantomClass);
-                    string cause = phantom
-                        ? $"There is already a broken \"{phantomClass}\" component in a loaded scene — most " +
-                          "likely a contact object from an earlier conversion. Unity creates a placeholder " +
-                          "script for it, and that placeholder takes precedence when new components are " +
-                          "created, so this cannot succeed until it is gone. Delete the leftover Contact_* " +
-                          "objects (or the whole previously converted avatar), reopen the scene so the " +
-                          "placeholder is dropped, then convert again."
-                        : "Unity produced no script asset for the component. Check that " +
-                          "AvatarBridge/Runtime contains the generated declarations and that the project " +
-                          "compiled cleanly, then convert again.";
-
-                    ctx.Report.Error(Category, "Native contacts unusable; used the legacy path", cause +
-                        " Contacts were converted to pointers and triggers instead, which work. " +
-                        "Tools > Avatar Bridge > Diagnose native contacts prints the full picture.");
-                    return false;
-                }
-                finally
-                {
-                    Object.DestroyImmediate(probe);
-                }
-            }
-            ctx.Report.Warning(Category, "Native contacts unavailable; used the legacy path",
-                "\"Use native contacts\" is on, but ChilloutVR's contact components aren't declared in this " +
-                "project. That normally means the installed CCK is newer than the one AvatarBridge verified " +
-                "its declarations against, so ContactStubPatcher declined to generate them — see the console " +
-                "for the exact version. Contacts were converted to pointers and triggers instead.");
-            return false;
-        }
-
-        /// <summary>
-        /// True when Unity holds a MonoScript for one of the contact classes that has no asset
-        /// behind it — the placeholder it manufactures for a component whose script reference is
-        /// dangling. Its presence is what stops any new component binding correctly.
-        /// </summary>
-        static bool HasPhantomContactScript(out string className)
-        {
-            className = null;
-            UnityEditor.MonoScript[] all;
-            try { all = UnityEditor.MonoImporter.GetAllRuntimeMonoScripts(); }
-            catch { return false; }
-
-            foreach (var ms in all)
-            {
-                System.Type type;
-                try { type = ms.GetClass(); } catch { continue; }
-                if (type == null || type.Namespace != "NAK.Contacts")
-                {
-                    continue;
-                }
-                if (string.IsNullOrEmpty(ms.text) && string.IsNullOrEmpty(UnityEditor.AssetDatabase.GetAssetPath(ms)))
-                {
-                    className = type.FullName;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        static void ConvertSenderNative(BridgeContext ctx, VRCContactSender sender)
-        {
-            if (sender.collisionTags.Count == 0)
-            {
-                Object.DestroyImmediate(sender);
-                return;
-            }
-
-            var host = NativeContactObject(sender.rootTransform, sender.transform, "Contact_Sender");
-            RecordHost(ctx, sender, isSender: true, host);
-            var contact = host.AddComponent(FindType(NakSender));
-            ApplyShape(contact, sender.shapeType, sender.radius, sender.height, sender.position, sender.rotation);
-            var tags = sender.collisionTags.Distinct().ToArray();
-            SetMember(contact, "collisionTags", tags);
-            SetMember(contact, "contentTypes", AllContentTypes(contact.GetType()));
-
-            ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
-                $"Sender -> native ContactSender ({string.Join(", ", tags)})");
-            Object.DestroyImmediate(sender);
-        }
-
-        static void ConvertReceiverNative(BridgeContext ctx, VRCContactReceiver receiver)
-        {
-            if (receiver.collisionTags.Count == 0 || string.IsNullOrEmpty(receiver.parameter))
-            {
-                Object.DestroyImmediate(receiver);
-                return;
-            }
-
-            // One receiver per GameObject: ContactAnimator pairs with its receiver through
-            // TryGetComponent, which would hand every animator on a shared object the same first
-            // receiver.
-            var host = NativeContactObject(receiver.rootTransform, receiver.transform,
-                "Contact_" + receiver.parameter);
-            RecordHost(ctx, receiver, isSender: false, host);
-
-            var receiverType = FindType(NakReceiver);
-            var contact = host.AddComponent(receiverType);
-            ApplyShape(contact, receiver.shapeType, receiver.radius, receiver.height,
-                receiver.position, receiver.rotation);
-            // Same widening as the CVRAdvancedAvatarSettingsTrigger path — a native receiver is
-            // matched against the very same tags, so it needs the ChilloutVR pointer names too.
-            SetMember(contact, "collisionTags", WithChilloutVrPointerTypes(receiver.collisionTags));
-            SetMember(contact, "allowSelf", receiver.allowSelf);
-            SetMember(contact, "allowOthers", receiver.allowOthers);
-            SetMember(contact, "localOnly", receiver.localOnly);
-            // contentTypes is written EXPLICITLY, always, to every flag the client defines. It
-            // is a mask over the SENDER's source type, and the client's built-in hand/finger
-            // senders are SourceContentType.Player (ContactsTools, decompiled) — a receiver
-            // whose mask lacks the Player bit can never be touched by another player's hands.
-            // 2.50.3 relied on the stub's field default for this, the stub's default briefly
-            // lost the Player flag, and every converted receiver went silently deaf: a default
-            // is a hidden dependency, an explicit write is a fact.
-            SetMember(contact, "contentTypes", AllContentTypes(receiverType));
-
-            string typeName = receiver.receiverType.ToString();
-            string nativeType = typeName.Contains("OnEnter") ? "OnEnter"
-                // 1 at the centre falling to 0 at the edge, the same reading VRChat gives.
-                : typeName.Contains("Proximity") ? "ProximitySenderToReceiver"
-                : "Constant";
-            SetMember(contact, "receiverType", EnumValue(receiverType, "ReceiverType", nativeType));
-
-            // A native contact must drive a LOCAL parameter. It writes straight at the Animator
-            // without filling the outbound AAS buffer, so a synced name has the declared default
-            // streamed back over every value the contact sets — which is the "it only syncs
-            // sometimes" this tool used to cause, and it costs the wearer the contact as often as
-            // it costs everyone else. Made local, the system does what it was built to do: every
-            // client runs the contact itself and reaches the same answer from the same collision.
-            //
-            // Which route gets there is decided PER PARAMETER, because only one thing can stop
-            // the simple route — a menu control driving the same name, which has to stay synced
-            // to reach anyone. That is rare, so it does not deserve a setting; it deserves the
-            // other route. This used to be a global tickbox that had to be right for the whole
-            // avatar at once, and the avatar is not uniform.
-            string driven = receiver.parameter;
-            bool analog = typeName.Contains("Proximity");
-            if (!driven.StartsWith("#", System.StringComparison.Ordinal))
-            {
-                bool onMenu = ctx.CvrAvatar?.avatarSettings?.settings != null
-                    && ctx.CvrAvatar.avatarSettings.settings
-                        .Any(s => s != null && s.machineName == driven);
-                if (!onMenu)
-                {
-                    // The simple route: the parameter itself becomes "#name" everywhere. The
-                    // rename pass moves the declaration, every clip binding and every condition
-                    // together, so the animations keep reading whatever it ends up called.
-                    ctx.LocalContactParameters.Add(driven);
-                }
-                else if (!analog)
-                {
-                    // The menu needs this name synced, so the contact cannot have it. Give the
-                    // contact a local name of its own and let a driver copy the value across —
-                    // a driver writes through the animator manager, so it is transmitted.
-                    //
-                    // Recorded once per PAIR, not once per receiver. Several receivers sharing a
-                    // parameter is ordinary — a left and a right nipple, ear or hand all driving
-                    // one name — and they share the local name too, so a second entry would build
-                    // a second layer reading the same source and writing the same target. Those
-                    // duplicates agree with each other, so nothing misbehaves; they are simply a
-                    // layer and a driver call of pure waste on most symmetric avatars.
-                    string local = "#" + driven + "_contact";
-                    if (!ctx.BridgedContacts.Contains((local, driven)))
-                    {
-                        ctx.BridgedContacts.Add((local, driven));
-                    }
-                    driven = local;
-                }
-                else
-                {
-                    // Analog AND menu-driven: neither route exists. It cannot be made local
-                    // without taking the menu entry off the network, and a driver writes on
-                    // entering a state, so it can carry an on/off reading exactly and a smooth
-                    // one only in steps. Left alone and named rather than quietly degraded.
-                    ctx.Report.Warning(Category, PathOf(ctx, receiver.transform),
-                        $"\"{driven}\" is a proximity contact whose parameter a MENU control also " +
-                        "drives, and those two cannot both be satisfied. The menu needs the name " +
-                        "synced; the contact needs it local, or the sync stream writes the " +
-                        "declared default back over whatever it sets. A driver would bridge the " +
-                        "gap for an on/off contact but can only carry this one's smooth range in " +
-                        "steps. Give the menu control its own parameter, or move this contact to " +
-                        "the legacy path, which has neither problem.");
-                }
-            }
-
-            var animator = host.AddComponent(FindType(NakAnimator));
-            SetMember(animator, "animator", ctx.Target.GetComponent<Animator>());
-            SetMember(animator, "parameter", driven);
-
-            ctx.ContactParameters.Add(receiver.parameter);
-            ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
-                $"{typeName} receiver -> native ContactReceiver driving \"{driven}\"" +
-                (driven != receiver.parameter
-                    ? $", carried to \"{receiver.parameter}\" by a driver so other players see it"
-                    : "") +
-                (receiver.localOnly ? " (localOnly preserved)" : ""));
-            Object.DestroyImmediate(receiver);
-        }
-
-        static void ApplyShape(Component contact, VRC.Dynamics.ContactBase.ShapeType shapeType,
-            float radius, float height, Vector3 position, Quaternion rotation)
-        {
-            bool sphere = shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere;
-            SetMember(contact, "shapeType", EnumValue(contact.GetType(), "ShapeType", sphere ? "Sphere" : "Capsule"));
-            SetMember(contact, "radius", radius);
-            SetMember(contact, "height", height);
-            SetMember(contact, "localPosition", position);
-            SetMember(contact, "localRotation", sphere ? Quaternion.identity : rotation);
-        }
-
-        /// <summary>
-        /// A child of whatever the VRChat contact was anchored to — its rootTransform when it set
-        /// one, otherwise its own transform — left at identity so the component's own
-        /// localPosition/localRotation carry the offset, as the native system expects.
-        /// </summary>
-        static GameObject NativeContactObject(Transform root, Transform fallback, string name)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(root != null ? root : fallback, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = Vector3.one;
-            return go;
-        }
-
-
-        /// <summary>
-        /// The object a VRC contact's shape is actually anchored to. VRChat positions the shape
-        /// relative to <c>rootTransform</c> when it is set — the component itself often lives
-        /// somewhere central (VRCFury bakes them that way; hand-authored head-pat receivers do it
-        /// too) while the shape rides a bone. The native path always honoured this; the legacy
-        /// path used to parent under the component's own object, so any contact using the
-        /// override converted mis-anchored and did not follow its bone. Found by a completion
-        /// verification pass, wild frequency measured by ComponentCensus.
-        ///
-        /// One VRChat behaviour is knowingly NOT reproduced by anchoring here: disabling the
-        /// COMPONENT's GameObject disables the contact in VRChat even when the shape rides a
-        /// different bone. Animated enable curves are repointed at the host and still work; a raw
-        /// object toggle of the component's (now different) object no longer reaches it. The
-        /// native path has always had the same trade, and a shape that follows its bone is the
-        /// half testers actually see.
-        /// </summary>
         static GameObject AnchorOf(VRC.Dynamics.ContactBase contact)
         {
             return contact.rootTransform != null
@@ -785,11 +337,6 @@ namespace AvatarBridge
                 : contact.gameObject;
         }
 
-        /// <summary>
-        /// Remembers where a VRC contact's replacement landed, keyed by the ORIGINAL component's
-        /// animator path — which is exactly what an m_Enabled curve binding carries. The path is
-        /// captured here, before the VRC component is destroyed.
-        /// </summary>
         static void RecordHost(BridgeContext ctx, Component original, bool isSender, GameObject host)
         {
             string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
@@ -802,29 +349,6 @@ namespace AvatarBridge
             hosts.Add(hostPath);
         }
 
-        /// <summary>
-        /// Rewires animated contact on/off switches at the converted contacts. Runs after the
-        /// animator merge, from BridgeConverter, exactly like the constraint-curve repoint.
-        ///
-        /// VRChat avatars animate <c>VRCContactReceiver.m_Enabled</c> to switch a contact off —
-        /// "disable head pats" is built this way. Conversion deletes that component, and a curve
-        /// still addressing it plays as silence: the menu entry converts, the parameter syncs, the
-        /// layer plays, and the contact never turns off. Found by a tester reading the converted
-        /// inspector against the VRChat one.
-        ///
-        /// The retarget is the generated host object's ACTIVE state, not the new component's
-        /// enabled flag, and the choice is from the decompiled client, both paths:
-        ///   - Native: NAK.Contacts.ContactBase registers in OnEnable and de-registers in
-        ///     OnDisable, so object active works — and it also carries
-        ///     OnDidApplyAnimationProperties, so these components are BUILT to be animated.
-        ///   - Legacy: TriggerToContact.Create DISABLES the CVRAdvancedAvatarSettingsTrigger
-        ///     wrapper the moment it builds the backing contact, so animating the wrapper's
-        ///     enabled flag does nothing — but the backing contact is created on the wrapper's
-        ///     own GameObject, so deactivating the object disables it properly.
-        /// Every replacement lives on a generated host object of its own, which is what makes one
-        /// rule serve both paths. A legacy sender with several tags became several pointer
-        /// objects, so one enable curve fans out to each.
-        /// </summary>
         internal static void RepointContactEnableCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null || ctx.ContactHosts.Count == 0)
@@ -842,9 +366,48 @@ namespace AvatarBridge
             }
 
             int repointed = 0;
+            int mirrored = 0;
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
+                // A toggle that animates the contact's OBJECT rather than
+                // the component gated the contact just as hard in VRChat:
+                // the component died with its container. The host is
+                // parented at the shape's anchor, not under the container,
+                // so the curve is copied onto it — copied, not moved,
+                // because the container often holds the reaction's sound
+                // and particles too.
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
+                    {
+                        continue;
+                    }
+                    // Ancestors count: deactivating a parent killed every
+                    // contact below it, and toggles usually switch the
+                    // group object rather than each component's own.
+                    foreach (var entry in ctx.ContactHosts)
+                    {
+                        string owner = entry.Key.path;
+                        if (owner != binding.path
+                            && !owner.StartsWith(binding.path + "/", System.StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        foreach (var hostPath in entry.Value)
+                        {
+                            var hostBinding = UnityEditor.EditorCurveBinding.FloatCurve(
+                                hostPath, typeof(GameObject), "m_IsActive");
+                            if (UnityEditor.AnimationUtility.GetEditorCurve(clip, hostBinding) == null)
+                            {
+                                UnityEditor.AnimationUtility.SetEditorCurve(clip, hostBinding, curve);
+                                mirrored++;
+                            }
+                        }
+                    }
+                }
+
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
                     bool sender = binding.type == typeof(VRCContactSender);
@@ -865,22 +428,18 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    bool native = ctx.Settings != null && ctx.Settings.useNativeContacts;
-                    var nakType = native ? FindType(sender ? NakSender : NakReceiver) : null;
                     string prop = binding.propertyName;
 
-                    // What each property maps to differs by path, and each verdict is from the
+                    // What each property maps to, each verdict from the
                     // shipped client rather than hope:
-                    //   m_Enabled     -> host object active, both paths (ContactBase and the
-                    //                    legacy backing contact both register in OnEnable).
-                    //   position.xyz  -> legacy: the host TRANSFORM carries the offset, so the
-                    //                    curve maps 1:1 onto m_LocalPosition. Native: the host
-                    //                    sits at identity and the offset lives in the component's
-                    //                    localPosition FIELD — animating that works because
-                    //                    ContactBase carries OnDidApplyAnimationProperties.
-                    //   allowSelf/allowOthers/localOnly -> native only, same field animation.
-                    //                    Legacy bakes them into the backing contact at Create and
-                    //                    never looks again, so those drop with the warning.
+                    //   m_Enabled     -> host object active (the backing
+                    //                    contact registers in OnEnable).
+                    //   position.xyz  -> the host transform carries the
+                    //                    offset, 1:1 onto m_LocalPosition.
+                    //   allowSelf/allowOthers/localOnly -> baked into the
+                    //                    backing contact at Create and never
+                    //                    read again, so those drop with the
+                    //                    warning.
                     UnityEditor.EditorCurveBinding? target = null;
                     if (prop == "m_Enabled")
                     {
@@ -889,14 +448,7 @@ namespace AvatarBridge
                     else if (prop.StartsWith("position.", System.StringComparison.Ordinal))
                     {
                         string axis = prop.Substring("position.".Length);
-                        target = native && nakType != null
-                            ? UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, "localPosition." + axis)
-                            : UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(Transform), "m_LocalPosition." + axis);
-                    }
-                    else if (native && nakType != null
-                             && (prop == "allowSelf" || prop == "allowOthers" || prop == "localOnly"))
-                    {
-                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, nakType, prop);
+                        target = UnityEditor.EditorCurveBinding.FloatCurve(null, typeof(Transform), "m_LocalPosition." + axis);
                     }
 
                     if (target == null)
@@ -914,13 +466,20 @@ namespace AvatarBridge
                 }
             }
 
-            if (repointed > 0)
+            if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed} contact animation(s) rewired",
+                ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
                     "Curves that switched a VRChat contact on and off now toggle the converted " +
                     "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
                     "body part) now drive the converted contact's offset — the forms ChilloutVR " +
-                    "honours on each path. Without this the toggle's menu entry, parameter and " +
+                    "honours. " +
+                    (mirrored > 0
+                        ? $"{mirrored} of them switched the contact's parent object rather than " +
+                          "the component — in VRChat the contact died with its container, and " +
+                          "the converted zone lives at the shape's anchor instead, so those " +
+                          "curves now reach it too. "
+                        : "") +
+                    "Without this the toggle's menu entry, parameter and " +
                     "layer all convert and the contact just never switches or moves.");
             }
             if (dropped.Count > 0)
@@ -931,6 +490,544 @@ namespace AvatarBridge
                     "(a shape radius, or a filter on the pointer/trigger path, which bakes its " +
                     "filters once at load), or a contact that was not converted. The curve was " +
                     "removed rather than left silently addressing a deleted component.");
+            }
+        }
+
+        // Runs after both repoint passes, because the merge's own restore
+        // passes ran before the rewiring existed, on bindings naming
+        // deleted VRChat components they could not sample.
+        //
+        // The rewiring folds two VRChat properties into one zone binding,
+        // and layers that never fought before now write over each other.
+        // ChilloutVR restores nothing a state does not write, so each
+        // layer is settled by what it says across ALL its clips:
+        //   on and off  -> a real toggle; untouched, and it owns the zone.
+        //   on only     -> VRCFury's baked Write Defaults residue,
+        //                  asserting rest from a later layer every frame,
+        //                  which is what overrode the toggles. Stripped.
+        //   off only    -> a switch-off nothing takes back. In a blend
+        //                  tree (the spawn-time receiver guard) the off
+        //                  curve is removed; suppression for a few load
+        //                  frames is not worth zones dead forever. In
+        //                  plain states the other states get the rest
+        //                  value written in, the same answer the old
+        //                  Write Defaults gave.
+        internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null)
+            {
+                return;
+            }
+            var hostPaths = new HashSet<string>();
+            foreach (var hosts in ctx.ContactHosts.Values)
+            {
+                hostPaths.UnionWith(hosts);
+            }
+            foreach (var hosts in ctx.PhysicsColliderHosts.Values)
+            {
+                hostPaths.UnionWith(hosts);
+            }
+            if (hostPaths.Count == 0)
+            {
+                return;
+            }
+
+            int balanced = 0;
+            int stripped = 0;
+            int layersTouched = 0;
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                // A constant in an additive layer adds instead of asserting.
+                if (layer.blendingMode == UnityEditor.Animations.AnimatorLayerBlendingMode.Additive)
+                {
+                    continue;
+                }
+
+                var states = new List<UnityEditor.Animations.AnimatorState>();
+                var trees = new List<UnityEditor.Animations.BlendTree>();
+                var clips = new HashSet<AnimationClip>();
+                var clipsInTrees = new HashSet<AnimationClip>();
+                var clipsInServiceTrees = new HashSet<AnimationClip>();
+                var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
+
+                // A tree a menu control drives is a toggle. A Direct tree,
+                // or one keyed on an internal parameter (VRCFury's
+                // counters and math), is service plumbing; a zone write
+                // inside one is baked residue, never the user's switch.
+                var menuParameters = new HashSet<string>();
+                if (ctx.CvrAvatar?.avatarSettings?.settings != null)
+                {
+                    foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+                    {
+                        if (entry != null && !string.IsNullOrEmpty(entry.machineName))
+                        {
+                            menuParameters.Add(entry.machineName);
+                        }
+                    }
+                }
+
+                void Collect(Motion motion, bool viaTree, bool viaService)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        clips.Add(clip);
+                        if (viaTree)
+                        {
+                            clipsInTrees.Add(clip);
+                        }
+                        if (viaService)
+                        {
+                            clipsInServiceTrees.Add(clip);
+                        }
+                    }
+                    else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
+                    {
+                        trees.Add(tree);
+                        // Not inherited: VRCFury reuses the same toggle
+                        // tree as a child of its math layer, and a menu
+                        // gated tree is a toggle wherever it sits. Its
+                        // clips are shared with the toggle's own layer,
+                        // so stripping them through the service route
+                        // would break the toggle everywhere at once.
+                        bool service = tree.blendType == UnityEditor.Animations.BlendTreeType.Direct
+                            || !menuParameters.Contains(tree.blendParameter);
+                        foreach (var child in tree.children)
+                        {
+                            Collect(child.motion, true, service);
+                        }
+                    }
+                }
+
+                void Walk(UnityEditor.Animations.AnimatorStateMachine machine)
+                {
+                    if (machine == null)
+                    {
+                        return;
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state == null)
+                        {
+                            continue;
+                        }
+                        states.Add(child.state);
+                        Collect(child.state.motion, false, false);
+                    }
+                    foreach (var sub in machine.stateMachines)
+                    {
+                        Walk(sub.stateMachine);
+                    }
+                }
+                Walk(layer.stateMachine);
+
+                // Every clip in this layer writing a zone.
+                var carriers = new Dictionary<UnityEditor.EditorCurveBinding, List<AnimationClip>>();
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive"
+                            || !hostPaths.Contains(binding.path))
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        if (!carriers.TryGetValue(binding, out var list))
+                        {
+                            carriers[binding] = list = new List<AnimationClip>();
+                        }
+                        list.Add(clip);
+                    }
+                }
+                if (carriers.Count == 0)
+                {
+                    continue;
+                }
+
+                var stripPairs = new List<(AnimationClip clip, UnityEditor.EditorCurveBinding binding)>();
+                var toFill = new List<UnityEditor.EditorCurveBinding>();
+                foreach (var binding in carriers.Keys)
+                {
+                    // Service writes go regardless of value; the toggle
+                    // verdict is taken from what remains.
+                    var owned = new List<AnimationClip>();
+                    foreach (var clip in carriers[binding])
+                    {
+                        if (clipsInServiceTrees.Contains(clip))
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
+                        else
+                        {
+                            owned.Add(clip);
+                        }
+                    }
+                    if (owned.Count == 0)
+                    {
+                        continue;
+                    }
+                    float top = float.MinValue;
+                    float bottom = float.MaxValue;
+                    foreach (var clip in owned)
+                    {
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        top = Mathf.Max(top, curve.keys.Max(k => k.value));
+                        bottom = Mathf.Min(bottom, curve.keys.Min(k => k.value));
+                    }
+                    bool switchesOn = top > 0.5f;
+                    bool switchesOff = bottom <= 0.5f;
+                    if (switchesOn && switchesOff)
+                    {
+                        continue;   // a real toggle; it owns the zone
+                    }
+                    if (switchesOn)
+                    {
+                        // Asserts rest and nothing else: Write Defaults
+                        // residue, and it overrides real toggles below it.
+                        foreach (var clip in owned)
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
+                        continue;
+                    }
+                    // Off with no way back.
+                    if (owned.Any(c => clipsInTrees.Contains(c)))
+                    {
+                        // A constant restore in a sibling slot fights the
+                        // blend; drop the suppression instead.
+                        foreach (var clip in owned)
+                        {
+                            stripPairs.Add((clip, binding));
+                        }
+                    }
+                    else
+                    {
+                        // Restore to what the avatar rests at. A zone
+                        // authored inactive rests off; 0 is already right.
+                        var t = ctx.Target.transform.Find(binding.path);
+                        if (t != null && t.gameObject.activeSelf)
+                        {
+                            toFill.Add(binding);
+                        }
+                    }
+                }
+                if (stripPairs.Count == 0 && toFill.Count == 0)
+                {
+                    continue;
+                }
+
+                // Cloned per layer, never shared: the same clip (the
+                // empty-slot filler especially) sits in other layers too,
+                // and an edit written into the shared asset would have an
+                // unrelated layer changing zones it knows nothing about.
+                var perLayer = new Dictionary<AnimationClip, AnimationClip>();
+                AnimationClip Owned(AnimationClip clip)
+                {
+                    if (!perLayer.TryGetValue(clip, out var owned))
+                    {
+                        owned = Object.Instantiate(clip);
+                        owned.name = clip.name;
+                        owned.hideFlags = HideFlags.None;
+                        UnityEditor.AssetDatabase.AddObjectToAsset(owned, ctx.MergedController);
+                        perLayer[clip] = owned;
+                    }
+                    return owned;
+                }
+
+                foreach (var (clip, binding) in stripPairs)
+                {
+                    UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding, null);
+                    stripped++;
+                }
+                foreach (var clip in clips)
+                {
+                    // Blend-tree children are left alone: a constant in a
+                    // blended slot fights the tree instead of resting it.
+                    if (clipsInTrees.Contains(clip))
+                    {
+                        continue;
+                    }
+                    var drives = new HashSet<UnityEditor.EditorCurveBinding>(
+                        UnityEditor.AnimationUtility.GetCurveBindings(clip));
+                    foreach (var binding in toFill)
+                    {
+                        if (drives.Contains(binding))
+                        {
+                            continue;   // this motion says its own piece already
+                        }
+                        UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding,
+                            AnimationCurve.Constant(0f, 1f / 60f, 1f));
+                        balanced++;
+                    }
+                }
+                if (perLayer.Count == 0)
+                {
+                    continue;
+                }
+                layersTouched++;
+                foreach (var state in states)
+                {
+                    if (state.motion is AnimationClip clip && perLayer.TryGetValue(clip, out var owned))
+                    {
+                        state.motion = owned;
+                    }
+                }
+                foreach (var tree in trees)
+                {
+                    var children = tree.children;
+                    bool changed = false;
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        if (children[i].motion is AnimationClip clip && perLayer.TryGetValue(clip, out var owned))
+                        {
+                            children[i].motion = owned;
+                            changed = true;
+                        }
+                    }
+                    if (changed)
+                    {
+                        // Writing children renumbers thresholds while
+                        // automatic thresholds are on; pin them first.
+                        bool auto = tree.useAutomaticThresholds;
+                        tree.useAutomaticThresholds = false;
+                        tree.children = children;
+                        tree.useAutomaticThresholds = auto;
+                    }
+                }
+            }
+
+            if (balanced > 0 || stripped > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Contact zone ownership settled across {layersTouched} layer(s)",
+                    $"{stripped} curve(s) that only asserted a zone's resting state were removed and " +
+                    $"{balanced} restore(s) were written in. VRChat let several layers write a " +
+                    "contact's enabled flags and reconciled them through Write Defaults; " +
+                    "ChilloutVR restores nothing a state does not write, so those same curves " +
+                    "here either held every zone off from the moment the avatar loaded (VRCFury " +
+                    "disables all receivers for the first frames after load) or held them on " +
+                    "over the menu toggle that should switch them off. A layer that switches a " +
+                    "zone both off and on is a real toggle and now owns it outright.");
+            }
+        }
+
+        // A zone one slider grows follows the slider instead of holding
+        // the grown size: every clip driving that blendshape gains scale
+        // curves on the zone mapped through the same keyframes, and the
+        // contact behind the trigger takes its size from the transform
+        // every frame. Authored size at rest, the measured growth at the
+        // slider's full reach, scaled between. A clip that latches the
+        // shape latches the zone with it, so the two never disagree.
+        internal static void ScaleZonesWithSliders(BridgeContext ctx)
+        {
+            if (ctx.ZoneSliderGrowth.Count == 0)
+            {
+                return;
+            }
+            if (ctx.MergedController == null)
+            {
+                foreach (var entry in ctx.ZoneSliderGrowth)
+                {
+                    HoldGrownSize(ctx, entry);
+                }
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            var wired = new HashSet<string>();
+            foreach (var entry in ctx.ZoneSliderGrowth)
+            {
+                var zone = ctx.Target.transform.Find(entry.zonePath);
+                if (zone == null)
+                {
+                    continue;
+                }
+                Vector3 authored = zone.localScale;
+                int carriers = 0;
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type != typeof(SkinnedMeshRenderer)
+                            || !binding.propertyName.StartsWith("blendShape.", System.StringComparison.Ordinal)
+                            || binding.path + "|" + binding.propertyName.Substring("blendShape.".Length)
+                               != entry.shapeKey)
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        WriteScaleCurves(clip, entry.zonePath, authored, curve, entry.growth, entry.reach);
+                        carriers++;
+                        break;   // a binding appears once per clip
+                    }
+                }
+                if (carriers > 0)
+                {
+                    wired.Add(entry.zonePath);
+                    string shape = entry.shapeKey.Substring(entry.shapeKey.LastIndexOf('|') + 1);
+                    ctx.Report.Converted(Category, entry.reportPath,
+                        $"Zone follows the \"{shape}\" slider — authored size at rest, " +
+                        $"×{entry.growth:0.00} at full reach, scaled between. Grown statically it " +
+                        "covered the body's largest shape while the body was small; instead the " +
+                        "zone's scale is animated in the slider's own clips, and the contact " +
+                        "reads its transform every frame.");
+                }
+                else
+                {
+                    HoldGrownSize(ctx, entry);
+                }
+            }
+            if (wired.Count > 0)
+            {
+                CarryZonesInMasks(ctx, wired);
+            }
+        }
+
+        static void HoldGrownSize(BridgeContext ctx,
+            (string zonePath, string shapeKey, float growth, float reach, string reportPath) entry)
+        {
+            var zone = ctx.Target.transform.Find(entry.zonePath);
+            if (zone == null)
+            {
+                return;
+            }
+            GrowStatically(zone.gameObject, entry.growth);
+            ctx.Report.Converted(Category, entry.reportPath,
+                $"Zone grown ×{entry.growth:0.00} for the largest the sliders make the body — " +
+                "the slider's clips were not found in the converted animator, so the zone " +
+                "holds the grown size instead of following the slider.");
+        }
+
+        // The slider's keyframes, remapped: weight 0 is the authored
+        // scale, the reachable top is the measured growth, tangents
+        // scaled by the same factor.
+        static void WriteScaleCurves(AnimationClip clip, string zonePath, Vector3 authored,
+            AnimationCurve weights, float growth, float reach)
+        {
+            string[] props = { "m_LocalScale.x", "m_LocalScale.y", "m_LocalScale.z" };
+            float[] axes = { authored.x, authored.y, authored.z };
+            for (int a = 0; a < 3; a++)
+            {
+                float slope = axes[a] * (growth - 1f) / reach;
+                var keys = new Keyframe[weights.length];
+                for (int i = 0; i < weights.length; i++)
+                {
+                    var w = weights.keys[i];
+                    keys[i] = new Keyframe(w.time,
+                        axes[a] * (1f + (growth - 1f) * Mathf.Clamp01(w.value / reach)),
+                        w.inTangent * slope, w.outTangent * slope);
+                }
+                var binding = UnityEditor.EditorCurveBinding.FloatCurve(
+                    zonePath, typeof(Transform), props[a]);
+                UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, new AnimationCurve(keys));
+            }
+        }
+
+        // Masks pass float curves through but gate transform curves by
+        // their transform list, and the zones did not exist when any
+        // author mask was baked. Every layer whose clips now scale a
+        // zone gets that path carried active in its mask.
+        static void CarryZonesInMasks(BridgeContext ctx, HashSet<string> zonePaths)
+        {
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                var mask = layer.avatarMask;
+                if (mask == null)
+                {
+                    continue;
+                }
+                var clips = new HashSet<AnimationClip>();
+                var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
+                void Collect(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        clips.Add(clip);
+                    }
+                    else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
+                    {
+                        foreach (var child in tree.children)
+                        {
+                            Collect(child.motion);
+                        }
+                    }
+                }
+                void Walk(UnityEditor.Animations.AnimatorStateMachine machine)
+                {
+                    if (machine == null)
+                    {
+                        return;
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            Collect(child.state.motion);
+                        }
+                    }
+                    foreach (var sub in machine.stateMachines)
+                    {
+                        Walk(sub.stateMachine);
+                    }
+                }
+                Walk(layer.stateMachine);
+
+                var needed = new HashSet<string>();
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Transform) && zonePaths.Contains(binding.path))
+                        {
+                            needed.Add(binding.path);
+                        }
+                    }
+                }
+                if (needed.Count == 0)
+                {
+                    continue;
+                }
+                bool dirty = false;
+                for (int i = 0; i < mask.transformCount; i++)
+                {
+                    if (needed.Remove(mask.GetTransformPath(i)) && !mask.GetTransformActive(i))
+                    {
+                        mask.SetTransformActive(i, true);
+                        dirty = true;
+                    }
+                }
+                foreach (var path in needed)
+                {
+                    int i = mask.transformCount;
+                    mask.transformCount = i + 1;
+                    mask.SetTransformPath(i, path);
+                    mask.SetTransformActive(i, true);
+                    dirty = true;
+                }
+                if (dirty)
+                {
+                    UnityEditor.EditorUtility.SetDirty(mask);
+                }
             }
         }
 

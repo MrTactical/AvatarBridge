@@ -1,11 +1,11 @@
-/* AvatarBridge — window stylesheet.
+/* AvatarBridge; window stylesheet.
  *
  * Shape and spacing follow the two panels this window sits beside: the CCK's rounded 1px-bordered
  * cards, and the VRChat SDK's header fills and 3/6/14/24 spacing scale. Colours that exist as
  * Unity design tokens use the token, so both editor skins work without a second palette; the
  * .dark / .light classes on the root cover the rest, which is how the VRChat SDK does it too.
  *
- * Gradients are absent on purpose — USS has no gradient support in any current Unity, so those
+ * Gradients are absent on purpose. USS has no gradient support in any current Unity, so those
  * are generated textures assigned from BridgeTheme.
  */
 
@@ -288,7 +288,7 @@
     align-items: center;
 }
 
-/* Checkbox first, then the label — so a column of toggles has its boxes aligned instead of
+/* Checkbox first, then the label; so a column of toggles has its boxes aligned instead of
  * scattered at the end of each label. UI Toolkit's Toggle is a BaseField and puts the label
  * first; the CCK hits the same problem and reverses the row, which is what this is. */
 .ab-toggle {
@@ -302,7 +302,7 @@
 }
 
 /* The row lights up under the cursor, so it's obvious which of twenty toggles you're about
- * to hit — the checkbox alone is a small target to aim at. */
+ * to hit; the checkbox alone is a small target to aim at. */
 .dark .ab-toggle:hover {
     background-color: rgba(255, 255, 255, 0.05);
 }
@@ -366,7 +366,7 @@
     padding: 0;
 }
 
-/* Dimmed, but the label stays readable — at 0.4 on the whole element the text washed out
+/* Dimmed, but the label stays readable; at 0.4 on the whole element the text washed out
  * into the gradient and the button looked broken rather than waiting. */
 .ab-primary-off {
     opacity: 0.55;

@@ -7,18 +7,16 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Known-answer test for repointing animated PhysBone-collider switches.
-    ///
-    /// Avatars animate <c>VRCPhysBoneCollider.m_Enabled</c> so clothing can switch its own
-    /// collision (28 curves in the wild census); conversion deletes the component, so the curve
-    /// died silently. The repoint retargets it at the generated collider's host object — both
-    /// shipped solvers route OnEnable/OnDisable into their managers, verified from source.
-    ///
-    /// Asserts all four corners: a mapped curve is rewired to GameObject.m_IsActive at the host,
-    /// the original binding is gone either way, an unmapped curve (skipped collider) is dropped
-    /// WITH a warning, and both outcomes appear in the report.
-    /// </summary>
+    // Known-answer test for repointing animated PhysBone-collider switches.
+    //
+    // Avatars animate VRCPhysBoneCollider.m_Enabled so clothing can switch its own
+    // collision (28 curves in the wild census); conversion deletes the component, so the curve
+    // died silently. The repoint retargets it at the generated collider's host object; both
+    // shipped solvers route OnEnable/OnDisable into their managers, verified from source.
+    //
+    // Asserts all four corners: a mapped curve is rewired to GameObject.m_IsActive at the host,
+    // the original binding is gone either way, an unmapped curve (skipped collider) is dropped
+    // WITH a warning, and both outcomes appear in the report.
     public static class PhysColliderCurveTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test — collider enable curves")]

@@ -1,7 +1,7 @@
 name: Trim old release downloads
 
 # Keeps the .unitypackage attached to the newest few releases and removes it from
-# the rest. The releases, tags, titles and NOTES are never touched — the notes are
+# the rest. The releases, tags, titles and NOTES are never touched; the notes are
 # this project's changelog, and GitHub still serves a source zip from every tag, so
 # an archived version stays readable and rebuildable, just not one-click.
 #
@@ -45,9 +45,9 @@ jobs:
             if [ -n "${assets:-}" ]; then
               IFS=',' read -ra names <<< "$assets"
               for name in "${names[@]}"; do
-                echo "  $tag — removing $name"
+                echo "  $tag; removing $name"
                 # -R explicitly: `gh release` otherwise infers the repo from a git
-                # checkout, and this job never checks one out — the first run failed
+                # checkout, and this job never checks one out; the first run failed
                 # with "not a git repository" on exactly this line.
                 gh release delete-asset -R "$REPO" "$tag" "$name" --yes
                 deleted=$((deleted + 1))

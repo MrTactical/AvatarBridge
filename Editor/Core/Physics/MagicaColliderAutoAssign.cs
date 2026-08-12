@@ -6,24 +6,22 @@ using MagicaCloth2;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Optionally lends each cloth the colliders it plausibly bumps into.
-    ///
-    /// Both systems keep explicit per-chain collider lists, and AvatarBridge copies each one
-    /// faithfully — so a tail whose author never wired the leg colliders keeps passing through
-    /// the leg, exactly as it did in VRChat. This pass goes beyond that, handing a chain any of
-    /// the avatar's OWN converted colliders that it could reach.
-    ///
-    /// The trap is the one that sank the generated-body-collider experiment: give a chain a
-    /// collider it already lives inside and the solver hurls it out. Thigh jiggle sits
-    /// permanently within the hip capsule, so proximity alone is not enough. The rule that
-    /// separates the two cases is REST POSITION — a chain that starts outside a collider can
-    /// only ever collide with it, while a chain that starts inside one would be ejected. So a
-    /// collider is only offered when every bone of the chain begins outside it.
-    ///
-    /// Everything here is measured against the original PhysBone collider, whose shape
-    /// AvatarBridge already understands, and only ever adds to a list — no geometry invented.
-    /// </summary>
+    // Optionally lends each cloth the colliders it plausibly bumps into.
+    //
+    // Both systems keep explicit per-chain collider lists, and AvatarBridge copies each one
+    // faithfully; so a tail whose author never wired the leg colliders keeps passing through
+    // the leg, exactly as it did in VRChat. This pass goes beyond that, handing a chain any of
+    // the avatar's OWN converted colliders that it could reach.
+    //
+    // The trap is the one that sank the generated-body-collider experiment: give a chain a
+    // collider it already lives inside and the solver hurls it out. Thigh jiggle sits
+    // permanently within the hip capsule, so proximity alone is not enough. The rule that
+    // separates the two cases is REST POSITION; a chain that starts outside a collider can
+    // only ever collide with it, while a chain that starts inside one would be ejected. So a
+    // collider is only offered when every bone of the chain begins outside it.
+    //
+    // Everything here is measured against the original PhysBone collider, whose shape
+    // AvatarBridge already understands, and only ever adds to a list; no geometry invented.
     public static class MagicaColliderAutoAssign
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -107,10 +105,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// True when some bone can swing far enough to touch this collider while every bone
-        /// starts outside it. <paramref name="clearance"/> is the closest a bone gets at rest.
-        /// </summary>
         static bool TryReach(VRCPhysBoneCollider collider, List<Transform> bones, out float clearance)
         {
             clearance = float.MaxValue;
@@ -122,14 +116,14 @@ namespace AvatarBridge
                 float distance = SurfaceDistance(collider, bones[i].position);
                 if (distance < 0f)
                 {
-                    // This bone starts inside the collider — assigning it would eject the chain.
+                    // This bone starts inside the collider; assigning it would eject the chain.
                     clearance = distance;
                     return false;
                 }
                 clearance = Mathf.Min(clearance, distance);
 
                 // The chain hangs off a fixed root, so a bone can never leave the sphere of that
-                // radius around it. Anything nearer than that is genuinely within reach — and
+                // radius around it. Anything nearer than that is genuinely within reach; and
                 // this is a hard geometric bound, not a tuned guess. Per-bone parent distance
                 // would badly understate it, since every joint above a bone rotates as well.
                 if (distance <= Vector3.Distance(bones[i].position, origin))
@@ -140,10 +134,6 @@ namespace AvatarBridge
             return reachable;
         }
 
-        /// <summary>
-        /// Distance from a point to the collider's surface — negative inside. Read from the
-        /// original PhysBone collider, whose shape is already understood here.
-        /// </summary>
         static float SurfaceDistance(VRCPhysBoneCollider collider, Vector3 point)
         {
             var owner = collider.rootTransform != null ? collider.rootTransform : collider.transform;
@@ -174,7 +164,6 @@ namespace AvatarBridge
             return Vector3.Distance(point, a + ab * t);
         }
 
-        /// <summary>Every bone the chain simulates — the root's subtree, minus ignored branches.</summary>
         static List<Transform> CollectChainBones(PhysBoneChainData data)
         {
             var bones = new List<Transform>();

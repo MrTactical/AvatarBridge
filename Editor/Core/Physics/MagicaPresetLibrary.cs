@@ -9,33 +9,31 @@ using MagicaCloth2;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Works out what kind of chain a PhysBone is, and loads the MagicaCloth2 preset for it.
-    ///
-    /// Deriving MagicaCloth2 values from PhysBone values does not work — the two are different
-    /// kinds of simulation (see MagicaClothWriter). What DOES work is picking a whole
-    /// configuration that someone tuned as a set, because MagicaCloth2's parameters interact:
-    /// damping, stiffness, inertia and radius only make sense together. So nothing here
-    /// computes a number. It classifies, then loads.
-    ///
-    /// Lookup order for a class, first hit wins:
-    ///
-    ///   1. "MC2_Preset_Bridge_&lt;Class&gt;.json"  — tuned for this kind of chain, anywhere in
-    ///                                          the project. Drop your own in to override.
-    ///   2. the class's MagicaCloth2 fallback  — one of MagicaCloth2's own shipped presets
-    ///   3. nothing                            — MagicaCloth2's component defaults
-    ///
-    /// That ordering is why the class list can be finer-grained than MagicaCloth2's preset set
-    /// without inventing anything: every class already resolves to a sensible MagicaCloth2
-    /// preset today, and tuning one class is a drop-in file that changes only that class.
-    ///
-    /// **Authoring a preset:** set a chain up the way you want it in the MagicaCloth inspector,
-    /// press Save on its Preset dropdown, and name the file after the class. MagicaCloth2 writes
-    /// exactly the JSON this reads. See Assets/AvatarBridge/Presets/README.md.
-    /// </summary>
+    // Works out what kind of chain a PhysBone is, and loads the MagicaCloth2 preset for it.
+    //
+    // Deriving MagicaCloth2 values from PhysBone values does not work; the two are different
+    // kinds of simulation (see MagicaClothWriter). What DOES work is picking a whole
+    // configuration that someone tuned as a set, because MagicaCloth2's parameters interact:
+    // damping, stiffness, inertia and radius only make sense together. So nothing here
+    // computes a number. It classifies, then loads.
+    //
+    // Lookup order for a class, first hit wins:
+    //
+    //   1. "MC2_Preset_Bridge_<Class>.json" ; tuned for this kind of chain, anywhere in
+    //                                          the project. Drop your own in to override.
+    //   2. the class's MagicaCloth2 fallback ; one of MagicaCloth2's own shipped presets
+    //   3. nothing                           . MagicaCloth2's component defaults
+    //
+    // That ordering is why the class list can be finer-grained than MagicaCloth2's preset set
+    // without inventing anything: every class already resolves to a sensible MagicaCloth2
+    // preset today, and tuning one class is a drop-in file that changes only that class.
+    //
+    // **Authoring a preset:** set a chain up the way you want it in the MagicaCloth inspector,
+    // press Save on its Preset dropdown, and name the file after the class. MagicaCloth2 writes
+    // exactly the JSON this reads. See Assets/AvatarBridge/Presets/README.md.
     public static class MagicaPresetLibrary
     {
-        /// <summary>A kind of chain, and the MagicaCloth2 preset to use until one is tuned for it.</summary>
+        // A kind of chain, and the MagicaCloth2 preset to use until one is tuned for it.
         public class ChainClass
         {
             public readonly string Name;
@@ -56,15 +54,6 @@ namespace AvatarBridge
         const string MiddleSpring = "MC2_Preset_MiddleSpring";
         const string HardSpring = "MC2_Preset_HardSpring";
 
-        /// <summary>
-        /// Prefix for AvatarBridge's own presets, which take priority over MagicaCloth2's.
-        ///
-        /// It deliberately starts with MagicaCloth2's own "MC2_Preset" — that is the filter its
-        /// preset dropdown searches on, and it groups the results by folder. Naming them this way
-        /// puts every AvatarBridge preset in its own section of that dropdown, so tuning one is
-        /// Load → adjust → Save without ever opening a file browser. The "Bridge_" part keeps
-        /// them from ever colliding with a MagicaCloth2 preset of the same name.
-        /// </summary>
         public const string CustomPrefix = "MC2_Preset_Bridge_";
 
         // Every class the classifier can produce, with the MagicaCloth2 preset it falls back to.
@@ -99,7 +88,6 @@ namespace AvatarBridge
             ClsSpringy = new ChainClass("Springy", MiddleSpring),
             ClsLoose = new ChainClass("Loose", SoftSpring);
 
-        /// <summary>Every class, so the window and docs can list what's tunable.</summary>
         public static IEnumerable<ChainClass> AllClasses => new[]
         {
             ClsBreast, ClsButt, ClsBelly, ClsThigh, ClsEar, ClsWhisker, ClsFluff,
@@ -110,14 +98,6 @@ namespace AvatarBridge
             ClsFloaty, ClsStiff, ClsSpringy, ClsLoose
         };
 
-        /// <summary>
-        /// What kind of chain this is. Names decide it where they say something; where they
-        /// don't, the PhysBone's character does — but only as a CHOICE between tuned presets,
-        /// never as arithmetic.
-        ///
-        /// Order matters and is load-bearing: "twintail" contains "tail" but is hair, "earring"
-        /// contains "ear" but is jewellery, "belly" contains "bell" but is not a bell.
-        /// </summary>
         public static ChainClass Classify(PhysBoneChainData data)
         {
             int bones = CountBones(data.Root);
@@ -128,10 +108,10 @@ namespace AvatarBridge
                 return byName;
             }
 
-            // The bone's own name said nothing — ask its ancestors. Add-on hair and clothing
+            // The bone's own name said nothing; ask its ancestors. Add-on hair and clothing
             // prefabs routinely carry meaningless bone names inside a container that says
             // exactly what they are: a tester's "Ty ROOT Nessy!" classified as a generic loose
-            // chain (Soft Spring preset — stretchy, and the hair came out floaty) while sitting
+            // chain (Soft Spring preset; stretchy, and the hair came out floaty) while sitting
             // under a container literally named "Ty hair". Nearest ancestor first, stopping at
             // the Animator so the avatar's own name never matches.
             for (var p = data.Root.parent; p != null && p.GetComponent<Animator>() == null; p = p.parent)
@@ -157,7 +137,6 @@ namespace AvatarBridge
             return restore >= 0.3f ? ClsSpringy : ClsLoose;
         }
 
-        /// <summary>Name-based classification alone; null when the name says nothing.</summary>
         static ChainClass ClassifyByName(string rawName, int bones)
         {
             string n = rawName.ToLowerInvariant();
@@ -268,14 +247,6 @@ namespace AvatarBridge
             return null;
         }
 
-        /// <summary>
-        /// Loads the preset for a class over <paramref name="sdata"/>. MagicaCloth2's ImportJson
-        /// keeps the structural fields — clothType, rootBones, colliderList, updateMode,
-        /// animationPoseRatio, rootRotation — so this can run either side of the wiring.
-        ///
-        /// Called through reflection: a MagicaCloth2 version without ImportJson would otherwise
-        /// stop the whole package compiling, where this just falls through to its defaults.
-        /// </summary>
         public static bool TryApply(ClothSerializeData sdata, ChainClass cls,
             out string usedPreset, out bool isCustom, out string error)
         {
@@ -320,7 +291,6 @@ namespace AvatarBridge
             return true;
         }
 
-        /// <summary>"MC2_Preset_LongHair" -> "Long Hair"; "MC2_Preset_Bridge_HairFront" -> "Hair Front".</summary>
         public static string DisplayName(string presetName)
         {
             string bare = presetName.Replace(CustomPrefix, "").Replace("MC2_Preset_", "");
@@ -365,11 +335,6 @@ namespace AvatarBridge
             return json;
         }
 
-        /// <summary>
-        /// Substring match, for needles distinctive enough to be safe anywhere in a name
-        /// ("hair" inside "backhair"). Short words must not use this: "bell" is inside "belly",
-        /// "ear" inside "earring", "ass" inside "glass".
-        /// </summary>
         static bool Has(string haystack, params string[] needles)
         {
             foreach (string needle in needles)
@@ -382,10 +347,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Whole-word match, for short needles that hide inside unrelated words. A trailing "s"
-        /// counts, so "Bagpack Straps" still reads as straps.
-        /// </summary>
         static bool HasToken(string[] tokens, params string[] needles)
         {
             foreach (string token in tokens)
@@ -402,10 +363,6 @@ namespace AvatarBridge
             return false;
         }
 
-        /// <summary>
-        /// Splits a bone name into words on separators, digits and camelCase humps, so
-        /// "Yaoomi_DemonTail" yields "tail" while "detail_bone" does not.
-        /// </summary>
         static string[] Tokenize(string name)
         {
             string spaced = Regex.Replace(name, @"([a-z0-9])([A-Z])", "$1 $2");
@@ -414,7 +371,6 @@ namespace AvatarBridge
                     System.StringSplitOptions.RemoveEmptyEntries);
         }
 
-        /// <summary>Depth of the chain, following first children — long hair hangs differently to short.</summary>
         static int CountBones(Transform root)
         {
             int count = 0;

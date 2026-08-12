@@ -6,28 +6,26 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    /// <summary>
-    /// Asserts that every ChilloutVR CCK enum member AvatarBridge names in source still exists in
-    /// the installed CCK.
-    ///
-    /// A member written into the source binds at COMPILE time, so if the CCK renames one the whole
-    /// tool stops building — not a degraded conversion, an uninstallable tool. That happened: 3.7.1
-    /// would not compile for anyone whose CCK spells its comparison operators "MoreThen"/"LessThen"
-    /// rather than "MoreThan"/"LessThan", and nothing here could have found it, because the compile
-    /// check builds against whichever CCK is on this machine — by definition the one that agrees.
-    ///
-    /// This does not fix that. Nothing short of resolving every member by name would, and that
-    /// costs type safety across the codebase for a risk that is only real where a name is genuinely
-    /// ambiguous. What it does is make DRIFT VISIBLE HERE: run it after updating the CCK and before
-    /// a release, and a rename is caught while it is still cheap, instead of by a user who cannot
-    /// install.
-    ///
-    /// When one does move, resolve THAT member by name — see TryOperator in AnimatorMerger — rather
-    /// than converting everything.
-    ///
-    /// The list is maintained by hand on purpose: it is the contract, and a generated one would
-    /// drift silently with the source it was generated from.
-    /// </summary>
+    // Asserts that every ChilloutVR CCK enum member AvatarBridge names in source still exists in
+    // the installed CCK.
+    //
+    // A member written into the source binds at COMPILE time, so if the CCK renames one the whole
+    // tool stops building; not a degraded conversion, an uninstallable tool. That happened: 3.7.1
+    // would not compile for anyone whose CCK spells its comparison operators "MoreThen"/"LessThen"
+    // rather than "MoreThan"/"LessThan", and nothing here could have found it, because the compile
+    // check builds against whichever CCK is on this machine; by definition the one that agrees.
+    //
+    // This does not fix that. Nothing short of resolving every member by name would, and that
+    // costs type safety across the codebase for a risk that is only real where a name is genuinely
+    // ambiguous. What it does is make DRIFT VISIBLE HERE: run it after updating the CCK and before
+    // a release, and a rename is caught while it is still cheap, instead of by a user who cannot
+    // install.
+    //
+    // When one does move, resolve THAT member by name; see TryOperator in AnimatorMerger; rather
+    // than converting everything.
+    //
+    // The list is maintained by hand on purpose: it is the contract, and a generated one would
+    // drift silently with the source it was generated from.
     public static class CckContractProbe
     {
         static readonly (string Type, string[] Members)[] Required =

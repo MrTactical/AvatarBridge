@@ -9,18 +9,11 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    /// <summary>
-    /// Removes VRChat-only subsystems that are dead weight (or actively harmful) in
-    /// ChilloutVR, freeing large amounts of sync budget and menu space:
-    ///
-    ///   GoGo Loco  — replaced by CVR's own locomotion/emote system
-    ///   SPS / OGB / TPS / PCS — VRChat-specific penetration & haptics stacks
-    ///
-    /// Strategy: identify parameters by prefix, remove animator layers that mostly serve
-    /// those parameters, delete the systems' scene objects, drop their menu entries, and
-    /// let every surviving reference fall back to a local ("#") parameter so nothing
-    /// breaks and nothing syncs.
-    /// </summary>
+    // Removes VRChat-only subsystems that are dead weight or harmful
+    // in ChilloutVR: GoGo Loco (CVR has its own locomotion) and the
+    // SPS/OGB/TPS/PCS stacks. Identify parameters by prefix, remove
+    // layers that mostly serve them, delete their scene objects and
+    // menu entries, and let survivors fall back to "#" locals.
     public static class SystemStripper
     {
         const string Category = "System stripping";
@@ -47,27 +40,9 @@ namespace AvatarBridge
         };
         static readonly string[] SpsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS", "VRCF_" };
 
-        /// <summary>
-        /// GoGo Loco's own parameter list (GoAllParameters.asset) is sixteen "Go/" names plus one
-        /// that carries no prefix at all: "VRCEmote", the community emote parameter GoGo declares
-        /// and drives its whole emote/dance system through. Missing it unravels the entire strip —
-        /// on a real avatar the 102-state action layer conditioned on VRCEmote survived, which
-        /// kept every "Go/" parameter it referenced alive, which kept their garbage-labelled menu
-        /// entries ("- (-)", "- (GoGo Loco By Franada)") in the converted menu.
-        ///
-        /// Claimed only when the avatar actually carries GoGo ("Go/" parameters declared), because
-        /// VRCEmote itself is a VRChat community convention, not GoGo property — on a non-GoGo
-        /// avatar it belongs to whatever emote system the author built, and that is not ours to
-        /// condemn under a GoGo switch.
-        /// </summary>
         internal static bool AvatarUsesGogo(BridgeContext ctx) =>
             AvatarUsesGogo(ctx != null ? ctx.SourceDescriptor : null);
 
-        /// <summary>
-        /// The same question asked of a descriptor alone, for AvatarAdvisor: it runs before any
-        /// BridgeContext exists, and a separate "is this GoGo?" test in the advisor would be one
-        /// more place for the two to disagree about what the conversion is going to do.
-        /// </summary>
         internal static bool AvatarUsesGogo(VRCAvatarDescriptor descriptor)
         {
             var vrcParams = descriptor != null ? descriptor.expressionParameters : null;
@@ -79,9 +54,6 @@ namespace AvatarBridge
                 && GogoParamPrefixes.Any(g => p.name.StartsWith(g, StringComparison.OrdinalIgnoreCase)));
         }
 
-        /// <summary>
-        /// The parameter prefixes this conversion is going to strip, given the settings.
-        /// </summary>
         static IEnumerable<string> StrippedParameterPrefixes(BridgeContext ctx)
         {
             var prefixes = new List<string>();
@@ -111,25 +83,15 @@ namespace AvatarBridge
             return prefixes;
         }
 
-        /// <summary>
-        /// Whether a parameter belongs to a system this conversion is about to remove.
-        ///
-        /// Needed by passes that run *before* stripping and might otherwise rename the parameter
-        /// out of its own prefix — at which point the stripper no longer recognises it and the
-        /// system it belonged to survives under an unrecognisable name. GoGo Loco ships a
-        /// two-axis puppet on "Go/PuppetX"/"Go/PuppetY", and turning that into a joystick renamed
-        /// both out of the "Go/" family that marks them for removal.
-        /// </summary>
         public static bool WillBeStripped(BridgeContext ctx, string name) =>
             !string.IsNullOrEmpty(name) &&
             StrippedParameterPrefixes(ctx).Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
-            // Keeping GoGo is a supported choice, but only whole: its poses and dances are STATES
-            // in the Base and Action layers, and with those layers unmerged the menus convert
-            // while the motion they drive does not — a dance wheel full of dead entries that
-            // reads as a converter bug. Warn at the decision, not after the confusion.
+            // Keeping GoGo is supported, but only whole: its poses are
+            // states in Base and Action, and unmerged layers leave a
+            // dance wheel of dead entries. Warn at the decision.
             if (!ctx.Settings.stripGogoLoco && AvatarUsesGogo(ctx)
                 && (!ctx.Settings.convertBaseLayer || !ctx.Settings.convertActionLayer))
             {
@@ -203,8 +165,7 @@ namespace AvatarBridge
             PruneDirectBlendTrees(ctx, master, vrcLayers, IsStrippedParam);
             if (ctx.Settings.stripSpsSystems)
             {
-                // NOTE: the scene objects themselves are removed much earlier, by
-                // RemoveStrippedObjects — see the comment there for why.
+                // Scene objects are removed much earlier, by RemoveStrippedObjects.
                 RemoveOrphanedCvrComponents(ctx, IsStrippedParam);
             }
             RemoveMenuEntries(ctx, IsStrippedParam);
@@ -220,11 +181,6 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ layers ----
 
-        /// <summary>
-        /// Just the layer-removal half, for the known-answer test. Run() continues into menu
-        /// entries, orphaned components and parameter pruning, which need a CVRAvatar and a
-        /// descriptor the test has no reason to build — and none of which decide which LAYERS go.
-        /// </summary>
         internal static void RemoveLayersForTest(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers)
         {
@@ -244,22 +200,6 @@ namespace AvatarBridge
             RemoveLayers(ctx, master, vrcLayers, layerHints, new HashSet<string>(), IsStrippedParam);
         }
 
-        /// <summary>
-        /// A layer named after GoGo Loco's PARAMETER family — "Go/Beyond", "[VF80] Go/Locomotion".
-        ///
-        /// The word hints above ("gogo", "go loco", "goloco") are how GoGo names itself when a user
-        /// installs it by hand. Installed through a VRCFury prefab it names its layers after its
-        /// parameters instead, and "Go/Beyond" contains none of those three words — so the layer
-        /// survived a strip that had already neutered its parameters. Measured on 9 of 53 corpus
-        /// avatars, and it is not harmless: the survivor sits at weight 1 on Override and its
-        /// transitions read ChilloutVR's OWN parameters — Sitting, Grounded, AFK, IsLocal, VRMode —
-        /// so sitting on a chair in game played GoGo's seat clip over ChilloutVR's station pose.
-        /// Reported from the headset before this check existed.
-        ///
-        /// Matched only where "go/" STARTS a word, so "Go/Beyond" and "[VF80] Go/Locomotion" hit
-        /// while "Cargo/Rack" does not. The looser spelling would be a substring test, and this
-        /// list's other entries carry a comment about exactly that kind of false positive.
-        /// </summary>
         static bool NamesGogoParameterFamily(string lowerName)
         {
             for (int at = 0; (at = lowerName.IndexOf("go/", at, StringComparison.Ordinal)) >= 0; at += 3)
@@ -288,27 +228,12 @@ namespace AvatarBridge
                 int strippedRefs = refs.Count(isStripped);
                 bool referenceHit = strippedRefs > 0 && strippedRefs >= refs.Count * 0.6f;
 
-                // …unless the layer is a SHARED one, in which case a majority means nothing.
-                //
-                // VRCFury's LayerToTreeService folds dozens of unrelated toggles into a single
-                // Direct blend tree for performance. On an NSFW-heavy avatar most of those
-                // toggles belong to systems being stripped, so the 60% test fired and deleted
-                // the whole layer — and with it every innocent branch sharing the ride. One
-                // avatar lost its ENTIRE wardrobe that way: 116 of 162 references were stripped
-                // systems, the other 46 were the clothing, and all 46 went too. The menu entries
-                // then looked dead (nothing read their parameters, because their only reader had
-                // just been deleted) and were tidied away, so the toggles vanished from the menu
-                // as well — three passes each behaving correctly on the wreckage of the first.
-                //
-                // A direct tree is the aggregator pattern by construction, and PruneDirectBlend-
-                // Trees on the very next line exists to take exactly these branches out one at a
-                // time. So: name matches still remove the layer (that names its owner), but the
-                // majority heuristic never deletes a shared tree — it gets pruned instead.
-                // …but only when something innocent is actually riding along. A shared tree whose
-                // every reference belongs to the stripped system has no passengers to protect,
-                // and keeping it just leaves that system's dead machinery in the avatar — which
-                // is what the strip was asked to remove. Seen on "[VF173] PCS: Activation":
-                // 7 of 7 references stripped, 0 survivors, kept for nothing.
+                // ...unless the layer is shared. VRCFury folds unrelated
+                // toggles into one Direct tree, so a majority of
+                // stripped references proves nothing about the rest.
+                // The majority heuristic never deletes a shared tree;
+                // PruneDirectBlendTrees takes branches out one at a
+                // time. A tree with zero survivors still goes whole.
                 if (referenceHit && strippedRefs < refs.Count && ContainsDirectBlendTree(layer.stateMachine))
                 {
                     ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
@@ -320,15 +245,11 @@ namespace AvatarBridge
                     referenceHit = false;
                 }
 
-                // Locomotion replacements are all-or-nothing. GoGo's Base/Poses/Action layers
-                // condition mostly on Velocity/Upright/Grounded/AFK — the game-fed built-ins —
-                // so the 60% majority above never fires for them, and with "Remove GoGo Loco"
-                // on they survived as zombies: hundreds of states overriding ChilloutVR's own
-                // locomotion, driven by parameters that had just been stripped. A tester
-                // toggling GoGo on and off saw "no difference" because these layers were on
-                // top either way. Any GoGo reference at all in a layer merged from the Base,
-                // Additive or Action playable layers is disqualifying — those layers exist to
-                // replace locomotion wholesale, and only GoGo puts Go/ parameters there.
+                // Locomotion replacements are all-or-nothing. GoGo's
+                // layers condition mostly on game-fed built-ins, so the
+                // majority test never fires for them. Any GoGo
+                // reference in a merged Base/Additive/Action layer
+                // disqualifies the layer; only GoGo puts Go/ there.
                 bool locomotionHit = false;
                 if (strippedRefs > 0 &&
                     (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
@@ -364,17 +285,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Modern VRCFury merges many features into shared direct blend trees ("DBT"),
-        /// with clips that write animator parameters (AAPs) as math. When a system is
-        /// stripped, its branches must be pruned out of those shared trees or its
-        /// leftover math keeps running (integrating garbage values forever).
-        /// </summary>
-        /// <summary>
-        /// True when any state in the layer plays a Direct blend tree — the shape VRChat tooling
-        /// uses to pack many independent toggles into one layer, and therefore the shape that
-        /// must be pruned rather than deleted.
-        /// </summary>
         static bool ContainsDirectBlendTree(AnimatorStateMachine machine)
         {
             if (machine == null)
@@ -421,11 +331,9 @@ namespace AvatarBridge
             List<AnimatorControllerLayer> vrcLayers, Func<string, bool> isStripped)
         {
             int pruned = 0;
-            // Which parameter names justified each layer's pruning. Diagnostic, and hard-won: a
-            // toggle chain died on one avatar because its bool→smoothed-float bridge shared a
-            // layer with stripped math, and "all of its content belonged to stripped systems"
-            // left no way to see WHICH names the stripper believed in. The report now shows its
-            // reasoning, so an overreaching prefix is visible in the conversion that did it.
+            // Which parameter names justified each layer's pruning.
+            // The report shows the reasoning, so an overreaching prefix
+            // is visible in the conversion that did it.
             var perLayer = new Dictionary<AnimatorControllerLayer, SortedSet<string>>();
             foreach (var layer in vrcLayers.ToList())
             {
@@ -475,15 +383,6 @@ namespace AvatarBridge
             }
         }
 
-        /// <summary>
-        /// Recursive dead-code elimination for motions:
-        ///  - a clip is dead when it only writes stripped parameters (Fury AAP math)
-        ///  - a tree is dead when it blends ON a stripped parameter (its entire subtree
-        ///    exists to respond to a system that no longer exists)
-        ///  - a direct tree drops dead children; any tree whose children are all dead
-        ///    is dead itself
-        /// Returns null when the whole motion is dead.
-        /// </summary>
         static Motion PruneMotion(Motion motion, Func<string, bool> isStripped, ref int pruned,
             SortedSet<string> prunedNames = null)
         {
@@ -700,51 +599,11 @@ namespace AvatarBridge
 
         // ----------------------------------------------------------------- objects ----
 
-        /// <summary>
-        /// Deletes the scene objects belonging to stripped VRChat-only systems, and does it
-        /// FIRST — before assets are re-homed, PhysBones are converted, or anything else reads
-        /// the hierarchy.
-        ///
-        /// Running it late (as part of the animator merge) meant AvatarBridge spent the whole
-        /// conversion working on content it was about to throw away: SPS materials and their
-        /// hidden shaders got rescued out of VRCFury's temp folder only to end up pink, and
-        /// SPS's PhysBones became MagicaCloth components whose root bones were then deleted
-        /// out from under them. One reported avatar came out with seventeen such orphans.
-        /// </summary>
-        /// <summary>
-        /// The scene objects a third-party VRChat face-tracking rig installs. Matched on name
-        /// because these arrive already baked by VRCFury — by conversion time there is no
-        /// component left to identify them by.
-        ///
-        /// Deliberately narrow. "VRCFT" and "OSCmooth" belong to those systems and nothing else;
-        /// a bare "FaceTracking" would also match objects an avatar author made themselves, and
-        /// deleting somebody's own work is far worse than leaving a spare object behind.
-        /// </summary>
         static readonly string[] FaceTrackingObjectHints =
         {
             "VRCFT", "VRCFaceTracking", "OSCmooth", "OSCm_",
         };
 
-        /// <summary>
-        /// Removes VRCFury's Parameter Compressor, which is not merely useless in ChilloutVR but
-        /// actively harmful.
-        ///
-        /// It exists to beat VRChat's 256-parameter ceiling: it sets the avatar's real parameters
-        /// to networkSynced = false, mirrors each into "VF&lt;id&gt;_&lt;name&gt;", and rotates those
-        /// mirrors through a couple of sync slots about twice a second, reassembling them on the
-        /// far side. Clever, and entirely a workaround for a limit ChilloutVR does not have —
-        /// 3200 bits, and parameters sync straight from the animator declaration.
-        ///
-        /// Carrying it across costs three ways. The rotation is a permanent Direct blend tree
-        /// evaluating every frame, which is most of what makes the "Internal Parameter Math" layer
-        /// expensive. The mirrors and slot counters are dead parameters. Worst, because the real
-        /// parameters were left marked not-synced, the conversion faithfully gives them the "#"
-        /// local-only prefix — so the compressed values reach nobody, which is the opposite of
-        /// what the compressor was installed to achieve.
-        ///
-        /// So: drop its layers, drop the mirrors and slots, and put the real names into
-        /// PreserveParameters so they sync natively — instantly, and at no cost worth counting.
-        /// </summary>
         internal static void StripParameterCompressorForTest(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers) => StripParameterCompressor(ctx, master, vrcLayers);
 
@@ -752,27 +611,18 @@ namespace AvatarBridge
             List<AnimatorControllerLayer> vrcLayers)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
-            // VRCFury names its rotation slots by the TYPE they carry: SyncDataBool0, SyncDataFloat3,
-            // SyncDataInt2, alongside the SyncIndex0/1 that says which parameter is in the window.
-            // The old pattern demanded digits straight after "Data", so it matched SyncData0 and
-            // SyncDataNum0 and missed every SyncDataBool/Float/Int — on a real avatar that meant 2
-            // of ~28 slots were seen.
-            //
-            // That went unnoticed because the pass ALSO finds "mirrors" (VF<n>_<RealName> shadowing
-            // a declared parameter), and a normal compressed avatar has dozens, so detection
-            // succeeded on their strength alone. It only bites when an avatar has slots and NO
-            // mirrors: then both lists are empty, the pass returns early, PreserveParameters never
-            // learns the real names, and preserveParameterSyncState faithfully copies the
-            // compressor's "not synced" flags onto EVERY parameter — reported in the wild as
-            // "all parameters became local", 131 of 170 including the entire wardrobe.
+            // VRCFury names rotation slots by the type they carry:
+            // SyncDataBool0, SyncDataFloat3, SyncDataInt2, plus the
+            // SyncIndex window pointer. The pattern must match all of
+            // them, or an avatar with slots and no mirrors turns every
+            // parameter local.
             var slots = new System.Text.RegularExpressions.Regex(
                 @"^VF\d+_Sync(Index|Data(Bool|Float|Int|Num)?)\d*$");
             var mirror = new System.Text.RegularExpressions.Regex(@"^VF\d+_(.+)$");
 
-            // Look at referenced names as well as declared ones. The compressor's mirrors are
-            // usually referenced without ever being declared — they arrive later, from the
-            // dangling-parameter repair — so scanning the declared list alone found none of them
-            // and quietly did nothing.
+            // Referenced names as well as declared ones. The
+            // compressor's mirrors are usually referenced without
+            // being declared.
             var known = new HashSet<string>(declared);
             foreach (var layer in master.layers)
             {
@@ -828,21 +678,13 @@ namespace AvatarBridge
                 ctx.PreserveParameters.Add(real);
             }
 
-            // Mirrors are not always there. An avatar can carry the compressor with slots and no
-            // mirrors at all, and preserving from mirrors alone then preserves NOTHING — the
-            // compressor is stripped, the rename pass is told nothing, and every parameter takes
-            // the local "#" on the strength of a flag whose only author was the thing we just
-            // removed. Reported in the wild as "all parameters became local": 131 of 170,
-            // including every clothing toggle, so nobody but the wearer saw the avatar change.
-            //
-            // So when the compressor is detected at all, every DECLARED parameter that is not one
-            // of its own artefacts is treated as really synced. "Not synced" is not trustworthy
-            // evidence on a compressed avatar — de-syncing them is what the compressor does — and
-            // ChilloutVR has 3200 bits, so restoring sync to a parameter the author truly wanted
-            // local costs 32 bits, while getting it wrong the other way costs the feature.
-            //
-            // VF-prefixed names are excluded: those are VRCFury's own working values, and they
-            // shadow nothing the user ever asked to sync.
+            // Mirrors are not always there. When the compressor is
+            // detected at all, every declared parameter that is not its
+            // own artefact is treated as really synced. "Not synced" is
+            // not trustworthy on a compressed avatar; de-syncing is
+            // what the compressor does. Restoring sync costs 32 bits;
+            // the other mistake costs the feature. VF-prefixed names
+            // are VRCFury's own working values and stay excluded.
             var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
             foreach (var p in master.parameters)
             {
@@ -872,11 +714,6 @@ namespace AvatarBridge
             RemoveFaceTrackingObjects(ctx);
         }
 
-        /// <summary>
-        /// Deletes a baked-in VRCFT rig's objects when ChilloutVR is going to provide face
-        /// tracking itself. In None mode the rig is left completely alone, which is the point of
-        /// None: the user has said they will handle it.
-        /// </summary>
         static void RemoveFaceTrackingObjects(BridgeContext ctx)
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
@@ -991,39 +828,6 @@ namespace AvatarBridge
                 {
                     UnityEngine.Object.DestroyImmediate(exclusion.gameObject);
                     removed++;
-                }
-            }
-            // The NATIVE contact components, which this sweep did not know about: it was written
-            // for the legacy pointer/trigger route and the native one arrived later, so stripping
-            // a system took its layers, its parameters and its triggers but left its contacts
-            // standing. They are not harmless clutter — a native contact is simulated by EVERY
-            // client that can see the avatar, so an inert one costs everyone in the instance a
-            // collision test per frame to write a parameter that no longer exists.
-            //
-            // Only STRIPPED parameters are removed here. A contact whose parameter is simply
-            // absent for reasons of the author's own is somebody else's content and is reported
-            // rather than deleted — see ReportInertContacts.
-            var nativeContact = ContactsConverter.NativeContactAnimatorType;
-            if (nativeContact != null)
-            {
-                var field = nativeContact.GetField("parameter",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (field != null)
-                {
-                    foreach (var contact in ctx.Target.GetComponentsInChildren(nativeContact, true))
-                    {
-                        string name = field.GetValue(contact) as string;
-                        if (string.IsNullOrEmpty(name)) continue;
-                        // Both spellings: this runs inside the merge, and whether the rename pass
-                        // has already given the name its local "#" depends on ordering that is
-                        // not this sweep's business to depend on.
-                        string bare = name.StartsWith("#", StringComparison.Ordinal) ? name.Substring(1) : name;
-                        if (isStripped(name) || isStripped(bare))
-                        {
-                            UnityEngine.Object.DestroyImmediate(contact.gameObject);
-                            removed++;
-                        }
-                    }
                 }
             }
             if (removed > 0)
