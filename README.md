@@ -1392,7 +1392,7 @@ out with the rest of it, rather than left standing to be tested forever by every
 
 Three causes, and the report distinguishes them.
 
-**A sound a contact sets off, converted before 3.8.0.** **Reconvert on the current release.**
+**A sound a contact sets off, converted before 3.8.1.** **Reconvert on the current release.**
 Older versions could convert contacts onto ChilloutVR's client-internal contact system, which
 stopped being wired up by the game; contacts now convert through [pointers and
 triggers](#contacts), which sync.
@@ -1413,7 +1413,7 @@ whoever set it off.
 **Reconvert on a current release.** Two separate causes produce this symptom, and the report
 distinguishes them.
 
-**A contact switched it on, converted before 3.8.0** — reconvert. Older versions could convert
+**A contact switched it on, converted before 3.8.1** — reconvert. Older versions could convert
 contacts onto ChilloutVR's client-internal contact system, which stopped being wired up by the
 game; contacts now convert through [pointers and triggers](#contacts), which sync.
 
@@ -1494,7 +1494,7 @@ lean on runtime layer-weight control, which ChilloutVR has no equivalent for, so
 
 ### Converted fingers snap to a pose nobody authored
 
-**Reconvert on 3.8.0 or later.** The avatar's Gesture layer held nothing but VRChat's `proxy_*`
+**Reconvert on 3.8.1 or later.** The avatar's Gesture layer held nothing but VRChat's `proxy_*`
 placeholders — the stand-in files whose real animations the VRChat *client* substitutes at runtime.
 Converted, that layer used to take over ChilloutVR's hand-pose slot, which means the CCK's own
 working hand poses were removed and the stand-ins played literally: fingers snapping to a pose that
