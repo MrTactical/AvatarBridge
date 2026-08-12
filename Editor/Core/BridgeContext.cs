@@ -57,6 +57,11 @@ namespace AvatarBridge
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =
             new Dictionary<(string, bool), List<string>>();
 
+        // Zones whose growth one slider owns: the scale pass animates
+        // each zone in step with that slider's blendshape curves.
+        public List<(string zonePath, string shapeKey, float growth, float reach, string reportPath)>
+            ZoneSliderGrowth = new List<(string, string, float, float, string)>();
+
         public Dictionary<string, List<string>> PhysicsColliderHosts =
             new Dictionary<string, List<string>>();
 

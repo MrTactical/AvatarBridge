@@ -210,8 +210,10 @@ namespace AvatarBridge
         // authored on a body a slider doubles is not - the mesh grows
         // past it and every touch lands inside the body, short of the
         // zone. Measured the way the physics sizes are: the mesh around
-        // the zone at rest and with every animated shape at full reach,
-        // growing the collider by what the sliders can add.
+        // the zone at rest and with every animated shape at full reach.
+        // When one slider owns the growth the zone is left authored-size
+        // and ScaleZonesWithSliders animates it along; only growth spread
+        // across shapes falls back to statically sizing for the largest.
         static void GrowZoneForSliders(BridgeContext ctx, GameObject zone, string reportPath)
         {
             if (!ctx.Settings.sizeContactZonesForLargest)
@@ -235,7 +237,7 @@ namespace AvatarBridge
             // authored zone still needs the surrounding surface read.
             float worldRadius = radius * mean;
             float capture = Mathf.Max(worldRadius * 2.5f, 0.06f);
-            float push = MeshGrowth.Around(ctx, zone.transform.position, capture);
+            float push = MeshGrowth.Around(ctx, zone.transform.position, capture, out var perShape);
             if (push < 0.005f)
             {
                 return;   // within measurement noise
@@ -244,6 +246,46 @@ namespace AvatarBridge
             // the zone extends by the same distance. Capped so a shape
             // that hurls vertices cannot make a zone the size of a room.
             float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
+
+            // One shape responsible for the bulk of the push means the
+            // zone can follow that slider live instead of sitting at the
+            // grown size while the body is small.
+            string dominant = null;
+            float dominantPush = 0f, totalPush = 0f;
+            foreach (var pair in perShape)
+            {
+                totalPush += pair.Value;
+                if (pair.Value > dominantPush)
+                {
+                    dominantPush = pair.Value;
+                    dominant = pair.Key;
+                }
+            }
+            if (dominant != null && totalPush > 0f && dominantPush / totalPush >= 0.7f)
+            {
+                float reach = MeshGrowth.ReachOf(ctx, dominant);
+                if (reach > 0.01f)
+                {
+                    ctx.ZoneSliderGrowth.Add((
+                        BridgeContext.RelativePath(ctx.Target.transform, zone.transform),
+                        dominant, growth, reach, reportPath));
+                    return;
+                }
+            }
+
+            GrowStatically(zone, growth);
+            ctx.Report.Converted(Category, reportPath,
+                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
+                "the sliders make the body — an animated blendshape can push the mesh past the " +
+                "authored size, and a zone inside the body cannot be touched. The growth here is " +
+                "spread across several shapes, so the zone holds the grown size instead of " +
+                "following one slider.");
+        }
+
+        internal static void GrowStatically(GameObject zone, float growth)
+        {
+            var sphere = zone.GetComponent<SphereCollider>();
+            var capsule = zone.GetComponent<CapsuleCollider>();
             if (sphere != null)
             {
                 sphere.radius *= growth;
@@ -253,11 +295,6 @@ namespace AvatarBridge
                 capsule.radius *= growth;
                 capsule.height *= growth;
             }
-            ctx.Report.Converted(Category, reportPath,
-                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
-                "the sliders make the body — an animated blendshape can push the mesh past the " +
-                "authored size, and a zone inside the body cannot be touched. Measured like the " +
-                "physics sizes: at rest and with every animated shape at full reach.");
         }
 
         static CVRAdvancedAvatarSettingsTriggerTask MakeTask(string parameter, float value, float delay)
@@ -758,6 +795,218 @@ namespace AvatarBridge
                     "disables all receivers for the first frames after load) or held them on " +
                     "over the menu toggle that should switch them off. A layer that switches a " +
                     "zone both off and on is a real toggle and now owns it outright.");
+            }
+        }
+
+        // A zone one slider grows follows the slider instead of holding
+        // the grown size: every clip driving that blendshape gains scale
+        // curves on the zone mapped through the same keyframes, and the
+        // contact behind the trigger takes its size from the transform
+        // every frame. Authored size at rest, the measured growth at the
+        // slider's full reach, scaled between. A clip that latches the
+        // shape latches the zone with it, so the two never disagree.
+        internal static void ScaleZonesWithSliders(BridgeContext ctx)
+        {
+            if (ctx.ZoneSliderGrowth.Count == 0)
+            {
+                return;
+            }
+            if (ctx.MergedController == null)
+            {
+                foreach (var entry in ctx.ZoneSliderGrowth)
+                {
+                    HoldGrownSize(ctx, entry);
+                }
+                return;
+            }
+
+            var clips = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip != null)
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            var wired = new HashSet<string>();
+            foreach (var entry in ctx.ZoneSliderGrowth)
+            {
+                var zone = ctx.Target.transform.Find(entry.zonePath);
+                if (zone == null)
+                {
+                    continue;
+                }
+                Vector3 authored = zone.localScale;
+                int carriers = 0;
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type != typeof(SkinnedMeshRenderer)
+                            || !binding.propertyName.StartsWith("blendShape.", System.StringComparison.Ordinal)
+                            || binding.path + "|" + binding.propertyName.Substring("blendShape.".Length)
+                               != entry.shapeKey)
+                        {
+                            continue;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        if (curve == null || curve.length == 0)
+                        {
+                            continue;
+                        }
+                        WriteScaleCurves(clip, entry.zonePath, authored, curve, entry.growth, entry.reach);
+                        carriers++;
+                        break;   // a binding appears once per clip
+                    }
+                }
+                if (carriers > 0)
+                {
+                    wired.Add(entry.zonePath);
+                    string shape = entry.shapeKey.Substring(entry.shapeKey.LastIndexOf('|') + 1);
+                    ctx.Report.Converted(Category, entry.reportPath,
+                        $"Zone follows the \"{shape}\" slider — authored size at rest, " +
+                        $"×{entry.growth:0.00} at full reach, scaled between. Grown statically it " +
+                        "covered the body's largest shape while the body was small; instead the " +
+                        "zone's scale is animated in the slider's own clips, and the contact " +
+                        "reads its transform every frame.");
+                }
+                else
+                {
+                    HoldGrownSize(ctx, entry);
+                }
+            }
+            if (wired.Count > 0)
+            {
+                CarryZonesInMasks(ctx, wired);
+            }
+        }
+
+        static void HoldGrownSize(BridgeContext ctx,
+            (string zonePath, string shapeKey, float growth, float reach, string reportPath) entry)
+        {
+            var zone = ctx.Target.transform.Find(entry.zonePath);
+            if (zone == null)
+            {
+                return;
+            }
+            GrowStatically(zone.gameObject, entry.growth);
+            ctx.Report.Converted(Category, entry.reportPath,
+                $"Zone grown ×{entry.growth:0.00} for the largest the sliders make the body — " +
+                "the slider's clips were not found in the converted animator, so the zone " +
+                "holds the grown size instead of following the slider.");
+        }
+
+        // The slider's keyframes, remapped: weight 0 is the authored
+        // scale, the reachable top is the measured growth, tangents
+        // scaled by the same factor.
+        static void WriteScaleCurves(AnimationClip clip, string zonePath, Vector3 authored,
+            AnimationCurve weights, float growth, float reach)
+        {
+            string[] props = { "m_LocalScale.x", "m_LocalScale.y", "m_LocalScale.z" };
+            float[] axes = { authored.x, authored.y, authored.z };
+            for (int a = 0; a < 3; a++)
+            {
+                float slope = axes[a] * (growth - 1f) / reach;
+                var keys = new Keyframe[weights.length];
+                for (int i = 0; i < weights.length; i++)
+                {
+                    var w = weights.keys[i];
+                    keys[i] = new Keyframe(w.time,
+                        axes[a] * (1f + (growth - 1f) * Mathf.Clamp01(w.value / reach)),
+                        w.inTangent * slope, w.outTangent * slope);
+                }
+                var binding = UnityEditor.EditorCurveBinding.FloatCurve(
+                    zonePath, typeof(Transform), props[a]);
+                UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, new AnimationCurve(keys));
+            }
+        }
+
+        // Masks pass float curves through but gate transform curves by
+        // their transform list, and the zones did not exist when any
+        // author mask was baked. Every layer whose clips now scale a
+        // zone gets that path carried active in its mask.
+        static void CarryZonesInMasks(BridgeContext ctx, HashSet<string> zonePaths)
+        {
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                var mask = layer.avatarMask;
+                if (mask == null)
+                {
+                    continue;
+                }
+                var clips = new HashSet<AnimationClip>();
+                var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
+                void Collect(Motion motion)
+                {
+                    if (motion is AnimationClip clip)
+                    {
+                        clips.Add(clip);
+                    }
+                    else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
+                    {
+                        foreach (var child in tree.children)
+                        {
+                            Collect(child.motion);
+                        }
+                    }
+                }
+                void Walk(UnityEditor.Animations.AnimatorStateMachine machine)
+                {
+                    if (machine == null)
+                    {
+                        return;
+                    }
+                    foreach (var child in machine.states)
+                    {
+                        if (child.state != null)
+                        {
+                            Collect(child.state.motion);
+                        }
+                    }
+                    foreach (var sub in machine.stateMachines)
+                    {
+                        Walk(sub.stateMachine);
+                    }
+                }
+                Walk(layer.stateMachine);
+
+                var needed = new HashSet<string>();
+                foreach (var clip in clips)
+                {
+                    foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.type == typeof(Transform) && zonePaths.Contains(binding.path))
+                        {
+                            needed.Add(binding.path);
+                        }
+                    }
+                }
+                if (needed.Count == 0)
+                {
+                    continue;
+                }
+                bool dirty = false;
+                for (int i = 0; i < mask.transformCount; i++)
+                {
+                    if (needed.Remove(mask.GetTransformPath(i)) && !mask.GetTransformActive(i))
+                    {
+                        mask.SetTransformActive(i, true);
+                        dirty = true;
+                    }
+                }
+                foreach (var path in needed)
+                {
+                    int i = mask.transformCount;
+                    mask.transformCount = i + 1;
+                    mask.SetTransformPath(i, path);
+                    mask.SetTransformActive(i, true);
+                    dirty = true;
+                }
+                if (dirty)
+                {
+                    UnityEditor.EditorUtility.SetDirty(mask);
+                }
             }
         }
 

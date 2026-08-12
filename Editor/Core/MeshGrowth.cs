@@ -35,7 +35,16 @@ namespace AvatarBridge
         // moved the reading. Displacement per vertex is the honest
         // measure of how far past the zone the body can get.
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius)
+            => Around(ctx, worldCentre, captureRadius, out _);
+
+        // perShape: how much of the push each animated blendshape is
+        // responsible for, keyed "renderer path|shape name" — what lets
+        // a zone follow the one slider that grows it instead of sitting
+        // at the grown size forever.
+        internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius,
+            out Dictionary<string, float> perShape)
         {
+            perShape = new Dictionary<string, float>(StringComparer.Ordinal);
             if (ctx?.Target == null)
             {
                 return 0f;
@@ -46,6 +55,7 @@ namespace AvatarBridge
             }
 
             var deltas = new List<float>();
+            var samples = new List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)>();
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -88,18 +98,23 @@ namespace AvatarBridge
                         continue;
                     }
                     var bind = binds[w.boneIndex0];
-                    Vector3 atRest = bone.localToWorldMatrix.MultiplyPoint3x4(bind.MultiplyPoint3x4(rest[i]));
+                    Matrix4x4 toWorld = bone.localToWorldMatrix * bind;
+                    Vector3 atRest = toWorld.MultiplyPoint3x4(rest[i]);
                     float restDistance = Vector3.Distance(atRest, worldCentre);
                     if (restDistance > captureRadius)
                     {
                         continue;
                     }
-                    Vector3 atGrown = bone.localToWorldMatrix.MultiplyPoint3x4(bind.MultiplyPoint3x4(grown[i]));
+                    Vector3 atGrown = toWorld.MultiplyPoint3x4(grown[i]);
                     // Outward only: distance from the zone growing. A
                     // shape pulling the surface inward reads as zero,
                     // the way a shrinking slider costs the physics
                     // sizes nothing.
                     deltas.Add(Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance));
+                    Vector3 direction = restDistance > 1e-4f
+                        ? (atRest - worldCentre) / restDistance
+                        : (atGrown - atRest).normalized;
+                    samples.Add((renderer, i, toWorld, direction));
                 }
             }
 
@@ -108,11 +123,89 @@ namespace AvatarBridge
                 return 0f;
             }
             deltas.Sort();
+            AttributeShapes(ctx, samples, perShape);
             // The far edge of the push, robust to a stray vertex. The
             // median would under-read a shape that only grows one side
             // of the body, which is what growth sliders do.
             return Percentile(deltas, 0.9f);
         }
+
+        // Which animated shape pushes the captured surface, and how far
+        // — each shape's top frame projected onto every sample's outward
+        // direction, scaled to the weight the animator can reach.
+        static void AttributeShapes(BridgeContext ctx,
+            List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)> samples,
+            Dictionary<string, float> perShape)
+        {
+            var extents = Reach(ctx);
+            var byRenderer = new Dictionary<SkinnedMeshRenderer, List<int>>();
+            for (int i = 0; i < samples.Count; i++)
+            {
+                if (!byRenderer.TryGetValue(samples[i].renderer, out var list))
+                {
+                    byRenderer[samples[i].renderer] = list = new List<int>();
+                }
+                list.Add(i);
+            }
+
+            foreach (var pair in byRenderer)
+            {
+                var renderer = pair.Key;
+                var mesh = renderer.sharedMesh;
+                string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
+                Vector3[] scratch = null;
+                for (int s = 0; s < mesh.blendShapeCount; s++)
+                {
+                    string key = path + "|" + mesh.GetBlendShapeName(s);
+                    if (!extents.TryGetValue(key, out float reachWeight) || reachWeight < 0.01f)
+                    {
+                        continue;
+                    }
+                    int frames = mesh.GetBlendShapeFrameCount(s);
+                    if (frames <= 0)
+                    {
+                        continue;
+                    }
+                    float frameWeight = mesh.GetBlendShapeFrameWeight(s, frames - 1);
+                    if (frameWeight <= 0f)
+                    {
+                        continue;
+                    }
+                    scratch = scratch ?? new Vector3[mesh.vertexCount];
+                    try
+                    {
+                        mesh.GetBlendShapeFrameVertices(s, frames - 1, scratch, null, null);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                    float scale = reachWeight / frameWeight;
+                    var pushes = new List<float>();
+                    foreach (int i in pair.Value)
+                    {
+                        var sample = samples[i];
+                        Vector3 world = sample.toWorld.MultiplyVector(scratch[sample.index] * scale);
+                        pushes.Add(Mathf.Max(0f, Vector3.Dot(world, sample.direction)));
+                    }
+                    if (pushes.Count < MinSamples)
+                    {
+                        continue;
+                    }
+                    pushes.Sort();
+                    float push = Percentile(pushes, 0.9f);
+                    if (push > 0.002f)
+                    {
+                        perShape[key] = perShape.TryGetValue(key, out float had) ? Mathf.Max(had, push) : push;
+                    }
+                }
+            }
+        }
+
+        // The weight the animator can push one shape to, for mapping its
+        // curves onto a zone's scale.
+        internal static float ReachOf(BridgeContext ctx, string shapeKey)
+            => Reach(ctx).TryGetValue(shapeKey, out float weight) ? weight : 0f;
 
         static float Percentile(List<float> sorted, float p)
             => sorted[Mathf.Clamp(Mathf.RoundToInt((sorted.Count - 1) * p), 0, sorted.Count - 1)];

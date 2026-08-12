@@ -158,6 +158,10 @@ namespace AvatarBridge
                     // needs a writer switching it back on, because CVR will not.
                     Pass("Balance rewired zone curves", ContactsConverter.BalanceRewiredZoneCurves,
                          PassTraits.EditsClips),
+                    // After ownership settles: zones one slider grows get
+                    // scale curves written beside that slider's own.
+                    Pass("Scale zones with their sliders", ContactsConverter.ScaleZonesWithSliders,
+                         PassTraits.EditsClips),
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on

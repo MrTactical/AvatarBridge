@@ -149,7 +149,8 @@ namespace AvatarBridge
         // authored size while the mesh grows past it, so the touch
         // lands inside the body and never reaches it. Measured like
         // the physics sizes: at rest and with every animated shape at
-        // full reach, keeping the larger.
+        // full reach. A zone one slider grows is animated along with
+        // it; growth spread across shapes holds the grown size.
         public bool sizeContactZonesForLargest = true;
 
         // Copy shaders lacking single-pass instanced support into

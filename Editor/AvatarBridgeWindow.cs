@@ -783,8 +783,10 @@ namespace AvatarBridge
                 "size while the mesh grows past it — so the touch lands inside the body, short of " +
                 "the zone, and the contact reads as broken at high slider values. Each zone is " +
                 "measured like the physics sizes are: the mesh around it at rest and with every " +
-                "animated shape at full reach, growing the collider by what the sliders can add. " +
-                "The report names each zone grown and by how much.",
+                "animated shape at full reach. A zone one slider grows follows that slider live — " +
+                "authored size at rest, the measured growth at full reach; only growth spread " +
+                "across several shapes holds the grown size instead. The report names each zone " +
+                "and what was done.",
                 settings.sizeContactZonesForLargest, v => settings.sizeContactZonesForLargest = v));
 
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,

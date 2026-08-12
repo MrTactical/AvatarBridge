@@ -514,9 +514,12 @@ in the conversion report when it happens.
 stays authored-size while the mesh grows past it — every touch lands inside the body, short of the
 zone, and the contact reads as broken exactly when the slider is up. Each zone is measured the way
 the [physics sizes](#physbones--magicacloth2) are — the mesh around it at rest, then with every
-animated shape at full reach — and its collider grows by what the sliders can add, a little
-generous at low slider values rather than unreachable at high ones. The report names each zone
-grown and by how much; *Grow contact zones with the body's sliders* turns it off.
+animated shape at full reach. A zone whose growth one slider owns then **follows that slider
+live**: its scale is animated inside the slider's own clips, so it sits at the authored size at
+rest and at the measured growth at full reach, never oversized at either end. Only when the growth
+is spread across several shapes does the zone instead hold the grown size — a little generous at
+low slider values rather than unreachable at high ones. The report names each zone and which was
+done; *Grow contact zones with the body's sliders* turns it off.
 
 ChilloutVR also has a contact system of its own inside the game client, a near-exact match for
 VRChat's. Earlier versions could convert onto it directly; that path is gone. The CCK ships no way
@@ -824,7 +827,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
 | **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
-| **Grow contact zones with the body's sliders** | on | A zone authored on a body part a blendshape slider can grow stays authored-size while the mesh grows past it, so the touch lands inside the body short of the zone. Measured like the physics sizes — the mesh around each zone at rest and with every animated shape at full reach — and grown by what the sliders can add. The report names each zone grown |
+| **Grow contact zones with the body's sliders** | on | A zone authored on a body part a blendshape slider can grow stays authored-size while the mesh grows past it, so the touch lands inside the body short of the zone. Measured like the physics sizes — the mesh around each zone at rest and with every animated shape at full reach. A zone one slider grows follows that slider live; growth spread across shapes holds the grown size. The report names each zone and what was done |
 | **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
