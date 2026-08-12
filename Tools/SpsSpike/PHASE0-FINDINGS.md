@@ -1,5 +1,85 @@
 # Spike results
 
+## S2c — the decisive one: **the light channel is camera-dependent**
+
+Session 2026-08-13, probe worn as an avatar. Results in order:
+
+- **Q1 avatar → avatar: PASSED.** The tester wore the probe avatar (no lights of its own) and
+  it lit with protocol colours whenever the other player's light-bearing avatar was around,
+  dark otherwise. The layer question is closed — the precision channel works in the exact
+  topology the deform needs.
+- **But**: the same cube reads **differently depending on which camera is drawing it**. The
+  personal mirror showed active colours while the direct third-person view of the same object
+  showed none; at close range the readout went amber (world lights claiming slots).
+
+### Why, and it is two mechanisms stacked
+
+1. **Unity culls lights per camera.** `unity_4LightPos*` is filled from *that camera's*
+   visible-light set, so the main camera, the third-person camera and each mirror camera each
+   compute their own. A 0.41 m light sphere drops out of one frustum while staying in another.
+2. **`CVRMirror` sets `QualitySettings.pixelLightCount = 0`** for the duration of its render
+   and restores it afterwards (`CVRMirror.cs:195, 211, 238`). So the vertex-light pool is
+   composed differently inside a mirror than outside it, in the client's own code.
+
+### What this disqualifies, and what survives
+
+A deform runs in the vertex shader of every camera that draws the mesh. If its input differs
+per camera, **the mesh is bent differently in the mirror than in the direct view** — which is
+exactly the artifact seen here, and precisely why VRCFury moved SPS 2.x off lights and onto
+the screen-space atlas.
+
+So: **lights cannot be the primary position source, and above all cannot drive the blend.**
+If the choice of source depends on "are lights present", that choice is itself camera-dependent
+and the deform diverges per view.
+
+The other two channels are immune, and it is worth being precise about why:
+- `Shader.SetGlobalVectorArray` is set once per frame, globally — identical for every camera.
+- `CVRMaterialDriver` writes a material property — identical for every camera, every viewer.
+
+### Revised architecture (supersedes the earlier ladder)
+
+1. **Primary position: the discrete channel.** Socket pointers → `SetFromPosition` triggers →
+   animator parameters → `CVRMaterialDriver` → material vectors. Exact, rotation-aware,
+   camera-independent, viewer-independent. Its 10 Hz remote ceiling is answered with an
+   animator smoothing layer, turning steps into a frame-rate exponential follow.
+2. **Universal floor: P0 shader globals.** Camera-independent, always present, approximate.
+3. **Lights: demoted to a refinement, bounded to contact range**, and only *within* an
+   engagement state that the discrete channel decides. At contact range the light and the mesh
+   are effectively co-located, so any camera drawing the mesh has the light in frustum — the
+   regime where the channel is stable. They also remain valuable for **legacy DPS interop**,
+   which is a genuine feature, just not the backbone.
+
+The blend factor must come from a camera-independent signal. That is the single sharpest
+constraint to come out of the spike.
+
+### Q3 stress test — the slots fill with the wrong lights
+
+12 sockets / 24 lights on one avatar, which is what a real partner carries. The readout went
+unstable ("freak out") and, more damning, the slots filled with **mostly blue** — front
+lights — with only one red or green root among them.
+
+The cause is Unity's vertex-light scoring: with all our lights black and intensity 1, the
+score comes down to range and distance, and the front light is authored at **0.4506** while
+the roots sit at **0.4106 / 0.4206**. The longer-ranged front therefore outranks its own root
+and crowds it out. What comes back is several fronts and a root or two — not the matched
+root+front pair a socket frame needs. A front without its root is useless: it gives a
+direction with no origin.
+
+Caveat worth stating: the stress rig clustered all 12 sockets inside a 0.25 m circle, so
+distance could not discriminate between them and range dominated. A real body spreads sockets
+further apart. But sockets *do* cluster around the hips in practice, so this is close to a
+realistic worst case rather than a contrived one.
+
+Together with the camera-dependence above, this settles it: **the light channel cannot carry
+position on an avatar with a realistic socket count.** It stays as legacy-DPS interop and as
+a contact-range refinement, nothing more.
+
+### Still inconclusive
+
+**Q4 cross-pass** — the reserved corner stayed black in these shots, meaning the ForwardAdd
+pass never ran (no pixel lights on the cube in that world). Needs a brightly lit world to
+answer. Lower stakes now that lights are demoted.
+
 ## S2a — vertex light slots: **PASSED in game, 2026-08-12**
 
 Probe prop uploaded to a lit apartment world. All four rows decoded to their protocol
