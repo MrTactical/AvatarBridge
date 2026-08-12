@@ -23,25 +23,29 @@ namespace AvatarBridge
         const int SampleTarget = 200000;
         const int MinSamples = 12;
         const float MinBoneWeight = 0.2f;
-        const float MaxGrowth = 3f;
-
         static BridgeContext owner;
         static Dictionary<string, float> reach;
         static Dictionary<string, Vector3[]> deformed;
 
+        // World metres the animator's blendshapes can push the surface
+        // around a point outward, 0 when they cannot. A ratio of far
+        // edges was tried first and read tiny: the vertices at the
+        // capture boundary are often on neighbouring surface that does
+        // not grow, so the ballooning vertices near the zone never
+        // moved the reading. Displacement per vertex is the honest
+        // measure of how far past the zone the body can get.
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius)
         {
             if (ctx?.Target == null)
             {
-                return 1f;
+                return 0f;
             }
             if (Reach(ctx).Count == 0)
             {
-                return 1f;   // nothing animated grows anything
+                return 0f;   // nothing animated grows anything
             }
 
-            var restDistances = new List<float>();
-            var reachDistances = new List<float>();
+            var deltas = new List<float>();
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -91,27 +95,23 @@ namespace AvatarBridge
                         continue;
                     }
                     Vector3 atGrown = bone.localToWorldMatrix.MultiplyPoint3x4(bind.MultiplyPoint3x4(grown[i]));
-                    restDistances.Add(restDistance);
-                    reachDistances.Add(Vector3.Distance(atGrown, worldCentre));
+                    // Outward only: distance from the zone growing. A
+                    // shape pulling the surface inward reads as zero,
+                    // the way a shrinking slider costs the physics
+                    // sizes nothing.
+                    deltas.Add(Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance));
                 }
             }
 
-            if (restDistances.Count < MinSamples)
+            if (deltas.Count < MinSamples)
             {
-                return 1f;
+                return 0f;
             }
-            restDistances.Sort();
-            reachDistances.Sort();
-            // The far edge of each reading, robust to a stray vertex. A
-            // ratio of medians would under-read a shape that only grows
-            // the outside of the body, which is what growth sliders do.
-            float restEdge = Percentile(restDistances, 0.9f);
-            float grownEdge = Percentile(reachDistances, 0.9f);
-            if (restEdge <= 1e-5f)
-            {
-                return 1f;
-            }
-            return Mathf.Clamp(grownEdge / restEdge, 1f, MaxGrowth);
+            deltas.Sort();
+            // The far edge of the push, robust to a stray vertex. The
+            // median would under-read a shape that only grows one side
+            // of the body, which is what growth sliders do.
+            return Percentile(deltas, 0.9f);
         }
 
         static float Percentile(List<float> sorted, float p)

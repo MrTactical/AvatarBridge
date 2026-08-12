@@ -227,14 +227,23 @@ namespace AvatarBridge
             }
             var scale = zone.transform.lossyScale;
             float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
+            if (mean <= 0f)
+            {
+                return;
+            }
             // Capture enough mesh to say what the body does here; a tiny
             // authored zone still needs the surrounding surface read.
-            float capture = Mathf.Max(radius * mean * 2.5f, 0.06f);
-            float growth = MeshGrowth.Around(ctx, zone.transform.position, capture);
-            if (growth <= 1.02f)
+            float worldRadius = radius * mean;
+            float capture = Mathf.Max(worldRadius * 2.5f, 0.06f);
+            float push = MeshGrowth.Around(ctx, zone.transform.position, capture);
+            if (push < 0.005f)
             {
                 return;   // within measurement noise
             }
+            // The surface can travel this far past where it rests, so
+            // the zone extends by the same distance. Capped so a shape
+            // that hurls vertices cannot make a zone the size of a room.
+            float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
             if (sphere != null)
             {
                 sphere.radius *= growth;
@@ -245,10 +254,10 @@ namespace AvatarBridge
                 capsule.height *= growth;
             }
             ctx.Report.Converted(Category, reportPath,
-                $"Zone grown ×{growth:0.00} for the largest the sliders make the body — an animated " +
-                "blendshape can push the mesh past the authored size, and a zone inside the body " +
-                "cannot be touched. Measured like the physics sizes: at rest and with every animated " +
-                "shape at full reach, keeping the larger.");
+                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
+                "the sliders make the body — an animated blendshape can push the mesh past the " +
+                "authored size, and a zone inside the body cannot be touched. Measured like the " +
+                "physics sizes: at rest and with every animated shape at full reach.");
         }
 
         static CVRAdvancedAvatarSettingsTriggerTask MakeTask(string parameter, float value, float delay)

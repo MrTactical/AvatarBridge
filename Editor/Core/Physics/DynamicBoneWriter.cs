@@ -83,15 +83,19 @@ namespace AvatarBridge
             // chain colliding with a body that is not the one shown.
             if (ctx.Settings.sizePhysicsForLargest && data.Root != null)
             {
-                float growth = MeshGrowth.Around(ctx, data.Root.position,
-                    Mathf.Max(data.Radius * 2.5f, 0.06f));
-                if (growth > 1.02f)
+                var rootScale = data.Root.lossyScale;
+                float rootMean = (Mathf.Abs(rootScale.x) + Mathf.Abs(rootScale.y) + Mathf.Abs(rootScale.z)) / 3f;
+                float worldRadius = data.Radius * Mathf.Max(rootMean, 1e-4f);
+                float push = MeshGrowth.Around(ctx, data.Root.position,
+                    Mathf.Max(worldRadius * 2.5f, 0.06f));
+                if (push >= 0.005f && worldRadius > 0f)
                 {
+                    float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
                     db.m_Radius *= growth;
                     ctx.Report.Converted(Category, data.Root.name,
-                        $"Chain radius grown ×{growth:0.00} for the largest the sliders make the " +
-                        "body — measured at rest and with every animated shape at full reach, " +
-                        "keeping the larger.");
+                        $"Chain radius grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
+                        "for the largest the sliders make the body — measured at rest and with " +
+                        "every animated shape at full reach.");
                 }
             }
 
@@ -257,17 +261,21 @@ namespace AvatarBridge
                 if (ctx.Settings.sizePhysicsForLargest
                     && round.m_Bound == DynamicBoneColliderBase.Bound.Outside)
                 {
-                    float growth = MeshGrowth.Around(ctx,
+                    var goScale = go.transform.lossyScale;
+                    float goMean = (Mathf.Abs(goScale.x) + Mathf.Abs(goScale.y) + Mathf.Abs(goScale.z)) / 3f;
+                    float worldRadius = round.m_Radius * Mathf.Max(goMean, 1e-4f);
+                    float push = MeshGrowth.Around(ctx,
                         go.transform.TransformPoint(round.m_Center),
-                        Mathf.Max(round.m_Radius * 2.5f, 0.06f));
-                    if (growth > 1.02f)
+                        Mathf.Max(worldRadius * 2.5f, 0.06f));
+                    if (push >= 0.005f && worldRadius > 0f)
                     {
+                        float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
                         round.m_Radius *= growth;
                         round.m_Height *= growth;
                         ctx.Report.Converted("PhysBone colliders", parent.name,
-                            $"Collider grown ×{growth:0.00} for the largest the sliders make the " +
-                            "body — measured at rest and with every animated shape at full reach, " +
-                            "keeping the larger.");
+                            $"Collider grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
+                            "for the largest the sliders make the body — measured at rest and with " +
+                            "every animated shape at full reach.");
                     }
                 }
                 collider = round;
