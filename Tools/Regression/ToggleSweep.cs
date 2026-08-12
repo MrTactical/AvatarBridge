@@ -56,6 +56,17 @@ namespace AvatarBridge.Regression
             "ScaleFactor", "ScaleModified", "Output", "Height",
         };
 
+        public struct SweepResult
+        {
+            public int Parameters;
+            public int Responded;
+            public List<string> Stuck;
+            public List<string> Refused;
+            public bool Invalid;
+        }
+
+        public static SweepResult LastResult;
+
         [MenuItem("Tools/AvatarBridge Dev/Sweep every toggle for stuck objects")]
         public static void Run()
         {
@@ -241,6 +252,17 @@ namespace AvatarBridge.Regression
             }
 
             animator.cullingMode = culling;
+
+            // For the harness: the numbers and names of this run, values
+            // dropped so digests stay stable.
+            LastResult = new SweepResult
+            {
+                Parameters = parameters.Length,
+                Responded = responded,
+                Stuck = new List<string>(stuck),
+                Refused = new List<string>(notApplied),
+                Invalid = responded == 0,
+            };
 
             if (responded == 0)
             {

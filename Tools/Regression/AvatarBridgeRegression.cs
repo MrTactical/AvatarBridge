@@ -423,7 +423,49 @@ namespace AvatarBridge.Regression
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
+            AppendSweep(sb, target);
             return Stable(sb.ToString());
+        }
+
+        // The sweep rides every corpus conversion: it drives each menu
+        // parameter and reports what does not come back. Names only —
+        // readings vary run to run, names of broken things do not. Runs
+        // last: it moves the scene, and the scene is never saved.
+        static void AppendSweep(StringBuilder sb, GameObject target)
+        {
+            sb.Append("[sweep] ");
+            if (target == null)
+            {
+                sb.Append("skipped: no converted root\n\n");
+                return;
+            }
+            int findings;
+            try
+            {
+                findings = ToggleSweep.Sweep(target);
+            }
+            catch (Exception e)
+            {
+                sb.Append("failed: ").Append(e.GetType().Name).Append('\n').Append('\n');
+                return;
+            }
+            var r = ToggleSweep.LastResult;
+            if (findings < 0)
+            {
+                sb.Append("skipped: no controller\n\n");
+                return;
+            }
+            sb.Append($"params={r.Parameters} responded={r.Responded} stuck={r.Stuck?.Count ?? 0} " +
+                      $"refused={r.Refused?.Count ?? 0} invalid={(r.Invalid ? 1 : 0)}\n");
+            foreach (var name in (r.Stuck ?? new List<string>()).OrderBy(n => n, StringComparer.Ordinal))
+            {
+                sb.Append("  stuck ").Append(name).Append('\n');
+            }
+            foreach (var name in (r.Refused ?? new List<string>()).OrderBy(n => n, StringComparer.Ordinal))
+            {
+                sb.Append("  refused ").Append(name).Append('\n');
+            }
+            sb.Append('\n');
         }
 
         static List<string> DriverTargets(StateMachineBehaviour behaviour)
