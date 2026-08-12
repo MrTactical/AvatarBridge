@@ -112,8 +112,17 @@ Shader "AvatarBridge/SPS Light Probe"
                 bool stagesDisagree = abs(fragRange0 - i.vertexRange0) > 0.001
                     && !(fragRange0 > 1e5 && i.vertexRange0 > 1e5);
 
-                float border = 0.03;
                 float2 uv = i.uv;
+
+                // Reserved for the ForwardAdd pass to write into. Left
+                // black here so "dark corner" unambiguously means that
+                // pass never ran.
+                if (uv.x > 0.80 && uv.y > 0.80)
+                {
+                    return fixed4(0, 0, 0, 1);
+                }
+
+                float border = 0.03;
                 if (uv.x < border || uv.x > 1.0 - border
                     || uv.y < border || uv.y > 1.0 - border)
                 {
@@ -196,6 +205,91 @@ Shader "AvatarBridge/SPS Light Probe"
                             if (bar < saturate(dist / 5.0)) col = float3(0.6, 0.6, 0.66);
                         }
                     }
+                }
+
+                return fixed4(col, 1);
+            }
+            ENDCG
+        }
+
+        // The other half of the ghosting question. A deform runs in every
+        // pass that draws the mesh, so if this pass cannot see the same
+        // vertex lights the base pass did, the mesh would be bent in one
+        // pass and straight in another. Writes only into the reserved
+        // corner, additively:
+        //   corner black        this pass never ran (no pixel light here)
+        //   dim blue only       it ran but sees NO protocol light  <-- risk
+        //   blue + class colour it ran and has the same data       <-- safe
+        Pass
+        {
+            Tags { "LightMode" = "ForwardAdd" }
+            Blend One One
+            ZWrite Off
+            Cull Off
+
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 3.0
+            #pragma multi_compile_fwdadd
+            #pragma multi_compile_instancing
+            #include "UnityCG.cginc"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            v2f vert(appdata v)
+            {
+                v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_TRANSFER_INSTANCE_ID(v, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.uv = v.uv;
+                return o;
+            }
+
+            fixed4 frag(v2f i) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
+
+                if (i.uv.x <= 0.80 || i.uv.y <= 0.80)
+                {
+                    return fixed4(0, 0, 0, 1);
+                }
+
+                // Ran at all.
+                float3 col = float3(0.05, 0.08, 0.30);
+
+                [unroll]
+                for (int k = 0; k < 4; k++)
+                {
+                    float atten = unity_4LightAtten0[k];
+                    if (atten <= 1e-6) continue;
+                    float range = 5.0 * rsqrt(max(atten, 1e-8));
+                    if (range >= 0.5) continue;
+                    float4 lightColour = unity_LightColor[k];
+                    if (any(lightColour.rgb > 0.0001) && lightColour.a > 0) continue;
+
+                    int digit = (int) round(fmod(range, 0.1) * 100.0);
+                    if (digit == 1) col += float3(0.7, 0.0, 0.0);
+                    else if (digit == 2) col += float3(0.0, 0.7, 0.0);
+                    else if (digit == 5) col += float3(0.0, 0.2, 0.7);
+                    else if (digit == 9 || digit == 8) col += float3(0.7, 0.0, 0.7);
                 }
 
                 return fixed4(col, 1);
