@@ -17,9 +17,37 @@ colours — hole (red), ring (green), front (blue), tip (magenta) — which mean
   within-pass half of R2 is clear; cross-pass (ForwardAdd/shadow) is still untested.
 - Confirmed working mounted on an avatar as well as on a prop.
 
-Still open: **S2b cross-content** — lights on one avatar, probe on a *different* avatar or
-prop with a second person present. That is the case SPS actually needs, and it is the one
-where light culling masks and per-player layers could still bite.
+## S2b — cross-content: **strong positive, one confirmation left**
+
+Two probe rigs in one instance, one spawned locally and one spawned by another player.
+Each rig carries exactly one light per class, so a single rig can only ever show one red,
+one green, one blue and one magenta. With both present the readout shows **duplicates of a
+class** — two reds in one shot, two magentas in another — which is only possible if lights
+from the other player's prop are entering this shader's slots.
+
+So a shader in one piece of content **does** receive vertex lights from another piece of
+content spawned by a different player. That is the propagation SPS needs.
+
+It is still inference from duplicate classes rather than a direct reading, so the probe was
+extended to settle it outright:
+
+- **Receiver-only cube** (`Spike ▸ Build probe cube only`): a cube with no lights of its
+  own. Every coloured row it shows must have come from elsewhere. Pair it with the
+  lights-only rig parked on an avatar and the answer needs no interpretation.
+- **Distance bar** added under each row's ruler, 0–5 m ticked per metre. A light riding the
+  same object reads ~0.35 m; a light on somebody across the room reads metres. Without it
+  "my own lights" and "their lights" look identical on the readout — the gap that made the
+  result above inferential.
+
+### Design consequences already visible
+
+- **The slot budget is 4, and sockets come in pairs.** Two rigs (8 protocol lights) already
+  contend for 4 slots, and the allocation mixes classes rather than taking the nearest rig
+  wholesale. A partner with 12 sockets carries 24 lights. The decoder therefore must pair a
+  root with its front light by proximity (SPS uses `distanceSq < 0.01`) and **skip an
+  unpaired root gracefully**, because Unity may hand us one without the other.
+- Slot order is not authoring order and reshuffles as things move — never index by slot,
+  always classify by decoded range.
 
 ## Phase 0a bake probe — R12 answered, 2026-08-12
 

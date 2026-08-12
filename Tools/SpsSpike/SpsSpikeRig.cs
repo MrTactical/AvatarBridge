@@ -63,6 +63,29 @@ namespace AvatarBridge.Spike
                       "means the slot is empty.");
         }
 
+        // The unambiguous cross-content test. A cube carrying no lights of
+        // its own can only ever show somebody else's, so any row that is
+        // not dark grey is proof that one piece of content sees another's
+        // vertex lights. Everything up to here could be explained by a
+        // rig lighting itself.
+        [MenuItem("AvatarBridge/Spike/Build probe cube only (no lights, pure receiver)")]
+        static void BuildReceiverOnly()
+        {
+            var root = new GameObject("SPS Light Probe (receiver only)");
+            Undo.RegisterCreatedObjectUndo(root, "Build SPS probe receiver");
+
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "Probe Cube";
+            cube.transform.SetParent(root.transform, false);
+            Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
+            cube.GetComponent<MeshRenderer>().sharedMaterial = ProbeMaterial();
+
+            Selection.activeGameObject = root;
+            Debug.Log("[SpsSpike] Built a receiver-only probe. It has no lights, so every " +
+                      "coloured row it shows came from somewhere else. Pair it with the " +
+                      "lights-only rig on an avatar.");
+        }
+
         [MenuItem("AvatarBridge/Spike/Build protocol lights only (park on an avatar)")]
         static void BuildLightsOnly()
         {

@@ -155,23 +155,43 @@ Shader "AvatarBridge/SPS Light Probe"
                     }
                     else if (t.x > 0.16 && !empty)
                     {
-                        // Ruler across 0.38 .. 0.52, where the protocol
-                        // lives. Ticks are the authored values; the fat
-                        // mark is what this slot actually decoded to.
                         float bar = (t.x - 0.16) / 0.84;
-                        col = float3(0.06, 0.06, 0.07);
 
-                        float ticks[4] = { 0.41, 0.42, 0.45, 0.49 };
-                        [unroll]
-                        for (int m = 0; m < 4; m++)
+                        if (withinRow < 0.56)
                         {
-                            float tickAt = (ticks[m] - 0.38) / 0.14;
-                            if (abs(bar - tickAt) < 0.005) col = float3(0.4, 0.4, 0.45);
-                        }
+                            // Ruler across 0.38 .. 0.52, where the protocol
+                            // lives. Ticks are the authored values; the fat
+                            // mark is what this slot actually decoded to.
+                            col = float3(0.06, 0.06, 0.07);
 
-                        float mark = saturate((range - 0.38) / 0.14);
-                        if (range >= 0.5) mark = 1.0;
-                        if (abs(bar - mark) < 0.013) col = ClassColour(cls);
+                            float ticks[4] = { 0.41, 0.42, 0.45, 0.49 };
+                            [unroll]
+                            for (int m = 0; m < 4; m++)
+                            {
+                                float tickAt = (ticks[m] - 0.38) / 0.14;
+                                if (abs(bar - tickAt) < 0.005) col = float3(0.4, 0.4, 0.45);
+                            }
+
+                            float mark = saturate((range - 0.38) / 0.14);
+                            if (range >= 0.5) mark = 1.0;
+                            if (abs(bar - mark) < 0.013) col = ClassColour(cls);
+                        }
+                        else if (withinRow > 0.62)
+                        {
+                            // How far away the light claims to be, 0..5 m,
+                            // ticked every metre. This is what separates a
+                            // light riding this same object from one on
+                            // somebody else across the room — without it,
+                            // "my own lights" and "their lights" look
+                            // identical on the readout.
+                            col = float3(0.04, 0.04, 0.05);
+                            [unroll]
+                            for (int n = 1; n < 5; n++)
+                            {
+                                if (abs(bar - n * 0.2) < 0.004) col = float3(0.3, 0.3, 0.34);
+                            }
+                            if (bar < saturate(dist / 5.0)) col = float3(0.6, 0.6, 0.66);
+                        }
                     }
                 }
 
