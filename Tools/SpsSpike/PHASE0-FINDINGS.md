@@ -1,3 +1,62 @@
+# Spike results
+
+## S2a — vertex light slots: **PASSED in game, 2026-08-12**
+
+Probe prop uploaded to a lit apartment world. All four rows decoded to their protocol
+colours — hole (red), ring (green), front (blue), tip (magenta) — which means:
+
+- ChilloutVR **does** populate `unity_4LightPos*` / `unity_4LightAtten0` for uploaded
+  content shaders. The precision channel has a transport.
+- The authored range survives the upload intact: `5·rsqrt(atten)` recovered values whose
+  second decimal still classified correctly, so the encoding is not being quantised or
+  rescaled anywhere in the pipeline.
+- **No white swatches** in a room full of visible lamps: the four protocol lights held all
+  four slots against the world's own lighting, at ~0.35 m range. Slot order differed from
+  authoring order, which is expected — Unity assigns slots by its own priority.
+- Border never went red → the **vertex and fragment stages agree** on slot 0. The
+  within-pass half of R2 is clear; cross-pass (ForwardAdd/shadow) is still untested.
+- Confirmed working mounted on an avatar as well as on a prop.
+
+Still open: **S2b cross-content** — lights on one avatar, probe on a *different* avatar or
+prop with a second person present. That is the case SPS actually needs, and it is the one
+where light culling masks and per-player layers could still bite.
+
+## Phase 0a bake probe — R12 answered, 2026-08-12
+
+`SpsBakeProbe.RunBatch` on `Angela_PC_SPS` (1 plug, 12 sockets), baking twice and diffing.
+Full output: `D:\UnityVRCCrap\Attempt Conversion\SpsBakeProbe.md`.
+
+| | control (`enableSps = true`) | test (`enableSps = false`) |
+|---|---|---|
+| BakedSpsPlug / BakedSpsSocket | 1 / 12 | 1 / 12 |
+| SpsResolver renderers | 1 | **0** |
+| SpsScreenMarker renderers | 12 | 12 |
+| Lights (ranges) | 24 — 0.4106, 0.4206, 0.4506 | 24 — same |
+| Contact senders / receivers | 29 / 90 | 29 / 90 |
+| Materials on an SPS-patched shader | 1 (`Angela_Body`) | **0** |
+| `_SPS_Bake` texture | 1 — `SPS Data` 8192×2 | **0** |
+
+**R12 verdict: the clean-room premise holds.** Turning the plug's own SPS flag off leaves the
+objects, all 24 protocol lights and all 119 contacts intact while the body shader comes
+through **completely unpatched** — precisely the input our own patcher wants. The one thing
+that does not survive is the mesh bake texture, which is why the baker was already pulled
+into v1 (Phase 1c). The resolver renderer conveniently deletes itself; the 12 screen markers
+still need removing.
+
+**Bonus finding that removes work: the sockets already emit the DPS light protocol.** With
+`useLights: True` (the authored default here), every socket bakes a root+front light pair at
+**0.4106 / 0.4206 / 0.4506** regardless of the plug's SPS flag. So the converter does not
+author lights at all — it just has to stop deleting them. Two consequences:
+- The `.xx06` fourth decimal is VRCFury's SPS2 self-marker, which their own decoder uses to
+  *ignore* these lights. Ours drops that rule (already planned), so it reads both these and
+  the clean `0.41` ranges legacy CVR DPS content uses. The probe's classifier keys only on
+  the second decimal, so it already handles both — verified against 0.41 in game and against
+  0.4106 here.
+- Socket `addLight` modes seen on one avatar: Hole ×3, Auto ×8, Ring ×1 — the type matters
+  and comes through, so hole/ring semantics survive for free.
+
+---
+
 # Phase 0a — static inventory (2026-08-12)
 
 Read off the already-converted `Angela_PC_SPS` output controller
