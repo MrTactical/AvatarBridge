@@ -219,6 +219,7 @@ namespace AvatarBridge
                 // swap would show one avatar's shader and PhysBone counts under another's name.
                 advice = null;
                 adviceFilter = null;
+                MatchOptionalLayersToAvatar();
                 ScheduleRebuild();
             });
             parent.Add(field);
@@ -364,6 +365,36 @@ namespace AvatarBridge
         }
 
         AdviceKind? adviceFilter;
+
+        // Named for the hint under the layer list. Cleared and re-decided
+        // on every avatar swap, so it always describes the current one.
+        readonly List<string> autoOffLayers = new List<string>();
+
+        // The optional layer settings persist between avatars, so a tick
+        // meant for the last one rides along and claims this avatar has a
+        // layer it does not. Runs on selection only, never on rebuild: a
+        // box the user ticks deliberately must stay ticked.
+        //
+        // Skipped entirely for a baker's avatar. VRCFury and Modular
+        // Avatar build controllers during the bake, and the conversion
+        // reads the slot afterwards; unticking on the strength of an
+        // empty slot here would drop a layer that does arrive.
+        void MatchOptionalLayersToAvatar()
+        {
+            autoOffLayers.Clear();
+            if (avatar == null || AvatarAdvisor.LayersDecidedByBaker(avatar.gameObject))
+            {
+                return;
+            }
+            foreach (var (type, setting) in AvatarAdvisor.OptionalLayers)
+            {
+                if (AvatarAdvisor.IsOn(settings, type) && !AvatarAdvisor.SuppliesOwnLayer(avatar, type))
+                {
+                    AvatarAdvisor.SetOn(settings, type, false);
+                    autoOffLayers.Add($"\"{setting}\"");
+                }
+            }
+        }
 
         void Reanalyse()
         {
@@ -718,6 +749,14 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Action (emotes, AFK)",
                 "VRC emote triggers have no CVR equivalent; states may be unreachable.",
                 settings.convertActionLayer, v => { settings.convertActionLayer = v; ScheduleRebuild(); }));
+            if (autoOffLayers.Count > 0)
+            {
+                b.Add(BridgeElements.Hint(
+                    $"{string.Join(" and ", autoOffLayers)} switched off: this avatar has no layer " +
+                    "of its own in " + (autoOffLayers.Count == 1 ? "that slot" : "those slots") +
+                    ". These settings persist between avatars, so the tick came from another one. " +
+                    "Nothing converts differently either way — tick it back if you want it on."));
+            }
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
             b.Add(BridgeElements.Bind("Preserve parameter sync state",

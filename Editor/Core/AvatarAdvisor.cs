@@ -87,7 +87,7 @@ namespace AvatarBridge
             Safe(advice, "Physics", () => Physics(advice, root, settings, baked));
             Safe(advice, "Face tracking", () => FaceTracking(advice, root, descriptor, settings));
             Safe(advice, "Remove VRChat-only systems", () => Gogo(advice, descriptor, settings));
-            Safe(advice, "Animator layers to convert", () => Layers(advice, descriptor, settings));
+            Safe(advice, "Animator layers to convert", () => Layers(advice, descriptor, settings, baked));
             Safe(advice, "Patch non-SPI shaders for VR", () => Shaders(advice, root, settings));
             Safe(advice, "Components", () => Components(advice, root, baked));
 
@@ -352,8 +352,91 @@ namespace AvatarBridge
                 });
         }
 
-        static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings)
+        // Which optional layer settings are decided by the slot being
+        // EMPTY. Ticked with nothing in the slot converts nothing either
+        // way, so this is about the box telling the truth: these persist
+        // across avatars, and a tick left from the last one reads as
+        // "this avatar has an Action layer" to the next person to look.
+        internal static readonly (VRCAvatarDescriptor.AnimLayerType Type, string Setting)[] OptionalLayers =
         {
+            (VRCAvatarDescriptor.AnimLayerType.Base, "Base / locomotion"),
+            (VRCAvatarDescriptor.AnimLayerType.Additive, "Additive"),
+            (VRCAvatarDescriptor.AnimLayerType.Action, "Action (emotes, AFK)"),
+        };
+
+        internal static bool IsOn(BridgeSettings settings, VRCAvatarDescriptor.AnimLayerType type)
+        {
+            switch (type)
+            {
+                case VRCAvatarDescriptor.AnimLayerType.Base: return settings.convertBaseLayer;
+                case VRCAvatarDescriptor.AnimLayerType.Additive: return settings.convertAdditiveLayer;
+                case VRCAvatarDescriptor.AnimLayerType.Action: return settings.convertActionLayer;
+                default: return false;
+            }
+        }
+
+        internal static void SetOn(BridgeSettings settings, VRCAvatarDescriptor.AnimLayerType type, bool on)
+        {
+            switch (type)
+            {
+                case VRCAvatarDescriptor.AnimLayerType.Base: settings.convertBaseLayer = on; break;
+                case VRCAvatarDescriptor.AnimLayerType.Additive: settings.convertAdditiveLayer = on; break;
+                case VRCAvatarDescriptor.AnimLayerType.Action: settings.convertActionLayer = on; break;
+            }
+        }
+
+        // A slot the avatar fills itself: assigned, not the descriptor's
+        // own default, and holding something. A missing reference and an
+        // empty controller both count as absent.
+        internal static bool SuppliesOwnLayer(VRCAvatarDescriptor descriptor,
+            VRCAvatarDescriptor.AnimLayerType type)
+            => descriptor != null && CustomLayer(descriptor, type) != null;
+
+        // Whether a baker may still put a layer in an empty slot. VRCFury
+        // and Modular Avatar build controllers during the bake that the
+        // scene has no trace of — a Fury avatar whose Action slot reads
+        // empty here converted with an 8-layer Fury Action controller.
+        internal static bool LayersDecidedByBaker(GameObject root)
+            => VRCFuryBaker.HasFuryComponents(root)
+               || ModularAvatarBaker.HasModularAvatarComponents(root);
+
+        static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,
+            bool baked)
+        {
+            foreach (var (type, setting) in OptionalLayers)
+            {
+                if (!IsOn(settings, type) || SuppliesOwnLayer(descriptor, type))
+                {
+                    continue;
+                }
+                if (baked)
+                {
+                    // Left ticked on purpose. The slot is empty in the
+                    // scene and the baker may still fill it, and being
+                    // ticked for a layer that never arrives costs nothing.
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Confirm,
+                        Setting = setting,
+                        Finding = $"On, and this avatar's {type} slot is empty — but VRCFury or Modular " +
+                                  "Avatar can build one during the bake, which is where the conversion " +
+                                  "reads it from. Left on, because that costs nothing if no layer ever " +
+                                  "arrives and loses the whole layer if one does.",
+                    });
+                    continue;
+                }
+                advice.Add(new Advice
+                {
+                    Kind = AdviceKind.Change,
+                    Setting = setting,
+                    Finding = $"On, but this avatar has no {type} layer of its own — the slot is empty, " +
+                              "or holds VRChat's default. Nothing converts either way; the setting is " +
+                              "left over from another avatar, since these persist between them. " +
+                              "Switching it off keeps the box honest about this avatar.",
+                    Apply = s => SetOn(s, type, false),
+                });
+            }
+
             // Action and Additive are reported but never RECOMMENDED, because neither is a clear
             // win: Action takes full body control and its emote triggers have no ChilloutVR
             // equivalent, so states can be unreachable, and a misfire is very visible. Saying
