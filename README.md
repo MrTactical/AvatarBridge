@@ -460,9 +460,13 @@ than numeric:
 Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
 naming the field to change if that chain wants it.
 
-**Using DynamicBone instead?** None of this applies — PhysBones and DynamicBone *are* the same kind
-of simulation, so that path maps values 1:1. With **one deliberate exception: gravity is written to
-`m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
+**Using DynamicBone instead?** Almost none of this applies — PhysBones and DynamicBone *are* the
+same kind of simulation, so that path maps values 1:1. Two exceptions. First, *Size for the
+largest a slider makes the body* still applies: chain radii and converted colliders grow by the
+same mesh measurement, since a slider that grows the body past an authored radius breaks the
+collision identically on both solvers (inside-bound "cage" colliders are left alone — growing the
+body a cage contains would shrink the room inside it). Second, deliberately: **gravity is written
+to `m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
 ChilloutVR on any avatar that isn't at scale exactly 1.0 — the client cancels the rest-pose share
 of gravity with one factor of scale too many, so the gravity term comes out as `g × scale − g`.
 That's zero at scale 1, and **negative below it**, which lifts hair and tails toward the sky. A
@@ -483,7 +487,7 @@ come along; the report names each chain that had one.
 | **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
 | **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. It can *firm* the matched preset with the source's own character but never soften it below that preset's baseline — MagicaCloth2's own presets are the floor of a spring that still reads as one, and a very loose PhysBone converts faithfully to mush without it. The report says when the floor held. Turn it off to get the preset exactly as authored |
 | **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped — the same size on a breast as on a hair strand — so collision covers a fraction of what you see. This measures the mesh those bones move — with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it — and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
-| **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all — so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing — the saved reading simply wins |
+| **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed — of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all — so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing — the saved reading simply wins. On the DynamicBone path the same measurement grows chain radii and converted colliders |
 | **Fit colliders to the mesh** | on | A PhysBone collider carries *one* radius from end to end, so an author covering a thigh has to choose between fitting the hip and fitting the knee. MagicaCloth2's capsule takes a start and an end radius separately, so the converted one can taper the way the limb does. This measures the body part the collider sits on and fits the capsule to it. The measurement *replaces* the source's numbers: a PhysBone collider's size is invisible in VRChat unless something collides with it, so it's routinely one default stamped onto every collider on the avatar. Only the host bone's own vertices are read, so a leg collider can only come out leg-sized. The report gives the before and after for each |
 | **Cap particle radius to bone spacing** | off | Bounds each particle to half the gap between its bones. Off since the radius above became a measurement rather than a guess — on a soft-body chain, where two or three bones carry a large volume, this throws most of that measurement away. The overlap it guards against only bites with self-collision, which MagicaCloth2 leaves off. Turn on if a long chain of closely-spaced bones misbehaves |
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely — both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
@@ -505,6 +509,14 @@ The approximations: the trigger's area is a box sized from the authored sphere o
 minimum-velocity threshold has no equivalent (a slow touch fires), and a *Constant* receiver
 resets to zero when any pointer leaves, even if a second one is still inside. Each is called out
 in the conversion report when it happens.
+
+**Zones follow the body's growth sliders.** A slap zone authored on a body a blendshape can double
+stays authored-size while the mesh grows past it — every touch lands inside the body, short of the
+zone, and the contact reads as broken exactly when the slider is up. Each zone is measured the way
+the [physics sizes](#physbones--magicacloth2) are — the mesh around it at rest, then with every
+animated shape at full reach — and its collider grows by what the sliders can add, a little
+generous at low slider values rather than unreachable at high ones. The report names each zone
+grown and by how much; *Grow contact zones with the body's sliders* turns it off.
 
 ChilloutVR also has a contact system of its own inside the game client, a near-exact match for
 VRChat's. Earlier versions could convert onto it directly; that path is gone. The CCK ships no way
@@ -812,6 +824,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs--and-does-nothing) in CVR |
 | **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
+| **Grow contact zones with the body's sliders** | on | A zone authored on a body part a blendshape slider can grow stays authored-size while the mesh grows past it, so the touch lands inside the body short of the zone. Measured like the physics sizes — the mesh around each zone at rest and with every animated shape at full reach — and grown by what the sliders can add. The report names each zone grown |
 | **Convert VRC constraints** | on | VRChat constraints become Unity constraints; [driven objects](#constraints-that-drive-another-object) are handled separately |
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion` — CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |

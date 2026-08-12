@@ -145,6 +145,13 @@ namespace AvatarBridge
         // receivers keep reacting to other players' hands.
         public bool createDefaultColliderPointers = true;
 
+        // A zone authored on a body part a slider can grow keeps its
+        // authored size while the mesh grows past it, so the touch
+        // lands inside the body and never reaches it. Measured like
+        // the physics sizes: at rest and with every animated shape at
+        // full reach, keeping the larger.
+        public bool sizeContactZonesForLargest = true;
+
         // Copy shaders lacking single-pass instanced support into
         // RehomedAssets with the macros added, and repoint materials.
         // Originals are never modified; a copy that fails to compile

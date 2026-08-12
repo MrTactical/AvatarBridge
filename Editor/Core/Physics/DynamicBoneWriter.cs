@@ -78,6 +78,22 @@ namespace AvatarBridge
             {
                 db.m_RadiusDistrib = new AnimationCurve(data.RadiusCurve.keys);
             }
+            // The same growth the MagicaCloth path applies: a slider
+            // that grows the body past the authored radius leaves the
+            // chain colliding with a body that is not the one shown.
+            if (ctx.Settings.sizePhysicsForLargest && data.Root != null)
+            {
+                float growth = MeshGrowth.Around(ctx, data.Root.position,
+                    Mathf.Max(data.Radius * 2.5f, 0.06f));
+                if (growth > 1.02f)
+                {
+                    db.m_Radius *= growth;
+                    ctx.Report.Converted(Category, data.Root.name,
+                        $"Chain radius grown ×{growth:0.00} for the largest the sliders make the " +
+                        "body — measured at rest and with every animated shape at full reach, " +
+                        "keeping the larger.");
+                }
+            }
 
             // PhysBone gravity, applied entirely through m_Force.
             //
@@ -235,6 +251,25 @@ namespace AvatarBridge
                 round.m_Bound = pbCollider.insideBounds
                     ? DynamicBoneColliderBase.Bound.Inside
                     : DynamicBoneColliderBase.Bound.Outside;
+                // An inside-bound collider is a cage; growing the body
+                // it contains would shrink the room inside, so only
+                // ordinary colliders follow the sliders.
+                if (ctx.Settings.sizePhysicsForLargest
+                    && round.m_Bound == DynamicBoneColliderBase.Bound.Outside)
+                {
+                    float growth = MeshGrowth.Around(ctx,
+                        go.transform.TransformPoint(round.m_Center),
+                        Mathf.Max(round.m_Radius * 2.5f, 0.06f));
+                    if (growth > 1.02f)
+                    {
+                        round.m_Radius *= growth;
+                        round.m_Height *= growth;
+                        ctx.Report.Converted("PhysBone colliders", parent.name,
+                            $"Collider grown ×{growth:0.00} for the largest the sliders make the " +
+                            "body — measured at rest and with every animated shape at full reach, " +
+                            "keeping the larger.");
+                    }
+                }
                 collider = round;
             }
 

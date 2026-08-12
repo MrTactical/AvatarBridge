@@ -778,6 +778,14 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Recreate built-in VRC colliders as pointers",
                 "Head/hands/fingers pointers so converted receivers keep reacting to other players.",
                 settings.createDefaultColliderPointers, v => settings.createDefaultColliderPointers = v));
+            b.Add(BridgeElements.Bind("Grow contact zones with the body's sliders",
+                "A zone authored on a body part a blendshape slider can grow keeps its authored " +
+                "size while the mesh grows past it — so the touch lands inside the body, short of " +
+                "the zone, and the contact reads as broken at high slider values. Each zone is " +
+                "measured like the physics sizes are: the mesh around it at rest and with every " +
+                "animated shape at full reach, growing the collider by what the sliders can add. " +
+                "The report names each zone grown and by how much.",
+                settings.sizeContactZonesForLargest, v => settings.sizeContactZonesForLargest = v));
 
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,
                 settings.convertConstraints, v => settings.convertConstraints = v));

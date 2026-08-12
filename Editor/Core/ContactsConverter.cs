@@ -75,6 +75,7 @@ namespace AvatarBridge
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
+                GrowZoneForSliders(ctx, contactObject, PathOf(ctx, sender.transform));
                 RecordHost(ctx, sender, isSender: true, contactObject);
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
@@ -163,6 +164,7 @@ namespace AvatarBridge
 
             var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
+            GrowZoneForSliders(ctx, contactObject, PathOf(ctx, receiver.transform));
             RecordHost(ctx, receiver, isSender: false, contactObject);
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
@@ -202,6 +204,51 @@ namespace AvatarBridge
 
             ctx.ContactParameters.Add(receiver.parameter);
             Object.DestroyImmediate(receiver);
+        }
+
+        // A boop zone authored at 7 mm on the nose is fine; a slap zone
+        // authored on a body a slider doubles is not - the mesh grows
+        // past it and every touch lands inside the body, short of the
+        // zone. Measured the way the physics sizes are: the mesh around
+        // the zone at rest and with every animated shape at full reach,
+        // growing the collider by what the sliders can add.
+        static void GrowZoneForSliders(BridgeContext ctx, GameObject zone, string reportPath)
+        {
+            if (!ctx.Settings.sizeContactZonesForLargest)
+            {
+                return;
+            }
+            var sphere = zone.GetComponent<SphereCollider>();
+            var capsule = zone.GetComponent<CapsuleCollider>();
+            float radius = sphere != null ? sphere.radius : capsule != null ? capsule.radius : 0f;
+            if (radius <= 0f)
+            {
+                return;
+            }
+            var scale = zone.transform.lossyScale;
+            float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
+            // Capture enough mesh to say what the body does here; a tiny
+            // authored zone still needs the surrounding surface read.
+            float capture = Mathf.Max(radius * mean * 2.5f, 0.06f);
+            float growth = MeshGrowth.Around(ctx, zone.transform.position, capture);
+            if (growth <= 1.02f)
+            {
+                return;   // within measurement noise
+            }
+            if (sphere != null)
+            {
+                sphere.radius *= growth;
+            }
+            if (capsule != null)
+            {
+                capsule.radius *= growth;
+                capsule.height *= growth;
+            }
+            ctx.Report.Converted(Category, reportPath,
+                $"Zone grown ×{growth:0.00} for the largest the sliders make the body — an animated " +
+                "blendshape can push the mesh past the authored size, and a zone inside the body " +
+                "cannot be touched. Measured like the physics sizes: at rest and with every animated " +
+                "shape at full reach, keeping the larger.");
         }
 
         static CVRAdvancedAvatarSettingsTriggerTask MakeTask(string parameter, float value, float delay)
