@@ -70,7 +70,9 @@ Shader "AvatarBridge/SPS Light Probe"
                 if (digit == 1) return 0;
                 if (digit == 2) return 1;
                 if (digit == 5) return 2;
-                if (digit == 9 || digit == 8) return 3;
+                if (digit == 9) return 3;
+                if (digit == 8) return 6;   // split from 9 so the inverted
+                                            // encoding's two roots read apart
                 return 4;
             }
 
@@ -80,6 +82,7 @@ Shader "AvatarBridge/SPS Light Probe"
                 if (c == 1) return float3(0.15, 1.0, 0.25);   // ring
                 if (c == 2) return float3(0.25, 0.45, 1.0);   // front
                 if (c == 3) return float3(1.0, 0.2, 1.0);     // tip
+                if (c == 6) return float3(0.2, 1.0, 1.0);     // second root band
                 if (c == 4) return float3(1.0, 0.65, 0.1);    // unrecognised
                 // Amber, deliberately not grey: grey must mean "slot is
                 // empty" and nothing else, or a report of "it went grey"

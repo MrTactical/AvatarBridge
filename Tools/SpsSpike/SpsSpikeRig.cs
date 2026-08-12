@@ -12,6 +12,7 @@
 //                   another piece of content's vertex lights.
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -174,6 +175,124 @@ namespace AvatarBridge.Spike
             Debug.Log("[SpsSpike] Built 12 sockets / 24 protocol lights. Park on an avatar. " +
                       "Watch whether the probe's four slots hold a matched root+front pair " +
                       "for the nearest socket, or a scatter across several.");
+        }
+
+        // S1. Builds a mesh of little cubes whose only job is to be moved,
+        // in the vertex shader, onto each player's hip, chest and head as
+        // reported by the globals. Spawn it as a prop and look at people:
+        // the markers should sit on their bodies and stay there.
+        [MenuItem("AvatarBridge/Spike/Build GLOBALS probe (player position markers)")]
+        static void BuildGlobalsProbe()
+        {
+            const int players = 8;
+            const int channels = 3;
+
+            var verts = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var tris = new List<int>();
+
+            // One unit cube per (player, channel). Every cube is identical
+            // and centred on the origin; the shader supplies the position.
+            Vector3[] corners =
+            {
+                new Vector3(-1, -1, -1), new Vector3(1, -1, -1),
+                new Vector3(1, 1, -1),   new Vector3(-1, 1, -1),
+                new Vector3(-1, -1, 1),  new Vector3(1, -1, 1),
+                new Vector3(1, 1, 1),    new Vector3(-1, 1, 1),
+            };
+            int[] cubeTris =
+            {
+                0,2,1, 0,3,2,  1,2,6, 1,6,5,  5,6,7, 5,7,4,
+                4,7,3, 4,3,0,  3,7,6, 3,6,2,  4,0,1, 4,1,5,
+            };
+
+            for (int p = 0; p < players; p++)
+            {
+                for (int c = 0; c < channels; c++)
+                {
+                    int baseIndex = verts.Count;
+                    foreach (var corner in corners)
+                    {
+                        verts.Add(corner * 0.5f);
+                        uvs.Add(new Vector2(p, c));
+                    }
+                    foreach (int t in cubeTris)
+                    {
+                        tris.Add(baseIndex + t);
+                    }
+                }
+            }
+
+            var mesh = new Mesh { name = "SPS Globals Markers" };
+            mesh.SetVertices(verts);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(tris, 0);
+            // The shader throws these anywhere in the world, so a tight
+            // bounds would let Unity cull the whole thing off-screen.
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1000f);
+
+            string dir = "Assets/SpsSpike";
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                AssetDatabase.CreateFolder("Assets", "SpsSpike");
+            }
+            AssetDatabase.CreateAsset(mesh,
+                AssetDatabase.GenerateUniqueAssetPath(dir + "/SPS Globals Markers.asset"));
+
+            var shader = Shader.Find("AvatarBridge/SPS Globals Probe");
+            if (shader == null)
+            {
+                Debug.LogError("[SpsSpike] Globals probe shader not found.");
+                return;
+            }
+            var material = new Material(shader) { name = "SPS Globals Probe" };
+            AssetDatabase.CreateAsset(material,
+                AssetDatabase.GenerateUniqueAssetPath(dir + "/SPS Globals Probe.mat"));
+
+            var root = new GameObject("SPS Globals Probe");
+            Undo.RegisterCreatedObjectUndo(root, "Build SPS globals probe");
+            var filter = root.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            var renderer = root.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+
+            Selection.activeGameObject = root;
+            Debug.Log("[SpsSpike] Built the globals probe. Spawn it as a prop and look at " +
+                      "people: red marks hips, green chests, blue heads, and the bright set " +
+                      "is player index 0, which should be you. Check a mirror too — these " +
+                      "are global uniforms, so the mirror must agree with the direct view.");
+        }
+
+        // The stress failure was structural: the DPS protocol puts the
+        // front light at a longer range than its own root, and Unity ranks
+        // vertex lights by range, so fronts evict roots. For our own
+        // avatars we are free to invert the ordering. Same decode, second
+        // decimal, just remapped.
+        [MenuItem("AvatarBridge/Spike/Build INVERTED-encoding stress lights (roots win)")]
+        static void BuildInvertedStressLights()
+        {
+            var root = new GameObject("SPS Protocol Lights (inverted, 12 sockets)");
+            Undo.RegisterCreatedObjectUndo(root, "Build SPS inverted stress lights");
+
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = i * Mathf.PI * 2f / 12f;
+                var at = new Vector3(Mathf.Cos(angle) * 0.25f,
+                                     0.1f + i * 0.04f,
+                                     Mathf.Sin(angle) * 0.25f);
+                var socket = new GameObject($"Socket {i:00}");
+                socket.transform.SetParent(root.transform, false);
+                socket.transform.localPosition = at;
+
+                // Roots now outrange fronts, so they should hold the slots.
+                MakeLight(socket.transform, "Root", (i % 2 == 0) ? 0.4906f : 0.4806f, Vector3.zero);
+                MakeLight(socket.transform, "Front", 0.4106f, Vector3.forward * 0.01f);
+            }
+
+            Selection.activeGameObject = root;
+            Debug.Log("[SpsSpike] Inverted encoding: roots at 0.49/0.48, fronts at 0.41. " +
+                      "Compare against the normal stress rig — the slots should now hold " +
+                      "roots (magenta/cyan) instead of filling with fronts.");
         }
 
         static Type FindType(string fullName)

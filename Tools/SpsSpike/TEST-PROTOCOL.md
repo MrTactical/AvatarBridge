@@ -1,84 +1,65 @@
-# Confirmation session — the last four questions, one upload
+# Round 2 — proving the new backbone
 
-Everything below runs in a single session with a second person. Build the pieces from the
-**AvatarBridge ▸ Spike** menu, upload, and work down the list.
+The first round demoted lights from carrying position. The redesign leans instead on CVR's
+per-player position globals for per-frame tracking, and **that has never been tested at all** —
+we jumped straight to lights. So this round is mostly about the globals, plus two quick
+follow-ups that could hand lights a real job back.
 
-## What to upload
+## Priority 1 — the globals probe (this is the go/no-go now)
 
-| Piece | Menu item | Who wears/spawns it |
-|---|---|---|
-| Probe **avatar** (no lights) | *Build probe AVATAR* | your tester wears it |
-| Stress lights, 12 sockets | *Build socket stress lights* | you park it on your avatar |
-| Probe **prop** (no lights) | *Build probe cube only* | either, as a control |
+**AvatarBridge ▸ Spike ▸ Build GLOBALS probe (player position markers)** → spawn as a prop.
 
-Share the probe avatar with your tester so they can wear it. Everything else you already have.
+It draws small cubes straight onto every player's **hip (red)**, **chest (green)** and
+**head (blue)**, taken from the globals, ignoring its own transform entirely. The bright set
+is player index 0, which should be you.
 
-## Reading the cube
+Look for, in order of importance:
 
-Four rows, top row is slot 0. Per row: a **swatch** (what that slot decoded to), a **ruler**
-showing where the range landed against ticks at 0.41 / 0.42 / 0.45 / 0.49, and a **distance
-bar** underneath, 0–5 m ticked per metre.
+1. **Do markers appear on people at all?** If nothing shows, the globals do not resolve for
+   uploaded content and the whole redesign needs rethinking. Everything else is moot.
+2. **Do they sit on the right body parts?** A hip marker floating at the knee, or offset by
+   half a metre, changes how much correction the design needs.
+3. **Do they track smoothly when people walk, crouch, jump?** Any lag or stutter here is lag
+   the deform inherits, since this is the per-frame source now.
+4. **Is the bright set on you?** Confirms local player is index 0.
+5. **THE MIRROR.** Look at a mirror. The markers **must** appear in exactly the same places as
+   in the direct view. These are global uniforms, so unlike lights they should be identical
+   everywhere. If the mirror agrees, the camera-dependence problem is genuinely solved. If it
+   somehow does not, tell me immediately — that would be the most surprising result of the
+   whole spike.
+6. With Fluffy present: do their markers track *them* correctly, and does yours stay on you?
 
-Swatch colours: **red** hole · **green** ring · **blue** front · **magenta** tip ·
-**amber** an ordinary world light took the slot · **dark grey** slot empty.
-Border pulsing cyan = alive. Border solid red = the vertex and fragment stages disagree.
+## Priority 2 — do roots win with the ranges inverted?
 
-**New: the top-right corner square** is written only by the ForwardAdd pass —
-- **black** — that pass never ran here (no pixel light on the cube)
-- **dim blue only** — it ran but sees *no* protocol light ← this is the ghosting risk
-- **blue tinted red/green/blue/magenta** — it ran and has the same lights ← safe
+**Build INVERTED-encoding stress lights (roots win)** → wear it, read the light-probe cube.
 
-## Q1 — Avatar → avatar (the real topology)
+Same 12 sockets, but roots at **0.49 / 0.48** and fronts at **0.41**, so roots now outrange
+their fronts. The probe now shows the two root bands apart: **magenta** and **cyan**, with
+fronts in red.
 
-Tester wears the probe avatar. You wear the lights. Stand a couple of metres apart.
+- **Slots fill with magenta/cyan** → the fix works, roots hold the slots, and lights become
+  usable again as a contact-range refinement.
+- **Still mostly red (fronts)** → range is not what Unity ranks by here, and lights stay
+  purely legacy-interop.
 
-- **Rows light up** → avatar-to-avatar works; the layer question is closed and the precision
-  channel is proven in the exact shape the deform needs.
-- **Stays dark while the prop version works** → it is a layer problem. Recoverable (the
-  converter would widen the culling mask), but I need to know.
+Compare directly against the old stress rig, which filled with blue fronts.
 
-## Q2 — Close range, the distance that actually matters
+## Priority 3 — lights at contact range, in a mirror
 
-Walk right up to each other, under half a metre, and **look straight at the probe** — not at
-the person wearing the lights.
+Hold the light-probe cube right against the avatar wearing lights, under half a metre, then
+look at a **mirror**.
 
-- **Rows stay lit** → frustum culling is cosmetic. At real working distance the socket is
-  always in frame when the plug is, and the precision channel is solid.
-- **Rows drop out** → culling bites even at contact range, and the deform must lean on the
-  discrete channel's last-known position much harder. Worth knowing before I write the easing.
+- **Mirror and direct view agree** → lights are stable at contact range exactly as predicted,
+  and the refinement tier is safe to build.
+- **They disagree even touching** → lights never carry position, only legacy interop.
 
-Note the **distance bars** here: they should read very short. That is the reading that proves
-these are the near lights and not something across the room.
+## Optional if convenient
 
-## Q3 — Slot contention with a realistic socket count
-
-You wear the **stress rig** (12 sockets, 24 lights). Tester watches the probe while you move
-around them.
-
-Watch for: do the four slots hold a **matched root+front pair** (a red or green *and* a blue
-at nearly the same distance) for whichever socket is nearest? Or is it a scatter of roots
-with no fronts?
-
-- **Matched pairs, nearest wins** → the decoder can pair by proximity and trust the nearest.
-- **Scattered** → pairing must be defensive, and a lone root has to be discarded rather than
-  guessed at. Either answer is usable; it changes about ten lines of the decoder.
-
-## Q4 — The corner square (cross-pass ghosting)
-
-Do this in a world with real pixel lights — a bright one, or stand under a lamp.
-
-Watch the **top-right corner**. Any of the three states is a valid result; I need to know
-which. If it goes dim blue with no colour, the deform has to be disabled in that pass, which
-is a one-line change made now rather than a mystery later.
-
-## Optional, if easy
-
-- **In VR**, check both eyes show the same readout (single-pass instanced correctness).
-- **In a mirror**, check whether the readout differs from the direct view.
-- Have the tester set their **lights content filter** to block and confirm the cube goes
-  dark rather than misbehaving.
+- The **top-right corner square** on the light probe, in a brightly lit world (it stayed black
+  before, meaning that pass never ran).
+- VR, both eyes, on the globals probe.
 
 ## What to send back
 
-A shot of each of Q1–Q4, and a note on anything that flickered. That closes the spike and
-Phase 1 starts.
+A shot of the globals probe with both of you in frame, one of the same thing in a mirror, and
+the inverted stress readout. Priority 1 is the one that decides whether Phase 1 starts.
