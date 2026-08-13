@@ -68,6 +68,19 @@ namespace AvatarBridge.Spike
             // light digits deliberately carry no kind.
             var holeSocket = BuildSocket("YAPS Test Socket (hole)",
                 new Color(0.4f, 0.15f, 0.5f), lights: true, pointer: true, hole: true);
+
+            // The one an actual user wants, as opposed to the four above,
+            // which are instruments for telling paths apart while
+            // debugging. Universal turns out to mean speaking LEGACY rather
+            // than speaking more: our decoder reads the legacy digits
+            // already, so a socket carrying only the legacy pair is
+            // understood by YAPS plugs AND by every DPS plug on the
+            // platform, on two lights rather than four. Our own inverted
+            // encoding only earns its keep on an avatar with a dozen
+            // sockets fighting over four slots — which no prop is.
+            var universal = BuildSocket("YAPS Test Socket (universal)",
+                new Color(0.25f, 0.75f, 0.4f), lights: true, pointer: true, hole: false,
+                legacy: true);
             var plug = BuildPlug();
             AssetDatabase.SaveAssets();
 
@@ -82,14 +95,20 @@ namespace AvatarBridge.Spike
                       "Taper is tunable on the PLUG's material: YAPS hole taper start and end, " +
                       "as fractions of plug length. Widen the gap for a soft grip, close it for " +
                       "an abrupt one.\n" +
-                      "The plug PROP has no channel, so it reacts to pink, yellow and purple, " +
-                      "never blue. A converted AVATAR should react to all four.");
-            Selection.objects = new Object[] { socket, lightsOnly, contactOnly, holeSocket, plug };
+                      "GREEN socket: UNIVERSAL, and the one a real user wants. Legacy encoding, " +
+                      "so YAPS plugs and every DPS plug already on the platform both understand " +
+                      "it. The other four are instruments for telling paths apart while " +
+                      "debugging, not products.\n" +
+                      "The plug PROP has no channel, so it reacts to pink, yellow, purple and " +
+                      "green, and never to blue. A converted AVATAR should react to all five.");
+            Selection.objects = new Object[]
+                { universal, socket, lightsOnly, contactOnly, holeSocket, plug };
         }
 
         // --- the socket ------------------------------------------------
 
-        static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer, bool hole)
+        static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer, bool hole,
+            bool legacy = false)
         {
             var root = new GameObject(name);
             var body = new GameObject("Ring");
@@ -101,20 +120,21 @@ namespace AvatarBridge.Spike
             body.AddComponent<MeshFilter>().sharedMesh = mesh;
             body.AddComponent<MeshRenderer>().sharedMaterial = SolidMaterial(name, colour);
 
-            // The two marker lights, exactly as a converted socket emits
-            // them: black, no shadows, vertex-only. Black because the
-            // decoder rejects anything carrying colour as somebody's real
-            // lighting; vertex-only because that is what keeps them out of
-            // ChilloutVR's Advanced Safety light budget.
+            // The two marker lights: black, no shadows, vertex-only. Black
+            // because the decoder rejects anything carrying colour as
+            // somebody's real lighting; vertex-only because that is what
+            // keeps them out of ChilloutVR's Advanced Safety light budget.
             if (lights)
             {
-                // A hole announces itself with the LEGACY hole digit, the
-                // only way a light can state a kind at all: our own two
-                // digits were spent on root and front and carry none. So a
-                // hole prop speaks legacy, which is also exactly what the
-                // DPS content already on the platform does.
-                MarkerLight(root.transform, "Root", hole ? 0.4106f : RootRange, Vector3.zero);
-                MarkerLight(root.transform, "Front", hole ? 0.4506f : FrontRange, new Vector3(0, 0, 0.01f));
+                // Legacy states the KIND in its digit, which is the only way
+                // a light can say it at all — our own two digits went on
+                // root and front and carry none. So a hole is always legacy,
+                // and a universal socket is legacy by choice, which is what
+                // makes it readable by content that predates all of this.
+                float rootRange = hole ? 0.4106f : legacy ? 0.4206f : RootRange;
+                float frontRange = hole || legacy ? 0.4506f : FrontRange;
+                MarkerLight(root.transform, "Root", rootRange, Vector3.zero);
+                MarkerLight(root.transform, "Front", frontRange, new Vector3(0, 0, 0.01f));
             }
 
             // Tagged the way a converted avatar's socket is tagged, so a
@@ -123,7 +143,8 @@ namespace AvatarBridge.Spike
             {
                 var host = new GameObject("Socket Pointer");
                 host.transform.SetParent(root.transform, false);
-                host.AddComponent<CVRPointer>().type = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Root";
+                host.AddComponent<CVRPointer>().type =
+                    hole ? "SPSLL_Socket_Hole" : legacy ? "SPSLL_Socket_Ring" : "SPSLL_Socket_Root";
             }
 
             // Tight to the ring. Two pickups cannot overlap, so every
