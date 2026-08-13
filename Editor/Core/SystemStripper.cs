@@ -23,10 +23,10 @@ namespace AvatarBridge
 
         // "OGB" (no separator) also catches OGB_ENABLED and friends.
         //
-        // Split in two because YAPS conversion keeps the penetration
-        // system and strips everything else in this family. PCS, the
-        // World Scale Detector and Wholesome's audio have no CVR
-        // equivalent either way, so they go regardless.
+        // Named apart from the rest of the family because the object and
+        // pointer lists below DO change when the penetration system is
+        // being converted rather than removed. Parameters and layers do
+        // not — see KeepingPenetration.
         static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS" };
         static readonly string[] OtherSpsParamPrefixes =
         {
@@ -53,16 +53,26 @@ namespace AvatarBridge
 
         // The penetration system survives the strip only while it is
         // being converted into something CVR can run.
+        //
+        // What survives is the SCENE: the plug and socket objects, their
+        // marker lights, and the pointers a socket is found by. The
+        // PARAMETERS still go, and that is not an oversight.
+        //
+        // Measured on a real avatar: converted without the penetration
+        // system she spends 544 of ChilloutVR's 3200 sync bits, and keeping
+        // VRChat's haptic parameters took her to 3200 exactly — around 83
+        // synced floats for 119 contacts. YAPS needs none of them. It
+        // builds its own channel out of four floats, or one, or none. What
+        // is lost with them is VRChat's depth-driven haptic animation,
+        // which was written against an API ChilloutVR does not have, and
+        // 2650 sync bits is not a price worth paying for it.
         static bool KeepingPenetration(BridgeContext ctx) =>
             ctx.Settings.stripSpsSystems && ctx.Settings.convertYapsSystems;
 
-        static IEnumerable<string> SpsParamPrefixes(BridgeContext ctx) =>
-            KeepingPenetration(ctx) ? OtherSpsParamPrefixes
-                                    : OtherSpsParamPrefixes.Concat(YapsParamPrefixes);
-
-        static IEnumerable<string> SpsLayerHints(BridgeContext ctx) =>
-            KeepingPenetration(ctx) ? OtherSpsLayerHints
-                                    : OtherSpsLayerHints.Concat(YapsLayerHints);
+        static readonly string[] AllSpsParamPrefixes =
+            OtherSpsParamPrefixes.Concat(YapsParamPrefixes).ToArray();
+        static readonly string[] AllSpsLayerHints =
+            OtherSpsLayerHints.Concat(YapsLayerHints).ToArray();
 
         internal static bool AvatarUsesGogo(BridgeContext ctx) =>
             AvatarUsesGogo(ctx != null ? ctx.SourceDescriptor : null);
@@ -91,7 +101,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                prefixes.AddRange(SpsParamPrefixes(ctx));
+                prefixes.AddRange(AllSpsParamPrefixes);
             }
             if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
             {
@@ -140,7 +150,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints(ctx));
+                layerHints.AddRange(AllSpsLayerHints);
             }
             // User-supplied keywords (comma separated) act as both parameter prefixes and
             // layer-name hints, for add-ons this list doesn't know about yet.
@@ -216,7 +226,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints(ctx));
+                layerHints.AddRange(AllSpsLayerHints);
             }
             bool IsStrippedParam(string name) =>
                 !string.IsNullOrEmpty(name) &&
