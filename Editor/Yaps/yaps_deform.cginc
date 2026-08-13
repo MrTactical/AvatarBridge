@@ -312,15 +312,24 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         socketForward = -socketForward;
     }
 
-    // Handles: stretched far out when the socket is distant, which drags
-    // the curve straight; shortened to half the gap when it is close,
-    // which turns it into a real bend that arrives along the socket axis.
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
-    float handle = lerp(worldLength * 5, gap * 0.5, engage);
+
+    // Only the PLUG's handle gets the pullout. Stretching it far along the
+    // plug's own forward is what holds the shaft straight while the socket
+    // is still out of range — the curve's first stretch is then dominated
+    // by that one direction.
+    //
+    // The socket's handle must NOT be stretched with it. Pulling both ends
+    // out inflates the whole curve into a loop far longer than the plug,
+    // and the plug ends up following the opening arc of that loop, which
+    // points nowhere near the socket. Measured on a 0.6 m plug at partial
+    // engagement: a 1.8 m curve, and a shaft aimed off into space.
+    float approachHandle = gap * 0.5;
+    float rootHandle = lerp(worldLength * 5, approachHandle, engage);
 
     float3 p0 = rootWorld;
-    float3 p1 = rootWorld + rootForward * handle;
-    float3 p2 = socketWorld - socketForward * handle;
+    float3 p1 = rootWorld + rootForward * rootHandle;
+    float3 p2 = socketWorld - socketForward * approachHandle;
     float3 p3 = socketWorld;
 
     float leftOver;

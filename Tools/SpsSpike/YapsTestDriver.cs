@@ -135,13 +135,21 @@ namespace AvatarBridge.Spike
             Vector3 socketForward = socket.forward;
 
             float gap = Vector3.Distance(socketWorld, rootWorld);
+
+            // Mirrors the shader, including the approach-side flip.
+            if (Vector3.Dot(socketForward, socketWorld - rootWorld) < 0f)
+            {
+                socketForward = -socketForward;
+            }
+
             float engage = 1f - Mathf.Clamp01((gap - worldLength * 1.2f)
                 / Mathf.Max(worldLength * 1.6f - worldLength * 1.2f, 1e-6f));
-            float handle = Mathf.Lerp(worldLength * 5f, gap * 0.5f, engage);
+            float approachHandle = gap * 0.5f;
+            float rootHandle = Mathf.Lerp(worldLength * 5f, approachHandle, engage);
 
             Vector3 p0 = rootWorld;
-            Vector3 p1 = rootWorld + rootForward * handle;
-            Vector3 p2 = socketWorld - socketForward * handle;
+            Vector3 p1 = rootWorld + rootForward * rootHandle;
+            Vector3 p2 = socketWorld - socketForward * approachHandle;
             Vector3 p3 = socketWorld;
 
             // The control hull, so a handle reaching somewhere absurd is
