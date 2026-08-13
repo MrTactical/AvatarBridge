@@ -322,6 +322,14 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     {
         float taperFrom = worldLength * 0.05;
         float taperTo = worldLength * 0.10;
+
+        // CLAMP FIRST. Without this, a socket closer than the plug is long
+        // sends every vertex past it flying forward by its own excess —
+        // and since the taper has already pulled the radius to zero, they
+        // collapse onto a line and render as a flat twisted ribbon. A hole
+        // is a hole: nothing goes more than a tenth of a plug-length past
+        // it, and everything beyond simply piles up there and closes off.
+        leftOver = min(leftOver, taperTo);
         radius = 1 - YapsRamp(leftOver, taperFrom, taperTo);
         if (_YAPS_Overrun < 0.5) leftOver = 0;
     }
