@@ -160,14 +160,35 @@ namespace AvatarBridge
 
         // --- the vertex wrapper ---------------------------------------
 
+        // Modify the vertex function IN PLACE rather than wrapping it.
+        //
+        // The first attempt built a wrapper and renamed the pragma, which
+        // needed the signature to be one simple parameter. Poiyomi — by a
+        // distance the most common avatar shader — declares its vertex
+        // stage across five lines with a preprocessor conditional choosing
+        // between two input types:
+        //
+        //     VertexOut vert(
+        //     #ifndef POI_TESSELLATED
+        //     appdata v
+        //     #else
+        //     tessAppData v
+        //     #endif
+        //     )
+        //
+        // No wrapper can reproduce that signature without reimplementing
+        // the preprocessor. Editing the body sidesteps the whole problem:
+        // the parameter is a local copy in HLSL, so deforming it at the top
+        // of the function is exactly equivalent to deforming it on the way
+        // in, and the pragma never has to change.
         static int PatchProgramBlocks(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             out string refusal)
         {
             refusal = null;
             var shaderFile = unit[0];
             int patched = 0;
+            var alreadyInjected = new HashSet<string>(StringComparer.Ordinal);
 
-            // Walk backwards so each edit's offsets stay valid.
             var blocks = Regex.Matches(shaderFile.Text, @"(CGPROGRAM|HLSLPROGRAM)")
                 .Cast<Match>().Reverse().ToList();
 
@@ -179,12 +200,12 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                string body = shaderFile.Text.Substring(start, end.Index);
 
-                var vertPragma = Regex.Match(body, @"#pragma\s+vertex\s+(\w+)");
+                var vertPragma = Regex.Match(
+                    shaderFile.Text.Substring(start, end.Index), @"#pragma\s+vertex\s+(\w+)");
                 if (!vertPragma.Success)
                 {
-                    continue;   // fragment-only or a pass we need not touch
+                    continue;   // fragment-only, or a pass we need not touch
                 }
 
                 // Lightmap baking runs its own geometry and never shows the
@@ -196,104 +217,142 @@ namespace AvatarBridge
                 }
 
                 string vertName = vertPragma.Groups[1].Value;
-                var signature = FindSignature(unit, vertName, out var signatureFile);
-                if (!signature.Success)
+                string key = vertName + "@" + block.Index;
+                if (!alreadyInjected.Add(key))
                 {
-                    refusal = $"the vertex function \"{vertName}\" has a shape this patcher does " +
-                              "not recognise, so wrapping it would be guesswork";
-                    return patched;
+                    continue;
                 }
 
-                string returnType = signature.Groups[1].Value;
-                string inputType = signature.Groups[2].Value;
-
-                var members = ReadStructMembers(unit, inputType);
-                if (members == null)
+                if (!PatchOneVertexFunction(unit, yaps, vertName, out string why))
                 {
-                    refusal = $"the vertex input struct \"{inputType}\" could not be found in the " +
-                              "shader or its includes";
+                    refusal = why;
                     return patched;
                 }
-                if (!members.TryGetValue("POSITION", out string positionField))
-                {
-                    refusal = $"\"{inputType}\" has no POSITION member, so there is no vertex to " +
-                              "deform";
-                    return patched;
-                }
-                members.TryGetValue("NORMAL", out string normalField);
-                members.TryGetValue("TANGENT", out string tangentField);
-                members.TryGetValue("SV_VERTEXID", out string vertexIdField);
-
-                string wrapper = BuildWrapper(vertName, returnType, inputType,
-                    positionField, normalField, tangentField, vertexIdField, patched);
-
-                // The YAPS source goes in once per program block, before the
-                // wrapper that calls it.
-                string injected = "\n" + yaps + "\n" + wrapper + "\n";
-                string newBody = body.Replace(vertPragma.Value,
-                    $"#pragma vertex {WrapperName(patched)}")
-                    + injected;
-
-                shaderFile.Text = shaderFile.Text.Remove(start, end.Index)
-                    .Insert(start, newBody);
                 patched++;
             }
 
             return patched;
         }
 
-        static string WrapperName(int index) => "yapsVert_" + index;
-
-        static string BuildWrapper(string vertName, string returnType, string inputType,
-            string positionField, string normalField, string tangentField, string vertexIdField,
-            int index)
+        static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
+            string vertName, out string refusal)
         {
-            var sb = new StringBuilder();
-            string wrapperName = WrapperName(index);
-            string structName = "YapsInputs_" + index;
+            refusal = null;
 
-            bool needsOwnId = string.IsNullOrEmpty(vertexIdField);
-            if (needsOwnId)
+            // Find the definition rather than a call: a definition is
+            // followed by a parameter list and then a brace.
+            var file = ShaderSpiPatcher.FindIn(unit,
+                $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(", out var head);
+            if (file == null)
             {
-                // The bake is addressed by vertex id, and most shaders never
-                // asked for one. Deriving a struct adds it without touching
-                // the original's layout.
-                sb.AppendLine($"struct {structName} : {inputType} {{ uint yapsVertexId : SV_VertexID; }};");
+                refusal = $"the vertex function \"{vertName}\" could not be found in the shader " +
+                          "or its includes";
+                return false;
             }
 
-            string parameterType = needsOwnId ? structName : inputType;
-            string idExpression = needsOwnId ? "yapsIn.yapsVertexId" : "v." + vertexIdField;
+            int parenOpen = file.Text.IndexOf('(', head.Index);
+            int parenClose = MatchBracket(file.Text, parenOpen, '(', ')');
+            if (parenClose < 0)
+            {
+                refusal = $"the parameter list of \"{vertName}\" is not closed";
+                return false;
+            }
 
-            sb.AppendLine($"{returnType} {wrapperName}({parameterType} yapsIn) {{");
-            sb.AppendLine($"    {inputType} v = ({inputType})yapsIn;");
-            sb.AppendLine("    float3 yapsPosition = v." + positionField + ".xyz;");
-            sb.AppendLine(normalField != null
-                ? "    float3 yapsNormal = v." + normalField + ".xyz;"
+            int braceOpen = file.Text.IndexOf('{', parenClose);
+            if (braceOpen < 0)
+            {
+                refusal = $"\"{vertName}\" looks like a declaration without a body";
+                return false;
+            }
+
+            string parameters = file.Text.Substring(parenOpen + 1, parenClose - parenOpen - 1);
+            var identifiers = Regex.Matches(parameters, @"[A-Za-z_]\w*")
+                .Cast<Match>().Select(m => m.Value).ToList();
+            if (identifiers.Count < 2)
+            {
+                refusal = $"\"{vertName}\" takes no vertex input this patcher can recognise";
+                return false;
+            }
+
+            // The parameter's own name is the last identifier; everything
+            // before it is candidate type names, preprocessor symbols and
+            // qualifiers. Try each as a struct until one carries POSITION.
+            string parameterName = identifiers[identifiers.Count - 1];
+            Dictionary<string, string> members = null;
+            foreach (string candidate in identifiers.Take(identifiers.Count - 1).Distinct())
+            {
+                var found = ReadStructMembers(unit, candidate);
+                if (found != null && found.ContainsKey("POSITION"))
+                {
+                    members = found;
+                    break;
+                }
+            }
+            if (members == null)
+            {
+                refusal = $"no vertex input struct with a POSITION member could be found for " +
+                          $"\"{vertName}\"";
+                return false;
+            }
+
+            members.TryGetValue("POSITION", out string positionField);
+            members.TryGetValue("NORMAL", out string normalField);
+            members.TryGetValue("TANGENT", out string tangentField);
+            members.TryGetValue("SV_VERTEXID", out string vertexIdField);
+
+            string idExpression;
+            if (!string.IsNullOrEmpty(vertexIdField))
+            {
+                idExpression = parameterName + "." + vertexIdField;
+            }
+            else
+            {
+                refusal = $"\"{vertName}\"'s input has no SV_VertexID, which is how the bake is " +
+                          "addressed";
+                return false;
+            }
+
+            var body = new StringBuilder();
+            body.AppendLine();
+            body.AppendLine("    // --- YAPS ---");
+            body.AppendLine($"    float3 yapsPosition = {parameterName}.{positionField}.xyz;");
+            body.AppendLine(normalField != null
+                ? $"    float3 yapsNormal = {parameterName}.{normalField}.xyz;"
                 : "    float3 yapsNormal = float3(0,0,1);");
-            sb.AppendLine(tangentField != null
-                ? "    float3 yapsTangent = v." + tangentField + ".xyz;"
+            body.AppendLine(tangentField != null
+                ? $"    float3 yapsTangent = {parameterName}.{tangentField}.xyz;"
                 : "    float3 yapsTangent = float3(1,0,0);");
-            sb.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
-            sb.AppendLine("    v." + positionField + ".xyz = yapsPosition;");
+            body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
+            body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
             {
-                sb.AppendLine("    v." + normalField + ".xyz = yapsNormal;");
+                body.AppendLine($"    {parameterName}.{normalField}.xyz = yapsNormal;");
             }
             if (tangentField != null)
             {
-                sb.AppendLine("    v." + tangentField + ".xyz = yapsTangent;");
+                body.AppendLine($"    {parameterName}.{tangentField}.xyz = yapsTangent;");
             }
-            sb.AppendLine($"    return {vertName}(v);");
-            sb.AppendLine("}");
-            return sb.ToString();
+            body.AppendLine("    // --- end YAPS ---");
+
+            // Body first, then the includes above the function, so the
+            // insertion offsets stay valid. The YAPS source goes
+            // immediately before the function rather than at the top of the
+            // block: by here the shader's own includes have run, so
+            // UnityCG's matrices and light arrays exist.
+            file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
+            file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
+            return true;
         }
 
-        static Match FindSignature(List<ShaderSpiPatcher.SourceFile> unit, string vertName,
-            out ShaderSpiPatcher.SourceFile file)
+        static int MatchBracket(string text, int open, char opening, char closing)
         {
-            file = ShaderSpiPatcher.FindIn(unit,
-                $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)", out var match);
-            return match;
+            int depth = 0;
+            for (int i = open; i < text.Length; i++)
+            {
+                if (text[i] == opening) depth++;
+                else if (text[i] == closing && --depth == 0) return i;
+            }
+            return -1;
         }
 
         // Members keyed by SEMANTIC, because names are anybody's guess but
