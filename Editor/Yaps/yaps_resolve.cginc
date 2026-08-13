@@ -122,7 +122,55 @@ inline float3 YapsLightPosition(uint slot)
     return float3(unity_4LightPosX0[slot], unity_4LightPosY0[slot], unity_4LightPosZ0[slot]);
 }
 
-int YapsClassifyLight(uint slot)
+// Whose body is this light on, and is it the same one the plug is on?
+//
+// ChilloutVR publishes every player's hip position to every shader, so the
+// question can simply be asked: find the player nearest the plug, find the
+// player nearest the light, and see whether they are the same person. No
+// identity is transmitted and nothing is spent — the answer was already
+// sitting in a global array.
+//
+// It is a judgement rather than a fact. Two people standing hip to hip can
+// confuse it, and a socket far from its own hip — on a hand, say — can look
+// like it belongs to whoever is closer. That is why it never runs alone: it
+// only ever decides a case the tag has already flagged as suspect, so a
+// wrong answer here costs a tag collision that would have happened anyway,
+// and a right one rescues nine in ten of them.
+bool YapsSameBodyAs(float3 plugOrigin, uint slot)
+{
+    int count = min((int) round(CVRGlobalParams1.y), 255);
+    if (count <= 1)
+    {
+        return true;   // nobody else here; the tag was right
+    }
+
+    float3 lightAt = YapsLightPosition(slot);
+    int nearPlug = -1, nearLight = -1;
+    float bestPlug = 1e9, bestLight = 1e9;
+
+    [loop]
+    for (int i = 0; i < count; i++)
+    {
+        float3 hip = _CVR_PlayerHipPositions[i].xyz;
+        if (dot(hip, hip) < 1e-6) continue;
+
+        float toPlug = dot(hip - plugOrigin, hip - plugOrigin);
+        if (toPlug < bestPlug) { bestPlug = toPlug; nearPlug = i; }
+
+        float toLight = dot(hip - lightAt, hip - lightAt);
+        if (toLight < bestLight) { bestLight = toLight; nearLight = i; }
+    }
+
+    // Nothing resolved: fall back to trusting the tag, which is what this
+    // did before the globals were consulted at all.
+    if (nearPlug < 0 || nearLight < 0)
+    {
+        return true;
+    }
+    return nearPlug == nearLight;
+}
+
+int YapsClassifyLight(uint slot, float3 plugOrigin)
 {
     float range = YapsLightRange(slot);
     if (range >= 0.5) return YAPS_LIGHT_NONE;
@@ -135,10 +183,19 @@ int YapsClassifyLight(uint slot)
     // The wearer's own sockets, skipped before anything else. They are
     // permanently in reach and permanently nearest, so without this the
     // plug never looks at anyone else.
+    //
+    // The tag alone is only ten values, so two people wearing
+    // differently-converted avatars collide about one time in ten and one
+    // of them stops seeing the other's sockets entirely. The tag therefore
+    // does not get the final word: it says "this MIGHT be mine", and the
+    // player positions are asked whose it actually is.
     if (_YAPS_SelfTag >= 0)
     {
         int owner = (int) round(fmod(range * 10000.0, 10.0));
-        if (owner == (int) round(_YAPS_SelfTag)) return YAPS_LIGHT_NONE;
+        if (owner == (int) round(_YAPS_SelfTag) && YapsSameBodyAs(plugOrigin, slot))
+        {
+            return YAPS_LIGHT_NONE;
+        }
     }
 
     int digit = (int) round(fmod(range, 0.1) * 100.0);
@@ -173,7 +230,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
     [unroll]
     for (uint i = 0; i < 4; i++)
     {
-        int kind = YapsClassifyLight(i);
+        int kind = YapsClassifyLight(i, plugOrigin);
         if (!YapsIsRoot(kind)) continue;
         float3 at = YapsLightPosition(i);
         float distanceSq = dot(at - plugOrigin, at - plugOrigin);
@@ -191,7 +248,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
         [unroll]
         for (uint j = 0; j < 4; j++)
         {
-            if (YapsClassifyLight(j) != YAPS_LIGHT_FRONT) continue;
+            if (YapsClassifyLight(j, plugOrigin) != YAPS_LIGHT_FRONT) continue;
             float3 front = YapsLightPosition(j);
             float3 offset = front - at;
             float offsetSq = dot(offset, offset);
