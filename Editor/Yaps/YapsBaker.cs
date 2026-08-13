@@ -42,6 +42,12 @@ namespace AvatarBridge
         const string Category = "YAPS";
         const int TextureWidth = 8192;
         const int FloatsPerVertex = 10;
+        const int FloatsPerShapeVertex = 9;   // delta position, normal, tangent
+
+        // Four, not SPS's sixteen. A plug's sliders are length, girth and
+        // one or two shape variants; sixteen buys reach nobody uses and
+        // costs texture on every avatar. The weights ride one float4.
+        public const int MaxShapes = 4;
 
         public class Result
         {
@@ -50,6 +56,7 @@ namespace AvatarBridge
             public float Length;        // plug-local, along +Z
             public float ActiveVertices;
             public bool FromSkinnedMesh;
+            public List<string> Shapes = new List<string>();
         }
 
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
@@ -147,7 +154,16 @@ namespace AvatarBridge
                 return null;
             }
 
-            var texture = WriteTexture(positions, normals, tangents, activeWeights, count);
+            // Blendshapes that move the plug. The mesh arriving at the
+            // vertex shader already has them applied, but the BAKE is the
+            // rest pose — so a slider that lengthens or fattens a plug puts
+            // every vertex somewhere the bake does not describe, and both
+            // the distance-along-the-rod and the recovered frame go wrong
+            // with it. Storing the deltas lets the shader rebuild the rest
+            // pose the vertex actually came from.
+            var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, out var shapeNames);
+
+            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
             string path = AssetDatabase.GenerateUniqueAssetPath(
                 outputDir + "/YAPS " + Sanitise(renderer.name) + " bake.asset");
@@ -177,6 +193,7 @@ namespace AvatarBridge
                 Length = length,
                 ActiveVertices = active,
                 FromSkinnedMesh = skin != null,
+                Shapes = shapeNames,
             };
         }
 
@@ -238,6 +255,7 @@ namespace AvatarBridge
             clone.SetFloat("_YAPS_Length", result.Length);
             clone.SetFloat("_YAPS_BakeScale", 1f);   // baked in renderer units by construction
             clone.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
+            clone.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
 
             Directory.CreateDirectory(outputDir);
             AssetDatabase.CreateAsset(clone, AssetDatabase.GenerateUniqueAssetPath(
@@ -409,6 +427,71 @@ namespace AvatarBridge
             rotation = Quaternion.LookRotation(axis, up);
         }
 
+        // One entry per shape that actually moves the plug, holding a delta
+        // position, normal and tangent per vertex — nine floats, in the
+        // same plug frame as the base block.
+        //
+        // Shapes that leave the plug alone are skipped rather than stored
+        // as zeros: an avatar can carry two hundred blendshapes and four
+        // slots, so which four is the whole question, and "the ones that
+        // move it most" is the only answer that survives contact with a
+        // real face-tracking rig.
+        static List<Vector3[]> CaptureShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
+            List<float> active, out List<string> names)
+        {
+            names = new List<string>();
+            var captured = new List<Vector3[]>();
+            if (mesh.blendShapeCount == 0)
+            {
+                return captured;
+            }
+
+            int count = mesh.vertexCount;
+            var deltaP = new Vector3[count];
+            var deltaN = new Vector3[count];
+            var deltaT = new Vector3[count];
+            var scored = new List<(float moved, int index)>();
+
+            for (int s = 0; s < mesh.blendShapeCount; s++)
+            {
+                // The last frame is the shape at full weight, which is the
+                // one a slider drives toward.
+                int frames = mesh.GetBlendShapeFrameCount(s);
+                mesh.GetBlendShapeFrameVertices(s, frames - 1, deltaP, deltaN, deltaT);
+                float moved = 0f;
+                for (int i = 0; i < count && i < active.Count; i++)
+                {
+                    if (active[i] > 0.5f)
+                    {
+                        moved += deltaP[i].sqrMagnitude;
+                    }
+                }
+                if (moved > 1e-8f)
+                {
+                    scored.Add((moved, s));
+                }
+            }
+
+            foreach (var (_, index) in scored.OrderByDescending(x => x.moved).Take(MaxShapes))
+            {
+                int frames = mesh.GetBlendShapeFrameCount(index);
+                mesh.GetBlendShapeFrameVertices(index, frames - 1, deltaP, deltaN, deltaT);
+                var block = new Vector3[count * 3];
+                for (int i = 0; i < count; i++)
+                {
+                    // Directions, so rotation only — a delta is a
+                    // displacement, and translating one would move the
+                    // whole plug by the frame's origin.
+                    block[i * 3 + 0] = toPlug.MultiplyVector(deltaP[i]);
+                    block[i * 3 + 1] = toPlug.MultiplyVector(deltaN[i]);
+                    block[i * 3 + 2] = toPlug.MultiplyVector(deltaT[i]);
+                }
+                captured.Add(block);
+                names.Add(mesh.GetBlendShapeName(index));
+            }
+            return captured;
+        }
+
         static HashSet<int> BonesUnder(Transform[] bones, Transform root)
         {
             var found = new HashSet<int>();
@@ -460,9 +543,9 @@ namespace AvatarBridge
         // --- the texture ----------------------------------------------
 
         static Texture2D WriteTexture(Vector3[] positions, Vector3[] normals, Vector3[] tangents,
-            List<float> active, int count)
+            List<float> active, int count, List<Vector3[]> shapes)
         {
-            int floats = 1 + count * FloatsPerVertex;
+            int floats = 1 + count * FloatsPerVertex + shapes.Count * count * FloatsPerShapeVertex;
             int height = Mathf.Max(1, Mathf.CeilToInt((float) floats / TextureWidth));
             var pixels = new Color32[TextureWidth * height];
 
@@ -480,6 +563,23 @@ namespace AvatarBridge
                 Write(pixels, ref at, tangents[i].y);
                 Write(pixels, ref at, tangents[i].z);
                 Write(pixels, ref at, active[i]);
+            }
+
+            // Shape blocks follow the base one, nine floats a vertex. The
+            // shader finds block s at 1 + count*10 + s*count*9, which is
+            // why the vertex count has to be on the material.
+            foreach (var block in shapes)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    for (int part = 0; part < 3; part++)
+                    {
+                        var v = block[i * 3 + part];
+                        Write(pixels, ref at, v.x);
+                        Write(pixels, ref at, v.y);
+                        Write(pixels, ref at, v.z);
+                    }
+                }
             }
 
             // Point filtering and no mips are load-bearing, not tidiness:
