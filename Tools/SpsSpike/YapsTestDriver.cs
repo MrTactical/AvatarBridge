@@ -27,6 +27,18 @@ namespace AvatarBridge.Spike
     [RequireComponent(typeof(Renderer))]
     public class YapsTestDriver : MonoBehaviour
     {
+        public enum SocketSource
+        {
+            [Tooltip("Write the socket straight into the material, as the contact channel will.")]
+            DiscreteChannel,
+            [Tooltip("Write NO position, so resolution has to find the protocol lights itself.")]
+            ProtocolLights,
+        }
+
+        [Tooltip("Which path is under test. Protocol Lights deliberately withholds the " +
+                 "position so the shader must decode the lights on its own.")]
+        public SocketSource source = SocketSource.DiscreteChannel;
+
         [Tooltip("Drag this around the scene — the plug should follow it.")]
         public Transform socket;
 
@@ -73,9 +85,14 @@ namespace AvatarBridge.Spike
             block = block ?? new MaterialPropertyBlock();
             renderer.GetPropertyBlock(block);
 
-            block.SetVector(SocketPos, socket.position);
-            block.SetVector(SocketForward, socket.forward);
-            block.SetVector(SocketUp, socket.up);
+            // Engagement always comes from here — that is the rule the
+            // spike settled, and it holds even in the light test. Only the
+            // POSITION is withheld, so the light path is genuinely doing
+            // the finding rather than being handed the answer.
+            bool writePosition = source == SocketSource.DiscreteChannel;
+            block.SetVector(SocketPos, writePosition ? (Vector4) socket.position : Vector4.zero);
+            block.SetVector(SocketForward, writePosition ? (Vector4) socket.forward : Vector4.zero);
+            block.SetVector(SocketUp, writePosition ? (Vector4) socket.up : Vector4.zero);
             block.SetVector(SocketFlags, new Vector4(engaged, isHole ? 1f : 0f, 0f, 0f));
             block.SetFloat(Enabled, enabled01);
             block.SetFloat(Overrun, allowOverrun ? 1f : 0f);

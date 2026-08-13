@@ -69,6 +69,7 @@
 #define YAPS_DEFORM_INCLUDED
 
 #include "yaps_props.cginc"
+#include "yaps_resolve.cginc"
 
 #define YAPS_WALK_STEPS 48
 
@@ -264,9 +265,10 @@ float4 YapsDebug(uint vertexId)
 
     float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
     float worldLength = _YAPS_Length * _YAPS_BakeScale;
-    float gap = length(_YAPS_SocketPos.xyz - rootWorld);
+    YapsSocket socket = YapsResolveSocket(rootWorld, worldLength);
+    float gap = length(socket.position - rootWorld);
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
-    float enabled = saturate(_YAPS_Enabled) * saturate(_YAPS_SocketFlags.x);
+    float enabled = saturate(_YAPS_Enabled) * socket.engaged;
     float blend = YapsRamp(engage, 0, 0.2) * baked.active * enabled;
     return float4(baked.active, engage, blend, baked.position.z);
 }
@@ -275,8 +277,6 @@ float4 YapsDebug(uint vertexId)
 
 void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
-    float enabled = saturate(_YAPS_Enabled) * saturate(_YAPS_SocketFlags.x);
-    if (enabled <= 0) return;
     if (vertexId >= (uint) max(_YAPS_VertexCount, 0)) return;
 
     YapsVertex baked = YapsReadBaked(vertexId);
@@ -293,12 +293,26 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 rootUp = YapsPerpendicular(rootForward,
         mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)));
 
-    float3 socketWorld = _YAPS_SocketPos.xyz;
-    float3 socketForward = YapsSafeNormalize(_YAPS_SocketForward.xyz, rootForward);
-
     float worldLength = _YAPS_Length * _YAPS_BakeScale;
+
+    // Everything platform-specific happens in here: the discrete channel,
+    // protocol lights at contact range, the player globals as a floor.
+    YapsSocket socket = YapsResolveSocket(rootWorld, worldLength);
+
+    float enabled = saturate(_YAPS_Enabled) * socket.engaged;
+    if (enabled <= 0) return;
+
+    float3 socketWorld = socket.position;
     float3 toSocket = socketWorld - rootWorld;
     float gap = length(toSocket);
+
+    // A resolved socket may arrive without an axis — the globals have no
+    // rotation at all, and a root light can turn up without its front.
+    // Aiming along the approach is the honest fallback: it produces a
+    // straight arrival rather than an invented direction.
+    float3 socketForward = dot(socket.forward, socket.forward) > 1e-6
+        ? normalize(socket.forward)
+        : YapsSafeNormalize(toSocket, rootForward);
 
     // You enter a hole from the side you are standing on. A socket whose
     // forward points away from the plug would otherwise make the curve
@@ -338,7 +352,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // Past the end of the curve. A hole swallows the remainder and tapers
     // the tip to a point; a ring lets it carry straight on through.
     float radius = 1;
-    bool isHole = _YAPS_SocketFlags.y > 0.5;
+    bool isHole = socket.isHole > 0.5;
     if (leftOver > 0 && isHole)
     {
         float taperFrom = worldLength * 0.05;

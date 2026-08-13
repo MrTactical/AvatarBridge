@@ -66,6 +66,13 @@ namespace AvatarBridge.Spike
             socket.transform.localPosition = new Vector3(0.25f, 0f, 0.75f);
             socket.transform.localRotation = Quaternion.Euler(0f, -60f, 0f);
 
+            // Protocol lights on the socket, in OUR inverted encoding —
+            // root above front, so roots win the four vertex slots instead
+            // of being evicted by their own fronts. Switching the driver to
+            // Protocol Lights makes the shader find these on its own.
+            AddSocketLight(socket.transform, "Root 0.4906", 0.4906f, Vector3.zero);
+            AddSocketLight(socket.transform, "Front 0.4106", 0.4106f, Vector3.forward * 0.01f);
+
             var driver = plug.AddComponent<YapsTestDriver>();
             driver.socket = socket.transform;
             driver.plugLength = Length;
@@ -75,6 +82,25 @@ namespace AvatarBridge.Spike
             Debug.Log($"[YAPS] Test rig built: {positions.Count} vertices, plug {Length} m along +Z. " +
                       "Drag \"Socket (drag me)\" around and the plug should follow it. " +
                       "The mesh is shaded by world normal, so any fold or pinch is obvious.");
+        }
+
+        // Black, shadowless, vertex-only: the light carries a position and
+        // a range that says what it is, never any illumination.
+        static void AddSocketLight(Transform parent, string name, float range, Vector3 offset)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = offset;
+
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = range;
+            light.color = Color.black;
+            light.intensity = 1f;
+            light.bounceIntensity = 0f;
+            light.shadows = LightShadows.None;
+            light.renderMode = LightRenderMode.ForceVertex;
+            light.cullingMask = ~0;
         }
 
         // A capped cylinder running along +Z from the origin, which is the
