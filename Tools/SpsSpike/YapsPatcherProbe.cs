@@ -51,7 +51,7 @@ namespace AvatarBridge.Spike
                 Shader result = null;
                 try
                 {
-                    result = YapsShaderPatcher.Patch(material, OutputDir, null, out refusal);
+                    result = YapsShaderPatcher.Patch(material, OutputDir, null, out refusal, out _);
                 }
                 catch (Exception e)
                 {

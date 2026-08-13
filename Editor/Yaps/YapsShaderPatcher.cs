@@ -67,9 +67,10 @@ namespace AvatarBridge
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
-            out string refusal)
+            out string refusal, out int skippedShadowPasses)
         {
             refusal = null;
+            skippedShadowPasses = 0;
             if (material == null || material.shader == null)
             {
                 refusal = "the material has no shader";
@@ -123,7 +124,8 @@ namespace AvatarBridge
             shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
                 PropertyBlock);
 
-            int patchedPasses = PatchProgramBlocks(unit, yaps, out string blockRefusal);
+            int patchedPasses = PatchProgramBlocks(unit, yaps, out string blockRefusal,
+                out skippedShadowPasses);
             if (patchedPasses == 0)
             {
                 refusal = blockRefusal ?? "no pass in it declares a vertex stage";
@@ -154,7 +156,13 @@ namespace AvatarBridge
             report?.Converted(Category, material.name,
                 $"Deform patched into \"{material.shader.name}\" across {patchedPasses} pass(es). " +
                 "The original shader is untouched; a copy carrying YAPS was written beside the " +
-                "converted avatar and the material repointed at it.");
+                "converted avatar and the material repointed at it."
+                + (skippedShadowPasses > 0
+                    ? $" {skippedShadowPasses} shadow pass(es) use Unity's own shadow-caster " +
+                      "function, which lives in Unity's includes rather than in this shader, so " +
+                      "there is nothing of the avatar's to edit there — the shadow will not " +
+                      "follow the bend. Cosmetic, and the alternative was no deform at all."
+                    : ""));
             return patched;
         }
 
@@ -182,9 +190,10 @@ namespace AvatarBridge
         // of the function is exactly equivalent to deforming it on the way
         // in, and the pragma never has to change.
         static int PatchProgramBlocks(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
-            out string refusal)
+            out string refusal, out int skippedShadowPasses)
         {
             refusal = null;
+            skippedShadowPasses = 0;
             var shaderFile = unit[0];
             int patched = 0;
             var alreadyInjected = new HashSet<string>(StringComparer.Ordinal);
@@ -220,6 +229,17 @@ namespace AvatarBridge
                 if (!PatchOneVertexFunction(unit, yaps, vertName,
                         start, start + end.Index, alreadyInjected, out string why))
                 {
+                    // A shadow caster is allowed to be out of reach. Unity's
+                    // own vertShadowCaster lives in its CGIncludes, not in
+                    // the shader's source unit, so there is nothing of ours
+                    // to edit. Losing the whole deform to avoid a shadow
+                    // that does not follow the bend is the wrong trade — the
+                    // shadow is cosmetic, the deform is the feature.
+                    if (IsShadowCasterPass(shaderFile.Text, block.Index))
+                    {
+                        skippedShadowPasses++;
+                        continue;
+                    }
                     refusal = why;
                     return patched;
                 }
@@ -416,16 +436,24 @@ namespace AvatarBridge
             return members;
         }
 
+        static bool IsShadowCasterPass(string text, int programIndex)
+            => PassTagIs(text, programIndex, "ShadowCaster");
+
         static bool LooksLikeMetaPass(string text, int programIndex)
+            => PassTagIs(text, programIndex, "Meta");
+
+        // Read the enclosing Pass's LightMode tag by looking back from the
+        // program block.
+        static bool PassTagIs(string text, int programIndex, string lightMode)
         {
-            // Look back to the enclosing Pass for a Meta light mode.
             int passStart = text.LastIndexOf("Pass", programIndex, StringComparison.Ordinal);
             if (passStart < 0)
             {
                 return false;
             }
             string head = text.Substring(passStart, programIndex - passStart);
-            return Regex.IsMatch(head, @"""LightMode""\s*=\s*""Meta""", RegexOptions.IgnoreCase);
+            return Regex.IsMatch(head, $@"""LightMode""\s*=\s*""{Regex.Escape(lightMode)}""",
+                RegexOptions.IgnoreCase);
         }
 
         // --- the YAPS source, inlined ---------------------------------
