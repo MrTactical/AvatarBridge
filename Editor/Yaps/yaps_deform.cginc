@@ -247,6 +247,30 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
     return frame;
 }
 
+// --- diagnostics -----------------------------------------------------
+
+// Reports what the deform is actually seeing, so a plug that refuses to
+// move can say why instead of being guessed at. Returns:
+//   x  the baked active weight  (0 here means the texture read failed
+//      or this vertex is masked out)
+//   y  engagement 0..1          (0 means the socket is out of range)
+//   z  the final blend          (0 means no deform will be applied)
+//   w  baked Z in metres        (0 everywhere means the bake is not
+//      being read at all — the single most useful signal)
+float4 YapsDebug(uint vertexId)
+{
+    if (vertexId >= (uint) max(_YAPS_VertexCount, 0)) return float4(0, 0, 0, 0);
+    YapsVertex baked = YapsReadBaked(vertexId);
+
+    float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+    float worldLength = _YAPS_Length * _YAPS_BakeScale;
+    float gap = length(_YAPS_SocketPos.xyz - rootWorld);
+    float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
+    float enabled = saturate(_YAPS_Enabled) * saturate(_YAPS_SocketFlags.x);
+    float blend = YapsRamp(engage, 0, 0.2) * baked.active * enabled;
+    return float4(baked.active, engage, blend, baked.position.z);
+}
+
 // --- the deform ------------------------------------------------------
 
 void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)

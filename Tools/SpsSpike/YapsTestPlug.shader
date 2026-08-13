@@ -18,6 +18,8 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_SocketForward ("Socket forward", Vector) = (0,0,1,0)
         _YAPS_SocketUp ("Socket up", Vector) = (0,1,0,0)
         _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (1,0,0,0)
+        [Enum(Deform,0,Active weight,1,Engagement,2,Blend,3,Baked Z,4)]
+        _YAPS_Debug ("Debug view", Float) = 0
     }
 
     SubShader
@@ -48,10 +50,13 @@ Shader "AvatarBridge/YAPS Test Plug"
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
+            float _YAPS_Debug;
+
             struct v2f
             {
                 float4 pos : SV_POSITION;
                 float3 worldNormal : TEXCOORD0;
+                float4 debug : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -67,6 +72,7 @@ Shader "AvatarBridge/YAPS Test Plug"
                 float3 position = v.vertex.xyz;
                 float3 normal = v.normal;
                 float3 tangent = v.tangent.xyz;
+                o.debug = YapsDebug(v.vertexId);
                 YapsDeform(position, normal, tangent, v.vertexId);
 
                 o.pos = UnityObjectToClipPos(float4(position, 1));
@@ -78,6 +84,18 @@ Shader "AvatarBridge/YAPS Test Plug"
             {
                 UNITY_SETUP_INSTANCE_ID(i);
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
+                // Debug views answer "why is nothing happening" directly.
+                // Black in any of them names the culprit: no active weight
+                // means the bake is not being read, no engagement means the
+                // socket is out of range or not being written.
+                if (_YAPS_Debug > 0.5)
+                {
+                    if (_YAPS_Debug < 1.5) return fixed4(i.debug.xxx, 1);          // active
+                    if (_YAPS_Debug < 2.5) return fixed4(i.debug.yyy, 1);          // engagement
+                    if (_YAPS_Debug < 3.5) return fixed4(i.debug.zzz, 1);          // blend
+                    return fixed4(frac(i.debug.www * 5).xxx, 1);                   // baked Z, banded
+                }
+
                 float3 n = normalize(i.worldNormal);
                 // Normal-as-colour: any fold, pinch or twist in the bend
                 // shows up immediately instead of hiding under lighting.

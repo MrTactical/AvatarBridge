@@ -9,6 +9,14 @@
 //
 // Runs in edit mode. Add to the plug's renderer, point Socket at any
 // Transform, and drag it around.
+//
+// DEPLOYMENT: this is a MonoBehaviour, so it must NOT live in an Editor
+// folder — scripts there compile into the editor assembly and cannot be
+// attached to a scene object at all. Deploy it to Assets/SpsSpike/, not
+// Assets/SpsSpike/Editor/. Put there once by mistake, and the symptom was
+// perfect silence: no component, no gizmos, no property block, and a plug
+// reading the material's default socket at the origin — which sits on the
+// plug root, degenerates the curve, and renders as an untouched rod.
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
