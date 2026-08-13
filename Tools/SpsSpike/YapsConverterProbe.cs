@@ -46,6 +46,13 @@ namespace AvatarBridge.Spike
                 var off = Convert(yaps: false);
                 var on = Convert(yaps: true);
                 Compare(off, on);
+
+                // Two conversions leave two identically-named avatars in the
+                // scene with nothing to tell them apart, which reads as the
+                // converter having duplicated something. Reload and leave the
+                // bench as it was found — the assets on disk are the output
+                // that matters, not the scene objects.
+                EditorSceneManager.OpenScene(SceneRelative, OpenSceneMode.Single);
             }
             catch (Exception e)
             {
@@ -95,6 +102,12 @@ namespace AvatarBridge.Spike
                 convertYapsSystems = yaps,
             };
             var report = BridgeConverter.Convert(descriptor, settings);
+            if (report.ConvertedRoot != null)
+            {
+                // Say which run each one came from, for the window between
+                // here and the scene reload at the end.
+                report.ConvertedRoot.name += yaps ? " [YAPS on]" : " [YAPS off]";
+            }
 
             var outcome = new Outcome { Yaps = yaps };
             foreach (var entry in report.Entries)
