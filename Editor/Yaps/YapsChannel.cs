@@ -206,13 +206,47 @@ namespace AvatarBridge
                 });
             }
 
+            // ONE task per material property, not one per value. A driver
+            // task writes the WHOLE float4 every frame, from its own
+            // materialNN X/Y/Z/W group — so three tasks all pointing at
+            // _YAPS_SocketPos do not contribute a component each, they take
+            // turns overwriting one another with zeros. That is why the
+            // channel did nothing at all: the position was being blanked as
+            // fast as it was written.
+            int flagsTask = materialDriver.tasks.Count + 1;
+            materialDriver.tasks.Add(new CVRMaterialDriverTask
+            {
+                Renderer = plug.Renderer,
+                Index = plug.MaterialSlot,
+                PropertyName = "_YAPS_SocketFlags",
+                PropertyType = CVRMaterialDriverTask.Type.Vector4,
+            });
+            int posTask = 0;
+            if (carryOffset)
+            {
+                posTask = materialDriver.tasks.Count + 1;
+                materialDriver.tasks.Add(new CVRMaterialDriverTask
+                {
+                    Renderer = plug.Renderer,
+                    Index = plug.MaterialSlot,
+                    PropertyName = "_YAPS_SocketPos",
+                    PropertyType = CVRMaterialDriverTask.Type.Vector4,
+                });
+            }
+
             // Engagement first, deliberately: slots go out in declaration
             // order, so the one value the deform cannot work without is the
             // one that gets a slot when the avatar is nearly full.
-            var values = new List<string> { "E" };
-            values.AddRange(axes.Select(a => a.Item1));
+            var values = new List<(string axis, string field)>
+            {
+                ("E", $"material{flagsTask:00}X"),
+            };
+            foreach (var (axis, _) in axes)
+            {
+                values.Add((axis, $"material{posTask:00}{axis}"));
+            }
 
-            foreach (string axis in values)
+            foreach (var (axis, field) in values)
             {
                 string local = Local(index, axis);
                 string synced = Synced(index, axis);
@@ -231,16 +265,8 @@ namespace AvatarBridge
 
                 // Consume: the synced value into the material. Everyone runs
                 // this, wearer and viewer alike.
-                var task = new CVRMaterialDriverTask
-                {
-                    Renderer = plug.Renderer,
-                    Index = plug.MaterialSlot,
-                    PropertyName = PropertyFor(axis),
-                    PropertyType = CVRMaterialDriverTask.Type.Vector4,
-                };
-                materialDriver.tasks.Add(task);
                 AddDriverLayer(ctx, $"YAPS{index}{axis} apply", synced,
-                    "", typeof(CVRMaterialDriver), FieldFor(materialDriver.tasks.Count, axis));
+                    "", typeof(CVRMaterialDriver), field);
                 taskIndex++;
             }
             return true;
@@ -317,15 +343,6 @@ namespace AvatarBridge
         static string Local(int index, string axis) => $"#YAPS{index}{axis}";
         static string Synced(int index, string axis) => $"YAPS{index}{axis}";
 
-        // Three offsets go into one float4; engagement into another, whose
-        // y carries hole-versus-ring. Four floats, two properties.
-        static string PropertyFor(string axis) => axis == "E" ? "_YAPS_SocketFlags" : "_YAPS_SocketPos";
-
-        static string FieldFor(int taskNumber, string axis)
-        {
-            string component = axis == "E" ? "X" : axis;
-            return $"material{taskNumber:00}{component}";
-        }
 
         // A two-motion blend tree is the whole trick: the driver's field is
         // an animated float, so blending between a clip that sets it to 0
