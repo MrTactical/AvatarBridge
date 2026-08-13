@@ -153,6 +153,9 @@ namespace AvatarBridge.Spike
             // the arrival.
             var sphere = root.AddComponent<SphereCollider>();
             sphere.radius = 0.05f;
+            // A trigger, so two props never shove each other apart.
+            // Raycasts still hit triggers, so it stays grabbable.
+            sphere.isTrigger = true;
             MakeGrabbable(root);
 
             return SaveAsPrefab(root, Dir + "/" + name + ".prefab");
@@ -250,6 +253,7 @@ namespace AvatarBridge.Spike
             capsule.height = PlugLength;
             capsule.radius = PlugRadius * 1.6f;
             capsule.center = new Vector3(0, 0, PlugLength * 0.5f);
+            capsule.isTrigger = true;
             MakeGrabbable(root);
 
             return SaveAsPrefab(root, Dir + "/YAPS Test Plug Prop.prefab");

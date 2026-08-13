@@ -138,6 +138,12 @@ namespace AvatarBridge.Spike
             capsule.height = Length;
             capsule.radius = Radius * 1.3f;
             capsule.center = new Vector3(0, 0, Length * 0.5f);
+            // A trigger, so nothing shoves. Two solid pickups push each
+            // other apart, which keeps the plug from ever reaching the
+            // inside of the box that measures depth — and an intermittent
+            // shove reads as an intermittent feature. Raycasts still hit
+            // triggers, so it stays grabbable.
+            capsule.isTrigger = true;
 
             var rigidbody = root.AddComponent<Rigidbody>();
             rigidbody.useGravity = false;
