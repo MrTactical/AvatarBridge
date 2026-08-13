@@ -42,10 +42,9 @@ namespace AvatarBridge.Spike
         [Tooltip("Drag this around the scene — the plug should follow it.")]
         public Transform socket;
 
-        [Tooltip("Where the plug's own frame really is. Leave empty when the renderer's " +
-                 "transform is the plug. On a skinned mesh set this to the bone, so the " +
-                 "gizmos draw the curve the shader is actually building rather than one " +
-                 "anchored to the avatar root.")]
+        [Tooltip("Override for where the plug's own frame is. Normally leave this empty: " +
+                 "the frame is worked out automatically, from the renderer's transform for " +
+                 "a mesh renderer, or from bone × bindpose for a skinned one.")]
         public Transform frameSource;
 
         [Tooltip("How engaged the socket is. The real system drives this from contacts.")]
@@ -116,12 +115,50 @@ namespace AvatarBridge.Spike
             renderer.SetPropertyBlock(block);
         }
 
+        // Where the plug's frame ACTUALLY ends up, matching what the shader
+        // recovers. For a skinned mesh that is not the bone's own transform
+        // — the bindpose sits between them, so at rest the mesh stays where
+        // it was authored while the bone can be anywhere. Drawing from the
+        // bone made the curve start in the wrong place and disagree with
+        // the plug it was supposed to describe.
+        void GetPlugFrame(out Vector3 position, out Vector3 forward, out Vector3 up)
+        {
+            if (frameSource != null)
+            {
+                position = frameSource.position;
+                forward = frameSource.forward;
+                up = frameSource.up;
+                return;
+            }
+
+            var skin = GetComponent<SkinnedMeshRenderer>();
+            if (skin != null && skin.sharedMesh != null
+                && skin.bones != null && skin.bones.Length > 0 && skin.bones[0] != null)
+            {
+                var bindposes = skin.sharedMesh.bindposes;
+                if (bindposes != null && bindposes.Length > 0)
+                {
+                    Matrix4x4 m = skin.bones[0].localToWorldMatrix * bindposes[0];
+                    position = m.MultiplyPoint3x4(Vector3.zero);
+                    forward = m.MultiplyVector(Vector3.forward).normalized;
+                    up = m.MultiplyVector(Vector3.up).normalized;
+                    return;
+                }
+            }
+
+            position = transform.position;
+            forward = transform.forward;
+            up = transform.up;
+        }
+
         void OnDrawGizmos()
         {
             if (socket == null)
             {
                 return;
             }
+
+            GetPlugFrame(out Vector3 plugOrigin, out Vector3 plugForward, out _);
 
             // The socket frame, drawn the way the shader reads it.
             Gizmos.color = Color.cyan;
@@ -133,28 +170,25 @@ namespace AvatarBridge.Spike
 
             // The straight line the bend is replacing, for reference.
             Gizmos.color = new Color(1f, 1f, 1f, 0.35f);
-            Gizmos.DrawLine((frameSource != null ? frameSource : transform).position, socket.position);
+            Gizmos.DrawLine(plugOrigin, socket.position);
 
             // Engagement radius: inside the inner sphere the bend is full,
             // outside the outer one there is no bend at all.
             float worldLength = plugLength * bakeScale;
             Gizmos.color = new Color(0f, 1f, 0.5f, 0.25f);
-            Gizmos.DrawWireSphere((frameSource != null ? frameSource : transform).position, worldLength * 1.2f);
+            Gizmos.DrawWireSphere(plugOrigin, worldLength * 1.2f);
             Gizmos.color = new Color(1f, 0.5f, 0f, 0.15f);
-            Gizmos.DrawWireSphere((frameSource != null ? frameSource : transform).position, worldLength * 1.6f);
+            Gizmos.DrawWireSphere(plugOrigin, worldLength * 1.6f);
 
-            DrawTheCurveTheShaderWalks(worldLength);
+            DrawTheCurveTheShaderWalks(worldLength, plugOrigin, plugForward);
         }
 
         // The exact curve the shader builds, recomputed here with the same
         // arithmetic and drawn. Guessing at a fold from the silhouette is
         // hopeless; seeing whether the CURVE hairpins or the WALK misreads
         // it takes one glance.
-        void DrawTheCurveTheShaderWalks(float worldLength)
+        void DrawTheCurveTheShaderWalks(float worldLength, Vector3 rootWorld, Vector3 rootForward)
         {
-            Transform frame = frameSource != null ? frameSource : transform;
-            Vector3 rootWorld = frame.position;
-            Vector3 rootForward = frame.forward;
             Vector3 socketWorld = socket.position;
             Vector3 socketForward = socket.forward;
 

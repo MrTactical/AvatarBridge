@@ -129,14 +129,6 @@ namespace AvatarBridge.Spike
             driver.socket = socket.transform;
             driver.plugLength = Length;
             driver.bakeScale = 1f;
-            if (skinned)
-            {
-                // So the gizmos draw from the bone, not from the renderer
-                // sitting at the avatar root — otherwise the drawn curve
-                // would disagree with the one the shader builds, and a
-                // lying gizmo is worse than none.
-                driver.frameSource = root.transform.Find("Plug Bone (move me)");
-            }
 
             Selection.activeGameObject = socket;
             Debug.Log($"[YAPS] Test rig built: {positions.Count} vertices, plug {Length} m along +Z. " +
