@@ -49,7 +49,13 @@ namespace AvatarBridge.Regression
                 if (string.IsNullOrEmpty(repo))
                     throw new InvalidOperationException(
                         "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
-                return repo.Replace('\\', '/').TrimEnd('/') + "/Regression";
+                // A flag-on run keeps its own Baseline and Current. The two
+                // answer different questions — one asks whether existing
+                // users are unaffected, the other whether the new feature
+                // is stable — and sharing a folder would have each
+                // overwrite the other's reference.
+                string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
+                return repo.Replace('\\', '/').TrimEnd('/') + suffix;
             }
         }
         static string BaselineDir => Root + "/Baseline";
@@ -538,8 +544,15 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
+        // Set AVATARBRIDGE_YAPS=1 to convert with the penetration system
+        // on. Off is what the main corpus measures, because that is what
+        // every existing user gets.
+        static bool YapsMode =>
+            Environment.GetEnvironmentVariable("AVATARBRIDGE_YAPS") == "1";
+
         static BridgeSettings CorpusSettings() => new BridgeSettings
         {
+            convertYapsSystems = YapsMode,
             cloneAvatar = true,
             outputFolder = "Assets/AvatarBridgeOutput",
 
