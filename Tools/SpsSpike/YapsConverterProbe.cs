@@ -71,6 +71,8 @@ namespace AvatarBridge.Spike
             public List<string> Errors = new List<string>();
             public List<string> YapsEntries = new List<string>();
             public bool SpsStillPatched;
+            public int ChannelTriggers, MaterialTasks, DriverSlots, SyncedParams, LocalParams;
+            public bool ChannelSpaceSet;
         }
 
         static Outcome Convert(bool yaps)
@@ -139,6 +141,31 @@ namespace AvatarBridge.Spike
                 {
                     outcome.SpsStillPatched = true;
                 }
+                if (material.HasProperty("_YAPS_ChannelSpace") && material.GetFloat("_YAPS_ChannelSpace") > 0.5f)
+                {
+                    outcome.ChannelSpaceSet = true;
+                }
+            }
+
+            // The channel is the half that can do nothing while every other
+            // number still reads right — it did exactly that once, because
+            // the pass was registered before the plugs existed.
+            outcome.ChannelTriggers = root
+                .GetComponentsInChildren<ABI.CCK.Components.CVRAdvancedAvatarSettingsTrigger>(true)
+                .Count(t => t.name.StartsWith("YAPS Channel"));
+            var materialDriver = root.GetComponentInChildren<ABI.CCK.Components.CVRMaterialDriver>(true);
+            outcome.MaterialTasks = materialDriver != null ? materialDriver.tasks.Count : 0;
+            var animatorDriver = root.GetComponentInChildren<ABI.CCK.Components.CVRAnimatorDriver>(true);
+            outcome.DriverSlots = animatorDriver != null ? animatorDriver.animators.Count : 0;
+
+            var animator = root.GetComponent<Animator>();
+            var controller = animator != null
+                ? animator.runtimeAnimatorController as UnityEditor.Animations.AnimatorController
+                : null;
+            if (controller != null)
+            {
+                outcome.SyncedParams = controller.parameters.Count(p => p.name.StartsWith("YAPS"));
+                outcome.LocalParams = controller.parameters.Count(p => p.name.StartsWith("#YAPS"));
             }
             return outcome;
         }
@@ -160,6 +187,27 @@ namespace AvatarBridge.Spike
             Row("Screen-atlas markers left", off.ScreenMarkers, on.ScreenMarkers,
                 on.ScreenMarkers == 0);
             Row("Resolver renderers left", off.Resolvers, on.Resolvers, on.Resolvers == 0);
+            Line("");
+
+            // Every one of these was "correct" on a run where the channel
+            // pass returned immediately without doing anything.
+            int plugs = Mathf.Max(1, on.PatchedMaterials);
+            Line("### The channel");
+            Line("");
+            Line("| | YAPS off | YAPS on | expected | reads as |");
+            Line("|---|---:|---:|---:|---|");
+            Channel("Axis triggers on the plug", off.ChannelTriggers, on.ChannelTriggers, plugs * 3);
+            Channel("Material driver tasks", off.MaterialTasks, on.MaterialTasks, plugs * 4);
+            Channel("Animator driver slots", off.DriverSlots, on.DriverSlots, plugs * 4);
+            Channel("Local `#YAPS…` parameters", off.LocalParams, on.LocalParams, plugs * 4);
+            Channel("Synced `YAPS…` parameters", off.SyncedParams,
+                on.SyncedParams - on.LocalParams, plugs * 4);
+            Line($"| Material told to read plug-local | — | {(on.ChannelSpaceSet ? "yes" : "no")} | yes | " +
+                 $"{(on.ChannelSpaceSet ? "correct" : "**WRONG**")} |");
+            Line("");
+            Line($"Synced parameters cost 32 bits each against ChilloutVR's 3200-bit cap — " +
+                 $"{(on.SyncedParams - on.LocalParams) * 32} bits here, " +
+                 $"{(on.SyncedParams - on.LocalParams) * 32 * 100f / 3200f:0.#}% of the budget.");
             Line("");
 
             Line("| Check | Result |");
@@ -204,6 +252,12 @@ namespace AvatarBridge.Spike
         static void Row(string label, int off, int on, bool ok)
         {
             Line($"| {label} | {off} | {on} | {(ok ? "correct" : "**WRONG**")} |");
+        }
+
+        static void Channel(string label, int off, int on, int expected)
+        {
+            Line($"| {label} | {off} | {on} | {expected} | " +
+                 $"{(on == expected && off == 0 ? "correct" : "**WRONG**")} |");
         }
 
         static int Count(GameObject root, string needle)

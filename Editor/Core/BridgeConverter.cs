@@ -126,9 +126,6 @@ namespace AvatarBridge
                     Pass("PhysBones", PhysBoneConverter.Run),
                     Pass("Contacts", ContactsConverter.Run),
                     Pass("Animator merge", AnimatorMerger.Run),
-                    // After the merge: it adds layers and parameters to the
-                    // controller the merge produces.
-                    Pass("YAPS socket channel", YapsChannel.Run),
                     Pass("Misc components", MiscConverter.Run),
                     Pass("Constraints", ConstraintConverter.Run),
                     // After the constraints exist as Unity components
@@ -140,6 +137,11 @@ namespace AvatarBridge
                     // stereo fix goes into the body shader, and the
                     // deform goes into our copy of that result.
                     Pass("YAPS penetration system", YapsConverter.Run),
+                    // Straight after, and not before: it wires the plugs
+                    // that pass finds, into the controller the merge has
+                    // already produced. Registered earlier it ran on an
+                    // empty list and reported nothing at all.
+                    Pass("YAPS socket channel", YapsChannel.Run),
 
                     // Last content pass before anything edits a clip.
                     // The controller is final; every referenced clip is
