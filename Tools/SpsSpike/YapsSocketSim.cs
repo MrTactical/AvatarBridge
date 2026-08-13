@@ -15,6 +15,7 @@
 // attached to anything, and the symptom is total silence rather than an
 // error — an afternoon went into learning that once already.
 #if CVR_CCK_EXISTS
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AvatarBridge.Spike
@@ -38,10 +39,19 @@ namespace AvatarBridge.Spike
         [Tooltip("Forces engagement rather than deriving it from distance. -1 leaves it automatic.")]
         [Range(-1f, 1f)] public float engagedOverride = -1f;
 
+        // Everything written here lands on the SHARED material, which is an
+        // asset on disk. Nothing else would work in edit mode, but it means
+        // the last values written outlive this component: delete the socket
+        // and the plug stays bent, because a stale socket position still
+        // counts as a socket having been found. Worse, it could be uploaded
+        // that way.
+        //
+        // So every material touched is remembered and released.
+        readonly HashSet<Material> _touched = new HashSet<Material>();
+
         void Update()
         {
-            var plugs = FindObjectsOfType<Renderer>();
-            foreach (var renderer in plugs)
+            foreach (var renderer in FindObjectsOfType<Renderer>())
             {
                 foreach (var material in renderer.sharedMaterials)
                 {
@@ -49,10 +59,64 @@ namespace AvatarBridge.Spike
                     {
                         continue;
                     }
+                    _touched.Add(material);
                     Apply(renderer, material);
                 }
             }
         }
+
+        void OnDisable() => Release();
+        void OnDestroy() => Release();
+
+        void Release()
+        {
+            foreach (var material in _touched)
+            {
+                if (material != null)
+                {
+                    Clear(material);
+                }
+            }
+            _touched.Clear();
+        }
+
+        static void Clear(Material material)
+        {
+            material.SetVector("_YAPS_SocketFlags", Vector4.zero);
+            material.SetVector("_YAPS_SocketPos", Vector4.zero);
+            material.SetVector("_YAPS_SocketForward", Vector4.zero);
+            material.SetVector("_YAPS_SocketUp", Vector4.zero);
+        }
+
+#if UNITY_EDITOR
+        // For materials already left dirty by an earlier run, or by a
+        // simulator deleted before this existed.
+        [UnityEditor.MenuItem("AvatarBridge/Spike/Clear stuck YAPS socket values")]
+        static void ClearAll()
+        {
+            int cleared = 0;
+            foreach (string guid in UnityEditor.AssetDatabase.FindAssets("t:Material"))
+            {
+                var material = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(
+                    UnityEditor.AssetDatabase.GUIDToAssetPath(guid));
+                if (material == null || !material.HasProperty("_YAPS_SocketFlags"))
+                {
+                    continue;
+                }
+                if (material.GetVector("_YAPS_SocketFlags") == Vector4.zero
+                    && material.GetVector("_YAPS_SocketPos") == Vector4.zero)
+                {
+                    continue;
+                }
+                Clear(material);
+                UnityEditor.EditorUtility.SetDirty(material);
+                cleared++;
+            }
+            UnityEditor.AssetDatabase.SaveAssets();
+            Debug.Log($"[YAPS] Released {cleared} material(s) still holding a socket. A plug stuck " +
+                      "bent with nothing near it was reading one of these.");
+        }
+#endif
 
         void Apply(Renderer renderer, Material material)
         {
