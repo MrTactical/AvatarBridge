@@ -136,8 +136,8 @@ namespace AvatarBridge
             // the line costs nothing; sitting a float past it costs the
             // avatar's credibility at upload time.
             int spare = SpareSyncFloats(ctx);
-            bool carryOffset = spare >= 5;
-            bool carryEngagement = spare >= 2;
+            bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
+            bool carryEngagement = spare >= 3;   // engagement and is-hole
 
             plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
             plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
@@ -241,6 +241,7 @@ namespace AvatarBridge
             var values = new List<(string axis, string field)>
             {
                 ("E", $"material{flagsTask:00}X"),
+                ("H", $"material{flagsTask:00}Y"),
             };
             foreach (var (axis, _) in axes)
             {
@@ -294,6 +295,7 @@ namespace AvatarBridge
                 minValue = 0f,
                 maxValue = 1f,
             });
+            AddHoleTrigger(ctx, plug, index, box);
             // Nothing writes a stay task once the sender leaves, so without
             // this the plug stays bent at whatever it last saw, forever.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
@@ -303,6 +305,49 @@ namespace AvatarBridge
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
         }
+
+        // A hole closes around the plug and stops it; a ring lets it pass
+        // straight through. The difference is the whole character of the
+        // effect, and the socket's own pointer tag already says which — so
+        // a second trigger, filtered to hole tags alone, raises a flag
+        // whenever a hole is what is in reach.
+        //
+        // Enter and exit rather than a stay task, because this is a fact
+        // about the socket rather than a measurement of it: there is no
+        // "how much of a hole" to sample.
+        static void AddHoleTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+            Vector3 box)
+        {
+            var host = new GameObject($"YAPS Channel {index} H");
+            host.transform.SetParent(plug.Root, false);
+
+            var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            trigger.areaSize = box;
+            trigger.areaOffset = Vector3.zero;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = HolePointerTypes;
+            trigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Local(index, "H"),
+                settingValue = 1f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
+            trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Local(index, "H"),
+                settingValue = 0f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
+        }
+
+        // Only the tags that mean "hole". A plain TPS_Orf_Root says nothing
+        // either way and is deliberately absent: unknown stays a ring,
+        // which passes through rather than trapping a plug in something
+        // that was never meant to hold it.
+        static readonly string[] HolePointerTypes =
+        {
+            "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
+        };
 
         // ChilloutVR's own budget, the same rule BridgeDiagnostics reports
         // against: 32 bits a float, "#" names and triggers are free, and

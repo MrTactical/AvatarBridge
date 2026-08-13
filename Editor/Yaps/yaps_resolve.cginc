@@ -94,9 +94,22 @@ struct YapsSocket
 // win their slots, and the reason emitting a legacy set as well is a
 // separate opt-in.
 
+// A root is a root however it was authored, but the legacy digits also say
+// what KIND of socket it is, and that is worth keeping: a hole closes
+// around the plug and stops it, a ring lets it pass straight through. Our
+// own encoding cannot say — 0 and 7 were the only free digits and both are
+// spent — so for converted sockets the kind travels on the contact channel
+// instead. Whoever resolved the position decides the kind.
 #define YAPS_LIGHT_NONE  0
-#define YAPS_LIGHT_ROOT  1
+#define YAPS_LIGHT_ROOT  1   // a root, kind unknown
 #define YAPS_LIGHT_FRONT 2
+#define YAPS_LIGHT_HOLE  3   // a root, and legacy says it is a hole
+#define YAPS_LIGHT_RING  4   // a root, and legacy says it is a ring
+
+inline bool YapsIsRoot(int kind)
+{
+    return kind == YAPS_LIGHT_ROOT || kind == YAPS_LIGHT_HOLE || kind == YAPS_LIGHT_RING;
+}
 
 inline float YapsLightRange(uint slot)
 {
@@ -134,11 +147,11 @@ int YapsClassifyLight(uint slot)
     if (digit == 7) return YAPS_LIGHT_ROOT;
     if (digit == 0) return YAPS_LIGHT_FRONT;
 
-    // Legacy DPS, so a plug reacts to content already on the platform.
-    // Hole and ring both act as roots here; which it is comes from the
-    // discrete channel, not from the light.
-    if (digit == 1 || digit == 3) return YAPS_LIGHT_ROOT;    // hole
-    if (digit == 2 || digit == 4) return YAPS_LIGHT_ROOT;    // ring
+    // Legacy DPS, so a plug reacts to content already on the platform —
+    // and legacy is more specific than we can be, saying hole or ring in
+    // the digit itself.
+    if (digit == 1 || digit == 3) return YAPS_LIGHT_HOLE;
+    if (digit == 2 || digit == 4) return YAPS_LIGHT_RING;
     if (digit == 5 || digit == 6) return YAPS_LIGHT_FRONT;   // front
     // 8 and 9 are a legacy plug's own tip light, not a socket. Ignoring
     // them stops one plug mistaking another plug for somewhere to go.
@@ -148,23 +161,27 @@ int YapsClassifyLight(uint slot)
 // Nearest root to the plug, with its front partner if one arrived. Unity
 // may hand us a root without its front, so an unpaired root still yields a
 // position and simply leaves the axis to the caller.
-bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, out float3 forward)
+bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, out float3 forward,
+                         out float holeHint)
 {
     position = 0;
     forward = 0;
+    holeHint = -1;   // the light did not say
     float bestDistanceSq = reach * reach;
     bool found = false;
 
     [unroll]
     for (uint i = 0; i < 4; i++)
     {
-        if (YapsClassifyLight(i) != YAPS_LIGHT_ROOT) continue;
+        int kind = YapsClassifyLight(i);
+        if (!YapsIsRoot(kind)) continue;
         float3 at = YapsLightPosition(i);
         float distanceSq = dot(at - plugOrigin, at - plugOrigin);
         if (distanceSq >= bestDistanceSq) continue;
         bestDistanceSq = distanceSq;
         position = at;
         found = true;
+        holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
 
         // Its front light, if present, sits about a centimetre away along
         // the socket axis. That is a very short baseline to derive a
@@ -280,11 +297,22 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // the discrete path does.
     float3 lightPosition;
     float3 lightForward;
-    bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward);
+    float lightHoleHint;
+    bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward,
+                                       lightHoleHint);
     if (litRoot)
     {
         socket.position = lightPosition;
         found = true;
+        // Whoever resolved the position decides the kind. A legacy light
+        // states outright whether it is a hole or a ring, and it is
+        // describing the very socket we are now aiming at — which the
+        // channel's flag may not be, since the channel reports whatever
+        // last entered the trigger box.
+        if (lightHoleHint >= 0)
+        {
+            socket.isHole = lightHoleHint;
+        }
         if (dot(lightForward, lightForward) > 1e-6)
         {
             socket.forward = lightForward;
