@@ -188,7 +188,7 @@ inline float3 YapsBezierTangent(float3 p0, float3 p1, float3 p2, float3 p3, floa
 // Walk `distance` metres of arc length along the curve. Returns the frame
 // there, and how much distance was left over when the curve ran out.
 YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
-                   float distance, float3 startUp, out float leftOver)
+                   float wantedLength, float3 startUp, out float leftOver)
 {
     YapsFrame frame;
     frame.position = p0;
@@ -196,7 +196,7 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
     frame.up = YapsPerpendicular(frame.forward, startUp);
     leftOver = 0;
 
-    if (distance <= 0)
+    if (wantedLength <= 0)
     {
         return frame;
     }
@@ -211,17 +211,18 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
     for (int step = 1; step <= YAPS_WALK_STEPS; step++)
     {
         float t = (float) step / YAPS_WALK_STEPS;
-        float3 point = YapsBezier(p0, p1, p2, p3, t);
+        // Not "point": HLSL reserves it as a geometry-shader primitive type.
+        float3 curvePoint = YapsBezier(p0, p1, p2, p3, t);
         float3 forward = YapsSafeNormalize(YapsBezierTangent(p0, p1, p2, p3, t), frame.forward);
         float3 up = YapsPerpendicular(forward, carriedUp);
-        travelled += length(point - previousPoint);
+        travelled += length(curvePoint - previousPoint);
 
-        if (distance <= travelled)
+        if (wantedLength <= travelled)
         {
             // Land between this sample and the last one. Interpolating t
             // by the distance fraction is an approximation, but across a
             // step this small the curve is effectively straight.
-            float fraction = saturate((distance - previousTravelled)
+            float fraction = saturate((wantedLength - previousTravelled)
                 / max(travelled - previousTravelled, 1e-6));
             float landedT = lerp(previousT, t, fraction);
             frame.position = YapsBezier(p0, p1, p2, p3, landedT);
@@ -233,13 +234,13 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
 
         previousT = t;
         previousTravelled = travelled;
-        previousPoint = point;
+        previousPoint = curvePoint;
         carriedUp = up;
     }
 
     // Ran off the end: report the shortfall so the caller can extend
     // straight ahead, or collapse the tip if the socket is a hole.
-    leftOver = max(distance - travelled, 0);
+    leftOver = max(wantedLength - travelled, 0);
     frame.position = p3;
     frame.forward = YapsSafeNormalize(YapsBezierTangent(p0, p1, p2, p3, 1), frame.forward);
     frame.up = YapsPerpendicular(frame.forward, carriedUp);
