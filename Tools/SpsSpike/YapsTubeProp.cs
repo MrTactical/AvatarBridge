@@ -40,10 +40,11 @@ namespace AvatarBridge.Spike
         const int Around = 24;
         const int Along = 32;
 
-        // Legacy hole digits, so this reads as a hole to YAPS plugs and to
-        // the DPS content already on the platform alike. A tube that
-        // swallows something is a hole by any reading.
-        const float RootRange = 0.4106f;
+        // Legacy RING digits. A tube open at both ends is a ring, not a
+        // hole: a hole swallows, tapering everything past its entrance to
+        // nothing so it cannot poke out the far side of a body, which is
+        // right for a body and wrong for something you push through.
+        const float RootRange = 0.4206f;
         const float FrontRange = 0.4506f;
 
         [MenuItem("AvatarBridge/Spike/Build YAPS tube socket (bulges)")]
@@ -130,7 +131,7 @@ namespace AvatarBridge.Spike
 
             var pointer = new GameObject("Socket Pointer");
             pointer.transform.SetParent(root.transform, false);
-            pointer.AddComponent<CVRPointer>().type = "SPSLL_Socket_Hole";
+            pointer.AddComponent<CVRPointer>().type = "SPSLL_Socket_Ring";
 
             var capsule = root.AddComponent<CapsuleCollider>();
             capsule.direction = 2;
@@ -149,13 +150,12 @@ namespace AvatarBridge.Spike
             Object.DestroyImmediate(root);
             AssetDatabase.SaveAssets();
 
-            Debug.Log("[YAPS] Tube socket built in " + Dir + ".\n" +
-                      "Push a plug in along its axis and the tube swells around it, tracking how " +
-                      "far in the tip has gone rather than merely that something is close. It " +
-                      "reads as a HOLE, so the plug should taper and stop as well as being " +
-                      "swallowed.\n" +
-                      "This is what a socket's own author builds as depth reactions — bulges, " +
-                      "winces — and in ChilloutVR it costs no sync at all.");
+            Debug.Log("[YAPS] Tube socket built in " + Dir + ". Push a plug in along its axis " +
+                      "and the tube swells around it, tracking how far in the tip has gone " +
+                      "rather than merely that something is close. It reads as a RING, so the " +
+                      "plug passes straight through rather than being swallowed: a tube open at " +
+                      "both ends is a ring, while a hole tapers everything past its entrance to " +
+                      "nothing, which suits a body and not this.");
             Selection.activeObject = prefab;
         }
 
