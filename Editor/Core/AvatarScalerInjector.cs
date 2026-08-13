@@ -36,8 +36,8 @@ namespace AvatarBridge
         const string HeightMenu = "Height";
 
         const string HeightParam = "Height";
-        const string TemplateParam = "Input";
-        const string SmoothingLayer = "Linear Smoothing Layer";
+        internal const string TemplateParam = "Input";
+        internal const string SmoothingLayer = "Linear Smoothing Layer";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;
 
@@ -206,7 +206,7 @@ namespace AvatarBridge
             return candidate;
         }
 
-        static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
+        internal static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
         {
             if (machine == null)
             {
@@ -315,7 +315,7 @@ namespace AvatarBridge
             });
         }
 
-        static AnimatorController LoadController()
+        internal static AnimatorController LoadController()
         {
             string path = AssetDatabase.GUIDToAssetPath(ControllerGuid);
             if (string.IsNullOrEmpty(path))

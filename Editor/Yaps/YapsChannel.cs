@@ -267,7 +267,12 @@ namespace AvatarBridge
 
                 // Consume: the synced value into the material. Everyone runs
                 // this, wearer and viewer alike.
-                AddDriverLayer(ctx, $"YAPS{index}{axis} apply", synced,
+                // Read the SMOOTHED name, so a remote viewer follows the
+                // value instead of stepping to it. Falls back to the raw
+                // synced name if the template is missing.
+                var smoothLayers = new HashSet<string>();
+                string source = Smoothed(ctx, synced, smoothLayers);
+                AddDriverLayer(ctx, $"YAPS{index}{axis} apply", source,
                     "", typeof(CVRMaterialDriver), field);
                 taskIndex++;
             }
@@ -348,6 +353,75 @@ namespace AvatarBridge
         {
             "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
         };
+
+        // What a remote viewer receives is a stepped value: the wearer's
+        // machine measures continuously, but ChilloutVR transmits avatar
+        // parameters on a schedule, and in practice a viewer sees a couple
+        // of updates a second. Joe watched a plug stutter for exactly this
+        // reason.
+        //
+        // So every client eases the value it received toward its target
+        // each frame instead of snapping to it. AvatarBridge already ships
+        // the layer that does this — the constant-speed Linear Smoothing
+        // template the avatar scaler uses — so it is cloned per value with
+        // its Input and Output renamed.
+        //
+        // The smoothed name is "#" local on purpose. It is derived, not
+        // transmitted: every client already has the synced value and can
+        // smooth its own copy, so this costs no sync bits at all. Only the
+        // wearer's own view is unaffected, since theirs was never stepped.
+        static string Smoothed(BridgeContext ctx, string synced, HashSet<string> layerNames)
+        {
+            var template = AvatarScalerInjector.LoadController();
+            if (template == null)
+            {
+                return synced;   // no template, no smoothing; the value still works
+            }
+
+            string output = "#" + synced + "sm";
+            var copier = new AnimatorDeepCopier();
+            var layers = ctx.MergedController.layers.ToList();
+            foreach (var source in template.layers)
+            {
+                if (source.name != AvatarScalerInjector.SmoothingLayer)
+                {
+                    continue;
+                }
+                var clone = copier.CloneLayer(source);
+                clone.name = $"{synced} smooth";
+                clone.defaultWeight = 1f;
+                AvatarScalerInjector.RenameParameterReferences(clone.stateMachine,
+                    AvatarScalerInjector.TemplateParam, synced);
+                AvatarScalerInjector.RenameParameterReferences(clone.stateMachine, "Output", output);
+
+                // Every OTHER parameter the template uses is scratch — its
+                // own frame timer and accumulators. Five copies of this
+                // layer sharing one set of those would each stamp on the
+                // others' working state, and the smoothing would come out
+                // as noise. Give each copy its own.
+                foreach (var parameter in template.parameters)
+                {
+                    if (parameter.name == AvatarScalerInjector.TemplateParam
+                        || parameter.name == "Output")
+                    {
+                        continue;
+                    }
+                    string mine = "#" + synced + "_" + parameter.name.TrimStart('#');
+                    AvatarScalerInjector.RenameParameterReferences(clone.stateMachine,
+                        parameter.name, mine);
+                    Declare(ctx, mine, parameter.type);
+                }
+                layers.Add(clone);
+                layerNames.Add(clone.name);
+            }
+            if (layerNames.Count == 0)
+            {
+                return synced;
+            }
+            ctx.MergedController.layers = layers.ToArray();
+            Declare(ctx, output);
+            return output;
+        }
 
         // ChilloutVR's own budget, the same rule BridgeDiagnostics reports
         // against: 32 bits a float, "#" names and triggers are free, and
@@ -450,13 +524,14 @@ namespace AvatarBridge
             return clip;
         }
 
-        static void Declare(BridgeContext ctx, string name)
+        static void Declare(BridgeContext ctx, string name,
+            AnimatorControllerParameterType type = AnimatorControllerParameterType.Float)
         {
             if (ctx.MergedController.parameters.Any(p => p.name == name))
             {
                 return;
             }
-            ctx.MergedController.AddParameter(name, AnimatorControllerParameterType.Float);
+            ctx.MergedController.AddParameter(name, type);
         }
     }
 }
