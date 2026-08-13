@@ -155,12 +155,15 @@ YapsVertex YapsReadBaked(uint vertexId)
     baked.tangent = YapsReadFloat3(at + 6);
     baked.active = YapsReadFloat(at + 9);
 
-    // Baked vectors live in plug-local space, so their length is the
-    // plug's scale rather than 1. Measured across a real corpus this
-    // ranges from 0.38 to 30, so assuming unit vectors is not survivable.
-    float inverseScale = 1.0 / max(_YAPS_BakeScale, 1e-6);
-    baked.normal *= inverseScale;
-    baked.tangent *= inverseScale;
+    // Baked vectors carry whatever length the plug's own scale gave them
+    // — measured across a real corpus, anywhere from 0.38 to 30. Nothing
+    // here cares about their length: they serve as directions, both for
+    // recovering the plug's frame and for rewriting the output normal. So
+    // normalise and stop tracking the scale at all. Trying to divide by a
+    // recorded scale factor only works while the scale is uniform, and a
+    // non-uniformly scaled plug makes the magnitude direction-dependent.
+    baked.normal = YapsSafeNormalize(baked.normal, float3(0, 0, 1));
+    baked.tangent = YapsSafeNormalize(baked.tangent, float3(1, 0, 0));
 
     // A vertex behind the base is not part of the shaft.
     if (baked.position.z < 0) baked.active = 0;
