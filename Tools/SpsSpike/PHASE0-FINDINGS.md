@@ -1,3 +1,47 @@
+# The name: YAPS
+
+**"Yet Another Penetration System"** — decided 2026-08-13, before Phase 1, because the shader
+property prefix is a wire format between converter and shader and renaming it later breaks
+every already-converted avatar. `_YAPS_*` properties, `yaps_*.cginc` includes,
+`convertYapsSystems` setting, `YAPS` report category. (CPS was rejected on the grounds that it
+reads as Child Protective Services.) We ship none of VRCFury's code, so a distinct name is
+also the honest one — **inspired by SPS, not SPS** — and SPS gets credited as prior art.
+
+# Phase 0b — the bake format, decoded independently (2026-08-13)
+
+`Tools/SpsSpike/SpsBakeReader.cs`. **The format is understood**, and getting there corrected
+three assumptions — each one a bug that would otherwise have surfaced as "works on my avatar,
+broken on yours".
+
+Layout confirmed: one header pixel, then per vertex `1 + id*10` → position (3), normal (3),
+tangent (3), active (1); each float is the four bytes of one RGBA32 pixel. Blendshape blocks
+follow the base block at `1 + vertCount*10`, stride 9 per vertex plus a one-float header.
+
+**Three corrections, and what each means for the deform:**
+
+1. **The base block does not run to the end of the texture.** It stops at
+   `_SPS_BlendshapeVertCount`; blendshape data follows immediately. Decoding to capacity walks
+   into it. The failure diagnosed itself — Sally reported 58.1% valid, and 58.1% × 1638 = 952,
+   exactly her declared count.
+2. **`active` is a mask WEIGHT, not a boolean.** Legitimately fractional (~3% of Sally's
+   vertices) because it is a bone-mask falloff at the base of the plug. **The deform must
+   multiply by it, never threshold it**, or the mesh hard-cuts where it should feather.
+3. **Normals and tangents are in plug-local space**, so they are unit length only when the plug
+   transform has unit scale. Observed factors across the corpus: ×1, ×1.15, ×1.35, ×1.53,
+   ×1.7, ×0.376, ×0.425, ×4.594, ×6.728, **×30.48**. **The deform must normalise or divide by
+   the bake scale** rather than assume unit vectors. A plug with *non-uniform* scale gives
+   direction-dependent magnitudes, which is why magnitude clustering is reported but not gated
+   on — the scale-agnostic invariants are `active` staying in 0..1 and the positions staying
+   bounded like a plug.
+
+**Gate result: 33 of 34 materials pass**, including both reference avatars (Sally, Angela).
+The single holdout, `mask n pas`, declares 1508 vertices but only ~1010 decode cleanly — it
+over-states its own count and the reader runs into the blendshape block. Worth handling
+defensively in the real baker/reader: **trust the declared count, but stop early if `active`
+leaves 0..1**, since that is the cheap tell that the base block has ended.
+
+✅ **Phase 0b closed.** The format is ours to read and write without touching VRCFury's code.
+
 # Spike results
 
 ## S1 — the globals resolve, and they are positioned correctly (2026-08-13)
