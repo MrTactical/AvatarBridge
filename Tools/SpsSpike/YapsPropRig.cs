@@ -93,8 +93,9 @@ namespace AvatarBridge.Spike
             var p = pointer.AddComponent<CVRPointer>();
             p.type = "SPSLL_Socket_Root";
 
-            root.AddComponent<CVRPickupObject>();
-            root.AddComponent<CVRSpawnable>();
+            var sphere = root.AddComponent<SphereCollider>();
+            sphere.radius = 0.075f;
+            MakeGrabbable(root);
 
             return SaveAsPrefab(root, Dir + "/YAPS Test Socket.prefab");
         }
@@ -153,10 +154,38 @@ namespace AvatarBridge.Spike
             material.SetFloat("_YAPS_ChannelSpace", 0f);
             renderer.sharedMaterial = material;
 
-            root.AddComponent<CVRPickupObject>();
-            root.AddComponent<CVRSpawnable>();
+            var capsule = root.AddComponent<CapsuleCollider>();
+            capsule.direction = 2;   // along Z, the shaft
+            capsule.height = PlugLength;
+            capsule.radius = PlugRadius * 1.6f;
+            capsule.center = new Vector3(0, 0, PlugLength * 0.5f);
+            MakeGrabbable(root);
 
             return SaveAsPrefab(root, Dir + "/YAPS Test Plug Prop.prefab");
+        }
+
+        // A pickup needs something to raycast against and something to
+        // move. Without a collider there is nothing to point at, and
+        // without a rigidbody the default Rigidbody move mode has nothing
+        // to drive — so the prop spawns, renders, and cannot be touched.
+        //
+        // Gravity off on purpose: these are aimed at each other, and a
+        // prop that drops to the floor the moment you let go is useless
+        // for that. Drag holds it where it was left.
+        static void MakeGrabbable(GameObject root)
+        {
+            var body = root.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            body.isKinematic = false;
+            body.drag = 6f;
+            body.angularDrag = 6f;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+
+            var pickup = root.AddComponent<CVRPickupObject>();
+            pickup.maximumGrabDistance = 8f;
+
+            var spawnable = root.AddComponent<CVRSpawnable>();
+            spawnable.spawnHeight = 1.2f;   // chest height, not at your feet
         }
 
         // --- meshes ----------------------------------------------------
