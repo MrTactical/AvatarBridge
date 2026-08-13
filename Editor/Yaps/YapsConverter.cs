@@ -278,8 +278,17 @@ namespace AvatarBridge
                     // socket light is a marker, not lighting, and a
                     // vertex light is what keeps it out of ChilloutVR's
                     // Advanced Safety light budget entirely.
+                    //
+                    // Black, but intensity stays at ONE. Black is what
+                    // stops it lighting anything and what lets the decoder
+                    // separate protocol lights from real ones. Zeroing the
+                    // intensity instead makes Unity drop the light from the
+                    // per-object list altogether — it contributes nothing,
+                    // so it never occupies a slot, so the socket cannot be
+                    // seen at all. Every socket on the avatar goes dark.
                     light.color = Color.black;
-                    light.intensity = 0f;
+                    light.intensity = 1f;
+                    light.bounceIntensity = 0f;
                     light.shadows = LightShadows.None;
                     light.renderMode = LightRenderMode.ForceVertex;
                 }

@@ -93,8 +93,12 @@ namespace AvatarBridge.Spike
             var p = pointer.AddComponent<CVRPointer>();
             p.type = "SPSLL_Socket_Root";
 
+            // Tight to the ring. Two pickups cannot overlap, so every
+            // centimetre of collider is a centimetre the plug can never
+            // get closer than — and the interesting part of the deform is
+            // the arrival.
             var sphere = root.AddComponent<SphereCollider>();
-            sphere.radius = 0.075f;
+            sphere.radius = 0.05f;
             MakeGrabbable(root);
 
             return SaveAsPrefab(root, Dir + "/YAPS Test Socket.prefab");
@@ -108,8 +112,16 @@ namespace AvatarBridge.Spike
             var light = go.AddComponent<Light>();
             light.type = LightType.Point;
             light.range = range;
+            // Black, but NOT zero intensity. Black is what makes it carry
+            // no illumination and what lets the decoder tell a protocol
+            // light from somebody's real lighting. Intensity zero is
+            // something else entirely: Unity drops a light that contributes
+            // nothing from the per-object light list, so the slot the
+            // decoder is reading never gets filled and the socket is
+            // invisible. The prop pair failed on exactly this.
             light.color = Color.black;
-            light.intensity = 0f;
+            light.intensity = 1f;
+            light.bounceIntensity = 0f;
             light.shadows = LightShadows.None;
             light.renderMode = LightRenderMode.ForceVertex;
         }
