@@ -158,6 +158,14 @@ namespace AvatarBridge.Spike
             return SaveAsPrefab(root, Dir + "/" + name + ".prefab");
         }
 
+        static void PlugPointer(Transform parent, string name, string type, Vector3 at)
+        {
+            var go = new GameObject("Plug " + name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = at;
+            go.AddComponent<CVRPointer>().type = type;
+        }
+
         static void MarkerLight(Transform parent, string name, float range, Vector3 at)
         {
             var go = new GameObject("Marker " + name);
@@ -222,6 +230,20 @@ namespace AvatarBridge.Spike
             material.SetFloat("_YAPS_TaperStart", 0.05f);
             material.SetFloat("_YAPS_TaperEnd", 0.10f);
             renderer.sharedMaterial = material;
+
+            // The plug END of a contact. Without these the prop can bend
+            // toward a socket and never trigger anything in it: depth
+            // reactions live on the socket and fire on a plug's tags, so a
+            // plug that announces nothing arrives invisibly.
+            //
+            // Tip and root are separate points because that is how depth is
+            // measured — a socket compares the two to know how far in
+            // something has gone, which is exactly what drives a bulge.
+            PlugPointer(root.transform, "Tip", "TPS_Pen_Penetrating",
+                new Vector3(0, 0, PlugLength));
+            PlugPointer(root.transform, "Root", "TPS_Pen_Root", Vector3.zero);
+            PlugPointer(root.transform, "Width", "TPS_Pen_Width",
+                new Vector3(PlugRadius, 0, 0));
 
             var capsule = root.AddComponent<CapsuleCollider>();
             capsule.direction = 2;   // along Z, the shaft
