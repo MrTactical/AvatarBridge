@@ -113,24 +113,51 @@ namespace AvatarBridge
             //
             // The offset is all three axes or none. Two axes out of three
             // is not a degraded position, it is a wrong one.
+            // One float of slack on every threshold. The CCK's own inspector
+            // counts the budget slightly more harshly than the client does —
+            // it counted an avatar at 3200 that this measured at 3168 — and
+            // being 32 bits over turns that inspector red on the user's
+            // screen whatever the client thinks. Sitting a float short of
+            // the line costs nothing; sitting a float past it costs the
+            // avatar's credibility at upload time.
             int spare = SpareSyncFloats(ctx);
-            bool carryOffset = spare >= 4;
+            bool carryOffset = spare >= 5;
+            bool carryEngagement = spare >= 2;
 
             plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
             plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
             plug.Material.SetFloat("_YAPS_Enabled", 1f);
 
+            if (!carryEngagement)
+            {
+                // Not a failure. The light path resolves position AND
+                // engages on its own within about a plug length, which is
+                // exactly how a plug meets content this tool never touched,
+                // and this avatar's own sockets were re-ranged to be found
+                // that way too.
+                ctx.Report.Warning(Category,
+                    "No sync budget left for the socket channel — marker lights only",
+                    $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
+                    $"has {spare * 32} to spare, so adding even one more float would push it over and " +
+                    "turn the CCK's budget bar red. The plug still deforms: it finds sockets by their " +
+                    "marker lights at close range, the same way it finds DPS content this tool never " +
+                    "converted. What it loses is the exact position at longer range and the certainty " +
+                    "that every viewer agrees. Free some sync bits elsewhere — bools cost 1 bit where " +
+                    "floats cost 32 — and convert again for the full channel.");
+                return;
+            }
+
             if (!carryOffset)
             {
                 ctx.Report.Warning(Category,
-                    "No sync budget left for the socket's position — engagement only",
+                    "Only room for engagement in the sync budget, not the socket's position",
                     $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
-                    $"has room for {spare} more float(s); the plug needs four. So it transmits " +
-                    "whether it is engaged, and where the socket is comes from that socket's own " +
-                    "marker lights at close range and from ChilloutVR's player positions further " +
-                    "out. That is the same path used for content this tool never converted, and it " +
-                    "works — it is simply less exact than the full channel. Freeing sync bits " +
-                    "elsewhere on the avatar and converting again gets you the exact one.");
+                    $"has room for {spare} more float(s); the full channel needs four per plug. So it " +
+                    "transmits whether it is engaged, and where the socket is comes from that " +
+                    "socket's own marker lights at close range and from ChilloutVR's player positions " +
+                    "further out. That is the same path used for content this tool never converted, " +
+                    "and it works — it is simply less exact. Freeing sync bits elsewhere on the " +
+                    "avatar and converting again gets you the exact one.");
             }
 
             var axes = carryOffset

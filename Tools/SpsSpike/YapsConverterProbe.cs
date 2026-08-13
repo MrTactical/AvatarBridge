@@ -72,7 +72,9 @@ namespace AvatarBridge.Spike
             public List<string> YapsEntries = new List<string>();
             public bool SpsStillPatched;
             public int ChannelTriggers, MaterialTasks, DriverSlots, SyncedParams, LocalParams;
-            public bool ChannelSpaceSet;
+            public bool HasChannelSpace;
+            public float ChannelSpace = -1f;
+            public int SpareSyncFloats;
         }
 
         static Outcome Convert(bool yaps)
@@ -141,9 +143,10 @@ namespace AvatarBridge.Spike
                 {
                     outcome.SpsStillPatched = true;
                 }
-                if (material.HasProperty("_YAPS_ChannelSpace") && material.GetFloat("_YAPS_ChannelSpace") > 0.5f)
+                if (material.HasProperty("_YAPS_ChannelSpace"))
                 {
-                    outcome.ChannelSpaceSet = true;
+                    outcome.HasChannelSpace = true;
+                    outcome.ChannelSpace = material.GetFloat("_YAPS_ChannelSpace");
                 }
             }
 
@@ -175,8 +178,16 @@ namespace AvatarBridge.Spike
             }
             if (controller != null)
             {
+                // "#YAPS0E" does not start with "YAPS", so these two never
+                // overlap and must not be subtracted from one another.
                 outcome.SyncedParams = controller.parameters.Count(p => p.name.StartsWith("YAPS"));
                 outcome.LocalParams = controller.parameters.Count(p => p.name.StartsWith("#YAPS"));
+
+                int used = controller.parameters
+                    .Where(p => !p.name.StartsWith("#")
+                                && p.type != UnityEngine.AnimatorControllerParameterType.Trigger)
+                    .Sum(p => p.type == UnityEngine.AnimatorControllerParameterType.Bool ? 1 : 32);
+                outcome.SpareSyncFloats = Mathf.Max(0, (3200 - used) / 32);
             }
             return outcome;
         }
@@ -202,23 +213,45 @@ namespace AvatarBridge.Spike
 
             // Every one of these was "correct" on a run where the channel
             // pass returned immediately without doing anything.
+            //
+            // The shape depends on what sync budget the avatar had left,
+            // which is the point of the degradation: a full channel is four
+            // values and four triggers, an engagement-only one is a single
+            // value and a single trigger. Expecting the full shape on a
+            // full avatar just reports the design as a fault.
             int plugs = Mathf.Max(1, on.PatchedMaterials);
+            bool full = on.ChannelSpace > 0.5f;
+            int values = full ? 4 : 1;
+            int triggers = full ? 4 : 1;
+
             Line("### The channel");
+            Line("");
+            Line(full
+                ? "The avatar had room for the **full channel** — engagement and the socket's offset."
+                : "The avatar had no room for the offset, so this is the **engagement-only** channel. " +
+                  "Position comes from the socket's own marker lights at close range and from " +
+                  "ChilloutVR's player positions beyond that.");
             Line("");
             Line("| | YAPS off | YAPS on | expected | reads as |");
             Line("|---|---:|---:|---:|---|");
-            Channel("Axis triggers on the plug", off.ChannelTriggers, on.ChannelTriggers, plugs * 3);
-            Channel("Material driver tasks", off.MaterialTasks, on.MaterialTasks, plugs * 4);
-            Channel("Animator driver slots", off.DriverSlots, on.DriverSlots, plugs * 4);
-            Channel("Local `#YAPS…` parameters", off.LocalParams, on.LocalParams, plugs * 4);
-            Channel("Synced `YAPS…` parameters", off.SyncedParams,
-                on.SyncedParams - on.LocalParams, plugs * 4);
-            Line($"| Material told to read plug-local | — | {(on.ChannelSpaceSet ? "yes" : "no")} | yes | " +
-                 $"{(on.ChannelSpaceSet ? "correct" : "**WRONG**")} |");
+            Channel("Triggers on the plug", off.ChannelTriggers, on.ChannelTriggers, plugs * triggers);
+            Channel("Material driver tasks", off.MaterialTasks, on.MaterialTasks, plugs * values);
+            Channel("Animator driver slots", off.DriverSlots, on.DriverSlots, plugs * values);
+            Channel("Local `#YAPS…` parameters", off.LocalParams, on.LocalParams, plugs * values);
+            Channel("Synced `YAPS…` parameters", off.SyncedParams, on.SyncedParams, plugs * values);
+            Line($"| `_YAPS_ChannelSpace` on the material | — | " +
+                 $"{(on.HasChannelSpace ? on.ChannelSpace.ToString("0") : "**absent**")} | " +
+                 $"{(full ? "1" : "0")} | {(on.HasChannelSpace ? "correct" : "**WRONG — the shader never declared it**")} |");
             Line("");
             Line($"Synced parameters cost 32 bits each against ChilloutVR's 3200-bit cap — " +
-                 $"{(on.SyncedParams - on.LocalParams) * 32} bits here, " +
-                 $"{(on.SyncedParams - on.LocalParams) * 32 * 100f / 3200f:0.#}% of the budget.");
+                 $"{on.SyncedParams * 32} bits here. The avatar has **{on.SpareSyncFloats} float(s)** " +
+                 $"of headroom left; the full channel needs four per plug.");
+            if (!full)
+            {
+                Line("");
+                Line("**The full-channel shape is therefore not exercised by this avatar.** It needs " +
+                     "one with sync budget to spare — the test props are the obvious candidate.");
+            }
             Line("");
 
             Line("| Check | Result |");
