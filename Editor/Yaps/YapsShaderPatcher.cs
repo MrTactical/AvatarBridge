@@ -217,13 +217,8 @@ namespace AvatarBridge
                 }
 
                 string vertName = vertPragma.Groups[1].Value;
-                string key = vertName + "@" + block.Index;
-                if (!alreadyInjected.Add(key))
-                {
-                    continue;
-                }
-
-                if (!PatchOneVertexFunction(unit, yaps, vertName, out string why))
+                if (!PatchOneVertexFunction(unit, yaps, vertName,
+                        start, start + end.Index, alreadyInjected, out string why))
                 {
                     refusal = why;
                     return patched;
@@ -235,19 +230,45 @@ namespace AvatarBridge
         }
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
-            string vertName, out string refusal)
+            string vertName, int blockStart, int blockEnd, HashSet<string> alreadyInjected,
+            out string refusal)
         {
             refusal = null;
+            var pattern = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(");
 
-            // Find the definition rather than a call: a definition is
-            // followed by a parameter list and then a brace.
-            var file = ShaderSpiPatcher.FindIn(unit,
-                $@"(\w+)\s+{Regex.Escape(vertName)}\s*\(", out var head);
-            if (file == null)
+            // Look inside THIS program block first. A flattened shader
+            // repeats its whole vertex function per pass, and searching the
+            // file from the start would hand every pass the same first copy
+            // — patching it once per pass, at offsets computed before the
+            // previous edits, which shreds the preprocessor and reports as
+            // an undeclared 'endif'.
+            ShaderSpiPatcher.SourceFile file = unit[0];
+            Match head = Match.Empty;
+            if (blockStart >= 0 && blockEnd <= file.Text.Length)
             {
-                refusal = $"the vertex function \"{vertName}\" could not be found in the shader " +
-                          "or its includes";
-                return false;
+                var inBlock = pattern.Match(file.Text, blockStart, blockEnd - blockStart);
+                if (inBlock.Success)
+                {
+                    head = inBlock;
+                }
+            }
+
+            if (!head.Success)
+            {
+                // Not in the block, so it lives in an include. Those are
+                // textually shared by every pass that includes them, so
+                // patch such a function exactly once.
+                file = ShaderSpiPatcher.FindIn(unit.Skip(1).ToList(), pattern.ToString(), out head);
+                if (file == null)
+                {
+                    refusal = $"the vertex function \"{vertName}\" could not be found in the " +
+                              "shader or its includes";
+                    return false;
+                }
+                if (!alreadyInjected.Add(file.OriginalPath + "::" + vertName))
+                {
+                    return true;   // already done for another pass
+                }
             }
 
             int parenOpen = file.Text.IndexOf('(', head.Index);
