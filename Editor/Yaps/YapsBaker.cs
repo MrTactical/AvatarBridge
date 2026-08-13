@@ -24,7 +24,10 @@
 // feather at the base for free: a vertex half-weighted to the hip is half
 // deformed, which is exactly right, and it is why the shader multiplies
 // by this rather than thresholding it.
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+// Guarded on the CCK alone, not the VRChat SDK: nothing here touches a
+// VRChat type, and the native authoring window planned for avatars that
+// never came from VRChat has to be able to compile without it.
+#if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
 using System.IO;
