@@ -24,9 +24,22 @@ namespace AvatarBridge
         const string Category = "YAPS";
         readonly List<(Component plug, bool was)> _flipped = new List<(Component, bool)>();
 
+        // The author's own per-plug settings, read off the component while
+        // it still exists. The bake destroys it, so anything not captured
+        // here is lost and quietly replaced by a default — which is what
+        // happened to overrun: VRCFury lets an author say whether the tip
+        // may travel past the socket, and every converted plug was getting
+        // "yes" regardless of what they chose.
+        //
+        // Keyed by the object the plug component sits on, which survives
+        // the bake as the parent of BakedSpsPlug.
+        public static readonly Dictionary<string, bool> AuthoredOverrun =
+            new Dictionary<string, bool>();
+
         public static YapsBakePrep Begin(BridgeContext ctx, GameObject source)
         {
             var prep = new YapsBakePrep();
+            AuthoredOverrun.Clear();
             if (ctx == null || !ctx.Settings.convertYapsSystems || source == null)
             {
                 return prep;
@@ -38,6 +51,13 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                var overrun = component.GetType().GetField("spsOverrun",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (overrun != null && overrun.FieldType == typeof(bool))
+                {
+                    AuthoredOverrun[component.gameObject.name] = (bool) overrun.GetValue(component);
+                }
+
                 var field = component.GetType().GetField("enableSps",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field == null || field.FieldType != typeof(bool))

@@ -141,6 +141,17 @@ namespace AvatarBridge
 
             var patched = YapsBaker.Apply(result, materials[slot], shader, ctx.OutputDir + "/YAPS",
                 result.FromSkinnedMesh);
+
+            // The author's own choice about whether the tip may travel past
+            // the socket, read off the plug component before the bake
+            // destroyed it. Defaulting silently to yes was overriding a
+            // decision somebody had made.
+            string plugObject = plugRoot.parent != null ? plugRoot.parent.name : null;
+            bool overrun = plugObject != null
+                           && YapsBakePrep.AuthoredOverrun.TryGetValue(plugObject, out bool authored)
+                ? authored
+                : true;
+            patched.SetFloat("_YAPS_Overrun", overrun ? 1f : 0f);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
 
