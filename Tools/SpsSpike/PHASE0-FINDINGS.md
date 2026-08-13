@@ -13,10 +13,41 @@ so nothing occludes them, wireframe edges with dim faces so they never hide the 
 are measuring, a minimum apparent size so a player across the room stays visible, and the
 local player's own set drawn at 35% so it does not fill a first-person view from the inside.
 
-Still to read off the rebuilt probe: tracking quality while walking/crouching, whether local
-is index 0, whether remote players' markers follow *them*, and — the one that matters most —
-**whether a mirror shows the markers in the same places as the direct view**, which is the
-property lights failed and the whole reason position moved here.
+**Rebuilt probe: full pass, 2026-08-13.** Markers land on hip, chest and head of every player,
+correctly placed, tracking each person as they move, with the local player's set at index 0
+(small) and remotes at full size. **They agree in mirrors.** That is the property lights failed
+and the entire reason position moved to this channel — so the backbone of the redesign is
+confirmed on the stable client.
+
+## S2d — the inverted light encoding works, and lights are stronger than feared
+
+Two results from the same session:
+
+**The encoding fix lands.** With roots re-encoded to `0.4906`/`0.4806` and fronts down at
+`0.4106`, the probe's slots fill with **magenta and cyan (roots)** instead of the blue front
+wall the original protocol produced. Unity's range-based ranking now favours what we need.
+Adopt this ordering for converted avatars.
+
+**Lights behave far better avatar-to-avatar than avatar-to-prop** — the tester's own words,
+"works better between avatars, not the cube prop" — and they **hold up in mirrors** in that
+configuration, where the earlier prop test diverged.
+
+That fits the frustum explanation exactly and sharpens it: the divergence is a *distance*
+effect, not a mirror effect. Avatars stay near each other and their lights sit inside any
+frustum that is drawing the mesh; a dropped prop sits far from the light bearer, so cameras
+disagree about whether the light is visible. **The failure mode lives at range; the deform
+lives at contact.** Lights are therefore a solid refinement in the exact configuration SPS
+runs in — avatar to avatar, close range — and the earlier caution stands only for distance.
+
+Design consequences:
+- **Adopt the inverted encoding** on converted sockets. Keep decoding the legacy
+  `0.41/0.42/0.45` too, so our plugs still react to ChilloutVR's existing DPS content.
+  Emitting *both* sets would double the light count and re-create the contention we just
+  fixed, so legacy emission should be an explicit opt-in setting, off by default.
+- **Never test light behaviour on props and generalise to avatars.** They measurably differ,
+  and the avatar case is the real one.
+- The camera-independent channels remain the backbone regardless — they carry the deform at
+  every range, and lights refine the last few centimetres.
 
 ## S2c — the decisive one: **the light channel is camera-dependent**
 
