@@ -287,7 +287,15 @@ namespace AvatarBridge
             }
 
             string parameters = file.Text.Substring(parenOpen + 1, parenClose - parenOpen - 1);
-            var identifiers = Regex.Matches(parameters, @"[A-Za-z_]\w*")
+
+            // Strip preprocessor lines before reading identifiers. Poiyomi's
+            // parameter list ENDS with "#endif", and taking the last
+            // identifier from the raw text duly named the parameter "endif",
+            // emitting `endif.vertex.xyz` — which the compiler reported, with
+            // some justification, as an undeclared identifier 'endif'.
+            string cleaned = Regex.Replace(parameters, @"^[ \t]*#.*$", "", RegexOptions.Multiline);
+
+            var identifiers = Regex.Matches(cleaned, @"[A-Za-z_]\w*")
                 .Cast<Match>().Select(m => m.Value).ToList();
             if (identifiers.Count < 2)
             {
