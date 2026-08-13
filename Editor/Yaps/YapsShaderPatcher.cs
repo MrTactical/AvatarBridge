@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "1";
+        const string Revision = "2";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -66,6 +66,7 @@ namespace AvatarBridge
         _YAPS_SocketFlags (""YAPS socket flags"", Vector) = (0,0,0,0)
         _YAPS_ChannelSpace (""YAPS channel space"", Range(0,1)) = 0
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
+        _YAPS_SelfTag (""YAPS self tag"", Float) = -1
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,

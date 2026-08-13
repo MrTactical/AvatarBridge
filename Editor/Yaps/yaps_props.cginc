@@ -50,4 +50,22 @@ float4 _YAPS_SocketFlags;  // x: engaged 0..1, y: is-hole, z/w spare
 float _YAPS_ChannelSpace;
 float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 
+// Which sockets belong to this plug's OWN avatar, so it can ignore them.
+//
+// A light carries a position and nothing else — no identity, no owner — so
+// a plug cannot otherwise tell its wearer's own socket from a stranger's.
+// On an avatar carrying both, its own sockets are permanently in reach and
+// permanently nearest, so it spends its life bent into its wearer's hip.
+//
+// The converter therefore stamps a digit into the FOURTH decimal of every
+// light range it writes, and the same digit here. Anything matching is the
+// wearer's own and is skipped. -1 means no plug on this avatar knows the
+// tag, so nothing is skipped.
+//
+// Ten values, so two people wearing differently-converted avatars collide
+// about one time in ten and one of them stops seeing the other's sockets.
+// That is worth it against the alternative, which is a plug that never
+// works at all on any avatar that also has sockets.
+float _YAPS_SelfTag;
+
 #endif

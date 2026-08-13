@@ -179,6 +179,7 @@ namespace AvatarBridge.Spike
             // avatar only. Position and engagement both come from the
             // socket's marker lights.
             material.SetFloat("_YAPS_ChannelSpace", 0f);
+            material.SetFloat("_YAPS_SelfTag", -1f);   // a prop wears no sockets of its own
             renderer.sharedMaterial = material;
 
             var capsule = root.AddComponent<CapsuleCollider>();

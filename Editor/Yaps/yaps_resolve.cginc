@@ -119,6 +119,15 @@ int YapsClassifyLight(uint slot)
     float4 colour = unity_LightColor[slot];
     if (any(colour.rgb > 0.0001) && colour.a > 0) return YAPS_LIGHT_NONE;
 
+    // The wearer's own sockets, skipped before anything else. They are
+    // permanently in reach and permanently nearest, so without this the
+    // plug never looks at anyone else.
+    if (_YAPS_SelfTag >= 0)
+    {
+        int owner = (int) round(fmod(range * 10000.0, 10.0));
+        if (owner == (int) round(_YAPS_SelfTag)) return YAPS_LIGHT_NONE;
+    }
+
     int digit = (int) round(fmod(range, 0.1) * 100.0);
 
     // Ours first: the two digits legacy never claimed.
