@@ -84,6 +84,11 @@ namespace AvatarBridge.Spike
 
             var spawnable = root.AddComponent<CVRSpawnable>();
             spawnable.spawnHeight = 1.2f;
+            // Filling the list is not enough — the flag is what makes the
+            // client look at it, and without it the trigger reports that
+            // the spawnable uses no additional values while the value sits
+            // right there.
+            spawnable.useAdditionalValues = true;
             spawnable.syncValues.Add(new CVRSpawnableValue
             {
                 name = "Depth",
@@ -256,11 +261,30 @@ namespace AvatarBridge.Spike
             return controller;
         }
 
+        // A tube is seen from inside as much as out, and single-sided
+        // rendering makes half of it vanish — including the half you are
+        // looking through when a plug goes in. Unity's Standard shader has
+        // no cull switch, so this prefers a shader that does and only falls
+        // back to Standard when there is none.
         static Material TubeMaterial()
         {
-            var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+            var shader = Shader.Find(".poiyomi/Poiyomi Toon")
+                         ?? Shader.Find("Poiyomi/Poiyomi Toon")
+                         ?? Shader.Find(".poiyomi/Poiyomi Pro")
+                         ?? Shader.Find("Standard")
+                         ?? Shader.Find("Unlit/Color");
             var material = new Material(shader) { name = "YAPS Tube" };
             material.color = new Color(0.85f, 0.5f, 0.55f);
+            if (material.HasProperty("_Cull"))
+            {
+                material.SetFloat("_Cull", 0f);   // both faces
+            }
+            else
+            {
+                Debug.LogWarning("[YAPS] The tube is on a shader with no cull switch, so its " +
+                                 "far wall will disappear when you look through it. Import " +
+                                 "Poiyomi, or set the material two-sided by hand.");
+            }
             AssetDatabase.CreateAsset(material,
                 AssetDatabase.GenerateUniqueAssetPath(Dir + "/YAPS Tube.mat"));
             return material;
