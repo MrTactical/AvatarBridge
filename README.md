@@ -282,6 +282,30 @@ existing DPS content already emits — so a converted plug reacts to avatars tha
 of AvatarBridge. The reverse doesn't hold: legacy plugs won't react to a converted socket.
 Experimental means what it says; test it with a second person before relying on it.
 
+**How a plug finds a socket.** Three routes, tried in that order, and which ones an avatar gets
+depends on how much parameter sync it has left:
+
+| | costs | reaches | when it's used |
+|---|---|---|---|
+| **Contact channel** | 5 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
+| **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
+| **Player positions** | nothing | everyone, every frame | the floor — aims at a body when nothing better resolves |
+
+If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first and the
+socket's position second, and says so in the report rather than silently going over. An avatar
+with no budget at all still works through the lights.
+
+**What other people see.** The wearer's own machine works out where the socket is, and a driver
+publishes it so everyone else sees the same bend. Marker lights are read independently by each
+viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
+shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
+breaks.
+
+**A socket's own reactions cost nothing.** Bulges and the like are driven by contacts, which
+every client computes for itself, so they use no sync budget however many an author builds. In
+VRChat the same thing costs a synced parameter each — which is why AvatarBridge drops VRChat's
+own haptic parameter set and keeps only what ChilloutVR can run for free.
+
 **Animation that can't do anything is stripped too** (*Remove animation that can't do anything*,
 on by default). A curve writing to a material property the renderer's shader doesn't have — the
 signature of a [locked Poiyomi shader](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
@@ -1668,6 +1692,11 @@ GitHub issue — those get tracked, linked to a fix and closed with a release.
   bundled under `Assets/AvatarBridge/FaceTracking` and redistributed with the author's permission.
   All rights remain theirs; if you reuse it, credit them. *(Their upstream repo carries no explicit
   license file — a `LICENSE` there would make the redistribution terms unambiguous.)*
+- **YAPS is inspired by [VRCFury](https://vrcfury.com/)'s SPS**, which invented mesh-deforming
+  penetration for VRChat. None of its code is used: the deform, the baker and the shader patcher
+  are written from scratch against ChilloutVR's own systems, which is why the result carries a
+  different name rather than claiming to be SPS. What is shared is the *idea* — bend a mesh in its
+  vertex shader toward a socket it finds at runtime — and the credit for that idea is theirs.
 - [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) is an optional
   third-party mod AvatarBridge targets but does not bundle.
 - The avatar scaler's constant-speed smoothing is built on
