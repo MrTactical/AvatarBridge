@@ -52,46 +52,61 @@ namespace AvatarBridge.Spike
                 AssetDatabase.CreateFolder("Assets/SpsSpike", "Props");
             }
 
-            var socket = BuildSocket();
+            // Three sockets, because one that emits both lights and a
+            // contact pointer cannot tell you which of the two made the
+            // plug move. Colour says which is which in game.
+            var socket = BuildSocket("YAPS Test Socket", new Color(0.9f, 0.35f, 0.6f),
+                lights: true, pointer: true);
+            var lightsOnly = BuildSocket("YAPS Test Socket (lights only)",
+                new Color(0.95f, 0.8f, 0.2f), lights: true, pointer: false);
+            var contactOnly = BuildSocket("YAPS Test Socket (contact only)",
+                new Color(0.25f, 0.6f, 0.95f), lights: false, pointer: true);
             var plug = BuildPlug();
             AssetDatabase.SaveAssets();
 
             Debug.Log("[YAPS] Test props built in " + Dir + ".\n" +
-                      "Upload both through the CCK as props, then spawn them together. " +
-                      "Move the socket at the plug: it should bend toward the ring, arrive " +
-                      "along the spike, and straighten when you pull away. Nothing is synced " +
-                      "— the plug reads the socket's marker lights directly.");
-            Selection.objects = new Object[] { socket, plug };
+                      "PINK socket: lights and a contact pointer, the realistic one.\n" +
+                      "YELLOW socket: marker lights only — the path existing DPS content uses.\n" +
+                      "BLUE socket: contact pointer only, no lights — the only way to see the " +
+                      "channel working on its own.\n" +
+                      "The plug PROP has no channel at all, so it can only ever react to the " +
+                      "pink and yellow ones. A converted AVATAR should react to all three.");
+            Selection.objects = new Object[] { socket, lightsOnly, contactOnly, plug };
         }
 
         // --- the socket ------------------------------------------------
 
-        static GameObject BuildSocket()
+        static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer)
         {
-            var root = new GameObject("YAPS Test Socket");
+            var root = new GameObject(name);
             var body = new GameObject("Ring");
             body.transform.SetParent(root.transform, false);
 
             var mesh = BuildRingMesh();
-            AssetDatabase.CreateAsset(mesh, Dir + "/YAPS Socket Ring.asset");
+            AssetDatabase.CreateAsset(mesh,
+                AssetDatabase.GenerateUniqueAssetPath(Dir + "/YAPS Socket Ring.asset"));
             body.AddComponent<MeshFilter>().sharedMesh = mesh;
-            body.AddComponent<MeshRenderer>().sharedMaterial = SolidMaterial("YAPS Socket",
-                new Color(0.9f, 0.35f, 0.6f));
+            body.AddComponent<MeshRenderer>().sharedMaterial = SolidMaterial(name, colour);
 
             // The two marker lights, exactly as a converted socket emits
             // them: black, no shadows, vertex-only. Black because the
             // decoder rejects anything carrying colour as somebody's real
             // lighting; vertex-only because that is what keeps them out of
             // ChilloutVR's Advanced Safety light budget.
-            MarkerLight(root.transform, "Root", RootRange, Vector3.zero);
-            MarkerLight(root.transform, "Front", FrontRange, new Vector3(0, 0, 0.01f));
+            if (lights)
+            {
+                MarkerLight(root.transform, "Root", RootRange, Vector3.zero);
+                MarkerLight(root.transform, "Front", FrontRange, new Vector3(0, 0, 0.01f));
+            }
 
             // Tagged the way a converted avatar's socket is tagged, so a
             // converted avatar's contact channel reacts to this prop too.
-            var pointer = new GameObject("Socket Pointer");
-            pointer.transform.SetParent(root.transform, false);
-            var p = pointer.AddComponent<CVRPointer>();
-            p.type = "SPSLL_Socket_Root";
+            if (pointer)
+            {
+                var host = new GameObject("Socket Pointer");
+                host.transform.SetParent(root.transform, false);
+                host.AddComponent<CVRPointer>().type = "SPSLL_Socket_Root";
+            }
 
             // Tight to the ring. Two pickups cannot overlap, so every
             // centimetre of collider is a centimetre the plug can never
@@ -101,7 +116,7 @@ namespace AvatarBridge.Spike
             sphere.radius = 0.05f;
             MakeGrabbable(root);
 
-            return SaveAsPrefab(root, Dir + "/YAPS Test Socket.prefab");
+            return SaveAsPrefab(root, Dir + "/" + name + ".prefab");
         }
 
         static void MarkerLight(Transform parent, string name, float range, Vector3 at)
