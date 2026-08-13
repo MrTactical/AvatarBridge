@@ -87,6 +87,19 @@ namespace AvatarBridge
                 plug.Material.SetFloat("_YAPS_SelfTag", selfTag);
             }
 
+            if (socketRoots.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Kept the depth reactions on {socketRoots.Count} socket(s)",
+                    "The animations a socket plays as a plug arrives — bulges, winces, whatever " +
+                    "its author built — are kept and made local rather than thrown away. In " +
+                    "VRChat each of those costs a synced parameter, which is why keeping them " +
+                    "the naive way took one avatar to its entire sync budget. In ChilloutVR a " +
+                    "contact is computed by every client independently, so a local parameter " +
+                    "reaches everyone and costs nothing at all. There is no limit on how many " +
+                    "shapes a socket drives this way.");
+            }
+
             if (plugRoots.Count > 0 && ctx.YapsPlugs.Count == 0)
             {
                 ctx.Report.Warning(Category, "No plug could be converted",

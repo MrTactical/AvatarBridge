@@ -2085,6 +2085,17 @@ namespace AvatarBridge
                 // Stream-fed parameters must stay synced. The stream runs
                 // on the wearer's copy only, and a "#" name never
                 // replicates, so remote viewers would see frozen defaults.
+                // Forced local beats every claim to keep a parameter synced.
+                // A contact-driven parameter has to be "#" or the incoming
+                // stream overwrites what the contact just set, and being
+                // local also costs nothing against the sync budget.
+                if (ctx.ForceLocalPrefixes.Count > 0
+                    && ctx.ForceLocalPrefixes.Any(p =>
+                        result.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                    && !result.StartsWith("#", StringComparison.Ordinal))
+                {
+                    return "#" + result;
+                }
                 bool preserved = CvrCoreParameters.Contains(result) ||
                                  StreamFedParameters.Contains(result) ||
                                  ctx.PreserveParameters.Contains(name) ||

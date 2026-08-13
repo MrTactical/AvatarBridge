@@ -101,7 +101,26 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                prefixes.AddRange(AllSpsParamPrefixes);
+                // Converting the penetration system keeps its DEPTH
+                // parameters rather than stripping them, and makes them
+                // local instead. That is what brings back the reactions a
+                // socket plays as a plug arrives — the bulges, the winces —
+                // which were being thrown out with everything else.
+                //
+                // Keeping them synced is what cost 2650 bits and made an
+                // avatar unuploadable. Local costs nothing, and it is also
+                // the only correct choice: a contact must drive a local
+                // parameter or the incoming stream overwrites it. Every
+                // client runs the contact itself and reaches the same
+                // answer, so nothing needs transmitting.
+                if (KeepingPenetration(ctx))
+                {
+                    prefixes.AddRange(OtherSpsParamPrefixes);
+                }
+                else
+                {
+                    prefixes.AddRange(AllSpsParamPrefixes);
+                }
             }
             if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
             {
@@ -150,7 +169,17 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(AllSpsLayerHints);
+                if (KeepingPenetration(ctx))
+                {
+                    // The layers that play a socket's reactions stay, since
+                    // their parameters now do.
+                    layerHints.AddRange(OtherSpsLayerHints);
+                    ctx.ForceLocalPrefixes.AddRange(YapsParamPrefixes);
+                }
+                else
+                {
+                    layerHints.AddRange(AllSpsLayerHints);
+                }
             }
             // User-supplied keywords (comma separated) act as both parameter prefixes and
             // layer-name hints, for add-ons this list doesn't know about yet.

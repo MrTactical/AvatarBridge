@@ -83,6 +83,15 @@ namespace AvatarBridge
 
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 
+        // Parameter prefixes that must end up "#" local no matter what else
+        // claims them. A contact-driven parameter has to be local — the
+        // native path writes straight at the animator and a synced twin gets
+        // the incoming stream written back over it — and being local also
+        // means it costs nothing against the sync budget. Both reasons point
+        // the same way, which is what makes depth animation free here and
+        // expensive in VRChat.
+        public List<string> ForceLocalPrefixes = new List<string>();
+
         public bool AnimatorBlinkPending;
 
         public Animator TargetAnimator => Target != null ? Target.GetComponent<Animator>() : null;
