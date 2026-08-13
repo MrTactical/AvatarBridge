@@ -221,16 +221,25 @@ namespace AvatarBridge.Spike
             // full avatar just reports the design as a fault.
             int plugs = Mathf.Max(1, on.PatchedMaterials);
             bool full = on.ChannelSpace > 0.5f;
-            int values = full ? 4 : 1;
-            int triggers = full ? 4 : 1;
+            // Three tiers, so the mode cannot be read off one flag. What
+            // separates engagement-only from lights-only is whether a
+            // parameter was bought at all.
+            bool anyChannel = on.SyncedParams > 0;
+            int values = full ? 4 : anyChannel ? 1 : 0;
+            int triggers = full ? 4 : anyChannel ? 1 : 0;
 
             Line("### The channel");
             Line("");
             Line(full
                 ? "The avatar had room for the **full channel** — engagement and the socket's offset."
-                : "The avatar had no room for the offset, so this is the **engagement-only** channel. " +
-                  "Position comes from the socket's own marker lights at close range and from " +
-                  "ChilloutVR's player positions beyond that.");
+                : anyChannel
+                    ? "The avatar had no room for the offset, so this is the **engagement-only** " +
+                      "channel. Position comes from the socket's own marker lights at close range " +
+                      "and from ChilloutVR's player positions beyond that."
+                    : "The avatar had no sync budget at all, so this is the **marker lights only** " +
+                      "tier: no parameters, no triggers, nothing added to the budget. The plug still " +
+                      "deforms — the light path both finds the socket and engages on it, exactly as " +
+                      "it does against DPS content this tool never converted.");
             Line("");
             Line("| | YAPS off | YAPS on | expected | reads as |");
             Line("|---|---:|---:|---:|---|");
@@ -252,6 +261,9 @@ namespace AvatarBridge.Spike
                 Line("**The full-channel shape is therefore not exercised by this avatar.** It needs " +
                      "one with sync budget to spare — the test props are the obvious candidate.");
             }
+            Line("");
+            Line("For scale: a full channel is four floats per plug, **128 bits — 4% of the 3200**. " +
+                 "The budget this avatar has spent is its own.");
             Line("");
 
             Line("| Check | Result |");

@@ -81,15 +81,29 @@ namespace AvatarBridge
             var animator = ctx.TargetAnimator;
 
             int taskIndex = 0;
+            int wired = 0;
             foreach (var plug in plugs)
             {
                 int index = plugs.IndexOf(plug);
-                BuildForPlug(ctx, plug, index, materialDriver, animatorDriver, animator, ref taskIndex);
+                if (BuildForPlug(ctx, plug, index, materialDriver, animatorDriver, animator, ref taskIndex))
+                {
+                    wired++;
+                }
+            }
+
+            // Nothing was wired, so say nothing. Claiming otherwise
+            // directly under the warning explaining why it could not be
+            // is how a report stops being worth reading.
+            if (wired == 0)
+            {
+                Object.DestroyImmediate(materialDriver);
+                Object.DestroyImmediate(animatorDriver);
+                return;
             }
 
             ctx.Report.Converted(Category,
-                $"Wired {plugs.Count} plug(s) to the socket channel",
-                $"{plugs.Count * ValuesPerPlug} value(s): where the socket sits relative to the plug, " +
+                $"Wired {wired} plug(s) to the socket channel",
+                $"{taskIndex} value(s): where the socket sits relative to the plug, " +
                 "and how engaged it is. Contact triggers on the plug measure it on your own machine " +
                 "every frame; a driver copies it into a synced parameter so other people see it too, " +
                 "at ChilloutVR's ten-a-second parameter rate. What crosses the wire is the gap " +
@@ -97,7 +111,7 @@ namespace AvatarBridge
                 "marker lights sharpen the position further for anyone close enough to see them.");
         }
 
-        static void BuildForPlug(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+        static bool BuildForPlug(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             CVRMaterialDriver materialDriver, CVRAnimatorDriver animatorDriver, Animator animator,
             ref int taskIndex)
         {
@@ -144,7 +158,7 @@ namespace AvatarBridge
                     "converted. What it loses is the exact position at longer range and the certainty " +
                     "that every viewer agrees. Free some sync bits elsewhere — bools cost 1 bit where " +
                     "floats cost 32 — and convert again for the full channel.");
-                return;
+                return false;
             }
 
             if (!carryOffset)
@@ -229,6 +243,7 @@ namespace AvatarBridge
                     "", typeof(CVRMaterialDriver), FieldFor(materialDriver.tasks.Count, axis));
                 taskIndex++;
             }
+            return true;
         }
 
         // Its own object rather than sharing an axis trigger's: those only
