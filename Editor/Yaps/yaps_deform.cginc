@@ -167,6 +167,70 @@ YapsVertex YapsReadBaked(uint vertexId)
     return baked;
 }
 
+// --- recovering the plug's own frame ---------------------------------
+//
+// The curve starts at the plug. On the test rig the plug is its own
+// object, so `unity_ObjectToWorld` IS that frame. On a real avatar it is
+// not: the plug is part of a SkinnedMeshRenderer whose transform is the
+// avatar root, while the plug itself is carried by a bone. SPS solves
+// this by parenting a marker to the bone and publishing its transform
+// through the screen atlas — a route we deliberately do not have.
+//
+// So recover the frame from the vertex itself. Skinning hands the vertex
+// shader a position, a normal and a tangent already moved into renderer
+// space; the bake holds the same three in plug space. Two independent
+// directions are enough to pin a rotation completely — build an
+// orthonormal basis from each pair and the rotation is the one that maps
+// one onto the other. The position then gives the translation.
+//
+// This needs no extra uniforms and follows the bone for free, because it
+// reads the result of the very skinning that moved the bone. Its limit is
+// vertices blended across several bones, where the mapping is no longer a
+// single rigid transform — but that is the base of the shaft, where the
+// mask weight is already feathering the deform out anyway.
+
+struct YapsBasis
+{
+    float3 a1; float3 a2; float3 a3;   // from the bake
+    float3 b1; float3 b2; float3 b3;   // from the skinned vertex
+    bool valid;
+};
+
+YapsBasis YapsBuildBasis(float3 bakedNormal, float3 bakedTangent,
+                         float3 skinnedNormal, float3 skinnedTangent)
+{
+    YapsBasis basis;
+    basis.a1 = 0; basis.a2 = 0; basis.a3 = 0;
+    basis.b1 = 0; basis.b2 = 0; basis.b3 = 0;
+    basis.valid = false;
+
+    if (YapsIsZero(bakedNormal) || YapsIsZero(bakedTangent)) return basis;
+    if (YapsIsZero(skinnedNormal) || YapsIsZero(skinnedTangent)) return basis;
+
+    basis.a1 = normalize(bakedNormal);
+    float3 aFlat = bakedTangent - basis.a1 * dot(bakedTangent, basis.a1);
+    basis.b1 = normalize(skinnedNormal);
+    float3 bFlat = skinnedTangent - basis.b1 * dot(skinnedTangent, basis.b1);
+
+    // Normal and tangent parallel means the pair carries only one
+    // direction, which cannot pin a rotation. Bail rather than invent one.
+    if (dot(aFlat, aFlat) < 1e-8 || dot(bFlat, bFlat) < 1e-8) return basis;
+
+    basis.a2 = normalize(aFlat);
+    basis.a3 = cross(basis.a1, basis.a2);
+    basis.b2 = normalize(bFlat);
+    basis.b3 = cross(basis.b1, basis.b2);
+    basis.valid = true;
+    return basis;
+}
+
+// Rotate a plug-space direction into renderer space.
+inline float3 YapsRotate(YapsBasis basis, float3 v)
+{
+    float3 c = float3(dot(basis.a1, v), dot(basis.a2, v), dot(basis.a3, v));
+    return basis.b1 * c.x + basis.b2 * c.y + basis.b3 * c.z;
+}
+
 // --- the curve -------------------------------------------------------
 
 inline float3 YapsBezier(float3 p0, float3 p1, float3 p2, float3 p3, float t)
@@ -287,11 +351,29 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 originalTangent = tangent;
 
     // The rod's start: where the plug is, pointing where it points.
-    float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 rootLocal = float3(0, 0, 0);
+    float3 forwardLocal = float3(0, 0, 1);
+    float3 upLocal = float3(0, 1, 0);
+
+    if (_YAPS_FrameFromVertex > 0.5)
+    {
+        // Skinned mesh: the renderer's transform is the avatar root, so
+        // ask the vertex where its bone has actually put the plug.
+        YapsBasis basis = YapsBuildBasis(baked.normal, baked.tangent,
+                                         originalNormal, originalTangent);
+        if (basis.valid)
+        {
+            rootLocal = originalPosition - YapsRotate(basis, baked.position);
+            forwardLocal = YapsRotate(basis, float3(0, 0, 1));
+            upLocal = YapsRotate(basis, float3(0, 1, 0));
+        }
+    }
+
+    float3 rootWorld = mul(unity_ObjectToWorld, float4(rootLocal, 1)).xyz;
     float3 rootForward = YapsSafeNormalize(
-        mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)), float3(0, 0, 1));
+        mul((float3x3) unity_ObjectToWorld, forwardLocal), float3(0, 0, 1));
     float3 rootUp = YapsPerpendicular(rootForward,
-        mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)));
+        mul((float3x3) unity_ObjectToWorld, upLocal));
 
     float worldLength = _YAPS_Length * _YAPS_BakeScale;
 

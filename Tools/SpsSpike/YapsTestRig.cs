@@ -21,8 +21,24 @@ namespace AvatarBridge.Spike
         const float Radius = 0.05f;
         const float Length = 0.6f;
 
+        // The honest test of frame recovery. The renderer sits at the
+        // origin with an identity transform — exactly like a real avatar's
+        // body mesh — while a bone somewhere else carries the plug. If the
+        // deform follows the BONE, the frame is genuinely being recovered
+        // from the vertex rather than read off the renderer.
+        [MenuItem("AvatarBridge/Spike/Build YAPS SKINNED test rig (frame recovery)")]
+        static void BuildSkinned()
+        {
+            Build(skinned: true);
+        }
+
         [MenuItem("AvatarBridge/Spike/Build YAPS test rig (plug + socket)")]
         static void Build()
+        {
+            Build(skinned: false);
+        }
+
+        static void Build(bool skinned)
         {
             var mesh = BuildPlugMesh(out var positions, out var normals, out var tangents);
             var bake = BuildBakeTexture(positions, normals, tangents);
@@ -51,13 +67,47 @@ namespace AvatarBridge.Spike
             AssetDatabase.CreateAsset(material, AssetDatabase.GenerateUniqueAssetPath(dir + "/YapsTestPlug.mat"));
             AssetDatabase.SaveAssets();
 
-            var root = new GameObject("YAPS Test Rig");
+            var root = new GameObject(skinned ? "YAPS Skinned Test Rig" : "YAPS Test Rig");
             Undo.RegisterCreatedObjectUndo(root, "Build YAPS test rig");
 
-            var plug = new GameObject("Plug");
-            plug.transform.SetParent(root.transform, false);
-            plug.AddComponent<MeshFilter>().sharedMesh = mesh;
-            plug.AddComponent<MeshRenderer>().sharedMaterial = material;
+            GameObject plug;
+            if (skinned)
+            {
+                material.SetFloat("_YAPS_FrameFromVertex", 1f);
+
+                // Renderer at the origin with an identity transform, the
+                // way an avatar's body mesh sits, and a bone elsewhere
+                // carrying the plug. Every vertex is bound rigidly to that
+                // one bone, so the recovered frame should be exact.
+                var bone = new GameObject("Plug Bone (move me)");
+                bone.transform.SetParent(root.transform, false);
+                bone.transform.localPosition = new Vector3(0f, 0.4f, 0f);
+                bone.transform.localRotation = Quaternion.Euler(0f, 35f, 0f);
+
+                mesh.bindposes = new[] { bone.transform.worldToLocalMatrix * root.transform.localToWorldMatrix };
+                var weights = new BoneWeight[mesh.vertexCount];
+                for (int i = 0; i < weights.Length; i++)
+                {
+                    weights[i] = new BoneWeight { boneIndex0 = 0, weight0 = 1f };
+                }
+                mesh.boneWeights = weights;
+
+                plug = new GameObject("Plug (skinned)");
+                plug.transform.SetParent(root.transform, false);
+                var skin = plug.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMesh = mesh;
+                skin.bones = new[] { bone.transform };
+                skin.rootBone = bone.transform;
+                skin.sharedMaterial = material;
+                skin.updateWhenOffscreen = true;
+            }
+            else
+            {
+                plug = new GameObject("Plug");
+                plug.transform.SetParent(root.transform, false);
+                plug.AddComponent<MeshFilter>().sharedMesh = mesh;
+                plug.AddComponent<MeshRenderer>().sharedMaterial = material;
+            }
 
             var socket = new GameObject("Socket (drag me)");
             socket.transform.SetParent(root.transform, false);
@@ -79,6 +129,14 @@ namespace AvatarBridge.Spike
             driver.socket = socket.transform;
             driver.plugLength = Length;
             driver.bakeScale = 1f;
+            if (skinned)
+            {
+                // So the gizmos draw from the bone, not from the renderer
+                // sitting at the avatar root — otherwise the drawn curve
+                // would disagree with the one the shader builds, and a
+                // lying gizmo is worse than none.
+                driver.frameSource = root.transform.Find("Plug Bone (move me)");
+            }
 
             Selection.activeGameObject = socket;
             Debug.Log($"[YAPS] Test rig built: {positions.Count} vertices, plug {Length} m along +Z. " +

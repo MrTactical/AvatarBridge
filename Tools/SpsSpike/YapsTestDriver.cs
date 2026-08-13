@@ -42,6 +42,12 @@ namespace AvatarBridge.Spike
         [Tooltip("Drag this around the scene — the plug should follow it.")]
         public Transform socket;
 
+        [Tooltip("Where the plug's own frame really is. Leave empty when the renderer's " +
+                 "transform is the plug. On a skinned mesh set this to the bone, so the " +
+                 "gizmos draw the curve the shader is actually building rather than one " +
+                 "anchored to the avatar root.")]
+        public Transform frameSource;
+
         [Tooltip("How engaged the socket is. The real system drives this from contacts.")]
         [Range(0f, 1f)] public float engaged = 1f;
 
@@ -127,15 +133,15 @@ namespace AvatarBridge.Spike
 
             // The straight line the bend is replacing, for reference.
             Gizmos.color = new Color(1f, 1f, 1f, 0.35f);
-            Gizmos.DrawLine(transform.position, socket.position);
+            Gizmos.DrawLine((frameSource != null ? frameSource : transform).position, socket.position);
 
             // Engagement radius: inside the inner sphere the bend is full,
             // outside the outer one there is no bend at all.
             float worldLength = plugLength * bakeScale;
             Gizmos.color = new Color(0f, 1f, 0.5f, 0.25f);
-            Gizmos.DrawWireSphere(transform.position, worldLength * 1.2f);
+            Gizmos.DrawWireSphere((frameSource != null ? frameSource : transform).position, worldLength * 1.2f);
             Gizmos.color = new Color(1f, 0.5f, 0f, 0.15f);
-            Gizmos.DrawWireSphere(transform.position, worldLength * 1.6f);
+            Gizmos.DrawWireSphere((frameSource != null ? frameSource : transform).position, worldLength * 1.6f);
 
             DrawTheCurveTheShaderWalks(worldLength);
         }
@@ -146,8 +152,9 @@ namespace AvatarBridge.Spike
         // it takes one glance.
         void DrawTheCurveTheShaderWalks(float worldLength)
         {
-            Vector3 rootWorld = transform.position;
-            Vector3 rootForward = transform.forward;
+            Transform frame = frameSource != null ? frameSource : transform;
+            Vector3 rootWorld = frame.position;
+            Vector3 rootForward = frame.forward;
             Vector3 socketWorld = socket.position;
             Vector3 socketForward = socket.forward;
 

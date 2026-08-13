@@ -22,6 +22,12 @@ float _YAPS_Length;        // plug length in its own local space
 float _YAPS_Overrun;       // may the tip travel past the socket
 float _YAPS_BakeScale;     // baked vectors are plug-local; divide by this
 
+// Where the plug's own frame comes from.
+//   0  the renderer's transform — correct when the plug is its own object
+//   1  recovered from the vertex — required on a skinned mesh, where the
+//      renderer sits at the avatar root and a bone carries the plug
+float _YAPS_FrameFromVertex;
+
 // --- the socket, written by the discrete channel ---------------------
 // A CVRMaterialDriver task writes these every frame from animator
 // parameters, so they are identical on every camera and every viewer —
