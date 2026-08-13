@@ -551,7 +551,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder, m.Groups[1].Value);
+                    string candidate = Path.Combine(folder,
+                        m.Groups[1].Value.TrimStart('/', '\\'));
                     if (File.Exists(candidate)
                         && byPath.TryGetValue(Path.GetFullPath(candidate), out var target)
                         && target != file)

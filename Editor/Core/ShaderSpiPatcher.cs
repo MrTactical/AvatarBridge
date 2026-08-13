@@ -311,7 +311,12 @@ namespace AvatarBridge
                 foreach (Match m in Regex.Matches(text, @"#include\s+""([^""]+)"""))
                 {
                     string rel = m.Groups[1].Value;
-                    string candidate = Path.Combine(folder, rel);
+                    // Poiyomi's optimised output writes its includes with a
+                    // leading slash — #include "/CGI_PoiPass.cginc". Unity
+                    // reads that as relative, but Path.Combine reads it as
+                    // rooted and throws the folder away, so the file was
+                    // never found and never cloned.
+                    string candidate = Path.Combine(folder, rel.TrimStart('/', '\\'));
                     if (File.Exists(candidate))
                     {
                         Walk(candidate.Replace('\\', '/'), rel);
@@ -526,7 +531,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder, m.Groups[1].Value);
+                    string candidate = Path.Combine(folder,
+                        m.Groups[1].Value.TrimStart('/', '\\'));
                     if (File.Exists(candidate) &&
                         byPath.TryGetValue(Path.GetFullPath(candidate), out var target) &&
                         target != file)
