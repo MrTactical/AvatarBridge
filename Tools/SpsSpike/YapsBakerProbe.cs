@@ -137,8 +137,6 @@ namespace AvatarBridge.Spike
                     }
                     renderer = candidate;
                     reference = texture;
-                    referenceLength = material.HasProperty("_SPS_BakedLength")
-                        ? material.GetFloat("_SPS_BakedLength") : 0f;
                     break;
                 }
                 if (renderer != null)
@@ -156,6 +154,15 @@ namespace AvatarBridge.Spike
             }
             Line($"Renderer: `{PathOf(renderer.transform, baked.transform)}` " +
                  $"({renderer.GetType().Name})");
+
+            // Their length is not authored on the material — it is animated
+            // onto the resolver, which is why reading the material gives a
+            // flat zero. The curve is the real number, and it is the one
+            // number of theirs the deform depends on directly, so it is
+            // worth going and getting.
+            referenceLength = AnimatedLength(baked, PathOf(plugRoot, baked.transform));
+            Line($"Their `_SPS_BakedLength`: **{referenceLength:0.00000}** " +
+                 "(read from the animator curve, not the material — VRCFury drives it)");
             Line("");
 
             // Which transform is "the plug root" is a convention, and the
@@ -332,14 +339,52 @@ namespace AvatarBridge.Spike
             Line($"| Only theirs | {onlyTheirs} | {(onlyTheirs > bothActive * 0.1f ? "**we under-reach**" : "fine")} |");
             Line($"| Shape ratio consistent | {consistentRate:0.0}% at ×{median:0.0000} | " +
                  $"{Verdict(consistentRate >= 98f)} |");
-            Line($"| Our length vs their `_SPS_BakedLength` | {result.Length:0.0000} vs " +
-                 $"{referenceLength:0.0000} | ×{(referenceLength > 1e-5f ? result.Length / referenceLength : 0f):0.0000} |");
+            float lengthRatio = referenceLength > 1e-5f ? result.Length / referenceLength : 0f;
+            Line($"| Our length vs their `_SPS_BakedLength` | {result.Length:0.00000} vs " +
+                 $"{referenceLength:0.00000} | " +
+                 $"{(referenceLength <= 1e-5f ? "no curve found" : Verdict(Mathf.Abs(lengthRatio - 1f) < 0.001f))} " +
+                 $"(×{lengthRatio:0.0000}) |");
             Line("");
             Line("A ratio of **×1.0000** means our bake is in the same units as theirs. Any other " +
                  "constant is a scale convention difference, which is only a problem if it is not " +
                  "the one the deform expects. A ratio that is not constant at all means the " +
                  "placement is wrong, not the units.");
             Line("");
+        }
+
+        // The largest value the curve ever takes on any object under this
+        // plug. The clips hold zeros too — that is the plug switched off —
+        // so the maximum is the baked length.
+        static float AnimatedLength(GameObject root, string plugPath)
+        {
+            var animator = root.GetComponentInChildren<Animator>(true);
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                return 0f;
+            }
+
+            float longest = 0f;
+            foreach (var clip in animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.propertyName != "material._SPS_BakedLength"
+                        || !binding.path.StartsWith(plugPath, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    foreach (var key in curve.keys)
+                    {
+                        longest = Mathf.Max(longest, key.value);
+                    }
+                }
+            }
+            return longest;
         }
 
         static Vector3 Centroid(Baked of, Baked mask)
