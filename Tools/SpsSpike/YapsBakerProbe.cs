@@ -78,19 +78,43 @@ namespace AvatarBridge.Spike
                 return;
             }
 
-            // Bake with SPS left ON, deliberately: this run is not about
-            // what the converter will do, it is about having VRCFury's own
-            // bake of the same mesh sitting next to ours to compare against.
             var working = UnityEngine.Object.Instantiate(descriptor.gameObject);
             working.name = descriptor.gameObject.name + " (baker probe)";
             working.SetActive(true);
 
-            var baked = VRCFuryBaker.TryBake(
-                working.GetComponentInChildren<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true),
-                new BridgeReport());
+            // SPS SUPPRESSED, exactly as the converter does it.
+            //
+            // This probe used to bake with SPS enabled, on the reasoning
+            // that it wanted VRCFury's own bake sitting next to ours to
+            // compare against. It got a perfect x1.0000 match on that basis
+            // and was trusted — while the configuration that actually ships
+            // was never measured at all. Suppressing SPS moves the
+            // BakedSpsPlug object: its rotation stops pointing down the
+            // shaft and its position moves a quarter of a metre up the
+            // body, and a plug 0.427 m long baked at 0.667. That reached a
+            // live test.
+            //
+            // A probe that measures a configuration you never ship is worse
+            // than no probe, because it buys confidence you have not
+            // earned.
+            var report = new BridgeReport();
+            var settings = new BridgeSettings { convertYapsSystems = true };
+            var ctx = new BridgeContext { Settings = settings, Report = report };
+            var prep = YapsBakePrep.Begin(ctx, working);
+            GameObject baked;
+            try
+            {
+                baked = VRCFuryBaker.TryBake(
+                    working.GetComponentInChildren<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true),
+                    report);
+            }
+            finally
+            {
+                prep.Restore();
+            }
             if (baked == null)
             {
-                Line("VRCFury's bake returned nothing, so there is no reference to compare with.");
+                Line("VRCFury's bake returned nothing, so there is nothing to measure.");
                 return;
             }
 
@@ -145,10 +169,32 @@ namespace AvatarBridge.Spike
                 }
             }
 
+            // With SPS suppressed there is no `_SPS_Bake` anywhere, which is
+            // the whole point — so the renderer is found the way the
+            // CONVERTER finds it, by which one carries the most vertices on
+            // the plug's bone chain. No reference bake means no per-vertex
+            // comparison; what this measures instead is the configuration
+            // that actually ships.
             if (renderer == null)
             {
-                Line("No renderer on this avatar carries a `_SPS_Bake` texture, so there is no " +
-                     "reference bake. Skipped.");
+                int mostVertices = 0;
+                foreach (var candidate in baked.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    int score = YapsBaker.CountPlugVertices(candidate, plugRoot);
+                    if (score > mostVertices)
+                    {
+                        mostVertices = score;
+                        renderer = candidate;
+                    }
+                }
+                Line("No `_SPS_Bake` on this avatar — SPS was suppressed, as it is in a real " +
+                     "conversion. Renderer found the way the converter finds it, and there is no " +
+                     "reference bake to compare against.");
+                Line("");
+            }
+            if (renderer == null)
+            {
+                Line("No renderer carries vertices on this plug's bones. Skipped.");
                 Line("");
                 return;
             }
@@ -220,7 +266,23 @@ namespace AvatarBridge.Spike
 
             var ours = Decode(best.Bake, best.VertexCount);
             SelfChecks(best, ours);
-            CompareWithReference(ours, reference, best, referenceLength);
+            if (reference != null)
+            {
+                CompareWithReference(ours, reference, best, referenceLength);
+            }
+            else
+            {
+                Line("### Against VRCFury");
+                Line("");
+                Line($"No reference bake exists with SPS suppressed, so the only cross-check left " +
+                     $"is the length: **{best.Length:0.00000} m**. VRCFury measured this plug at " +
+                     "**0.42706278** when it baked it with SPS on. A number far from that means " +
+                     "the frame is wrong, and the frame is what everything downstream scales by.");
+                Line("");
+                Line("**A proper two-pass probe — bake once with SPS on for ground truth, once " +
+                     "suppressed for what ships, and diff them — is the version worth having.**");
+                Line("");
+            }
         }
 
         // --- the self-validating half ---------------------------------
