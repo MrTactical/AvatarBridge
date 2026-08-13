@@ -65,10 +65,24 @@ namespace AvatarBridge
                 failure = "the renderer has no mesh";
                 return null;
             }
-            if (!mesh.isReadable)
+            // Read/Write Enabled gates the PLAYER, not the editor, so an
+            // unticked mesh is usually still readable here. Ask the mesh
+            // rather than the flag: a real refusal is one that throws or
+            // hands back nothing.
+            Vector3[] probe;
+            try
             {
-                failure = $"\"{mesh.name}\" is not marked Read/Write, so its vertices cannot be " +
-                          "read at all — tick Read/Write Enabled on the model importer";
+                probe = mesh.vertices;
+            }
+            catch (Exception e)
+            {
+                failure = $"\"{mesh.name}\" would not hand over its vertices ({e.GetType().Name}) " +
+                          "— tick Read/Write Enabled on the model importer";
+                return null;
+            }
+            if (probe == null || probe.Length == 0)
+            {
+                failure = $"\"{mesh.name}\" has no vertices to bake";
                 return null;
             }
 
@@ -212,12 +226,17 @@ namespace AvatarBridge
             // Which bones count as "the plug": its root and everything
             // beneath it, so a plug with its own little chain of bones is
             // baked whole rather than only at its base.
-            var plugBones = new HashSet<int>();
-            for (int b = 0; b < bones.Length; b++)
+            var plugBones = BonesUnder(bones, plugRoot);
+            if (plugBones.Count == 0)
             {
-                if (bones[b] != null && bones[b].IsChildOf(plugRoot))
+                // The plug object is very often hung off a bone rather than
+                // being one — VRCFury's own baked plug sits as a child of
+                // the bone that carries it. Climb to the first real bone
+                // above it and take that subtree instead of baking nothing.
+                for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
+                     above = above.parent)
                 {
-                    plugBones.Add(b);
+                    plugBones = BonesUnder(bones, above);
                 }
             }
 
@@ -237,6 +256,19 @@ namespace AvatarBridge
                 active.Add(WeightOnPlug(w, plugBones));
             }
             return true;
+        }
+
+        static HashSet<int> BonesUnder(Transform[] bones, Transform root)
+        {
+            var found = new HashSet<int>();
+            for (int b = 0; b < bones.Length; b++)
+            {
+                if (bones[b] != null && bones[b].IsChildOf(root))
+                {
+                    found.Add(b);
+                }
+            }
+            return found;
         }
 
         static Matrix4x4 Blend(Transform[] bones, Matrix4x4[] bindposes, BoneWeight w)
