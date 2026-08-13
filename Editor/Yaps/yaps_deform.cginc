@@ -300,6 +300,18 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 toSocket = socketWorld - rootWorld;
     float gap = length(toSocket);
 
+    // You enter a hole from the side you are standing on. A socket whose
+    // forward points away from the plug would otherwise make the curve
+    // loop around to arrive from behind — a visible hairpin fold — so the
+    // axis is flipped to face the approach. This makes the deform
+    // independent of which way an author happened to aim the socket,
+    // which matters because a converter inherits whatever convention the
+    // original avatar used and cannot dictate one.
+    if (dot(socketForward, toSocket) < 0)
+    {
+        socketForward = -socketForward;
+    }
+
     // Handles: stretched far out when the socket is distant, which drags
     // the curve straight; shortened to half the gap when it is close,
     // which turns it into a real bend that arrives along the socket axis.

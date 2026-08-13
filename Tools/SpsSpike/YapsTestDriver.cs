@@ -119,6 +119,70 @@ namespace AvatarBridge.Spike
             Gizmos.DrawWireSphere(transform.position, worldLength * 1.2f);
             Gizmos.color = new Color(1f, 0.5f, 0f, 0.15f);
             Gizmos.DrawWireSphere(transform.position, worldLength * 1.6f);
+
+            DrawTheCurveTheShaderWalks(worldLength);
+        }
+
+        // The exact curve the shader builds, recomputed here with the same
+        // arithmetic and drawn. Guessing at a fold from the silhouette is
+        // hopeless; seeing whether the CURVE hairpins or the WALK misreads
+        // it takes one glance.
+        void DrawTheCurveTheShaderWalks(float worldLength)
+        {
+            Vector3 rootWorld = transform.position;
+            Vector3 rootForward = transform.forward;
+            Vector3 socketWorld = socket.position;
+            Vector3 socketForward = socket.forward;
+
+            float gap = Vector3.Distance(socketWorld, rootWorld);
+            float engage = 1f - Mathf.Clamp01((gap - worldLength * 1.2f)
+                / Mathf.Max(worldLength * 1.6f - worldLength * 1.2f, 1e-6f));
+            float handle = Mathf.Lerp(worldLength * 5f, gap * 0.5f, engage);
+
+            Vector3 p0 = rootWorld;
+            Vector3 p1 = rootWorld + rootForward * handle;
+            Vector3 p2 = socketWorld - socketForward * handle;
+            Vector3 p3 = socketWorld;
+
+            // The control hull, so a handle reaching somewhere absurd is
+            // visible as a shape rather than inferred from the result.
+            Gizmos.color = new Color(1f, 0f, 1f, 0.5f);
+            Gizmos.DrawLine(p0, p1);
+            Gizmos.DrawLine(p3, p2);
+            Gizmos.DrawWireCube(p1, Vector3.one * 0.015f);
+            Gizmos.DrawWireCube(p2, Vector3.one * 0.015f);
+
+            // The curve itself, and how much of it the plug can actually
+            // reach: yellow while the plug is still on the curve, red for
+            // the stretch beyond its length, which is where overrun and
+            // the hole taper take over.
+            Vector3 previous = p0;
+            float travelled = 0f;
+            const int steps = 48;
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = (float) i / steps;
+                Vector3 at = Bezier(p0, p1, p2, p3, t);
+                travelled += Vector3.Distance(at, previous);
+                Gizmos.color = travelled <= worldLength
+                    ? new Color(1f, 0.9f, 0.2f, 0.9f)
+                    : new Color(1f, 0.2f, 0.2f, 0.9f);
+                Gizmos.DrawLine(previous, at);
+                previous = at;
+            }
+
+            Handles.color = Color.white;
+            Handles.Label(p3, $"gap {gap:0.00}  len {worldLength:0.00}  " +
+                              $"engage {engage:0.00}  curve {travelled:0.00}");
+        }
+
+        static Vector3 Bezier(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float u = 1f - t;
+            return u * u * u * p0
+                 + 3f * u * u * t * p1
+                 + 3f * u * t * t * p2
+                 + t * t * t * p3;
         }
     }
 }
