@@ -71,6 +71,7 @@ namespace AvatarBridge
             public Material Material;
             public int MaterialSlot;
             public float Length;
+            public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
         }
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();

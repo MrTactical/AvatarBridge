@@ -25,7 +25,9 @@
 // and no origin. Ours go the other way round.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace AvatarBridge
@@ -162,6 +164,7 @@ namespace AvatarBridge
                 Material = patched,
                 MaterialSlot = slot,
                 Length = result.Length,
+                Shapes = result.Shapes,
             });
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",
@@ -344,6 +347,99 @@ namespace AvatarBridge
 
         // --- the transport we do not port ------------------------------
 
+        // A vertex shader cannot read a blendshape weight, so every clip
+        // that drives one of the plug's shapes gets a parallel curve
+        // writing the same value onto the material.
+        //
+        // Registered as a clip-editing pass, after ownership settles: these
+        // are the conversion's own copies, and editing a shared clip would
+        // reach the source package.
+        public static void MirrorShapeCurves(BridgeContext ctx)
+        {
+            if (!ctx.Settings.convertYapsSystems || ctx.YapsPlugs.Count == 0
+                || ctx.MergedController == null)
+            {
+                return;
+            }
+
+            int written = 0;
+            var missed = new SortedSet<string>(StableSampleOrder.Instance);
+            foreach (var plug in ctx.YapsPlugs)
+            {
+                if (plug.Shapes.Count == 0)
+                {
+                    continue;
+                }
+                string path = ctx.PathInTarget(plug.Renderer.transform);
+                foreach (var clip in ctx.MergedController.animationClips.Distinct())
+                {
+                    if (clip == null)
+                    {
+                        continue;
+                    }
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (binding.path != path
+                            || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                        string shape = binding.propertyName.Substring("blendShape.".Length);
+                        int slot = plug.Shapes.IndexOf(shape);
+                        if (slot < 0)
+                        {
+                            missed.Add(shape);
+                            continue;
+                        }
+
+                        // Unity animates a blendshape from 0 to 100 and the
+                        // bake stores the shape at full, so the material
+                        // wants the same curve scaled to 0..1.
+                        var source = AnimationUtility.GetEditorCurve(clip, binding);
+                        var scaled = new AnimationCurve();
+                        foreach (var key in source.keys)
+                        {
+                            scaled.AddKey(new Keyframe(key.time, key.value * 0.01f,
+                                key.inTangent * 0.01f, key.outTangent * 0.01f));
+                        }
+                        AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                        {
+                            path = path,
+                            type = plug.Renderer.GetType(),
+                            propertyName = "material." + WeightProperty(slot),
+                        }, scaled);
+                        written++;
+                    }
+                }
+            }
+
+            if (written > 0)
+            {
+                ctx.Report.Converted(Category, $"Mirrored {written} blendshape curve(s) onto the plug",
+                    "A shader cannot read a blendshape weight, so every animation that moves one of " +
+                    "the plug's own shapes now writes the same value onto its material as well. " +
+                    "Without this the deform measures against a rest pose the mesh has already " +
+                    "left, and a plug with a size slider bends as though it were still its " +
+                    "original size.");
+            }
+            if (missed.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{missed.Count} animated plug blendshape(s) are not in the bake",
+                    $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")} — the bake " +
+                    $"holds the {YapsBaker.MaxShapes} shapes that move the plug most, and these did " +
+                    "not make the cut. They still change the mesh; the deform simply measures " +
+                    "against the plug without them, so the bend is slightly off while they are " +
+                    "raised. Bulge shapes on a SOCKET are unaffected by this — those are ordinary " +
+                    "animation and have no limit.");
+            }
+        }
+
+        static string WeightProperty(int slot)
+            => slot < 4
+                ? "_YAPS_ShapeWeights." + "xyzw"[slot]
+                : "_YAPS_ShapeWeights2." + "xyzw"[slot - 4];
+
         static void RemoveAtlasJunk(BridgeContext ctx)
         {
             var doomed = ctx.Target.GetComponentsInChildren<Transform>(true)
@@ -361,7 +457,7 @@ namespace AvatarBridge
             {
                 if (transform != null)
                 {
-                    Object.DestroyImmediate(transform.gameObject);
+                    UnityEngine.Object.DestroyImmediate(transform.gameObject);
                     removed++;
                 }
             }

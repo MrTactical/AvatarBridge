@@ -155,6 +155,35 @@ YapsVertex YapsReadBaked(uint vertexId)
     baked.tangent = YapsReadFloat3(at + 6);
     baked.active = YapsReadFloat(at + 9);
 
+    // Blendshapes. The vertex arriving here already has them applied, but
+    // this bake is the REST pose — so on a plug with a length or girth
+    // slider the two describe different meshes, and every number taken
+    // from the bake is measured against a shape the vertex has left.
+    // Rebuild the rest pose the vertex actually came from by adding back
+    // what each slider contributed.
+    //
+    // Blocks of nine floats a vertex follow the base block, which is why
+    // the vertex count has to be on the material: block s starts at
+    // 1 + count*10 + s*count*9.
+    uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
+    if (shapeCount > 0)
+    {
+        uint total = (uint) max(_YAPS_VertexCount, 0);
+        uint block = 1 + total * 10;
+        [loop]
+        for (uint s = 0; s < shapeCount; s++)
+        {
+            float weight = YapsShapeWeight(s);
+            if (abs(weight) > 0.0001)
+            {
+                uint shapeAt = block + s * total * 9 + vertexId * 9;
+                baked.position += YapsReadFloat3(shapeAt) * weight;
+                baked.normal += YapsReadFloat3(shapeAt + 3) * weight;
+                baked.tangent += YapsReadFloat3(shapeAt + 6) * weight;
+            }
+        }
+    }
+
     // Baked vectors carry whatever length the plug's own scale gave them
     // — measured across a real corpus, anywhere from 0.38 to 30. Nothing
     // here cares about their length: they serve as directions, both for

@@ -44,10 +44,10 @@ namespace AvatarBridge
         const int FloatsPerVertex = 10;
         const int FloatsPerShapeVertex = 9;   // delta position, normal, tangent
 
-        // Four, not SPS's sixteen. A plug's sliders are length, girth and
-        // one or two shape variants; sixteen buys reach nobody uses and
+        // and shape variants; sixteen buys reach nobody uses and costs
+        // texture on every avatar. Eight ride two float4s.
         // costs texture on every avatar. The weights ride one float4.
-        public const int MaxShapes = 4;
+        public const int MaxShapes = 8;
 
         public class Result
         {

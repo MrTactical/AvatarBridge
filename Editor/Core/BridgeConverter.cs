@@ -171,6 +171,11 @@ namespace AvatarBridge
                     // scale curves written beside that slider's own.
                     Pass("Scale zones with their sliders", ContactsConverter.ScaleZonesWithSliders,
                          PassTraits.EditsClips),
+                    // After ownership settles: it writes into the clips that
+                    // drive the plug's own blendshapes, and editing a shared
+                    // clip would reach the package it came from.
+                    Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
+                         PassTraits.EditsClips),
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on

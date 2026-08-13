@@ -68,4 +68,25 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // works at all on any avatar that also has sockets.
 float _YAPS_SelfTag;
 
+// --- blendshapes -----------------------------------------------------
+//
+// How many shape blocks follow the base one, and what each is currently
+// worth. A vertex shader cannot read a blendshape weight, so the converter
+// mirrors the animation driving each slider onto these instead.
+//
+// Eight, in two float4s. These are the shapes that change the PLUG's own
+// rest mesh — length, girth, shape variants — and not the bulges a socket
+// plays when something arrives, which are ordinary animation driven by
+// depth and have no limit at all.
+float _YAPS_ShapeCount;
+float4 _YAPS_ShapeWeights;    // shapes 0-3
+float4 _YAPS_ShapeWeights2;   // shapes 4-7
+
+inline float YapsShapeWeight(uint index)
+{
+    float4 pack = index < 4 ? _YAPS_ShapeWeights : _YAPS_ShapeWeights2;
+    uint slot = index & 3;
+    return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
+}
+
 #endif
