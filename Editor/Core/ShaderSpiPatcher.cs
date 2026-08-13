@@ -274,7 +274,7 @@ namespace AvatarBridge
         // pulls in. The vertex stage often lives in an include, and
         // editing a shared include reaches every shader using it, so
         // includes are cloned and the clones are what get edited.
-        class SourceFile
+        internal class SourceFile
         {
             public string OriginalPath;   // as on disk
             public string IncludedAs;     // exactly as written in the #include, or null for the shader
@@ -283,7 +283,7 @@ namespace AvatarBridge
             public bool Crlf;
         }
 
-        static List<SourceFile> ReadUnit(string shaderPath)
+        internal static List<SourceFile> ReadUnit(string shaderPath)
         {
             var unit = new List<SourceFile>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -323,7 +323,7 @@ namespace AvatarBridge
             return unit;
         }
 
-        static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
+        internal static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
             foreach (var file in unit)
             {
