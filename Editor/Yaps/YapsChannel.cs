@@ -49,9 +49,10 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Four values per plug — three for the offset, one for engagement —
-        // against sixteen material driver tasks.
-        const int ValuesPerPlug = 4;
+        // Two material-driver tasks per plug — one float4 for the socket
+        // position, one for the flags — against sixteen tasks. The real
+        // ceiling is the sync budget, not the tasks: five synced floats
+        // per plug at 32 bits each.
         const int MaxPlugs = 4;
 
         // How far out the box reaches, as a multiple of plug length. The
@@ -73,8 +74,8 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"Only the first {MaxPlugs} plug(s) are wired to the socket channel",
                     $"This avatar has {ctx.YapsPlugs.Count}. ChilloutVR's material driver carries " +
-                    "sixteen values and each plug needs four of them. The rest keep their mesh and " +
-                    "their shader and simply never engage.");
+                    "sixteen driver tasks and each plug needs two, plus five synced floats. " +
+                    "The rest keep their mesh and their shader and simply never engage.");
             }
 
             var materialDriver = ctx.Target.AddComponent<CVRMaterialDriver>();

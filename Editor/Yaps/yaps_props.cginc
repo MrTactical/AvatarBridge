@@ -20,7 +20,11 @@ float _YAPS_VertexCount;
 float _YAPS_Enabled;       // master gate / apply fraction, 0..1
 float _YAPS_Length;        // plug length in its own local space
 float _YAPS_Overrun;       // may the tip travel past the socket
-float _YAPS_BakeScale;     // baked vectors are plug-local; divide by this
+// Always 1 now. The baker measures its own frame from the mesh and writes
+// in renderer units, so there is no scale to undo — kept because a shipped
+// material carries it and removing a property a material references is a
+// bigger change than leaving one that reads 1.
+float _YAPS_BakeScale;
 
 // Where the plug's own frame comes from.
 //   0  the renderer's transform — correct when the plug is its own object
