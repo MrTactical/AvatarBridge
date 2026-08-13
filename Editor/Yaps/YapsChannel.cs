@@ -38,6 +38,7 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using ABI.CCK.Components;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -366,6 +367,25 @@ namespace AvatarBridge
             state.writeDefaultValues = true;
             state.motion = tree;
             machine.defaultState = state;
+
+            // Everything built here lives only in memory until it is made
+            // part of the controller asset. Skip this and Unity serializes
+            // the layer with a null state machine — the layers appear,
+            // correctly named, driving nothing at all, and the channel is
+            // silently dead with no error anywhere.
+            string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
+            if (!string.IsNullOrEmpty(controllerPath))
+            {
+                AssetDatabase.AddObjectToAsset(machine, ctx.MergedController);
+                AssetDatabase.AddObjectToAsset(tree, ctx.MergedController);
+                foreach (var child in tree.children)
+                {
+                    if (child.motion != null)
+                    {
+                        AssetDatabase.AddObjectToAsset(child.motion, ctx.MergedController);
+                    }
+                }
+            }
 
             var layers = ctx.MergedController.layers.ToList();
             layers.Add(new AnimatorControllerLayer

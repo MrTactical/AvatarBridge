@@ -109,14 +109,11 @@ namespace AvatarBridge
             // 0.427. Engagement envelope, bezier handles, hole taper and
             // trigger box all inherit the error, and the mesh mangles.
             //
-            // The plug root's POSITION is trustworthy — it is where the plug
-            // is attached — so the axis is the direction from there to the
-            // middle of the vertices that belong to the plug. That is the
-            // way a shaft points, by construction, whatever anybody typed
-            // into a rotation field.
-            var rotation = MeasureFrame(worldPositions, activeWeights, plugRoot,
-                out float axisDrift);
-            var toPlug = Matrix4x4.TRS(plugRoot.position, rotation, Vector3.one).inverse;
+            // Neither the origin nor the axis can be taken from that object.
+            // Both are measured from the mesh — see MeasureFrame.
+            MeasureFrame(worldPositions, activeWeights, plugRoot,
+                out var origin, out var rotation, out float axisDrift, out float originDrift);
+            var toPlug = Matrix4x4.TRS(origin, rotation, Vector3.one).inverse;
 
             int count = worldPositions.Count;
             var positions = new Vector3[count];
@@ -163,10 +160,11 @@ namespace AvatarBridge
 
             report?.Converted(Category, renderer.name,
                 $"Baked {active} of {count} vertices, plug length {length:0.###} m" +
-                (axisDrift > 5f
-                    ? $", measuring its own axis {axisDrift:0} degrees off the one the object was " +
-                      "rotated to — the shaft direction is taken from where the vertices actually " +
-                      "are, so an object nobody aimed still bakes correctly. "
+                (axisDrift > 5f || originDrift > 0.01f
+                    ? $", measuring its own axis {axisDrift:0} degrees off the object's rotation " +
+                      $"and its base {originDrift * 100f:0.#} cm from the object's position. Both " +
+                      "come from where the vertices actually are, so a plug hanging off an object " +
+                      "nobody aimed or placed still bakes correctly. "
                     : ". ") +
                 "Each vertex is stored in the plug root's own frame, with its skin weight on " +
                 "the plug's bone chain as the blend weight, so the base feathers into the body " +
@@ -322,46 +320,93 @@ namespace AvatarBridge
             return true;
         }
 
-        // Forward is where the plug's own vertices are, seen from where it
-        // is attached. Up is whatever the authored rotation offered,
-        // squared off against that — the roll around the shaft is arbitrary
-        // for a rod, and keeping the author's keeps it stable run to run.
-        static Quaternion MeasureFrame(List<Vector3> positions, List<float> active,
-            Transform plugRoot, out float driftDegrees)
+        // Both the origin AND the axis come from the mesh, because neither
+        // can be taken from the object VRCFury leaves behind once its own
+        // SPS step is suppressed — measured on a real avatar, that object's
+        // rotation pointed across the plug and its position sat a quarter
+        // of a metre back up the body, so a plug 0.427 m long baked first at
+        // 0.667 and then at 0.693.
+        //
+        // A plug is a rod, and a rod's own axis is the direction its points
+        // are most spread along. That is the dominant eigenvector of their
+        // covariance, found by power iteration; no transform is consulted at
+        // all. The base is then simply the near end along that axis.
+        static void MeasureFrame(List<Vector3> positions, List<float> active, Transform plugRoot,
+            out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
-            var sum = Vector3.zero;
-            float weight = 0f;
+            var authored = plugRoot.rotation;
+            origin = plugRoot.position;
+            rotation = authored;
+            axisDrift = 0f;
+            originDrift = 0f;
+
+            var mine = new List<Vector3>();
             for (int i = 0; i < positions.Count; i++)
             {
-                if (active[i] > 0.001f)
+                if (active[i] > 0.5f)
                 {
-                    sum += positions[i] * active[i];
-                    weight += active[i];
+                    mine.Add(positions[i]);
                 }
             }
-
-            var authored = plugRoot.rotation;
-            if (weight <= 0f)
+            if (mine.Count < 8)
             {
-                driftDegrees = 0f;
-                return authored;
+                return;
             }
 
-            var forward = sum / weight - plugRoot.position;
-            if (forward.sqrMagnitude < 1e-8f)
+            var centre = Vector3.zero;
+            foreach (var p in mine)
             {
-                driftDegrees = 0f;
-                return authored;
+                centre += p;
             }
-            forward.Normalize();
+            centre /= mine.Count;
 
-            driftDegrees = Vector3.Angle(authored * Vector3.forward, forward);
+            // Covariance, then power iteration for its dominant direction.
+            float xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+            foreach (var p in mine)
+            {
+                var d = p - centre;
+                xx += d.x * d.x; xy += d.x * d.y; xz += d.x * d.z;
+                yy += d.y * d.y; yz += d.y * d.z; zz += d.z * d.z;
+            }
+            var axis = authored * Vector3.forward;
+            for (int i = 0; i < 32; i++)
+            {
+                var next = new Vector3(
+                    xx * axis.x + xy * axis.y + xz * axis.z,
+                    xy * axis.x + yy * axis.y + yz * axis.z,
+                    xz * axis.x + yz * axis.y + zz * axis.z);
+                if (next.sqrMagnitude < 1e-12f)
+                {
+                    return;
+                }
+                axis = next.normalized;
+            }
+
+            // An eigenvector has no sign. The tip is the end furthest from
+            // where the plug attaches, so point away from the attachment.
+            float alongRoot = Vector3.Dot(plugRoot.position - centre, axis);
+            if (alongRoot > 0f)
+            {
+                axis = -axis;
+            }
+
+            float nearest = float.MaxValue;
+            foreach (var p in mine)
+            {
+                nearest = Mathf.Min(nearest, Vector3.Dot(p - centre, axis));
+            }
+
+            var measured = centre + axis * nearest;
+            axisDrift = Vector3.Angle(authored * Vector3.forward, axis);
+            originDrift = Vector3.Distance(plugRoot.position, measured);
+            origin = measured;
+
             var up = authored * Vector3.up;
-            if (Mathf.Abs(Vector3.Dot(up, forward)) > 0.99f)
+            if (Mathf.Abs(Vector3.Dot(up, axis)) > 0.99f)
             {
                 up = authored * Vector3.right;
             }
-            return Quaternion.LookRotation(forward, up);
+            rotation = Quaternion.LookRotation(axis, up);
         }
 
         static HashSet<int> BonesUnder(Transform[] bones, Transform root)
