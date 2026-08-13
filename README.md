@@ -273,6 +273,15 @@ defines.
 **GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
 locomotion, and the haptics stacks don't function there while eating most of the sync budget.
 
+**SPS can instead be converted, not stripped** — *Convert SPS to YAPS instead of removing it*,
+off by default and experimental. The mesh deform is written from scratch rather than ported, so
+it behaves like SPS without being SPS; the separate name keeps that honest, and VRCFury's SPS is
+credited as the prior art that invented the technique. Sockets on other people are found through
+ChilloutVR's own per-player positions, its contact system, and the marker lights the platform's
+existing DPS content already emits — so a converted plug reacts to avatars that have never heard
+of AvatarBridge. The reverse doesn't hold: legacy plugs won't react to a converted socket.
+Experimental means what it says; test it with a second person before relying on it.
+
 **Animation that can't do anything is stripped too** (*Remove animation that can't do anything*,
 on by default). A curve writing to a material property the renderer's shader doesn't have — the
 signature of a [locked Poiyomi shader](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen)
@@ -817,6 +826,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
+| **Convert SPS to YAPS instead of removing it (experimental)** | off | Rebuilds the penetration system for ChilloutVR instead of stripping it — a from-scratch deform, sockets resolved from CVR's own player positions, contacts and DPS marker lights. Needs *Remove SPS…* ticked as well |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -961,8 +971,9 @@ Bipeds are unaffected by any of it.
   `BodyControl`) — removed and counted
 - **Synced animator layers** and **ONSP audio**
 - **Content tags** — set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading
-- **VRChat-only rendering** — SPS/TPS deformation and anything needing VRChat's own shader systems.
-  Meshes and materials survive; the effect doesn't.
+- **VRChat-only rendering** — anything needing VRChat's own shader systems. Meshes and materials
+  survive; the effect doesn't. SPS deformation is the exception, and only if you tick *Convert SPS
+  to YAPS* — otherwise it goes the same way.
 
 ### Converted with caveats
 

@@ -171,6 +171,7 @@ namespace AvatarBridge
                           $"bound swing: `{s.boundSwingToSourceLimit}` · mesh radius: `{s.fitRadiusToMesh}` · " +
                           $"auto colliders: `{s.autoAssignNearbyColliders}`");
             sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · strip SPS: `{s.stripSpsSystems}` · " +
+                          $"convert YAPS: `{s.convertYapsSystems}` · " +
                           $"face tracking: `{s.faceTrackingMode}` · scaler: `{s.addAvatarScaler}`");
             sb.AppendLine();
 

@@ -22,23 +22,47 @@ namespace AvatarBridge
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
         // "OGB" (no separator) also catches OGB_ENABLED and friends.
-        static readonly string[] SpsParamPrefixes =
+        //
+        // Split in two because YAPS conversion keeps the penetration
+        // system and strips everything else in this family. PCS, the
+        // World Scale Detector and Wholesome's audio have no CVR
+        // equivalent either way, so they go regardless.
+        static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS" };
+        static readonly string[] OtherSpsParamPrefixes =
         {
-            "OGB", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
+            "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
         };
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
         // face-gesture smoothing system, which must survive.
-        static readonly string[] SpsLayerHints =
+        static readonly string[] YapsLayerHints = { "sps", "ogb", "haptic" };
+        static readonly string[] OtherSpsLayerHints =
         {
-            "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector", "wholesome"
+            "pcs", "wsd", "world scale detector", "wholesome"
         };
-        static readonly string[] SpsObjectHints =
+        static readonly string[] YapsObjectHints =
         {
-            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket",
-            "<PCS Target>", "Penetration Contact System", "World Scale Detector", "SpsAutoDistance"
+            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket", "SpsAutoDistance"
         };
-        static readonly string[] SpsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS", "VRCF_" };
+        static readonly string[] OtherSpsObjectHints =
+        {
+            "<PCS Target>", "Penetration Contact System", "World Scale Detector"
+        };
+        static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB" };
+        static readonly string[] OtherSpsPointerTypePrefixes = { "PCS", "VRCF_" };
+
+        // The penetration system survives the strip only while it is
+        // being converted into something CVR can run.
+        static bool KeepingPenetration(BridgeContext ctx) =>
+            ctx.Settings.stripSpsSystems && ctx.Settings.convertYapsSystems;
+
+        static IEnumerable<string> SpsParamPrefixes(BridgeContext ctx) =>
+            KeepingPenetration(ctx) ? OtherSpsParamPrefixes
+                                    : OtherSpsParamPrefixes.Concat(YapsParamPrefixes);
+
+        static IEnumerable<string> SpsLayerHints(BridgeContext ctx) =>
+            KeepingPenetration(ctx) ? OtherSpsLayerHints
+                                    : OtherSpsLayerHints.Concat(YapsLayerHints);
 
         internal static bool AvatarUsesGogo(BridgeContext ctx) =>
             AvatarUsesGogo(ctx != null ? ctx.SourceDescriptor : null);
@@ -67,7 +91,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                prefixes.AddRange(SpsParamPrefixes);
+                prefixes.AddRange(SpsParamPrefixes(ctx));
             }
             if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
             {
@@ -116,7 +140,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints);
+                layerHints.AddRange(SpsLayerHints(ctx));
             }
             // User-supplied keywords (comma separated) act as both parameter prefixes and
             // layer-name hints, for add-ons this list doesn't know about yet.
@@ -192,7 +216,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints);
+                layerHints.AddRange(SpsLayerHints(ctx));
             }
             bool IsStrippedParam(string name) =>
                 !string.IsNullOrEmpty(name) &&
@@ -758,6 +782,9 @@ namespace AvatarBridge
 
         static void RemoveObjects(BridgeContext ctx)
         {
+            var objectHints = KeepingPenetration(ctx)
+                ? OtherSpsObjectHints
+                : OtherSpsObjectHints.Concat(YapsObjectHints).ToArray();
             var doomed = new List<Transform>();
             foreach (var transform in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
@@ -765,7 +792,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (SpsObjectHints.Any(hint => transform.name.Contains(hint)))
+                if (objectHints.Any(hint => transform.name.Contains(hint)))
                 {
                     doomed.Add(transform);
                 }
@@ -799,11 +826,16 @@ namespace AvatarBridge
 
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)
         {
+            // A converted socket's pointer is the thing a plug looks for,
+            // so it has to outlive the strip that used to delete it.
+            var pointerPrefixes = KeepingPenetration(ctx)
+                ? OtherSpsPointerTypePrefixes
+                : OtherSpsPointerTypePrefixes.Concat(YapsPointerTypePrefixes).ToArray();
             int removed = 0;
             foreach (var pointer in ctx.Target.GetComponentsInChildren<CVRPointer>(true))
             {
                 if (!string.IsNullOrEmpty(pointer.type) &&
-                    SpsPointerTypePrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    pointerPrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 {
                     UnityEngine.Object.DestroyImmediate(pointer.gameObject);
                     removed++;

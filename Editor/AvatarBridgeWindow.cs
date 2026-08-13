@@ -719,6 +719,17 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
                 "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
                 settings.stripSpsSystems, v => settings.stripSpsSystems = v));
+            b.Add(BridgeElements.Bind("Convert SPS to YAPS instead of removing it (experimental)",
+                "Keeps the penetration system and rebuilds it for ChilloutVR, rather than stripping " +
+                "it out. The mesh deform is written from scratch — no VRChat code is shipped — so it " +
+                "behaves like SPS without being SPS, and it is called YAPS to keep that honest. " +
+                "Sockets on other avatars are found through ChilloutVR's own player positions, its " +
+                "contacts, and the marker lights the platform's existing DPS content already uses, so " +
+                "your plug reacts to people who have never heard of this tool. What it cannot do is " +
+                "the reverse: their plugs will not react to your sockets. Experimental means what it " +
+                "says — this needs testing with a second person before you rely on it, and it does " +
+                "nothing at all unless \"Remove SPS / OGB / PCS / Wholesome\" is also ticked.",
+                settings.convertYapsSystems, v => settings.convertYapsSystems = v));
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have — the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +

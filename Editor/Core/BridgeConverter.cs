@@ -133,6 +133,10 @@ namespace AvatarBridge
                     // reads live world poses.
                     Pass("Constraint scale relays", ConstraintScaleRelay.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
+                    // After the SPI patch, so a plug inherits both: the
+                    // stereo fix goes into the body shader, and the
+                    // deform goes into our copy of that result.
+                    Pass("YAPS penetration system", YapsConverter.Run),
 
                     // Last content pass before anything edits a clip.
                     // The controller is final; every referenced clip is
@@ -363,7 +367,18 @@ namespace AvatarBridge
             // Fury's bake also runs NDMF internally, so it covers avatars that use both
             // VRCFury and Modular Avatar.
             {
-                var baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                // Flips the plugs' own SPS flag off for the duration, so
+                // the shader we get back is one our patcher can work on.
+                var yaps = YapsBakePrep.Begin(ctx, source);
+                GameObject baked;
+                try
+                {
+                    baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                }
+                finally
+                {
+                    yaps.Restore();
+                }
                 if (baked != null)
                 {
                     AdoptBakedCopy(ctx, baked, source);

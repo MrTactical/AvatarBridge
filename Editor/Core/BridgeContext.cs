@@ -62,6 +62,19 @@ namespace AvatarBridge
         public List<(string zonePath, string shapeKey, float growth, float reach, string reportPath)>
             ZoneSliderGrowth = new List<(string, string, float, float, string)>();
 
+        // One entry per plug the YAPS pass converted, so the channel pass
+        // knows which renderers and materials it is wiring to.
+        public class YapsPlug
+        {
+            public Transform Root;
+            public Renderer Renderer;
+            public Material Material;
+            public int MaterialSlot;
+            public float Length;
+        }
+
+        public List<YapsPlug> YapsPlugs = new List<YapsPlug>();
+
         public Dictionary<string, List<string>> PhysicsColliderHosts =
             new Dictionary<string, List<string>>();
 

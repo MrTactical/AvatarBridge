@@ -131,6 +131,11 @@ namespace AvatarBridge
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
+        // Convert SPS into YAPS instead of stripping it. Off: the
+        // deform is a reimplementation, not a port, and an avatar
+        // carrying it needs testing with a second person before
+        // anyone should count on it.
+        public bool convertYapsSystems = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

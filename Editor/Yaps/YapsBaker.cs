@@ -158,6 +158,46 @@ namespace AvatarBridge
             };
         }
 
+        // How much of this renderer belongs to that plug, without baking
+        // anything. Nothing on a baked avatar says which renderer carries
+        // a plug — VRCFury's component is gone by then and the flag that
+        // would have left a bake texture behind is deliberately off — so
+        // the answer is measured: the renderer with the most vertices
+        // weighted to the plug's bone chain is the one wearing it.
+        public static int CountPlugVertices(Renderer renderer, Transform plugRoot)
+        {
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || plugRoot == null || skin.sharedMesh == null
+                || skin.bones == null || skin.bones.Length == 0)
+            {
+                return 0;
+            }
+
+            var plugBones = BonesUnder(skin.bones, plugRoot);
+            if (plugBones.Count == 0)
+            {
+                for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
+                     above = above.parent)
+                {
+                    plugBones = BonesUnder(skin.bones, above);
+                }
+            }
+            if (plugBones.Count == 0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            foreach (var w in skin.sharedMesh.boneWeights)
+            {
+                if (WeightOnPlug(w, plugBones) > 0.001f)
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
         // Applies the bake to a material, cloning it first so two renderers
         // sharing one material cannot overwrite each other's vertex counts.
         // That is not hypothetical: a real avatar in the corpus has a
