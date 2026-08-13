@@ -126,6 +126,9 @@ namespace AvatarBridge
                     Pass("PhysBones", PhysBoneConverter.Run),
                     Pass("Contacts", ContactsConverter.Run),
                     Pass("Animator merge", AnimatorMerger.Run),
+                    // After the merge: it adds layers and parameters to the
+                    // controller the merge produces.
+                    Pass("YAPS socket channel", YapsChannel.Run),
                     Pass("Misc components", MiscConverter.Run),
                     Pass("Constraints", ConstraintConverter.Run),
                     // After the constraints exist as Unity components

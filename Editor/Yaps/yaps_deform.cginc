@@ -332,7 +332,10 @@ float4 YapsDebug(uint vertexId)
 
     float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
     float worldLength = _YAPS_Length * _YAPS_BakeScale;
-    YapsSocket socket = YapsResolveSocket(rootWorld, worldLength);
+    YapsSocket socket = YapsResolveSocket(rootWorld,
+        YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)), float3(0, 0, 1)),
+        YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)), float3(0, 1, 0)),
+        worldLength);
     float gap = length(socket.position - rootWorld);
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
     float enabled = saturate(_YAPS_Enabled) * socket.engaged;
@@ -382,7 +385,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     // Everything platform-specific happens in here: the discrete channel,
     // protocol lights at contact range, the player globals as a floor.
-    YapsSocket socket = YapsResolveSocket(rootWorld, worldLength);
+    // The recovered frame, not the renderer's: on a skinned mesh the
+    // renderer sits at the avatar root while a bone carries the plug, and
+    // the channel reports the socket in the PLUG's frame.
+    YapsSocket socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
 
     float enabled = saturate(_YAPS_Enabled) * socket.engaged;
     if (enabled <= 0) return;

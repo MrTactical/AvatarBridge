@@ -209,7 +209,7 @@ bool YapsFindGlobalSocket(float3 plugOrigin, float reach, out float3 position)
 
 // --- the resolution --------------------------------------------------
 
-YapsSocket YapsResolveSocket(float3 plugOrigin, float worldLength)
+YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugUp, float worldLength)
 {
     YapsSocket socket;
 
@@ -225,6 +225,27 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float worldLength)
     // resolved, or a plug on an avatar whose channel is quiet will spend
     // its life reaching for world zero.
     bool found = dot(socket.position, socket.position) > 1e-6;
+
+    // ChilloutVR's contact channel speaks only in the receiver's own frame,
+    // normalised per axis across its box, so a converted avatar sends the
+    // socket's offset from the plug rather than a world position. Rebuild
+    // it here, against the frame the deform has just recovered.
+    //
+    // That constraint turns out to suit the transport: what crosses the
+    // wire is the gap between two bodies already touching, which barely
+    // moves, rather than a world position that changes every time either
+    // of them walks. A centre reading is a real reading, not silence, so
+    // engagement decides whether anything arrived — the zero test above
+    // cannot.
+    if (_YAPS_ChannelSpace > 0.5)
+    {
+        found = socket.engaged > 0;
+        float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz;
+        float3 plugRight = cross(plugUp, plugForward);
+        socket.position = plugOrigin + plugRight * offset.x
+                                     + plugUp * offset.y
+                                     + plugForward * offset.z;
+    }
 
     // Floor: if nothing has written a position, aim at the nearest body.
     if (!found)
@@ -250,7 +271,8 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float worldLength)
     // the discrete path does.
     float3 lightPosition;
     float3 lightForward;
-    if (YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward))
+    bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward);
+    if (litRoot)
     {
         socket.position = lightPosition;
         found = true;
@@ -258,6 +280,27 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float worldLength)
         {
             socket.forward = lightForward;
         }
+    }
+
+    // Legacy content has no contacts to engage from. ChilloutVR's existing
+    // DPS sockets — on avatars and on spawned props alike — announce
+    // themselves with marker lights and nothing else, so a plug that
+    // insisted on the contact channel would never react to any of it. That
+    // is most of the platform's existing content, and refusing it is worse
+    // than the compromise.
+    //
+    // The compromise: engage on distance to a light-resolved root, but only
+    // once nothing else has engaged, and only within about a plug length.
+    // Engagement decided from a light is engagement decided per camera,
+    // which is the thing this file otherwise refuses to do — bounded here
+    // because the divergence is a range effect. A light sitting centimetres
+    // from the plug is inside any frustum already drawing the plug; one
+    // across the room is not, and that is where mirrors and the direct view
+    // disagreed in testing.
+    if (socket.engaged <= 0 && litRoot)
+    {
+        float gap = length(socket.position - plugOrigin);
+        socket.engaged = 1 - smoothstep(worldLength * 0.9, worldLength * 1.3, gap);
     }
 
     // Nothing to bend toward. Say so, rather than bending toward nothing.

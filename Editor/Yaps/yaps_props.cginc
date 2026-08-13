@@ -34,9 +34,20 @@ float _YAPS_FrameFromVertex;
 // which is the whole reason position lives here rather than in lights.
 // The editor harness writes the same four, which is why the deform can
 // be developed without uploading anything.
-float4 _YAPS_SocketPos;    // xyz world position,   w unused
+float4 _YAPS_SocketPos;    // see _YAPS_ChannelSpace
 float4 _YAPS_SocketForward; // xyz world direction, w unused
 float4 _YAPS_SocketUp;     // xyz world direction,  w unused
 float4 _YAPS_SocketFlags;  // x: engaged 0..1, y: is-hole, z/w spare
+
+// How to read _YAPS_SocketPos.
+//   0  a world position, written directly. What the editor harness does,
+//      and what a WASM script would do once that ships.
+//   1  the socket's offset in the PLUG's own frame, each axis squeezed
+//      into 0..1 across the box below. ChilloutVR's contact channel
+//      cannot express anything else: a trigger reports where a pointer
+//      sits inside its own box, normalised per axis, and that is the only
+//      shape the value can arrive in.
+float _YAPS_ChannelSpace;
+float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 
 #endif
