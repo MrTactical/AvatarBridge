@@ -48,6 +48,7 @@ namespace AvatarBridge.Spike
 
             try
             {
+                CaptureReferences();
                 Probe();
             }
             catch (Exception e)
@@ -63,6 +64,77 @@ namespace AvatarBridge.Spike
                 "YapsBakerProbe.md"));
             File.WriteAllText(path, Log.ToString());
             Debug.Log($"[YAPS] Baker probe written to {path}");
+        }
+
+        // VRCFury's own bake of each plug, keyed by the plug's path, taken
+        // from a first pass with SPS left ON.
+        //
+        // Two passes rather than one because the two configurations answer
+        // different halves of the question and neither is optional. With SPS
+        // on there is a reference bake to compare against per vertex, which
+        // is what proves the mask and the geometry; with it suppressed there
+        // is the frame a real conversion actually gets, which is where the
+        // 0.427-baked-as-0.667 bug lived. Measuring only the first bought
+        // confidence in a configuration that never ships. Measuring only the
+        // second lost the ground truth. So: both, and diff them.
+        class Reference
+        {
+            public Texture2D Bake;
+            public float Length;
+        }
+
+        static readonly Dictionary<string, Reference> References =
+            new Dictionary<string, Reference>();
+
+        static void CaptureReferences()
+        {
+            References.Clear();
+            var scene = EditorSceneManager.OpenScene(SceneRelative, OpenSceneMode.Single);
+            var descriptor = scene.GetRootGameObjects()
+                .Select(go => go.GetComponentInChildren<
+                    VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true))
+                .FirstOrDefault(d => d != null);
+            if (descriptor == null)
+            {
+                return;
+            }
+
+            var working = UnityEngine.Object.Instantiate(descriptor.gameObject);
+            working.name = descriptor.gameObject.name + " (reference)";
+            working.SetActive(true);
+            var baked = VRCFuryBaker.TryBake(
+                working.GetComponentInChildren<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>(true),
+                new BridgeReport());
+            if (baked == null)
+            {
+                return;
+            }
+
+            foreach (var plugRoot in baked.GetComponentsInChildren<Transform>(true)
+                         .Where(t => t.name.Contains("BakedSpsPlug")))
+            {
+                string path = PathOf(plugRoot, baked.transform);
+                Texture2D texture = null;
+                foreach (var renderer in baked.GetComponentsInChildren<Renderer>(true))
+                {
+                    foreach (var material in renderer.sharedMaterials)
+                    {
+                        if (material != null && material.HasProperty("_SPS_Bake"))
+                        {
+                            texture = texture ?? material.GetTexture("_SPS_Bake") as Texture2D;
+                        }
+                    }
+                }
+                References[path] = new Reference
+                {
+                    Bake = texture,
+                    Length = AnimatedLength(baked, path),
+                };
+            }
+
+            Line($"Captured **{References.Count}** reference bake(s) with SPS enabled, to compare " +
+                 "the shipping configuration against.");
+            Line("");
         }
 
         static void Probe()
@@ -175,6 +247,15 @@ namespace AvatarBridge.Spike
             // the plug's bone chain. No reference bake means no per-vertex
             // comparison; what this measures instead is the configuration
             // that actually ships.
+            // The reference pass kept VRCFury's own bake of this same plug,
+            // keyed by path. It survives the scene reload because it is an
+            // in-memory texture we are still holding.
+            if (References.TryGetValue(PathOf(plugRoot, baked.transform), out var kept))
+            {
+                reference = kept.Bake;
+                referenceLength = kept.Length;
+            }
+
             if (renderer == null)
             {
                 int mostVertices = 0;
@@ -200,13 +281,10 @@ namespace AvatarBridge.Spike
             }
             Line($"Renderer: `{PathOf(renderer.transform, baked.transform)}` " +
                  $"({renderer.GetType().Name})");
-
             // Their length is not authored on the material — it is animated
             // onto the resolver, which is why reading the material gives a
-            // flat zero. The curve is the real number, and it is the one
-            // number of theirs the deform depends on directly, so it is
-            // worth going and getting.
-            referenceLength = AnimatedLength(baked, PathOf(plugRoot, baked.transform));
+            // flat zero. It comes from the REFERENCE pass, since the curve
+            // is stripped along with everything else once SPS is suppressed.
             Line($"Their `_SPS_BakedLength`: **{referenceLength:0.00000}** " +
                  "(read from the animator curve, not the material — VRCFury drives it)");
             Line("");
