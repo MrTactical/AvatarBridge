@@ -99,6 +99,18 @@ namespace AvatarBridge
                 refusal = "it already carries YAPS";
                 return null;
             }
+            if (shaderFile.Text.Contains("_SPS_Bake"))
+            {
+                // Two deform systems moving the same vertices would fight,
+                // and the result would be neither. The converter suppresses
+                // SPS at bake time so the plug's material arrives carrying
+                // its plain shader; a shader that still has SPS in it means
+                // that step did not happen.
+                refusal = "it already carries VRChat's SPS, and two deform systems on the same " +
+                          "vertices would fight — suppress SPS at bake time so the plain shader " +
+                          "comes through instead";
+                return null;
+            }
             if (Regex.IsMatch(shaderFile.Text, @"#pragma\s+surface"))
             {
                 refusal = "it is a surface shader, so Unity generates the vertex stage and " +
@@ -407,10 +419,14 @@ namespace AvatarBridge
         // Members keyed by SEMANTIC, because names are anybody's guess but
         // semantics are the contract.
         static Dictionary<string, string> ReadStructMembers(
-            List<ShaderSpiPatcher.SourceFile> unit, string structName)
+            List<ShaderSpiPatcher.SourceFile> unit, string structName, int depth = 0)
         {
+            // The optional ": Base" matters. A struct can inherit, and then
+            // POSITION lives in the parent rather than here — reading only
+            // the body reports a vertex input with no vertex in it.
             var file = ShaderSpiPatcher.FindIn(unit,
-                $@"struct\s+{Regex.Escape(structName)}\s*\{{", out var declaration);
+                $@"struct\s+{Regex.Escape(structName)}\s*(?::\s*(\w+)\s*)?\{{",
+                out var declaration);
             if (file == null)
             {
                 return null;
@@ -431,6 +447,23 @@ namespace AvatarBridge
                 if (!members.ContainsKey(semantic))
                 {
                     members[semantic] = m.Groups[1].Value;
+                }
+            }
+
+            string baseName = declaration.Groups[1].Success ? declaration.Groups[1].Value : null;
+            if (!string.IsNullOrEmpty(baseName) && !string.Equals(baseName, structName,
+                    StringComparison.Ordinal) && depth < 4)
+            {
+                var inherited = ReadStructMembers(unit, baseName, depth + 1);
+                if (inherited != null)
+                {
+                    foreach (var pair in inherited)
+                    {
+                        if (!members.ContainsKey(pair.Key))
+                        {
+                            members[pair.Key] = pair.Value;
+                        }
+                    }
                 }
             }
             return members;
