@@ -104,18 +104,45 @@ namespace AvatarBridge
             float extent = Mathf.Max(plug.Length, 0.01f) * BoxLengths;
             var box = new Vector3(extent * 2f, extent * 2f, extent * 2f);
 
-            // The shader turns the normalised reading back into metres, so
-            // it has to be told the same box.
-            plug.Material.SetFloat("_YAPS_ChannelSpace", 1f);
+            // Sync slots are handed out in declaration order and run out
+            // silently, so ask before spending. Engagement is bought first
+            // because it is the on-switch: without it nothing deforms for
+            // anyone, whereas without the offset the socket is still found
+            // by its marker lights at contact range and by the player
+            // globals beyond that.
+            //
+            // The offset is all three axes or none. Two axes out of three
+            // is not a degraded position, it is a wrong one.
+            int spare = SpareSyncFloats(ctx);
+            bool carryOffset = spare >= 4;
+
+            plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
             plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
             plug.Material.SetFloat("_YAPS_Enabled", 1f);
 
-            var axes = new[]
+            if (!carryOffset)
             {
-                ("X", CVRAdvancedAvatarSettingsTrigger.SampleDirection.XPositive),
-                ("Y", CVRAdvancedAvatarSettingsTrigger.SampleDirection.YPositive),
-                ("Z", CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZPositive),
-            };
+                ctx.Report.Warning(Category,
+                    "No sync budget left for the socket's position — engagement only",
+                    $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
+                    $"has room for {spare} more float(s); the plug needs four. So it transmits " +
+                    "whether it is engaged, and where the socket is comes from that socket's own " +
+                    "marker lights at close range and from ChilloutVR's player positions further " +
+                    "out. That is the same path used for content this tool never converted, and it " +
+                    "works — it is simply less exact than the full channel. Freeing sync bits " +
+                    "elsewhere on the avatar and converting again gets you the exact one.");
+            }
+
+            var axes = carryOffset
+                ? new[]
+                {
+                    ("X", CVRAdvancedAvatarSettingsTrigger.SampleDirection.XPositive),
+                    ("Y", CVRAdvancedAvatarSettingsTrigger.SampleDirection.YPositive),
+                    ("Z", CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZPositive),
+                }
+                : new (string, CVRAdvancedAvatarSettingsTrigger.SampleDirection)[0];
+
+            BuildEngagementTrigger(ctx, plug, index, box);
 
             for (int a = 0; a < axes.Length; a++)
             {
@@ -136,32 +163,15 @@ namespace AvatarBridge
                     minValue = 0f,
                     maxValue = 1f,
                 });
-
-                // Engagement rides the first trigger's box rather than one
-                // of its own: it is the same box, and a fourth object would
-                // only be a fourth thing to keep in step.
-                if (a == 0)
-                {
-                    trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
-                    {
-                        settingName = Local(index, "E"),
-                        updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
-                        minValue = 0f,
-                        maxValue = 1f,
-                    });
-                    // Nothing writes a stay task once the sender leaves, so
-                    // without this the plug stays bent at whatever it last
-                    // saw, forever.
-                    trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
-                    {
-                        settingName = Local(index, "E"),
-                        settingValue = 0f,
-                        updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
-                    });
-                }
             }
 
-            foreach (string axis in new[] { "X", "Y", "Z", "E" })
+            // Engagement first, deliberately: slots go out in declaration
+            // order, so the one value the deform cannot work without is the
+            // one that gets a slot when the avatar is nearly full.
+            var values = new List<string> { "E" };
+            values.AddRange(axes.Select(a => a.Item1));
+
+            foreach (string axis in values)
             {
                 string local = Local(index, axis);
                 string synced = Synced(index, axis);
@@ -192,6 +202,57 @@ namespace AvatarBridge
                     "", typeof(CVRMaterialDriver), FieldFor(materialDriver.tasks.Count, axis));
                 taskIndex++;
             }
+        }
+
+        // Its own object rather than sharing an axis trigger's: those only
+        // exist when there is sync budget for them, and engagement has to
+        // work either way. DisallowMultipleComponent settles it anyway.
+        static void BuildEngagementTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+            Vector3 box)
+        {
+            var host = new GameObject($"YAPS Channel {index} E");
+            host.transform.SetParent(plug.Root, false);
+
+            var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            trigger.areaSize = box;
+            trigger.areaOffset = Vector3.zero;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = SocketPointerTypes;
+            trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+            {
+                settingName = Local(index, "E"),
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
+                minValue = 0f,
+                maxValue = 1f,
+            });
+            // Nothing writes a stay task once the sender leaves, so without
+            // this the plug stays bent at whatever it last saw, forever.
+            trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Local(index, "E"),
+                settingValue = 0f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
+        }
+
+        // ChilloutVR's own budget, the same rule BridgeDiagnostics reports
+        // against: 32 bits a float, "#" names and triggers are free, and
+        // anything declared past the cap silently never replicates.
+        const int AasBitBudget = 3200;
+
+        static int SpareSyncFloats(BridgeContext ctx)
+        {
+            int used = 0;
+            foreach (var parameter in ctx.MergedController.parameters)
+            {
+                if (parameter.name.StartsWith("#")
+                    || parameter.type == AnimatorControllerParameterType.Trigger)
+                {
+                    continue;
+                }
+                used += parameter.type == AnimatorControllerParameterType.Bool ? 1 : 32;
+            }
+            return Mathf.Max(0, (AasBitBudget - used) / 32);
         }
 
         // The socket end of a contact, exactly as the tags read on a

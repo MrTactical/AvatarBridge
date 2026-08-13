@@ -64,6 +64,8 @@ namespace AvatarBridge
         _YAPS_SocketForward (""YAPS socket forward"", Vector) = (0,0,0,0)
         _YAPS_SocketUp (""YAPS socket up"", Vector) = (0,0,0,0)
         _YAPS_SocketFlags (""YAPS socket flags"", Vector) = (0,0,0,0)
+        _YAPS_ChannelSpace (""YAPS channel space"", Range(0,1)) = 0
+        _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,

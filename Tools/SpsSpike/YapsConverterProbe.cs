@@ -158,10 +158,21 @@ namespace AvatarBridge.Spike
             var animatorDriver = root.GetComponentInChildren<ABI.CCK.Components.CVRAnimatorDriver>(true);
             outcome.DriverSlots = animatorDriver != null ? animatorDriver.animators.Count : 0;
 
-            var animator = root.GetComponent<Animator>();
-            var controller = animator != null
-                ? animator.runtimeAnimatorController as UnityEditor.Animations.AnimatorController
-                : null;
+            // The merged controller reaches the avatar through CVRAvatar's
+            // override slot, not the Animator's — reading the Animator gave
+            // a flat zero on a run where the sync diagnostic was plainly
+            // counting the same parameters.
+            var avatar = root.GetComponent<ABI.CCK.Components.CVRAvatar>();
+            var controller = (avatar != null && avatar.overrides != null
+                ? avatar.overrides.runtimeAnimatorController
+                : null) as UnityEditor.Animations.AnimatorController;
+            if (controller == null)
+            {
+                var animator = root.GetComponent<Animator>();
+                controller = animator != null
+                    ? animator.runtimeAnimatorController as UnityEditor.Animations.AnimatorController
+                    : null;
+            }
             if (controller != null)
             {
                 outcome.SyncedParams = controller.parameters.Count(p => p.name.StartsWith("YAPS"));
