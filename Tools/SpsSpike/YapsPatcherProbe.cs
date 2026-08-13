@@ -127,7 +127,9 @@ namespace AvatarBridge.Spike
             if (why.Contains("could not be found")) return "vertex input struct not found";
             if (why.Contains("no POSITION")) return "no POSITION member";
             if (why.Contains("did not compile")) return "patched but failed to compile";
-            if (why.Contains("already carries")) return "already patched";
+            if (why.Contains("already carries VRChat's SPS"))
+                return "carries VRChat's SPS (correctly refused — a real conversion suppresses it)";
+            if (why.Contains("already carries")) return "already carries YAPS";
             if (why.StartsWith("threw")) return "threw";
             return why;
         }
