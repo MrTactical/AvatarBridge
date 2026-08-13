@@ -68,15 +68,31 @@ struct YapsSocket
 // encodes what it is. Unity hands back attenuation rather than range, and
 // range is recovered as 5/sqrt(atten).
 //
-// We author the INVERTED encoding: roots at 0.4906/0.4806 and fronts at
-// 0.4106. The stock DPS ordering puts fronts at 0.45 and roots at 0.41,
-// and since Unity ranks vertex lights by range, every front outranked its
-// own root and evicted it — with twelve sockets the four slots filled
-// with fronts, which are a direction with no origin. Inverting the
-// ordering makes roots win the slots they need to win.
+// The stock DPS ordering puts fronts at 0.45 and roots at 0.41, and since
+// Unity ranks vertex lights by range, every front outranks its own root
+// and evicts it — with twelve sockets the four slots filled with fronts,
+// which are a direction with no origin. So we author our own ordering,
+// root above front.
+//
+// Picking the digits is more constrained than it looks. Legacy already
+// speaks for almost all of them — 1 and 3 hole, 2 and 4 ring, 5 and 6
+// front, 8 and 9 plug tip — and the decoder only ever looks at the second
+// decimal, so 0.31 reads as a hole exactly like 0.41 does. That leaves
+// precisely two free digits, 0 and 7, and we need root above front:
+//
+//     root  0.4706   digit 7
+//     front 0.4006   digit 0
+//
+// A first attempt used 0.4106 for the front, which is digit 1 — legacy's
+// hole root. Both of our lights then decoded as roots, no front was ever
+// paired, and the socket had a position but no axis: the plug tracked the
+// socket around but ignored its rotation entirely.
 //
 // The legacy values are still DECODED, so a plug still reacts to the DPS
-// content already on the platform.
+// content already on the platform. Legacy plugs will not react to OUR
+// sockets, since 7 and 0 mean nothing to them — the price of roots that
+// win their slots, and the reason emitting a legacy set as well is a
+// separate opt-in.
 
 #define YAPS_LIGHT_NONE  0
 #define YAPS_LIGHT_ROOT  1
@@ -104,9 +120,19 @@ int YapsClassifyLight(uint slot)
     if (any(colour.rgb > 0.0001) && colour.a > 0) return YAPS_LIGHT_NONE;
 
     int digit = (int) round(fmod(range, 0.1) * 100.0);
-    if (digit == 9 || digit == 8) return YAPS_LIGHT_ROOT;    // ours
-    if (digit == 1 || digit == 2) return YAPS_LIGHT_ROOT;    // legacy hole/ring
-    if (digit == 5) return YAPS_LIGHT_FRONT;                 // legacy front
+
+    // Ours first: the two digits legacy never claimed.
+    if (digit == 7) return YAPS_LIGHT_ROOT;
+    if (digit == 0) return YAPS_LIGHT_FRONT;
+
+    // Legacy DPS, so a plug reacts to content already on the platform.
+    // Hole and ring both act as roots here; which it is comes from the
+    // discrete channel, not from the light.
+    if (digit == 1 || digit == 3) return YAPS_LIGHT_ROOT;    // hole
+    if (digit == 2 || digit == 4) return YAPS_LIGHT_ROOT;    // ring
+    if (digit == 5 || digit == 6) return YAPS_LIGHT_FRONT;   // front
+    // 8 and 9 are a legacy plug's own tip light, not a socket. Ignoring
+    // them stops one plug mistaking another plug for somewhere to go.
     return YAPS_LIGHT_NONE;
 }
 

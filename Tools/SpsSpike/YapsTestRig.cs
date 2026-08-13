@@ -70,8 +70,10 @@ namespace AvatarBridge.Spike
             // root above front, so roots win the four vertex slots instead
             // of being evicted by their own fronts. Switching the driver to
             // Protocol Lights makes the shader find these on its own.
-            AddSocketLight(socket.transform, "Root 0.4906", 0.4906f, Vector3.zero);
-            AddSocketLight(socket.transform, "Front 0.4106", 0.4106f, Vector3.forward * 0.01f);
+            // Digits 7 and 0 — the only two legacy DPS never claimed, and
+            // root above front so roots win the four vertex slots.
+            AddSocketLight(socket.transform, "Root 0.4706", 0.4706f, Vector3.zero);
+            AddSocketLight(socket.transform, "Front 0.4006", 0.4006f, Vector3.forward * 0.02f);
 
             var driver = plug.AddComponent<YapsTestDriver>();
             driver.socket = socket.transform;
