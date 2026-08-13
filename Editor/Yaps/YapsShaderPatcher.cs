@@ -442,16 +442,27 @@ namespace AvatarBridge
         static bool LooksLikeMetaPass(string text, int programIndex)
             => PassTagIs(text, programIndex, "Meta");
 
-        // Read the enclosing Pass's LightMode tag by looking back from the
-        // program block.
+        // Read this pass's LightMode tag.
+        //
+        // Scoped by the END of the previous program block rather than by
+        // looking back for the word "Pass". A flattened shader has its
+        // includes inlined, and names like CGI_PoiPassShadow contain "Pass"
+        // — so the backward search landed inside the previous pass's code
+        // and read the wrong tag, or none. Whatever sits between one
+        // ENDCG and the next CGPROGRAM is exactly this pass's declaration.
         static bool PassTagIs(string text, int programIndex, string lightMode)
         {
-            int passStart = text.LastIndexOf("Pass", programIndex, StringComparison.Ordinal);
-            if (passStart < 0)
+            int from = 0;
+            foreach (Match end in Regex.Matches(text, @"\b(ENDCG|ENDHLSL)\b"))
             {
-                return false;
+                if (end.Index >= programIndex)
+                {
+                    break;
+                }
+                from = end.Index + end.Length;
             }
-            string head = text.Substring(passStart, programIndex - passStart);
+
+            string head = text.Substring(from, programIndex - from);
             return Regex.IsMatch(head, $@"""LightMode""\s*=\s*""{Regex.Escape(lightMode)}""",
                 RegexOptions.IgnoreCase);
         }
