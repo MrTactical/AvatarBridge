@@ -56,27 +56,40 @@ namespace AvatarBridge.Spike
             // contact pointer cannot tell you which of the two made the
             // plug move. Colour says which is which in game.
             var socket = BuildSocket("YAPS Test Socket", new Color(0.9f, 0.35f, 0.6f),
-                lights: true, pointer: true);
+                lights: true, pointer: true, hole: false);
             var lightsOnly = BuildSocket("YAPS Test Socket (lights only)",
-                new Color(0.95f, 0.8f, 0.2f), lights: true, pointer: false);
+                new Color(0.95f, 0.8f, 0.2f), lights: true, pointer: false, hole: false);
             var contactOnly = BuildSocket("YAPS Test Socket (contact only)",
-                new Color(0.25f, 0.6f, 0.95f), lights: false, pointer: true);
+                new Color(0.25f, 0.6f, 0.95f), lights: false, pointer: true, hole: false);
+            // Every socket above is a RING, which is why the taper has never
+            // shown itself: a ring lets the plug pass straight through and
+            // only a hole closes around it. Nothing built so far could say
+            // "hole" — the pointer tag was the generic root, and our own
+            // light digits deliberately carry no kind.
+            var holeSocket = BuildSocket("YAPS Test Socket (hole)",
+                new Color(0.4f, 0.15f, 0.5f), lights: true, pointer: true, hole: true);
             var plug = BuildPlug();
             AssetDatabase.SaveAssets();
 
             Debug.Log("[YAPS] Test props built in " + Dir + ".\n" +
                       "PINK socket: lights and a contact pointer, the realistic one.\n" +
-                      "YELLOW socket: marker lights only — the path existing DPS content uses.\n" +
-                      "BLUE socket: contact pointer only, no lights — the only way to see the " +
+                      "YELLOW socket: marker lights only, the path existing DPS content uses.\n" +
+                      "BLUE socket: contact pointer only, no lights, the only way to see the " +
                       "channel working on its own.\n" +
-                      "The plug PROP has no channel at all, so it can only ever react to the " +
-                      "pink and yellow ones. A converted AVATAR should react to all three.");
-            Selection.objects = new Object[] { socket, lightsOnly, contactOnly, plug };
+                      "PURPLE socket: a HOLE. Every other socket here is a ring, which is why " +
+                      "the taper never showed itself. Push the plug into this one and it should " +
+                      "narrow and stop instead of passing through.\n" +
+                      "Taper is tunable on the PLUG's material: YAPS hole taper start and end, " +
+                      "as fractions of plug length. Widen the gap for a soft grip, close it for " +
+                      "an abrupt one.\n" +
+                      "The plug PROP has no channel, so it reacts to pink, yellow and purple, " +
+                      "never blue. A converted AVATAR should react to all four.");
+            Selection.objects = new Object[] { socket, lightsOnly, contactOnly, holeSocket, plug };
         }
 
         // --- the socket ------------------------------------------------
 
-        static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer)
+        static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer, bool hole)
         {
             var root = new GameObject(name);
             var body = new GameObject("Ring");
@@ -95,8 +108,13 @@ namespace AvatarBridge.Spike
             // ChilloutVR's Advanced Safety light budget.
             if (lights)
             {
-                MarkerLight(root.transform, "Root", RootRange, Vector3.zero);
-                MarkerLight(root.transform, "Front", FrontRange, new Vector3(0, 0, 0.01f));
+                // A hole announces itself with the LEGACY hole digit, the
+                // only way a light can state a kind at all: our own two
+                // digits were spent on root and front and carry none. So a
+                // hole prop speaks legacy, which is also exactly what the
+                // DPS content already on the platform does.
+                MarkerLight(root.transform, "Root", hole ? 0.4106f : RootRange, Vector3.zero);
+                MarkerLight(root.transform, "Front", hole ? 0.4506f : FrontRange, new Vector3(0, 0, 0.01f));
             }
 
             // Tagged the way a converted avatar's socket is tagged, so a
@@ -105,7 +123,7 @@ namespace AvatarBridge.Spike
             {
                 var host = new GameObject("Socket Pointer");
                 host.transform.SetParent(root.transform, false);
-                host.AddComponent<CVRPointer>().type = "SPSLL_Socket_Root";
+                host.AddComponent<CVRPointer>().type = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Root";
             }
 
             // Tight to the ring. Two pickups cannot overlap, so every
@@ -180,6 +198,8 @@ namespace AvatarBridge.Spike
             // socket's marker lights.
             material.SetFloat("_YAPS_ChannelSpace", 0f);
             material.SetFloat("_YAPS_SelfTag", -1f);   // a prop wears no sockets of its own
+            material.SetFloat("_YAPS_TaperStart", 0.05f);
+            material.SetFloat("_YAPS_TaperEnd", 0.10f);
             renderer.sharedMaterial = material;
 
             var capsule = root.AddComponent<CapsuleCollider>();

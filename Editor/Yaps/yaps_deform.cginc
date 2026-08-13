@@ -475,8 +475,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     bool isHole = socket.isHole > 0.5;
     if (leftOver > 0 && isHole)
     {
-        float taperFrom = worldLength * 0.05;
-        float taperTo = worldLength * 0.10;
+        // How far past the hole a vertex may travel before it starts
+        // narrowing, and how far before it has closed to nothing. As
+        // fractions of plug length, so a big plug and a small one taper
+        // over the same proportion of themselves. Exposed because how
+        // abruptly a hole closes is taste, not physics.
+        float taperFrom = worldLength * _YAPS_TaperStart;
+        float taperTo = worldLength * max(_YAPS_TaperEnd, _YAPS_TaperStart + 0.001);
 
         // CLAMP FIRST. Without this, a socket closer than the plug is long
         // sends every vertex past it flying forward by its own excess —

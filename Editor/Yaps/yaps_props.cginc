@@ -68,6 +68,15 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // works at all on any avatar that also has sockets.
 float _YAPS_SelfTag;
 
+// --- the hole taper --------------------------------------------------
+//
+// How a hole closes around the plug: where narrowing begins and where it
+// has closed to nothing, as fractions of plug length so a big plug and a
+// small one taper over the same proportion of themselves. How abruptly a
+// hole grips is taste rather than physics, so both are knobs.
+float _YAPS_TaperStart;
+float _YAPS_TaperEnd;
+
 // --- blendshapes -----------------------------------------------------
 //
 // How many shape blocks follow the base one, and what each is currently
