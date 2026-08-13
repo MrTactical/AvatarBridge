@@ -1,0 +1,90 @@
+// Phase 1d harness. Minimal unlit shader carrying the YAPS deform, so
+// the bend can be developed against a real baked plug in the editor with
+// no patcher, no conversion and no upload.
+//
+// Shades by world normal so the bend, the twist of the frame and the
+// tip taper are all visible at a glance.
+Shader "AvatarBridge/YAPS Test Plug"
+{
+    Properties
+    {
+        _YAPS_Bake ("Baked data", 2D) = "black" {}
+        _YAPS_VertexCount ("Vertex count", Float) = 0
+        _YAPS_Enabled ("Enabled", Range(0,1)) = 1
+        _YAPS_Length ("Plug length (local)", Float) = 1
+        _YAPS_Overrun ("Allow overrun", Range(0,1)) = 1
+        _YAPS_BakeScale ("Bake scale", Float) = 1
+        _YAPS_SocketPos ("Socket position", Vector) = (0,0,0,0)
+        _YAPS_SocketForward ("Socket forward", Vector) = (0,0,1,0)
+        _YAPS_SocketUp ("Socket up", Vector) = (0,1,0,0)
+        _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (1,0,0,0)
+    }
+
+    SubShader
+    {
+        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
+
+        Pass
+        {
+            Tags { "LightMode" = "ForwardBase" }
+            Cull Off
+
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 4.0
+            #pragma multi_compile_instancing
+            #include "UnityCG.cginc"
+            // Project-absolute so the harness resolves wherever it sits;
+            // this is where AvatarBridge deploys the YAPS includes.
+            #include "Assets/AvatarBridge/Editor/Yaps/yaps_deform.cginc"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
+                float4 tangent : TANGENT;
+                uint vertexId : SV_VertexID;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float3 worldNormal : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            v2f vert(appdata v)
+            {
+                v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_TRANSFER_INSTANCE_ID(v, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+
+                float3 position = v.vertex.xyz;
+                float3 normal = v.normal;
+                float3 tangent = v.tangent.xyz;
+                YapsDeform(position, normal, tangent, v.vertexId);
+
+                o.pos = UnityObjectToClipPos(float4(position, 1));
+                o.worldNormal = UnityObjectToWorldNormal(normal);
+                return o;
+            }
+
+            fixed4 frag(v2f i) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
+                float3 n = normalize(i.worldNormal);
+                // Normal-as-colour: any fold, pinch or twist in the bend
+                // shows up immediately instead of hiding under lighting.
+                return fixed4(n * 0.5 + 0.5, 1);
+            }
+            ENDCG
+        }
+    }
+    Fallback Off
+}
