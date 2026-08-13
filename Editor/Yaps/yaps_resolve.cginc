@@ -194,32 +194,50 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float worldLength)
     socket.forward = _YAPS_SocketForward.xyz;
     socket.up = _YAPS_SocketUp.xyz;
 
-    bool haveDiscrete = dot(socket.position, socket.position) > 1e-6;
+    // A zero position is NOT a socket at the world origin, however much it
+    // looks like one to the maths. Track whether anything actually
+    // resolved, or a plug on an avatar whose channel is quiet will spend
+    // its life reaching for world zero.
+    bool found = dot(socket.position, socket.position) > 1e-6;
 
     // Floor: if nothing has written a position, aim at the nearest body.
-    if (!haveDiscrete)
+    if (!found)
     {
         float3 fromGlobals;
         if (YapsFindGlobalSocket(plugOrigin, worldLength * 2, fromGlobals))
         {
             socket.position = fromGlobals;
             socket.forward = 0;   // caller derives it from the approach
+            found = true;
         }
     }
 
     // Refinement: a protocol light close to where we already believe the
-    // socket to be. Bounded to contact range, and it only sharpens the
-    // position — it can never switch the deform on or off, because light
-    // visibility is per camera and engagement must not be.
+    // socket to be. It only sharpens the position — it can never switch
+    // the deform on or off, because light visibility is per camera and
+    // engagement must not be.
+    //
+    // Searched across the whole engagement envelope rather than a tighter
+    // "contact range". Anything beyond 1.6 plug lengths has zero
+    // engagement anyway, so a shorter reach buys nothing and makes the
+    // light path wake up abruptly on contact instead of easing in the way
+    // the discrete path does.
     float3 lightPosition;
     float3 lightForward;
-    if (YapsFindLightSocket(plugOrigin, worldLength, lightPosition, lightForward))
+    if (YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward))
     {
         socket.position = lightPosition;
+        found = true;
         if (dot(lightForward, lightForward) > 1e-6)
         {
             socket.forward = lightForward;
         }
+    }
+
+    // Nothing to bend toward. Say so, rather than bending toward nothing.
+    if (!found)
+    {
+        socket.engaged = 0;
     }
 
     return socket;

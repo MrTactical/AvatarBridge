@@ -197,8 +197,13 @@ namespace AvatarBridge.Spike
             }
 
             Handles.color = Color.white;
+            // Naming the source matters: in Protocol Lights mode this curve
+            // is the one the socket TRANSFORM implies, while the shader is
+            // resolving the light independently. They should agree — and if
+            // they visibly do not, that disagreement is the finding.
             Handles.Label(p3, $"gap {gap:0.00}  len {worldLength:0.00}  " +
-                              $"engage {engage:0.00}  curve {travelled:0.00}");
+                              $"engage {engage:0.00}  curve {travelled:0.00}\n" +
+                              $"source: {source}");
         }
 
         static Vector3 Bezier(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
