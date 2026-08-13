@@ -97,10 +97,26 @@ namespace AvatarBridge
                 return null;
             }
 
-            // The plug's frame WITHOUT its scale, so baked units match the
-            // renderer's and the shader can compare them to skinned
-            // positions without a conversion it would have to be told about.
-            var toPlug = Matrix4x4.TRS(plugRoot.position, plugRoot.rotation, Vector3.one).inverse;
+            // The shaft direction is MEASURED, not taken from the plug
+            // root's rotation.
+            //
+            // VRCFury aims that object down the shaft as part of its own SPS
+            // step, and the converter deliberately turns that step off — so
+            // the rotation we would inherit is whatever the author left. On
+            // a real avatar that put the +Z axis somewhere across the plug
+            // instead of along it, and every number downstream is scaled by
+            // the length measured along it: baked 0.667 m where the plug is
+            // 0.427. Engagement envelope, bezier handles, hole taper and
+            // trigger box all inherit the error, and the mesh mangles.
+            //
+            // The plug root's POSITION is trustworthy — it is where the plug
+            // is attached — so the axis is the direction from there to the
+            // middle of the vertices that belong to the plug. That is the
+            // way a shaft points, by construction, whatever anybody typed
+            // into a rotation field.
+            var rotation = MeasureFrame(worldPositions, activeWeights, plugRoot,
+                out float axisDrift);
+            var toPlug = Matrix4x4.TRS(plugRoot.position, rotation, Vector3.one).inverse;
 
             int count = worldPositions.Count;
             var positions = new Vector3[count];
@@ -146,7 +162,12 @@ namespace AvatarBridge
             ExtendBounds(renderer, mesh, length);
 
             report?.Converted(Category, renderer.name,
-                $"Baked {active} of {count} vertices, plug length {length:0.###} m. " +
+                $"Baked {active} of {count} vertices, plug length {length:0.###} m" +
+                (axisDrift > 5f
+                    ? $", measuring its own axis {axisDrift:0} degrees off the one the object was " +
+                      "rotated to — the shaft direction is taken from where the vertices actually " +
+                      "are, so an object nobody aimed still bakes correctly. "
+                    : ". ") +
                 "Each vertex is stored in the plug root's own frame, with its skin weight on " +
                 "the plug's bone chain as the blend weight, so the base feathers into the body " +
                 "instead of shearing off.");
@@ -299,6 +320,48 @@ namespace AvatarBridge
                 active.Add(WeightOnPlug(w, plugBones));
             }
             return true;
+        }
+
+        // Forward is where the plug's own vertices are, seen from where it
+        // is attached. Up is whatever the authored rotation offered,
+        // squared off against that — the roll around the shaft is arbitrary
+        // for a rod, and keeping the author's keeps it stable run to run.
+        static Quaternion MeasureFrame(List<Vector3> positions, List<float> active,
+            Transform plugRoot, out float driftDegrees)
+        {
+            var sum = Vector3.zero;
+            float weight = 0f;
+            for (int i = 0; i < positions.Count; i++)
+            {
+                if (active[i] > 0.001f)
+                {
+                    sum += positions[i] * active[i];
+                    weight += active[i];
+                }
+            }
+
+            var authored = plugRoot.rotation;
+            if (weight <= 0f)
+            {
+                driftDegrees = 0f;
+                return authored;
+            }
+
+            var forward = sum / weight - plugRoot.position;
+            if (forward.sqrMagnitude < 1e-8f)
+            {
+                driftDegrees = 0f;
+                return authored;
+            }
+            forward.Normalize();
+
+            driftDegrees = Vector3.Angle(authored * Vector3.forward, forward);
+            var up = authored * Vector3.up;
+            if (Mathf.Abs(Vector3.Dot(up, forward)) > 0.99f)
+            {
+                up = authored * Vector3.right;
+            }
+            return Quaternion.LookRotation(forward, up);
         }
 
         static HashSet<int> BonesUnder(Transform[] bones, Transform root)
