@@ -39,24 +39,14 @@ namespace AvatarBridge
         // The two digits the legacy DPS protocol never claimed. It speaks
         // for 1 and 3 (hole), 2 and 4 (ring), 5 and 6 (front) and 8 and 9
         // (a plug's own tip), and a decoder only reads the second decimal.
-        // The second decimal is the protocol digit. The FOURTH is who owns
-        // the socket — see _YAPS_SelfTag — and the converter picks it from
-        // the avatar's name so reconverting the same avatar keeps it.
+        //
+        // Nothing is stamped into the fourth decimal any more. That was an
+        // owner digit, and it rested on precision nobody had measured: the
+        // range arrives in the shader reconstructed from an attenuation
+        // uniform, not read, and the fourth decimal does not survive it.
+        // Ownership is decided from the player positions instead.
         const float RootRange = 0.4700f;
         const float FrontRange = 0.4000f;
-
-        static float SelfTag(BridgeContext ctx)
-        {
-            unchecked
-            {
-                int hash = 17;
-                foreach (char c in ctx.Target.name)
-                {
-                    hash = hash * 31 + c;
-                }
-                return Mathf.Abs(hash) % 10;
-            }
-        }
 
         static readonly string[] AtlasJunk = { "SpsResolver", "SpsScreenMarker", "SpsAtlas" };
 
@@ -75,8 +65,10 @@ namespace AvatarBridge
             }
 
             RemoveAtlasJunk(ctx);
-            float selfTag = SelfTag(ctx);
-            ReRangeSocketLights(ctx, socketRoots, selfTag);
+            // A flag, not a tag: sockets on this avatar mean its own plugs
+            // must check ownership before reaching for one.
+            float selfFlag = socketRoots.Count > 0 ? 1f : -1f;
+            ReRangeSocketLights(ctx, socketRoots);
 
             foreach (var plugRoot in plugRoots)
             {
@@ -84,7 +76,7 @@ namespace AvatarBridge
             }
             foreach (var plug in ctx.YapsPlugs)
             {
-                plug.Material.SetFloat("_YAPS_SelfTag", selfTag);
+                plug.Material.SetFloat("_YAPS_SelfTag", selfFlag);
             }
 
             if (socketRoots.Count > 0)
@@ -299,9 +291,9 @@ namespace AvatarBridge
 
         // --- the sockets -----------------------------------------------
 
-        static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots, float selfTag)
+        static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots)
         {
-            float owner = selfTag * 0.0001f;
+
             int roots = 0, fronts = 0, left = 0;
             foreach (var socket in socketRoots)
             {
@@ -310,12 +302,12 @@ namespace AvatarBridge
                     int digit = Digit(light.range);
                     if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
                     {
-                        light.range = RootRange + owner;
+                        light.range = RootRange;
                         roots++;
                     }
                     else if (digit == 5 || digit == 6)
                     {
-                        light.range = FrontRange + owner;
+                        light.range = FrontRange;
                         fronts++;
                     }
                     else

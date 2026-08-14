@@ -130,19 +130,19 @@ inline float3 YapsLightPosition(uint slot)
 // identity is transmitted and nothing is spent — the answer was already
 // sitting in a global array.
 //
-// It is a judgement rather than a fact. Two people standing hip to hip can
-// confuse it, and a socket far from its own hip — on a hand, say — can look
-// like it belongs to whoever is closer. That is why it never runs alone: it
-// only ever decides a case the tag has already flagged as suspect, so a
-// wrong answer here costs a tag collision that would have happened anyway,
-// and a right one rescues nine in ten of them.
+// It is a judgement rather than a fact, and it is built to fail SAFE: it
+// returns "not mine" whenever it cannot tell. Discarding a light that was
+// somebody else's costs a socket that should have worked; keeping one that
+// was our own costs a plug bent into its wearer, which the deform recovers
+// from as soon as anything better resolves. Doubt therefore keeps the light.
 bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 {
+    // No early-out for a lone player. Alone in an instance the wearer IS
+    // the only body, and the inboard test below is exactly what separates
+    // their own socket from a prop they are holding — bailing out here with
+    // "same body" would blank every socket in the world for anyone testing
+    // by themselves.
     int count = min((int) round(CVRGlobalParams1.y), 255);
-    if (count <= 1)
-    {
-        return true;   // nobody else here; the tag was right
-    }
 
     float3 lightAt = YapsLightPosition(slot);
     int nearPlug = -1, nearLight = -1;
@@ -161,13 +161,27 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
         if (toLight < bestLight) { bestLight = toLight; nearLight = i; }
     }
 
-    // Nothing resolved: fall back to trusting the tag, which is what this
-    // did before the globals were consulted at all.
+    // Nothing resolved: claim nothing, so a light is never discarded on the
+    // strength of an answer we do not have.
     if (nearPlug < 0 || nearLight < 0)
     {
-        return true;
+        return false;
     }
-    return nearPlug == nearLight;
+    if (nearPlug != nearLight)
+    {
+        return false;   // somebody else's body; plainly not ours
+    }
+
+    // Same body — but so is a prop held against your own hip, and skipping
+    // those would make the whole test kit invisible to its own owner.
+    //
+    // What separates them is that a real socket on this body sits INBOARD
+    // of the plug: a hip or a mouth is nearer that hip than the plug growing
+    // out of it is. Something being pushed at the plug from outside is not.
+    // So being nearest the same person is necessary and not sufficient.
+    float plugToHip = dot(_CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin,
+                          _CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin);
+    return bestLight < plugToHip;
 }
 
 int YapsClassifyLight(uint slot, float3 plugOrigin)
@@ -184,18 +198,24 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
     // permanently in reach and permanently nearest, so without this the
     // plug never looks at anyone else.
     //
-    // The tag alone is only ten values, so two people wearing
-    // differently-converted avatars collide about one time in ten and one
-    // of them stops seeing the other's sockets entirely. The tag therefore
-    // does not get the final word: it says "this MIGHT be mine", and the
-    // player positions are asked whose it actually is.
-    if (_YAPS_SelfTag >= 0)
+    // Ownership is decided by the PLAYER POSITIONS alone. It used to be
+    // decided by a digit stamped into the range's fourth decimal, and that
+    // was built on precision nobody had measured: the spike verified the
+    // SECOND decimal survives the round trip, and the range is not read
+    // directly but reconstructed as 5·rsqrt(atten) from an attenuation
+    // uniform. The fourth decimal does not come back reliably.
+    //
+    // It showed as a socket that worked or did not depending on which digit
+    // its range happened to land on. A prop authored at 0.4206 — fourth
+    // decimal 6 — was being skipped by a plug whose tag was 3, because the
+    // number arriving in the shader was nearer 0.4203.
+    //
+    // So the digit is gone. _YAPS_SelfTag is now only a flag: zero or more
+    // means "this plug is on an avatar that also has sockets, so check",
+    // and -1 means there is nothing to check for.
+    if (_YAPS_SelfTag >= 0 && YapsSameBodyAs(plugOrigin, slot))
     {
-        int owner = (int) round(fmod(range * 10000.0, 10.0));
-        if (owner == (int) round(_YAPS_SelfTag) && YapsSameBodyAs(plugOrigin, slot))
-        {
-            return YAPS_LIGHT_NONE;
-        }
+        return YAPS_LIGHT_NONE;
     }
 
     int digit = (int) round(fmod(range, 0.1) * 100.0);

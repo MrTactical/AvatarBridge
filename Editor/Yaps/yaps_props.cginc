@@ -61,15 +61,20 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // On an avatar carrying both, its own sockets are permanently in reach and
 // permanently nearest, so it spends its life bent into its wearer's hip.
 //
-// The converter therefore stamps a digit into the FOURTH decimal of every
-// light range it writes, and the same digit here. Anything matching is the
-// wearer's own and is skipped. -1 means no plug on this avatar knows the
-// tag, so nothing is skipped.
+// So the question is put to ChilloutVR's player positions instead: which
+// player is nearest the plug, which is nearest the light, and are they the
+// same person. Nothing is transmitted and nothing is spent.
 //
-// Ten values, so two people wearing differently-converted avatars collide
-// about one time in ten and one of them stops seeing the other's sockets.
-// That is worth it against the alternative, which is a plug that never
-// works at all on any avatar that also has sockets.
+// This is a FLAG now, not a tag. Zero or more means "this plug is on an
+// avatar that also carries sockets, so ownership is worth checking"; -1
+// means there is nothing to check for and every light counts.
+//
+// It used to be a digit stamped into the range's fourth decimal, compared
+// against the same digit here. That was built on precision nobody had
+// measured — the spike verified the SECOND decimal survives, and the range
+// is reconstructed as 5·rsqrt(atten) rather than read — and it showed as
+// sockets that worked or did not depending on which digit their range
+// happened to land on.
 float _YAPS_SelfTag;
 
 // --- the hole taper --------------------------------------------------
