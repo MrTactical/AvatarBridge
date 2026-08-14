@@ -310,9 +310,35 @@ namespace AvatarBridge
             // only refines with light — this is about leaving room for the
             // readers that have nothing else. Holes first, since they are
             // what a plug is usually looking for.
+            // First, hand the problem to the menu the wearer already has.
+            // Every socket whose toggle can be found gets its lights wired
+            // to it, so "one socket at a time" finally means one socket LIT
+            // at a time and the contention is theirs to control.
+            int wired = 0;
+            var unwired = new List<Transform>();
+            foreach (var socket in socketRoots)
+            {
+                var paths = socket.GetComponentsInChildren<Light>(true)
+                    .Where(l => Digit(l.range) >= 1 && Digit(l.range) <= 6)
+                    .Select(l => ctx.PathInTarget(l.transform))
+                    .ToList();
+                string toggle = ToggleFor(ctx, socket);
+                if (toggle != null && paths.Count > 0 && AddLightToggle(ctx, toggle, paths))
+                {
+                    wired++;
+                }
+                else
+                {
+                    unwired.Add(socket);
+                }
+            }
+
+            // Anything with no toggle to hang off still has to be capped,
+            // or one unlabelled socket set puts us back where we started.
             var emitting = socketRoots
-                .OrderBy(s => SocketRank(s))
-                .Take(Mathf.Max(1, ctx.Settings.maxLightEmittingSockets))
+                .Where(s => !unwired.Contains(s))
+                .Concat(unwired.OrderBy(SocketRank)
+                    .Take(Mathf.Max(1, ctx.Settings.maxLightEmittingSockets)))
                 .ToList();
             int darkened = 0;
             foreach (var socket in socketRoots)
@@ -420,6 +446,15 @@ namespace AvatarBridge
                     : " These sockets use our own ordering, which wins the light slots cleanly " +
                       "but is unreadable to DPS content — they will be invisible to every plug " +
                       "except another converted one.") +
+                (wired > 0
+                    ? $" {wired} socket(s) had their lights wired to the menu entry that already " +
+                      "turns them on and off, which until now did nothing to the lights at all — " +
+                      "VRChat's socket menu selects which socket a screen atlas publishes, and " +
+                      "that atlas is the part of its transport this tool deletes. So an avatar set " +
+                      "to \"one socket at a time\" was still emitting every light it had. Now the " +
+                      "menu means what it says, and four vertex light slots are enough for " +
+                      "whatever you have switched on."
+                    : "") +
                 (darkened > 0
                     ? $" {darkened} marker light(s) on {socketRoots.Count - emitting.Count} other " +
                       "socket(s) were removed. Unity gives a mesh four vertex light slots and this " +
@@ -450,6 +485,64 @@ namespace AvatarBridge
         // twin is there for the DPS content already on the platform, which
         // is most of it.
 
+        // Wire a socket's marker lights to the menu entry that already turns
+        // that socket on and off.
+        //
+        // The toggles exist and do nothing to the lights. VRCFury's socket
+        // menu drives a parameter that told SPS's screen atlas which socket
+        // to publish, and the atlas is the one part of its transport we
+        // delete — so on a converted avatar every socket stays lit whatever
+        // the menu says, and an avatar with "one socket at a time" still
+        // emits two dozen lights. Nothing in the controller touches
+        // m_IsActive on a socket at all.
+        //
+        // That matters because four vertex light slots cannot carry a dozen
+        // sockets. Wiring the existing menu to the lights hands that problem
+        // to the person best placed to solve it: the wearer, who already has
+        // a control that says exactly what they want lit.
+        static string ToggleFor(BridgeContext ctx, Transform socket)
+        {
+            var names = ctx.CvrAvatar.avatarSettings.settings
+                .Select(e => e.machineName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList();
+
+            // Walk up from the socket: VRCFury names the object the author
+            // made, and the menu entry is named after the same thing.
+            for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
+            {
+                string mine = Normalise(at.name);
+                if (mine.Length < 3)
+                {
+                    continue;
+                }
+                // Longest match first, so "SteppiesLeft" wins over anything
+                // that merely starts the same way.
+                string best = names
+                    .Where(n => mine.StartsWith(Normalise(n), StringComparison.Ordinal)
+                                && Normalise(n).Length >= 3)
+                    .OrderByDescending(n => Normalise(n).Length)
+                    .FirstOrDefault();
+                if (best != null)
+                {
+                    return best;
+                }
+            }
+            return null;
+        }
+
+        // "[VF958] Blowjob" and "VF80_Blowjob" and "Handjob Left" against
+        // "HandjobLeft" all have to meet in the middle. Fury's own numbering
+        // is noise, and "Target" is a word it adds to the object but not to
+        // the menu.
+        static string Normalise(string name)
+        {
+            string clean = System.Text.RegularExpressions.Regex.Replace(name, @"\[VF\d+\]", "");
+            clean = System.Text.RegularExpressions.Regex.Replace(clean, @"^VF\d+_", "");
+            clean = clean.Replace("Target", "").Replace(" ", "").Replace("_", "");
+            return clean;
+        }
+
         // Holes first, then rings, then anything unlabelled — so the sockets
         // that keep their lights are the ones a plug is most likely to be
         // looking for.
@@ -463,6 +556,83 @@ namespace AvatarBridge
                 else if (digit == 2 || digit == 4) best = Mathf.Min(best, 1);
             }
             return best;
+        }
+
+        // Two states and a parameter. Not a blend tree: m_IsActive is a
+        // switch, and blending one halfway is meaningless.
+        static bool AddLightToggle(BridgeContext ctx, string parameter, List<string> lightPaths)
+        {
+            var controller = ctx.MergedController;
+            var declared = controller.parameters.FirstOrDefault(p => p.name == parameter);
+            if (declared == null || lightPaths.Count == 0)
+            {
+                return false;
+            }
+
+            var on = ClipFor("YAPS lights on", lightPaths, 1f);
+            var off = ClipFor("YAPS lights off", lightPaths, 0f);
+            var machine = new UnityEditor.Animations.AnimatorStateMachine
+            {
+                name = parameter + " lights",
+                hideFlags = HideFlags.HideInHierarchy,
+            };
+
+            string path = AssetDatabase.GetAssetPath(controller);
+            if (!string.IsNullOrEmpty(path))
+            {
+                // Built in memory, so it has to become part of the asset or
+                // Unity drops the lot on save and leaves an empty layer.
+                AssetDatabase.AddObjectToAsset(machine, controller);
+                AssetDatabase.AddObjectToAsset(on, controller);
+                AssetDatabase.AddObjectToAsset(off, controller);
+            }
+
+            var offState = machine.AddState("Off");
+            offState.writeDefaultValues = false;
+            offState.motion = off;
+            var onState = machine.AddState("On");
+            onState.writeDefaultValues = false;
+            onState.motion = on;
+            machine.defaultState = offState;
+
+            var toOn = offState.AddTransition(onState);
+            var toOff = onState.AddTransition(offState);
+            foreach (var t in new[] { toOn, toOff })
+            {
+                t.hasExitTime = false;
+                t.duration = 0f;
+            }
+            if (declared.type == AnimatorControllerParameterType.Bool)
+            {
+                toOn.AddCondition(UnityEditor.Animations.AnimatorConditionMode.If, 0f, parameter);
+                toOff.AddCondition(UnityEditor.Animations.AnimatorConditionMode.IfNot, 0f, parameter);
+            }
+            else
+            {
+                toOn.AddCondition(UnityEditor.Animations.AnimatorConditionMode.Greater, 0.5f, parameter);
+                toOff.AddCondition(UnityEditor.Animations.AnimatorConditionMode.Less, 0.5f, parameter);
+            }
+
+            var layers = controller.layers.ToList();
+            layers.Add(new UnityEditor.Animations.AnimatorControllerLayer
+            {
+                name = "YAPS " + parameter + " lights",
+                defaultWeight = 1f,
+                stateMachine = machine,
+            });
+            controller.layers = layers.ToArray();
+            return true;
+        }
+
+        static AnimationClip ClipFor(string name, List<string> paths, float active)
+        {
+            var clip = new AnimationClip { name = name };
+            foreach (string path in paths)
+            {
+                clip.SetCurve(path, typeof(GameObject), "m_IsActive",
+                    AnimationCurve.Constant(0f, 1f / 60f, active));
+            }
+            return clip;
         }
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
