@@ -44,10 +44,13 @@ namespace AvatarBridge
         const int FloatsPerVertex = 10;
         const int FloatsPerShapeVertex = 9;   // delta position, normal, tangent
 
-        // and shape variants; sixteen buys reach nobody uses and costs
-        // texture on every avatar. Eight ride two float4s.
-        // costs texture on every avatar. The weights ride one float4.
-        public const int MaxShapes = 8;
+        // Sixteen, matching SPS. Eight was chosen when the bake was new and
+        // texture cost was the worry, on the reasoning that nobody would
+        // use more — but a plug with separate length, girth, curve and knot
+        // sliders spends eight without trying, and a shape the bake does
+        // not carry is one the deform silently ignores while the mesh moves
+        // out from under it. The weights ride four float4s.
+        public const int MaxShapes = 16;
 
         public class Result
         {

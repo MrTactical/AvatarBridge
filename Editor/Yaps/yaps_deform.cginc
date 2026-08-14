@@ -465,6 +465,33 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     baked.position.z *= lerp(1, max(_YAPS_IdleLength, 0.01), idle);
     baked.position.xy *= lerp(1, max(_YAPS_IdleWidth, 0.01), idle);
 
+    // PUMPING and WRIGGLE, from TPS and DPS. Motion the plug makes on its
+    // own, so it is not a rigid prop between events.
+    //
+    // Both scale with how far ALONG the shaft a vertex sits, so the base
+    // stays welded to the body and the tip moves most. A uniform offset
+    // would slide the whole plug out of its owner.
+    //
+    // Pumping runs only while ENGAGED — a plug thrusting at nothing is
+    // absurd — and wriggle only while IDLE, where it reads as the thing
+    // being alive rather than as a stiff rod. They never overlap, so they
+    // cannot fight each other.
+    float along = saturate(baked.position.z / max(worldLength, 0.0001));
+
+    if (_YAPS_PumpStrength > 0)
+    {
+        float t = _Time.y * max(_YAPS_PumpSpeed, 0);
+        baked.position.z += sin(t) * _YAPS_PumpStrength * worldLength * along * engage;
+    }
+
+    if (_YAPS_WriggleStrength > 0)
+    {
+        float t = _Time.y * max(_YAPS_WriggleSpeed, 0);
+        // Two axes out of phase, so it wanders rather than swinging flat.
+        baked.position.x += sin(t) * _YAPS_WriggleStrength * worldLength * along * idle;
+        baked.position.y += sin(t * 0.7 + 1.3) * _YAPS_WriggleStrength * worldLength * along * idle;
+    }
+
     // Only the PLUG's handle gets the pullout. Stretching it far along the
     // plug's own forward is what holds the shaft straight while the socket
     // is still out of range — the curve's first stretch is then dominated
@@ -510,6 +537,39 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         radius = 1 - YapsRamp(leftOver, taperFrom, taperTo);
         if (_YAPS_Overrun < 0.5) leftOver = 0;
     }
+    // SQUEEZE and BULGE, both measured from the entry — the point along
+    // the shaft that is level with the socket. A vertex at baked z == gap
+    // is exactly in the opening; less than that is still outside, more is
+    // through.
+    //
+    // Squeeze narrows the shaft where the socket grips it, bulge swells it
+    // just short of the opening where the flesh piles up. Both are DPS and
+    // TPS ideas and both are what makes an entry read as tight rather than
+    // as a rod sliding through a hoop.
+    //
+    // Only while engaged, and faded by engagement, so an idle plug is
+    // never pinched by a socket that is not there.
+    float entry = baked.position.z - gap;
+    float grip = engage * step(0.5, enabled);
+
+    if (_YAPS_Squeeze > 0)
+    {
+        // Deepest AT the opening, easing off either side of it.
+        float reach = max(_YAPS_SqueezeDistance, 0.001) * worldLength;
+        float near = 1 - saturate(abs(entry) / reach);
+        radius *= 1 - _YAPS_Squeeze * near * grip;
+    }
+
+    if (_YAPS_Bulge > 0)
+    {
+        // Just OUTSIDE the opening only: entry < 0. Swelling on the far
+        // side would be the shaft growing inside whatever it entered.
+        float reach = max(_YAPS_BulgeDistance, 0.001) * worldLength;
+        float before = saturate(-entry / reach);
+        float shape = before * (1 - before) * 4;   // a hump, zero at both ends
+        radius *= 1 + _YAPS_Bulge * shape * grip;
+    }
+
     frame.position += frame.forward * leftOver;
 
     float3 right = cross(frame.up, frame.forward);

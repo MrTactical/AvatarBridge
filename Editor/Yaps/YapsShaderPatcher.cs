@@ -72,9 +72,19 @@ namespace AvatarBridge
         _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.35
         _YAPS_IdleLength (""YAPS idle length"", Range(0.1,1)) = 1
         _YAPS_IdleWidth (""YAPS idle width"", Range(0.1,1)) = 1
+        _YAPS_Squeeze (""YAPS squeeze"", Range(0,1)) = 0
+        _YAPS_SqueezeDistance (""YAPS squeeze reach"", Range(0.01,1)) = 0.15
+        _YAPS_Bulge (""YAPS bulge"", Range(0,1)) = 0
+        _YAPS_BulgeDistance (""YAPS bulge reach"", Range(0.01,1)) = 0.2
+        _YAPS_PumpStrength (""YAPS pumping"", Range(0,0.5)) = 0
+        _YAPS_PumpSpeed (""YAPS pumping speed"", Range(0,20)) = 6
+        _YAPS_WriggleStrength (""YAPS wriggle"", Range(0,0.5)) = 0
+        _YAPS_WriggleSpeed (""YAPS wriggle speed"", Range(0,20)) = 2
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights3 (""YAPS shape weights 8-11"", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights4 (""YAPS shape weights 12-15"", Vector) = (0,0,0,0)
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,

@@ -46,9 +46,19 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_TaperEnd ("Hole taper end", Range(0,1)) = 0.35
         _YAPS_IdleLength ("Idle length", Range(0.1,1)) = 1
         _YAPS_IdleWidth ("Idle width", Range(0.1,1)) = 1
+        _YAPS_Squeeze ("Squeeze", Range(0,1)) = 0
+        _YAPS_SqueezeDistance ("Squeeze reach", Range(0.01,1)) = 0.15
+        _YAPS_Bulge ("Bulge", Range(0,1)) = 0
+        _YAPS_BulgeDistance ("Bulge reach", Range(0.01,1)) = 0.2
+        _YAPS_PumpStrength ("Pumping", Range(0,0.5)) = 0
+        _YAPS_PumpSpeed ("Pumping speed", Range(0,20)) = 6
+        _YAPS_WriggleStrength ("Wriggle", Range(0,0.5)) = 0
+        _YAPS_WriggleSpeed ("Wriggle speed", Range(0,20)) = 2
         _YAPS_ShapeCount ("Shape count", Float) = 0
         _YAPS_ShapeWeights ("Shape weights 0-3", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 ("Shape weights 4-7", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights3 ("Shape weights 8-11", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights4 ("Shape weights 12-15", Vector) = (0,0,0,0)
         [Enum(Deform,0,Active weight,1,Engagement,2,Blend,3,Baked Z,4)]
         _YAPS_Debug ("Debug view", Float) = 0
     }

@@ -104,6 +104,26 @@ float _YAPS_TaperEnd;
 float _YAPS_IdleLength;
 float _YAPS_IdleWidth;
 
+// How tightly a socket grips the shaft, and how far either side of the
+// opening that grip reaches. DPS and TPS both have this; without it an
+// entry reads as a rod passing through a hoop rather than as anything
+// tight.
+float _YAPS_Squeeze;
+float _YAPS_SqueezeDistance;
+
+// The swell just SHORT of the opening, where flesh piles up rather than
+// going through. Never on the far side — that would be the shaft growing
+// inside whatever it entered.
+float _YAPS_Bulge;
+float _YAPS_BulgeDistance;
+
+// Motion the plug makes on its own. Pumping only while engaged, wriggle
+// only while idle, so the two can never fight.
+float _YAPS_PumpStrength;
+float _YAPS_PumpSpeed;
+float _YAPS_WriggleStrength;
+float _YAPS_WriggleSpeed;
+
 // --- blendshapes -----------------------------------------------------
 //
 // How many shape blocks follow the base one, and what each is currently
@@ -117,10 +137,19 @@ float _YAPS_IdleWidth;
 float _YAPS_ShapeCount;
 float4 _YAPS_ShapeWeights;    // shapes 0-3
 float4 _YAPS_ShapeWeights2;   // shapes 4-7
+float4 _YAPS_ShapeWeights3;   // shapes 8-11
+float4 _YAPS_ShapeWeights4;   // shapes 12-15
 
+// Sixteen, matching SPS. Eight was chosen when the bake was new and cost
+// was the worry; a plug with separate length, girth, curve and knot
+// sliders spends eight without trying, and a shape the bake does not
+// carry is one the deform silently ignores.
 inline float YapsShapeWeight(uint index)
 {
-    float4 pack = index < 4 ? _YAPS_ShapeWeights : _YAPS_ShapeWeights2;
+    float4 pack = index < 4 ? _YAPS_ShapeWeights
+                : index < 8 ? _YAPS_ShapeWeights2
+                : index < 12 ? _YAPS_ShapeWeights3
+                : _YAPS_ShapeWeights4;
     uint slot = index & 3;
     return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
 }

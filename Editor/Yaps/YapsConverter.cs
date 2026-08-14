@@ -896,10 +896,15 @@ namespace AvatarBridge
             }
         }
 
+        // Four float4s, sixteen shapes, matching SPS.
         static string WeightProperty(int slot)
-            => slot < 4
-                ? "_YAPS_ShapeWeights." + "xyzw"[slot]
-                : "_YAPS_ShapeWeights2." + "xyzw"[slot - 4];
+        {
+            string pack = slot < 4 ? "_YAPS_ShapeWeights"
+                        : slot < 8 ? "_YAPS_ShapeWeights2"
+                        : slot < 12 ? "_YAPS_ShapeWeights3"
+                        : "_YAPS_ShapeWeights4";
+            return pack + "." + "xyzw"[slot & 3];
+        }
 
         static void RemoveAtlasJunk(BridgeContext ctx)
         {
