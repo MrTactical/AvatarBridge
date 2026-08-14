@@ -279,21 +279,40 @@ it behaves like SPS without being SPS; the separate name keeps that honest, and 
 credited as the prior art that invented the technique. Sockets on other people are found through
 ChilloutVR's own per-player positions, its contact system, and the marker lights the platform's
 existing DPS content already emits — so a converted plug reacts to avatars that have never heard
-of AvatarBridge. The reverse doesn't hold: legacy plugs won't react to a converted socket.
-Experimental means what it says; test it with a second person before relying on it.
+of AvatarBridge. **And the reverse holds too**: a converted avatar's sockets emit exactly what
+DPS, TPS and SPS content expects, so other people's plugs use them from any direction without
+either side knowing this tool exists. Experimental means what it says; test it with a second
+person before relying on it.
+
+**YAPS speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at
+it — the objects in its hierarchy, its menu labels, its report — but the things *other people's*
+content reads are left exactly as they were: the contact tags (`TPS_Orf_Root`,
+`SPSLL_Socket_Front` and the rest) and the marker light ranges. Those aren't names, they're the
+wire. Renaming them would make every DPS, TPS and SPS plug on the platform blind to your avatar,
+which is the whole point of keeping them. Parameter names are left alone for a second reason:
+ChilloutVR restores a saved profile by parameter name, so renaming one would quietly stop your
+saved settings from loading.
+
+**An older avatar with DPS or TPS and no SPS still gains from the setting.** There's nothing for
+YAPS to build — those systems predate the objects it builds a plug from, so the plug keeps a
+shader whose deform doesn't exist here and won't bend. But its sockets come through untouched
+and work for everyone else, and leaving the setting **on** is what keeps their contacts and depth
+reactions; turning it off strips both. The report says which of those two cases you're in.
 
 **How a plug finds a socket.** Three routes, tried in that order, and which ones an avatar gets
 depends on how much parameter sync it has left:
 
 | | costs | reaches | when it's used |
 |---|---|---|---|
-| **Contact channel** | 5 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
+| **Contact channel** | up to 8 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
 | **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
 | **Player positions** | nothing | everyone, every frame | the floor — aims at a body when nothing better resolves |
 
-If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first and the
-socket's position second, and says so in the report rather than silently going over. An avatar
-with no budget at all still works through the lights.
+If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
+socket's position second and which way it faces last, and says so in the report rather than
+silently going over. Dropped in that order because a plug that knows where a socket is but not
+which way it faces still reaches it; one that doesn't know where it is has nowhere to go. An
+avatar with no budget at all still works through the lights.
 
 **What other people see.** The wearer's own machine works out where the socket is, and a driver
 publishes it so everyone else sees the same bend. Marker lights are read independently by each
