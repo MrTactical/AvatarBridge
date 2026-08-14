@@ -322,6 +322,12 @@ namespace AvatarBridge.Spike
         {
             "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
         };
+        // The second point, which is what says which way a socket faces.
+        static readonly string[] FrontTypes =
+        {
+            "TPS_Orf_Norm", "TPS_Orf_Norm_SelfNotOnHips",
+            "SPSLL_Socket_Front", "SPSLL_Socket_Front_SelfNotOnHips",
+        };
 
         static void BuildPropChannel(GameObject root, GameObject body, Material material,
             YapsBaker.Result result)
@@ -345,7 +351,7 @@ namespace AvatarBridge.Spike
             // Filling the list is not enough — this flag is what makes the
             // client look at it at all.
             spawnable.useAdditionalValues = true;
-            foreach (string name in new[] { "E", "H", "X", "Y", "Z" })
+            foreach (string name in new[] { "E", "H", "X", "Y", "Z", "FX", "FY", "FZ" })
             {
                 spawnable.syncValues.Add(new CVRSpawnableValue
                 {
@@ -418,19 +424,27 @@ namespace AvatarBridge.Spike
 
             // Where the socket sits, one axis each. These carry a position
             // task, so they really are boxes and want the full size.
+            // Twice over: the socket's root, then the second point that says
+            // which way it faces. Subtracting one from the other is the
+            // axis, which is the one thing the light path had and this
+            // channel did not — a bare point can only be aimed at, so the
+            // plug reached the socket instead of threading it.
             var axes = new[]
             {
-                (2, "X", CVRSpawnableTrigger.SampleDirection.XPositive),
-                (3, "Y", CVRSpawnableTrigger.SampleDirection.YPositive),
-                (4, "Z", CVRSpawnableTrigger.SampleDirection.ZPositive),
+                (2, "X", SocketTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
+                (3, "Y", SocketTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
+                (4, "Z", SocketTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
+                (5, "FX", FrontTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
+                (6, "FY", FrontTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
+                (7, "FZ", FrontTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
             };
-            foreach (var (index, name, direction) in axes)
+            foreach (var (index, name, types, direction) in axes)
             {
                 var axis = Host("YAPS Channel " + name).AddComponent<CVRSpawnableTrigger>();
                 axis.areaSize = box;
                 axis.sampleDirection = direction;
                 axis.useAdvancedTrigger = true;
-                axis.allowedTypes = SocketTypes;
+                axis.allowedTypes = types;
                 axis.stayTasks.Add(new CVRSpawnableTriggerTaskStay
                 {
                     settingIndex = index,
@@ -465,6 +479,9 @@ namespace AvatarBridge.Spike
                 ("X", "material._YAPS_SocketPos.x"),
                 ("Y", "material._YAPS_SocketPos.y"),
                 ("Z", "material._YAPS_SocketPos.z"),
+                ("FX", "material._YAPS_SocketFront.x"),
+                ("FY", "material._YAPS_SocketFront.y"),
+                ("FZ", "material._YAPS_SocketFront.z"),
             };
 
             foreach (var (value, property) in properties)

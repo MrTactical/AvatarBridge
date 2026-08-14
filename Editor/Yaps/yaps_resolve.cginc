@@ -365,6 +365,30 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
             float channelGap = length(socket.position - plugOrigin);
             socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, channelGap);
         }
+
+        // Which way the socket FACES, from the second point it already
+        // publishes. Without this the channel hands over a bare point, the
+        // deform can only aim at it, and the plug reaches the socket
+        // instead of threading it — visibly worse than the light path,
+        // which gets a root and a front and therefore an axis.
+        //
+        // Believed only when it is PLAUSIBLE. Both ecosystems put the
+        // second point about a centimetre from the first, so a gap much
+        // larger than that is not a socket's axis: it is the value sitting
+        // at its default because no front was in range, or a front
+        // belonging to a different socket than the root did. Either way the
+        // honest answer is to say nothing and let the deform take its
+        // direction from the approach, which is what a zero forward means.
+        float3 frontOffset = (_YAPS_SocketFront.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz;
+        float3 frontAt = plugOrigin + plugRight * frontOffset.x
+                                    + plugUp * frontOffset.y
+                                    + plugForward * frontOffset.z;
+        float3 axis = frontAt - socket.position;
+        float axisLength = length(axis);
+        if (axisLength > 1e-5 && axisLength < worldLength * 0.5)
+        {
+            socket.forward = axis / axisLength;
+        }
     }
 
     // What the CHANNEL resolved, kept before the floor invents anything.

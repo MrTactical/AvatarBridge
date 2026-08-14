@@ -156,6 +156,11 @@ namespace AvatarBridge
             // the line costs nothing; sitting a float past it costs the
             // avatar's credibility at upload time.
             int spare = SpareSyncFloats(ctx);
+            // Orientation is bought LAST and dropped FIRST, because a plug
+            // without it still finds the socket and bends to it — it just
+            // reaches the socket rather than threading it. A plug without
+            // the position does not know where to go at all.
+            bool carryOrientation = spare >= 9;   // the offset tier, and three more
             bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
             bool carryEngagement = spare >= 3;   // engagement and is-hole
 
@@ -209,21 +214,16 @@ namespace AvatarBridge
             for (int a = 0; a < axes.Length; a++)
             {
                 var (axis, direction) = axes[a];
-                var host = TriggerHost($"YAPS Channel {index} {axis}", plug);
+                AddAxisTrigger(ctx, plug, index, box, axis, direction, SocketPointerTypes, "");
 
-                var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-                trigger.areaSize = box;
-                trigger.areaOffset = Vector3.zero;
-                trigger.sampleDirection = direction;
-                trigger.useAdvancedTrigger = true;
-                trigger.allowedTypes = SocketPointerTypes;
-                trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+                // The same three axes again, reading the socket's SECOND
+                // point instead of its root. Subtracting one from the other
+                // is the socket's facing, which is the one thing the light
+                // path had that this channel did not.
+                if (carryOrientation)
                 {
-                    settingName = Local(index, axis),
-                    updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
-                    minValue = 0f,
-                    maxValue = 1f,
-                });
+                    AddAxisTrigger(ctx, plug, index, box, axis, direction, FrontPointerTypes, "F");
+                }
             }
 
             // ONE task per material property, not one per value. A driver
@@ -253,6 +253,18 @@ namespace AvatarBridge
                     PropertyType = CVRMaterialDriverTask.Type.Vector4,
                 });
             }
+            int frontTask = 0;
+            if (carryOrientation)
+            {
+                frontTask = materialDriver.tasks.Count + 1;
+                materialDriver.tasks.Add(new CVRMaterialDriverTask
+                {
+                    Renderer = plug.Renderer,
+                    Index = plug.MaterialSlot,
+                    PropertyName = "_YAPS_SocketFront",
+                    PropertyType = CVRMaterialDriverTask.Type.Vector4,
+                });
+            }
 
             // Engagement first, deliberately: slots go out in declaration
             // order, so the one value the deform cannot work without is the
@@ -265,6 +277,16 @@ namespace AvatarBridge
             foreach (var (axis, _) in axes)
             {
                 values.Add((axis, $"material{posTask:00}{axis}"));
+            }
+            if (carryOrientation)
+            {
+                foreach (var (axis, _) in axes)
+                {
+                    // "F" only names the parameter. The FIELD keeps the bare
+                    // axis letter, because a driver task's four fields are
+                    // X/Y/Z/W of its own float4 whatever that float4 holds.
+                    values.Add(("F" + axis, $"material{frontTask:00}{axis}"));
+                }
             }
 
             foreach (var (axis, field) in values)
@@ -524,6 +546,18 @@ namespace AvatarBridge
             "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
         };
 
+        // The socket's SECOND point, which is what says which way it faces.
+        // TPS puts a TPS_Orf_Norm a centimetre along the orifice's forward
+        // from its root; SPS does the same and calls it a Front. Both are
+        // here because a converted avatar carries both — twelve of each on
+        // the avatar this was built against — and because a plug should not
+        // care which system dressed the socket it just met.
+        static readonly string[] FrontPointerTypes =
+        {
+            "TPS_Orf_Norm", "TPS_Orf_Norm_SelfNotOnHips",
+            "SPSLL_Socket_Front", "SPSLL_Socket_Front_SelfNotOnHips",
+        };
+
         static string Local(int index, string axis) => $"#YAPS{index}{axis}";
         static string Synced(int index, string axis) => $"YAPS{index}{axis}";
 
@@ -586,6 +620,29 @@ namespace AvatarBridge
             var clip = new AnimationClip { name = name };
             clip.SetCurve(path, component, field, AnimationCurve.Constant(0f, 1f / 60f, value));
             return clip;
+        }
+
+        // One box for one axis, filtered to one family of pointers. Called
+        // twice per axis: once for the socket's root, once for the second
+        // point that says which way it faces.
+        static void AddAxisTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+            Vector3 box, string axis, CVRAdvancedAvatarSettingsTrigger.SampleDirection direction,
+            string[] types, string prefix)
+        {
+            var host = TriggerHost($"YAPS Channel {index} {prefix}{axis}", plug);
+            var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            trigger.areaSize = box;
+            trigger.areaOffset = Vector3.zero;
+            trigger.sampleDirection = direction;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = types;
+            trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+            {
+                settingName = Local(index, prefix + axis),
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
+                minValue = 0f,
+                maxValue = 1f,
+            });
         }
 
         // A trigger measures from its OWN transform, and the shader

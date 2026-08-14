@@ -43,6 +43,17 @@ float4 _YAPS_SocketForward; // xyz world direction, w unused
 float4 _YAPS_SocketUp;     // xyz world direction,  w unused
 float4 _YAPS_SocketFlags;  // x: engaged 0..1, y: is-hole, z/w spare
 
+// The socket's SECOND point, in the same channel space as _YAPS_SocketPos.
+//
+// Every socket in both ecosystems already publishes one: TPS places a
+// TPS_Orf_Norm sender a centimetre along the orifice's forward from its
+// TPS_Orf_Root, and SPS does the same under the name SPSLL_Socket_Front.
+// The pair IS the axis, and it is how those systems have always described
+// which way a socket faces. Subtracting one from the other gives it
+// outright, where TPS has to infer the same direction from three proximity
+// readings because VRChat contacts can only report a distance.
+float4 _YAPS_SocketFront;
+
 // How to read _YAPS_SocketPos.
 //   0  a world position, written directly. What the editor harness does,
 //      and what a WASM script would do once that ships.

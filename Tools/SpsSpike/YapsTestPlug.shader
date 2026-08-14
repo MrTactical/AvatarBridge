@@ -27,6 +27,7 @@ Shader "AvatarBridge/YAPS Test Plug"
         // Engaged defaults OFF. Starting at 1 bends the plug at whatever
         // the other defaults describe until something writes otherwise.
         _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (0,0,0,0)
+        _YAPS_SocketFront ("Socket front (channel space)", Vector) = (0,0,0,0)
 
         // These must be DECLARED here, not merely set from code. A uniform
         // the Properties block does not name has no per-material value to
