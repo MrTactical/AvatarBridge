@@ -294,8 +294,45 @@ namespace AvatarBridge
         static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots)
         {
 
-            int roots = 0, fronts = 0, left = 0, legacy = 0;
+            // Four vertex slots, two lights per socket. A dozen sockets means
+            // a plug never sees a PAIR — it sees four of whichever light
+            // ranks higher, which is four roots with no fronts or four
+            // fronts with no roots, and neither of those is a socket.
+            //
+            // Both halves of that were measured. Fronts above roots gave a
+            // legacy plug direction with no origin; putting roots above them
+            // gave origin with no direction, and the working approach angle
+            // flipped to the opposite side. Unreliable either way, because
+            // which four win changes with every small movement.
+            //
+            // So most sockets stop emitting light altogether. They still
+            // work for a converted plug, which finds sockets by contact and
+            // only refines with light — this is about leaving room for the
+            // readers that have nothing else. Holes first, since they are
+            // what a plug is usually looking for.
+            var emitting = socketRoots
+                .OrderBy(s => SocketRank(s))
+                .Take(Mathf.Max(1, ctx.Settings.maxLightEmittingSockets))
+                .ToList();
+            int darkened = 0;
             foreach (var socket in socketRoots)
+            {
+                if (emitting.Contains(socket))
+                {
+                    continue;
+                }
+                foreach (var light in socket.GetComponentsInChildren<Light>(true))
+                {
+                    if (Digit(light.range) >= 1 && Digit(light.range) <= 6)
+                    {
+                        UnityEngine.Object.DestroyImmediate(light);
+                        darkened++;
+                    }
+                }
+            }
+
+            int roots = 0, fronts = 0, left = 0, legacy = 0;
+            foreach (var socket in emitting)
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
@@ -383,6 +420,19 @@ namespace AvatarBridge
                     : " These sockets use our own ordering, which wins the light slots cleanly " +
                       "but is unreadable to DPS content — they will be invisible to every plug " +
                       "except another converted one.") +
+                (darkened > 0
+                    ? $" {darkened} marker light(s) on {socketRoots.Count - emitting.Count} other " +
+                      "socket(s) were removed. Unity gives a mesh four vertex light slots and this " +
+                      "protocol needs two per socket, so a dozen sockets means a plug sees four of " +
+                      "whichever light ranks higher — four roots with no fronts, or four fronts " +
+                      "with no roots, and neither of those is a socket. Measured in game as a " +
+                      "legacy plug whose working approach angle flipped to the opposite side when " +
+                      "the ranking changed, and was unreliable in both. Those sockets still work " +
+                      "for a converted plug, which finds them by contact and only refines with " +
+                      "light; what they lose is being findable by DPS content, which has nothing " +
+                      "else. Raise the limit if you would rather have more of them lit and accept " +
+                      "that none of them resolve cleanly."
+                    : "") +
                 (left > 0 ? $" {left} other marker light(s) left exactly as they were." : ""));
         }
 
@@ -399,6 +449,21 @@ namespace AvatarBridge
         // So the socket says both. Ours wins the slot for a YAPS plug; the
         // twin is there for the DPS content already on the platform, which
         // is most of it.
+
+        // Holes first, then rings, then anything unlabelled — so the sockets
+        // that keep their lights are the ones a plug is most likely to be
+        // looking for.
+        static int SocketRank(Transform socket)
+        {
+            int best = 3;
+            foreach (var light in socket.GetComponentsInChildren<Light>(true))
+            {
+                int digit = Digit(light.range);
+                if (digit == 1 || digit == 3) best = Mathf.Min(best, 0);
+                else if (digit == 2 || digit == 4) best = Mathf.Min(best, 1);
+            }
+            return best;
+        }
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
 

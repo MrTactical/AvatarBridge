@@ -141,6 +141,13 @@ namespace AvatarBridge
         // own ordering, which wins the light slots cleanly but is
         // invisible to every plug but another converted one.
         public bool emitLegacySocketLights = true;
+        // How many sockets may carry marker lights. Unity gives a mesh
+        // FOUR vertex light slots and the protocol needs two per
+        // socket, so a dozen sockets means a plug sees four of
+        // whichever light ranks higher — four roots with no fronts, or
+        // four fronts with no roots. Neither is a socket. Holes are
+        // kept first, then rings.
+        public int maxLightEmittingSockets = 2;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";
