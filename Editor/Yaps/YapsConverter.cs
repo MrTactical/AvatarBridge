@@ -607,13 +607,22 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(off, controller);
             }
 
-            var offState = machine.AddState("Off");
-            offState.writeDefaultValues = false;
-            offState.motion = off;
+            // Default ON, and that is deliberate. A layer that starts Off
+            // and relies on a transition to switch the lights on fails
+            // DARK: if the parameter never arrives, or arrives before the
+            // layer is evaluated, or is driven some way this does not
+            // expect, every socket on the avatar goes silent and the whole
+            // feature looks broken. Starting On means the worst case is the
+            // behaviour we had before any of this existed — all sockets
+            // lit, contending for slots — which is degraded rather than
+            // dead.
             var onState = machine.AddState("On");
             onState.writeDefaultValues = false;
             onState.motion = on;
-            machine.defaultState = offState;
+            var offState = machine.AddState("Off");
+            offState.writeDefaultValues = false;
+            offState.motion = off;
+            machine.defaultState = onState;
 
             var toOn = offState.AddTransition(onState);
             var toOff = onState.AddTransition(offState);
