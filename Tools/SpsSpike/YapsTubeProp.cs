@@ -193,9 +193,21 @@ namespace AvatarBridge.Spike
         }
 
         // The plug end of a contact. Tip is what depth is measured from.
+        // The TIP alone. A plug also announces its ROOT, and that sits at
+        // the base of the shaft — on the wearer's hips — so accepting it
+        // means the tube measures depth from somebody's crotch being nearby
+        // rather than from anything going in. It swells as you walk up to
+        // it and stays swollen.
+        //
+        // Worse than wrong, it is unstable: a trigger reports whichever
+        // allowed pointer entered last, so tip and root take turns and the
+        // depth jumps between them. That is the stutter.
+        //
+        // Depth is how far the TIP has travelled down the tube. Only the
+        // tip can answer that.
         static readonly string[] PlugTypes =
         {
-            "TPS_Pen_Penetrating", "TPS_Pen_Root", "SPSLL_Pen_Penetrating", "SPSLL_Pen_Root",
+            "TPS_Pen_Penetrating", "SPSLL_Pen_Penetrating",
         };
 
         // --- the mesh --------------------------------------------------
