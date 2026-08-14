@@ -269,8 +269,12 @@ namespace AvatarBridge.Spike
             // and everyone sees the same bend. See BuildPropChannel.
             material.SetFloat("_YAPS_ChannelSpace", 1f);
             material.SetFloat("_YAPS_SelfTag", -1f);   // a prop wears no sockets of its own
+            // Start narrowing a twentieth of a plug length past the hole and
+            // close over the next third of one. The old 0.10 shut it over a
+            // twentieth, which reads as the shaft popping out of existence
+            // rather than sinking into something.
             material.SetFloat("_YAPS_TaperStart", 0.05f);
-            material.SetFloat("_YAPS_TaperEnd", 0.10f);
+            material.SetFloat("_YAPS_TaperEnd", 0.35f);
             renderer.sharedMaterial = material;
 
             // The plug END of a contact. Without these the prop can bend
@@ -541,24 +545,25 @@ namespace AvatarBridge.Spike
             return clip;
         }
 
-        // A pickup needs something to raycast against and something to
-        // move. Without a collider there is nothing to point at, and
-        // without a rigidbody the default Rigidbody move mode has nothing
-        // to drive — so the prop spawns, renders, and cannot be touched.
+        // A pickup needs a COLLIDER, which is what a grab raycast hits. It
+        // does not need a rigidbody from us: CVRPickupObject.Awake adds one
+        // if the object has none, kinematic and with gravity off, which is
+        // exactly what these want.
         //
-        // Gravity off on purpose: these are aimed at each other, and a
-        // prop that drops to the floor the moment you let go is useless
-        // for that. Drag holds it where it was left.
+        // So there is no rigidbody here and the move mode is Transform,
+        // which routes the grab through a handler that moves the transform
+        // directly instead of the physics one. These props are aimed at
+        // each other and held against each other; simulating them buys
+        // drift, shoving and jitter and nothing else. It also removes any
+        // chance of a physics nudge fighting the contact channel, which
+        // reads in game as a socket that will not hold still.
+        //
+        // (An earlier note here said a pickup without a rigidbody cannot be
+        // touched. The collider was the real half of that.)
         static void MakeGrabbable(GameObject root)
         {
-            var body = root.AddComponent<Rigidbody>();
-            body.useGravity = false;
-            body.isKinematic = false;
-            body.drag = 6f;
-            body.angularDrag = 6f;
-            body.interpolation = RigidbodyInterpolation.Interpolate;
-
             var pickup = root.AddComponent<CVRPickupObject>();
+            pickup.moveMode = CVRPickupObject.MoveMode.Transform;
             pickup.maximumGrabDistance = 8f;
             // Joe found this, and it is what makes a prop with a contact
             // channel usable by anyone but its owner.

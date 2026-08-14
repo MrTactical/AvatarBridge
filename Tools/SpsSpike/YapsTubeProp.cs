@@ -172,12 +172,13 @@ namespace AvatarBridge.Spike
             // triggers, so it stays grabbable.
             capsule.isTrigger = true;
 
-            var rigidbody = root.AddComponent<Rigidbody>();
-            rigidbody.useGravity = false;
-            rigidbody.drag = 6f;
-            rigidbody.angularDrag = 6f;
-            rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+            // No rigidbody, and Transform move mode. CVRPickupObject.Awake
+            // adds a kinematic one if the object has none, so the collider
+            // is the only part a grab actually needs — and a simulated tube
+            // drifts, gets shoved, and jitters against the very contacts it
+            // is trying to measure depth with.
             var pickup = root.AddComponent<CVRPickupObject>();
+            pickup.moveMode = CVRPickupObject.MoveMode.Transform;
             pickup.maximumGrabDistance = 8f;
             // Same reason as the plug prop: this one carries a channel too,
             // and a channel value is written by whoever's contact it met
