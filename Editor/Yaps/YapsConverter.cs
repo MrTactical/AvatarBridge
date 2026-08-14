@@ -352,10 +352,35 @@ namespace AvatarBridge
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
             {
-                var paths = socket.GetComponentsInChildren<Light>(true)
-                    .Where(l => Digit(l.range) >= 1 && Digit(l.range) <= 6)
-                    .Select(l => ctx.PathInTarget(l.transform))
-                    .ToList();
+                // Every object from the light up to the socket, not just
+                // the light. VRCFury switches the whole branch off —
+                // BakedSpsSocket, WorldSpace, Lights — and animating only
+                // the leaf leaves it dark under a dead parent, which is
+                // exactly what the first two attempts did. Setting them at
+                // conversion is not enough either, since the animator can
+                // restore the baked state; the layer has to assert the
+                // whole chain.
+                var paths = new List<string>();
+                foreach (var light in socket.GetComponentsInChildren<Light>(true))
+                {
+                    if (Digit(light.range) < 1 || Digit(light.range) > 6)
+                    {
+                        continue;
+                    }
+                    for (var at = light.transform; at != null && at != ctx.Target.transform;
+                         at = at.parent)
+                    {
+                        string path = ctx.PathInTarget(at);
+                        if (!paths.Contains(path))
+                        {
+                            paths.Add(path);
+                        }
+                        if (at == socket)
+                        {
+                            break;   // stop at the socket; above it is the body
+                        }
+                    }
+                }
                 string toggle = ToggleFor(ctx, socket);
                 if (toggle != null && paths.Count > 0 && AddLightToggle(ctx, toggle, paths))
                 {
@@ -706,14 +731,11 @@ namespace AvatarBridge
             var clip = new AnimationClip { name = name };
             foreach (string path in paths)
             {
-                // Both the object and the component. The object because
-                // that is what VRCFury leaves switched off and what a
-                // reader ultimately needs on; the component because it
-                // costs nothing and means neither one alone can hold the
-                // light dark.
+                // The OBJECT, for every link in the chain. The Light
+                // components are already enabled — that was never the
+                // problem — and adding a component curve to the objects
+                // above them would only bind to nothing.
                 clip.SetCurve(path, typeof(GameObject), "m_IsActive",
-                    AnimationCurve.Constant(0f, 1f / 60f, active));
-                clip.SetCurve(path, typeof(Light), "m_Enabled",
                     AnimationCurve.Constant(0f, 1f / 60f, active));
             }
             return clip;
