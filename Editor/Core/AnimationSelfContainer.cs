@@ -132,7 +132,13 @@ namespace AvatarBridge
                 string path = AssetDatabase.GetAssetPath(clip);
                 if (!NeedsCopy(path, outputDir, controllerPath))
                 {
+                    // Not copied, but still possibly carrying a reference
+                    // that has to travel. The clips this turned up on were
+                    // EMBEDDED IN OUR OWN CONTROLLER — the one category
+                    // most obviously safe, and therefore the one an early
+                    // return walked straight past.
                     map[clip] = clip;
+                    CarryAdditivePose(clip, controller, controllerPath, outputDir, dir, map, copied);
                     return clip;
                 }
                 AnimationClip copy = null;
@@ -153,29 +159,7 @@ namespace AvatarBridge
                 }
                 map[clip] = copy;
                 copied.Add(clip.name);
-
-                // A clip's ADDITIVE REFERENCE POSE is a second clip, and it
-                // is not a motion — nothing walks to it, so copying the clip
-                // left the copy still pointing at wherever the pose lived.
-                // On a Modular Avatar build that is NDMF's __Generated
-                // folder, which is deleted on the next bake, and the audit
-                // then reports a saved controller referencing bake-temp
-                // assets with no way to say which field is at fault.
-                //
-                // Only when the pose is actually in use. The field is often
-                // left set on a clip that does not use it, and copying a
-                // clip nothing reads would be noise in the output folder.
-                var settings = AnimationUtility.GetAnimationClipSettings(copy);
-                if (settings.hasAdditiveReferencePose
-                    && settings.additiveReferencePoseClip != null
-                    && NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip),
-                                 outputDir, controllerPath))
-                {
-                    settings.additiveReferencePoseClip = Fix(settings.additiveReferencePoseClip,
-                        controller, controllerPath, outputDir, dir, map, copied) as AnimationClip;
-                    AnimationUtility.SetAnimationClipSettings(copy, settings);
-                    EditorUtility.SetDirty(copy);
-                }
+                CarryAdditivePose(copy, controller, controllerPath, outputDir, dir, map, copied);
                 return copy;
             }
             if (motion is BlendTree tree)
@@ -243,6 +227,52 @@ namespace AvatarBridge
             count++;
             return copy;
         }
+
+        // A clip's ADDITIVE REFERENCE POSE is a second clip, and it is not a
+        // MOTION — nothing in the walk reaches it. So a clip could be brought
+        // safely into the output folder while still naming a pose that was
+        // about to be deleted, and on a Modular Avatar build that pose lives
+        // in NDMF's __Generated, which the next bake removes. The audit saw
+        // the wreckage afterwards and could only report "bake-temp asset",
+        // with no way to name the field.
+        //
+        // Runs for every clip we own, copied or not. Clips embedded in our
+        // own controller need no copying and are exactly where these turned
+        // up — being obviously safe is what kept them out of the path that
+        // would have fixed them.
+        static void CarryAdditivePose(AnimationClip clip, AnimatorController controller,
+            string controllerPath, string outputDir, string dir,
+            Dictionary<Motion, Motion> map, List<string> copied)
+        {
+            if (clip == null || !Ours(AssetDatabase.GetAssetPath(clip), outputDir, controllerPath))
+            {
+                return;   // somebody else's asset; editing it reaches their package
+            }
+
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            // Only when the pose is actually in use. The field is often left
+            // populated on a clip that ignores it, and dragging a clip
+            // nothing reads into the output folder is just litter.
+            if (!settings.hasAdditiveReferencePose || settings.additiveReferencePoseClip == null
+                || !NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip),
+                              outputDir, controllerPath))
+            {
+                return;
+            }
+
+            settings.additiveReferencePoseClip = Fix(settings.additiveReferencePoseClip,
+                controller, controllerPath, outputDir, dir, map, copied) as AnimationClip;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            EditorUtility.SetDirty(clip);
+        }
+
+        // Ours to edit: held in memory, embedded in the controller we built,
+        // or already sitting in this avatar's output folder. Never an engine
+        // builtin or another package's asset.
+        static bool Ours(string path, string outputDir, string controllerPath)
+            => string.IsNullOrEmpty(path)
+               || path == controllerPath
+               || path.StartsWith(outputDir, StringComparison.Ordinal);
 
         static bool NeedsCopy(string path, string outputDir, string controllerPath)
         {
