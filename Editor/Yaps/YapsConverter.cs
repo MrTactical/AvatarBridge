@@ -322,7 +322,19 @@ namespace AvatarBridge
                     }
                     else if (digit == 5 || digit == 6)
                     {
-                        light.range = ctx.Settings.emitLegacySocketLights ? 0.4500f : FrontRange;
+                        // 0.35, not 0.45. The FIRST decimal is free — a
+                        // decoder reads the second, which is why 0.31 is a
+                        // hole exactly as 0.41 is — so dropping it puts the
+                        // front below every root while still saying front.
+                        //
+                        // At 0.45 a socket's front outranks its own root,
+                        // and on an avatar with twelve of them all four
+                        // vertex slots fill with fronts: a direction with no
+                        // origin, and a legacy plug that only reacted while
+                        // its owner walked backwards, because moving
+                        // reshuffled which lights were nearest and let a
+                        // root through now and then.
+                        light.range = ctx.Settings.emitLegacySocketLights ? 0.3500f : FrontRange;
                         fronts++;
                         legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
@@ -363,12 +375,11 @@ namespace AvatarBridge
                 "origin. Reversing the two makes roots win their slots." +
                 (legacy > 0
                     ? " These sockets speak LEGACY, so every DPS plug already on ChilloutVR can " +
-                      "see them, which is most of the content there is. The cost is the eviction " +
-                      "described above: on an avatar with many sockets a plug reading by light " +
-                      "alone may catch fronts without their roots. A converted plug barely " +
-                      "notices, because it finds sockets by contact first and by player position " +
-                      "last, and lights are only the middle of three. A DPS plug has lights and " +
-                      "nothing else, which is why they get the slots."
+                      "see them, which is most of the content there is. Their fronts sit at 0.35 " +
+                      "rather than 0.45: a decoder reads the second decimal, so the first one is " +
+                      "free, and dropping it puts every front below every root. That matters on " +
+                      "an avatar with a dozen sockets, where fronts at 0.45 take all four vertex " +
+                      "slots and leave a plug with a direction and no origin."
                     : " These sockets use our own ordering, which wins the light slots cleanly " +
                       "but is unreadable to DPS content — they will be invisible to every plug " +
                       "except another converted one.") +
