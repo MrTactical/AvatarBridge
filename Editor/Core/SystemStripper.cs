@@ -21,6 +21,13 @@ namespace AvatarBridge
         static readonly string[] GogoParamPrefixes = { "Go/" };
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
+        // Whether GoGo put this animator layer there. Used by the advisor to
+        // tell "the Base layer IS GoGo" apart from "GoGo is in there with
+        // the avatar's own content", which look identical from outside.
+        internal static bool IsGogoLayerName(string name) =>
+            !string.IsNullOrEmpty(name)
+            && GogoNameHints.Any(h => name.ToLowerInvariant().Contains(h));
+
         // "OGB" (no separator) also catches OGB_ENABLED and friends.
         //
         // Named apart from the rest of the family because the object and

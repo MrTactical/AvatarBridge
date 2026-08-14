@@ -486,9 +486,17 @@ namespace AvatarBridge
                 return;
             }
 
-            // On a GoGo avatar the Base layer IS GoGo, and merging what is about to be stripped
-            // buys nothing. Only an avatar with locomotion of its own has anything to graft.
-            if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco)
+            // On a GoGo avatar the Base layer is USUALLY just GoGo, and merging what is about to
+            // be stripped buys nothing. Usually is not always: VRCFury merges its own content
+            // into Base alongside it, and a real avatar arrived with 269 states and 220 parameter
+            // drivers sitting in there. Suppressing the advice on the mere PRESENCE of GoGo hid
+            // every one of them — and then the conversion report warned about the same layer
+            // afterwards, telling the user to tick the setting the analysis had silently decided
+            // against. The tool disagreeing with itself, and only after they had committed.
+            //
+            // So exempt only when what is in there really is GoGo.
+            if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco
+                && !HasContentGogoDidNotPutThere(baseLayer))
             {
                 return;
             }
@@ -504,6 +512,44 @@ namespace AvatarBridge
                           "movement blend trees, keeping ChilloutVR's structure and the avatar's motion.",
                 Apply = s => s.convertBaseLayer = true,
             });
+        }
+
+        // A layer GoGo did not name, with something actually in it. An empty
+        // one is not content: VRCFury and friends leave placeholders behind,
+        // and advising a merge for the sake of an empty layer is noise.
+        static bool HasContentGogoDidNotPutThere(AnimatorController controller)
+        {
+            if (controller == null)
+            {
+                return false;
+            }
+            foreach (var layer in controller.layers)
+            {
+                if (SystemStripper.IsGogoLayerName(layer.name))
+                {
+                    continue;
+                }
+                bool any = false;
+                WalkMachines(layer.stateMachine, machine => any |= machine.states.Length > 0);
+                if (any)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            visit(machine);
+            foreach (var child in machine.stateMachines)
+            {
+                WalkMachines(child.stateMachine, visit);
+            }
         }
 
         // ------------------------------------------------------------------- shaders ----
