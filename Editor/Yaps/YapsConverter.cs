@@ -322,14 +322,27 @@ namespace AvatarBridge
             // This is why nothing found Angela's sockets through any amount
             // of re-encoding: the lights were switched off the whole time,
             // component enabled, object active, branch above them dead.
+            // Walk up from each LIGHT, not from the socket. The socket is
+            // switched off, but so is the "Lights" object beneath it, and
+            // waking only the socket leaves the branch under it dark —
+            // which is exactly what a first attempt did.
             int woken = 0;
             foreach (var socket in socketRoots)
             {
-                for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
+                foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
-                    if (!at.gameObject.activeSelf)
+                    for (var at = light.transform; at != null && at != ctx.Target.transform;
+                         at = at.parent)
                     {
-                        at.gameObject.SetActive(true);
+                        if (!at.gameObject.activeSelf)
+                        {
+                            at.gameObject.SetActive(true);
+                            woken++;
+                        }
+                    }
+                    if (!light.enabled)
+                    {
+                        light.enabled = true;
                         woken++;
                     }
                 }
