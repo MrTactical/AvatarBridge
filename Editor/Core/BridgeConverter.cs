@@ -182,6 +182,11 @@ namespace AvatarBridge
                     // the Magica path; named as lost and removed.
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
+                    // DEAD LAST among the passes that touch a clip. It
+                    // renames objects and rewrites every path naming them,
+                    // so anything running after it that wrote a path would
+                    // write the old one and address nothing.
+                    Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
