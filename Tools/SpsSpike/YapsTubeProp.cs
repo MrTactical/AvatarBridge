@@ -100,14 +100,18 @@ namespace AvatarBridge.Spike
                 animatorParameterName = "Depth",
             });
 
-            // The box is the tube's own volume, so "where along Z" means
-            // "how far in". Sampling from the far end, because the tip
-            // enters at the near one and the reading should grow as it goes.
+            // The box is the tube's own volume, so "where along Z" means "how
+            // far in".
             var trigger = root.AddComponent<CVRSpawnableTrigger>();
             trigger.areaSize = new Vector3(Radius * 2f, Radius * 2f, Length);
             trigger.areaOffset = new Vector3(0, 0, Length * 0.5f);
             trigger.useAdvancedTrigger = true;
-            trigger.sampleDirection = CVRSpawnableTrigger.SampleDirection.ZPositive;
+            // ZNegative, not positive. A socket faces OUT of its opening —
+            // that is why the front marker sits at +Z — so the plug enters
+            // from +Z and travels toward -Z as it goes deeper. Sampling the
+            // positive direction reads one at the entrance and zero at the
+            // far end, and the tube deflates as the plug goes in.
+            trigger.sampleDirection = CVRSpawnableTrigger.SampleDirection.ZNegative;
             trigger.allowedTypes = PlugTypes;
             trigger.stayTasks.Add(new CVRSpawnableTriggerTaskStay
             {
