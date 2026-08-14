@@ -291,6 +291,29 @@ namespace AvatarBridge.Spike
             PlugPointer(root.transform, "Width", "TPS_Pen_Width",
                 new Vector3(PlugRadius, 0, 0));
 
+            // The plug's own TIP LIGHT, and without it Raliv's DPS cannot
+            // see this prop at all.
+            //
+            // DPS is lights and nothing else — it has no contacts anywhere
+            // in it — so an orifice looking for something to bulge around
+            // reads the penetrator's tip light and nothing else. This prop
+            // announced itself only through contacts, which every DPS
+            // orifice on the platform is deaf to. The exact mirror of
+            // converted sockets being invisible to DPS plugs until they
+            // spoke legacy.
+            //
+            // 0.49: the second decimal is the digit, and 8 and 9 are a
+            // plug's own tip. Our own decoder classifies those as NONE on
+            // purpose, so adding this cannot make one plug chase another.
+            //
+            // Plain 0.49, NOT 0.4906. SPS2 tags its own emitted lights with
+            // a fourth decimal of 5 to 7 so that it can ignore them, and
+            // wearing that tag would have SPS sockets ignore this tip for
+            // exactly the reason it exists. Sockets keep VRCFury's tagged
+            // values because those are read by DPS, which does not care —
+            // this is the one light where the tag would cost something.
+            MarkerLight(root.transform, "Tip", 0.49f, new Vector3(0, 0, PlugLength));
+
             var capsule = root.AddComponent<CapsuleCollider>();
             capsule.direction = 2;   // along Z, the shaft
             capsule.height = PlugLength;
