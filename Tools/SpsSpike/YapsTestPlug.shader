@@ -15,9 +15,18 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_Overrun ("Allow overrun", Range(0,1)) = 1
         _YAPS_BakeScale ("Bake scale", Float) = 1
         _YAPS_SocketPos ("Socket position", Vector) = (0,0,0,0)
-        _YAPS_SocketForward ("Socket forward", Vector) = (0,0,1,0)
-        _YAPS_SocketUp ("Socket up", Vector) = (0,1,0,0)
-        _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (1,0,0,0)
+        // ZERO, and it matters. Zero means "nobody said which way this
+        // socket faces", which is what makes the deform derive the
+        // direction from the approach and meet a plug from any side. The
+        // contact channel publishes position and never orientation, so a
+        // non-zero default here is not a fallback — it is a fixed socket
+        // frame asserted forever, and the plug enters along the same axis
+        // however the socket is turned.
+        _YAPS_SocketForward ("Socket forward", Vector) = (0,0,0,0)
+        _YAPS_SocketUp ("Socket up", Vector) = (0,0,0,0)
+        // Engaged defaults OFF. Starting at 1 bends the plug at whatever
+        // the other defaults describe until something writes otherwise.
+        _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (0,0,0,0)
 
         // These must be DECLARED here, not merely set from code. A uniform
         // the Properties block does not name has no per-material value to
