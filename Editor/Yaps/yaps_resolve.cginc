@@ -413,8 +413,16 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // disagreed in testing.
     if (socket.engaged <= 0 && litRoot)
     {
+        // Measured against the TIP, not the root. The gap is from the
+        // plug's base, and the tip is already a whole length out — so a
+        // window of 0.9 to 1.3 lengths only ever engaged a socket within a
+        // few centimetres of the tip, and standing just outside it gave
+        // nothing at all while moving back and forth flickered in and out
+        // of it. Full engagement once the socket is at the tip, fading over
+        // a further half length, which is also where the light search stops
+        // looking.
         float gap = length(socket.position - plugOrigin);
-        socket.engaged = 1 - smoothstep(worldLength * 0.9, worldLength * 1.3, gap);
+        socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, gap);
     }
 
     // Nothing to bend toward. Say so, rather than bending toward nothing.

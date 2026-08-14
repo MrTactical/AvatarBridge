@@ -136,6 +136,11 @@ namespace AvatarBridge
         // carrying it needs testing with a second person before
         // anyone should count on it.
         public bool convertYapsSystems = false;
+        // Emit a second, legacy-encoded light per socket marker so
+        // ChilloutVR's existing DPS plugs can see converted sockets
+        // at all. Costs one extra light each; without it they are
+        // invisible to everything but another converted avatar.
+        public bool emitLegacySocketLights = true;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

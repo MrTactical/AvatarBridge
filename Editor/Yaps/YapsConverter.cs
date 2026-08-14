@@ -294,7 +294,7 @@ namespace AvatarBridge
         static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots)
         {
 
-            int roots = 0, fronts = 0, left = 0;
+            int roots = 0, fronts = 0, left = 0, legacy = 0;
             foreach (var socket in socketRoots)
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
@@ -302,11 +302,23 @@ namespace AvatarBridge
                     int digit = Digit(light.range);
                     if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
                     {
+                        // The digit says hole or ring, and it is about to be
+                        // overwritten, so keep it: a legacy twin has to say
+                        // the same thing this one did.
+                        if (ctx.Settings.emitLegacySocketLights
+                            && LegacyTwin(light, digit == 1 || digit == 3 ? 0.4100f : 0.4200f))
+                        {
+                            legacy++;
+                        }
                         light.range = RootRange;
                         roots++;
                     }
                     else if (digit == 5 || digit == 6)
                     {
+                        if (ctx.Settings.emitLegacySocketLights && LegacyTwin(light, 0.4500f))
+                        {
+                            legacy++;
+                        }
                         light.range = FrontRange;
                         fronts++;
                     }
@@ -345,7 +357,47 @@ namespace AvatarBridge
                 "see. VRChat's ordering puts each socket's front above its own root, so on an " +
                 "avatar with several sockets the slots fill with fronts — a direction with no " +
                 "origin. Reversing the two makes roots win their slots." +
+                (legacy > 0
+                    ? $" A further {legacy} legacy-encoded light(s) were added alongside them, so " +
+                      "ChilloutVR's existing DPS content can see these sockets too — without them " +
+                      "a converted socket is invisible to every plug but another converted one, " +
+                      "because the two digits we use to win the slot are two digits DPS never " +
+                      "defined. It cannot be done with one light: inside the range band legacy " +
+                      "uses, a front always outranks its own root."
+                    : " No legacy twins were added, so these sockets are visible only to other " +
+                      "converted avatars.") +
                 (left > 0 ? $" {left} other marker light(s) left exactly as they were." : ""));
+        }
+
+        // A second light at the same spot, speaking legacy.
+        //
+        // A socket cannot say both things with one light. Within the 0.4x
+        // band legacy roots are digits 1 to 4 and fronts are 5 and 6, so a
+        // front always outranks its own root on Unity's range-based slot
+        // ranking — the eviction measured at twelve sockets, and structural,
+        // since no arrangement of legacy digits puts a root above its front.
+        // Our own ordering fixes that and is unreadable to legacy in
+        // exchange, because 7 and 0 mean nothing to it.
+        //
+        // So the socket says both. Ours wins the slot for a YAPS plug; the
+        // twin is there for the DPS content already on the platform, which
+        // is most of it.
+        static bool LegacyTwin(Light source, float range)
+        {
+            var host = new GameObject(source.name + " (legacy)");
+            host.transform.SetParent(source.transform.parent, false);
+            host.transform.localPosition = source.transform.localPosition;
+            host.transform.localRotation = source.transform.localRotation;
+
+            var twin = host.AddComponent<Light>();
+            twin.type = LightType.Point;
+            twin.range = range;
+            twin.color = Color.black;
+            twin.intensity = 1f;
+            twin.bounceIntensity = 0f;
+            twin.shadows = LightShadows.None;
+            twin.renderMode = LightRenderMode.ForceVertex;
+            return true;
         }
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
