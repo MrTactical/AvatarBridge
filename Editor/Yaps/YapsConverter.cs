@@ -27,6 +27,7 @@
 using System.Collections.Generic;
 using System;
 using System.Linq;
+using ABI.CCK.Components;
 using UnityEditor;
 using UnityEngine;
 
@@ -61,6 +62,7 @@ namespace AvatarBridge
             var socketRoots = Named(ctx, "BakedSpsSocket");
             if (plugRoots.Count == 0 && socketRoots.Count == 0)
             {
+                ReportLegacyContent(ctx);
                 return;
             }
 
@@ -744,6 +746,65 @@ namespace AvatarBridge
         }
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
+
+        // DPS and TPS predate VRCFury entirely, so an avatar carrying them
+        // has no BakedSps markers and this pass finds nothing to do. It
+        // used to return in silence, which left the owner of a perfectly
+        // ordinary older avatar unable to tell whether the feature had run,
+        // was unsupported, or had broken.
+        //
+        // The answer is worth saying, because it is not "nothing happened":
+        // their SOCKETS come through and work, and their PLUG does not.
+        static void ReportLegacyContent(BridgeContext ctx)
+        {
+            int lights = ctx.Target.GetComponentsInChildren<Light>(true)
+                .Count(l => l != null && Digit(l.range) >= 1 && Digit(l.range) <= 6);
+
+            var pointers = ctx.Target.GetComponentsInChildren<CVRPointer>(true)
+                .Where(p => p != null && !string.IsNullOrEmpty(p.type))
+                .Select(p => p.type)
+                .ToList();
+            int sockets = pointers.Count(t => t.StartsWith("TPS_Orf", StringComparison.OrdinalIgnoreCase)
+                                           || t.StartsWith("SPSLL_Socket", StringComparison.OrdinalIgnoreCase));
+            int plugs = pointers.Count(t => t.StartsWith("TPS_Pen", StringComparison.OrdinalIgnoreCase)
+                                         || t.StartsWith("SPSLL_Pen", StringComparison.OrdinalIgnoreCase));
+
+            if (lights == 0 && sockets == 0 && plugs == 0)
+            {
+                return;   // nothing penetration-shaped on this avatar at all
+            }
+
+            string found = string.Join(", ", new[]
+            {
+                lights > 0 ? $"{lights} marker light(s)" : null,
+                sockets > 0 ? $"{sockets} socket contact(s)" : null,
+                plugs > 0 ? $"{plugs} plug contact(s)" : null,
+            }.Where(s => s != null));
+
+            if (plugs > 0)
+            {
+                ctx.Report.Warning(Category,
+                    "This avatar's penetrator could not be converted, but its sockets work",
+                    $"Found {found}, and no VRChat SPS setup. YAPS builds a plug from the objects " +
+                    "VRChat's SPS bake leaves behind, and DPS and TPS predate all of that, so there " +
+                    "is nothing here to build one from — the plug keeps a shader whose deform " +
+                    "system does not exist in ChilloutVR, and it will not bend. Its SOCKETS are " +
+                    "fine: their marker lights and contacts come through untouched, so other " +
+                    "people's plugs can use them normally. To convert the plug too, set the avatar " +
+                    "up with VRChat's SPS and convert again.");
+            }
+            else
+            {
+                ctx.Report.Converted(Category,
+                    "Kept this avatar's existing penetration sockets",
+                    $"Found {found} belonging to DPS or TPS rather than VRChat's SPS, so there was " +
+                    "nothing for YAPS to build — but nothing was taken away either. The marker " +
+                    "lights and contacts come through as they were, so plugs belonging to other " +
+                    "players can use these sockets exactly as they did before. Leaving the YAPS " +
+                    "setting ON is what keeps the contacts and the depth reactions that go with " +
+                    "them; turning it off strips both.");
+            }
+        }
 
         // --- the transport we do not port ------------------------------
 
