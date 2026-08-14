@@ -360,7 +360,11 @@ float4 YapsDebug(uint vertexId)
     YapsVertex baked = YapsReadBaked(vertexId);
 
     float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
-    float worldLength = _YAPS_Length * _YAPS_BakeScale;
+    // Same scale correction as the real deform, so the debug view reports
+    // the engagement the plug is actually using rather than the one it
+    // would use at 1x.
+    float worldLength = _YAPS_Length * _YAPS_BakeScale
+        * length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
     YapsSocket socket = YapsResolveSocket(rootWorld,
         YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)), float3(0, 0, 1)),
         YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)), float3(0, 1, 0)),
@@ -410,7 +414,32 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 rootUp = YapsPerpendicular(rootForward,
         mul((float3x3) unity_ObjectToWorld, upLocal));
 
-    float worldLength = _YAPS_Length * _YAPS_BakeScale;
+    // THE SCALE THE PLUG IS ACTUALLY DRAWN AT.
+    //
+    // Everything below compares baked measurements against WORLD
+    // distances: the gap to a socket, the engagement envelope, the taper,
+    // squeeze and bulge reach. The bake is in the renderer's own units, so
+    // the two agree only while that renderer sits at 1x — and AvatarBridge
+    // ships a height slider, ON BY DEFAULT, that animates m_LocalScale on
+    // the avatar ROOT from 0.25x to 4x. That scale lands in this matrix.
+    //
+    // Left unhandled, a scaled avatar got a plug that engaged at the wrong
+    // distance and, worse, kept its baked GIRTH while its length followed
+    // the body — because the offsets below are added to unit world vectors,
+    // so baked units were being spent as metres. A 2x avatar wore a
+    // half-thickness plug. It never showed because the slider had not been
+    // moved during any test.
+    //
+    // Read from the matrix rather than published as a property, so it
+    // follows the slider, a world's own scaling, or an author's transform
+    // without anyone having to send it anywhere.
+    //
+    // Applied AFTER the frame recovery above, which works in object space
+    // and needs the baked numbers exactly as baked.
+    float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
+    baked.position *= yapsScale;
+
+    float worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
 
     // Everything platform-specific happens in here: the discrete channel,
     // protocol lights at contact range, the player globals as a floor.
