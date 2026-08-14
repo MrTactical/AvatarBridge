@@ -377,9 +377,19 @@ namespace AvatarBridge
                     // reader who has no alternative is the whole trade.
                     if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
                     {
-                        light.range = ctx.Settings.emitLegacySocketLights
-                            ? (digit == 1 || digit == 3 ? 0.4100f : 0.4200f)
-                            : RootRange;
+                        // Legacy mode leaves the range EXACTLY as VRCFury
+                        // baked it — 0.4106, 0.4206, 0.4506, keeping the
+                        // trailing digits and everything else about them.
+                        // Rewriting to a rounded 0.4100 was an unexamined
+                        // change: those trailing digits are part of what
+                        // every other SPS avatar on the platform emits, and
+                        // the test prop that worked carries them. Matching
+                        // the ecosystem byte for byte beats reasoning about
+                        // which parts of it matter.
+                        if (!ctx.Settings.emitLegacySocketLights)
+                        {
+                            light.range = RootRange;
+                        }
                         roots++;
                         legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
@@ -404,7 +414,10 @@ namespace AvatarBridge
                         // The eviction this was solving is gone regardless:
                         // socket lights follow their menu toggle now, so one
                         // socket lit is two lights against four slots.
-                        light.range = ctx.Settings.emitLegacySocketLights ? 0.4500f : FrontRange;
+                        if (!ctx.Settings.emitLegacySocketLights)
+                        {
+                            light.range = FrontRange;
+                        }
                         fronts++;
                         legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
@@ -631,12 +644,18 @@ namespace AvatarBridge
             return true;
         }
 
+        // Enables the LIGHT COMPONENT, not the GameObject. Animating
+        // m_IsActive churns the object every frame the curve is applied,
+        // which re-registers the light with Unity and can leave it missing
+        // from the per-object light lists a decoder reads — a socket that
+        // resolves only while something is moving. Toggling the component
+        // leaves the object alone.
         static AnimationClip ClipFor(string name, List<string> paths, float active)
         {
             var clip = new AnimationClip { name = name };
             foreach (string path in paths)
             {
-                clip.SetCurve(path, typeof(GameObject), "m_IsActive",
+                clip.SetCurve(path, typeof(Light), "m_Enabled",
                     AnimationCurve.Constant(0f, 1f / 60f, active));
             }
             return clip;
