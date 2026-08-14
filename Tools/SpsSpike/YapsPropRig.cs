@@ -358,16 +358,28 @@ namespace AvatarBridge.Spike
                 });
             }
 
-            // The frame the SHADER works in, which is measured from the mesh
-            // and is not the object's transform. On the avatar that gap was
-            // 28 cm and put every socket half a plug length short.
-            var frame = new GameObject("YAPS Channel");
-            frame.transform.SetParent(root.transform, false);
-            frame.transform.SetPositionAndRotation(result.Origin, result.Rotation);
+            // ONE OBJECT PER TRIGGER. The client turns each trigger into a
+            // ContactReceiver added to the trigger's own GameObject, and
+            // gives that receiver the trigger's shape — so two triggers
+            // sharing an object means two receivers on it fighting over one
+            // shape, and the channel reports nothing at all. Stacking them
+            // was silent: no error, no warning, just a prop that had stopped
+            // reading contacts.
+            //
+            // Each sits on the frame measured from the MESH rather than on
+            // the object's transform, which on the avatar was 28 cm out and
+            // put every socket half a plug length short.
+            GameObject Host(string name)
+            {
+                var host = new GameObject(name);
+                host.transform.SetParent(root.transform, false);
+                host.transform.SetPositionAndRotation(result.Origin, result.Rotation);
+                return host;
+            }
 
             // Engagement. Distance-only, so a SPHERE, and areaSize.x is its
             // radius outright rather than half of it.
-            var engage = frame.AddComponent<CVRSpawnableTrigger>();
+            var engage = Host("YAPS Channel E").AddComponent<CVRSpawnableTrigger>();
             engage.areaSize = box * 0.5f;
             engage.useAdvancedTrigger = true;
             engage.allowedTypes = SocketTypes;
@@ -387,7 +399,7 @@ namespace AvatarBridge.Spike
 
             // Hole or ring. Enter and exit only, which also counts as
             // distance-only, so this is a sphere too.
-            var hole = frame.AddComponent<CVRSpawnableTrigger>();
+            var hole = Host("YAPS Channel H").AddComponent<CVRSpawnableTrigger>();
             hole.areaSize = box * 0.5f;
             hole.useAdvancedTrigger = true;
             hole.allowedTypes = HoleTypes;
@@ -408,13 +420,13 @@ namespace AvatarBridge.Spike
             // task, so they really are boxes and want the full size.
             var axes = new[]
             {
-                (2, CVRSpawnableTrigger.SampleDirection.XPositive),
-                (3, CVRSpawnableTrigger.SampleDirection.YPositive),
-                (4, CVRSpawnableTrigger.SampleDirection.ZPositive),
+                (2, "X", CVRSpawnableTrigger.SampleDirection.XPositive),
+                (3, "Y", CVRSpawnableTrigger.SampleDirection.YPositive),
+                (4, "Z", CVRSpawnableTrigger.SampleDirection.ZPositive),
             };
-            foreach (var (index, direction) in axes)
+            foreach (var (index, name, direction) in axes)
             {
-                var axis = frame.AddComponent<CVRSpawnableTrigger>();
+                var axis = Host("YAPS Channel " + name).AddComponent<CVRSpawnableTrigger>();
                 axis.areaSize = box;
                 axis.sampleDirection = direction;
                 axis.useAdvancedTrigger = true;
