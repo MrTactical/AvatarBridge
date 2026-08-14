@@ -560,6 +560,21 @@ namespace AvatarBridge.Spike
 
             var pickup = root.AddComponent<CVRPickupObject>();
             pickup.maximumGrabDistance = 8f;
+            // Joe found this, and it is what makes a prop with a contact
+            // channel usable by anyone but its owner.
+            //
+            // A channel value is written by whoever's SOCKET the prop met,
+            // not by whoever is holding it — the client grants authority
+            // when the sending contact belongs to your own avatar. Writing
+            // one sends a full prop update carrying the prop's position and
+            // marks it no longer remotely synced, so a remote player
+            // bringing this to your socket had it taken out of their hands
+            // the moment the socket switched on.
+            //
+            // DisallowTheft makes CanPickup refuse anyone who is not the
+            // current holder while it is held, which closes that off and
+            // leaves the channel working.
+            pickup.disallowTheft = true;
 
             var spawnable = root.AddComponent<CVRSpawnable>();
             spawnable.spawnHeight = 1.2f;   // chest height, not at your feet

@@ -177,7 +177,13 @@ namespace AvatarBridge.Spike
             rigidbody.drag = 6f;
             rigidbody.angularDrag = 6f;
             rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
-            root.AddComponent<CVRPickupObject>().maximumGrabDistance = 8f;
+            var pickup = root.AddComponent<CVRPickupObject>();
+            pickup.maximumGrabDistance = 8f;
+            // Same reason as the plug prop: this one carries a channel too,
+            // and a channel value is written by whoever's contact it met
+            // rather than by whoever is holding it. Writing one re-sends the
+            // prop's position and drops it out of the holder's hands.
+            pickup.disallowTheft = true;
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, Dir + "/YAPS Tube Socket.prefab");
             Object.DestroyImmediate(root);
