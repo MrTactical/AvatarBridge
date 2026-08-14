@@ -63,6 +63,15 @@ float _YAPS_SocketDepth;
 // the plug's length. Four shapes: an entry-open plus three staged ones,
 // the arrangement DPS settled on and the one socket authors already build
 // their meshes around.
+//
+// KNOWN LIMIT, and it bites the converter rather than a prop. Staging here
+// is POSITIONAL — shape 0 is the entry, shape 3 the deepest — but the
+// baker picks shapes by how far they move a mesh and keeps them in that
+// order. Ties hold their mesh order, so a set of evenly sized shapes comes
+// through correctly, and the test tube's four do. A socket whose entry
+// shape moves further than its deep ones would arrive scrambled. Baking a
+// socket in mesh order, or mapping names to stages, is the fix, and it is
+// not written yet.
 float4 _YAPS_SocketShapeStart;
 float4 _YAPS_SocketShapeFade;
 
@@ -157,7 +166,19 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     {
         float start = _YAPS_SocketShapeStart[s];
         float fade = max(_YAPS_SocketShapeFade[s], 0.0001);
-        float weight = saturate((depth - start) / fade) * _YAPS_SocketPower;
+
+        // CUMULATIVE, as DPS is: once a shape has arrived it stays, and
+        // going deeper stacks the next one on top. Not a travelling band —
+        // a tube being filled progressively is what this describes, and a
+        // band would empty the part already occupied.
+        //
+        // Eased with a cosine rather than left linear, which is DPS's
+        // touch and worth copying: a linear ramp starts and stops with a
+        // visible corner, and on a shape this large the corner reads as a
+        // pop.
+        float weight = saturate((depth - start) / fade);
+        weight = -cos(weight * 3.14159265) * 0.5 + 0.5;
+        weight *= _YAPS_SocketPower;
         if (weight <= 0.0001) continue;
 
         uint at = block + s * total * 9 + vertexId * 9;

@@ -77,6 +77,32 @@ namespace AvatarBridge.Spike
             skin.updateWhenOffscreen = true;
             skin.sharedMaterial = TubeMaterial();
 
+            // The SAME baker the plug uses. A socket bake is the plug bake
+            // with different fields mattering: the socket deform reads only
+            // the shape blocks, and never touches the base position, the
+            // axis or the active weight the baker measures alongside them.
+            // One format, one baker, both ends.
+            var bake = YapsBaker.Bake(skin, body.transform, Dir, null, out string failure);
+            if (bake == null)
+            {
+                Debug.LogError("[YAPS] Could not bake the tube: " + failure +
+                               " — it will render but never bulge.");
+            }
+            else
+            {
+                skin.sharedMaterial = YapsBaker.Apply(bake, skin.sharedMaterial,
+                    skin.sharedMaterial.shader, Dir, true);
+                // Depth arrives from the channel; -1 until it does, which
+                // is what lets the shader fall back to a plug's tracker
+                // light rather than believing a zero nobody sent.
+                skin.sharedMaterial.SetFloat("_YAPS_SocketDepth", -1f);
+                skin.sharedMaterial.SetFloat("_YAPS_SocketPower", 1f);
+                skin.sharedMaterial.SetVector("_YAPS_SocketShapeStart",
+                    new Vector4(0f, 0.25f, 0.5f, 0.75f));
+                skin.sharedMaterial.SetVector("_YAPS_SocketShapeFade",
+                    new Vector4(0.3f, 0.3f, 0.3f, 0.3f));
+            }
+
             // --- what turns depth into a bulge ---------------------------
             var controller = BuildController();
             var animator = root.AddComponent<Animator>();
@@ -219,24 +245,33 @@ namespace AvatarBridge.Spike
 
         // --- the mesh --------------------------------------------------
 
-        // An open tube along +Z, with one blendshape that pushes its middle
-        // outward. The bulge is weighted by a raised cosine along the
-        // length, so it swells smoothly instead of stepping, and it is
-        // strongest at the centre — which is where a plug of about this
-        // length would sit.
+        // An open tube along +Z carrying FOUR blendshapes, each swelling a
+        // different stretch of its length. Applied cumulatively by depth
+        // they read as the tube filling from the mouth inward, which is
+        // what a shaft going in actually does — a single shape could only
+        // pulse in place.
+        //
+        // Four because that is what DPS settled on and what socket authors
+        // already build their meshes around: an entry-open plus three.
+        const int ShapeCount = 4;
+        static readonly float[] ShapeCentres = { 0.12f, 0.38f, 0.62f, 0.88f };
+        const float ShapeWidth = 0.30f;   // reach either side of a centre
+
         static Mesh BuildTube()
         {
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
-            var deltas = new List<Vector3>();
             var triangles = new List<int>();
+            var shapeDeltas = new List<Vector3>[ShapeCount];
+            for (int s = 0; s < ShapeCount; s++)
+            {
+                shapeDeltas[s] = new List<Vector3>();
+            }
 
             for (int ring = 0; ring <= Along; ring++)
             {
                 float t = ring / (float) Along;
                 float z = t * Length;
-                // Raised cosine: zero at both ends, one in the middle.
-                float swell = 0.5f - 0.5f * Mathf.Cos(t * Mathf.PI * 2f);
                 for (int a = 0; a < Around; a++)
                 {
                     float angle = a / (float) Around * Mathf.PI * 2f;
@@ -245,7 +280,22 @@ namespace AvatarBridge.Spike
                     // Inward-facing, since a tube is seen from inside as
                     // much as out.
                     normals.Add(-outward);
-                    deltas.Add(outward * (BulgeAmount * swell));
+
+                    // FOUR shapes, each a swell centred at its own point
+                    // along the tube, so the staging has something to
+                    // stage. One shape could only pulse; four applied
+                    // cumulatively by depth read as the tube filling from
+                    // the mouth inward, which is the thing being modelled.
+                    for (int s = 0; s < ShapeCount; s++)
+                    {
+                        float centre = ShapeCentres[s];
+                        // A narrow raised cosine around this shape's own
+                        // centre, zero outside it, so shapes do not simply
+                        // sum into one fat tube.
+                        float d = Mathf.Abs(t - centre) / ShapeWidth;
+                        float swell = d >= 1f ? 0f : 0.5f + 0.5f * Mathf.Cos(d * Mathf.PI);
+                        shapeDeltas[s].Add(outward * (BulgeAmount * swell));
+                    }
                 }
             }
 
@@ -269,10 +319,16 @@ namespace AvatarBridge.Spike
             mesh.RecalculateBounds();
 
             // Normals shift with the wall, tangents do not meaningfully, so
-            // only the two that matter are supplied.
+            // only the deltas that matter are supplied. Named by the stretch
+            // each one swells, since a socket author reading this in the
+            // inspector wants to know WHERE, not which index.
             var deltaNormals = new Vector3[vertices.Count];
-            mesh.AddBlendShapeFrame("Bulge", 100f, deltas.ToArray(), deltaNormals,
-                new Vector3[vertices.Count]);
+            var deltaTangents = new Vector3[vertices.Count];
+            for (int s = 0; s < ShapeCount; s++)
+            {
+                mesh.AddBlendShapeFrame($"Bulge {s + 1}", 100f,
+                    shapeDeltas[s].ToArray(), deltaNormals, deltaTangents);
+            }
             return mesh;
         }
 
@@ -295,9 +351,21 @@ namespace AvatarBridge.Spike
             AssetDatabase.AddObjectToAsset(tree, controller);
             foreach (float at in new[] { 0f, 1f })
             {
-                var clip = new AnimationClip { name = $"Bulge {at:0}" };
-                clip.SetCurve("Tube", typeof(SkinnedMeshRenderer), "blendShape.Bulge",
-                    AnimationCurve.Constant(0f, 1f / 60f, at * 100f));
+                // Drives the SHADER's depth now, not a blendshape weight.
+                //
+                // The shapes are baked into a texture and staged inside the
+                // vertex shader, which is what lets this tube also react to
+                // DPS content that has no contacts at all — an animator
+                // curve can only move when something told it to, and DPS
+                // never tells anyone anything.
+                //
+                // The channel still drives it, so a contact-carrying plug
+                // gets the exact measured depth; the shader falls back to
+                // reading the plug's tracker light when nothing does.
+                var clip = new AnimationClip { name = $"Depth {at:0}" };
+                clip.SetCurve("Tube", typeof(SkinnedMeshRenderer),
+                    "material._YAPS_SocketDepth",
+                    AnimationCurve.Constant(0f, 1f / 60f, at));
                 AssetDatabase.AddObjectToAsset(clip, controller);
                 tree.AddChild(clip, at);
             }
@@ -320,7 +388,13 @@ namespace AvatarBridge.Spike
         // back to Standard when there is none.
         static Material TubeMaterial()
         {
-            var shader = Shader.Find(".poiyomi/Poiyomi Toon")
+            // The socket harness shader FIRST, because it is the only one
+            // carrying the deform this tube now depends on. The others
+            // remain as a fallback so the prop still builds and renders in
+            // a project where the harness shader is missing — it simply
+            // will not bulge, which is a better failure than a pink tube.
+            var shader = Shader.Find("AvatarBridge/YAPS Test Socket")
+                         ?? Shader.Find(".poiyomi/Poiyomi Toon")
                          ?? Shader.Find("Poiyomi/Poiyomi Toon")
                          ?? Shader.Find(".poiyomi/Poiyomi Pro")
                          ?? Shader.Find("Standard")
