@@ -385,19 +385,26 @@ namespace AvatarBridge
                     }
                     else if (digit == 5 || digit == 6)
                     {
-                        // 0.35, not 0.45. The FIRST decimal is free — a
-                        // decoder reads the second, which is why 0.31 is a
-                        // hole exactly as 0.41 is — so dropping it puts the
-                        // front below every root while still saying front.
+                        // 0.45, the value legacy has always used, and NOT
+                        // the 0.35 that briefly lived here.
                         //
-                        // At 0.45 a socket's front outranks its own root,
-                        // and on an avatar with twelve of them all four
-                        // vertex slots fill with fronts: a direction with no
-                        // origin, and a legacy plug that only reacted while
-                        // its owner walked backwards, because moving
-                        // reshuffled which lights were nearest and let a
-                        // root through now and then.
-                        light.range = ctx.Settings.emitLegacySocketLights ? 0.3500f : FrontRange;
+                        // The first decimal is free to OUR decoder, which
+                        // reads the second — so 0.35 still says "front"
+                        // while ranking below every root, which looked like
+                        // a clean way to stop twelve sockets' fronts
+                        // evicting their roots. It is not: a DPS decoder
+                        // gates on a range window around 0.4 and never saw
+                        // them at all. Its plugs were left with a root and
+                        // no front, which is a position with no axis, so
+                        // they fell back to a fixed direction and engaged
+                        // from one side only. The green test prop at a plain
+                        // 0.4506 was omnidirectional for that same plug the
+                        // whole time, which is what gave it away.
+                        //
+                        // The eviction this was solving is gone regardless:
+                        // socket lights follow their menu toggle now, so one
+                        // socket lit is two lights against four slots.
+                        light.range = ctx.Settings.emitLegacySocketLights ? 0.4500f : FrontRange;
                         fronts++;
                         legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
@@ -438,11 +445,11 @@ namespace AvatarBridge
                 "origin. Reversing the two makes roots win their slots." +
                 (legacy > 0
                     ? " These sockets speak LEGACY, so every DPS plug already on ChilloutVR can " +
-                      "see them, which is most of the content there is. Their fronts sit at 0.35 " +
-                      "rather than 0.45: a decoder reads the second decimal, so the first one is " +
-                      "free, and dropping it puts every front below every root. That matters on " +
-                      "an avatar with a dozen sockets, where fronts at 0.45 take all four vertex " +
-                      "slots and leave a plug with a direction and no origin."
+                      "see them, which is most of the content there is, and from any direction " +
+                      "rather than only from the front, because they carry a root AND a front " +
+                      "the way DPS expects. A root on its own is a position with no axis, and a " +
+                      "plug reading one falls back to a fixed direction and engages from one " +
+                      "side only."
                     : " These sockets use our own ordering, which wins the light slots cleanly " +
                       "but is unreadable to DPS content — they will be invisible to every plug " +
                       "except another converted one.") +
