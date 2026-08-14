@@ -290,7 +290,12 @@ namespace AvatarBridge
             host.transform.SetParent(plug.Root, false);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            trigger.areaSize = box;
+            // A trigger carrying ONLY a distance task is a SPHERE, and its
+            // radius is areaSize.x outright — not half of it, the way a box
+            // uses the same field. Handing it the box size gave a sphere of
+            // twice the intended reach, a metre and a half of engagement
+            // range around the plug, and a gizmo that filled the room.
+            trigger.areaSize = box * 0.5f;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = SocketPointerTypes;
@@ -328,7 +333,10 @@ namespace AvatarBridge
             host.transform.SetParent(plug.Root, false);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            trigger.areaSize = box;
+            // Enter/exit only and no stay tasks at all, which the CCK also
+            // counts as distance-only — so this is a sphere too, and its
+            // radius is areaSize.x outright.
+            trigger.areaSize = box * 0.5f;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = HolePointerTypes;
