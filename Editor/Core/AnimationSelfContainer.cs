@@ -153,6 +153,29 @@ namespace AvatarBridge
                 }
                 map[clip] = copy;
                 copied.Add(clip.name);
+
+                // A clip's ADDITIVE REFERENCE POSE is a second clip, and it
+                // is not a motion — nothing walks to it, so copying the clip
+                // left the copy still pointing at wherever the pose lived.
+                // On a Modular Avatar build that is NDMF's __Generated
+                // folder, which is deleted on the next bake, and the audit
+                // then reports a saved controller referencing bake-temp
+                // assets with no way to say which field is at fault.
+                //
+                // Only when the pose is actually in use. The field is often
+                // left set on a clip that does not use it, and copying a
+                // clip nothing reads would be noise in the output folder.
+                var settings = AnimationUtility.GetAnimationClipSettings(copy);
+                if (settings.hasAdditiveReferencePose
+                    && settings.additiveReferencePoseClip != null
+                    && NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip),
+                                 outputDir, controllerPath))
+                {
+                    settings.additiveReferencePoseClip = Fix(settings.additiveReferencePoseClip,
+                        controller, controllerPath, outputDir, dir, map, copied) as AnimationClip;
+                    AnimationUtility.SetAnimationClipSettings(copy, settings);
+                    EditorUtility.SetDirty(copy);
+                }
                 return copy;
             }
             if (motion is BlendTree tree)
