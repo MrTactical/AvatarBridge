@@ -170,6 +170,8 @@ namespace AvatarBridge
                 MaterialSlot = slot,
                 Length = result.Length,
                 Shapes = result.Shapes,
+                Origin = result.Origin,
+                Rotation = result.Rotation,
             });
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",

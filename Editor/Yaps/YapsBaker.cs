@@ -57,6 +57,14 @@ namespace AvatarBridge
             public float ActiveVertices;
             public bool FromSkinnedMesh;
             public List<string> Shapes = new List<string>();
+
+            // The frame the deform actually works in, in world space at bake
+            // time. It is NOT the plug object's transform — the object can
+            // sit anywhere, and on a real avatar it does. Anything measuring
+            // against the plug from outside the shader has to use this or it
+            // measures from somewhere the deform has never heard of.
+            public Vector3 Origin;
+            public Quaternion Rotation;
         }
 
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
@@ -194,6 +202,8 @@ namespace AvatarBridge
                 ActiveVertices = active,
                 FromSkinnedMesh = skin != null,
                 Shapes = shapeNames,
+                Origin = origin,
+                Rotation = rotation,
             };
         }
 

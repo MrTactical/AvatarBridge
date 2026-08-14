@@ -209,8 +209,7 @@ namespace AvatarBridge
             for (int a = 0; a < axes.Length; a++)
             {
                 var (axis, direction) = axes[a];
-                var host = new GameObject($"YAPS Channel {index} {axis}");
-                host.transform.SetParent(plug.Root, false);
+                var host = TriggerHost($"YAPS Channel {index} {axis}", plug);
 
                 var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
                 trigger.areaSize = box;
@@ -305,8 +304,7 @@ namespace AvatarBridge
         static void BuildEngagementTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
-            var host = new GameObject($"YAPS Channel {index} E");
-            host.transform.SetParent(plug.Root, false);
+            var host = TriggerHost($"YAPS Channel {index} E", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             // A trigger carrying ONLY a distance task is a SPHERE, and its
@@ -348,8 +346,7 @@ namespace AvatarBridge
         static void AddHoleTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
-            var host = new GameObject($"YAPS Channel {index} H");
-            host.transform.SetParent(plug.Root, false);
+            var host = TriggerHost($"YAPS Channel {index} H", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             // Enter/exit only and no stay tasks at all, which the CCK also
@@ -589,6 +586,30 @@ namespace AvatarBridge
             var clip = new AnimationClip { name = name };
             clip.SetCurve(path, component, field, AnimationCurve.Constant(0f, 1f / 60f, value));
             return clip;
+        }
+
+        // A trigger measures from its OWN transform, and the shader
+        // reconstructs the socket against the frame measured from the mesh.
+        // Those must be the same frame. Parenting the host to the plug
+        // object leaves them apart by however far the object sits from the
+        // plug it names — 28 cm on a 46 cm plug for a real avatar, so the
+        // socket landed more than half a plug length short of where it was,
+        // which reads in game as a plug that only engages half way down.
+        static GameObject TriggerHost(string name, BridgeContext.YapsPlug plug)
+        {
+            var host = new GameObject(name);
+            host.transform.SetParent(plug.Root, false);
+
+            // An all-zero quaternion is not a rotation; it means no frame was
+            // recorded. Sit on the object rather than teleporting to world
+            // zero, which is where a plug with no frame would otherwise put
+            // every contact it owns.
+            if (plug.Rotation.x != 0f || plug.Rotation.y != 0f
+                || plug.Rotation.z != 0f || plug.Rotation.w != 0f)
+            {
+                host.transform.SetPositionAndRotation(plug.Origin, plug.Rotation);
+            }
+            return host;
         }
 
         // Point every clip in a cloned layer at the renamed parameters.

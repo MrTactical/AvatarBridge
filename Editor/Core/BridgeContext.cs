@@ -72,6 +72,15 @@ namespace AvatarBridge
             public int MaterialSlot;
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
+
+            // Measured from the mesh, world space, at conversion time. The
+            // plug OBJECT is routinely somewhere else entirely — a quarter
+            // of a metre up the body on a real avatar — so a contact box
+            // placed on the object measures from a different origin than the
+            // shader reconstructs against, and the socket lands short by
+            // exactly that gap.
+            public UnityEngine.Vector3 Origin;
+            public UnityEngine.Quaternion Rotation;
         }
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();
