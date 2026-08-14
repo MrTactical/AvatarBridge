@@ -348,6 +348,23 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.position = plugOrigin + plugRight * offset.x
                                      + plugUp * offset.y
                                      + plugForward * offset.z;
+
+        // The channel's engagement is a PROXIMITY reading taken across the
+        // whole trigger sphere, and that sphere is 1.75 plug lengths — so
+        // with the socket at the tip it reads about 0.4, where the light
+        // path reads 1, and the plug bends roughly half as far for exactly
+        // the same arrangement.
+        //
+        // So keep it as the thing it is good at — a gate, meaning something
+        // is in range and the reconstruction below is real — and take the
+        // curve itself from the position, by the same formula the light
+        // path uses. Two routes to the same socket then cannot disagree
+        // about how far in it is, which they have no business doing.
+        if (socket.engaged > 0)
+        {
+            float channelGap = length(socket.position - plugOrigin);
+            socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, channelGap);
+        }
     }
 
     // What the CHANNEL resolved, kept before the floor invents anything.
