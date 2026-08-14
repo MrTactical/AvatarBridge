@@ -437,7 +437,15 @@ namespace AvatarBridge
                     string mine = "#" + synced + "_" + parameter.name.TrimStart('#');
                     AvatarScalerInjector.RenameParameterReferences(clone.stateMachine,
                         parameter.name, mine);
-                    Declare(ctx, mine, parameter.type);
+                    // Carry the template's DEFAULT across, not just the name
+                    // and type. These are its constants: "One" is the direct
+                    // blend weight every child of the smoothing tree rides on
+                    // and ships at 1, and "StepSize" is how fast the value
+                    // may travel per frame and ships at 0.05. Declared bare
+                    // they come out 0, and a direct tree whose every weight
+                    // is zero produces nothing at all — the layer runs, reads
+                    // its input, and writes a value that never moves.
+                    Declare(ctx, mine, parameter.type, parameter.defaultFloat);
                 }
                 // The controller is already an asset by the time this pass
                 // runs, so the saver's own embed walk is long past. A clone
@@ -562,14 +570,28 @@ namespace AvatarBridge
             return clip;
         }
 
+        // The default MATTERS for anything cloned from a template. A
+        // smoothing tree blends its children directly on a parameter the
+        // template ships at 1, and steps at a rate it ships at 0.05; declare
+        // those as a bare name and they arrive as 0, which is a tree with no
+        // weight stepping at no speed. AddParameter cannot set a default, so
+        // the parameter is written into the array by hand.
         static void Declare(BridgeContext ctx, string name,
-            AnimatorControllerParameterType type = AnimatorControllerParameterType.Float)
+            AnimatorControllerParameterType type = AnimatorControllerParameterType.Float,
+            float defaultFloat = 0f)
         {
             if (ctx.MergedController.parameters.Any(p => p.name == name))
             {
                 return;
             }
-            ctx.MergedController.AddParameter(name, type);
+            var parameters = ctx.MergedController.parameters.ToList();
+            parameters.Add(new AnimatorControllerParameter
+            {
+                name = name,
+                type = type,
+                defaultFloat = defaultFloat,
+            });
+            ctx.MergedController.parameters = parameters.ToArray();
         }
     }
 }
