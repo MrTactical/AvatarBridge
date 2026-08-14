@@ -103,6 +103,25 @@ namespace AvatarBridge
                 return;
             }
 
+            // Anything built in memory after the controller became an asset
+            // has to embed itself, and a layer that forgets serializes with
+            // a null state machine — named correctly, driving nothing, with
+            // no error anywhere. That has now cost two separate debugging
+            // sessions, so it is checked rather than remembered.
+            var hollow = ctx.MergedController.layers
+                .Where(l => l.name.StartsWith("YAPS") && l.stateMachine == null)
+                .Select(l => l.name)
+                .ToList();
+            if (hollow.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{hollow.Count} channel layer(s) came out empty",
+                    "The penetration system's own animator layers did not survive being saved, so " +
+                    "the values they carry stay at zero and contact-driven sockets will do nothing. " +
+                    "Marker-light sockets are unaffected. Please report this at the AvatarBridge " +
+                    $"repo, quoting: {string.Join(", ", hollow)}.");
+            }
+
             ctx.Report.Converted(Category,
                 $"Wired {wired} plug(s) to the socket channel",
                 $"{taskIndex} value(s): where the socket sits relative to the plug, " +
@@ -420,6 +439,16 @@ namespace AvatarBridge
                         parameter.name, mine);
                     Declare(ctx, mine, parameter.type);
                 }
+                // The controller is already an asset by the time this pass
+                // runs, so the saver's own embed walk is long past. A clone
+                // that does not add itself serializes with a null state
+                // machine: the layer appears, correctly named, smoothing
+                // nothing, and the value it was meant to produce stays at
+                // zero forever. Since that value is ENGAGEMENT, the whole
+                // contact channel goes quiet and only the light path still
+                // works — which is exactly how this hid.
+                AnimatorAssetSaver.EmbedLayer(clone, ctx.MergedController);
+
                 layers.Add(clone);
                 layerNames.Add(clone.name);
             }

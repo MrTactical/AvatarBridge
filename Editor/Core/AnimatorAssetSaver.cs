@@ -91,6 +91,22 @@ namespace AvatarBridge
             }
         }
 
+        // For a layer added AFTER Save has already run. The walk above has
+        // been and gone by then, so such a layer has to embed itself or it
+        // serializes with a null state machine: correctly named, driving
+        // nothing, and silent about it.
+        internal static void EmbedLayer(AnimatorControllerLayer layer, AnimatorController asset)
+        {
+            if (layer == null || asset == null
+                || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(asset)))
+            {
+                return;
+            }
+            var seen = new HashSet<Object>();
+            Add(layer.avatarMask, asset, seen);
+            AddMachine(layer.stateMachine, asset, seen);
+        }
+
         static void ValidateSavedController(AnimatorController original, string assetPath)
         {
             var reloaded = AssetDatabase.LoadAssetAtPath<AnimatorController>(assetPath);
