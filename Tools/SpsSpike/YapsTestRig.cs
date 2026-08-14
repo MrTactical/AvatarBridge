@@ -116,14 +116,19 @@ namespace AvatarBridge.Spike
             socket.transform.localPosition = new Vector3(0.25f, 0f, 0.75f);
             socket.transform.localRotation = Quaternion.Euler(0f, -60f, 0f);
 
-            // Protocol lights on the socket, in OUR inverted encoding —
-            // root above front, so roots win the four vertex slots instead
-            // of being evicted by their own fronts. Switching the driver to
-            // Protocol Lights makes the shader find these on its own.
-            // Digits 7 and 0 — the only two legacy DPS never claimed, and
-            // root above front so roots win the four vertex slots.
-            AddSocketLight(socket.transform, "Root 0.4706", 0.4706f, Vector3.zero);
-            AddSocketLight(socket.transform, "Front 0.4006", 0.4006f, Vector3.forward * 0.02f);
+            // LEGACY, because that is what a converted socket emits. This
+            // rig spent a while on our own 0.4706 / 0.4006 encoding, which
+            // was retired once converted sockets went legacy so that DPS
+            // plugs could see them — and a harness testing an encoding
+            // nothing ships is a harness that agrees with itself and
+            // nobody else.
+            //
+            // 0.4106 root, 0.4506 front: VRCFury's own values, trailing
+            // digits and all. Switching the driver to Protocol Lights makes
+            // the shader find these unaided, which is the same path a real
+            // plug takes against real content.
+            AddSocketLight(socket.transform, "Root 0.4106", 0.4106f, Vector3.zero);
+            AddSocketLight(socket.transform, "Front 0.4506", 0.4506f, Vector3.forward * 0.02f);
 
             var driver = plug.AddComponent<YapsTestDriver>();
             driver.socket = socket.transform;
