@@ -69,7 +69,7 @@ namespace AvatarBridge
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.05
-        _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.10
+        _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.35
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)
