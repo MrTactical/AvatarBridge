@@ -204,7 +204,10 @@ namespace AvatarBridge.Spike
             go.AddComponent<CVRPointer>().type = type;
         }
 
-        static void MarkerLight(Transform parent, string name, float range, Vector3 at)
+        // Returns the Light, because a penetrator's tracker needs its
+        // intensity set to the plug's length afterwards — DPS reads that
+        // field as a measurement rather than as a brightness.
+        static Light MarkerLight(Transform parent, string name, float range, Vector3 at)
         {
             var go = new GameObject("Marker " + name);
             go.transform.SetParent(parent, false);
@@ -224,6 +227,7 @@ namespace AvatarBridge.Spike
             light.bounceIntensity = 0f;
             light.shadows = LightShadows.None;
             light.renderMode = LightRenderMode.ForceVertex;
+            return light;
         }
 
         // --- the plug --------------------------------------------------
@@ -302,17 +306,36 @@ namespace AvatarBridge.Spike
             // converted sockets being invisible to DPS plugs until they
             // spoke legacy.
             //
-            // 0.49: the second decimal is the digit, and 8 and 9 are a
-            // plug's own tip. Our own decoder classifies those as NONE on
-            // purpose, so adding this cannot make one plug chase another.
+            // Read straight out of Raliv's own source rather than guessed.
+            // RalivDPS_Functions.cginc:
             //
-            // Plain 0.49, NOT 0.4906. SPS2 tags its own emitted lights with
-            // a fourth decimal of 5 to 7 so that it can ignore them, and
-            // wearing that tag would have SPS sockets ignore this tip for
-            // exactly the reason it exists. Sockets keep VRCFury's tagged
-            // values because those are read by DPS, which does not care —
-            // this is the one light where the tag would cost something.
-            MarkerLight(root.transform, "Tip", 0.49f, new Vector3(0, 0, PlugLength));
+            //     penetratorID     = 0.09 + ID * -0.01      // channel 0
+            //     penetratorDist   = distance(orifice, penetrator)
+            //     penetrationDepth = max(0, penetratorLength - penetratorDist)
+            //     penetratorLength = unity_LightColor[i].a
+            //
+            // Three things follow, and two of them are not obvious:
+            //
+            // RANGE 0.49. The match is abs(fmod(range,0.1) - 0.09) < 0.005,
+            // so 0.4906 would pass too — but SPS2 tags its own lights with a
+            // fourth decimal of 5 to 7 so it can ignore them, and wearing
+            // that tag would have SPS sockets ignore this tip for the very
+            // reason it exists. Sockets keep VRCFury's tagged values because
+            // DPS reads them and does not care; this is the one light where
+            // the tag would cost something.
+            //
+            // INTENSITY IS THE LENGTH, not a brightness. The orifice reads
+            // it as unity_LightColor.a and subtracts the distance from it to
+            // get depth. Raliv's own Tip.prefab ships intensity 0.354 for a
+            // 0.354 m template. At intensity 1 this prop would claim to be a
+            // metre long and bulge everything it came near.
+            //
+            // AT THE BASE, not the tip, however its prefab is named. Depth
+            // is length MINUS distance, so the tracked point has to be the
+            // end the shaft is measured FROM. A light at the tip makes that
+            // subtraction meaningless.
+            MarkerLight(root.transform, "DPS Tracker", 0.49f, Vector3.zero)
+                .intensity = PlugLength;
 
             var capsule = root.AddComponent<CapsuleCollider>();
             capsule.direction = 2;   // along Z, the shaft
