@@ -109,11 +109,24 @@ namespace AvatarBridge.Spike
                 plug.AddComponent<MeshRenderer>().sharedMaterial = material;
             }
 
+            // OUTSIDE the rig, deliberately, and this is not tidiness.
+            //
+            // Parented under the rig root it scales with the plug, so
+            // scaling the root moves both together, the relative geometry
+            // never changes, and a scale test quietly proves nothing. Joe
+            // hit exactly that and had to unparent it by hand before the
+            // scale fix could be seen at all.
+            //
+            // A socket is somebody else's object in every real case — a
+            // different avatar, or a prop — so a sibling of the rig is also
+            // the more honest arrangement.
             var socket = new GameObject("Socket (drag me)");
-            socket.transform.SetParent(root.transform, false);
+            socket.transform.SetParent(root.transform.parent, false);
             // Start it just beyond the tip, slightly off-axis, so the very
             // first thing you see is a bend rather than a straight rod.
-            socket.transform.localPosition = new Vector3(0.25f, 0f, 0.75f);
+            // Placed relative to the RIG, since it no longer inherits the
+            // rig's own transform.
+            socket.transform.position = root.transform.TransformPoint(new Vector3(0.25f, 0f, 0.75f));
             socket.transform.localRotation = Quaternion.Euler(0f, -60f, 0f);
 
             // LEGACY, because that is what a converted socket emits. This

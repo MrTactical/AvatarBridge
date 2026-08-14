@@ -278,7 +278,7 @@ namespace AvatarBridge.Spike
             // twentieth, which reads as the shaft popping out of existence
             // rather than sinking into something.
             material.SetFloat("_YAPS_TaperStart", 0.05f);
-            material.SetFloat("_YAPS_TaperEnd", 0.35f);
+            material.SetFloat("_YAPS_TaperEnd", 0.20f);
             renderer.sharedMaterial = material;
 
             // The plug END of a contact. Without these the prop can bend
