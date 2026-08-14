@@ -133,9 +133,32 @@ namespace AvatarBridge.Spike
             MarkerLight(root.transform, "Root", RootRange, Vector3.zero);
             MarkerLight(root.transform, "Front", FrontRange, new Vector3(0, 0, 0.01f));
 
-            var pointer = new GameObject("Socket Pointer");
-            pointer.transform.SetParent(root.transform, false);
-            pointer.AddComponent<CVRPointer>().type = "SPSLL_Socket_Ring";
+            // A ROOT and a FRONT, in both ecosystems' names, exactly as a
+            // converted avatar's socket carries them.
+            //
+            // The root alone is a destination. A plug given only that can
+            // aim at the tube but not thread it, because nothing says which
+            // way the tube faces — and threading is the entire point of a
+            // tube. The second point, a centimetre along +Z, is what says
+            // it: subtracting one from the other IS the axis, which is how
+            // TPS and SPS have always described a socket's facing.
+            //
+            // Both namings because a plug should not have to care which
+            // system dressed the socket it just met. Without the TPS pair a
+            // real TPS penetrator cannot see this tube at all, since the
+            // SPSLL names mean nothing to it.
+            SocketPointer("Socket Root", "SPSLL_Socket_Ring", Vector3.zero);
+            SocketPointer("Socket Front", "SPSLL_Socket_Front", new Vector3(0, 0, 0.01f));
+            SocketPointer("Orifice Root", "TPS_Orf_Root", Vector3.zero);
+            SocketPointer("Orifice Norm", "TPS_Orf_Norm", new Vector3(0, 0, 0.01f));
+
+            void SocketPointer(string name, string type, Vector3 at)
+            {
+                var pointer = new GameObject(name);
+                pointer.transform.SetParent(root.transform, false);
+                pointer.transform.localPosition = at;
+                pointer.AddComponent<CVRPointer>().type = type;
+            }
 
             var capsule = root.AddComponent<CapsuleCollider>();
             capsule.direction = 2;
