@@ -448,6 +448,23 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
 
+    // IDLE SHRINK, from TPS. A plug nobody is using goes soft, and comes
+    // back as a socket approaches. No amount of bend maths substitutes for
+    // it: without it a plug is permanently at full mast, which reads wrong
+    // the entire time nothing is happening — which is most of the time.
+    //
+    // Applied to the BAKED position, before the curve walk, so length and
+    // girth shrink together and everything downstream follows: the walk
+    // measures a shorter rod, and the taper and overrun scale with it.
+    //
+    // Both default to 1, so an avatar converted before this existed
+    // behaves exactly as it did. The engagement used is the SHAPE of the
+    // approach rather than the channel's flag, so it eases in with the
+    // bend instead of snapping at the moment a socket is detected.
+    float idle = 1 - engage;
+    baked.position.z *= lerp(1, max(_YAPS_IdleLength, 0.01), idle);
+    baked.position.xy *= lerp(1, max(_YAPS_IdleWidth, 0.01), idle);
+
     // Only the PLUG's handle gets the pullout. Stretching it far along the
     // plug's own forward is what holds the shaft straight while the socket
     // is still out of range — the curve's first stretch is then dominated

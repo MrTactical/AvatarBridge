@@ -97,6 +97,13 @@ float _YAPS_SelfTag;
 float _YAPS_TaperStart;
 float _YAPS_TaperEnd;
 
+// How much of its length and girth a plug keeps while nothing is using
+// it, 1 being no change. TPS's idea, and the single most visible thing
+// missing from this deform: a plug that never softens is at full mast
+// permanently, which is wrong for almost the whole time it exists.
+float _YAPS_IdleLength;
+float _YAPS_IdleWidth;
+
 // --- blendshapes -----------------------------------------------------
 //
 // How many shape blocks follow the base one, and what each is currently

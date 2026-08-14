@@ -44,6 +44,8 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_SelfTag ("Self tag", Float) = -1
         _YAPS_TaperStart ("Hole taper start", Range(0,1)) = 0.05
         _YAPS_TaperEnd ("Hole taper end", Range(0,1)) = 0.35
+        _YAPS_IdleLength ("Idle length", Range(0.1,1)) = 1
+        _YAPS_IdleWidth ("Idle width", Range(0.1,1)) = 1
         _YAPS_ShapeCount ("Shape count", Float) = 0
         _YAPS_ShapeWeights ("Shape weights 0-3", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 ("Shape weights 4-7", Vector) = (0,0,0,0)
