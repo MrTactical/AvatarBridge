@@ -18,6 +18,25 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_SocketForward ("Socket forward", Vector) = (0,0,1,0)
         _YAPS_SocketUp ("Socket up", Vector) = (0,1,0,0)
         _YAPS_SocketFlags ("Socket flags (x engaged, y hole)", Vector) = (1,0,0,0)
+
+        // These must be DECLARED here, not merely set from code. A uniform
+        // the Properties block does not name has no per-material value to
+        // serialize, so SetFloat on it is forgotten by the time the prop is
+        // built — the shader then ran with channel space off and read the
+        // channel's normalised box coordinates as a world position.
+        //
+        // The list matches what YapsShaderPatcher injects into a converted
+        // avatar's shader, and has to keep matching it: the same include
+        // decodes both, and it cannot tell a prop from an avatar.
+        _YAPS_FrameFromVertex ("Frame from vertex", Range(0,1)) = 0
+        _YAPS_ChannelSpace ("Channel space", Range(0,1)) = 0
+        _YAPS_ChannelExtents ("Channel extents", Vector) = (1,1,1,0)
+        _YAPS_SelfTag ("Self tag", Float) = -1
+        _YAPS_TaperStart ("Hole taper start", Range(0,1)) = 0.05
+        _YAPS_TaperEnd ("Hole taper end", Range(0,1)) = 0.10
+        _YAPS_ShapeCount ("Shape count", Float) = 0
+        _YAPS_ShapeWeights ("Shape weights 0-3", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights2 ("Shape weights 4-7", Vector) = (0,0,0,0)
         [Enum(Deform,0,Active weight,1,Engagement,2,Blend,3,Baked Z,4)]
         _YAPS_Debug ("Debug view", Float) = 0
     }
