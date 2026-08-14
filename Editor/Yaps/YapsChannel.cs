@@ -409,6 +409,11 @@ namespace AvatarBridge
             string output = "#" + synced + "sm";
             var copier = new AnimatorDeepCopier();
             var layers = ctx.MergedController.layers.ToList();
+            // Every parameter this layer writes, old name to new. The
+            // template's clips bind these as Animator properties, and a clip
+            // binding is not a "parameter reference" — renaming references
+            // does not reach it.
+            var renames = new Dictionary<string, string>();
             foreach (var source in template.layers)
             {
                 if (source.name != AvatarScalerInjector.SmoothingLayer)
@@ -421,6 +426,8 @@ namespace AvatarBridge
                 AvatarScalerInjector.RenameParameterReferences(clone.stateMachine,
                     AvatarScalerInjector.TemplateParam, synced);
                 AvatarScalerInjector.RenameParameterReferences(clone.stateMachine, "Output", output);
+                renames[AvatarScalerInjector.TemplateParam] = synced;
+                renames["Output"] = output;
 
                 // Every OTHER parameter the template uses is scratch — its
                 // own frame timer and accumulators. Five copies of this
@@ -446,7 +453,21 @@ namespace AvatarBridge
                     // is zero produces nothing at all — the layer runs, reads
                     // its input, and writes a value that never moves.
                     Declare(ctx, mine, parameter.type, parameter.defaultFloat);
+                    renames[parameter.name] = mine;
                 }
+                // The clips are what actually WRITE these parameters: they
+                // bind them as Animator properties, which is how a value
+                // gets into a parameter at all without a script. Renaming
+                // the state machine's references leaves those bindings
+                // pointing at the template's own names — so five copies of
+                // this layer all sat on "Output", which is the AVATAR
+                // SCALER's parameter, and drove the wearer's height to zero
+                // while never writing the value they existed to produce.
+                // One cause, two symptoms: a shrinking avatar and a dead
+                // channel.
+                RebindMachine(clone.stateMachine, renames, ctx,
+                    new Dictionary<AnimationClip, AnimationClip>());
+
                 // The controller is already an asset by the time this pass
                 // runs, so the saver's own embed walk is long past. A clone
                 // that does not add itself serializes with a null state
@@ -567,6 +588,76 @@ namespace AvatarBridge
         {
             var clip = new AnimationClip { name = name };
             clip.SetCurve(path, component, field, AnimationCurve.Constant(0f, 1f / 60f, value));
+            return clip;
+        }
+
+        // Point every clip in a cloned layer at the renamed parameters.
+        static void RebindMachine(AnimatorStateMachine machine, Dictionary<string, string> renames,
+            BridgeContext ctx, Dictionary<AnimationClip, AnimationClip> cache)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            foreach (var child in machine.states)
+            {
+                child.state.motion = RebindMotion(child.state.motion, renames, ctx, cache);
+            }
+            foreach (var child in machine.stateMachines)
+            {
+                RebindMachine(child.stateMachine, renames, ctx, cache);
+            }
+        }
+
+        static Motion RebindMotion(Motion motion, Dictionary<string, string> renames,
+            BridgeContext ctx, Dictionary<AnimationClip, AnimationClip> cache)
+        {
+            if (motion is AnimationClip clip)
+            {
+                if (!cache.TryGetValue(clip, out var bound))
+                {
+                    bound = RebindClip(clip, renames, ctx);
+                    cache[clip] = bound;
+                }
+                return bound;
+            }
+            if (motion is BlendTree tree)
+            {
+                // Assigning children back is required; the getter hands out
+                // a copy of the array rather than the array itself.
+                var children = tree.children;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    children[i].motion = RebindMotion(children[i].motion, renames, ctx, cache);
+                }
+                tree.children = children;
+            }
+            return motion;
+        }
+
+        // A COPY, never the original. These clips live in the scaler package
+        // and are shared by every avatar the tool has ever converted, so
+        // rebinding one in place would reach back into the package itself.
+        static AnimationClip RebindClip(AnimationClip source, Dictionary<string, string> renames,
+            BridgeContext ctx)
+        {
+            var clip = new AnimationClip { name = source.name, frameRate = source.frameRate };
+            foreach (var binding in AnimationUtility.GetCurveBindings(source))
+            {
+                var curve = AnimationUtility.GetEditorCurve(source, binding);
+                var bound = binding;
+                if (binding.type == typeof(Animator)
+                    && renames.TryGetValue(binding.propertyName, out string renamed))
+                {
+                    bound.propertyName = renamed;
+                }
+                AnimationUtility.SetEditorCurve(clip, bound, curve);
+            }
+            if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(ctx.MergedController)))
+            {
+                clip.hideFlags = HideFlags.HideInHierarchy;
+                AssetDatabase.AddObjectToAsset(clip, ctx.MergedController);
+            }
             return clip;
         }
 
