@@ -350,6 +350,13 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
                                      + plugForward * offset.z;
     }
 
+    // What the CHANNEL resolved, kept before the floor invents anything.
+    // The light refinement below is allowed to sharpen this answer but not
+    // to replace it with a different socket, and telling those apart needs
+    // the original to compare against.
+    bool channelFound = found;
+    float3 channelPosition = socket.position;
+
     // Floor: if nothing has written a position, aim at the nearest body.
     if (!found)
     {
@@ -377,6 +384,25 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float lightHoleHint;
     bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward,
                                        lightHoleHint);
+    // A light refines the socket the channel already resolved. It does not
+    // get to nominate a DIFFERENT one, and it used to: any lit root inside
+    // the envelope replaced the channel's position outright. A contact-only
+    // socket therefore appeared broken whenever a lit socket was anywhere
+    // nearby — the channel engaged on the one being used, and the position
+    // came from the one carrying lights. Blue and orange are the sockets
+    // this ruins, because they emit no light of their own to win it back.
+    //
+    // So accept the light only when it is close enough to BE the socket the
+    // channel is reporting. Rejecting a good light costs a little precision
+    // and nothing else, since the channel's own position is already correct;
+    // accepting a wrong one bends the plug at another socket entirely, which
+    // is why the test is deliberately tight.
+    if (litRoot && channelFound)
+    {
+        float3 delta = lightPosition - channelPosition;
+        litRoot = dot(delta, delta) < worldLength * worldLength * 0.25;
+    }
+
     if (litRoot)
     {
         socket.position = lightPosition;
