@@ -403,6 +403,41 @@ namespace AvatarBridge
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,
             bool baked)
         {
+            // OFF, empty, and on an avatar whose baker builds layers during
+            // the bake. Nothing in the scene shows what is coming, so this
+            // is the one case the analysis cannot measure — and staying
+            // quiet about it is how a real avatar lost a Base layer holding
+            // 269 states and 220 parameter drivers that VRCFury created at
+            // bake time. The conversion report warned afterwards, which is
+            // the wrong end: by then the user has already converted.
+            //
+            // One row for all of them rather than one each, because on a
+            // baker's avatar every unticked layer is in this position and
+            // three rows saying the same thing is noise.
+            if (baked)
+            {
+                var unseen = OptionalLayers
+                    .Where(l => !IsOn(settings, l.Type) && !SuppliesOwnLayer(descriptor, l.Type))
+                    .Select(l => l.Setting)
+                    .ToList();
+                if (unseen.Count > 0)
+                {
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Manual,
+                        Setting = string.Join(", ", unseen),
+                        Finding = $"Off, and {(unseen.Count == 1 ? "its slot is" : "their slots are")} " +
+                                  "empty right now — but this avatar is built by a baker, and VRCFury " +
+                                  "or Modular Avatar can create these during the bake, which is what " +
+                                  "the conversion actually reads. If one arrives while the box is off " +
+                                  "it is dropped whole, and the only notice is a warning in the report " +
+                                  "after the conversion has run. Nothing in the scene can say which " +
+                                  "way it will go, so it is left to you: tick one if this avatar's " +
+                                  "locomotion, resting motion or emotes are part of what it is.",
+                    });
+                }
+            }
+
             foreach (var (type, setting) in OptionalLayers)
             {
                 if (!IsOn(settings, type) || SuppliesOwnLayer(descriptor, type))
