@@ -14,16 +14,37 @@ namespace AvatarBridge.Spike
 {
     public static class YapsShaderCheck
     {
-        const string ShaderName = "AvatarBridge/YAPS Test Plug";
+        // Both ends. A socket deform is as easy to break as a plug one and
+        // fails the same silent way — the shader imports clean and only
+        // refuses when a variant is actually forced.
+        static readonly string[] ShaderNames =
+        {
+            "AvatarBridge/YAPS Test Plug",
+            "AvatarBridge/YAPS Test Socket",
+        };
 
         [MenuItem("AvatarBridge/Spike/Verify YAPS shader compiles")]
         public static void RunBatch()
+        {
+            bool anyBroken = false;
+            foreach (string name in ShaderNames)
+            {
+                anyBroken |= !Check(name);
+            }
+            if (anyBroken)
+            {
+                Debug.LogError("[YAPS] At least one shader has errors — see above.");
+            }
+        }
+
+        // True when it compiled.
+        static bool Check(string ShaderName)
         {
             var shader = Shader.Find(ShaderName);
             if (shader == null)
             {
                 Debug.LogError($"[YAPS] Shader \"{ShaderName}\" not found.");
-                return;
+                return false;
             }
 
             // Touching a material forces the variant to be built.
@@ -62,6 +83,7 @@ namespace AvatarBridge.Spike
             {
                 Debug.Log(report.ToString());
             }
+            return !broken;
         }
     }
 }
