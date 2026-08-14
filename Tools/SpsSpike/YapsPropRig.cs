@@ -22,8 +22,10 @@
 // is local-avatar only — hence no channel here.
 #if UNITY_EDITOR && CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Linq;
 using ABI.CCK.Components;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace AvatarBridge.Spike
@@ -258,10 +260,14 @@ namespace AvatarBridge.Spike
             var material = YapsBaker.Apply(result, renderer.sharedMaterial, shader, Dir, false);
             material.SetFloat("_YAPS_Enabled", 1f);
             material.SetFloat("_YAPS_Overrun", 1f);
-            // No channel on a prop: the trigger that feeds one is local
-            // avatar only. Position and engagement both come from the
-            // socket's marker lights.
-            material.SetFloat("_YAPS_ChannelSpace", 0f);
+            // A prop gets a channel of its own. The avatar route is barred
+            // to it — CVRAdvancedAvatarSettingsTrigger exists only on a
+            // wearer's client — but a spawnable has its own equivalent, and
+            // its values are synced by the client rather than recomputed per
+            // viewer. So the prop reads contact-only sockets, which is every
+            // TPS orifice and any SPS socket whose author turned lights off,
+            // and everyone sees the same bend. See BuildPropChannel.
+            material.SetFloat("_YAPS_ChannelSpace", 1f);
             material.SetFloat("_YAPS_SelfTag", -1f);   // a prop wears no sockets of its own
             material.SetFloat("_YAPS_TaperStart", 0.05f);
             material.SetFloat("_YAPS_TaperEnd", 0.10f);
@@ -288,8 +294,222 @@ namespace AvatarBridge.Spike
             capsule.center = new Vector3(0, 0, PlugLength * 0.5f);
             capsule.isTrigger = true;
             MakeGrabbable(root);
+            BuildPropChannel(root, body, material, result);
 
             return SaveAsPrefab(root, Dir + "/YAPS Test Plug Prop.prefab");
+        }
+
+        // --- the prop's own contact channel ----------------------------
+        //
+        // The same five values the avatar publishes — engaged, is-hole, and
+        // the socket's offset on three axes — carried by the one transport a
+        // prop actually has. A CVRSpawnableValue is synced by the client and
+        // writes straight into an Animator parameter, so a blend tree can
+        // put it on the material with no driver component in between.
+        //
+        // Reach and encoding match the avatar exactly, because the shader
+        // decoding them cannot tell it is reading a prop.
+        const float BoxLengths = 1.75f;
+
+        static readonly string[] SocketTypes =
+        {
+            "TPS_Orf_Root", "TPS_Orf_Root_SelfNotOnHips",
+            "SPSLL_Socket_Root", "SPSLL_Socket_Root_SelfNotOnHips",
+            "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
+            "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
+        };
+        static readonly string[] HoleTypes =
+        {
+            "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
+        };
+
+        static void BuildPropChannel(GameObject root, GameObject body, Material material,
+            YapsBaker.Result result)
+        {
+            float extent = Mathf.Max(result.Length, 0.01f) * BoxLengths;
+            var box = new Vector3(extent * 2f, extent * 2f, extent * 2f);
+            material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
+
+            string path = body.name;
+            var controller = BuildChannelController(path);
+            var animator = root.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            // A prop the viewer is not looking at still has to hold its
+            // shape: the deform is the whole point and it is driven from
+            // here.
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
+            // MakeGrabbable already added one, and a second would be a
+            // second prop as far as the client is concerned.
+            var spawnable = root.GetComponent<CVRSpawnable>();
+            // Filling the list is not enough — this flag is what makes the
+            // client look at it at all.
+            spawnable.useAdditionalValues = true;
+            foreach (string name in new[] { "E", "H", "X", "Y", "Z" })
+            {
+                spawnable.syncValues.Add(new CVRSpawnableValue
+                {
+                    name = name,
+                    startValue = 0f,
+                    updatedBy = CVRSpawnableValue.UpdatedBy.None,   // triggers drive these
+                    updateMethod = CVRSpawnableValue.UpdateMethod.Override,
+                    animator = animator,
+                    animatorParameterName = name,
+                });
+            }
+
+            // The frame the SHADER works in, which is measured from the mesh
+            // and is not the object's transform. On the avatar that gap was
+            // 28 cm and put every socket half a plug length short.
+            var frame = new GameObject("YAPS Channel");
+            frame.transform.SetParent(root.transform, false);
+            frame.transform.SetPositionAndRotation(result.Origin, result.Rotation);
+
+            // Engagement. Distance-only, so a SPHERE, and areaSize.x is its
+            // radius outright rather than half of it.
+            var engage = frame.AddComponent<CVRSpawnableTrigger>();
+            engage.areaSize = box * 0.5f;
+            engage.useAdvancedTrigger = true;
+            engage.allowedTypes = SocketTypes;
+            engage.stayTasks.Add(new CVRSpawnableTriggerTaskStay
+            {
+                settingIndex = 0,
+                updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromDistance,
+                minValue = 0f,
+                maxValue = 1f,
+            });
+            engage.exitTasks.Add(new CVRSpawnableTriggerTask
+            {
+                settingIndex = 0,
+                settingValue = 0f,
+                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+            });
+
+            // Hole or ring. Enter and exit only, which also counts as
+            // distance-only, so this is a sphere too.
+            var hole = frame.AddComponent<CVRSpawnableTrigger>();
+            hole.areaSize = box * 0.5f;
+            hole.useAdvancedTrigger = true;
+            hole.allowedTypes = HoleTypes;
+            hole.enterTasks.Add(new CVRSpawnableTriggerTask
+            {
+                settingIndex = 1,
+                settingValue = 1f,
+                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+            });
+            hole.exitTasks.Add(new CVRSpawnableTriggerTask
+            {
+                settingIndex = 1,
+                settingValue = 0f,
+                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+            });
+
+            // Where the socket sits, one axis each. These carry a position
+            // task, so they really are boxes and want the full size.
+            var axes = new[]
+            {
+                (2, CVRSpawnableTrigger.SampleDirection.XPositive),
+                (3, CVRSpawnableTrigger.SampleDirection.YPositive),
+                (4, CVRSpawnableTrigger.SampleDirection.ZPositive),
+            };
+            foreach (var (index, direction) in axes)
+            {
+                var axis = frame.AddComponent<CVRSpawnableTrigger>();
+                axis.areaSize = box;
+                axis.sampleDirection = direction;
+                axis.useAdvancedTrigger = true;
+                axis.allowedTypes = SocketTypes;
+                axis.stayTasks.Add(new CVRSpawnableTriggerTaskStay
+                {
+                    settingIndex = index,
+                    updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
+                    minValue = 0f,
+                    maxValue = 1f,
+                });
+            }
+        }
+
+        // One layer per value, each a two-motion blend tree: a clip holding
+        // the property at 0 and one holding it at 1, blended by the
+        // parameter, which makes the material property track the value.
+        static AnimatorController BuildChannelController(string path)
+        {
+            string dir = Dir + "/YAPS Plug Channel.controller";
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(
+                AssetDatabase.GenerateUniqueAssetPath(dir));
+            // A fresh controller arrives with a Base Layer nobody asked for.
+            // Counted down rather than looped on the length, so a
+            // RemoveLayer that ever declines to remove cannot hang the
+            // editor.
+            for (int i = controller.layers.Length - 1; i >= 0; i--)
+            {
+                controller.RemoveLayer(i);
+            }
+
+            var properties = new (string Value, string Property)[]
+            {
+                ("E", "material._YAPS_SocketFlags.x"),
+                ("H", "material._YAPS_SocketFlags.y"),
+                ("X", "material._YAPS_SocketPos.x"),
+                ("Y", "material._YAPS_SocketPos.y"),
+                ("Z", "material._YAPS_SocketPos.z"),
+            };
+
+            foreach (var (value, property) in properties)
+            {
+                controller.AddParameter(value, AnimatorControllerParameterType.Float);
+
+                var tree = new BlendTree
+                {
+                    name = value,
+                    blendType = BlendTreeType.Simple1D,
+                    blendParameter = value,
+                    useAutomaticThresholds = false,
+                    hideFlags = HideFlags.HideInHierarchy,
+                };
+                tree.AddChild(PropertyClip(path, property, 0f), 0f);
+                tree.AddChild(PropertyClip(path, property, 1f), 1f);
+
+                var machine = new AnimatorStateMachine
+                {
+                    name = value,
+                    hideFlags = HideFlags.HideInHierarchy,
+                };
+                var state = machine.AddState("Blend Tree");
+                state.writeDefaultValues = true;
+                state.motion = tree;
+                machine.defaultState = state;
+
+                // In memory until it is part of the asset, and dropped
+                // silently on save otherwise — a layer, correctly named,
+                // driving nothing.
+                AssetDatabase.AddObjectToAsset(machine, controller);
+                AssetDatabase.AddObjectToAsset(tree, controller);
+                foreach (var child in tree.children)
+                {
+                    AssetDatabase.AddObjectToAsset(child.motion, controller);
+                }
+
+                var layers = controller.layers.ToList();
+                layers.Add(new AnimatorControllerLayer
+                {
+                    name = value,
+                    defaultWeight = 1f,
+                    stateMachine = machine,
+                });
+                controller.layers = layers.ToArray();
+            }
+
+            AssetDatabase.SaveAssets();
+            return controller;
+        }
+
+        static AnimationClip PropertyClip(string path, string property, float value)
+        {
+            var clip = new AnimationClip { name = property + " " + value };
+            clip.SetCurve(path, typeof(MeshRenderer), property,
+                AnimationCurve.Constant(0f, 1f / 60f, value));
+            return clip;
         }
 
         // A pickup needs something to raycast against and something to
