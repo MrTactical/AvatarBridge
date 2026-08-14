@@ -81,6 +81,15 @@ namespace AvatarBridge.Spike
             var universal = BuildSocket("YAPS Test Socket (universal)",
                 new Color(0.25f, 0.75f, 0.4f), lights: true, pointer: true, hole: false,
                 legacy: true);
+
+            // TPS orifices are contacts and nothing else — the system has no
+            // marker lights anywhere in it — so this is the blue socket
+            // wearing the other ecosystem's tag, and that is exactly what
+            // makes it worth building: it proves the channel matches
+            // TPS_Orf_Root as readily as it matches the SPS names.
+            var tpsSocket = BuildSocket("YAPS Test Socket (TPS)",
+                new Color(0.95f, 0.45f, 0.15f), lights: false, pointer: true, hole: false,
+                tps: true);
             var plug = BuildPlug();
             AssetDatabase.SaveAssets();
 
@@ -99,16 +108,24 @@ namespace AvatarBridge.Spike
                       "so YAPS plugs and every DPS plug already on the platform both understand " +
                       "it. The other four are instruments for telling paths apart while " +
                       "debugging, not products.\n" +
+                      "ORANGE socket: TPS. Contacts and nothing else, which is all TPS ever " +
+                      "had, tagged TPS_Orf_Root and TPS_Orf_Norm. Functionally the blue socket " +
+                      "in the other ecosystem's clothes, so it answers one question only: does " +
+                      "the channel match the TPS names as well as the SPS ones.\n" +
                       "The plug PROP has no channel, so it reacts to pink, yellow, purple and " +
-                      "green, and never to blue. A converted AVATAR should react to all five.");
+                      "green, and never to blue or orange. A converted AVATAR should react to " +
+                      "all six.\n" +
+                      "Test the contact-only sockets ALONE. A lit socket anywhere within a plug " +
+                      "length or so refines the position, and until it is proven otherwise a " +
+                      "nearby green or pink will mask whether blue or orange did anything.");
             Selection.objects = new Object[]
-                { universal, socket, lightsOnly, contactOnly, holeSocket, plug };
+                { universal, socket, lightsOnly, contactOnly, holeSocket, tpsSocket, plug };
         }
 
         // --- the socket ------------------------------------------------
 
         static GameObject BuildSocket(string name, Color colour, bool lights, bool pointer, bool hole,
-            bool legacy = false)
+            bool legacy = false, bool tps = false)
         {
             var root = new GameObject(name);
             var body = new GameObject("Ring");
@@ -143,8 +160,24 @@ namespace AvatarBridge.Spike
             {
                 var host = new GameObject("Socket Pointer");
                 host.transform.SetParent(root.transform, false);
-                host.AddComponent<CVRPointer>().type =
-                    hole ? "SPSLL_Socket_Hole" : legacy ? "SPSLL_Socket_Ring" : "SPSLL_Socket_Root";
+                host.AddComponent<CVRPointer>().type = tps ? "TPS_Orf_Root"
+                    : hole ? "SPSLL_Socket_Hole"
+                    : legacy ? "SPSLL_Socket_Ring" : "SPSLL_Socket_Root";
+
+                // TPS says which way it faces with a SECOND pointer a little
+                // way along its normal, because it has no light to say it in.
+                // Nothing reads this yet — the deform takes its direction
+                // from the approach instead, which is why a converted socket
+                // works from any side — but a socket without it is not the
+                // shape TPS content actually has, and this prop exists to be
+                // that shape.
+                if (tps)
+                {
+                    var norm = new GameObject("Socket Normal");
+                    norm.transform.SetParent(root.transform, false);
+                    norm.transform.localPosition = new Vector3(0, 0, 0.01f);
+                    norm.AddComponent<CVRPointer>().type = "TPS_Orf_Norm";
+                }
             }
 
             // Tight to the ring. Two pickups cannot overlap, so every
