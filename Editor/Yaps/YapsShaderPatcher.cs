@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "7";
+        const string Revision = "8";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -85,6 +85,11 @@ namespace AvatarBridge
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights3 (""YAPS shape weights 8-11"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights4 (""YAPS shape weights 12-15"", Vector) = (0,0,0,0)
+        [Header(YAPS socket)]
+        _YAPS_SocketPower (""YAPS socket power"", Range(0,1)) = 0
+        _YAPS_SocketDepth (""YAPS socket depth (-1 none)"", Range(-1,1)) = -1
+        _YAPS_SocketShapeStart (""YAPS socket shape starts"", Vector) = (0, 0.25, 0.5, 0.75)
+        _YAPS_SocketShapeFade (""YAPS socket shape fades"", Vector) = (0.3, 0.3, 0.3, 0.3)
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
@@ -404,7 +409,22 @@ namespace AvatarBridge
             body.AppendLine(tangentField != null
                 ? $"    float3 yapsTangent = {parameterName}.{tangentField}.xyz;"
                 : "    float3 yapsTangent = float3(1,0,0);");
+            // BOTH ends, unconditionally, and this is deliberate.
+            //
+            // Each guards itself on its own enable — a plug has
+            // _YAPS_Enabled and a socket has _YAPS_SocketPower, and both
+            // default to a value that returns immediately. So a material is
+            // whichever end its properties say it is, decided at conversion
+            // time by what the converter sets rather than baked into which
+            // variant of the patcher happened to run.
+            //
+            // The alternative was a socket-mode patcher, which means two
+            // emitted bodies to keep in step. Every expensive bug on this
+            // feature has come from two things that had to agree and
+            // quietly stopped agreeing.
             body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
+            body.AppendLine(
+                $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
             {
@@ -535,7 +555,16 @@ namespace AvatarBridge
 
             // Dependency order, since inlining removes the include guards'
             // ability to reorder anything for us.
-            string[] names = { "yaps_props.cginc", "yaps_resolve.cginc", "yaps_deform.cginc" };
+            //
+            // The socket include comes along on every patch, plug or
+            // socket. It costs a few unused functions in a shader that will
+            // not call them, and it means one emitted body serves both ends
+            // — against keeping two divergent inline lists in step, which
+            // is the drift that has cost the most time on this feature.
+            string[] names =
+            {
+                "yaps_props.cginc", "yaps_resolve.cginc", "yaps_deform.cginc", "yaps_socket.cginc",
+            };
             var sb = new StringBuilder();
             foreach (string name in names)
             {

@@ -70,7 +70,29 @@ namespace AvatarBridge
             public Quaternion Rotation;
         }
 
+        // Set while baking a SOCKET, where blendshape order is meaning
+        // rather than convenience. A field rather than a parameter because
+        // it is read deep inside the shape capture and threading it through
+        // every frame between here and there would be noise for one bool.
+        // Always reset in a finally, so a throw cannot leave the next plug
+        // baking under a socket's rules.
+        static bool MeshOrder;
+
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
+            BridgeReport report, out string failure, bool shapesInMeshOrder = false)
+        {
+            MeshOrder = shapesInMeshOrder;
+            try
+            {
+                return BakeInner(renderer, plugRoot, outputDir, report, out failure);
+            }
+            finally
+            {
+                MeshOrder = false;
+            }
+        }
+
+        static Result BakeInner(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure)
         {
             failure = null;
@@ -485,7 +507,22 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var (_, index) in scored.OrderByDescending(x => x.moved).Take(MaxShapes))
+            // A PLUG takes the shapes that move it most, because its weights
+            // are matched to slots by NAME and the order is free — so when
+            // sixteen will not fit, the biggest movers are the ones worth
+            // keeping.
+            //
+            // A SOCKET cannot afford that. Its shapes are staged by INDEX —
+            // shape 0 is the entry, shape 3 the deepest — so reordering them
+            // reorders the depths they arrive at, and a socket whose entry
+            // shape happens to move furthest would open at full depth and
+            // close as the plug went in. Mesh order IS the author's order,
+            // and for a socket it is the meaning.
+            var chosen = MeshOrder
+                ? scored.OrderBy(x => x.index).Take(MaxShapes)
+                : scored.OrderByDescending(x => x.moved).Take(MaxShapes);
+
+            foreach (var (_, index) in chosen)
             {
                 int frames = mesh.GetBlendShapeFrameCount(index);
                 mesh.GetBlendShapeFrameVertices(index, frames - 1, deltaP, deltaN, deltaT);

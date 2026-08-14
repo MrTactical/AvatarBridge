@@ -81,6 +81,8 @@ namespace AvatarBridge
                 plug.Material.SetFloat("_YAPS_SelfTag", selfFlag);
             }
 
+            ConvertSockets(ctx, socketRoots);
+
             if (socketRoots.Count > 0)
             {
                 ctx.Report.Converted(Category,
@@ -755,6 +757,186 @@ namespace AvatarBridge
         //
         // The answer is worth saying, because it is not "nothing happened":
         // their SOCKETS come through and work, and their PLUG does not.
+        // Give a socket a deform of its own, so it opens around what
+        // arrives instead of sitting rigid.
+        //
+        // THE RULE THAT DECIDES EVERYTHING HERE: a shape driven by BOTH the
+        // animator and the shader applies TWICE. The animator sets the
+        // blendshape weight, so the mesh reaches the vertex shader already
+        // bulged, and the shader then adds the baked delta of the same
+        // shape on top.
+        //
+        // They never have to fire together, though. A plug carrying
+        // CONTACTS moves the author's own parameters, so the animator
+        // handles it — with the author's curves, no shape limit, and the
+        // winces and material swaps the shader cannot touch at all. A plug
+        // with NO contacts, which is every piece of Raliv DPS content,
+        // moves nothing, and the animator is inert exactly when the shader
+        // should act.
+        //
+        // So the shader covers what the animator cannot reach and stands
+        // down where it can, and the switch is simply whether we publish a
+        // depth for it: left at -1, the shader falls back to reading a
+        // plug's tracker light and never fights the animator.
+        static void ConvertSockets(BridgeContext ctx, List<Transform> socketRoots)
+        {
+            if (socketRoots.Count == 0)
+            {
+                return;
+            }
+
+            int deformed = 0, alreadyAnimated = 0, noShapes = 0;
+            var failures = new List<string>();
+
+            foreach (var socketRoot in socketRoots)
+            {
+                var renderer = SocketRenderer(socketRoot);
+                if (renderer == null || MeshOf(renderer) == null
+                    || MeshOf(renderer).blendShapeCount == 0)
+                {
+                    noShapes++;
+                    continue;
+                }
+
+                var mesh = MeshOf(renderer);
+                bool animatorDrivesIt = AnimatorDrivesShapes(ctx, renderer);
+
+                var result = YapsBaker.Bake(renderer, socketRoot, ctx.OutputDir + "/YAPS",
+                    null, out string failure, shapesInMeshOrder: true);
+                if (result == null)
+                {
+                    failures.Add($"{socketRoot.name}: {failure}");
+                    continue;
+                }
+
+                int slot = MaterialSlotOf(renderer, socketRoot);
+                var materials = renderer.sharedMaterials;
+                var patched = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
+                    ctx.Report, out string refusal, out _);
+                if (patched == null)
+                {
+                    failures.Add($"{socketRoot.name}: {refusal}");
+                    continue;
+                }
+
+                var material = YapsBaker.Apply(result, materials[slot], patched,
+                    ctx.OutputDir + "/YAPS", renderer is SkinnedMeshRenderer);
+                material.SetFloat("_YAPS_SocketPower", 1f);
+                // The plug half of this material must stay asleep. One
+                // shader carries both ends and each guards on its own
+                // enable; a socket that also thought it was a plug would
+                // try to bend itself at the nearest socket.
+                material.SetFloat("_YAPS_Enabled", 0f);
+                // -1, never 0. Zero is "a plug is here and not yet in";
+                // -1 is "nobody has told me anything", which is what lets
+                // the shader fall back to lights.
+                material.SetFloat("_YAPS_SocketDepth", -1f);
+
+                materials[slot] = material;
+                renderer.sharedMaterials = materials;
+
+                deformed++;
+                if (animatorDrivesIt)
+                {
+                    alreadyAnimated++;
+                }
+            }
+
+            if (deformed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{deformed} socket(s) can now deform around a plug",
+                    $"Their blendshapes are baked and staged by depth in the socket's own shader, " +
+                    "so they open around what arrives rather than sitting rigid. " +
+                    (alreadyAnimated > 0
+                        ? $"{alreadyAnimated} of them already play those shapes from a contact, and " +
+                          "that is left exactly as it was — the shader only acts when nothing has " +
+                          "told it a depth, which is precisely when the contact route is inert. "
+                        : "") +
+                    "What that buys is DPS content: Raliv's system is marker lights with no " +
+                    "contacts anywhere in it, so a socket driven only by contacts does nothing at " +
+                    "all against it, and most of the penetration content on ChilloutVR is exactly " +
+                    "that. Shapes are staged in the order the author built them, entry first.");
+            }
+            if (noShapes > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{noShapes} socket(s) have no blendshapes to deform",
+                    "Nothing was changed for these. A socket deform reshapes the author's own " +
+                    "blendshapes, so a socket built without any has nothing to open with — its " +
+                    "contacts and marker lights work exactly as before.");
+            }
+            if (failures.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{failures.Count} socket(s) could not be given a deform",
+                    "Everything else about them is untouched and they still work as sockets — " +
+                    "they simply will not reshape around a plug. " + string.Join("; ", failures));
+            }
+        }
+
+        // The renderer wearing this socket's mesh. A socket object is a
+        // marker; the mesh it belongs to is usually a parent, since an
+        // author hangs the socket off the body they want reshaped.
+        static Renderer SocketRenderer(Transform socketRoot)
+        {
+            var own = socketRoot.GetComponentInChildren<Renderer>(true);
+            if (own != null && MeshOf(own) != null && MeshOf(own).blendShapeCount > 0)
+            {
+                return own;
+            }
+            for (var at = socketRoot.parent; at != null; at = at.parent)
+            {
+                var renderer = at.GetComponent<Renderer>();
+                if (renderer != null && MeshOf(renderer) != null
+                    && MeshOf(renderer).blendShapeCount > 0)
+                {
+                    return renderer;
+                }
+            }
+            return null;
+        }
+
+        static Mesh MeshOf(Renderer renderer)
+        {
+            if (renderer is SkinnedMeshRenderer skin)
+            {
+                return skin.sharedMesh;
+            }
+            var filter = renderer.GetComponent<MeshFilter>();
+            return filter != null ? filter.sharedMesh : null;
+        }
+
+        // Whether anything in the controller already animates a blendshape
+        // on this renderer. Only informational: the shader stands down on
+        // depth rather than on this, so a wrong answer changes what the
+        // report says and nothing else.
+        static bool AnimatorDrivesShapes(BridgeContext ctx, Renderer renderer)
+        {
+            if (ctx.MergedController == null)
+            {
+                return false;
+            }
+            string path = ctx.PathInTarget(renderer.transform);
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.path == path
+                        && binding.propertyName.StartsWith("blendShape.",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         static void ReportLegacyContent(BridgeContext ctx)
         {
             int lights = ctx.Target.GetComponentsInChildren<Light>(true)
