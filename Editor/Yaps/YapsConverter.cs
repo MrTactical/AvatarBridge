@@ -314,6 +314,27 @@ namespace AvatarBridge
             // Every socket whose toggle can be found gets its lights wired
             // to it, so "one socket at a time" finally means one socket LIT
             // at a time and the contention is theirs to control.
+            // VRCFury bakes every BakedSpsSocket INACTIVE and relies on SPS's
+            // own enable service to switch it on. That service is part of
+            // the transport we delete, so on a converted avatar the sockets
+            // — and the marker lights beneath them — never come on at all.
+            //
+            // This is why nothing found Angela's sockets through any amount
+            // of re-encoding: the lights were switched off the whole time,
+            // component enabled, object active, branch above them dead.
+            int woken = 0;
+            foreach (var socket in socketRoots)
+            {
+                for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
+                {
+                    if (!at.gameObject.activeSelf)
+                    {
+                        at.gameObject.SetActive(true);
+                        woken++;
+                    }
+                }
+            }
+
             int wired = 0;
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
@@ -450,7 +471,15 @@ namespace AvatarBridge
             {
                 return;
             }
-            ctx.Report.Converted(Category, $"Re-ranged {roots + fronts} socket marker light(s)",
+            ctx.Report.Converted(Category, $"Re-ranged {roots + fronts} socket marker light(s)" +
+                    (woken > 0 ? $", and switched {woken} socket object(s) back on" : ""),
+                (woken > 0
+                    ? "VRCFury bakes every socket object INACTIVE and lets its own enable service " +
+                      "switch them on; that service is part of the transport this tool deletes, so " +
+                      "on a converted avatar the sockets never came on and their marker lights " +
+                      "never emitted anything at all. They are switched on at conversion now, and " +
+                      "the menu decides which stay lit from there. "
+                    : "") +
                 $"{roots} root, {fronts} front. A socket says where it is by the RANGE of a black " +
                 "vertex light, and Unity gives the four light slots to the largest ranges it can " +
                 "see. VRChat's ordering puts each socket's front above its own root, so on an " +
@@ -664,6 +693,13 @@ namespace AvatarBridge
             var clip = new AnimationClip { name = name };
             foreach (string path in paths)
             {
+                // Both the object and the component. The object because
+                // that is what VRCFury leaves switched off and what a
+                // reader ultimately needs on; the component because it
+                // costs nothing and means neither one alone can hold the
+                // light dark.
+                clip.SetCurve(path, typeof(GameObject), "m_IsActive",
+                    AnimationCurve.Constant(0f, 1f / 60f, active));
                 clip.SetCurve(path, typeof(Light), "m_Enabled",
                     AnimationCurve.Constant(0f, 1f / 60f, active));
             }
