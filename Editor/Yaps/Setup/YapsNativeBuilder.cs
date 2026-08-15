@@ -156,7 +156,23 @@ namespace AvatarBridge
             return m;
         }
 
-        static void WriteKnobs(YapsPlug p, Material m)
+        // The material's YAPS panel calls this after a change: every YapsPlug
+        // whose renderer wears this material takes the values back, so the
+        // component and the material never disagree about a knob.
+        public static void SyncPlugsFrom(Material m)
+        {
+            if (m == null) return;
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            {
+                var r = plug.Target;
+                if (r == null || !r.sharedMaterials.Contains(m)) continue;
+                Undo.RecordObject(plug, "YAPS plug knobs");
+                ReadKnobs(plug, m);
+                EditorUtility.SetDirty(plug);
+            }
+        }
+
+        public static void WriteKnobs(YapsPlug p, Material m)
         {
             m.SetFloat("_YAPS_Overrun", p.overrun ? 1f : 0f);
             m.SetFloat("_YAPS_TaperStart", p.taperStart);

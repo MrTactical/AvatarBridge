@@ -1381,9 +1381,14 @@ namespace AvatarBridge
             return depth;
         }
 
+        // VRCFury's own names, at the START of the object's name. Contains()
+        // also caught "FPRExclusion_BakedSpsSocket" — the first-person
+        // exclusion the head-chop pass builds at the avatar root for the
+        // blowjob socket, one pass earlier — and adopted it as a thirteenth
+        // socket sitting on the avatar root, named after the avatar.
         static List<Transform> Named(BridgeContext ctx, string needle) =>
             ctx.Target.GetComponentsInChildren<Transform>(true)
-                .Where(t => t != null && t.name.Contains(needle))
+                .Where(t => t != null && t.name.StartsWith(needle, System.StringComparison.Ordinal))
                 .ToList();
     }
 }

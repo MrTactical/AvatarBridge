@@ -42,7 +42,7 @@ namespace AvatarBridge.Yaps
                  "metres. 0 uses the measurement.")]
         public float lengthOverride;
 
-        [Header("At rest — from DPS")]
+        [Header("Shape at rest")]
         [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends up.")]
         public float curvature;
         [Range(-1.5f, 1.5f), Tooltip("A second bend near the tip, opposite in sign, so the shaft can sweep and then hook.")]
@@ -50,26 +50,26 @@ namespace AvatarBridge.Yaps
         [Range(0f, 1f), Tooltip("How much the base resists bending toward a socket. 0 bends evenly from the root.")]
         public float entranceStiffness;
 
-        [Header("When it is in — DPS and TPS")]
+        [Header("When it's in")]
         [Range(0f, 1f)] public float squeeze;
         [Range(0.01f, 1f)] public float squeezeReach = 0.15f;
         [Range(0f, 1f)] public float bulge;
         [Range(0.01f, 1f)] public float bulgeReach = 0.2f;
 
-        [Header("When it is not — TPS and DPS")]
+        [Header("When it's not")]
         [Range(0.1f, 1f), Tooltip("How much of its length it keeps when nothing is using it.")]
         public float idleLength = 1f;
         [Range(0.1f, 1f)] public float idleWidth = 1f;
         [Range(0f, 0.5f)] public float wriggle;
         [Range(0f, 20f)] public float wriggleSpeed = 2f;
 
-        [Header("Motion — TPS")]
+        [Header("Motion")]
         [Range(0f, 0.5f)] public float pumping;
         [Range(0f, 20f)] public float pumpingSpeed = 6f;
         [Range(0.05f, 1f), Tooltip("How much of the shaft pumps. 1 is the whole length; small values move only the tip.")]
         public float pumpingWidth = 1f;
 
-        [Header("The curve — TPS")]
+        [Header("The curve")]
         [Range(0.2f, 3f), Tooltip("Below 1 arrives more directly, above 1 sweeps a wider arc.")]
         public float bezierSmoothness = 1f;
         [Range(0f, 0.8f), Tooltip("A fraction of the shaft held straight before any bend.")]
@@ -87,7 +87,7 @@ namespace AvatarBridge.Yaps
         [Tooltip("Let the tip carry on past a ring. Off, the shaft stops at every socket.")]
         public bool overrun = true;
 
-        [Header("Who it answers — SPS")]
+        [Header("Who it answers")]
         [Tooltip("Only sockets carrying this tag. Blank answers all.")]
         public string onlySocketsTagged = "";
         [Tooltip("Never sockets carrying this tag.")]

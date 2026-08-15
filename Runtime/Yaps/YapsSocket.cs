@@ -85,7 +85,14 @@ namespace AvatarBridge.Yaps
         readonly System.Collections.Generic.HashSet<Material> _touched =
             new System.Collections.Generic.HashSet<Material>();
 
-        void Update()
+        // Update runs in edit mode only when something in the scene changed,
+        // which is not reliably "now": the inspector calls PreviewTick
+        // itself when preview goes on and on every scene repaint while the
+        // socket is selected, so the plug bends the moment preview starts
+        // and follows the socket as it is dragged.
+        void Update() => PreviewTick();
+
+        public void PreviewTick()
         {
             if (!preview)
             {

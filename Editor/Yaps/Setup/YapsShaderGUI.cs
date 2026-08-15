@@ -188,6 +188,10 @@ namespace AvatarBridge
 
             Banner(role, length, material);
 
+            // Any YAPS knob moved here is written back onto the YapsPlug
+            // component that owns this material, so its inspector shows the
+            // same value — the two panels are two doors to one set of knobs.
+            EditorGUI.BeginChangeCheck();
             foreach (var section in Sections)
             {
                 var present = section.Knobs.Where(k => byName.ContainsKey(k.Name)).ToArray();
@@ -207,6 +211,10 @@ namespace AvatarBridge
                     foreach (var knob in present) DrawKnob(editor, byName[knob.Name], knob);
                 }
                 GUILayout.Space(2);
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                foreach (var t in editor.targets) YapsNativeBuilder.SyncPlugsFrom(t as Material);
             }
 
             // Internals: a single folded row, read-only inside.

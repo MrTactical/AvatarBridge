@@ -113,6 +113,17 @@ namespace AvatarBridge
             _preview = serializedObject.FindProperty("preview");
         }
 
+        // Drive the preview from here while the socket is selected. Update
+        // on the component runs in edit mode only when the scene changed,
+        // and "changed" did not reliably include the test plug that had
+        // just been baked — the plug sat straight until something else
+        // moved. A scene repaint is every drag, every frame.
+        void OnSceneGUI()
+        {
+            var socket = target as YapsSocket;
+            if (socket != null && socket.preview) socket.PreviewTick();
+        }
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -260,6 +271,10 @@ namespace AvatarBridge
                     serializedObject.ApplyModifiedProperties();
                     if (p && CountBakedPlugs() == 0) SpawnPreviewPlug(socket);
                     if (!p) RemovePreviewPlug(socket);
+                    // Write the socket into the plugs NOW, so the bend is
+                    // there on the first repaint rather than after the next
+                    // scene change; and clear it now when stopping.
+                    socket.PreviewTick();
                     SceneView.RepaintAll();
                 }
             }
@@ -496,26 +511,27 @@ namespace AvatarBridge
             var renderer = plug.Target;
             var tint = YapsInspectorStyle.PlugColour;
 
-            float len = 0f; string matName = null;
-            if (renderer != null)
-                foreach (var m in renderer.sharedMaterials)
-                    if (m != null && m.HasProperty("_YAPS_Bake")) { len = m.GetFloat("_YAPS_Length"); matName = m.name; break; }
-            bool baked = matName != null;
+            var baked = BakedMaterials(renderer);
+            float len = baked.Count > 0 ? baked[0].GetFloat("_YAPS_Length") : 0f;
+            string matName = baked.Count > 0 ? baked[0].name : null;
+            bool isBaked = baked.Count > 0;
 
             YapsInspectorStyle.Header(
                 "Plug  ·  " + plug.name,
                 renderer == null ? "no renderer — pick the mesh that bends"
-                : baked ? $"baked  ·  {len:0.###} m  ·  {matName}" : "not baked yet — set it up, then Bake",
-                renderer == null ? YapsInspectorStyle.BadColour : tint, baked ? "YAPS" : "!");
+                : isBaked ? $"baked  ·  {len:0.###} m  ·  {matName}" : "not baked yet — set it up, then Bake",
+                renderer == null ? YapsInspectorStyle.BadColour : tint, isBaked ? "YAPS" : "!");
 
+            // The fields are drawn by hand rather than through PropertyField:
+            // the component's [Header]s become our sections, and PropertyField
+            // would draw Unity's header above the field as well, so every
+            // section appeared twice.
+            EditorGUI.BeginChangeCheck();
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             string currentHeader = null;
             while (it.NextVisible(false))
             {
-                // Group by the [Header] the component declares, drawn as
-                // our sections. Unity would draw the header itself; we
-                // draw a tinted one and let the field through.
                 var field = typeof(YapsPlug).GetField(it.name);
                 var header = field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() as HeaderAttribute;
                 if (header != null && header.header != currentHeader)
@@ -528,20 +544,84 @@ namespace AvatarBridge
                     YapsInspectorStyle.Section("Mesh", tint);
                     currentHeader = "Mesh";
                 }
-                EditorGUILayout.PropertyField(it, true);
+                DrawField(it, field);
             }
+            bool changed = EditorGUI.EndChangeCheck();
+            serializedObject.ApplyModifiedProperties();
+
+            // A knob moved here moves the material the same instant. Before
+            // this the component was written onto the material only at bake,
+            // so its sliders did nothing on a baked plug and only the
+            // material's did — two panels, one of them dead. The material's
+            // YAPS panel writes back here the same way, so the two agree.
+            if (changed && isBaked)
+            {
+                foreach (var m in baked)
+                {
+                    Undo.RecordObject(m, "YAPS plug knobs");
+                    YapsNativeBuilder.WriteKnobs(plug, m);
+                    if (plug.lengthOverride > 0) m.SetFloat("_YAPS_Length", plug.lengthOverride);
+                    EditorUtility.SetDirty(m);
+                }
+                SceneView.RepaintAll();
+            }
+            GUILayout.Space(4);
+            YapsInspectorStyle.Note(isBaked
+                ? "The knobs write straight to the plug's material, and the material's YAPS panel writes back here — same values, two doors. Mesh, bone and measurement changes need a re-bake."
+                : "Set the mesh up, then Bake: the knobs are written onto the material at bake and stay live after.",
+                MessageType.None);
 
             GUILayout.Space(8);
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button(baked ? "Re-bake" : "Bake", GUILayout.Height(26)))
+                if (GUILayout.Button(isBaked ? "Re-bake" : "Bake", GUILayout.Height(26)))
                 {
                     var o = YapsNativeBuilder.Bake(plug);
                     if (o.Ok) Debug.Log("[YAPS] " + o.Message); else Debug.LogError("[YAPS] " + o.Message);
                 }
                 if (GUILayout.Button("Open YAPS Setup", GUILayout.Height(26))) YapsSetupWindow.Open();
             }
-            serializedObject.ApplyModifiedProperties();
+        }
+
+        static List<Material> BakedMaterials(Renderer renderer)
+        {
+            var list = new List<Material>();
+            if (renderer == null) return list;
+            foreach (var m in renderer.sharedMaterials)
+                if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Length")) list.Add(m);
+            return list;
+        }
+
+        // One field, by its serialized type, with the component's own
+        // tooltip and range. Everything YapsPlug declares is one of these.
+        static void DrawField(SerializedProperty p, System.Reflection.FieldInfo field)
+        {
+            var tip = field?.GetCustomAttributes(typeof(TooltipAttribute), false).FirstOrDefault() as TooltipAttribute;
+            var range = field?.GetCustomAttributes(typeof(RangeAttribute), false).FirstOrDefault() as RangeAttribute;
+            var label = new GUIContent(p.displayName, tip != null ? tip.tooltip : "");
+            switch (p.propertyType)
+            {
+                case SerializedPropertyType.Float:
+                    if (range != null) EditorGUILayout.Slider(p, range.min, range.max, label);
+                    else p.floatValue = EditorGUILayout.FloatField(label, p.floatValue);
+                    break;
+                case SerializedPropertyType.Integer:
+                    if (range != null) EditorGUILayout.IntSlider(p, (int) range.min, (int) range.max, label);
+                    else p.intValue = EditorGUILayout.IntField(label, p.intValue);
+                    break;
+                case SerializedPropertyType.Boolean:
+                    p.boolValue = EditorGUILayout.Toggle(label, p.boolValue);
+                    break;
+                case SerializedPropertyType.String:
+                    p.stringValue = EditorGUILayout.TextField(label, p.stringValue);
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                    EditorGUILayout.ObjectField(p, field != null ? field.FieldType : typeof(Object), label);
+                    break;
+                default:
+                    EditorGUILayout.PropertyField(p, label, true);
+                    break;
+            }
         }
 
         [DrawGizmo(GizmoType.Selected | GizmoType.InSelectionHierarchy | GizmoType.Pickable)]

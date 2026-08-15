@@ -155,6 +155,28 @@ namespace AvatarBridge
                 f.IsYapsAlready = true;
                 f.Origin = YapsLegacyMap.Origin.YAPS;
                 f.StatedLength = comp.lengthOverride;
+                // The component names its renderer, and on a baked plug that
+                // renderer already wears the material. Read it here: Finish
+                // claims the renderer, so the material loop below never sees
+                // it, and a converted plug — component on the marker object,
+                // material on the body mesh — read "not baked yet" beside a
+                // summary line that had just found its bake.
+                var target = comp.Target;
+                if (target != null)
+                {
+                    var mats = target.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        if (comp.materialSlot >= 0 && i != comp.materialSlot) continue;
+                        var origin = YapsLegacyMap.Detect(mats[i], out var part);
+                        if (origin == YapsLegacyMap.Origin.None || part != YapsLegacyMap.Part.Plug) continue;
+                        f.Material = mats[i]; f.MaterialSlot = i;
+                        f.Origin = origin;
+                        f.IsYapsAlready = origin == YapsLegacyMap.Origin.YAPS;
+                        if (f.StatedLength <= 0f) f.StatedLength = StatedLength(mats[i], origin);
+                        break;
+                    }
+                }
                 Finish(f, owned);
                 if (f.Material == null) f.Notes.Add("not baked yet");
                 result.Plugs.Add(f);
@@ -168,7 +190,7 @@ namespace AvatarBridge
             // only above the renderer — otherwise the plug reads as having no
             // markers it plainly has.
             var plugObjects = root.GetComponentsInChildren<Transform>(true)
-                .Where(t => t.name == "YAPS Plug" || t.name.Contains("BakedSpsPlug"))
+                .Where(t => t.name == "YAPS Plug" || t.name.StartsWith("BakedSpsPlug"))
                 .Where(t => !owned.Contains(t)).ToList();
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
@@ -265,7 +287,7 @@ namespace AvatarBridge
             for (var at = marker; at != null; at = at.parent)
             {
                 string n = at.name;
-                if (n == "YAPS Socket" || n.Contains("BakedSpsSocket")) return at;
+                if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket")) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
                 if (at == root) break;
             }
@@ -291,7 +313,7 @@ namespace AvatarBridge
         {
             for (var at = renderer; at != null; at = at.parent)
             {
-                if (at.name == "YAPS Plug" || at.name.Contains("BakedSpsPlug")) return at;
+                if (at.name == "YAPS Plug" || at.name.StartsWith("BakedSpsPlug")) return at;
                 if (at.GetComponent<Yaps.YapsPlug>() != null) return at;
             }
             return renderer;
@@ -305,7 +327,7 @@ namespace AvatarBridge
             for (var at = owner; at != null; at = at.parent)
             {
                 string n = at.name;
-                if (n == "YAPS Socket" || n.Contains("BakedSpsSocket") || n == "Original Object"
+                if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket") || n == "Original Object"
                     || n == "WorldSpace" || n == "OneSpace" || n == "Lights" || n == "Senders") continue;
                 var m = System.Text.RegularExpressions.Regex.Match(n, @"^\[VF\d+\]\s*(.+)$");
                 return m.Success ? m.Groups[1].Value : n;
@@ -369,7 +391,7 @@ namespace AvatarBridge
 
             // Authored by, best guess, for the report only.
             if (f.IsYapsAlready || (f.Root != null && f.Root.name == "YAPS Socket")) f.Origin = YapsLegacyMap.Origin.YAPS;
-            else if (f.Root != null && f.Root.name.Contains("BakedSpsSocket")) f.Origin = YapsLegacyMap.Origin.SPS;
+            else if (f.Root != null && f.Root.name.StartsWith("BakedSpsSocket")) f.Origin = YapsLegacyMap.Origin.SPS;
             else if (rootLight != null && f.Pointers.Count == 0) f.Origin = YapsLegacyMap.Origin.DPS;
             else if (f.Pointers.Any(p => p.type.StartsWith("TPS_Orf_")) && rootLight == null) f.Origin = YapsLegacyMap.Origin.TPS;
             else f.Origin = YapsLegacyMap.Origin.SPS;

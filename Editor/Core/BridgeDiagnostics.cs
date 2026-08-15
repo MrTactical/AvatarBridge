@@ -868,18 +868,38 @@ namespace AvatarBridge
         static void CheckComponentWhitelist(BridgeContext ctx)
         {
             var doomed = new Dictionary<string, int>();
+            int yaps = 0;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
                 if (component == null)
                 {
                     continue; // missing script; reported elsewhere
                 }
-                string name = component.GetType().Name;
+                var type = component.GetType();
+                // YAPS's authoring components hold intent for the YAPS tool
+                // and nothing that runs in game — every marker, contact and
+                // baked deform they describe is already built beside them.
+                // ChilloutVR stripping them at upload is the design, so they
+                // are not doomed; a conversion carrying them read as an
+                // error on the one avatar it had got right.
+                if (type.Namespace == "AvatarBridge.Yaps")
+                {
+                    yaps++;
+                    continue;
+                }
+                string name = type.Name;
                 if (CvrAvatarComponentWhitelist.Contains(name))
                 {
                     continue;
                 }
                 doomed[name] = doomed.TryGetValue(name, out var n) ? n + 1 : 1;
+            }
+            if (yaps > 0)
+            {
+                ctx.Report.Converted(Category, $"{yaps} YAPS authoring component(s) kept for editing",
+                    "YapsSocket and YapsPlug hold what the YAPS tool needs to retune a socket or plug " +
+                    "later. They do nothing in game and ChilloutVR removes them at upload; everything " +
+                    "they describe is already built beside them.");
             }
             if (doomed.Count == 0)
             {
