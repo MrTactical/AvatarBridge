@@ -33,10 +33,6 @@ namespace AvatarBridge
         enum Mode { Convert, Setup }
         Mode mode = Mode.Convert;
         VRCAvatarDescriptor avatar;
-
-        // One question over two settings (stripSpsSystems, convertYapsSystems);
-        // the popup's labels come from these names, spaced out.
-        enum PenetrationChoice { ConvertToYaps, Remove, LeaveAsIs }
 #endif
         GameObject setupAvatar;
 
@@ -493,15 +489,14 @@ namespace AvatarBridge
         static string Nicify(Enum value) =>
             value == null ? string.Empty : ObjectNames.NicifyVariableName(value.ToString());
 
-        static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set,
-            string[] labels = null)
+        static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set)
             where T : Enum
         {
             var values = (T[])Enum.GetValues(typeof(T));
             var names = new System.Collections.Generic.List<string>();
-            for (int i = 0; i < values.Length; i++)
+            foreach (var value in values)
             {
-                names.Add(labels != null && i < labels.Length ? labels[i] : Nicify(values[i]));
+                names.Add(Nicify(value));
             }
             int index = Math.Max(0, Array.IndexOf(values, current));
 
@@ -727,7 +722,10 @@ namespace AvatarBridge
             // penetration as YAPS, remove it, or leave VRChat's in place. The
             // fourth combination the two ticks allowed (convert without
             // removing) was never coherent, so it is not offered.
-            var penetration = EnumPopup<PenetrationChoice>("Penetration  (DPS, TPS, SPS)",
+            // Radio buttons, not a dropdown: they stack like the toggles
+            // around them, and a dropdown clipped its own caption against
+            // the label column.
+            var penetration = BridgeElements.Choice("Penetration",
                 "What happens to the avatar's penetration system — Raliv DPS, Thry TPS, VRCFury SPS, " +
                 "and OGB, PCS and Wholesome that ride with them.\n\n" +
                 "Convert to YAPS: keeps it and rebuilds it for ChilloutVR — plugs bend, sockets open, " +
@@ -740,15 +738,15 @@ namespace AvatarBridge
                 "in ChilloutVR and cost most of the sync budget.\n\n" +
                 "Leave as VRChat built it: converts nothing and removes nothing. It will not function " +
                 "in ChilloutVR; only for looking at what was there.",
-                settings.stripSpsSystems ? (settings.convertYapsSystems ? PenetrationChoice.ConvertToYaps : PenetrationChoice.Remove)
-                                         : PenetrationChoice.LeaveAsIs,
+                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" },
+                settings.stripSpsSystems ? (settings.convertYapsSystems ? 0 : 1) : 2,
                 choice =>
                 {
-                    settings.stripSpsSystems = choice != PenetrationChoice.LeaveAsIs;
-                    settings.convertYapsSystems = choice == PenetrationChoice.ConvertToYaps;
-                },
-                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" });
+                    settings.stripSpsSystems = choice != 2;
+                    settings.convertYapsSystems = choice == 0;
+                });
             b.Add(penetration);
+            b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome stacks that ride with them."));
             // The other door. The YAPS tool builds and tunes penetration on
             // an avatar already here; this converts. Present, say where it
             // is; absent, say where to get it.

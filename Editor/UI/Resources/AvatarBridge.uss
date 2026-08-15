@@ -345,6 +345,30 @@
     flex-shrink: 0;
 }
 
+/* One question, a few answers: radio buttons stacked under the field's label column, each
+ * row hovering like a toggle so the group reads as part of the same list. */
+.ab-radio {
+    margin: 2px 0 4px 0;
+}
+
+.ab-radio .unity-radio-button-group__container {
+    flex-direction: column;
+}
+
+.ab-radio .unity-radio-button {
+    margin: 0 0 1px -4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.dark .ab-radio .unity-radio-button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.light .ab-radio .unity-radio-button:hover {
+    background-color: rgba(0, 0, 0, 0.045);
+}
+
 /* ----------------------------------------------------------- primary  ---- */
 
 .ab-primary {

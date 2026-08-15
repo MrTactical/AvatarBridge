@@ -263,6 +263,23 @@ namespace AvatarBridge
             return toggle;
         }
 
+        // One question with a few answers, drawn as radio buttons under a
+        // short label — the shape a list of toggles already has, so it sits
+        // among them instead of a dropdown clipping its own caption.
+        public static RadioButtonGroup Choice(string label, string tooltip, string[] answers, int current,
+            Action<int> set)
+        {
+            var group = new RadioButtonGroup(label, new System.Collections.Generic.List<string>(answers))
+            {
+                value = current,
+                tooltip = tooltip,
+            };
+            group.AddToClassList("ab-field");
+            group.AddToClassList("ab-radio");
+            group.RegisterValueChangedCallback(e => set(e.newValue));
+            return group;
+        }
+
         public static VisualElement Row(params VisualElement[] children)
         {
             var row = new VisualElement();
