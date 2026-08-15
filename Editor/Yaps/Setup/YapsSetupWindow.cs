@@ -167,13 +167,6 @@ namespace AvatarBridge
                 "YAPS Socket's markers. Then checks the lot. Safe to run again; it edits, not stacks."));
             _pages.Add(build);
 
-            var coming = new BridgeElements.Card("Coming", null, false, null, 0.5f);
-            coming.Body.Add(BridgeElements.Hint(
-                "Upgrade in place — read what a DPS/TPS/SPS setup's author tuned and carry it onto YAPS " +
-                "on the same mesh. Skinned-mesh bone chains for plugs. The contact channel on an " +
-                "avatar's own controller, so contact-only sockets move it too."));
-            _pages.Add(coming);
-
             var cross = new BridgeElements.Card("Converting from VRChat?", null, false, null, 0f);
             cross.Body.Add(BridgeElements.Hint(
                 "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +

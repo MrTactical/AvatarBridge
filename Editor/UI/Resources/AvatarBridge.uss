@@ -345,6 +345,33 @@
     flex-shrink: 0;
 }
 
+/* Component inspectors (YapsSocket, YapsPlug) are built from the same elements as the windows.
+ * The inspector already insets its content; pull the banner back out to the edges. */
+.ab-inspector {
+    margin: -4px -15px 0 -15px;
+}
+
+.ab-inspector .ab-banner {
+    height: 52px;
+}
+
+.ab-inspector .ab-banner-title {
+    font-size: 15px;
+}
+
+/* A slider's number box: wide enough for three decimals, no wider. */
+.ab-slider .unity-base-slider__text-field {
+    width: 52px;
+    min-width: 52px;
+    flex-shrink: 0;
+}
+
+/* One shape stage on a socket: a tinted stripe beside its rows, like a report row. */
+.ab-stage {
+    flex-direction: row;
+    margin: 2px 0 6px 0;
+}
+
 /* One question, a few answers: radio buttons stacked under the field's label column, each
  * row hovering like a toggle so the group reads as part of the same list. */
 .ab-radio {
