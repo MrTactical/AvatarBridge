@@ -31,13 +31,28 @@ namespace AvatarBridge
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
             }
+            // The holder goes where the author kept the PhysBone COMPONENT —
+            // not loose at the avatar root. Authors organise: Angela's live
+            // in a "PhysBones" folder (PhysBones/ButtRoot, PhysBones/Hair),
+            // and a converter that dropped fourteen MagicaCloth_* objects at
+            // the root beside her meshes and her SPS folder undid that. The
+            // contact converter already parents its triggers under each
+            // contact's own object for the same reason. So: the component's
+            // parent, whatever the author chose — the folder, or the bone
+            // when the component sat on the bone itself. Falls back to the
+            // avatar root only when the component's object IS the root.
+            //
+            // Placed at creation, before any clip is written against it:
+            // animation paths address the holder by name from the root, so
+            // it must never move after a curve has been aimed at it.
+            var home = HolderHome(ctx, data);
             // Sibling-unique, because animation paths address children by name: an avatar with
             // four hairstyles produces several chains rooted at a bone called "Hair_root", and
             // two holders both named "MagicaCloth_Hair_root" mean every animation curve aimed at
             // one of them resolves to whichever Unity finds first.
-            holderName = UniqueChildName(ctx.Target.transform, holderName);
+            holderName = UniqueChildName(home, holderName);
             var holder = new GameObject(holderName);
-            holder.transform.SetParent(ctx.Target.transform, false);
+            holder.transform.SetParent(home, false);
             var cloth = holder.AddComponent<MagicaCloth>();
 
             // "Off" is carried by the component, not the holder.
@@ -289,6 +304,33 @@ namespace AvatarBridge
                 Synthesized = true
             };
             return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
+        }
+
+        // Where the cloth holder lives: under the target-side counterpart of
+        // the object the PhysBone COMPONENT sat on in the source. The
+        // component is on the source avatar and the holder goes on the clone,
+        // so the path is mapped across; if the mapping fails (the object was
+        // stripped, or is the root itself) the avatar root is the fallback,
+        // which is exactly where holders always went before.
+        static Transform HolderHome(BridgeContext ctx, PhysBoneChainData data)
+        {
+            var target = ctx.Target.transform;
+#if VRC_SDK_VRCSDK3
+            var source = data.SourceGameObject != null ? data.SourceGameObject.transform : null;
+            if (source == null) return target;
+            var mapped = ctx.FindInTarget(source);
+            if (mapped == null || mapped == target) return target;
+            // A component ON the chain's own bone: the holder goes beside
+            // that bone, not inside it — a holder parented into the chain it
+            // drives would ride the simulation. In a folder (PhysBones/…) or
+            // on any bone the chain does not move, the component's own
+            // object is the home.
+            var chainRoot = data.Root != null ? ctx.FindInTarget(data.Root) : null;
+            bool onChain = chainRoot != null && (mapped == chainRoot || mapped.IsChildOf(chainRoot));
+            return onChain ? (mapped.parent != null ? mapped.parent : target) : mapped;
+#else
+            return target;
+#endif
         }
 
         static string UniqueChildName(Transform parent, string name)

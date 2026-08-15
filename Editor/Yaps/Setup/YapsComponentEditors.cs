@@ -6,12 +6,12 @@
 // lands under a bone you SEE it, and the shape rows offer the avatar's own
 // blendshapes from a dropdown instead of a name to type.
 //
-// The gizmos are drawn READABLE, not physically-sized. A real plug is a
-// couple of centimetres across; drawn at that size a socket is a fleck at
-// scene-view distance and loses to the CCK's own icons. So the socket
-// gizmo scales with the distance to the scene camera — a fixed size on
-// screen — and the plug axis is drawn at true length (that IS the
-// information) but with fat, distance-scaled end caps.
+// The gizmos are drawn at a FIXED world size, about a real socket's, with
+// enough line weight to read and nothing extra. A first version scaled
+// them with the camera distance so they stayed a fixed size on screen,
+// and that swam disorientingly as you moved. Fixed, they sit still and
+// read as things in the world. The plug axis is its true length — that IS
+// the information — with a modest arrow at the tip.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -42,31 +42,45 @@ namespace AvatarBridge
             _tag = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, normal = { textColor = new Color(1, 1, 1, 0.9f) } };
         }
 
-        // The tinted header: kind, name, state — and a colour that matches
-        // the gizmo, so what you see in the scene is what you see here.
+        // The header: the family gradient, like the window and the material
+        // panel, bled to the inspector's edges. The socket's own colour is a
+        // thin bar on the left — an accent that matches its gizmo, not a
+        // wash over the whole thing. Kind and name in the title, state in
+        // the subtitle, a tag on the right.
         public static void Header(string title, string subtitle, Color tint, string rightTag = null)
         {
             Ensure();
-            var rect = GUILayoutUtility.GetRect(0, 40, GUILayout.ExpandWidth(true));
-            var bg = tint; bg.a = 0.85f;
-            EditorGUI.DrawRect(rect, Color.Lerp(bg, new Color(0.15f, 0.15f, 0.15f, 1f), 0.55f));
+            var laid = GUILayoutUtility.GetRect(0, 42, GUILayout.ExpandWidth(true));
+            var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
+            const int steps = 32;
+            for (int i = 0; i < steps; i++)
+            {
+                var slice = new Rect(rect.x + rect.width * i / steps, rect.y, rect.width / steps + 1, rect.height);
+                EditorGUI.DrawRect(slice, BridgeTheme.At((float) i / (steps - 1)));
+            }
+            EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.18f));
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, 4, rect.height), tint);
-            GUI.Label(new Rect(rect.x + 12, rect.y + 4, rect.width - 24, 20), title, _title);
-            GUI.Label(new Rect(rect.x + 12, rect.y + 22, rect.width - 24, 16), subtitle, _sub);
+            GUI.Label(new Rect(rect.x + 14, rect.y + 5, rect.width - 28, 20), title, _title);
+            GUI.Label(new Rect(rect.x + 14, rect.y + 23, rect.width - 28, 16), subtitle, _sub);
             if (!string.IsNullOrEmpty(rightTag))
-                GUI.Label(new Rect(rect.x, rect.y + 4, rect.width - 10, 16), rightTag, _tag);
-            GUILayout.Space(6);
+                GUI.Label(new Rect(rect.x, rect.y + 5, rect.width - 12, 16), rightTag, _tag);
+            GUILayout.Space(8);
         }
 
+        // A section: a hairline of colour, the title, a rule beneath. The
+        // same header the material panel draws, so the two read as one
+        // system. No slab.
         public static void Section(string title, Color tint, string blurb = null)
         {
             Ensure();
-            GUILayout.Space(4);
-            var rect = GUILayoutUtility.GetRect(0, 20, GUILayout.ExpandWidth(true));
-            var bg = tint; bg.a = EditorGUIUtility.isProSkin ? 0.14f : 0.20f;
-            EditorGUI.DrawRect(rect, bg);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 3, rect.height), tint);
-            GUI.Label(rect, title, _section);
+            GUILayout.Space(6);
+            var laid = GUILayoutUtility.GetRect(0, 22, GUILayout.ExpandWidth(true));
+            var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y + 4, 3, rect.height - 8), tint);
+            GUI.Label(new Rect(rect.x + 14, rect.y, rect.width - 20, rect.height), title, _section);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
+                new Color(0.5f, 0.5f, 0.5f, EditorGUIUtility.isProSkin ? 0.18f : 0.28f));
+            GUILayout.Space(2);
             if (!string.IsNullOrEmpty(blurb)) GUILayout.Label(blurb, _blurb);
         }
 
@@ -77,9 +91,6 @@ namespace AvatarBridge
             else EditorGUILayout.HelpBox(text, type);
         }
 
-        // Screen-constant size: how many world units one pixel covers at
-        // this point, so a gizmo can be drawn N pixels big wherever it is.
-        public static float PixelSize(Vector3 at) => HandleUtility.GetHandleSize(at) * 0.05f;
     }
 
     // --- socket ------------------------------------------------------------
@@ -224,14 +235,71 @@ namespace AvatarBridge
             }
 
             // Preview.
+            // Preview needs a PLUG to bend, and "there is nothing there" is
+            // what a user sees when the scene has none. So Preview brings
+            // its own: if no baked YAPS plug is in the scene, a test plug is
+            // dropped a little way in front of the socket, aimed at it, and
+            // removed again when preview goes off. With a real plug in the
+            // scene it bends that one instead and spawns nothing.
+            int bakedPlugs = CountBakedPlugs();
             YapsInspectorStyle.Section("See it work", tint,
-                "Preview bends every YAPS plug in the scene toward this socket, in the editor, so you " +
-                "can place it and watch before uploading. Writes nothing that ships.");
+                bakedPlugs > 0
+                    ? $"Preview bends the {bakedPlugs} YAPS plug{(bakedPlugs == 1 ? "" : "s")} in the scene toward this socket, in the editor, so you can place it and watch before uploading. Writes nothing that ships."
+                    : "There is no baked plug in the scene, so Preview drops a test plug in front of this socket and bends it. Move the socket and watch it follow. The test plug goes when preview stops.");
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUI.BeginChangeCheck();
-                bool p = GUILayout.Toggle(_preview.boolValue, _preview.boolValue ? "  Previewing — plugs bend toward this socket" : "  Preview", "Button", GUILayout.Height(24));
-                if (EditorGUI.EndChangeCheck()) { _preview.boolValue = p; SceneView.RepaintAll(); }
+                bool p = GUILayout.Toggle(_preview.boolValue,
+                    _preview.boolValue ? "  Previewing — the plug bends toward this socket. Click to stop."
+                                       : (bakedPlugs > 0 ? "  Preview" : "  Preview with a test plug"),
+                    "Button", GUILayout.Height(24));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    _preview.boolValue = p;
+                    serializedObject.ApplyModifiedProperties();
+                    if (p && CountBakedPlugs() == 0) SpawnPreviewPlug(socket);
+                    if (!p) RemovePreviewPlug(socket);
+                    SceneView.RepaintAll();
+                }
+            }
+
+            // The socket-side deform, once baked. These knobs live on the
+            // renderer's material — the shader reads them there — but a
+            // socket's customisation belongs in one place, so they are drawn
+            // here too when the socket's mesh has been baked. Same values,
+            // written straight through.
+            var bakedMat = FindSocketMaterial(socket);
+            if (bakedMat != null)
+            {
+                YapsInspectorStyle.Section("How it opens", tint,
+                    "Read by the shader on this socket's mesh. Strength scales all the shapes; each stage " +
+                    "opens from its start to start + fade, as fractions of the plug's length. Depth comes " +
+                    "from the plug's tracker light, or from the contact channel where there is one.");
+                EditorGUI.BeginChangeCheck();
+                float power = EditorGUILayout.Slider(new GUIContent("Strength"), bakedMat.GetFloat("_YAPS_SocketPower"), 0f, 1f);
+                Vector4 starts = bakedMat.GetVector("_YAPS_SocketShapeStart");
+                Vector4 fades = bakedMat.GetVector("_YAPS_SocketShapeFade");
+                string[] stageNames = { "Entry", "Depth 1", "Depth 2", "Depth 3" };
+                for (int i = 0; i < 4; i++)
+                {
+                    float s = starts[i], e = Mathf.Min(1f, starts[i] + fades[i]);
+                    EditorGUILayout.MinMaxSlider(new GUIContent(stageNames[i]), ref s, ref e, 0f, 1f);
+                    starts[i] = s; fades[i] = Mathf.Max(0.01f, e - s);
+                }
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(bakedMat, "YAPS socket shape");
+                    bakedMat.SetFloat("_YAPS_SocketPower", power);
+                    bakedMat.SetVector("_YAPS_SocketShapeStart", starts);
+                    bakedMat.SetVector("_YAPS_SocketShapeFade", fades);
+                    EditorUtility.SetDirty(bakedMat);
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button("Open material", EditorStyles.miniButton, GUILayout.Width(100)))
+                        Selection.activeObject = bakedMat;
+                }
             }
 
             // Advanced.
@@ -252,6 +320,63 @@ namespace AvatarBridge
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // The material carrying this socket's baked deform: on the renderer
+        // the socket names, or failing that any YAPS-socket material on a
+        // mesh this socket's bone drives.
+        static Material FindSocketMaterial(YapsSocket socket)
+        {
+            IEnumerable<Renderer> candidates = socket.renderer != null
+                ? new Renderer[] { socket.renderer }
+                : AvatarRootOf(socket.transform).GetComponentsInChildren<Renderer>(true);
+            foreach (var r in candidates)
+            {
+                if (r == null) continue;
+                foreach (var m in r.sharedMaterials)
+                {
+                    if (m != null && m.HasProperty("_YAPS_SocketPower") && m.HasProperty("_YAPS_Bake")
+                        && m.GetTexture("_YAPS_Bake") != null && m.GetFloat("_YAPS_SocketPower") >= 0f
+                        && (socket.renderer != null || m.GetFloat("_YAPS_SocketPower") > 0f))
+                        return m;
+                }
+            }
+            return null;
+        }
+
+        const string PreviewPlugName = "YAPS Preview Plug";
+
+        static int CountBakedPlugs()
+        {
+            int n = 0;
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
+            return n;
+        }
+
+        // A test plug in front of the socket, aimed at it, at a distance
+        // where the deform is clearly engaged but not fully swallowed — so
+        // moving the socket a little either way shows the whole range.
+        static void SpawnPreviewPlug(YapsSocket socket)
+        {
+            var existing = GameObject.Find(PreviewPlugName);
+            if (existing != null) return;
+            var go = YapsNativeBuilder.BuildTestPlug(null);
+            if (go == null) return;
+            go.name = PreviewPlugName;
+            var t = socket.transform;
+            // A quarter metre is the test plug's length; sit its base 0.3 m
+            // out along the socket's forward, pointing back at it.
+            go.transform.position = t.position + t.forward * 0.3f;
+            go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
+            EditorGUIUtility.PingObject(go);
+        }
+
+        static void RemovePreviewPlug(YapsSocket socket)
+        {
+            var existing = GameObject.Find(PreviewPlugName);
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
         }
 
         static SkinnedMeshRenderer GuessRenderer(Transform socket, List<SkinnedMeshRenderer> renderers)
@@ -284,36 +409,40 @@ namespace AvatarBridge
             colour.a = selected ? 1f : 0.7f;
 
             Vector3 c = t.position, f = t.forward, u = t.up;
-            // Screen-constant: about 26 px radius, whatever the distance.
-            float px = YapsInspectorStyle.PixelSize(c);
-            float r = px * 26f;
-            float thick = selected ? 4f : 2.5f;
+            // FIXED world size — a socket about 5 cm across, drawn at 5 cm.
+            // It used to scale with the camera distance and that swam as
+            // you moved; fixed, it sits still and reads as a thing in the
+            // world. Obvious enough by weight of line, quiet enough by
+            // having one ring, one arrow, and nothing that competes with
+            // the CCK's own icons on the markers beneath. Follows the
+            // avatar's scale so a shrunk avatar's sockets shrink with it.
+            float scale = Mathf.Max(0.05f, (t.lossyScale.x + t.lossyScale.y + t.lossyScale.z) / 3f);
+            float r = 0.025f * scale;
+            float thick = selected ? 3f : 2f;
 
             Handles.color = colour;
             Handles.DrawWireDisc(c, f, r, thick);
-            Handles.DrawWireDisc(c, f, r * 0.45f, thick * 0.6f);
-            // Entry arrow: from where a plug comes, into the socket.
-            Handles.DrawLine(c + f * (r * 2.4f), c + f * (r * 0.5f), thick);
-            Handles.ConeHandleCap(0, c + f * (r * 0.5f), Quaternion.LookRotation(-f), r * 0.55f, EventType.Repaint);
+            // Entry arrow: from where a plug comes, into the socket. Short.
+            Handles.DrawLine(c + f * (r * 2.0f), c + f * (r * 0.6f), thick);
+            Handles.ConeHandleCap(0, c + f * (r * 0.6f), Quaternion.LookRotation(-f), r * 0.5f, EventType.Repaint);
             if (hole)
             {
-                var faint = colour; faint.a *= 0.45f;
+                // Depth: a fainter ring set back, joined at four points, so
+                // it reads as a short tube rather than a disc.
+                var faint = colour; faint.a *= 0.4f;
                 Handles.color = faint;
-                Vector3 back = c - f * (r * 1.6f);
+                Vector3 back = c - f * (r * 1.4f);
                 Handles.DrawWireDisc(back, f, r * 0.7f, thick * 0.6f);
-                for (int i = 0; i < 6; i++)
+                for (int i = 0; i < 4; i++)
                 {
-                    var q = Quaternion.AngleAxis(i * 60f, f);
+                    var q = Quaternion.AngleAxis(i * 90f, f);
                     Handles.DrawLine(c + q * u * r, back + q * u * (r * 0.7f), thick * 0.5f);
                 }
             }
-            // A filled centre dot so it survives at any zoom.
-            Handles.color = colour;
-            Handles.DrawSolidDisc(c, -SceneView.currentDrawingSceneView.camera.transform.forward, r * 0.12f);
             if (selected || !built)
             {
-                var label = new GUIStyle(EditorStyles.whiteBoldLabel) { fontSize = 12 };
-                Handles.Label(c + u * (r * 1.5f), (hole ? "hole" : "ring") + (built ? "" : "  — not built"), label);
+                var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
+                Handles.Label(c + u * (r * 1.4f), (hole ? "hole" : "ring") + (built ? "" : "  — not built"), label);
             }
         }
     }
@@ -395,28 +524,27 @@ namespace AvatarBridge
             // frame), else the plug object.
             var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
             Vector3 b = frame.position, f = frame.forward;
-            float px = YapsInspectorStyle.PixelSize(b);
-            float thick = selected ? 4f : 2.5f;
+            float thick = selected ? 3f : 2f;
+            float scale = Mathf.Max(0.05f, (frame.lossyScale.x + frame.lossyScale.y + frame.lossyScale.z) / 3f);
 
             if (length <= 0f)
             {
-                Handles.DrawDottedLine(b, b + f * 0.4f, 6f);
-                var label = new GUIStyle(EditorStyles.whiteBoldLabel) { fontSize = 12 };
-                Handles.Label(b + f * 0.4f, "plug — not baked", label);
+                Handles.DrawDottedLine(b, b + f * 0.3f * scale, 5f);
+                var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
+                Handles.Label(b + f * 0.3f * scale, "plug — not baked", label);
                 return;
             }
-            float scale = Mathf.Max(0.05f, (frame.lossyScale.x + frame.lossyScale.y + frame.lossyScale.z) / 3f);
             Vector3 tip = b + f * length * scale;
-            // True length along the axis — that IS the information — with
-            // screen-sized caps so it reads at any distance.
+            // True length along the axis, a ring at the base at a typical
+            // radius, a small arrow at the tip. Fixed world size.
+            float r = 0.02f * scale;
             Handles.DrawLine(b, tip, thick);
-            Handles.DrawSolidDisc(b, -SceneView.currentDrawingSceneView.camera.transform.forward, px * 6f);
-            Handles.DrawWireDisc(b, f, px * 14f, thick);
-            Handles.ConeHandleCap(0, tip, Quaternion.LookRotation(f), px * 18f, EventType.Repaint);
+            Handles.DrawWireDisc(b, f, r, thick);
+            Handles.ConeHandleCap(0, tip, Quaternion.LookRotation(f), r * 1.2f, EventType.Repaint);
             if (selected)
             {
-                var label = new GUIStyle(EditorStyles.whiteBoldLabel) { fontSize = 12 };
-                Handles.Label(tip + f * (px * 12f), $"{length:0.###} m", label);
+                var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
+                Handles.Label(tip + f * (r * 1.5f), $"{length:0.###} m", label);
             }
         }
     }
