@@ -175,4 +175,5 @@ Shader "AvatarBridge/YAPS Test Plug"
         }
     }
     Fallback Off
+    CustomEditor "AvatarBridge.YapsShaderGUI"
 }

@@ -28,7 +28,7 @@
 // The wrapper finds struct members by SEMANTIC, never by name. Shaders
 // call the same field `vertex`, `pos`, `positionOS` and worse, but they
 // all tag it POSITION.
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+#if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "10";
+        const string Revision = "11";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -197,6 +197,8 @@ namespace AvatarBridge
             shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
                 "Shader \"" + newName + "\"");
 
+            InstallShaderGui(shaderFile);
+
             var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
             if (patched == null)
             {
@@ -215,6 +217,46 @@ namespace AvatarBridge
                       "follow the bend. Cosmetic, and the alternative was no deform at all."
                     : ""));
             return patched;
+        }
+
+        // --- the material panel -----------------------------------------
+
+        // Point the patched shader at YapsShaderGUI, and remember what it
+        // pointed at before, so the panel can draw YAPS on top and hand the
+        // rest to the shader's own editor. A Poiyomi user keeps Poiyomi's
+        // panel entire; a Standard user keeps Standard's.
+        //
+        // The original editor's class name is carried in the DESCRIPTION of
+        // a hidden float property — a shader property is the only place a
+        // string can ride in a shader that the material can read back.
+        static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile)
+        {
+            string original = null;
+            var existing = Regex.Match(shaderFile.Text, @"^\s*CustomEditor\s+""([^""]+)""\s*$",
+                RegexOptions.Multiline);
+            if (existing.Success)
+            {
+                original = existing.Groups[1].Value;
+                shaderFile.Text = shaderFile.Text.Remove(existing.Index, existing.Length);
+            }
+
+            // The marker property, into the Properties block beside ours.
+            var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
+            if (properties.Success)
+            {
+                string marker = "\n        [HideInInspector] " + YapsShaderGUI.OriginalEditorProperty
+                                + " (\"" + (original ?? "") + "\", Float) = 0";
+                shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length, marker);
+            }
+
+            // CustomEditor sits at shader scope, after the SubShaders. The
+            // last closing brace of the file is the shader's own.
+            int close = shaderFile.Text.LastIndexOf('}');
+            if (close > 0)
+            {
+                shaderFile.Text = shaderFile.Text.Insert(close,
+                    "    CustomEditor \"AvatarBridge.YapsShaderGUI\"\n");
+            }
         }
 
         // --- the vertex wrapper ---------------------------------------
