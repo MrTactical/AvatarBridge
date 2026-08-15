@@ -1,5 +1,7 @@
 #if CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor.Animations;
 using UnityEngine;
 #if VRC_SDK_VRCSDK3
@@ -100,6 +102,34 @@ namespace AvatarBridge
         // the same way, which is what makes depth animation free here and
         // expensive in VRChat.
         public List<string> ForceLocalPrefixes = new List<string>();
+
+        // The same rule for names a prefix cannot catch. VRCFury stamps every
+        // penetration parameter with a per-component id — VF80_ on one
+        // avatar, VF77_ on another — so a fixed prefix list is a list of the
+        // avatars someone happened to test. What is stable is the SHAPE that
+        // follows the id: contact-driven depth on the sockets, auto-distance
+        // on the plug. Anything of that shape is written by a contact on
+        // every client and syncing it transmits nothing anyone needs, at
+        // 32 bits a time. Menu toggles and modes under the same id do not
+        // match and stay synced, which is the whole point of matching the
+        // shape rather than the prefix.
+        public List<System.Text.RegularExpressions.Regex> ForceLocalPatterns =
+            new List<System.Text.RegularExpressions.Regex>();
+
+        public bool ForcesLocal(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            if (ForceLocalPrefixes.Count > 0
+                && ForceLocalPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+            for (int i = 0; i < ForceLocalPatterns.Count; i++)
+            {
+                if (ForceLocalPatterns[i].IsMatch(name)) return true;
+            }
+            return false;
+        }
 
         public bool AnimatorBlinkPending;
 

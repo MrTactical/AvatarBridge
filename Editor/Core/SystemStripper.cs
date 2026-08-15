@@ -55,6 +55,34 @@ namespace AvatarBridge
         {
             "<PCS Target>", "Penetration Contact System", "World Scale Detector"
         };
+        // Penetration parameters that a CONTACT drives, and that therefore
+        // must be "#" local when the system is kept: every client runs the
+        // contact and reaches the same value, so syncing them transmits
+        // nothing anyone needs, at 32 bits apiece. VRCFury stamps them with
+        // a per-component id — VF80_ on one avatar, VF77_ on another — so a
+        // prefix cannot name them; the SHAPE after the id can. Surveyed
+        // across the corpus, exactly two:
+        //
+        //   VF<n>_<Socket>/Self|Others/Contact/Root|Tip   depth per socket
+        //   VF<n>_AutoCurrentDist                          the plug's auto-distance
+        //
+        // and nothing else under the same id matches — the socket toggles
+        // (VF<n>_Pussy), the modes (VF<n>_stealth, legacy, autoMode) and the
+        // one-offs are user state that must keep syncing. Sixteen contact
+        // floats put a 3132-bit avatar 384 bits past the cap; local they
+        // cost her nothing.
+        static readonly System.Text.RegularExpressions.Regex[] YapsContactParamPatterns =
+        {
+            new System.Text.RegularExpressions.Regex(
+                @"^VF\d+_.+/(Self|Others)/Contact/(Root|Tip)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled),
+            new System.Text.RegularExpressions.Regex(
+                @"^VF\d+_AutoCurrentDist$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled),
+        };
+
         static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB" };
         static readonly string[] OtherSpsPointerTypePrefixes = { "PCS", "VRCF_" };
 
@@ -182,6 +210,7 @@ namespace AvatarBridge
                     // their parameters now do.
                     layerHints.AddRange(OtherSpsLayerHints);
                     ctx.ForceLocalPrefixes.AddRange(YapsParamPrefixes);
+                    ctx.ForceLocalPatterns.AddRange(YapsContactParamPatterns);
                 }
                 else
                 {

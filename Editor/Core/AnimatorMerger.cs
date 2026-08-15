@@ -2089,9 +2089,7 @@ namespace AvatarBridge
                 // A contact-driven parameter has to be "#" or the incoming
                 // stream overwrites what the contact just set, and being
                 // local also costs nothing against the sync budget.
-                if (ctx.ForceLocalPrefixes.Count > 0
-                    && ctx.ForceLocalPrefixes.Any(p =>
-                        result.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                if (ctx.ForcesLocal(result)
                     && !result.StartsWith("#", StringComparison.Ordinal))
                 {
                     return "#" + result;

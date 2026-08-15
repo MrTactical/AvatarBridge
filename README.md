@@ -322,8 +322,11 @@ breaks.
 
 **A socket's own reactions cost nothing.** Bulges and the like are driven by contacts, which
 every client computes for itself, so they use no sync budget however many an author builds. In
-VRChat the same thing costs a synced parameter each — which is why AvatarBridge drops VRChat's
-own haptic parameter set and keeps only what ChilloutVR can run for free.
+VRChat the same thing costs a synced parameter each — which is why AvatarBridge makes VRChat's
+contact-driven depth parameters (`…/Self/Contact/Root`, `…/Others/Contact/Tip` and the plug's
+auto-distance) local rather than synced, whatever VRCFury numbered them. The socket toggles and
+modes next to them stay synced, since those are yours to set. An avatar that sat a few bits under
+the cap without penetration will still fit with it on.
 
 **Animation that can't do anything is stripped too** (*Remove animation that can't do anything*,
 on by default). A curve writing to a material property the renderer's shader doesn't have — the
