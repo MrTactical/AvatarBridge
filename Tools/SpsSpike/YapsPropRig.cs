@@ -166,20 +166,22 @@ namespace AvatarBridge.Spike
                     : hole ? "SPSLL_Socket_Hole"
                     : legacy ? "SPSLL_Socket_Ring" : "SPSLL_Socket_Root";
 
-                // TPS says which way it faces with a SECOND pointer a little
-                // way along its normal, because it has no light to say it in.
-                // Nothing reads this yet — the deform takes its direction
-                // from the approach instead, which is why a converted socket
-                // works from any side — but a socket without it is not the
-                // shape TPS content actually has, and this prop exists to be
-                // that shape.
-                if (tps)
-                {
-                    var norm = new GameObject("Socket Normal");
-                    norm.transform.SetParent(root.transform, false);
-                    norm.transform.localPosition = new Vector3(0, 0, 0.01f);
-                    norm.AddComponent<CVRPointer>().type = "TPS_Orf_Norm";
-                }
+                // The SECOND pointer, a centimetre along the socket's
+                // normal, which is how a contact-only socket says which way
+                // it faces. Both ecosystems have one — TPS calls it
+                // TPS_Orf_Norm, SPS calls it SPSLL_Socket_Front, and Angela
+                // carries twelve of the latter — and the plug's orientation
+                // channel (FX/FY/FZ) reads either.
+                //
+                // It used to be built for the TPS socket ALONE, which made
+                // blue a socket shape that does not exist in the wild: a
+                // root with no front. The plug could aim at it but not thread
+                // it, so blue bent bluntly and unstably beside a clean orange
+                // and looked broken. It was not — it was under-specified.
+                var norm = new GameObject("Socket Front");
+                norm.transform.SetParent(root.transform, false);
+                norm.transform.localPosition = new Vector3(0, 0, 0.01f);
+                norm.AddComponent<CVRPointer>().type = tps ? "TPS_Orf_Norm" : "SPSLL_Socket_Front";
             }
 
             // Tight to the ring. Two pickups cannot overlap, so every
