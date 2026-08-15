@@ -223,6 +223,44 @@ namespace AvatarBridge
             EditorUtility.SetDirty(cvrAvatar);
         }
 
+        // Face only, on an avatar that already has its CVRAvatar: the face
+        // mesh, visemes and blink. The toolkit's card. Nothing else moves.
+        public static BridgeReport WireFace(GameObject avatar, BridgeSettings settings)
+        {
+            var report = new BridgeReport();
+            var cvrAvatar = avatar != null ? avatar.GetComponent<CVRAvatar>() : null;
+            if (cvrAvatar == null)
+            {
+                report.Warning(Category, "No CVRAvatar", "Add the CVRAvatar component first, or run Setup mode in AvatarBridge.");
+                return report;
+            }
+            var ctx = new BridgeContext { Settings = settings, Report = report, Target = avatar, CvrAvatar = cvrAvatar };
+            Undo.RecordObject(cvrAvatar, "Wire face");
+            var face = AvatarFeatureDetect.FindFaceMesh(avatar);
+            if (face == null)
+            {
+                report.Warning(Category, "No face mesh found", "No skinned mesh with blendshapes; nothing to wire.");
+                return report;
+            }
+            cvrAvatar.bodyMesh = face;
+            report.Converted(Category, "Face mesh", face.name);
+            var mesh = face.sharedMesh;
+            var visemes = AvatarFeatureDetect.DetectVisemes(mesh);
+            if (visemes != null)
+            {
+                cvrAvatar.useVisemeLipsync = true;
+                cvrAvatar.visemeBlendshapes = visemes;
+                report.Converted(Category, "Visemes", $"{visemes.Count(v => !string.IsNullOrEmpty(v))} of 15 detected on \"{face.name}\"");
+            }
+            else
+            {
+                report.Warning(Category, "Visemes not detected", "No standard viseme blendshapes on the face mesh.");
+            }
+            WireBlink(ctx, cvrAvatar, mesh);
+            EditorUtility.SetDirty(cvrAvatar);
+            return report;
+        }
+
         static void WireBlink(BridgeContext ctx, CVRAvatar cvrAvatar, Mesh mesh)
         {
             if (!ctx.Settings.wireBlinkBlendshapes || mesh == null)

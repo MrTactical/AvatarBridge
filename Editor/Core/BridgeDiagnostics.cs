@@ -865,7 +865,7 @@ namespace AvatarBridge
             }
         }
 
-        static void CheckComponentWhitelist(BridgeContext ctx)
+        internal static void CheckComponentWhitelist(BridgeContext ctx)
         {
             var doomed = new Dictionary<string, int>();
             int yaps = 0;
@@ -942,7 +942,7 @@ namespace AvatarBridge
         static bool IsKnownStereoShader(string name) =>
             name == "Standard" || name.StartsWith("Hidden/PostProcessing/", StringComparison.Ordinal);
 
-        static void CheckStereoShaders(BridgeContext ctx)
+        internal static void CheckStereoShaders(BridgeContext ctx)
         {
             var missingCache = new Dictionary<string, List<string>>();
             var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);

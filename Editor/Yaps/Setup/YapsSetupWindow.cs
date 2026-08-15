@@ -21,7 +21,7 @@ namespace AvatarBridge
             w.minSize = new Vector2(440, 520);
         }
 
-        enum Mode { Setup, Test, Toolkit }
+        enum Mode { Setup, Test }
 
         Mode _mode = Mode.Setup;
         GameObject _target;
@@ -77,11 +77,11 @@ namespace AvatarBridge
             // Rebuilt with the mode so the active tab's tint follows.
             _tabs.Clear();
             _tabs.Add(BridgeElements.Tabs(
-                new[] { "Set up an avatar or prop", "Test props", "Toolkit" },
-                new[] { "d_Avatar Icon", "d_PlayButton", "d_SettingsIcon" },
+                new[] { "Set up an avatar or prop", "Test props" },
+                new[] { "d_Avatar Icon", "d_PlayButton" },
                 (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
             _pages.Clear();
-            if (_mode == Mode.Setup) BuildSetupPage(); else if (_mode == Mode.Test) BuildTestPage(); else BuildToolkitPage();
+            if (_mode == Mode.Setup) BuildSetupPage(); else BuildTestPage();
             _pages.Add(Footer());
         }
 
@@ -197,6 +197,14 @@ namespace AvatarBridge
             }
             _pages.Add(cross);
 
+            var toolkit = new BridgeElements.Card("More tools", null, false, null, 0.5f);
+            toolkit.Body.Add(BridgeElements.Hint(
+                "The ChilloutVR Toolkit checks any avatar for what the game will break, patches shaders for VR " +
+                "stereo, wires visemes and blink, clamps audio, fixes mesh bounds, adds a height slider, writes " +
+                "the store description and merges animators. Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit."));
+            toolkit.Body.Add(BridgeElements.Row(BridgeElements.Link("Open the Toolkit", ToolkitWindow.Open)));
+            _pages.Add(toolkit);
+
             if (_target == null && Selection.activeGameObject != null) _picker.value = Selection.activeGameObject;
             else Rescan();
         }
@@ -240,67 +248,6 @@ namespace AvatarBridge
                 "find each other by marker lights; the synced contact channel between props — the " +
                 "part that reaches remote viewers — is the toolkit's next piece."));
             _pages.Add(game);
-        }
-
-        // --- the toolkit page --------------------------------------------------
-
-        // Standalone utilities from the converter that any ChilloutVR
-        // avatar can use, YAPS or not. Each is a card: pick, run, read.
-        void BuildToolkitPage()
-        {
-            var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, 1, 0f);
-            _picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
-            _picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; ShowPage(); });
-            pick.Body.Add(_picker);
-            _pages.Add(pick);
-
-            var stereo = new BridgeElements.Card("Stereo shaders", null, null, 2, 0.5f);
-            stereo.Body.Add(BridgeElements.Hint(
-                "ChilloutVR renders single-pass instanced; a shader that never opted in draws into one eye only " +
-                "in VR. This copies such shaders into Assets/YAPS/Generated with the stereo macros added and " +
-                "points this object's materials at the copies. Originals are never touched, a copy that fails " +
-                "to compile is thrown away, and only plainly written vertex/fragment shaders can be patched. " +
-                "Compilation is verified; how it looks needs VR eyes."));
-            var stereoReport = new VisualElement();
-            var patch = new BridgeElements.PrimaryButton("Patch shaders for VR stereo", () =>
-            {
-                if (_target == null) return;
-                var report = new BridgeReport();
-                Undo.RegisterFullObjectHierarchyUndo(_target, "Patch stereo shaders");
-                var animator = _target.GetComponent<Animator>();
-                var controller = animator != null ? animator.runtimeAnimatorController as UnityEditor.Animations.AnimatorController : null;
-                ShaderSpiPatcher.Patch(_target, YapsNativeBuilder.OutputRoot + "/" + _target.name + "/RehomedAssets", controller, report);
-                ShowReport(stereoReport, report, "Every shader on it already declares stereo support, or has no source to patch.");
-            });
-            patch.SetActive(_target != null);
-            stereo.Body.Add(patch);
-            if (_target == null) stereo.Body.Add(BridgeElements.Hint("Pick an object above first."));
-            stereo.Body.Add(stereoReport);
-            _pages.Add(stereo);
-
-            var more = new BridgeElements.Card("Also in this package", null, false, null, 1f);
-            more.Body.Add(BridgeElements.Hint(
-                "CCK Animator Tester drives a ChilloutVR avatar the way the game does: gestures, stances, " +
-                "visemes, emotes and the whole Advanced Settings menu, in Play mode. Tools ▸ Avatar Bridge ▸ " +
-                "CCK Animator Tester."));
-            more.Body.Add(BridgeElements.Row(BridgeElements.Link("Open the tester", () =>
-                EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester"))));
-            _pages.Add(more);
-        }
-
-        static void ShowReport(VisualElement into, BridgeReport report, string whenEmpty)
-        {
-            into.Clear();
-            if (report.Entries.Count == 0) { into.Add(BridgeElements.Hint(whenEmpty)); return; }
-            bool alt = false;
-            foreach (var e in report.Entries)
-            {
-                var colour = e.Status == ReportStatus.Error ? BridgeTheme.Bad
-                           : e.Status == ReportStatus.Warning || e.Status == ReportStatus.Approximated ? BridgeTheme.Warn
-                           : e.Status == ReportStatus.Converted ? BridgeTheme.Good : BridgeTheme.Muted;
-                into.Add(BridgeElements.ReportRow(e.Status.ToString(), e.Subject, e.Detail, colour, alt));
-                alt = !alt;
-            }
         }
 
         // --- behaviour -----------------------------------------------------------
