@@ -38,10 +38,8 @@ namespace AvatarBridge
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius)
             => Around(ctx, worldCentre, captureRadius, out _);
 
-        // perShape: how much of the push each animated blendshape is
-        // responsible for, keyed "renderer path|shape name" — what lets
-        // a zone follow the one slider that grows it instead of sitting
-        // at the grown size forever.
+        // perShape: each animated shape's share of the push, keyed
+        // "renderer path|shape name".
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius,
             out Dictionary<string, float> perShape)
         {
@@ -131,9 +129,7 @@ namespace AvatarBridge
             return Percentile(deltas, 0.9f);
         }
 
-        // Which animated shape pushes the captured surface, and how far
-        // — each shape's top frame projected onto every sample's outward
-        // direction, scaled to the weight the animator can reach.
+        // Which animated shape pushes the captured surface, and how far.
         static void AttributeShapes(BridgeContext ctx,
             List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)> samples,
             Dictionary<string, float> perShape)

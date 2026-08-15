@@ -132,28 +132,14 @@ namespace AvatarBridge
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
         // Convert DPS, TPS and SPS into YAPS instead of stripping them.
-        // ON by default since 2026-08-15: every tier proven in game, both
-        // directions of legacy interop, on avatars and props. Off is now
-        // the choice for someone who wants the penetration system gone.
         public bool convertYapsSystems = true;
-        // Encode socket markers the way ChilloutVR's existing DPS
-        // content does, so its plugs can see them. Off, they use our
-        // own ordering, which wins the light slots cleanly but is
-        // invisible to every plug but another converted one.
+        // Encode socket markers the way existing DPS content reads them.
         public bool emitLegacySocketLights = true;
-        // How many sockets may carry marker lights. Unity gives a mesh
-        // FOUR vertex light slots and the protocol needs two per
-        // socket, so a dozen sockets means a plug sees four of
-        // whichever light ranks higher — four roots with no fronts, or
-        // four fronts with no roots. Neither is a socket. Holes are
-        // kept first, then rings.
+        // How many sockets may carry marker lights. A mesh gets four vertex
+        // light slots and a socket takes two. Holes first, then rings.
         public int maxLightEmittingSockets = 2;
-        // How fast a converted plug follows a socket the CONTACT channel
-        // reports, as the most the smoothed value may move per frame.
-        // Lower is a heavier plug that lags a thrust — TPS calls the same
-        // idea buffered depth. Only the channel is buffered: marker lights
-        // and legacy content have no smoothing stage to lag in, and a DPS
-        // plug never had one either. 0.05 is the constant it always was.
+        // How far the smoothed channel value may move per frame. Lower is a
+        // heavier plug. Only the channel is buffered.
         [Range(0.01f, 0.5f)]
         public float yapsSocketFollow = 0.05f;
         // Comma-separated. Matched as parameter prefixes and

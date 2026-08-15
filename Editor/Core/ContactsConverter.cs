@@ -129,18 +129,9 @@ namespace AvatarBridge
                 { "FingerIndexR", new[] { "index" } },
             };
 
-        // The two penetration ecosystems tag the same points differently,
-        // and VRCFury's own receivers listen for the TPS name alone — its
-        // auto socket mode is a receiver tagged TPS_Pen_Penetrating and
-        // nothing else. A receiver converted here should hear a plug from
-        // either family, so each name learns the other. Nothing is renamed;
-        // a receiver only listens more widely.
-        //
-        // Kept apart from the table above on purpose. That one doubles as
-        // "tags every ChilloutVR player carries", and the unreachable-tag
-        // report reads it to decide what NOT to warn about. Penetration tags
-        // are exactly what that report should keep naming: no stranger's
-        // hand fires them.
+        // Both penetration families tag the same points; a converted receiver
+        // hears either name. Kept apart from the table above, which also
+        // decides what the unreachable-tag report leaves out.
         static readonly Dictionary<string, string[]> PenetrationTagTwins =
             new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
             {
@@ -234,18 +225,8 @@ namespace AvatarBridge
                     // 1 at the centre, exactly like VRChat, and
                     // SetFromDistance writes the value raw.
                 });
-                // A VRChat proximity receiver falls back to 0 on its own the
-                // moment the sender leaves. ChilloutVR's does not: the stay
-                // task writes only while something is inside, and when the
-                // last sender leaves the parameter simply KEEPS its final
-                // reading. For most consumers that is invisible, because the
-                // value only matters while something is in range. It is not
-                // invisible to anything that compares readings over time —
-                // VRCFury's auto socket mode teleports one trigger from
-                // socket to socket and asks each time "is this one closer
-                // than the active one", and with the value stuck at whatever
-                // the last socket saw, every socket answered yes and the
-                // active hole flickered through all of them.
+                // ChilloutVR's stay task writes only while something is inside; the
+                // parameter keeps its last reading after. Reset to 0 on exit.
                 trigger.exitTasks.Add(MakeTask(receiver.parameter, 0f, 0f));
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
                     $"Proximity receiver -> distance-driven \"{receiver.parameter}\", 0 on exit");
@@ -296,13 +277,8 @@ namespace AvatarBridge
             // that hurls vertices cannot make a zone the size of a room.
             float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
 
-            // One slider responsible for the bulk of the push means the
-            // zone can follow it live instead of sitting at the grown
-            // size while the body is small. Contributions are grouped by
-            // what animates together — one slider driving the same shape
-            // on the body and three clothing meshes is one owner, not
-            // four rivals — and dominance is judged against the measured
-            // total, so shapes grazing the capture edge cannot dilute it.
+            // One dominant slider lets the zone follow it live. Contributions are
+            // grouped by what animates together, judged against the measured total.
             var groups = new Dictionary<string, float>();
             var reps = new Dictionary<string, (string key, float push)>();
             foreach (var pair in perShape)
@@ -419,13 +395,8 @@ namespace AvatarBridge
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
-                // A toggle that animates the contact's OBJECT rather than
-                // the component gated the contact just as hard in VRChat:
-                // the component died with its container. The host is
-                // parented at the shape's anchor, not under the container,
-                // so the curve is copied onto it — copied, not moved,
-                // because the container often holds the reaction's sound
-                // and particles too.
+                // A toggle on the contact's object gated it in VRChat too. The host
+                // sits at the anchor, so the curve is copied onto it, not moved.
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
                     if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")

@@ -31,20 +31,8 @@ namespace AvatarBridge
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
             }
-            // The holder goes where the author kept the PhysBone COMPONENT —
-            // not loose at the avatar root. Authors organise: Angela's live
-            // in a "PhysBones" folder (PhysBones/ButtRoot, PhysBones/Hair),
-            // and a converter that dropped fourteen MagicaCloth_* objects at
-            // the root beside her meshes and her SPS folder undid that. The
-            // contact converter already parents its triggers under each
-            // contact's own object for the same reason. So: the component's
-            // parent, whatever the author chose — the folder, or the bone
-            // when the component sat on the bone itself. Falls back to the
-            // avatar root only when the component's object IS the root.
-            //
-            // Placed at creation, before any clip is written against it:
-            // animation paths address the holder by name from the root, so
-            // it must never move after a curve has been aimed at it.
+            // The holder goes under the PhysBone component's own parent, never
+            // loose at the root. Placed before any clip is aimed at it.
             var home = HolderHome(ctx, data);
             // Sibling-unique, because animation paths address children by name: an avatar with
             // four hairstyles produces several chains rooted at a bone called "Hair_root", and
@@ -320,11 +308,8 @@ namespace AvatarBridge
             if (source == null) return target;
             var mapped = ctx.FindInTarget(source);
             if (mapped == null || mapped == target) return target;
-            // A component ON the chain's own bone: the holder goes beside
-            // that bone, not inside it — a holder parented into the chain it
-            // drives would ride the simulation. In a folder (PhysBones/…) or
-            // on any bone the chain does not move, the component's own
-            // object is the home.
+            // A component on the chain's own bone: the holder goes beside it,
+            // not inside the chain it drives.
             var chainRoot = data.Root != null ? ctx.FindInTarget(data.Root) : null;
             bool onChain = chainRoot != null && (mapped == chainRoot || mapped.IsChildOf(chainRoot));
             return onChain ? (mapped.parent != null ? mapped.parent : target) : mapped;
@@ -780,27 +765,10 @@ namespace AvatarBridge
                         "granularities, not a local/networked split.");
                 }
 
-                // The other half of immobile. All Motion cancels motion
-                // relative to the chain's root parent: a head turn, not
-                // just walking. The two values above cannot express
-                // that; MagicaCloth2 measures inertia at the component
-                // transform, which sits on the avatar root.
-                //
-                // `inertiaConstraint.anchor` is MagicaCloth2's own answer: "Anchor that cancels
-                // inertia. Anchor translation and rotation are excluded from simulation." Pointing
-                // it at the chain's parent bone reproduces All Motion's reference frame exactly,
-                // and its influence carries the same polarity as the other two:
-                //
-                //   anchorRatio = 1 - anchorInertia;                       // TeamManager
-                //   oldComponentWorldPosition += anchorDelta * anchorRatio;  // 打ち消す, "cancel out"
-                //
-                // so a low anchorInertia cancels MORE of the parent's motion, exactly as a low
-                // worldInertia absorbs more of the avatar's. All three therefore take 1 - immobile
-                // and stay consistent with each other.
-                //
-                // Only for All Motion: a "World" PhysBone deliberately keeps reacting to its
-                // parent, and anchoring it would take away motion its author wanted. Anchor is
-                // [NG] for preset import, so no preset can clobber this afterwards.
+                // All Motion cancels motion relative to the chain's parent, a head
+                // turn included. MagicaCloth2's anchor does the same: anchorRatio is
+                // 1 - anchorInertia, so all three take 1 - immobile. All Motion only;
+                // a World PhysBone keeps reacting to its parent.
                 if (data.ImmobileTypeName == "AllMotion" && data.Root != null && data.Root.parent != null)
                 {
                     var anchor = data.Root.parent;

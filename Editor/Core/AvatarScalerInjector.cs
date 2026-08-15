@@ -10,25 +10,10 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Optional avatar scaler. Injects the bundled **Linear Smoothing Layer** (constant-speed
-    // float smoothing so size changes glide instead of snapping. JustSleightly's
-    // ControllerTemplates blend-tree math), then GENERATES a **Size** layer calibrated to this
-    // avatar.
-    //
-    // The menu control is a **Slider**, 0..1, mapped GEOMETRICALLY onto 0.25×-4× of the
-    // avatar's measured height, so scale 1× sits at exactly mid-slider (0.25 × 16^0.5 = 1).
-    //
-    // It used to be an InputSingle reading in metres; a nicer unit, and unusable: the CCK's
-    // InputSingle carries only a defaultValue, no min/max/step, and ChilloutVR's quick menu
-    // renders it as a raw numeric keypad. A tester typing on it got 9999 and 0000, and the
-    // constant-speed smoothing then glided toward the garbage so slowly the avatar looked
-    // frozen. A slider drags normally on the quick menu.
-    //
-    // Geometric rather than linear because scale is multiplicative: on a linear 0.25×-4× the
-    // whole useful zone around 1× collapses into a sliver of travel, while geometric gives
-    // every doubling the same slider distance. The blend tree approximates the exponential
-    // with a knot at each √2 step (9 children), which keeps the error between knots under two
-    // percent; invisible next to the smoothing.
+    // Optional avatar scaler: the bundled smoothing layer plus a generated
+    // Size layer. The menu control is a slider, 0..1, mapped geometrically
+    // onto 0.25x to 4x of the measured height, so 1x sits at mid-slider. The
+    // blend tree approximates the exponential with a knot each sqrt(2) step.
     public static class AvatarScalerInjector
     {
         const string Category = "Avatar scaler";

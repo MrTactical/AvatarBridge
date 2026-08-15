@@ -704,21 +704,10 @@ namespace AvatarBridge
             return trimmed;
         }
 
-        // The socket menu an avatar arrives with is labelled after the
-        // system that built it — "SPS1 One socket at a time" and its
-        // neighbours. After conversion the thing those toggles drive is
-        // YAPS, so the label should say YAPS.
-        //
-        // DISPLAY ONLY. The parameter behind the entry keeps its name,
-        // because ChilloutVR restores a saved profile by parameter NAME:
-        // rename one and every profile anybody saved quietly stops
-        // restoring that setting.
-        //
-        // Only when the user asked for YAPS, so an avatar converted with
-        // the setting off is never relabelled after a system it is not
-        // running. DPS is deliberately not matched — it is three letters
-        // that also mean damage per second, and a wrong label on somebody's
-        // combat menu is a worse trade than a right one here.
+        // Menu labels naming the source system read YAPS after conversion.
+        // Display only: parameter names stay, since ChilloutVR restores a
+        // saved profile by parameter name. DPS is not matched; it also means
+        // damage per second.
         static string YapsLabel(BridgeContext ctx, string display)
         {
             if (ctx == null || !ctx.Settings.convertYapsSystems || string.IsNullOrEmpty(display))

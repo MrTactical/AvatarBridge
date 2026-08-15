@@ -1,4 +1,4 @@
-// Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit. Standalone utilities for
+// Tools > Avatar Bridge > ChilloutVR Toolkit. Standalone utilities for
 // any ChilloutVR avatar or prop, each a card: pick, run, read the rows.
 // The same passes the converter runs, on the converter's own elements.
 #if CVR_CCK_EXISTS

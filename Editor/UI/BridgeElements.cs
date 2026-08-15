@@ -263,9 +263,7 @@ namespace AvatarBridge
             return toggle;
         }
 
-        // One question with a few answers, drawn as radio buttons under a
-        // short label — the shape a list of toggles already has, so it sits
-        // among them instead of a dropdown clipping its own caption.
+        // One question with a few answers, as radio buttons under a short label.
         public static RadioButtonGroup Choice(string label, string tooltip, string[] answers, int current,
             Action<int> set)
         {

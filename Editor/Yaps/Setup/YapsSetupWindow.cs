@@ -1,4 +1,4 @@
-// Tools ▸ YAPS ▸ Setup. The toolkit's window for any ChilloutVR avatar
+// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
 // or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;

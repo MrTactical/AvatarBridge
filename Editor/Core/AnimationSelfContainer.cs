@@ -132,11 +132,7 @@ namespace AvatarBridge
                 string path = AssetDatabase.GetAssetPath(clip);
                 if (!NeedsCopy(path, outputDir, controllerPath))
                 {
-                    // Not copied, but still possibly carrying a reference
-                    // that has to travel. The clips this turned up on were
-                    // EMBEDDED IN OUR OWN CONTROLLER — the one category
-                    // most obviously safe, and therefore the one an early
-                    // return walked straight past.
+                    // Not copied, but it may still carry a reference that has to travel.
                     map[clip] = clip;
                     CarryAdditivePose(clip, controller, controllerPath, outputDir, dir, map, copied);
                     return clip;
@@ -228,18 +224,8 @@ namespace AvatarBridge
             return copy;
         }
 
-        // A clip's ADDITIVE REFERENCE POSE is a second clip, and it is not a
-        // MOTION — nothing in the walk reaches it. So a clip could be brought
-        // safely into the output folder while still naming a pose that was
-        // about to be deleted, and on a Modular Avatar build that pose lives
-        // in NDMF's __Generated, which the next bake removes. The audit saw
-        // the wreckage afterwards and could only report "bake-temp asset",
-        // with no way to name the field.
-        //
-        // Runs for every clip we own, copied or not. Clips embedded in our
-        // own controller need no copying and are exactly where these turned
-        // up — being obviously safe is what kept them out of the path that
-        // would have fixed them.
+        // A clip's additive reference pose is a second clip and not a motion,
+        // so the walk never reaches it. Runs for every clip this tool owns.
         static void CarryAdditivePose(AnimationClip clip, AnimatorController controller,
             string controllerPath, string outputDir, string dir,
             Dictionary<Motion, Motion> map, List<string> copied)
@@ -266,9 +252,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(clip);
         }
 
-        // Ours to edit: held in memory, embedded in the controller we built,
-        // or already sitting in this avatar's output folder. Never an engine
-        // builtin or another package's asset.
+        // Editable here: in memory, embedded in the built controller, or in
+        // this avatar's output folder. Never an engine or package asset.
         static bool Ours(string path, string outputDir, string controllerPath)
             => string.IsNullOrEmpty(path)
                || path == controllerPath

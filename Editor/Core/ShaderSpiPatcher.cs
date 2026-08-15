@@ -315,11 +315,8 @@ namespace AvatarBridge
                 foreach (Match m in Regex.Matches(text, @"#include\s+""([^""]+)"""))
                 {
                     string rel = m.Groups[1].Value;
-                    // Poiyomi's optimised output writes its includes with a
-                    // leading slash — #include "/CGI_PoiPass.cginc". Unity
-                    // reads that as relative, but Path.Combine reads it as
-                    // rooted and throws the folder away, so the file was
-                    // never found and never cloned.
+                    // A leading slash in an include is relative to Unity and rooted
+                    // to Path.Combine.
                     string candidate = Path.Combine(folder, rel.TrimStart('/', '\\'));
                     if (File.Exists(candidate))
                     {

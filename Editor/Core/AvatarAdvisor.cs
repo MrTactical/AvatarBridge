@@ -392,10 +392,8 @@ namespace AvatarBridge
             VRCAvatarDescriptor.AnimLayerType type)
             => descriptor != null && CustomLayer(descriptor, type) != null;
 
-        // Whether a baker may still put a layer in an empty slot. VRCFury
-        // and Modular Avatar build controllers during the bake that the
-        // scene has no trace of — a Fury avatar whose Action slot reads
-        // empty here converted with an 8-layer Fury Action controller.
+        // Whether a baker may still put a layer in an empty slot: VRCFury and
+        // Modular Avatar build controllers during the bake.
         internal static bool LayersDecidedByBaker(GameObject root)
             => VRCFuryBaker.HasFuryComponents(root)
                || ModularAvatarBaker.HasModularAvatarComponents(root);
@@ -403,19 +401,8 @@ namespace AvatarBridge
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,
             bool baked)
         {
-            // OFF, empty, and on an avatar whose baker builds layers during
-            // the bake. Nothing in the scene shows what is coming, so this
-            // is the one case the analysis cannot measure — and staying
-            // quiet about it is how a real avatar lost a Base layer holding
-            // 269 states and 220 parameter drivers that VRCFury created at
-            // bake time. The conversion report warned afterwards, which is
-            // the wrong end: by then the user has already converted.
-            //
-            // One row per layer, each with its own button, because each is a
-            // separate decision and a row you cannot act on is only half an
-            // answer. Manual rather than a recommendation, so the
-            // apply-everything button leaves them alone — it filters on
-            // IsRecommendation — and each can only be turned on deliberately.
+            // Off, empty, and a baker may fill it. One row per layer, manual, so
+            // apply-everything leaves them alone.
             if (baked)
             {
                 foreach (var (type, setting) in OptionalLayers)
@@ -523,15 +510,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // On a GoGo avatar the Base layer is USUALLY just GoGo, and merging what is about to
-            // be stripped buys nothing. Usually is not always: VRCFury merges its own content
-            // into Base alongside it, and a real avatar arrived with 269 states and 220 parameter
-            // drivers sitting in there. Suppressing the advice on the mere PRESENCE of GoGo hid
-            // every one of them — and then the conversion report warned about the same layer
-            // afterwards, telling the user to tick the setting the analysis had silently decided
-            // against. The tool disagreeing with itself, and only after they had committed.
-            //
-            // So exempt only when what is in there really is GoGo.
+            // Exempt only when what is in Base really is GoGo; VRCFury can merge
+            // its own content in beside it.
             if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco
                 && !HasContentGogoDidNotPutThere(baseLayer))
             {

@@ -716,15 +716,9 @@ namespace AvatarBridge
                     "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
                     "them. Removing GoGo remains the recommended path."));
             }
-            // Two settings, one question. "Remove SPS" beside "Convert SPS
-            // to YAPS" read as a contradiction — remove it AND convert it? —
-            // when they are one decision with three answers: rebuild the
-            // penetration as YAPS, remove it, or leave VRChat's in place. The
-            // fourth combination the two ticks allowed (convert without
-            // removing) was never coherent, so it is not offered.
-            // Radio buttons, not a dropdown: they stack like the toggles
-            // around them, and a dropdown clipped its own caption against
-            // the label column.
+            // One question over two settings, three answers; the fourth
+            // combination the ticks allowed is not offered. Radio buttons stack
+            // like the toggles around them.
             var penetration = BridgeElements.Choice("Penetration",
                 "What happens to the avatar's penetration system — Raliv DPS, Thry TPS, VRCFury SPS, " +
                 "and OGB, PCS and Wholesome that ride with them.\n\n" +
@@ -747,9 +741,7 @@ namespace AvatarBridge
                 });
             b.Add(penetration);
             b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome stacks that ride with them."));
-            // Say what the other two answers cost, where the choice is
-            // made — the tooltip explains, but nobody hovers before
-            // clicking, and both of these break something on purpose.
+            // What the other two answers cost, where the choice is made.
             if (settings.stripSpsSystems && !settings.convertYapsSystems)
             {
                 b.Add(new HelpBox(

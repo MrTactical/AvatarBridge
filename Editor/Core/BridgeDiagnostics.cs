@@ -876,12 +876,8 @@ namespace AvatarBridge
                     continue; // missing script; reported elsewhere
                 }
                 var type = component.GetType();
-                // YAPS's authoring components hold intent for the YAPS tool
-                // and nothing that runs in game — every marker, contact and
-                // baked deform they describe is already built beside them.
-                // ChilloutVR stripping them at upload is the design, so they
-                // are not doomed; a conversion carrying them read as an
-                // error on the one avatar it had got right.
+                // YAPS authoring components carry intent for the YAPS tool only.
+                // ChilloutVR stripping them at upload is the design.
                 if (type.Namespace == "AvatarBridge.Yaps")
                 {
                     yaps++;

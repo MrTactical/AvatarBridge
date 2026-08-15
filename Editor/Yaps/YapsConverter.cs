@@ -1,28 +1,9 @@
-// YAPS — the pipeline pass. Turns VRCFury's baked SPS rig into something
-// ChilloutVR can actually run.
-//
-// Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// No SPS code is used; see Tools/SpsSpike/LICENSE-POSTURE.md.
-//
-// ---------------------------------------------------------------------
-// WHAT ARRIVES HERE, AND WHAT LEAVES
-// ---------------------------------------------------------------------
-//
-// VRCFury's bake leaves behind, per plug, a "BakedSpsPlug" object marking
-// the plug's frame; per socket, a "BakedSpsSocket" carrying contact
-// senders and a pair of protocol lights; and, threaded through both, the
-// machinery of SPS's own transport — a screen-space atlas built from grab
-// passes and marker renderers. That transport is VRChat-only and we do not
-// port it, so the markers and the resolver are deleted outright. The
-// objects that carry meaning survive.
-//
-// The plug renderer is then baked (YapsBaker), its shader patched
-// (YapsShaderPatcher), and its material cloned and pointed at both.
-//
-// The socket lights are re-ranged. VRCFury authors fronts above roots, and
-// Unity ranks vertex lights by range, so on an avatar with a dozen sockets
-// every front evicts its own root and the plug is left with a direction
-// and no origin. Ours go the other way round.
+// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
+// something ChilloutVR can run. Inspired by VRCFury's SPS; no SPS
+// code is used, see Tools/SpsSpike/LICENSE-POSTURE.md.
+// VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket"
+// per socket, with contact senders and two protocol lights. Its
+// screen-space atlas transport is VRChat-only and is deleted.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System;
@@ -37,15 +18,9 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // The two digits the legacy DPS protocol never claimed. It speaks
-        // for 1 and 3 (hole), 2 and 4 (ring), 5 and 6 (front) and 8 and 9
-        // (a plug's own tip), and a decoder only reads the second decimal.
-        //
-        // Nothing is stamped into the fourth decimal any more. That was an
-        // owner digit, and it rested on precision nobody had measured: the
-        // range arrives in the shader reconstructed from an attenuation
-        // uniform, not read, and the fourth decimal does not survive it.
-        // Ownership is decided from the player positions instead.
+        // The two second-decimal digits DPS never claimed. DPS uses 1,3
+        // hole, 2,4 ring, 5,6 front, 8,9 plug tip. Decoders read only the
+        // second decimal; the fourth does not survive the attenuation uniform.
         const float RootRange = 0.4700f;
         const float FrontRange = 0.4000f;
 
@@ -67,8 +42,7 @@ namespace AvatarBridge
             }
 
             RemoveAtlasJunk(ctx);
-            // A flag, not a tag: sockets on this avatar mean its own plugs
-            // must check ownership before reaching for one.
+            // Sockets on this avatar: its own plugs check ownership first.
             float selfFlag = socketRoots.Count > 0 ? 1f : -1f;
             ReRangeSocketLights(ctx, socketRoots);
 
@@ -128,9 +102,7 @@ namespace AvatarBridge
                 return;
             }
 
-            // Which material is the plug's is decided by which one the
-            // plug's own triangles use, not by name: a body mesh routinely
-            // carries a dozen materials and only one of them is the shaft.
+            // The plug's material is the slot its triangles use, not a name.
             int slot = MaterialSlotOf(renderer, plugRoot);
             var materials = renderer.sharedMaterials;
             if (slot < 0 || slot >= materials.Length || materials[slot] == null)
@@ -150,11 +122,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // What the author tuned on the ORIGINAL material, read before
-            // the patch repoints it — a Poiyomi material loses its TPS
-            // properties the moment it wears our shader, and DPS's live on
-            // a shader we replace outright. Every value with a YAPS
-            // counterpart is carried; the ones without are named.
+            // Read the author's values off the original material before the
+            // patch repoints it; a Poiyomi material loses its TPS properties there.
             var source = materials[slot];
             var patched = YapsBaker.Apply(result, source, shader, ctx.OutputDir + "/YAPS",
                 result.FromSkinnedMesh);
@@ -171,12 +140,8 @@ namespace AvatarBridge
                         : ""));
             }
 
-            // The author's own choice about whether the tip may travel past
-            // the socket, read off the plug component before the bake
-            // destroyed it. Defaulting silently to yes was overriding a
-            // decision somebody had made. Wins over the material's copy of
-            // the same setting, since the component is what SPS's own tools
-            // edit.
+            // The plug component's overrun choice wins over the material's,
+            // since the component is what SPS's own tools edit.
             string plugObject = plugRoot.parent != null ? plugRoot.parent.name : null;
             bool overrun = plugObject != null
                            && YapsBakePrep.AuthoredOverrun.TryGetValue(plugObject, out bool authored)
@@ -199,22 +164,13 @@ namespace AvatarBridge
                 Rotation = result.Rotation,
             });
 
-            // Announce the plug so sockets can see it — the same markers the
-            // toolkit builds for a native plug, on the MEASURED frame. Until
-            // this, a converted plug bent toward every socket and no socket
-            // reacted to it: VRCFury's bake leaves TPS pen pointers, which the
-            // contact converter carries, but never a DPS tracker light (Raliv
-            // orifices, and the tube prop's socket deform, read only that) and
-            // never the SPS names. A converted plug was invisible to half of
-            // what it could bend toward. Same builder as the toolkit, so a
-            // converted plug and a native one are identical to every reader.
+            // The same markers the toolkit builds for a native plug, on the
+            // measured frame: DPS tracker light, TPS and SPS pointers.
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
                 result.Length, result.Radius, tipLight: true, pointers: true);
 
-            // And the authoring component, so the owner can retune every
-            // knob afterwards with the YAPS tool. Its fields are read back
-            // off the material the converter just wrote — the author's
-            // carried values included — so a re-bake writes the same thing.
+            // The authoring component, read back off the patched material,
+            // so a re-bake writes the same thing.
             YapsNativeBuilder.AdoptPlug(plugRoot, renderer, slot, patched, null);
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",
@@ -245,9 +201,8 @@ namespace AvatarBridge
             return best;
         }
 
-        // A submesh belongs to the plug if its triangles use the plug's
-        // vertices. Nothing else identifies it — names are the author's
-        // business and are routinely "Body".
+        // A submesh belongs to the plug if its triangles use plug vertices.
+        // Names are the author's business and are routinely "Body".
         static int MaterialSlotOf(Renderer renderer, Transform plugRoot)
         {
             var skin = renderer as SkinnedMeshRenderer;
@@ -338,39 +293,11 @@ namespace AvatarBridge
 
         static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots)
         {
+            // Four vertex light slots, two lights per socket. Sockets with a
+            // menu toggle get their lights wired to it; the rest are capped.
 
-            // Four vertex slots, two lights per socket. A dozen sockets means
-            // a plug never sees a PAIR — it sees four of whichever light
-            // ranks higher, which is four roots with no fronts or four
-            // fronts with no roots, and neither of those is a socket.
-            //
-            // Both halves of that were measured. Fronts above roots gave a
-            // legacy plug direction with no origin; putting roots above them
-            // gave origin with no direction, and the working approach angle
-            // flipped to the opposite side. Unreliable either way, because
-            // which four win changes with every small movement.
-            //
-            // So most sockets stop emitting light altogether. They still
-            // work for a converted plug, which finds sockets by contact and
-            // only refines with light — this is about leaving room for the
-            // readers that have nothing else. Holes first, since they are
-            // what a plug is usually looking for.
-            // First, hand the problem to the menu the wearer already has.
-            // Every socket whose toggle can be found gets its lights wired
-            // to it, so "one socket at a time" finally means one socket LIT
-            // at a time and the contention is theirs to control.
-            // VRCFury bakes every BakedSpsSocket INACTIVE and relies on SPS's
-            // own enable service to switch it on. That service is part of
-            // the transport we delete, so on a converted avatar the sockets
-            // — and the marker lights beneath them — never come on at all.
-            //
-            // This is why nothing found Angela's sockets through any amount
-            // of re-encoding: the lights were switched off the whole time,
-            // component enabled, object active, branch above them dead.
-            // Walk up from each LIGHT, not from the socket. The socket is
-            // switched off, but so is the "Lights" object beneath it, and
-            // waking only the socket leaves the branch under it dark —
-            // which is exactly what a first attempt did.
+            // VRCFury bakes every socket branch inactive and relies on SPS's
+            // enable service, which is deleted. Wake from each light upward.
             int woken = 0;
             foreach (var socket in socketRoots)
             {
@@ -397,14 +324,8 @@ namespace AvatarBridge
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
             {
-                // Every object from the light up to the socket, not just
-                // the light. VRCFury switches the whole branch off —
-                // BakedSpsSocket, WorldSpace, Lights — and animating only
-                // the leaf leaves it dark under a dead parent, which is
-                // exactly what the first two attempts did. Setting them at
-                // conversion is not enough either, since the animator can
-                // restore the baked state; the layer has to assert the
-                // whole chain.
+                // Every object from the light up to the socket. VRCFury
+                // switches the whole branch off, so the layer asserts the chain.
                 var paths = new List<string>();
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
@@ -437,8 +358,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Anything with no toggle to hang off still has to be capped,
-            // or one unlabelled socket set puts us back where we started.
+            // Sockets with no toggle are capped, holes first.
             var emitting = socketRoots
                 .Where(s => !unwired.Contains(s))
                 .Concat(unwired.OrderBy(SocketRank)

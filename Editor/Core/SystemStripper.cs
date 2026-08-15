@@ -28,12 +28,8 @@ namespace AvatarBridge
             !string.IsNullOrEmpty(name)
             && GogoNameHints.Any(h => name.ToLowerInvariant().Contains(h));
 
-        // "OGB" (no separator) also catches OGB_ENABLED and friends.
-        //
-        // Named apart from the rest of the family because the object and
-        // pointer lists below DO change when the penetration system is
-        // being converted rather than removed. Parameters and layers do
-        // not — see KeepingPenetration.
+        // "OGB" with no separator also catches OGB_ENABLED. Named apart because
+        // the object and pointer lists change when the system is converted.
         static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS" };
         static readonly string[] OtherSpsParamPrefixes =
         {
@@ -55,22 +51,11 @@ namespace AvatarBridge
         {
             "<PCS Target>", "Penetration Contact System", "World Scale Detector"
         };
-        // Penetration parameters that a CONTACT drives, and that therefore
-        // must be "#" local when the system is kept: every client runs the
-        // contact and reaches the same value, so syncing them transmits
-        // nothing anyone needs, at 32 bits apiece. VRCFury stamps them with
-        // a per-component id — VF80_ on one avatar, VF77_ on another — so a
-        // prefix cannot name them; the SHAPE after the id can. Surveyed
-        // across the corpus, exactly two:
-        //
+        // Contact-driven penetration parameters must be "#" local when kept.
+        // VRCFury stamps a per-component id, so the shape after it is matched:
         //   VF<n>_<Socket>/Self|Others/Contact/Root|Tip   depth per socket
         //   VF<n>_AutoCurrentDist                          the plug's auto-distance
-        //
-        // and nothing else under the same id matches — the socket toggles
-        // (VF<n>_Pussy), the modes (VF<n>_stealth, legacy, autoMode) and the
-        // one-offs are user state that must keep syncing. Sixteen contact
-        // floats put a 3132-bit avatar 384 bits past the cap; local they
-        // cost her nothing.
+        // Toggles and modes under the same id do not match and keep syncing.
         static readonly System.Text.RegularExpressions.Regex[] YapsContactParamPatterns =
         {
             new System.Text.RegularExpressions.Regex(
@@ -86,21 +71,9 @@ namespace AvatarBridge
         static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB" };
         static readonly string[] OtherSpsPointerTypePrefixes = { "PCS", "VRCF_" };
 
-        // The penetration system survives the strip only while it is
-        // being converted into something CVR can run.
-        //
-        // What survives is the SCENE: the plug and socket objects, their
-        // marker lights, and the pointers a socket is found by. The
-        // PARAMETERS still go, and that is not an oversight.
-        //
-        // Measured on a real avatar: converted without the penetration
-        // system she spends 544 of ChilloutVR's 3200 sync bits, and keeping
-        // VRChat's haptic parameters took her to 3200 exactly — around 83
-        // synced floats for 119 contacts. YAPS needs none of them. It
-        // builds its own channel out of four floats, or one, or none. What
-        // is lost with them is VRChat's depth-driven haptic animation,
-        // which was written against an API ChilloutVR does not have, and
-        // 2650 sync bits is not a price worth paying for it.
+        // The penetration system survives the strip only while converted.
+        // The scene survives; the parameters still go. YAPS builds its own
+        // channel, and the haptic parameters would cost most of the budget.
         static bool KeepingPenetration(BridgeContext ctx) =>
             ctx.Settings.stripSpsSystems && ctx.Settings.convertYapsSystems;
 
@@ -136,18 +109,8 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                // Converting the penetration system keeps its DEPTH
-                // parameters rather than stripping them, and makes them
-                // local instead. That is what brings back the reactions a
-                // socket plays as a plug arrives — the bulges, the winces —
-                // which were being thrown out with everything else.
-                //
-                // Keeping them synced is what cost 2650 bits and made an
-                // avatar unuploadable. Local costs nothing, and it is also
-                // the only correct choice: a contact must drive a local
-                // parameter or the incoming stream overwrites it. Every
-                // client runs the contact itself and reaches the same
-                // answer, so nothing needs transmitting.
+                // Converting keeps the depth parameters and makes them local: a
+                // contact must drive a local parameter, and every client computes it.
                 if (KeepingPenetration(ctx))
                 {
                     prefixes.AddRange(OtherSpsParamPrefixes);

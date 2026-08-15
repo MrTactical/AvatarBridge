@@ -75,12 +75,8 @@ namespace AvatarBridge
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
 
-            // Measured from the mesh, world space, at conversion time. The
-            // plug OBJECT is routinely somewhere else entirely — a quarter
-            // of a metre up the body on a real avatar — so a contact box
-            // placed on the object measures from a different origin than the
-            // shader reconstructs against, and the socket lands short by
-            // exactly that gap.
+            // Measured from the mesh in world space. The plug object can sit
+            // elsewhere; a contact box placed there lands short.
             public UnityEngine.Vector3 Origin;
             public UnityEngine.Quaternion Rotation;
             public float Radius;
@@ -95,25 +91,13 @@ namespace AvatarBridge
 
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 
-        // Parameter prefixes that must end up "#" local no matter what else
-        // claims them. A contact-driven parameter has to be local — the
-        // native path writes straight at the animator and a synced twin gets
-        // the incoming stream written back over it — and being local also
-        // means it costs nothing against the sync budget. Both reasons point
-        // the same way, which is what makes depth animation free here and
-        // expensive in VRChat.
+        // Prefixes forced "#" local. A contact-driven parameter must be local:
+        // a synced twin gets the stream written back over it.
         public List<string> ForceLocalPrefixes = new List<string>();
 
-        // The same rule for names a prefix cannot catch. VRCFury stamps every
-        // penetration parameter with a per-component id — VF80_ on one
-        // avatar, VF77_ on another — so a fixed prefix list is a list of the
-        // avatars someone happened to test. What is stable is the SHAPE that
-        // follows the id: contact-driven depth on the sockets, auto-distance
-        // on the plug. Anything of that shape is written by a contact on
-        // every client and syncing it transmits nothing anyone needs, at
-        // 32 bits a time. Menu toggles and modes under the same id do not
-        // match and stay synced, which is the whole point of matching the
-        // shape rather than the prefix.
+        // The same rule by shape, for names a prefix cannot catch. VRCFury
+        // stamps a per-component id; the shape after it is what is stable.
+        // Toggles and modes under the same id do not match and stay synced.
         public List<System.Text.RegularExpressions.Regex> ForceLocalPatterns =
             new List<System.Text.RegularExpressions.Regex>();
 
@@ -169,21 +153,9 @@ namespace AvatarBridge
             return path;
         }
 
-        // Resolves an animation path the way the ANIMATOR does, which is not
-        // the way Transform.Find does. Find splits on every "/" and walks
-        // one child per segment; the animator hashes the whole path and
-        // matches it against each object's full path, so an object whose
-        // own NAME contains a slash is perfectly animatable and perfectly
-        // invisible to Find. VRCFury names every contact trigger it bakes
-        // after its parameter — "CVRTrigger_OGB/Orf/Pussy/PenOthersNewRoot"
-        // is ONE object — so a converted avatar has dozens of them, and any
-        // check built on Find calls each one dead. Eighty-six of them, on
-        // one avatar, all working in game.
-        //
-        // Greedy on the name: at each level, try the longest child name that
-        // is a prefix of the remainder first, then shorter. Depth-first, so a
-        // "Haptics" child and a "Haptics/PenOthers" child under the same
-        // parent both resolve.
+        // Resolves a path the way the animator does: whole path against each
+        // object, so a name containing a slash still matches. Plain Find
+        // first, then a greedy longest-name walk.
         public static Transform FindByAnimationPath(Transform root, string path)
         {
             if (root == null)
@@ -194,8 +166,7 @@ namespace AvatarBridge
             {
                 return root;
             }
-            // The common case first — it is faster and it is exactly what
-            // the animator finds when no name contains a slash.
+            // The common case first.
             var direct = root.Find(path);
             if (direct != null)
             {

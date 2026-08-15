@@ -7786,28 +7786,9 @@ namespace AvatarBridge
                 "correct BEFORE converting, and convert again.");
         }
 
-        // VRChat gates reaction layers by weight: the layer rests at 0,
-        // and a VRCAnimatorLayerControl on a state raises it when the
-        // reaction fires — headpats, boops, pulls are all built this
-        // way. ChilloutVR has no layer-weight control, so those layers
-        // converted as permanently invisible: the contact fired, the
-        // parameter flipped, the reaction played at weight zero.
-        //
-        // The gate is rebuilt without weights. The layer runs at 1;
-        // its REST states (the default state, and any state whose
-        // control lowered the weight) trade their motion for a clip
-        // asserting the avatar's resting values, because their real
-        // motion is often the reaction itself, hidden only by the
-        // weight. States that raised the weight keep their motions.
-        //
-        // Only bindings no other layer moves are asserted. A layer
-        // whose every curve is a constant does not count as moving
-        // anything — VRCFury's Defaults layer asserts the same rest
-        // over the whole avatar, and counting it would leave nothing
-        // to assert. Bindings a genuinely animated layer also drives
-        // are skipped entirely: while the reaction plays it overrides
-        // them exactly as the raised weight did, and afterwards the
-        // other layer's own writes take them back.
+        // VRChat raises reaction layers by weight; ChilloutVR cannot change a
+        // layer's weight. The layer runs at 1 and its rest states assert the
+        // avatar's resting values for bindings no other layer moves.
         static void ReviveWeightGatedLayers(AnimatorController master, BridgeContext ctx)
         {
             var raisedNames = new HashSet<string>();
@@ -8014,11 +7995,8 @@ namespace AvatarBridge
                 curvesAdded += added;
             }
 
-            // The other half of a contested binding. A reaction wins it
-            // while playing and abandons it after; the normal layer that
-            // shares it must say the rest value from its own resting
-            // state, or nothing ever does — eyes a headpat closed stayed
-            // closed until an expression happened to write them.
+            // The other half of a contested binding: the normal layer that
+            // shares it must state the rest value from its own resting state.
             var revivedBindings = new HashSet<EditorCurveBinding>();
             foreach (int i in restStatesByLayer.Keys)
             {
@@ -8141,13 +8119,8 @@ namespace AvatarBridge
             }
         }
 
-        // A discrete active curve in a blend tree does not blend against
-        // defaults; it latches. A menu-gated tree whose ON branch
-        // switches an object off while the rest branch never mentions it
-        // leaves the object off forever after the first use — VRChat's
-        // Write Defaults put it back. Every branch of such a tree now
-        // carries the binding, missing sides filled with the avatar's
-        // rest value.
+        // A discrete active curve in a blend tree latches. Every branch of a
+        // menu-gated tree carries the binding, missing sides at rest.
         static void BalanceMenuTreeActives(AnimatorController master, BridgeContext ctx)
         {
             var menuParameters = new HashSet<string>();
@@ -9056,13 +9029,8 @@ namespace AvatarBridge
                     {
                         return;
                     }
-                    // Resolved the way the animator does. Find splits on
-                    // every slash, and an object whose own name has one —
-                    // every converted contact trigger, named after its
-                    // parameter — reads as missing to it while animating
-                    // fine. Handing a healthy path to the fuzzy repair
-                    // below is how a working curve gets moved somewhere
-                    // wrong.
+                    // Resolved the way the animator does, so a slash-named
+                    // object is not handed to the fuzzy repair below.
                     if (BridgeContext.FindByAnimationPath(root, binding.path) != null)
                     {
                         return;
@@ -9277,9 +9245,7 @@ namespace AvatarBridge
                 }
                 if (!resolveCache.TryGetValue(path, out var ok))
                 {
-                    // The animator's resolution, not Find's — see
-                    // BridgeContext.FindByAnimationPath. Slash-named
-                    // objects otherwise audit as dead while working.
+                    // The animator's resolution, not Find's.
                     resolveCache[path] = ok = BridgeContext.FindByAnimationPath(root, path) != null;
                 }
                 return ok;
