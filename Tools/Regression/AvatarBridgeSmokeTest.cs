@@ -13,6 +13,7 @@ using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace AvatarBridge.Regression
 {
@@ -68,7 +69,7 @@ namespace AvatarBridge.Regression
         static void RunAll(List<GameObject> created)
         {
             // --- prefabs -------------------------------------------------
-            Step("YAPS ▸ Create universal socket prefabs", () =>
+            Step("YAPS > Create universal socket prefabs", () =>
             {
                 YapsSocketBuilder.CreatePrefabs();
                 foreach (var name in new[] { "YAPS Hole", "YAPS Ring" })
@@ -92,7 +93,7 @@ namespace AvatarBridge.Regression
 
             // --- add a hole / add a ring ------------------------------------
             YapsSocket hole = null, ring = null;
-            Step("YAPS ▸ Add a hole (under a bone)", () =>
+            Step("YAPS > Add a hole (under a bone)", () =>
             {
                 var go = new GameObject("YAPS Hole"); go.transform.SetParent(hips.transform, false);
                 hole = go.AddComponent<YapsSocket>(); hole.kind = YapsSocket.SocketKind.Hole;
@@ -100,7 +101,7 @@ namespace AvatarBridge.Regression
                 Check(YapsSocketEditor.IsBuilt(go.transform), "hole is built");
                 Check(go.GetComponentsInChildren<Light>(true).Count(YapsScanner.IsProtocolLight) == 2, "2 lights");
             });
-            Step("YAPS ▸ Add a ring", () =>
+            Step("YAPS > Add a ring", () =>
             {
                 var go = new GameObject("YAPS Ring"); go.transform.SetParent(avatar.transform, false);
                 go.transform.position = new Vector3(2f, 0f, 0f);
@@ -109,7 +110,18 @@ namespace AvatarBridge.Regression
                 Check(YapsSocketEditor.IsBuilt(go.transform), "ring is built");
                 Check(go.GetComponentsInChildren<CVRPointer>(true).Any(p => p.type == "SPSLL_Socket_Ring"), "ring pointer");
             });
-            Step("YAPS Socket ▸ Rebuild markers (idempotent)", () =>
+            Step("YAPS Socket > Kind switch rebuilds the markers", () =>
+            {
+                ring.kind = YapsSocket.SocketKind.Hole;
+                YapsSocketBuilder.ApplyKind(ring);
+                Check(ring.GetComponentsInChildren<Light>(true).Any(l => YapsScanner.IsProtocolLight(l) && YapsScanner.LightDigit(l) == 1), "root light re-ranged to hole");
+                Check(ring.GetComponentsInChildren<CVRPointer>(true).Any(p => p.type == "SPSLL_Socket_Hole"), "SPS pointer renamed");
+                Check(ring.name == "YAPS Hole", "object renamed (got " + ring.name + ")");
+                ring.kind = YapsSocket.SocketKind.Ring;
+                YapsSocketBuilder.ApplyKind(ring);
+                Check(ring.name == "YAPS Ring" && YapsScanner.Scan(avatar).Sockets.Count(s => !s.IsHole) == 1, "back to a ring, scanner agrees");
+            });
+            Step("YAPS Socket > Rebuild markers (idempotent)", () =>
             {
                 int before = hole.GetComponentsInChildren<CVRPointer>(true).Length;
                 YapsSocketBuilder.Build(hole);
@@ -117,7 +129,7 @@ namespace AvatarBridge.Regression
             });
 
             // --- preview with a test plug (spawns and removes its own) --------
-            Step("YAPS Socket ▸ Preview with a test plug", () =>
+            Step("YAPS Socket > Preview with a test plug", () =>
             {
                 YapsPreview.Set(hole, true);
                 var spawned = GameObject.Find(YapsPreview.PlugName);
@@ -134,7 +146,7 @@ namespace AvatarBridge.Regression
 
             // --- test plug, make it a prop, verify -----------------------------
             GameObject plugRoot = null;
-            Step("YAPS ▸ Test plug", () =>
+            Step("YAPS > Test plug", () =>
             {
                 plugRoot = YapsNativeBuilder.BuildTestPlug(null, select: false);
                 created.Add(plugRoot);
@@ -146,7 +158,7 @@ namespace AvatarBridge.Regression
                 Check(markers.GetComponentsInChildren<Light>(true).Any(l => YapsScanner.LightDigit(l) == 9), "tracker light");
                 Check(markers.GetComponentsInChildren<CVRPointer>(true).Any(p => p.type == "TPS_Pen_Penetrating"), "tip pointer");
             });
-            Step("YAPS Plug ▸ knobs write through", () =>
+            Step("YAPS Plug > knobs write through", () =>
             {
                 var plug = plugRoot.GetComponent<YapsPlug>();
                 plug.curvature = 0.7f;
@@ -156,12 +168,12 @@ namespace AvatarBridge.Regression
                 YapsNativeBuilder.SyncPlugsFrom(m);
                 Check(Mathf.Approximately(plug.curvature, 0.7f), "component reads it back");
             });
-            Step("YAPS Plug ▸ Re-bake", () =>
+            Step("YAPS Plug > Re-bake", () =>
             {
                 var o = YapsNativeBuilder.Bake(plugRoot.GetComponent<YapsPlug>());
                 Check(o.Ok, "re-bake ok: " + o.Message);
             });
-            Step("YAPS ▸ Make selected object a prop", () =>
+            Step("YAPS > Make selected object a prop", () =>
             {
                 var o = YapsPropBuilder.MakeProp(plugRoot);
                 Check(o.Ok, o.Message);
@@ -175,7 +187,7 @@ namespace AvatarBridge.Regression
                 Check(controller.layers.All(l => l.stateMachine != null && l.stateMachine.states.Length == 1), "each layer has its state");
                 Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") > 0.5f, "channel space on");
             });
-            Step("YAPS ▸ Verify prop (repairs a blanked name)", () =>
+            Step("YAPS > Verify prop (repairs a blanked name)", () =>
             {
                 var sp = plugRoot.GetComponent<CVRSpawnable>();
                 sp.syncValues[0].animatorParameterName = "";
@@ -185,7 +197,7 @@ namespace AvatarBridge.Regression
             });
 
             // --- make a plug from a bone (skinned mesh) --------------------------
-            Step("YAPS ▸ Make a plug from bone", () =>
+            Step("YAPS > Make a plug from bone", () =>
             {
                 var shaft = new GameObject("Shaft"); shaft.transform.SetParent(hips.transform, false);
                 var tip = new GameObject("ShaftTip"); tip.transform.SetParent(shaft.transform, false);
@@ -207,13 +219,13 @@ namespace AvatarBridge.Regression
             });
 
             // --- scan and quiet -----------------------------------------------
-            Step("YAPS ▸ Scan", () =>
+            Step("YAPS > Scan", () =>
             {
                 var scan = YapsScanner.Scan(avatar);
                 Check(scan.Sockets.Count == 2, "2 sockets found (got " + scan.Sockets.Count + ")");
                 Check(scan.Plugs.Count == 1, "1 plug found (got " + scan.Plugs.Count + ")");
             });
-            Step("YAPS ▸ Quiet the scene view (on and off)", () =>
+            Step("YAPS > Quiet the scene view (on and off)", () =>
             {
                 bool was = SceneQuiet.IsQuiet;
                 SceneQuiet.Toggle(); Check(SceneQuiet.IsQuiet != was, "toggled");
@@ -223,29 +235,29 @@ namespace AvatarBridge.Regression
             // --- toolkit ------------------------------------------------------
             var report = new BridgeReport();
             var ctx = new BridgeContext { Settings = new BridgeSettings(), Report = report, Target = avatar, CvrAvatar = cvr, OutputDir = ScratchDir };
-            Step("Toolkit ▸ Check this avatar (no controller)", () =>
+            Step("Toolkit > Check this avatar (no controller)", () =>
             {
                 BridgeDiagnostics.CheckComponentWhitelist(ctx);
                 BridgeDiagnostics.CheckStereoShaders(ctx);
             });
-            Step("Toolkit ▸ Stereo shaders", () =>
+            Step("Toolkit > Stereo shaders", () =>
             {
                 ShaderSpiPatcher.Patch(avatar, ScratchDir + "/RehomedAssets", null, report);
             });
-            Step("Toolkit ▸ Face: visemes and blink", () =>
+            Step("Toolkit > Face: visemes and blink", () =>
             {
                 var r = CvrSetup.WireFace(avatar, new BridgeSettings());
                 Check(r.Entries.Count > 0, "reported something");
             });
-            Step("Toolkit ▸ Audio limits", () =>
+            Step("Toolkit > Audio limits", () =>
             {
                 var src = avatar.AddComponent<AudioSource>();
                 src.minDistance = 0f; src.spatialBlend = 0f;
                 AvatarHygiene.SanitizeAudioSources(ctx);
                 Check(src.minDistance > 0f || src.spatialBlend > 0.99f, "source clamped");
             });
-            Step("Toolkit ▸ Mesh bounds", () => AvatarHygiene.NormalizeSkinnedBounds(ctx));
-            Step("Toolkit ▸ Height slider", () =>
+            Step("Toolkit > Mesh bounds", () => AvatarHygiene.NormalizeSkinnedBounds(ctx));
+            Step("Toolkit > Height slider", () =>
             {
                 if (!AssetDatabase.IsValidFolder(ScratchDir)) { AssetDatabase.CreateFolder("Assets/AvatarBridgeOutput", "SmokeTest"); }
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(ScratchDir + "/Smoke.controller");
@@ -255,14 +267,14 @@ namespace AvatarBridge.Regression
                 AvatarScalerInjector.Inject(controller, ctx);
                 Check(controller.layers.Length > 0, "a layer added");
             });
-            Step("Toolkit ▸ Store description", () =>
+            Step("Toolkit > Store description", () =>
             {
                 string text = AvatarDescription.Build(ctx);
                 Check(!string.IsNullOrEmpty(text), "text built");
                 var result = CckDescriptionFiller.Fill(text, overwrite: true);
                 Check(!string.IsNullOrEmpty(CckDescriptionFiller.Explain(result)), "explained");
             });
-            Step("Toolkit ▸ Merge animators", () =>
+            Step("Toolkit > Merge animators", () =>
             {
                 var a = AnimatorController.CreateAnimatorControllerAtPath(ScratchDir + "/A.controller");
                 var b = AnimatorController.CreateAnimatorControllerAtPath(ScratchDir + "/B.controller");
@@ -279,17 +291,74 @@ namespace AvatarBridge.Regression
                 Check(a.layers.All(l => !l.name.StartsWith("Extra")), "target untouched");
             });
 
+            // --- Setup mode on any avatar ---------------------------------------
+            Step("AvatarBridge > Set up any avatar (Setup mode)", () =>
+            {
+                var plain = new GameObject("Smoke Setup Avatar");
+                created.Add(plain);
+                plain.AddComponent<Animator>();
+                var r = CvrSetup.Run(plain, new BridgeSettings());
+                Check(plain.GetComponent<CVRAvatar>() != null, "CVRAvatar added");
+                Check(!r.Entries.Any(e => e.Status == ReportStatus.Error), "no errors: " +
+                    string.Join("; ", r.Entries.Where(e => e.Status == ReportStatus.Error).Select(e => e.Subject)));
+            });
+
+#if VRC_SDK_VRCSDK3
+            // --- the converter, on a VRChat avatar already in the scene -----------
+            // Convert itself is covered by the corpus on every avatar; this
+            // presses the window's buttons once on whatever is open.
+            var descriptor = UnityEngine.Object.FindObjectsOfType<VRC.SDK3.Avatars.Components.VRCAvatarDescriptor>()
+                .FirstOrDefault(d => d.gameObject.activeInHierarchy);
+            if (descriptor == null)
+            {
+                Results.Add(("AvatarBridge > Analyse / Convert", true, "SKIPPED: no VRChat avatar in the open scene; the corpus covers Convert"));
+            }
+            else
+            {
+                Step("AvatarBridge > Analyse this avatar", () =>
+                {
+                    var advice = AvatarAdvisor.Analyse(descriptor, new BridgeSettings());
+                    Check(advice != null, "advice list");
+                });
+                Step("AvatarBridge > Convert", () =>
+                {
+                    var settings = new BridgeSettings();
+                    var r = BridgeConverter.Convert(descriptor, settings);
+                    Check(!r.Entries.Any(e => e.Status == ReportStatus.Error), "no errors: " +
+                        string.Join("; ", r.Entries.Where(e => e.Status == ReportStatus.Error).Select(e => e.Subject)));
+                });
+            }
+#else
+            Results.Add(("AvatarBridge > Analyse / Convert", true, "SKIPPED: VRChat SDK not in this project"));
+#endif
+
             // --- windows open --------------------------------------------------
             foreach (var (name, menu) in new[]
             {
-                ("Window ▸ VRChat to ChilloutVR Converter", "Tools/Avatar Bridge/VRChat to ChilloutVR Converter"),
-                ("Window ▸ CCK Animator Tester", "Tools/Avatar Bridge/CCK Animator Tester"),
-                ("Window ▸ ChilloutVR Toolkit", "Tools/Avatar Bridge/ChilloutVR Toolkit"),
-                ("Window ▸ YAPS Setup", "Tools/YAPS/Setup"),
+                ("Window > VRChat to ChilloutVR Converter", "Tools/Avatar Bridge/VRChat to ChilloutVR Converter"),
+                ("Window > CCK Animator Tester", "Tools/Avatar Bridge/CCK Animator Tester"),
+                ("Window > ChilloutVR Toolkit", "Tools/Avatar Bridge/ChilloutVR Toolkit"),
+                ("Window > YAPS Setup", "Tools/YAPS/Setup"),
             })
             {
-                Step(name, () => Check(EditorApplication.ExecuteMenuItem(menu), "menu item ran"));
+                Step(name, () =>
+                {
+                    Check(EditorApplication.ExecuteMenuItem(menu), "menu item ran");
+                    // A window that caught its own build exception shows a failure
+                    // card instead of throwing; read it.
+                    foreach (var w in Resources.FindObjectsOfTypeAll<EditorWindow>())
+                    {
+                        if (w.rootVisualElement == null) continue;
+                        var failed = w.rootVisualElement.Query<Label>().ToList()
+                            .FirstOrDefault(l => l.text != null && l.text.Contains("failed to build"));
+                        Check(failed == null, "no \"failed to build\" card in " + w.titleContent.text);
+                    }
+                });
             }
+
+            // The tester's controls write animator parameters and need Play mode;
+            // that half is a manual check. Its window building is covered above.
+            Results.Add(("CCK Animator Tester > drive gestures/visemes/menu", true, "MANUAL: needs Play mode with a CVR avatar"));
         }
 
         // A tiny skinned shaft: eight vertices in two submeshes, one weighted

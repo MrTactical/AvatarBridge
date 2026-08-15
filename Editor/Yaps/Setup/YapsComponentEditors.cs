@@ -316,8 +316,12 @@ namespace AvatarBridge
                 "A hole closes around the plug and stops it. A ring lets it pass straight through.",
                 new[] { "Hole", "Ring" }, kindProp.enumValueIndex, i =>
                 {
+                    if (i == kindProp.enumValueIndex) return;
                     kindProp.enumValueIndex = i;
                     so.ApplyModifiedProperties();
+                    // The markers carry the kind; rebuild them to match.
+                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS socket kind");
+                    YapsSocketBuilder.ApplyKind(socket);
                     RebuildLater();
                 }));
             what.Body.Add(BridgeElements.Hint(hole

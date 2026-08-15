@@ -70,6 +70,47 @@ namespace AvatarBridge
             Selection.activeGameObject = go;
         }
 
+        // Kind changed on the component: the markers must say so too. Any
+        // root light under the socket takes the new range, any SPS root
+        // pointer the new name, the toolkit's own folders are rebuilt, and
+        // a default-named object is renamed to match.
+        public static void ApplyKind(YapsSocket socket)
+        {
+            if (socket == null) return;
+            bool hole = socket.kind == YapsSocket.SocketKind.Hole;
+            var t = socket.transform;
+            foreach (var l in t.GetComponentsInChildren<Light>(true))
+            {
+                if (!YapsScanner.IsProtocolLight(l)) continue;
+                int d = YapsScanner.LightDigit(l);
+                if (d >= 1 && d <= 4)
+                {
+                    Undo.RecordObject(l, "YAPS socket kind");
+                    l.range = hole ? HoleRange : RingRange;
+                    EditorUtility.SetDirty(l);
+                }
+            }
+            foreach (var p in t.GetComponentsInChildren<CVRPointer>(true))
+            {
+                if (p == null || string.IsNullOrEmpty(p.type)) continue;
+                string from = hole ? "SPSLL_Socket_Ring" : "SPSLL_Socket_Hole";
+                string to = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Ring";
+                if (p.type.StartsWith(from))
+                {
+                    Undo.RecordObject(p, "YAPS socket kind");
+                    p.type = to + p.type.Substring(from.Length);
+                    EditorUtility.SetDirty(p);
+                }
+            }
+            Build(socket);
+            string was = hole ? "YAPS Ring" : "YAPS Hole";
+            if (t.name == was || t.name.StartsWith(was + " "))
+            {
+                Undo.RecordObject(t.gameObject, "YAPS socket kind");
+                t.name = (hole ? "YAPS Hole" : "YAPS Ring") + t.name.Substring(was.Length);
+            }
+        }
+
         // --- the build ---------------------------------------------------
 
         // Lights and pointers as children, replacing what it built before.
