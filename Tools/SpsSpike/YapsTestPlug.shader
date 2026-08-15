@@ -59,7 +59,7 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_ShapeWeights2 ("Shape weights 4-7", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights3 ("Shape weights 8-11", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights4 ("Shape weights 12-15", Vector) = (0,0,0,0)
-        [Enum(Deform,0,Active weight,1,Engagement,2,Blend,3,Baked Z,4)]
+        [Enum(Deform,0,Active weight,1,Engagement,2,Blend,3,Baked Z,4,Resolved by,5)]
         _YAPS_Debug ("Debug view", Float) = 0
     }
 
@@ -98,6 +98,7 @@ Shader "AvatarBridge/YAPS Test Plug"
                 float4 pos : SV_POSITION;
                 float3 worldNormal : TEXCOORD0;
                 float4 debug : TEXCOORD1;
+                float2 tier : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -114,6 +115,7 @@ Shader "AvatarBridge/YAPS Test Plug"
                 float3 normal = v.normal;
                 float3 tangent = v.tangent.xyz;
                 o.debug = YapsDebug(v.vertexId);
+                o.tier = YapsDebugTier();
                 YapsDeform(position, normal, tangent, v.vertexId);
 
                 o.pos = UnityObjectToClipPos(float4(position, 1));
@@ -134,7 +136,24 @@ Shader "AvatarBridge/YAPS Test Plug"
                     if (_YAPS_Debug < 1.5) return fixed4(i.debug.xxx, 1);          // active
                     if (_YAPS_Debug < 2.5) return fixed4(i.debug.yyy, 1);          // engagement
                     if (_YAPS_Debug < 3.5) return fixed4(i.debug.zzz, 1);          // blend
-                    return fixed4(frac(i.debug.www * 5).xxx, 1);                   // baked Z, banded
+                    if (_YAPS_Debug < 4.5) return fixed4(frac(i.debug.www * 5).xxx, 1); // baked Z, banded
+
+                    // Resolved by: WHO produced the socket this plug is
+                    // deforming toward. The view that would have ended the
+                    // "orange used to work" hunt in one glance — a stray
+                    // marker light bending the plug reads exactly like a
+                    // working contact channel until they are coloured apart.
+                    //   black   nobody
+                    //   green   the contact channel
+                    //   yellow  a marker light
+                    //   blue    the player-globals floor (aiming at a body)
+                    // Dim means resolved but not engaged, so a nearby answer
+                    // shows before it starts bending anything.
+                    float3 tint = i.tier.x < 0.5 ? float3(0, 0, 0)
+                                : i.tier.x < 1.5 ? float3(0.1, 0.9, 0.2)
+                                : i.tier.x < 2.5 ? float3(0.95, 0.85, 0.15)
+                                : float3(0.2, 0.45, 0.95);
+                    return fixed4(tint * (0.35 + 0.65 * saturate(i.tier.y)), 1);
                 }
 
                 float3 n = normalize(i.worldNormal);

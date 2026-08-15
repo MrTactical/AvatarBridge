@@ -60,6 +60,12 @@ struct YapsSocket
     float3 up;
     float engaged;
     float isHole;
+    // Who decided this answer: 0 nobody, 1 the contact channel, 2 a marker
+    // light, 3 the player-globals floor. Diagnostic, not behaviour — it
+    // exists because a plug bending near a socket does not say WHO bent it,
+    // and a stray light reads exactly like a working channel until the two
+    // are coloured apart. A day was lost to precisely that.
+    float tier;
 };
 
 // --- protocol lights -------------------------------------------------
@@ -322,6 +328,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.position = _YAPS_SocketPos.xyz;
     socket.forward = _YAPS_SocketForward.xyz;
     socket.up = _YAPS_SocketUp.xyz;
+    socket.tier = 0;
 
     // A zero position is NOT a socket at the world origin, however much it
     // looks like one to the maths. Track whether anything actually
@@ -412,6 +419,10 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // the original to compare against.
     bool channelFound = found;
     float3 channelPosition = socket.position;
+    if (channelFound)
+    {
+        socket.tier = 1;
+    }
 
     // Floor: if nothing has written a position, aim at the nearest body.
     if (!found)
@@ -422,6 +433,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
             socket.position = fromGlobals;
             socket.forward = 0;   // caller derives it from the approach
             found = true;
+            socket.tier = 3;
         }
     }
 
@@ -463,6 +475,13 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     {
         socket.position = lightPosition;
         found = true;
+        // A light that only SHARPENED the channel's answer leaves the tier
+        // saying channel — the channel engaged it, the light polished it.
+        // A light standing in for a silent channel owns the answer.
+        if (!channelFound)
+        {
+            socket.tier = 2;
+        }
         // Whoever resolved the position decides the kind. A legacy light
         // states outright whether it is a hole or a ring, and it is
         // describing the very socket we are now aiming at — which the
@@ -505,6 +524,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // looking.
         float gap = length(socket.position - plugOrigin);
         socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, gap);
+        // Whoever provides the ENGAGEMENT owns the answer, whatever set the
+        // position before this.
+        socket.tier = 2;
     }
 
     // Nothing to bend toward. Say so, rather than bending toward nothing.

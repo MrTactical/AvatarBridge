@@ -376,6 +376,32 @@ float4 YapsDebug(uint vertexId)
     return float4(baked.active, engage, blend, baked.position.z);
 }
 
+// WHO resolved the socket, for the "Resolved by" debug view: x is the tier
+// (0 nobody, 1 the contact channel, 2 a marker light, 3 the player-globals
+// floor), y the engagement, so the view can dim an answer that resolved but
+// did not engage.
+//
+// The distinction this buys: a plug bending near a socket does not say who
+// bent it, and a stray marker light — a lit socket nearby, the holder's own
+// avatar wearing one — reads exactly like a working contact channel. A full
+// day went to a channel that had never worked because the lights kept
+// covering for it; one glance at this view would have named the truth.
+//
+// Uses the renderer's transform for the frame, like YapsDebug above — for a
+// prop that IS the frame, and for a skinned plug the tier does not depend
+// on the frame anyway, only the ranges do, slightly.
+float2 YapsDebugTier()
+{
+    float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+    float worldLength = _YAPS_Length * _YAPS_BakeScale
+        * length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
+    YapsSocket socket = YapsResolveSocket(rootWorld,
+        YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)), float3(0, 0, 1)),
+        YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)), float3(0, 1, 0)),
+        worldLength);
+    return float2(socket.tier, socket.engaged);
+}
+
 // --- the deform ------------------------------------------------------
 
 void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
