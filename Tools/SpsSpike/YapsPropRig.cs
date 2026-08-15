@@ -192,9 +192,73 @@ namespace AvatarBridge.Spike
             // Raycasts still hit triggers, so it stays grabbable.
             sphere.isTrigger = true;
             MakeGrabbable(root);
+            RegisterAsContactSender(root);
 
             return SaveAsPrefab(root, Dir + "/" + name + ".prefab");
         }
+
+        // A POINTER-ONLY PROP CANNOT DRIVE ANOTHER PROP'S CHANNEL, and this
+        // is the client's rule rather than ours. From TriggerToContact:
+        //
+        //     _ownerIdToSpawnable.TryAdd(contactReceiver.OwnerId, spawnable);
+        //
+        // which runs only inside Create — so only a prop carrying a TRIGGER
+        // is ever registered. The authority check then looks the SENDER up
+        // in that same dictionary:
+        //
+        //     if (_ownerIdToSpawnable.TryGetValue(sender.OwnerId, ...))
+        //         result = value.IsSyncedByMe();
+        //     else if (sender.OwnerId == ...AvatarDescriptor.GetHashCode())
+        //         result = true;
+        //     ... else return false;
+        //
+        // A socket prop with only pointers reaches none of those branches,
+        // so the plug's trigger fires, the client refuses the write, and the
+        // channel value never moves. That is why the contact-only sockets
+        // read pure black on the engagement view while the lit one reads
+        // white: the light path needs no authority at all, and an avatar
+        // sender is granted it outright, which is why Angela always worked.
+        //
+        // So every socket gets a trigger. It registers the prop, and a
+        // socket wants one anyway — this is the same value that feeds
+        // _YAPS_SocketDepth on a socket with shapes to open.
+        static void RegisterAsContactSender(GameObject root)
+        {
+            var spawnable = root.GetComponent<CVRSpawnable>();
+            spawnable.useAdditionalValues = true;
+            spawnable.syncValues.Add(new CVRSpawnableValue
+            {
+                name = "Depth",
+                startValue = 0f,
+                updatedBy = CVRSpawnableValue.UpdatedBy.None,
+                updateMethod = CVRSpawnableValue.UpdateMethod.Override,
+            });
+
+            var trigger = root.AddComponent<CVRSpawnableTrigger>();
+            trigger.areaSize = Vector3.one * 0.25f;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = PlugTypes;
+            trigger.stayTasks.Add(new CVRSpawnableTriggerTaskStay
+            {
+                settingIndex = 0,
+                updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromDistance,
+                minValue = 0f,
+                maxValue = 1f,
+            });
+            trigger.exitTasks.Add(new CVRSpawnableTriggerTask
+            {
+                settingIndex = 0,
+                settingValue = 0f,
+                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+            });
+        }
+
+        // The TIP alone. A plug's root sits at its base, and a socket that
+        // accepted it would measure from wherever the wearer's hips are.
+        static readonly string[] PlugTypes =
+        {
+            "TPS_Pen_Penetrating", "SPSLL_Pen_Penetrating",
+        };
 
         static void PlugPointer(Transform parent, string name, string type, Vector3 at)
         {
