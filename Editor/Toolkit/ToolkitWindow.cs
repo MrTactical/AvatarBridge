@@ -113,7 +113,7 @@ namespace AvatarBridge
                 var report = run();
                 ShowReport(rows, report, whenEmpty);
             }) { text = button };
-            b.AddToClassList("ab-button");
+            b.AddToClassList("ab-btn");
             b.SetEnabled(_target != null);
             box.Add(BridgeElements.Row(b));
             box.Add(rows);

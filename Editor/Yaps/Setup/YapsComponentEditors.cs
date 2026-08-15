@@ -150,7 +150,7 @@ namespace AvatarBridge
         public static Button Button(string text, System.Action act)
         {
             var b = new UnityEngine.UIElements.Button(act) { text = text };
-            b.AddToClassList("ab-button");
+            b.AddToClassList("ab-btn");
             return b;
         }
     }

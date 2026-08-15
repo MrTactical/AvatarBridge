@@ -259,7 +259,7 @@ namespace AvatarBridge
         static Button Btn(string text, System.Action act)
         {
             var b = new Button(act) { text = text };
-            b.AddToClassList("ab-button");
+            b.AddToClassList("ab-btn");
             return b;
         }
 
