@@ -37,8 +37,12 @@ namespace AvatarBridge
             {
                 return;
             }
+            Patch(ctx.Target, ctx.OutputDir.TrimEnd('/') + "/RehomedAssets", ctx.MergedController, ctx.Report);
+        }
 
-            string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
+        // The same pass on any object: the toolkit runs it standalone.
+        public static void Patch(GameObject target, string dir, AnimatorController controller, BridgeReport report)
+        {
             var patched = new Dictionary<Shader, Shader>();
             // One clone per material, not per material slot: a material used by four slots is
             // still one material, and cloning it per slot would break batching between them.
@@ -49,7 +53,7 @@ namespace AvatarBridge
             var alreadyCorrect = new List<string>();
             var grabLimited = new List<string>();
 
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
+            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
             {
                 var materials = renderer.sharedMaterials;
                 bool changed = false;
@@ -116,7 +120,7 @@ namespace AvatarBridge
             // to the patched clone too; otherwise the toggle would
             // still assign the original.
             int swapsRepointed = 0;
-            foreach (var clip in ClipsOf(ctx.MergedController))
+            foreach (var clip in ClipsOf(controller))
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -180,7 +184,7 @@ namespace AvatarBridge
             }
             if (swapsRepointed > 0)
             {
-                ctx.Report.Converted(Category,
+                report.Converted(Category,
                     $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
                     "These materials are never assigned to a renderer — an animation swaps them in, " +
                     "which is how hypno overlays, transformation skins and costume recolours are " +
@@ -191,7 +195,7 @@ namespace AvatarBridge
 
             if (repointed.Count > 0)
             {
-                ctx.Report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
+                report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
                     $"{string.Join(", ", repointed.Distinct())} — copied into RehomedAssets with the single-pass " +
                     "instanced macros added, and this avatar's materials repointed at the copies. The originals " +
                     "are untouched. Each copy was checked for compile errors, though whether it *looks* right " +
@@ -204,7 +208,7 @@ namespace AvatarBridge
             }
             if (grabLimited.Count > 0)
             {
-                ctx.Report.Warning(Category,
+                report.Warning(Category,
                     $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen — the background they " +
                     "refract comes from one eye",
                     $"{string.Join(", ", grabLimited.Distinct())} — these now DRAW in both eyes, but they read " +
@@ -216,7 +220,7 @@ namespace AvatarBridge
             }
             if (recipesUsed.Count > 0)
             {
-                ctx.Report.Approximated(Category,
+                report.Approximated(Category,
                     $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
                     string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
                     "edit was written by hand once and pinned to that exact version of the file — a shader " +
@@ -226,7 +230,7 @@ namespace AvatarBridge
             }
             if (refused.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{refused.Count} shader(s) could not be patched for VR stereo",
+                report.Warning(Category, $"{refused.Count} shader(s) could not be patched for VR stereo",
                     $"{string.Join(", ", refused)} — these still won't draw correctly in both eyes. Patching is " +
                     "only attempted on plainly written vertex/fragment shaders; anything else needs doing by " +
                     "hand or replacing with a different shader.");
@@ -235,7 +239,7 @@ namespace AvatarBridge
             // not need it. Silence reads as a miss.
             if (alreadyCorrect.Count > 0)
             {
-                ctx.Report.Converted(Category,
+                report.Converted(Category,
                     $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced — left untouched",
                     $"{string.Join(", ", alreadyCorrect.Distinct())} — the source declares the full " +
                     "stereo-instancing macro set, so ChilloutVR's rendering mode is already handled and " +
