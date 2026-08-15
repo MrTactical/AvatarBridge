@@ -50,26 +50,35 @@ namespace AvatarBridge.Yaps
         [Range(0f, 1f), Tooltip("How much the base resists bending toward a socket. 0 bends evenly from the root.")]
         public float entranceStiffness;
 
-        [Header("When it's in")]
-        [Range(0f, 1f)] public float squeeze;
-        [Range(0.01f, 1f)] public float squeezeReach = 0.15f;
-        [Range(0f, 1f)] public float bulge;
-        [Range(0.01f, 1f)] public float bulgeReach = 0.2f;
+        [Header("Inside a socket")]
+        [Range(0f, 1f), Tooltip("How much the socket narrows the shaft where it grips.")]
+        public float squeeze;
+        [Range(0.01f, 1f), Tooltip("How far either side of the opening the grip reaches, as a fraction of length.")]
+        public float squeezeReach = 0.15f;
+        [Range(0f, 1f), Tooltip("The swell just short of the opening, as a fraction of radius.")]
+        public float bulge;
+        [Range(0.01f, 1f), Tooltip("How far before the opening the swell begins.")]
+        public float bulgeReach = 0.2f;
 
-        [Header("When it's not")]
-        [Range(0.1f, 1f), Tooltip("How much of its length it keeps when nothing is using it.")]
+        [Header("Out of a socket")]
+        [Range(0.1f, 1f), Tooltip("How much of its length it keeps when no socket is using it. 1 is no change.")]
         public float idleLength = 1f;
-        [Range(0.1f, 1f)] public float idleWidth = 1f;
-        [Range(0f, 0.5f)] public float wriggle;
-        [Range(0f, 20f)] public float wriggleSpeed = 2f;
+        [Range(0.1f, 1f), Tooltip("How much of its width it keeps when no socket is using it.")]
+        public float idleWidth = 1f;
+        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time — the scene view shows it while this plug is selected.")]
+        public float wriggle;
+        [Range(0f, 20f), Tooltip("How fast it wriggles.")]
+        public float wriggleSpeed = 2f;
 
-        [Header("Motion")]
-        [Range(0f, 0.5f)] public float pumping;
-        [Range(0f, 20f)] public float pumpingSpeed = 6f;
+        [Header("Motion inside a socket")]
+        [Range(0f, 0.5f), Tooltip("A stroke along the shaft, only while a socket has it.")]
+        public float pumping;
+        [Range(0f, 20f), Tooltip("How fast it pumps.")]
+        public float pumpingSpeed = 6f;
         [Range(0.05f, 1f), Tooltip("How much of the shaft pumps. 1 is the whole length; small values move only the tip.")]
         public float pumpingWidth = 1f;
 
-        [Header("The curve")]
+        [Header("The bend toward a socket")]
         [Range(0.2f, 3f), Tooltip("Below 1 arrives more directly, above 1 sweeps a wider arc.")]
         public float bezierSmoothness = 1f;
         [Range(0f, 0.8f), Tooltip("A fraction of the shaft held straight before any bend.")]
@@ -81,19 +90,21 @@ namespace AvatarBridge.Yaps
         [Range(0.01f, 0.5f), Tooltip("How fast the plug follows a socket the contact channel reports. Lower is heavier.")]
         public float socketFollow = 0.05f;
 
-        [Header("Hole")]
-        [Range(0f, 1f)] public float taperStart = 0.10f;
-        [Range(0f, 1f)] public float taperEnd = 0.30f;
+        [Header("Past the opening")]
+        [Range(0f, 1f), Tooltip("How far past a hole before the shaft narrows, as a fraction of length.")]
+        public float taperStart = 0.10f;
+        [Range(0f, 1f), Tooltip("...and how far past it before the shaft has closed to a point.")]
+        public float taperEnd = 0.30f;
         [Tooltip("Let the tip carry on past a ring. Off, the shaft stops at every socket.")]
         public bool overrun = true;
 
-        [Header("Who it answers")]
+        [Header("Which sockets it answers")]
         [Tooltip("Only sockets carrying this tag. Blank answers all.")]
         public string onlySocketsTagged = "";
         [Tooltip("Never sockets carrying this tag.")]
         public string neverSocketsTagged = "";
 
-        [Header("Announcing itself")]
+        [Header("How sockets find it")]
         [Tooltip("Emit the tip light Raliv DPS orifices read, and the contact pointers TPS and " +
                  "SPS sockets read. Both on unless you know why not.")]
         public bool emitTipLight = true;

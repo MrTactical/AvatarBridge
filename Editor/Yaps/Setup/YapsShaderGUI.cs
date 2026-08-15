@@ -87,8 +87,8 @@ namespace AvatarBridge
                     new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend gathered at the tip, opposite in sign: sweep, then hook"),
                     new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket — 0 bends evenly from the root"),
                 }},
-            new Section { Title = "When it's in", Tint = TintIn,
-                Blurb = "What a socket does to the shaft at the opening.",
+            new Section { Title = "Inside a socket", Tint = TintIn,
+                Blurb = "What a socket does to the shaft while the plug is in it: a grip at the opening, a swell just short of it.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_Squeeze", "Squeeze", RowKind.Slider, "DPS · TPS", "how much the socket narrows the shaft where it grips"),
@@ -96,8 +96,8 @@ namespace AvatarBridge
                     new Knob("_YAPS_Bulge", "Bulge", RowKind.Slider, "DPS · TPS", "the swell just short of the opening, as a fraction of radius"),
                     new Knob("_YAPS_BulgeDistance", "Bulge reach", RowKind.Slider, "DPS · TPS", "how far before the opening the swell begins"),
                 }},
-            new Section { Title = "When it's not", Tint = TintIdle,
-                Blurb = "What the shaft does with nothing using it.",
+            new Section { Title = "Out of a socket", Tint = TintIdle,
+                Blurb = "What the shaft does when no socket is using it: shrink a little, wriggle. All of it stops as a socket takes over.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps — 1 is no change"),
@@ -105,15 +105,15 @@ namespace AvatarBridge
                     new Knob("_YAPS_WriggleStrength", "Wriggle", RowKind.Slider, "DPS", "idle motion, tip-heavy"),
                     new Knob("_YAPS_WriggleSpeed", "Wriggle speed", RowKind.Slider, "DPS"),
                 }},
-            new Section { Title = "Motion", Tint = TintMotion,
-                Blurb = "Motion while engaged.",
+            new Section { Title = "Motion inside a socket", Tint = TintMotion,
+                Blurb = "A stroke along the shaft while a socket has it. Nothing moves when it is out.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_PumpStrength", "Pumping", RowKind.Slider, "TPS", "a stroke along the shaft, only while engaged"),
                     new Knob("_YAPS_PumpSpeed", "Pumping speed", RowKind.Slider, "TPS"),
                     new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps — 1 is the whole length, small values move only the tip"),
                 }},
-            new Section { Title = "The curve", Tint = TintCurve,
+            new Section { Title = "The bend toward a socket", Tint = TintCurve,
                 Blurb = "How the shaft arrives at a socket.",
                 Knobs = new[]
                 {
@@ -122,7 +122,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_SmoothStart", "Ease into bend", RowKind.Slider, "TPS", "ease the join between the straight part and the curve rather than kink"),
                     new Knob("_YAPS_MinimumSocketDistance", "Minimum socket distance", RowKind.Slider, "TPS", "a socket nearer than this is held off, so a plug pushed hard against one does not fold"),
                 }},
-            new Section { Title = "Who it answers", Tint = TintWho,
+            new Section { Title = "Which sockets it answers", Tint = TintWho,
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {

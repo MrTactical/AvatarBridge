@@ -730,9 +730,22 @@ namespace AvatarBridge
                 "outright. Needs the option above ticked too, since that is what clears the VRChat " +
                 "transports YAPS replaces.",
                 settings.convertYapsSystems, v => settings.convertYapsSystems = v));
-            b.Add(BridgeElements.Hint(
-                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
-                "avatar or prop — same system, same shader. This converts; that builds."));
+            // The other door. The YAPS tool builds and tunes penetration on
+            // an avatar already here; this converts. Present, say where it
+            // is; absent, say where to get it.
+            if (BridgeLinks.HasYapsTool)
+            {
+                b.Add(BridgeElements.Hint(
+                    "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
+                    "avatar or prop — same system, same shader. This converts; that builds."));
+            }
+            else
+            {
+                b.Add(BridgeElements.Hint(
+                    "Already on ChilloutVR? The YAPS tool adds, tunes or upgrades penetration on any avatar " +
+                    "or prop — same system, same shader. This converts; that builds. It is not in this project."));
+                b.Add(Link("Get the YAPS tool (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
+            }
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have — the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +

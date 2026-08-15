@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -15,6 +16,17 @@ namespace AvatarBridge
     {
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
         public const string Releases = Repo + "/releases/latest";
+
+        // The YAPS tool's own home. It ships inside AvatarBridge today and
+        // is meant to stand on its own; when it does, this is where the
+        // converter sends someone who does not have it.
+        public const string YapsRepo = "https://github.com/MrTactical/YAPS";
+
+        // Is the YAPS tool present in this project? By type, not by define:
+        // once it is its own package the converter cannot assume it.
+        public static bool HasYapsTool =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => a.GetType("AvatarBridge.YapsSetupWindow", false) != null);
         // Anchor must match a real heading in README.md, or the button silently drops the user at
         // the top of the repo page; which is what it did for a long time, pointing at an
         // "#install-troubleshooting" section that never existed.

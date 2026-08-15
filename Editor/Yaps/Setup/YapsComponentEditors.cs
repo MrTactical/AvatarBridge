@@ -31,16 +31,31 @@ namespace AvatarBridge
         public static readonly Color PlugColour = new Color(0.55f, 0.85f, 0.35f);
         public static readonly Color BadColour = new Color(0.95f, 0.30f, 0.30f);
 
-        static GUIStyle _title, _sub, _section, _blurb, _tag;
+        static GUIStyle _title, _sub, _section, _blurb, _tag, _help;
 
         static void Ensure()
         {
             if (_title != null) return;
             _title = new GUIStyle(EditorStyles.boldLabel) { fontSize = 14, normal = { textColor = Color.white } };
             _sub = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(1, 1, 1, 0.82f) } };
-            _section = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12, padding = new RectOffset(8, 0, 0, 0), alignment = TextAnchor.MiddleLeft };
-            _blurb = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(2, 2, 0, 6), normal = { textColor = new Color(0.65f, 0.65f, 0.65f) } };
+            _section = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12, padding = new RectOffset(6, 6, 0, 0), alignment = TextAnchor.MiddleLeft };
+            _blurb = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(8, 8, 0, 4), normal = { textColor = new Color(0.65f, 0.65f, 0.65f) } };
             _tag = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, normal = { textColor = new Color(1, 1, 1, 0.9f) } };
+            _help = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(4, 0, 0, 3), normal = { textColor = new Color(0.62f, 0.62f, 0.62f) } };
+        }
+
+        // The grey line under a control that says what it does — the same
+        // one the material panel draws under every knob, so a user learns
+        // it once. Indented to the control, past the label column.
+        public static void Help(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            Ensure();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(EditorGUIUtility.labelWidth + 4);
+                GUILayout.Label(text, _help);
+            }
         }
 
         // The header: the family gradient, like the window and the material
@@ -71,17 +86,20 @@ namespace AvatarBridge
         // A section: a hairline of colour, the title, a rule beneath. The
         // same header the material panel draws, so the two read as one
         // system. No slab.
-        public static void Section(string title, Color tint, string blurb = null)
+        public static void Section(string title, Color tint, string blurb = null, string right = null)
         {
             Ensure();
-            GUILayout.Space(6);
-            var laid = GUILayoutUtility.GetRect(0, 22, GUILayout.ExpandWidth(true));
+            GUILayout.Space(4);
+            var laid = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
             var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
+            EditorGUI.DrawRect(rect, new Color(1, 1, 1, EditorGUIUtility.isProSkin ? 0.025f : 0.05f));
             EditorGUI.DrawRect(new Rect(rect.x, rect.y + 4, 3, rect.height - 8), tint);
-            GUI.Label(new Rect(rect.x + 14, rect.y, rect.width - 20, rect.height), title, _section);
+            GUI.Label(new Rect(rect.x + 10, rect.y, rect.width - 20, rect.height), title, _section);
+            if (!string.IsNullOrEmpty(right))
+                GUI.Label(new Rect(rect.x, rect.y, rect.width - 12, rect.height), right, _tag);
             EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
                 new Color(0.5f, 0.5f, 0.5f, EditorGUIUtility.isProSkin ? 0.18f : 0.28f));
-            GUILayout.Space(2);
+            GUILayout.Space(3);
             if (!string.IsNullOrEmpty(blurb)) GUILayout.Label(blurb, _blurb);
         }
 
@@ -92,6 +110,105 @@ namespace AvatarBridge
             else EditorGUILayout.HelpBox(text, type);
         }
 
+    }
+
+    // --- preview -----------------------------------------------------------
+
+    // One place that turns a socket's preview on and off, whoever asks —
+    // the socket's inspector, the window's row chip. Preview needs a PLUG
+    // to bend, and "there is nothing there" is what a user sees when the
+    // scene has none: so if no baked YAPS plug is in the scene, a test plug
+    // is dropped a little way in front of the socket, aimed at it, and
+    // removed again when preview goes off. With a real plug in the scene it
+    // bends that one and spawns nothing. The socket is written into the
+    // plugs the same instant, so the bend is there on the first repaint.
+    //
+    // While a preview is on, or a plug is selected, the scene view is
+    // repainted continuously so the time-driven parts of the deform —
+    // wriggle, pumping — actually move. A scene view otherwise repaints
+    // only on input, and a wriggle at 0.5 looked exactly like none.
+    static class YapsPreview
+    {
+        public const string PlugName = "YAPS Preview Plug";
+        static bool _animating;
+
+        public static void Set(YapsSocket socket, bool on)
+        {
+            if (socket == null) return;
+            Undo.RecordObject(socket, "YAPS preview");
+            socket.preview = on;
+            EditorUtility.SetDirty(socket);
+            if (on && CountBakedPlugs() == 0) Spawn(socket);
+            if (!on) Remove();
+            socket.PreviewTick();
+            Animate(on);
+            SceneView.RepaintAll();
+        }
+
+        public static void Animate(bool on)
+        {
+            if (on == _animating) return;
+            _animating = on;
+            EditorApplication.update -= Tick;
+            if (on) EditorApplication.update += Tick;
+        }
+
+        static void Tick()
+        {
+            // Stop on our own once nothing needs it: no socket previewing
+            // and no plug selected.
+            bool previewing = Object.FindObjectsOfType<YapsSocket>().Any(s => s.preview);
+            bool plugSelected = Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<YapsPlug>() != null;
+            if (!previewing && !plugSelected) { Animate(false); return; }
+            SceneView.RepaintAll();
+        }
+
+        public static int CountBakedPlugs()
+        {
+            int n = 0;
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
+            return n;
+        }
+
+        // A test plug in front of the socket, aimed at it, at a distance
+        // where the deform is clearly engaged but not fully swallowed — so
+        // moving the socket a little either way shows the whole range.
+        static void Spawn(YapsSocket socket)
+        {
+            if (GameObject.Find(PlugName) != null) return;
+            // Keep the socket selected: the button that stops the preview
+            // is on its inspector, and a spawn that stole the selection took
+            // that button away.
+            var go = YapsNativeBuilder.BuildTestPlug(null, select: false);
+            if (go == null) return;
+            go.name = PlugName;
+            var t = socket.transform;
+            // A quarter metre is the test plug's length; sit its base 0.3 m
+            // out along the socket's forward, pointing back at it.
+            go.transform.position = t.position + t.forward * 0.3f;
+            go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
+            EditorGUIUtility.PingObject(go);
+
+            // A test plug that did not bake sits there straight and does
+            // nothing, and the only clue was a console line. Say it here.
+            var plug = go.GetComponent<YapsPlug>();
+            bool baked = plug != null && plug.Target != null
+                         && plug.Target.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_Bake"));
+            if (!baked)
+            {
+                EditorUtility.DisplayDialog("YAPS preview",
+                    "The test plug was placed but did not bake, so it will not bend. The Console has the " +
+                    "reason on a [YAPS] line — usually the shader could not be patched.", "OK");
+            }
+        }
+
+        static void Remove()
+        {
+            var existing = GameObject.Find(PlugName);
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
+        }
     }
 
     // --- socket ------------------------------------------------------------
@@ -121,7 +238,7 @@ namespace AvatarBridge
         void OnSceneGUI()
         {
             var socket = target as YapsSocket;
-            if (socket != null && socket.preview) socket.PreviewTick();
+            if (socket != null && socket.preview) { socket.PreviewTick(); YapsPreview.Animate(true); }
         }
 
         public override void OnInspectorGUI()
@@ -138,15 +255,20 @@ namespace AvatarBridge
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built — no plug can find it yet",
                 tint, built ? "YAPS" : "!");
 
-            // Kind + tag, as a row.
+            // Kind as two buttons, tag beneath, each with its line of help.
             YapsInspectorStyle.Section("What it is", tint);
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.PropertyField(_kind, GUIContent.none, GUILayout.Width(120));
-                GUILayout.Label(hole ? "closes around the plug and stops it" : "lets the plug pass straight through",
-                    EditorStyles.miniLabel);
+                EditorGUILayout.PrefixLabel("Kind");
+                int kindNow = _kind.enumValueIndex;
+                int kindPicked = GUILayout.Toolbar(kindNow, new[] { "Hole", "Ring" }, GUILayout.Height(22));
+                if (kindPicked != kindNow) _kind.enumValueIndex = kindPicked;
             }
-            EditorGUILayout.PropertyField(_tag, new GUIContent("Tag", "Optional. Plugs can be told to answer only sockets with a tag, or never ones with another."));
+            YapsInspectorStyle.Help(hole
+                ? "a hole closes around the plug and stops it — a mouth, a pussy, an anus"
+                : "a ring lets the plug pass straight through — a hand, thighs, a foot");
+            EditorGUILayout.PropertyField(_tag, new GUIContent("Tag"));
+            YapsInspectorStyle.Help("optional — a plug can be told to answer only sockets with a tag, or never ones with another; blank is answered by every plug");
 
             // Shapes.
             YapsInspectorStyle.Section("Opens as a plug goes in", tint,
@@ -253,7 +375,7 @@ namespace AvatarBridge
             // dropped a little way in front of the socket, aimed at it, and
             // removed again when preview goes off. With a real plug in the
             // scene it bends that one instead and spawns nothing.
-            int bakedPlugs = CountBakedPlugs();
+            int bakedPlugs = YapsPreview.CountBakedPlugs();
             YapsInspectorStyle.Section("See it work", tint,
                 bakedPlugs > 0
                     ? $"Preview bends the {bakedPlugs} YAPS plug{(bakedPlugs == 1 ? "" : "s")} in the scene toward this socket, in the editor, so you can place it and watch before uploading. Writes nothing that ships."
@@ -267,15 +389,9 @@ namespace AvatarBridge
                     "Button", GUILayout.Height(24));
                 if (EditorGUI.EndChangeCheck())
                 {
-                    _preview.boolValue = p;
                     serializedObject.ApplyModifiedProperties();
-                    if (p && CountBakedPlugs() == 0) SpawnPreviewPlug(socket);
-                    if (!p) RemovePreviewPlug(socket);
-                    // Write the socket into the plugs NOW, so the bend is
-                    // there on the first repaint rather than after the next
-                    // scene change; and clear it now when stopping.
-                    socket.PreviewTick();
-                    SceneView.RepaintAll();
+                    YapsPreview.Set(socket, p);
+                    serializedObject.Update();
                 }
             }
 
@@ -358,56 +474,6 @@ namespace AvatarBridge
                 }
             }
             return null;
-        }
-
-        const string PreviewPlugName = "YAPS Preview Plug";
-
-        static int CountBakedPlugs()
-        {
-            int n = 0;
-            foreach (var r in Object.FindObjectsOfType<Renderer>())
-                foreach (var m in r.sharedMaterials)
-                    if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
-            return n;
-        }
-
-        // A test plug in front of the socket, aimed at it, at a distance
-        // where the deform is clearly engaged but not fully swallowed — so
-        // moving the socket a little either way shows the whole range.
-        static void SpawnPreviewPlug(YapsSocket socket)
-        {
-            var existing = GameObject.Find(PreviewPlugName);
-            if (existing != null) return;
-            // Keep the socket selected: the button that stops the preview
-            // is on its inspector, and a spawn that stole the selection took
-            // that button away.
-            var go = YapsNativeBuilder.BuildTestPlug(null, select: false);
-            if (go == null) return;
-            go.name = PreviewPlugName;
-            var t = socket.transform;
-            // A quarter metre is the test plug's length; sit its base 0.3 m
-            // out along the socket's forward, pointing back at it.
-            go.transform.position = t.position + t.forward * 0.3f;
-            go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
-            EditorGUIUtility.PingObject(go);
-
-            // A test plug that did not bake sits there straight and does
-            // nothing, and the only clue was a console line. Say it here.
-            var plug = go.GetComponent<YapsPlug>();
-            bool baked = plug != null && plug.Target != null
-                         && plug.Target.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_Bake"));
-            if (!baked)
-            {
-                EditorUtility.DisplayDialog("YAPS preview",
-                    "The test plug was placed but did not bake, so it will not bend. The Console has the " +
-                    "reason on a [YAPS] line — usually the shader could not be patched.", "OK");
-            }
-        }
-
-        static void RemovePreviewPlug(YapsSocket socket)
-        {
-            var existing = GameObject.Find(PreviewPlugName);
-            if (existing != null) Undo.DestroyObjectImmediate(existing);
         }
 
         static SkinnedMeshRenderer GuessRenderer(Transform socket, List<SkinnedMeshRenderer> renderers)
@@ -504,6 +570,12 @@ namespace AvatarBridge
     [CustomEditor(typeof(YapsPlug))]
     public class YapsPlugEditor : Editor
     {
+        // A selected plug animates in the scene view — wriggle and pumping
+        // are time-driven, and a scene view left to itself repaints only on
+        // input. YapsPreview stops the repaint on its own once nothing
+        // needs it.
+        void OnEnable() => YapsPreview.Animate(true);
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -599,6 +671,14 @@ namespace AvatarBridge
             var tip = field?.GetCustomAttributes(typeof(TooltipAttribute), false).FirstOrDefault() as TooltipAttribute;
             var range = field?.GetCustomAttributes(typeof(RangeAttribute), false).FirstOrDefault() as RangeAttribute;
             var label = new GUIContent(p.displayName, tip != null ? tip.tooltip : "");
+            DrawControl(p, field, range, label);
+            // The tooltip, as the line under the control — the material
+            // panel's idiom, so nobody has to hover to learn what a knob is.
+            if (tip != null) YapsInspectorStyle.Help(tip.tooltip);
+        }
+
+        static void DrawControl(SerializedProperty p, System.Reflection.FieldInfo field, RangeAttribute range, GUIContent label)
+        {
             switch (p.propertyType)
             {
                 case SerializedPropertyType.Float:

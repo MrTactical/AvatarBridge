@@ -53,7 +53,22 @@ namespace AvatarBridge
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
 
-        void OnDisable() => Selection.selectionChanged -= RefreshSelection;
+        void OnDisable()
+        {
+            Selection.selectionChanged -= RefreshSelection;
+            EditorApplication.hierarchyChanged -= OnHierarchyChanged;
+        }
+
+        // The found list describes objects, and objects come and go — a
+        // reconvert destroys the avatar the list was built from and rebuilds
+        // it. Rescan after any hierarchy change, once per edit.
+        bool _rescanQueued;
+        void OnHierarchyChanged()
+        {
+            if (_rescanQueued) return;
+            _rescanQueued = true;
+            EditorApplication.delayCall += () => { _rescanQueued = false; if (this != null) Rescan(); };
+        }
 
         void CreateGUI()
         {
@@ -139,6 +154,8 @@ namespace AvatarBridge
             _pages.Add(have);
             Selection.selectionChanged -= RefreshSelection;
             Selection.selectionChanged += RefreshSelection;
+            EditorApplication.hierarchyChanged -= OnHierarchyChanged;
+            EditorApplication.hierarchyChanged += OnHierarchyChanged;
 
             // 3 — Build.
             var build = new BridgeElements.Card("Build", null, null, 3, 1f);
@@ -357,10 +374,11 @@ namespace AvatarBridge
                     var chip = BridgeElements.Chip(socketComp.preview ? "previewing" : "preview",
                         BridgeTheme.Good, socketComp.preview, () =>
                         {
-                            Undo.RecordObject(socketComp, "YAPS preview");
-                            socketComp.preview = !socketComp.preview;
-                            EditorUtility.SetDirty(socketComp);
-                            SceneView.RepaintAll();
+                            // The list can outlive its avatar — a reconvert
+                            // destroys and rebuilds it — and a chip holding a
+                            // dead component threw on click. Rescan instead.
+                            if (socketComp == null) { Rescan(); return; }
+                            YapsPreview.Set(socketComp, !socketComp.preview);
                             Rescan();
                         }, socketComp.preview);
                     chip.style.marginLeft = 6; chip.style.marginRight = 8;
