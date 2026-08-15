@@ -103,6 +103,28 @@ namespace AvatarBridge
                 (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
             _pages.Clear();
             if (_mode == Mode.Setup) BuildSetupPage(); else BuildTestPage();
+            _pages.Add(Footer());
+        }
+
+        // The same footer the converter has: help, a pre-filled bug report,
+        // the author on Discord. The report says it came from this tool.
+        static VisualElement Footer()
+        {
+            var footer = new VisualElement();
+            footer.AddToClassList("ab-footer");
+            footer.Add(BridgeElements.Link("Guide  ↗", () => Application.OpenURL(BridgeLinks.YapsHelp)));
+            var report = BridgeElements.Link("Report an issue  ↗", BridgeLinks.OpenYapsBugReport);
+            report.tooltip = "Opens a pre-filled GitHub issue with your versions and detected packages, marked as a YAPS tool report.";
+            footer.Add(report);
+            if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
+            {
+                var discord = BridgeElements.Link(
+                    BridgeLinks.HasDiscordLink ? $"Discord: {BridgeLinks.DiscordUser}" : $"Copy Discord: {BridgeLinks.DiscordUser}",
+                    BridgeLinks.OpenDiscord);
+                discord.tooltip = "Best for quick questions — please use GitHub issues for bugs so they don't get lost.";
+                footer.Add(discord);
+            }
+            return footer;
         }
 
         // --- the setup page --------------------------------------------------
@@ -422,6 +444,7 @@ namespace AvatarBridge
                     // one placed by hand.
                     var chip = BridgeElements.Chip("make editable", BridgeTheme.Warn, false, () =>
                     {
+                        if (captured.Root == null) { Rescan(); return; }
                         Undo.RegisterFullObjectHierarchyUndo(captured.Root.gameObject, "Adopt YAPS " + (captured.Kind == YapsScanner.Kind.Plug ? "plug" : "socket"));
                         Adopt(captured);
                         Rescan();

@@ -52,7 +52,11 @@ namespace AvatarBridge
             // Measure and bake. The plug object IS the frame on a static
             // mesh; on a skinned one the frame is recovered per vertex.
             var report = new BridgeReport();
-            var result = YapsBaker.Bake(renderer, plug.transform, dir, report, out string failure);
+            // The bone the shaft grows from, when the user named one, is the
+            // chain the baker weights by; otherwise the plug object, and the
+            // baker climbs to the first real bone above it.
+            var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
+            var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             o.Length = plug.lengthOverride > 0 ? plug.lengthOverride : result.Length;
             o.Radius = result.Radius;
@@ -123,7 +127,7 @@ namespace AvatarBridge
             o.Material = patched;
 
             // Announce: tip light for DPS, pointers for TPS/SPS.
-            BuildMarkers(plug, o.Length, o.Radius);
+            BuildMarkers(plug, result, o.Length, o.Radius);
 
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
@@ -166,9 +170,13 @@ namespace AvatarBridge
             {
                 var r = plug.Target;
                 if (r == null || !r.sharedMaterials.Contains(m)) continue;
+                // Only a real change dirties the scene: the panel calls this
+                // on every fold click too, and a no-op read must not mark
+                // the scene modified.
+                string before = JsonUtility.ToJson(plug);
                 Undo.RecordObject(plug, "YAPS plug knobs");
                 ReadKnobs(plug, m);
-                EditorUtility.SetDirty(plug);
+                if (JsonUtility.ToJson(plug) != before) EditorUtility.SetDirty(plug);
             }
         }
 
@@ -209,13 +217,15 @@ namespace AvatarBridge
             return 1 + (h % 4000);
         }
 
-        static void BuildMarkers(YapsPlug plug, float length, float radius)
+        static void BuildMarkers(YapsPlug plug, YapsBaker.Result result, float length, float radius)
         {
             // On a static mesh the plug object IS the frame; on a skinned one
             // the baker measured a frame in world space, and the markers
             // must sit THERE, not on the object — which on a real avatar is
             // routinely a quarter of a metre from the shaft.
-            AnnouncePlug(plug.transform, null, null, length, radius, plug.emitTipLight, plug.emitPointers);
+            bool skinned = result != null && result.FromSkinnedMesh;
+            AnnouncePlug(plug.transform, skinned ? result.Origin : (Vector3?) null, skinned ? result.Rotation : (Quaternion?) null,
+                length, radius, plug.emitTipLight, plug.emitPointers);
         }
 
         // Make a plug visible to every socket family: a DPS tracker light at
@@ -358,7 +368,7 @@ namespace AvatarBridge
 
         // The mirror of WriteKnobs: what the material carries becomes the
         // component's fields, so a re-bake writes back the same values.
-        static void ReadKnobs(YapsPlug p, Material m)
+        public static void ReadKnobs(YapsPlug p, Material m)
         {
             float F(string n, float d) => m.HasProperty(n) ? m.GetFloat(n) : d;
             p.overrun = F("_YAPS_Overrun", 1f) > 0.5f;

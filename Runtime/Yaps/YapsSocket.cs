@@ -82,8 +82,17 @@ namespace AvatarBridge.Yaps
         // `preview` is on; turning it off, disabling, or destroying clears
         // what it wrote.
         static YapsSocket _previewing;
-        readonly System.Collections.Generic.HashSet<Material> _touched =
-            new System.Collections.Generic.HashSet<Material>();
+
+        // Written through MaterialPropertyBlocks on the renderers, never
+        // onto the material assets. A block is runtime-only — not saved with
+        // the scene, not uploaded — so a preview left on at upload time
+        // cannot ship a plug bent toward a fixed point in the world, which
+        // writing the material would have done. It is also exactly where the
+        // game's own channel writes. Each touched slot remembers the
+        // material's channel-space flag so Release can put it back.
+        struct Touched { public Renderer Renderer; public int Slot; public float ChannelSpace; }
+        readonly System.Collections.Generic.List<Touched> _touched = new System.Collections.Generic.List<Touched>();
+        static readonly MaterialPropertyBlock _block = new MaterialPropertyBlock();
 
         // Update runs in edit mode only when something in the scene changed,
         // which is not reliably "now": the inspector calls PreviewTick
@@ -105,21 +114,29 @@ namespace AvatarBridge.Yaps
 
             foreach (var r in FindObjectsOfType<Renderer>())
             {
-                foreach (var m in r.sharedMaterials)
+                var mats = r.sharedMaterials;
+                for (int slot = 0; slot < mats.Length; slot++)
                 {
+                    var m = mats[slot];
                     if (m == null || !m.HasProperty("_YAPS_Bake") || !m.HasProperty("_YAPS_SocketPos")) continue;
-                    _touched.Add(m);
-                    // A plug's own socket must not bend it: skip materials on
-                    // this socket's own avatar root when it is a body mesh
-                    // that also carries a socket bake.
+                    if (!_touched.Exists(t => t.Renderer == r && t.Slot == slot))
+                    {
+                        _touched.Add(new Touched
+                        {
+                            Renderer = r, Slot = slot,
+                            ChannelSpace = m.HasProperty("_YAPS_ChannelSpace") ? m.GetFloat("_YAPS_ChannelSpace") : 0f,
+                        });
+                    }
                     float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
                     float gap = Vector3.Distance(r.transform.position, transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
-                    m.SetFloat("_YAPS_ChannelSpace", 0f);
-                    m.SetVector("_YAPS_SocketPos", transform.position);
-                    m.SetVector("_YAPS_SocketForward", transform.forward);
-                    m.SetVector("_YAPS_SocketUp", transform.up);
-                    m.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
+                    r.GetPropertyBlock(_block, slot);
+                    _block.SetFloat("_YAPS_ChannelSpace", 0f);
+                    _block.SetVector("_YAPS_SocketPos", transform.position);
+                    _block.SetVector("_YAPS_SocketForward", transform.forward);
+                    _block.SetVector("_YAPS_SocketUp", transform.up);
+                    _block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
+                    r.SetPropertyBlock(_block, slot);
                 }
             }
         }
@@ -127,15 +144,21 @@ namespace AvatarBridge.Yaps
         void OnDisable() { if (_previewing == this) { Release(); _previewing = null; } }
         void OnDestroy() { if (_previewing == this) { Release(); _previewing = null; } }
 
+        // Put every touched slot back to what its material says: zero
+        // socket, and the channel-space flag it had. A block cannot drop a
+        // single property, so it is left equal to the material — inert.
         void Release()
         {
-            foreach (var m in _touched)
+            foreach (var t in _touched)
             {
-                if (m == null) continue;
-                m.SetVector("_YAPS_SocketFlags", Vector4.zero);
-                m.SetVector("_YAPS_SocketPos", Vector4.zero);
-                m.SetVector("_YAPS_SocketForward", Vector4.zero);
-                m.SetVector("_YAPS_SocketUp", Vector4.zero);
+                if (t.Renderer == null) continue;
+                t.Renderer.GetPropertyBlock(_block, t.Slot);
+                _block.SetFloat("_YAPS_ChannelSpace", t.ChannelSpace);
+                _block.SetVector("_YAPS_SocketFlags", Vector4.zero);
+                _block.SetVector("_YAPS_SocketPos", Vector4.zero);
+                _block.SetVector("_YAPS_SocketForward", Vector4.zero);
+                _block.SetVector("_YAPS_SocketUp", Vector4.zero);
+                t.Renderer.SetPropertyBlock(_block, t.Slot);
             }
             _touched.Clear();
         }

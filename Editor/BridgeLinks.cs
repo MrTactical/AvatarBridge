@@ -74,6 +74,18 @@ namespace AvatarBridge
             Application.OpenURL(url);
         }
 
+        // The YAPS tool's own chapter in the README, and its bug report:
+        // the same issue tracker while the tool ships inside AvatarBridge,
+        // with the environment blob saying which tool it came from.
+        public const string YapsHelp = Repo + "#yaps--penetration-that-works-in-chilloutvr";
+
+        public static void OpenYapsBugReport()
+        {
+            string url = Repo + "/issues/new?template=bug_report.yml&environment=" +
+                         Uri.EscapeDataString("Tool:          YAPS (Tools ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null));
+            Application.OpenURL(url);
+        }
+
         public static void CopyDiagnostics(BridgeReport report = null)
         {
             EditorGUIUtility.systemCopyBuffer = BuildDiagnostics(report);

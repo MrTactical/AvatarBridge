@@ -265,10 +265,35 @@ namespace AvatarBridge
             }
         }
 
+        // The preview plug's assets go with it — its mesh, its material and
+        // its bake texture — or every preview left three more files in
+        // Assets/YAPS/Generated/Test Plug ("YAPS Test Plug 8" by the eighth).
+        // The patched shader copy is shared by name and stays.
         static void Remove()
         {
             var existing = GameObject.Find(PlugName);
-            if (existing != null) Undo.DestroyObjectImmediate(existing);
+            if (existing == null) return;
+            var doomed = new List<string>();
+            var mf = existing.GetComponent<MeshFilter>();
+            var mr = existing.GetComponent<MeshRenderer>();
+            if (mf != null && mf.sharedMesh != null) doomed.Add(AssetDatabase.GetAssetPath(mf.sharedMesh));
+            if (mr != null)
+            {
+                foreach (var m in mr.sharedMaterials)
+                {
+                    if (m == null) continue;
+                    if (m.HasProperty("_YAPS_Bake") && m.GetTexture("_YAPS_Bake") != null)
+                        doomed.Add(AssetDatabase.GetAssetPath(m.GetTexture("_YAPS_Bake")));
+                    doomed.Add(AssetDatabase.GetAssetPath(m));
+                }
+            }
+            // No undo: the assets it needs are about to go with it.
+            Object.DestroyImmediate(existing);
+            foreach (var path in doomed)
+            {
+                if (string.IsNullOrEmpty(path) || !path.StartsWith(YapsNativeBuilder.OutputRoot)) continue;
+                AssetDatabase.DeleteAsset(path);
+            }
         }
     }
 
@@ -823,6 +848,21 @@ namespace AvatarBridge
             body.TrackSerializedObjectValue(serializedObject, so =>
             {
                 var mats = BakedMaterials(plug.Target);
+                if (plug.Target != renderer)
+                {
+                    // The RENDERER changed. If the new one already wears a
+                    // baked YAPS material, its knobs are the truth — read
+                    // them in rather than stamping this component's values
+                    // over an author's tuning. Then rebuild for the new state.
+                    if (mats.Count > 0)
+                    {
+                        Undo.RecordObject(plug, "YAPS plug knobs");
+                        YapsNativeBuilder.ReadKnobs(plug, mats[0]);
+                        EditorUtility.SetDirty(plug);
+                    }
+                    RebuildLater();
+                    return;
+                }
                 foreach (var m in mats)
                 {
                     Undo.RecordObject(m, "YAPS plug knobs");
@@ -830,7 +870,7 @@ namespace AvatarBridge
                     if (plug.lengthOverride > 0) m.SetFloat("_YAPS_Length", plug.lengthOverride);
                     EditorUtility.SetDirty(m);
                 }
-                if ((mats.Count > 0) != isBaked || plug.Target != renderer) RebuildLater();
+                if ((mats.Count > 0) != isBaked) RebuildLater();
                 SceneView.RepaintAll();
             });
         }
