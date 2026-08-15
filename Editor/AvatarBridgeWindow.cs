@@ -732,8 +732,7 @@ namespace AvatarBridge
                 "and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries across. " +
                 "YAPS is written from scratch, no VRChat code shipped, and it reads and is read by " +
                 "everything already on the platform: your plug finds DPS, TPS and SPS sockets, and " +
-                "their plugs find your sockets. A plug only ever bends toward a socket — never toward " +
-                "a person carrying none.\n\n" +
+                "their plugs find your sockets.\n\n" +
                 "Remove: takes the whole system out. Its shaders, contacts and parameters do not work " +
                 "in ChilloutVR and cost most of the sync budget.\n\n" +
                 "Leave as VRChat built it: converts nothing and removes nothing. It will not function " +

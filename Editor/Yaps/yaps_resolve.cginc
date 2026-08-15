@@ -335,16 +335,11 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
 // arrays. It was removed on 2026-08-15, deliberately and permanently, and
 // this comment exists so nobody rebuilds it as an "improvement".
 //
-// A socket is an act of consent. Someone who authored one, or switched it
-// on from their menu, has said what they want. Someone standing nearby
-// carrying nothing has said nothing — and there is no button on their side
-// to say no, because they have nothing this reads. A plug that reaches for
-// a body on its own is depicting an act on a person who never agreed to
-// it, and this tool will not do that however approximate the aim was.
-//
-// So the plug only ever bends toward a socket: a contact channel written by
-// a socket, a marker light emitted by a socket. Nothing else. A plug near a
-// body with no socket stays exactly as it was.
+// The plug bends only toward a socket it can resolve: a contact channel
+// written by a socket, a marker light emitted by a socket. Nothing else. A
+// body position is not a socket — nobody authored it and nothing on the
+// wearer's side switches it off — so it is not a target here, and a plug
+// with no socket in range stays exactly as it was.
 //
 // The one thing the player positions ARE still read for is YapsSameBodyAs
 // above, and it goes the other way: it REJECTS a wearer's own socket lights

@@ -46,6 +46,7 @@ sit along it — because that's the trip your avatar is making.</em></p>
 [Constraints](#constraints-that-drive-another-object) ·
 [Physics](#physbones--magicacloth2) ·
 [Contacts](#contacts) ·
+[YAPS](#yaps--penetration-that-works-in-chilloutvr) ·
 [Shaders](#shaders-that-only-draw-into-one-eye) ·
 [Parameter types](#parameter-types) ·
 [Face tracking](#face-tracking) ·
@@ -77,6 +78,7 @@ mid-2026:
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
 | Contacts | pointers + triggers with [tags widened](#contacts) so ordinary CVR players' hands fire them, proximity receivers driven from distance, anchors and animated switches carried | emulated with `CVRPointer` + trigger |
+| Penetration (DPS / TPS / SPS) converted to a system that works in ChilloutVR | ✅ [YAPS](#yaps--penetration-that-works-in-chilloutvr), plus a tool to set it up on any avatar | — |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | — |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | — |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
@@ -133,8 +135,13 @@ actually running.
   sitting animations are grafted into ChilloutVR's locomotion layer, matched by blend-tree
   position; emotes move into the one layer that can both pose the body and hand it back; a flight
   pose rides CVR's **native** flight. The game moves you, with your avatar's art.
-- **Bloat removed** — GoGo Loco and SPS/OGB/PCS stripped (one avatar went from 3088 to 240 of 3200
-  sync bits).
+- **Penetration comes across working** — DPS, TPS and SPS become
+  [YAPS](#yaps--penetration-that-works-in-chilloutvr): the plug bends into sockets and sockets
+  open, in game, for everyone, with the author's tuning carried over — and it reads and is read by
+  every system already on the platform. The **YAPS tool** (*Tools ▸ YAPS ▸ Setup*) sets it up on
+  any ChilloutVR avatar or prop, VRChat history or not.
+- **Bloat removed** — GoGo Loco and the VRChat haptics stacks stripped (one avatar went from 3088
+  to 240 of 3200 sync bits).
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **Contacts a stranger can actually set off** — boops, headpats and proximity effects become
@@ -256,6 +263,7 @@ defines.
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled — see [grabbing](#grabbing-a-chain) |
 | Contacts | `CVRPointer` / trigger | see [below](#contacts) |
+| DPS / TPS / SPS penetration | **YAPS** | plug bends, sockets open, the author's tuning carried; see [YAPS](#yaps--penetration-that-works-in-chilloutvr) |
 | VRC Constraints | Unity constraints | including *Target Transform* — see [below](#constraints-that-drive-another-object) |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
@@ -275,65 +283,10 @@ fight it while eating ~15 synced parameters. The VRChat haptics stacks (OGB, PCS
 go the same way: they don't function in CVR and cost most of the sync budget.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
-*Convert to YAPS*. The mesh deform is written from scratch rather than ported, so it behaves like the
-originals without being them; the separate name keeps that honest, and DPS, TPS and SPS are
-credited as the prior art. Sockets on other people are found through ChilloutVR's contact system
-and the marker lights the platform's existing DPS content already emits — so a converted plug
-reacts to avatars that have never heard of AvatarBridge. **And the reverse holds too**: a
-converted avatar's sockets emit exactly what
-DPS, TPS and SPS content expects, so other people's plugs use them from any direction without
-either side knowing this tool exists. Experimental means what it says; test it with a second
-person before relying on it.
-
-**YAPS speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at
-it — the objects in its hierarchy, its menu labels, its report — but the things *other people's*
-content reads are left exactly as they were: the contact tags (`TPS_Orf_Root`,
-`SPSLL_Socket_Front` and the rest) and the marker light ranges. Those aren't names, they're the
-wire. Renaming them would make every DPS, TPS and SPS plug on the platform blind to your avatar,
-which is the whole point of keeping them. Parameter names are left alone for a second reason:
-ChilloutVR restores a saved profile by parameter name, so renaming one would quietly stop your
-saved settings from loading.
-
-**An older avatar with DPS or TPS and no SPS still gains from the setting.** There's nothing for
-YAPS to build — those systems predate the objects it builds a plug from, so the plug keeps a
-shader whose deform doesn't exist here and won't bend. But its sockets come through untouched
-and work for everyone else, and leaving the setting **on** is what keeps their contacts and depth
-reactions; turning it off strips both. The report says which of those two cases you're in.
-
-**How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
-parameter sync it has left:
-
-| | costs | reaches | when it's used |
-|---|---|---|---|
-| **Contact channel** | up to 8 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
-| **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
-
-If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
-socket's position second and which way it faces last, and says so in the report rather than
-silently going over. Dropped in that order because a plug that knows where a socket is but not
-which way it faces still reaches it; one that doesn't know where it is has nowhere to go. An
-avatar with no budget at all still works through the lights.
-
-**A plug only ever bends toward a socket.** Both routes above are things a socket *publishes* —
-a contact its author placed, a light its wearer switched on from their menu. Someone standing
-nearby who carries neither has said nothing, and there is no button on their side to say no. So
-nothing here aims at a body: a plug near a person with no socket stays exactly as it is.
-ChilloutVR does publish every player's position to shaders, and an earlier build used that as a
-last resort — it was removed on purpose, and it will not come back.
-
-**What other people see.** The wearer's own machine works out where the socket is, and a driver
-publishes it so everyone else sees the same bend. Marker lights are read independently by each
-viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
-shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
-breaks.
-
-**A socket's own reactions cost nothing.** Bulges and the like are driven by contacts, which
-every client computes for itself, so they use no sync budget however many an author builds. In
-VRChat the same thing costs a synced parameter each — which is why AvatarBridge makes VRChat's
-contact-driven depth parameters (`…/Self/Contact/Root`, `…/Others/Contact/Tip` and the plug's
-auto-distance) local rather than synced, whatever VRCFury numbered them. The socket toggles and
-modes next to them stay synced, since those are yours to set. An avatar that sat a few bits under
-the cap without penetration will still fit with it on.
+*Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
+It has a chapter of its own: [YAPS](#yaps--penetration-that-works-in-chilloutvr), covering what
+a conversion does and the tool that sets it up on any avatar. Test it with a second person before
+relying on it — contacts and sync only exist in game.
 
 **Animation that can't do anything is stripped too** (*Remove animation that can't do anything*,
 on by default). A curve writing to a material property the renderer's shader doesn't have — the
@@ -659,6 +612,163 @@ contacts that never fire, for anyone — or held them on over the menu toggle me
 off. Conversion settles it: curves that only assert a zone's rest are removed, a switch-off with
 no way back gets the restore written in, and a layer that switches a zone both ways — the actual
 toggle — keeps it outright. The report says what was settled.
+
+## YAPS — penetration that works in ChilloutVR
+
+VRChat has had three penetration systems — Raliv's **DPS**, Thry's **TPS**, VRCFury's **SPS** —
+and every avatar that came to ChilloutVR left its penetration behind, because all three lean on
+things ChilloutVR doesn't have. **YAPS** (Yet Another Penetration System) is the fourth: written
+from scratch for ChilloutVR's own primitives, no VRChat code shipped, and built to speak to the
+other three rather than replace them. It is two things in one package:
+
+- **A pass in the converter.** With *Penetration* left on *Convert to YAPS* (the default), a
+  VRChat avatar's plug bends into sockets and its sockets open around plugs — in game, for
+  everyone in the instance — with the author's own tuning carried across.
+- **The YAPS tool** — *Tools ▸ YAPS ▸ Setup* — for any ChilloutVR avatar or prop, no VRChat
+  history needed: add sockets, make a plug, tune every knob, preview in the editor. The same
+  system and the same shader either way, so a converted avatar and a native one are the same
+  thing to each other.
+
+DPS, TPS and SPS are credited as the prior art. Every knob those three had is here and labelled
+with which of them it came from, so a feature you know from one of them is under its own name.
+
+### What a conversion does
+
+**A converted plug bends into a socket and threads it along its axis** — arriving straight rather
+than aiming at a point, easing in as it approaches, relaxing when pulled away. **A converted
+socket opens around a plug**: the entry and up to three depths, staged, driven straight from the
+shader — the socket-side deform DPS had and SPS dropped — so it reacts to a DPS plug that has never
+heard of this tool.
+
+**It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
+— its hierarchy, its menu labels, its report — but the things *other people's* content reads are
+left exactly as they were: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest)
+and the marker light ranges. Those aren't names, they're the wire. So a converted plug finds DPS,
+TPS and SPS sockets; DPS, TPS and SPS plugs find a converted socket; someone wearing an avatar
+built for another platform's system works with yours, both ways, without either side knowing this
+tool exists. Parameter names are left alone for a second reason: ChilloutVR restores a saved
+profile by parameter name, so renaming one would quietly stop your saved settings from loading.
+
+**The author's tuning carries across.** Curvature, squeeze, idle shrink and the rest are read off
+the DPS/TPS/SPS material by each system's own definition and written onto the YAPS one; anything
+with no counterpart is named in the report.
+
+**An older avatar with DPS or TPS and no SPS bake** has nothing for the converter to build a plug
+from — those systems predate the objects it reads — so its plug keeps a shader whose deform doesn't
+exist here and won't bend, while its sockets come through and work for everyone else. Leaving the
+setting on *Convert to YAPS* is what keeps their contacts and depth reactions; *Remove* strips
+both. The report says which case you're in.
+
+**How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
+parameter sync it has left:
+
+| | costs | reaches | when it's used |
+|---|---|---|---|
+| **Contact channel** | up to 9 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
+| **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
+
+If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
+socket's position second and which way it faces last, and says so in the report rather than
+silently going over. An avatar with no budget at all still works through the lights. **A plug
+bends only toward a socket it can resolve** — a contact its author placed, a light its wearer
+switched on from their menu; with neither in range it stays exactly as it is.
+
+**What other people see.** The wearer's own machine works out where the socket is, and a driver
+publishes it so everyone else sees the same bend. Marker lights are read independently by each
+viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
+shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
+breaks.
+
+**A socket's own reactions cost nothing.** Bulges, winces and depth animations the author built
+are driven by contacts, which every client computes for itself, so they use no sync budget however
+many an author built. In VRChat the same thing costs a synced parameter each — which is why the
+converter makes VRChat's contact-driven depth parameters (`…/Self/Contact/Root`,
+`…/Others/Contact/Tip` and the plug's auto-distance) local rather than synced, whatever VRCFury
+numbered them. The socket toggles and modes next to them stay synced, since those are yours to
+set. An avatar that sat a few bits under the cap without penetration will still fit with it on.
+
+**Auto socket mode** — VRCFury's, ported whole and steadied: it picks the nearest enrolled socket
+and stays there instead of flickering between neighbours. Only sockets whose author ticked *Auto*
+are candidates, exactly as in VRChat.
+
+**A converted avatar is editable.** Every socket and plug the converter builds carries a `YAPS
+Socket` / `YAPS Plug` component — the tool below reads them, so you can retune what the author
+set and Build again. **Edited the material in Poiyomi?** *Tools ▸ Avatar Bridge ▸ Re-apply YAPS
+to selected materials* puts the deform back after an unlock/edit/re-lock.
+
+### The YAPS tool
+
+*Tools ▸ YAPS ▸ Setup.* Three steps, like the converter's:
+
+1. **Pick your avatar or prop.** Drag it into the box.
+2. **What it has, and what to add.** One row per plug or socket the scan found — which systems can
+   read it, whether it has an axis, what it lacks. **customise** takes you to its inspector;
+   **preview** bends a plug toward it in the scene view. Beneath: **Add a hole**, **Add a ring**
+   (under the bone you have selected in the Hierarchy, or in a `YAPS/` folder on the avatar) and
+   **Make selected mesh a plug**. A line under the buttons says what the Hierarchy selection is,
+   and a box above says what to do next.
+3. **Build.** Bakes every plug — measuring the mesh, patching the material's own shader, writing
+   the knobs, announcing it to every socket family — and rebuilds each socket's markers. Safe to
+   run again; it edits, not stacks.
+
+**Universal socket prefabs** — *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
+and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z the way a plug
+should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
+ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
+
+**YAPS Socket** (the component the prefabs carry) — hole or ring; a tag; the mesh whose
+blendshapes should open, with up to four of its shapes picked from a dropdown and staged by depth
+on a range slider; **Preview** — with a test plug the tool drops in front of the socket when the
+scene has none; and, once baked, the socket-side shape knobs. *Advanced* holds the marker lights
+and *Rebuild markers*.
+
+**YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
+overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
+socket · Out of a socket · Motion inside a socket · The bend toward a socket · Past the opening ·
+Which sockets it answers · How sockets find it*. Every knob wears the system it came from — DPS
+purple, TPS teal, SPS orange, YAPS green — and a **Show** filter at the top keeps only one
+system's knobs. Knobs write straight to the plug's material; the material's own YAPS panel writes
+back; one set of values, two doors. **Bake** is at the bottom.
+
+**The material panel.** A patched material's YAPS block is grouped and named the same way as the
+component, and hands everything else to the shader's own editor — a Poiyomi material keeps
+Poiyomi's panel entire.
+
+**YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
+falls back to when a mesh's own shader cannot be patched — Unity's Standard and everything else
+built in has no source on disk, and a surface shader has no vertex function of its own — with the
+colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
+shader with source (Poiyomi, for one) on the mesh and re-bake if you need more.
+
+**Quiet the scene view.** A converted avatar carries ninety-odd CCK components, each with an
+icon, plus pointer spheres and cloth wires, and all of it buries a socket. One switch in the
+window hides those while you place sockets and puts back exactly what it found. An editor
+preference; nothing on the avatar changes.
+
+**Test props** (the window's second tab) — a test plug and a test hole or ring, dropped in front
+of the scene camera; select the socket and click Preview. To try them in ChilloutVR, put each on
+its own CVR Spawnable and upload them as props: a prop needs a collider to be grabbable, and
+**Disallow Theft** on the plug so a socket switching on cannot pull it out of someone's hand.
+
+**What the tool does not do yet, and says so:** upgrade a DPS/TPS/SPS setup in place on an avatar
+that never went through the converter (for now, if it came from VRChat, the converter is the
+route); build a plug on a skinned mesh's bone chain (*Make this a plug* is for static meshes and
+props today); the synced contact channel between props.
+
+### Testing it
+
+- **In the editor**: select a socket, click Preview, move it around the plug. Every knob on the
+  plug shows live. Wriggle and pumping are time-driven; the scene view repaints while a plug is
+  selected so they move.
+- **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
+  debug view (on the material's YAPS panel) colours the plug by what found the socket — black
+  nobody, green the contact channel, yellow a marker light — which is the first thing to look at
+  when a plug bends toward the wrong thing, or nothing.
+- **Four vertex-light slots is the whole light-path constraint.** Unity gives a mesh four; a
+  socket takes two; on an avatar with many sockets the converter wires each socket's lights to
+  the menu entry that already names it, so lit sockets are the ones you switched on. A hand-held
+  prop at the wrist can still lose the pair to a lit torso socket that ranks nearer its bounds —
+  if a socket only works alone, that is why.
 
 ## Shaders that only draw into one eye
 
@@ -1672,6 +1782,42 @@ private upload limit. The real message is in `Player.log` or the console just ab
 ### One extra recompile after importing
 
 Normal. That's AvatarBridge registering its scripting defines.
+
+### YAPS: the plug does not bend toward a socket in game
+
+Work down the list; the first that fits is usually it.
+
+- **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
+  by*: black means nothing found the socket, green the contact channel did, yellow a marker light
+  did. Black with a socket right there means neither transport reached the plug.
+- **Is the socket lit?** On a converted avatar each socket's marker lights are wired to the menu
+  toggle that names it, so a socket you haven't switched on emits nothing a DPS-style plug can
+  read. Switch it on. Unity gives a mesh **four** vertex-light slots and a socket takes two, so with
+  several sockets lit at once a plug sees the two nearest its bounds — a hand-held prop at the
+  wrist can lose the Handjob pair to a lit torso socket. Try the socket alone.
+- **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
+  alone, and that channel is built for converted avatars; a plug built with the YAPS tool reads
+  lights only until the avatar channel lands. The report and the tool both say which a plug has.
+- **The plug bends but too little or too much:** *The bend toward a socket* and *Inside a socket*
+  on the plug component are the knobs; the material panel has the same ones. Squeeze and bulge
+  are as authored on the source avatar.
+
+### YAPS: "could not patch the shader", or the test plug sits there straight
+
+The plug's material wears a shader the patcher cannot wrap — Unity's Standard and everything else
+built in has no source on disk, and a surface shader has no vertex function of its own. Since 4.0
+the tool falls back to **YAPS Simple Lit** with the colour and textures carried over and says so
+in the outcome; on a converted avatar the report names the material. If you want the original
+look, put a shader with source on the mesh — Poiyomi patches cleanly — and re-bake or reconvert.
+A shader still carrying VRChat's SPS is a different refusal: that is a conversion, not a swap;
+run the avatar through the converter.
+
+### YAPS: a converted socket reads "not built", or the window's row says a plug is not baked
+
+Built means a plug can find it — a marker light or a root pointer beneath the object — and baked
+means the material carries `_YAPS_Bake`. On an avatar converted before 4.0 the components were not
+left behind; the window offers **make editable** on each row (or **Build**, which does them all),
+and the socket or plug then reads as it should. Reconverting on the current release does the same.
 
 ## Reporting a bug
 
