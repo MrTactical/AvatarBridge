@@ -67,7 +67,10 @@ namespace AvatarBridge.Yaps
         // Property blocks only. They are not saved and not uploaded.
         struct Touched { public Renderer Renderer; public int Slot; public float ChannelSpace; }
         readonly System.Collections.Generic.List<Touched> _touched = new System.Collections.Generic.List<Touched>();
-        static readonly MaterialPropertyBlock _block = new MaterialPropertyBlock();
+        // Created on first use: a static initializer runs inside AddComponent,
+        // where Unity forbids creating native objects.
+        static MaterialPropertyBlock _block;
+        static MaterialPropertyBlock Block => _block ?? (_block = new MaterialPropertyBlock());
 
         // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
@@ -101,13 +104,13 @@ namespace AvatarBridge.Yaps
                     float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
                     float gap = Vector3.Distance(r.transform.position, transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
-                    r.GetPropertyBlock(_block, slot);
-                    _block.SetFloat("_YAPS_ChannelSpace", 0f);
-                    _block.SetVector("_YAPS_SocketPos", transform.position);
-                    _block.SetVector("_YAPS_SocketForward", transform.forward);
-                    _block.SetVector("_YAPS_SocketUp", transform.up);
-                    _block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
-                    r.SetPropertyBlock(_block, slot);
+                    r.GetPropertyBlock(Block, slot);
+                    Block.SetFloat("_YAPS_ChannelSpace", 0f);
+                    Block.SetVector("_YAPS_SocketPos", transform.position);
+                    Block.SetVector("_YAPS_SocketForward", transform.forward);
+                    Block.SetVector("_YAPS_SocketUp", transform.up);
+                    Block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
+                    r.SetPropertyBlock(Block, slot);
                 }
             }
         }
@@ -121,13 +124,13 @@ namespace AvatarBridge.Yaps
             foreach (var t in _touched)
             {
                 if (t.Renderer == null) continue;
-                t.Renderer.GetPropertyBlock(_block, t.Slot);
-                _block.SetFloat("_YAPS_ChannelSpace", t.ChannelSpace);
-                _block.SetVector("_YAPS_SocketFlags", Vector4.zero);
-                _block.SetVector("_YAPS_SocketPos", Vector4.zero);
-                _block.SetVector("_YAPS_SocketForward", Vector4.zero);
-                _block.SetVector("_YAPS_SocketUp", Vector4.zero);
-                t.Renderer.SetPropertyBlock(_block, t.Slot);
+                t.Renderer.GetPropertyBlock(Block, t.Slot);
+                Block.SetFloat("_YAPS_ChannelSpace", t.ChannelSpace);
+                Block.SetVector("_YAPS_SocketFlags", Vector4.zero);
+                Block.SetVector("_YAPS_SocketPos", Vector4.zero);
+                Block.SetVector("_YAPS_SocketForward", Vector4.zero);
+                Block.SetVector("_YAPS_SocketUp", Vector4.zero);
+                t.Renderer.SetPropertyBlock(Block, t.Slot);
             }
             _touched.Clear();
         }
