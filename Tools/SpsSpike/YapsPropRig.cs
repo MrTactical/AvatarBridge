@@ -591,24 +591,35 @@ namespace AvatarBridge.Spike
                 state.motion = tree;
                 machine.defaultState = state;
 
-                // In memory until it is part of the asset, and dropped
-                // silently on save otherwise — a layer, correctly named,
-                // driving nothing.
-                AssetDatabase.AddObjectToAsset(machine, controller);
-                AssetDatabase.AddObjectToAsset(tree, controller);
-                foreach (var child in tree.children)
-                {
-                    AssetDatabase.AddObjectToAsset(child.motion, controller);
-                }
-
-                var layers = controller.layers.ToList();
-                layers.Add(new AnimatorControllerLayer
+                var layer = new AnimatorControllerLayer
                 {
                     name = value,
                     defaultWeight = 1f,
                     stateMachine = machine,
-                });
+                };
+                var layers = controller.layers.ToList();
+                layers.Add(layer);
                 controller.layers = layers.ToArray();
+
+                // In memory until it is part of the asset, and dropped
+                // silently on save otherwise — a layer, correctly named,
+                // driving nothing.
+                //
+                // Embedding the machine, the tree and the tree's clips by
+                // hand looked complete and was not: AddState above returns an
+                // AnimatorState, that is a sub-object too, and it was the one
+                // thing never added. The saved controller then held eight
+                // state machines and ZERO states — every layer present and
+                // correctly named, every blend tree present and orphaned,
+                // and nothing playing. The channel wrote no material property
+                // for anyone, which is indistinguishable from contacts not
+                // arriving and was mistaken for exactly that.
+                //
+                // So walk the layer instead of listing its parts. EmbedLayer
+                // recurses through states, motions, behaviours and
+                // transitions, and it cannot forget a kind of object the way
+                // a hand-written list can.
+                AnimatorAssetSaver.EmbedLayer(layer, controller);
             }
 
             AssetDatabase.SaveAssets();

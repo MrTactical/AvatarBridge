@@ -79,6 +79,7 @@ namespace AvatarBridge.Spike
                         Check(spawnable, path, report, ref changed, ref repaired, ref broken);
                     }
                     CheckTriggerHosts(root, path, report, ref broken);
+                    CheckControllers(root, path, report, ref broken);
 
                     if (changed) PrefabUtility.SaveAsPrefabAsset(root, path);
                 }
@@ -181,6 +182,55 @@ namespace AvatarBridge.Spike
                     report.AppendLine(label + " names \"" + value.animatorParameterName +
                                       "\", which the controller does not declare.");
                     broken++;
+                }
+            }
+        }
+
+        // A layer whose state machine has no states plays nothing, and says
+        // so nowhere. This is the third time the same shape has cost a day:
+        // anything built with "new" has to be added to the controller ASSET,
+        // and a hand-written list of what to add will eventually miss a kind
+        // of object. The saved file then holds correctly named layers and
+        // orphaned blend trees, and the only visible symptom is a material
+        // property that never moves — which reads as a transport failure.
+        //
+        // Not repairable here. A state machine that lost its state has lost
+        // what it was meant to play, and inventing one would be worse than
+        // reporting it; rebuild the prop with a builder that embeds properly.
+        static void CheckControllers(GameObject root, string path,
+            System.Text.StringBuilder report, ref int broken)
+        {
+            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+            var seen = new HashSet<AnimatorController>();
+
+            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
+            {
+                var controller = animator.runtimeAnimatorController as AnimatorController;
+                if (controller == null || !seen.Add(controller)) continue;
+
+                foreach (var layer in controller.layers)
+                {
+                    if (layer.stateMachine == null)
+                    {
+                        report.AppendLine($"  {name}: layer \"{layer.name}\" has NO state machine.");
+                        broken++;
+                        continue;
+                    }
+                    if (layer.stateMachine.states.Length == 0)
+                    {
+                        report.AppendLine($"  {name}: layer \"{layer.name}\" has an EMPTY state " +
+                                          "machine — no state was embedded in the controller " +
+                                          "asset, so this layer plays nothing and its property " +
+                                          "never moves. Rebuild the prop.");
+                        broken++;
+                        continue;
+                    }
+                    if (layer.stateMachine.defaultState == null)
+                    {
+                        report.AppendLine($"  {name}: layer \"{layer.name}\" has states but no " +
+                                          "default state, so nothing runs on entry.");
+                        broken++;
+                    }
                 }
             }
         }
