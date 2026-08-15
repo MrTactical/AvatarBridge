@@ -47,8 +47,13 @@ namespace AvatarBridge
         VisualElement _pages;
         VisualElement _foundBody;
         Label _summary;
+        HelpBox _next;
+        Label _selection;
+        Button _addHole, _addRing, _makePlug;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
+
+        void OnDisable() => Selection.selectionChanged -= RefreshSelection;
 
         void CreateGUI()
         {
@@ -60,12 +65,8 @@ namespace AvatarBridge
             root.Add(BridgeElements.Banner("YAPS", "Yet Another Penetration System  ·  for ChilloutVR",
                 BridgeDefines.Version));
 
-            var tabs = new VisualElement();
-            tabs.Add(BridgeElements.Tabs(
-                new[] { "Set up an avatar or prop", "Test props" },
-                new[] { "d_Avatar Icon", "d_PlayButton" },
-                (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
-            root.Add(tabs);
+            _tabs = new VisualElement();
+            root.Add(_tabs);
 
             _pages = new ScrollView();
             _pages.AddToClassList("ab-body");
@@ -73,8 +74,18 @@ namespace AvatarBridge
             ShowPage();
         }
 
+        VisualElement _tabs;
+
         void ShowPage()
         {
+            // The strip is rebuilt with the mode, so the active tab's tint
+            // follows the switch — built once, it highlighted whichever tab
+            // was current when the window opened, forever.
+            _tabs.Clear();
+            _tabs.Add(BridgeElements.Tabs(
+                new[] { "Set up an avatar or prop", "Test props" },
+                new[] { "d_Avatar Icon", "d_PlayButton" },
+                (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
             _pages.Clear();
             if (_mode == Mode.Setup) BuildSetupPage(); else BuildTestPage();
         }
@@ -101,18 +112,26 @@ namespace AvatarBridge
             _foundBody = new VisualElement();
             have.Body.Add(_foundBody);
 
+            // WHAT TO DO NEXT. The one line a new user actually needs, and
+            // it reads the scan and the Hierarchy selection to say it — so
+            // the window teaches itself rather than needing a manual.
+            _next = new HelpBox("", HelpBoxMessageType.Info);
+            have.Body.Add(_next);
+
             have.Body.Add(BridgeElements.SubHeading("Add"));
-            have.Body.Add(BridgeElements.Row(
-                Btn("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole)),
-                Btn("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring)),
-                Btn("Make selected mesh a plug", MakePlug)));
+            _addHole = Btn("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole));
+            _addRing = Btn("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring));
+            _makePlug = Btn("Make selected mesh a plug", MakePlug);
+            have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug));
+            _selection = BridgeElements.Hint("");
+            have.Body.Add(_selection);
             have.Body.Add(BridgeElements.Hint(
-                "A hole closes around a plug; a ring lets it through. Both land under the object " +
-                "selected in the Hierarchy — pick the bone they should follow first. Point their +Z the " +
-                "way a plug enters. Every socket added here is readable by DPS, TPS and SPS plugs as " +
-                "well as YAPS ones. Making a mesh a plug measures its shaft, bakes it, and patches its " +
-                "own shader."));
+                "A hole closes around a plug; a ring lets it through. Every socket added here is " +
+                "readable by DPS, TPS and SPS plugs as well as YAPS ones. Making a mesh a plug " +
+                "measures its shaft, bakes it, and patches its own shader."));
             _pages.Add(have);
+            Selection.selectionChanged -= RefreshSelection;
+            Selection.selectionChanged += RefreshSelection;
 
             // 3 — Build.
             var build = new BridgeElements.Card("Build", null, null, 3, 1f);
@@ -187,14 +206,87 @@ namespace AvatarBridge
             return b;
         }
 
+        // The one line that says what to do next, from what the scan found.
+        // Four situations a user is actually in, and a sentence for each.
+        void SayNext()
+        {
+            if (_next == null) return;
+            if (_target == null)
+            {
+                _next.text = "Drag your avatar or prop into the box above. Nothing happens until you do.";
+                _next.messageType = HelpBoxMessageType.Info;
+                return;
+            }
+            int plugs = _scan.Plugs.Count, sockets = _scan.Sockets.Count;
+            bool allYaps = _scan.Plugs.All(p => p.IsYapsAlready) && _scan.Sockets.All(s => s.IsYapsAlready);
+            bool anyLegacy = _scan.Plugs.Any(p => !p.IsYapsAlready) || _scan.Sockets.Any(s => !s.IsYapsAlready);
+            bool anyIssue = _scan.Plugs.Any(p => p.Notes.Count > 0) || _scan.Sockets.Any(s => s.Notes.Count > 0);
+
+            if (plugs + sockets == 0)
+            {
+                _next.text = "Nothing on it yet. To add a socket: click the bone it should follow in the " +
+                             "Hierarchy (Hips, say), then Add a hole or Add a ring. To make a plug: click " +
+                             "the mesh that should bend, then Make selected mesh a plug. Then Build.";
+                _next.messageType = HelpBoxMessageType.Info;
+            }
+            else if (anyLegacy)
+            {
+                _next.text = "This has DPS, TPS or SPS on it that is not YAPS yet. Upgrade-in-place is " +
+                             "coming — for now, if it came from VRChat, AvatarBridge converts it (Tools ▸ " +
+                             "Avatar Bridge) and the result arrives here already YAPS.";
+                _next.messageType = HelpBoxMessageType.Warning;
+            }
+            else if (anyIssue)
+            {
+                _next.text = "Everything here is YAPS, but something is missing — the amber rows say what. " +
+                             "Build fixes what it can (markers, bakes); a socket with no axis wants turning " +
+                             "so its arrow points where a plug enters.";
+                _next.messageType = HelpBoxMessageType.Warning;
+            }
+            else if (allYaps)
+            {
+                _next.text = "All YAPS and complete. Nothing to do here unless you want to add more or " +
+                             "retune — click a row to select it and use its Inspector. Upload as normal.";
+                _next.messageType = HelpBoxMessageType.Info;
+            }
+        }
+
+        // The buttons say what they will act on, since that is the Hierarchy
+        // selection and the window cannot otherwise show it.
+        void RefreshSelection()
+        {
+            if (_selection == null) return;
+            var go = Selection.activeGameObject;
+            if (go == null)
+            {
+                _selection.text = "Nothing selected in the Hierarchy. Sockets will go in a YAPS folder on the avatar; a plug needs a mesh selected.";
+                if (_addHole != null) _addHole.text = "Add a hole";
+                if (_addRing != null) _addRing.text = "Add a ring";
+                if (_makePlug != null) { _makePlug.text = "Make selected mesh a plug"; _makePlug.SetEnabled(false); }
+                return;
+            }
+            var root = YapsSocketEditor.AvatarRootOf(go.transform);
+            bool bone = root != null && go.transform != root && IsBone(go.transform, root);
+            bool mesh = go.GetComponent<Renderer>() != null;
+            _selection.text = bone
+                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it."
+                : mesh ? $"Selected: mesh \"{go.name}\" — Make selected mesh a plug will bake this one."
+                : $"Selected: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
+            if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
+            if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
+            if (_makePlug != null) { _makePlug.text = mesh ? $"Make \"{go.name}\" a plug" : "Make selected mesh a plug"; _makePlug.SetEnabled(mesh); }
+        }
+
         void Rescan()
         {
             if (_foundBody == null) return;
             _foundBody.Clear();
+            RefreshSelection();
             if (_target == null)
             {
                 _summary.text = "Pick something above.";
                 _build?.SetActive(false);
+                SayNext();
                 return;
             }
             _scan = YapsScanner.Scan(_target);
@@ -203,6 +295,7 @@ namespace AvatarBridge
             _build?.SetLabel(_scan.Total > 0
                 ? $"Bake {_scan.Plugs.Count} plug{(_scan.Plugs.Count == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
                 : "Nothing to build yet");
+            SayNext();
 
             bool alt = false;
             void Row(YapsScanner.Found f)
