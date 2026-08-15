@@ -20,11 +20,19 @@
 // holds — so a bend here means the only thing left that can be broken is
 // contact delivery, and no bend here means contacts were never the problem.
 //
+// READ ON A LATER FRAME. The first version set the parameters, called
+// Animator.Update and read the material in the same call stack, which cannot
+// distinguish "the animator never writes this" from "the animator had not
+// written it YET". Both report zeros. It now sets the parameters, lets the
+// player loop run, and reports on a later tick — and it says which of the two
+// it saw, because that difference is the whole question.
+//
 // Press Play, select the plug prop (or leave nothing selected and it will
 // find it), then run the menu item.
 #if UNITY_EDITOR && CVR_CCK_EXISTS
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace AvatarBridge.Spike
@@ -44,6 +52,15 @@ namespace AvatarBridge.Spike
         const float SideOffset = 0.06f;
         const float DepthFraction = 0.6f;
 
+        // How many editor ticks to wait before believing a zero.
+        const int SettleTicks = 8;
+
+        static MeshRenderer _renderer;
+        static Animator _animator;
+        static Vector3 _pos, _front;
+        static float _length, _extent;
+        static int _ticks;
+
         [MenuItem("AvatarBridge/Spike/Probe plug channel (Play mode)")]
         public static void Probe()
         {
@@ -54,56 +71,42 @@ namespace AvatarBridge.Spike
                 return;
             }
 
-            var renderer = FindPlug(out Animator animator, out string trouble);
-            if (renderer == null)
+            _renderer = FindPlug(out _animator, out string trouble);
+            if (_renderer == null)
             {
                 Debug.LogError("[YAPS] " + trouble);
                 return;
             }
 
-            // The instance, not the shared asset. An animator writing a
-            // material property instantiates the material, so the shared one
-            // keeps its authoring values forever and reading it would report
-            // a dead channel even on a healthy prop.
-            var material = renderer.material;
-
-            float length = material.HasProperty("_YAPS_Length")
-                ? material.GetFloat("_YAPS_Length") : 0f;
-            float extent = material.HasProperty("_YAPS_ChannelExtents")
+            var material = _renderer.material;
+            _length = material.HasProperty("_YAPS_Length") ? material.GetFloat("_YAPS_Length") : 0f;
+            _extent = material.HasProperty("_YAPS_ChannelExtents")
                 ? material.GetVector("_YAPS_ChannelExtents").x : 0f;
-            if (length <= 0f || extent <= 0f)
+            if (_length <= 0f || _extent <= 0f)
             {
-                Debug.LogError($"[YAPS] The plug material is not baked: length {length}, " +
-                               $"channel extents {extent}. Rebuild the props.");
+                Debug.LogError($"[YAPS] The plug material is not baked: length {_length}, " +
+                               $"channel extents {_extent}. Rebuild the props.");
                 return;
             }
 
-            float expectedExtent = length * BoxLengths;
-            if (Mathf.Abs(extent - expectedExtent) > 0.001f)
+            float expectedExtent = _length * BoxLengths;
+            if (Mathf.Abs(_extent - expectedExtent) > 0.001f)
             {
                 Debug.LogError($"[YAPS] The trigger box and the shader disagree about the " +
-                               $"channel's size: the material says {extent:0.0000} and a " +
-                               $"{length:0.0000} m plug at {BoxLengths} lengths wants " +
-                               $"{expectedExtent:0.0000}. Every socket will land in the wrong " +
-                               $"place by that ratio.");
+                               $"channel's size: the material says {_extent:0.0000} and a " +
+                               $"{_length:0.0000} m plug at {BoxLengths} lengths wants " +
+                               $"{expectedExtent:0.0000}.");
             }
 
             // Contacts hand over a position in the receiver's own frame,
             // normalised across the box to 0..1. Build the same numbers the
             // client would have written for a socket at the chosen spot.
-            Vector3 at = new Vector3(SideOffset, 0f, length * DepthFraction);
-            Vector3 front = at + new Vector3(0f, 0f, 0.01f);   // both systems put it ~1 cm on
-            Vector3 pos = Normalise(at, extent);
-            Vector3 fpos = Normalise(front, extent);
+            Vector3 at = new Vector3(SideOffset, 0f, _length * DepthFraction);
+            _pos = Normalise(at, _extent);
+            _front = Normalise(at + new Vector3(0f, 0f, 0.01f), _extent);
 
-            var wrote = new (string Name, float Value)[]
-            {
-                ("E", 1f), ("H", 0f),
-                ("X", pos.x), ("Y", pos.y), ("Z", pos.z),
-                ("FX", fpos.x), ("FY", fpos.y), ("FZ", fpos.z),
-            };
-
-            var have = animator.parameters.Select(p => p.name).ToHashSet();
+            var wrote = Values();
+            var have = _animator.parameters.Select(p => p.name).ToHashSet();
             var missing = wrote.Where(w => !have.Contains(w.Name)).Select(w => w.Name).ToList();
             if (missing.Count > 0)
             {
@@ -113,77 +116,121 @@ namespace AvatarBridge.Spike
                 return;
             }
 
-            foreach (var (name, value) in wrote) animator.SetFloat(name, value);
+            foreach (var (name, value) in wrote) _animator.SetFloat(name, value);
 
-            // One frame for the blend trees to run and write the material.
-            animator.Update(Time.deltaTime > 0 ? Time.deltaTime : 0.02f);
+            // Let the player loop actually run. Reading now would be reading
+            // before the animator has had a frame in which to apply anything.
+            _ticks = 0;
+            EditorApplication.update -= Tick;
+            EditorApplication.update += Tick;
+            Debug.Log("[YAPS] Parameters written. Waiting for the animator to apply them, then " +
+                      "reporting. Watch the plug.");
+        }
 
-            Vector4 flags = material.GetVector("_YAPS_SocketFlags");
-            Vector4 read = material.GetVector("_YAPS_SocketPos");
-            Vector4 readFront = material.GetVector("_YAPS_SocketFront");
-            float channelSpace = material.GetFloat("_YAPS_ChannelSpace");
+        static (string Name, float Value)[] Values() => new[]
+        {
+            ("E", 1f), ("H", 0f),
+            ("X", _pos.x), ("Y", _pos.y), ("Z", _pos.z),
+            ("FX", _front.x), ("FY", _front.y), ("FZ", _front.z),
+        };
+
+        static void Tick()
+        {
+            if (!Application.isPlaying || _renderer == null || _animator == null)
+            {
+                EditorApplication.update -= Tick;
+                return;
+            }
+
+            // Re-asserted every tick. Nothing else writes these in the editor,
+            // but a state with Write Defaults on will happily restore them the
+            // moment it decides nothing is driving them.
+            foreach (var (name, value) in Values()) _animator.SetFloat(name, value);
+
+            if (++_ticks < SettleTicks) return;
+            EditorApplication.update -= Tick;
+            Report();
+        }
+
+        static void Report()
+        {
+            var instance = _renderer.material;
+            var shared = _renderer.sharedMaterial;
+
+            Vector4 flags = instance.GetVector("_YAPS_SocketFlags");
+            Vector4 read = instance.GetVector("_YAPS_SocketPos");
+            Vector4 readFront = instance.GetVector("_YAPS_SocketFront");
 
             var report = new System.Text.StringBuilder();
-            report.AppendLine("[YAPS] Channel probe on \"" + renderer.name + "\".");
-            report.AppendLine($"  wrote   E 1  H 0   pos {Fmt(pos)}   front {Fmt(fpos)}");
-            report.AppendLine($"  material reads:");
+            report.AppendLine("[YAPS] Channel probe on \"" + _renderer.name + "\", after " +
+                              SettleTicks + " ticks.");
+            report.AppendLine($"  wrote    E 1  H 0   pos {Fmt(_pos)}   front {Fmt(_front)}");
+            report.AppendLine($"  material instance reads:");
             report.AppendLine($"    _YAPS_SocketFlags  {Fmt(flags)}   (x is engagement)");
             report.AppendLine($"    _YAPS_SocketPos    {Fmt(read)}");
             report.AppendLine($"    _YAPS_SocketFront  {Fmt(readFront)}");
-            report.AppendLine($"    _YAPS_ChannelSpace {channelSpace}");
+
+            // --- where the chain actually stands -------------------------
+            report.AppendLine("  animator:");
+            report.AppendLine($"    object active {_renderer.gameObject.activeInHierarchy}, " +
+                              $"animator enabled {_animator.enabled}, speed {_animator.speed}, " +
+                              $"culling {_animator.cullingMode}");
+            report.AppendLine($"    parameter E reads back {_animator.GetFloat("E"):0.000}, " +
+                              $"Z reads back {_animator.GetFloat("Z"):0.000}");
+            report.AppendLine($"    layers {_animator.layerCount}");
+
+            var controller = _animator.runtimeAnimatorController as AnimatorController;
+            for (int i = 0; i < _animator.layerCount; i++)
+            {
+                var info = _animator.GetCurrentAnimatorStateInfo(i);
+                string layerName = _animator.GetLayerName(i);
+                int states = controller != null && i < controller.layers.Length
+                             && controller.layers[i].stateMachine != null
+                    ? controller.layers[i].stateMachine.states.Length : -1;
+                report.AppendLine($"      [{i}] {layerName}: weight {_animator.GetLayerWeight(i):0.00}, " +
+                                  $"states {states}, playing hash {info.shortNameHash}, " +
+                                  $"length {info.length:0.000}");
+            }
+
+            // A material the animator instantiated is not the one the
+            // renderer was authored with. If they have diverged, reading the
+            // wrong one reports zeros on a perfectly healthy channel — which
+            // is a failure mode of the PROBE, and worth catching here rather
+            // than believing.
+            report.AppendLine($"  materials: instance id {instance.GetInstanceID()}, " +
+                              $"shared id {shared.GetInstanceID()}" +
+                              (instance.GetInstanceID() == shared.GetInstanceID()
+                                  ? " (SAME — the animator has not instantiated one)"
+                                  : " (different, as expected while animating)"));
+            report.AppendLine($"    shared _YAPS_SocketFlags {Fmt(shared.GetVector("_YAPS_SocketFlags"))}");
 
             bool engagementArrived = Mathf.Abs(flags.x - 1f) < 0.01f;
-            bool positionArrived = Approximately(read, pos);
-            bool frontArrived = Approximately(readFront, fpos);
+            bool positionArrived = Approximately(read, _pos);
 
-            if (channelSpace < 0.5f)
+            if (!engagementArrived && !positionArrived)
             {
-                report.AppendLine("  VERDICT: _YAPS_ChannelSpace is 0, so the shader treats the " +
-                                  "channel's numbers as a WORLD position and reaches for the " +
-                                  "world origin. The prop must set it to 1.");
-            }
-            else if (!engagementArrived && !positionArrived)
-            {
-                report.AppendLine("  VERDICT: nothing reached the material. The animator layers " +
-                                  "are not writing it — contacts are exonerated, the break is " +
-                                  "between the parameter and the material.");
-            }
-            else if (!engagementArrived)
-            {
-                report.AppendLine("  VERDICT: the position arrived and the ENGAGEMENT did not. " +
-                                  "The E layer alone is broken, and with engagement at zero the " +
-                                  "shader discards a position it actually has.");
+                report.AppendLine("  VERDICT: nothing reached the material, and it has had frames " +
+                                  "in which to. Contacts are exonerated — the break is between " +
+                                  "the parameter and the material. Check the layer table above: " +
+                                  "a weight of 0, a state count of 0, or a playing hash of 0 each " +
+                                  "name a different cause.");
             }
             else if (!positionArrived)
             {
-                report.AppendLine("  VERDICT: engagement arrived and the POSITION did not. The " +
-                                  "shader then measures a gap to a socket at the box centre, " +
-                                  "which is over a plug length away, and correctly reports NOT " +
-                                  "ENGAGED. This is the failure that looks exactly like a dead " +
-                                  "channel.");
+                report.AppendLine("  VERDICT: engagement arrived, position did not. The shader " +
+                                  "then measures a gap to the box centre, over a plug length " +
+                                  "away, and correctly reports NOT ENGAGED.");
             }
             else
             {
-                // Everything the channel carries is in the material, so what
-                // remains is what the shader does with it. Recompute the
-                // engagement curve here, because a channel that delivers
-                // perfectly and then remaps itself to zero is still a plug
-                // that does not move.
-                Vector3 offset = new Vector3(read.x * 2f - 1f, read.y * 2f - 1f, read.z * 2f - 1f) * extent;
+                Vector3 offset = new Vector3(read.x * 2f - 1f, read.y * 2f - 1f, read.z * 2f - 1f) * _extent;
                 float gap = offset.magnitude;
-                float engaged = 1f - Smoothstep(length, length * 1.6f, gap);
+                float engaged = 1f - Smoothstep(_length, _length * 1.6f, gap);
                 report.AppendLine($"  the shader will measure a gap of {gap:0.0000} m against a " +
-                                  $"{length:0.0000} m plug and engage at {engaged:0.000}.");
-                report.AppendLine(frontArrived
-                    ? "  the front arrived too, so the plug has an axis to thread rather than a " +
-                      "point to reach."
-                    : "  the front did NOT arrive: the plug will aim at the socket instead of " +
-                      "threading it, which reads as a weaker, blunter bend.");
+                                  $"{_length:0.0000} m plug and engage at {engaged:0.000}.");
                 report.AppendLine(engaged > 0.01f
                     ? "  VERDICT: the channel is INTACT end to end and the plug should be visibly " +
-                      "bent right now. If it is straight on screen the fault is in the deform, " +
-                      "not the channel. If it is bent, then everything except contact delivery " +
-                      "works and the remaining suspect is in game only."
+                      "bent right now. Everything except contact delivery works."
                     : "  VERDICT: every value arrived and the shader's own curve still collapses " +
                       "to zero. The remap is the bug.");
             }
