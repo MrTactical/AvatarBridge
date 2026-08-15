@@ -798,42 +798,68 @@ namespace AvatarBridge
                     continue;
                 }
 
-                var mesh = MeshOf(renderer);
                 bool animatorDrivesIt = AnimatorDrivesShapes(ctx, renderer);
-
-                var result = YapsBaker.Bake(renderer, socketRoot, ctx.OutputDir + "/YAPS",
-                    null, out string failure, shapesInMeshOrder: true);
-                if (result == null)
-                {
-                    failures.Add($"{socketRoot.name}: {failure}");
-                    continue;
-                }
-
                 int slot = MaterialSlotOf(renderer, socketRoot);
-                var materials = renderer.sharedMaterials;
-                var patched = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
-                    ctx.Report, out string refusal, out _);
-                if (patched == null)
+
+                // A socket usually hangs off the BODY, and on a real avatar
+                // the body is the same mesh the plug lives on. Patching it a
+                // second time is refused outright — "it already carries
+                // YAPS" — which is how the corpus found this before any
+                // avatar was reconverted.
+                //
+                // So when they share a renderer and slot, they share the
+                // MATERIAL. One mesh, one bake, one patched shader, both
+                // ends: the shader already carries both deforms and each
+                // guards on its own enable, so the plug half stays live and
+                // the socket half simply switches on beside it.
+                var shared = ctx.YapsPlugs.FirstOrDefault(
+                    p => p.Renderer == renderer && p.MaterialSlot == slot);
+
+                Material material;
+                if (shared != null)
                 {
-                    failures.Add($"{socketRoot.name}: {refusal}");
-                    continue;
+                    material = shared.Material;
+                    // NOT setting _YAPS_Enabled to 0 here, unlike a socket
+                    // with a mesh of its own. This material is a working
+                    // plug as well, and switching the plug off to turn a
+                    // socket on would trade one for the other.
+                }
+                else
+                {
+                    var result = YapsBaker.Bake(renderer, socketRoot, ctx.OutputDir + "/YAPS",
+                        null, out string failure);
+                    if (result == null)
+                    {
+                        failures.Add($"{socketRoot.name}: {failure}");
+                        continue;
+                    }
+
+                    var materials = renderer.sharedMaterials;
+                    var patched = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
+                        ctx.Report, out string refusal, out _);
+                    if (patched == null)
+                    {
+                        failures.Add($"{socketRoot.name}: {refusal}");
+                        continue;
+                    }
+
+                    material = YapsBaker.Apply(result, materials[slot], patched,
+                        ctx.OutputDir + "/YAPS", renderer is SkinnedMeshRenderer);
+                    // No plug on this mesh, so the plug half must stay
+                    // asleep or it would try to bend the socket's own mesh
+                    // toward the nearest socket.
+                    material.SetFloat("_YAPS_Enabled", 0f);
+
+                    materials[slot] = material;
+                    renderer.sharedMaterials = materials;
                 }
 
-                var material = YapsBaker.Apply(result, materials[slot], patched,
-                    ctx.OutputDir + "/YAPS", renderer is SkinnedMeshRenderer);
                 material.SetFloat("_YAPS_SocketPower", 1f);
-                // The plug half of this material must stay asleep. One
-                // shader carries both ends and each guards on its own
-                // enable; a socket that also thought it was a plug would
-                // try to bend itself at the nearest socket.
-                material.SetFloat("_YAPS_Enabled", 0f);
                 // -1, never 0. Zero is "a plug is here and not yet in";
                 // -1 is "nobody has told me anything", which is what lets
-                // the shader fall back to lights.
+                // the shader fall back to lights and never fight the
+                // animator when a contact is driving.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
-
-                materials[slot] = material;
-                renderer.sharedMaterials = materials;
 
                 deformed++;
                 if (animatorDrivesIt)

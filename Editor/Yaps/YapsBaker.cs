@@ -70,29 +70,7 @@ namespace AvatarBridge
             public Quaternion Rotation;
         }
 
-        // Set while baking a SOCKET, where blendshape order is meaning
-        // rather than convenience. A field rather than a parameter because
-        // it is read deep inside the shape capture and threading it through
-        // every frame between here and there would be noise for one bool.
-        // Always reset in a finally, so a throw cannot leave the next plug
-        // baking under a socket's rules.
-        static bool MeshOrder;
-
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
-            BridgeReport report, out string failure, bool shapesInMeshOrder = false)
-        {
-            MeshOrder = shapesInMeshOrder;
-            try
-            {
-                return BakeInner(renderer, plugRoot, outputDir, report, out failure);
-            }
-            finally
-            {
-                MeshOrder = false;
-            }
-        }
-
-        static Result BakeInner(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure)
         {
             failure = null;
@@ -507,20 +485,27 @@ namespace AvatarBridge
                 }
             }
 
-            // A PLUG takes the shapes that move it most, because its weights
-            // are matched to slots by NAME and the order is free — so when
-            // sixteen will not fit, the biggest movers are the ones worth
-            // keeping.
+            // SELECT by movement, EMIT in mesh order. Two different
+            // questions that were being answered with one sort.
             //
-            // A SOCKET cannot afford that. Its shapes are staged by INDEX —
-            // shape 0 is the entry, shape 3 the deepest — so reordering them
-            // reorders the depths they arrive at, and a socket whose entry
-            // shape happens to move furthest would open at full depth and
-            // close as the plug went in. Mesh order IS the author's order,
-            // and for a socket it is the meaning.
-            var chosen = MeshOrder
-                ? scored.OrderBy(x => x.index).Take(MaxShapes)
-                : scored.OrderByDescending(x => x.moved).Take(MaxShapes);
+            // Which shapes to keep when more than sixteen exist is a
+            // question about cost, and the biggest movers are the right
+            // answer. What ORDER to write them in is a question about
+            // meaning: a socket stages its shapes by INDEX — shape 0 is the
+            // entry, shape 3 the deepest — so a socket whose entry shape
+            // moved furthest would open at full depth and close as the plug
+            // went in.
+            //
+            // Sorting once by movement answered the cost question and
+            // silently gave a wrong answer to the meaning one. Doing both,
+            // in that order, costs nothing and removes the hazard for good
+            // — including for a socket sharing its mesh with a plug, where
+            // one bake has to serve both ends and could not have been
+            // ordered two ways.
+            var chosen = scored
+                .OrderByDescending(x => x.moved)
+                .Take(MaxShapes)
+                .OrderBy(x => x.index);
 
             foreach (var (_, index) in chosen)
             {
