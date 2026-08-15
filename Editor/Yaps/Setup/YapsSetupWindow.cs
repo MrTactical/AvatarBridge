@@ -61,12 +61,19 @@ namespace AvatarBridge
             body.Add(BridgeElements.Hint("Any object in the scene. Scanning touches nothing — it " +
                 "only says what is there: DPS, TPS, SPS, or already YAPS."));
 
-            var buttons = BridgeElements.Row(
+            body.Add(BridgeElements.Row(
                 Button("Scan", Rescan),
                 Button("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole)),
                 Button("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring)),
-                Button("Create prefabs", YapsSocketBuilder.CreatePrefabs));
-            body.Add(buttons);
+                Button("Create prefabs", YapsSocketBuilder.CreatePrefabs)));
+            body.Add(BridgeElements.Row(
+                Button("Make selected a plug", MakePlug),
+                Button("Bake plugs", BakeAll),
+                Button("Test plug", () => { YapsNativeBuilder.BuildTestPlug(); Rescan(); })));
+            body.Add(BridgeElements.Hint(
+                "Make selected a plug puts a YAPS Plug on the selected mesh and bakes it — its own " +
+                "shader, patched. Test plug drops a ready-made one in front of the camera. Tick " +
+                "Preview on any socket and every plug bends toward it, here, before you upload."));
 
             _summary = new Label("Pick an object and scan.");
             _summary.AddToClassList("ab-hint");
@@ -113,30 +120,100 @@ namespace AvatarBridge
             _scan = YapsScanner.Scan(_target);
             _summary.text = _scan.Summary();
 
+            // One row per plug or socket, as an OBJECT: what it is, what
+            // reads it, and what it lacks. Green when it is already YAPS
+            // and complete, blue when it is another system's and whole,
+            // amber when something is missing.
             bool alt = false;
-            foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
+            void Row(YapsScanner.Found f)
             {
-                var colour = f.Origin == YapsLegacyMap.Origin.YAPS ? new Color(0.30f, 0.75f, 0.45f)
-                           : f.Notes.Count > 0 ? new Color(0.90f, 0.65f, 0.25f)
+                bool complete = f.Notes.Count == 0;
+                var colour = f.IsYapsAlready && complete ? new Color(0.30f, 0.75f, 0.45f)
+                           : !complete ? new Color(0.90f, 0.65f, 0.25f)
                            : new Color(0.45f, 0.65f, 0.95f);
-                string subject = (f.Kind == YapsScanner.Kind.Plug ? "Plug" : (f.IsHole ? "Hole" : "Ring"))
-                                 + (f.Root != null ? "  ·  " + f.Root.name : "");
+                string what = f.Kind == YapsScanner.Kind.Plug ? "Plug" : (f.IsHole ? "Hole" : "Ring");
+                string subject = $"{what}  ·  {f.Name}";
                 var detail = new List<string>();
-                if (f.StatedLength > 0) detail.Add($"{f.StatedLength:0.###} m");
-                if (f.Lights.Count > 0) detail.Add($"{f.Lights.Count} light(s)");
-                if (f.Pointers.Count > 0) detail.Add(string.Join(", ", f.Pointers.Select(p => p.type).Distinct()));
-                if (f.Material != null) detail.Add(f.Material.name);
+                if (f.Kind == YapsScanner.Kind.Plug && f.StatedLength > 0) detail.Add($"{f.StatedLength:0.###} m");
+                detail.Add((f.Kind == YapsScanner.Kind.Plug ? "seen by " : "readable by ") + f.ReadableList());
+                if (f.Kind == YapsScanner.Kind.Socket && f.HasAxis) detail.Add("has an axis");
+                if (f.Lights.Count > 0 || f.Pointers.Count > 0)
+                    detail.Add($"{f.Lights.Count} light{(f.Lights.Count == 1 ? "" : "s")}, {f.Pointers.Count} pointer{(f.Pointers.Count == 1 ? "" : "s")}");
+                if (f.Renderer != null && f.Kind == YapsScanner.Kind.Socket) detail.Add("shapes on " + f.Renderer.name);
                 detail.AddRange(f.Notes);
-                var row = BridgeElements.ReportRow(f.Origin.ToString(), subject,
-                    string.Join("  ·  ", detail), colour, alt);
+                string chip = f.IsYapsAlready ? "YAPS" : f.Origin.ToString();
+                var row = BridgeElements.ReportRow(chip, subject, string.Join("  ·  ", detail), colour, alt);
                 var captured = f;
                 row.RegisterCallback<ClickEvent>(_ =>
                 {
                     if (captured.Root != null) { Selection.activeTransform = captured.Root; EditorGUIUtility.PingObject(captured.Root); }
                 });
-                _results.Add(row);
+
+                // A socket authored here can PREVIEW: tick it and every plug
+                // in the scene bends toward it, in the editor.
+                var comp = f.Root != null ? f.Root.GetComponent<YapsSocket>() : null;
+                if (comp != null)
+                {
+                    var wrap = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
+                    row.style.flexGrow = 1;
+                    var toggle = new Toggle("Preview") { value = comp.preview };
+                    toggle.style.marginLeft = 6; toggle.style.marginRight = 6;
+                    toggle.RegisterValueChangedCallback(e =>
+                    {
+                        Undo.RecordObject(comp, "YAPS preview");
+                        comp.preview = e.newValue;
+                        EditorUtility.SetDirty(comp);
+                        SceneView.RepaintAll();
+                    });
+                    wrap.Add(row);
+                    wrap.Add(toggle);
+                    _results.Add(wrap);
+                }
+                else
+                {
+                    _results.Add(row);
+                }
                 alt = !alt;
             }
+            foreach (var f in _scan.Plugs) Row(f);
+            foreach (var f in _scan.Sockets) Row(f);
+        }
+
+        void MakePlug()
+        {
+            var go = Selection.activeGameObject;
+            var renderer = go != null ? go.GetComponent<Renderer>() : null;
+            if (renderer == null)
+            {
+                _summary.text = "Select the mesh that should bend — an object with a MeshRenderer or SkinnedMeshRenderer.";
+                return;
+            }
+            var plug = go.GetComponent<YapsPlug>();
+            if (plug == null)
+            {
+                plug = Undo.AddComponent<YapsPlug>(go);
+                plug.renderer = renderer;
+            }
+            var o = YapsNativeBuilder.Bake(plug);
+            _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
+            Rescan();
+        }
+
+        void BakeAll()
+        {
+            if (_target == null) { _summary.text = "Pick an object first."; return; }
+            var plugs = _target.GetComponentsInChildren<YapsPlug>(true);
+            if (plugs.Length == 0) { _summary.text = "No YAPS Plug components under it. Make selected a plug first."; return; }
+            int ok = 0; var lines = new List<string>();
+            foreach (var p in plugs)
+            {
+                var o = YapsNativeBuilder.Bake(p);
+                if (o.Ok) ok++;
+                lines.Add((o.Ok ? "✓ " : "✗ ") + o.Message);
+            }
+            _summary.text = $"Baked {ok} of {plugs.Length}. " + string.Join("  ", lines);
+            Rescan();
         }
 
         void AddSocket(YapsSocket.SocketKind kind)
