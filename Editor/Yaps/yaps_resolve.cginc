@@ -364,6 +364,21 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         {
             float channelGap = length(socket.position - plugOrigin);
             socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, channelGap);
+
+            // The remap doubles as the channel's own reality check, and it
+            // has to feed back into "found" or it silently makes things
+            // worse. A trigger reporting "in range" while its position axes
+            // still sit at their default puts the socket in the CORNER of
+            // the box, three plug lengths out, and engagement correctly
+            // collapses to zero — but the position it computed on the way
+            // there is what the light refinement below gets tested against.
+            // Left saying "found", a half-delivered channel therefore
+            // rejects the very light that would have rescued it, and the
+            // plug ignores a socket it can plainly see.
+            //
+            // Proximity arriving without position is not a resolved socket.
+            // Say nothing and let the other tiers answer.
+            found = socket.engaged > 0;
         }
 
         // Which way the socket FACES, from the second point it already

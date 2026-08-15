@@ -192,66 +192,34 @@ namespace AvatarBridge.Spike
             // Raycasts still hit triggers, so it stays grabbable.
             sphere.isTrigger = true;
             MakeGrabbable(root);
-            RegisterAsContactSender(root);
 
             return SaveAsPrefab(root, Dir + "/" + name + ".prefab");
         }
 
-        // A POINTER-ONLY PROP CANNOT DRIVE ANOTHER PROP'S CHANNEL, and this
-        // is the client's rule rather than ours. From TriggerToContact:
+        // A POINTER-ONLY SOCKET PROP IS FINE, and a note here because the
+        // opposite was written in this spot and acted on. PointerToContact
+        // .Create registers the spawnable itself:
         //
-        //     _ownerIdToSpawnable.TryAdd(contactReceiver.OwnerId, spawnable);
+        //     CVRSpawnable p = gameObject.GetComponentInParent<CVRSpawnable>(true);
+        //     if ((bool)p) TriggerToContact._ownerIdToSpawnable.TryAdd(ownerId, p);
         //
-        // which runs only inside Create — so only a prop carrying a TRIGGER
-        // is ever registered. The authority check then looks the SENDER up
-        // in that same dictionary:
+        // so a prop carrying only pointers IS in that dictionary and
+        // HasProbableAuthorityToApplySync grants it, for two props the same
+        // player spawned. A trigger was added here to "register" the socket
+        // and it registered nothing that was not already registered.
         //
-        //     if (_ownerIdToSpawnable.TryGetValue(sender.OwnerId, ...))
-        //         result = value.IsSyncedByMe();
-        //     else if (sender.OwnerId == ...AvatarDescriptor.GetHashCode())
-        //         result = true;
-        //     ... else return false;
+        // The whole client path was then read end to end and is permissive
+        // throughout: CVRPointer and CVRSpawnableTrigger are both on the
+        // SpawnableWhitelist, the receiver is built with allowSelf and
+        // allowOthers true and every content type, and tags only filter on
+        // advanced triggers. Nothing in the client stops a prop socket from
+        // driving a prop plug. When this channel is silent the cause is on
+        // OUR side of the wire — start at YapsPropVerify.
         //
-        // A socket prop with only pointers reaches none of those branches,
-        // so the plug's trigger fires, the client refuses the write, and the
-        // channel value never moves. That is why the contact-only sockets
-        // read pure black on the engagement view while the lit one reads
-        // white: the light path needs no authority at all, and an avatar
-        // sender is granted it outright, which is why Angela always worked.
-        //
-        // So every socket gets a trigger. It registers the prop, and a
-        // socket wants one anyway — this is the same value that feeds
-        // _YAPS_SocketDepth on a socket with shapes to open.
-        static void RegisterAsContactSender(GameObject root)
-        {
-            var spawnable = root.GetComponent<CVRSpawnable>();
-            spawnable.useAdditionalValues = true;
-            spawnable.syncValues.Add(new CVRSpawnableValue
-            {
-                name = "Depth",
-                startValue = 0f,
-                updatedBy = CVRSpawnableValue.UpdatedBy.None,
-                updateMethod = CVRSpawnableValue.UpdateMethod.Override,
-            });
-
-            var trigger = root.AddComponent<CVRSpawnableTrigger>();
-            trigger.areaSize = Vector3.one * 0.25f;
-            trigger.useAdvancedTrigger = true;
-            trigger.allowedTypes = PlugTypes;
-            trigger.stayTasks.Add(new CVRSpawnableTriggerTaskStay
-            {
-                settingIndex = 0,
-                updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromDistance,
-                minValue = 0f,
-                maxValue = 1f,
-            });
-            trigger.exitTasks.Add(new CVRSpawnableTriggerTask
-            {
-                settingIndex = 0,
-                settingValue = 0f,
-                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-            });
-        }
+        // A socket prop will want a trigger eventually, for the depth that
+        // feeds _YAPS_SocketDepth on a socket with shapes to open. It needs
+        // an Animator and a real parameter to land in, which the tube prop
+        // has and these rings do not, so it is not built here yet.
 
         // The TIP alone. A plug's root sits at its base, and a socket that
         // accepted it would measure from wherever the wearer's hips are.
