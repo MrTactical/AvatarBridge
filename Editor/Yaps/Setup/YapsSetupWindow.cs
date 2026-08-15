@@ -99,9 +99,6 @@ namespace AvatarBridge
             _picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
             _picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; Rescan(); });
             pick.Body.Add(_picker);
-            pick.Body.Add(BridgeElements.Hint(
-                "Any object in the scene. Scanning touches nothing — it only says what is there: " +
-                "DPS, TPS, SPS, or already YAPS."));
             _pages.Add(pick);
 
             // 2 — What it has, and what to add.
@@ -125,10 +122,6 @@ namespace AvatarBridge
             have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug));
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
-            have.Body.Add(BridgeElements.Hint(
-                "A hole closes around a plug; a ring lets it through. Every socket added here is " +
-                "readable by DPS, TPS and SPS plugs as well as YAPS ones. Making a mesh a plug " +
-                "measures its shaft, bakes it, and patches its own shader."));
             _pages.Add(have);
             Selection.selectionChanged -= RefreshSelection;
             Selection.selectionChanged += RefreshSelection;

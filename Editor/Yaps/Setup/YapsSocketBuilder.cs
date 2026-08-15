@@ -27,6 +27,7 @@
 // The generated children are NAMED so a rebuild replaces rather than
 // stacks, and so a scan recognises its own work.
 #if CVR_CCK_EXISTS
+using System.Linq;
 using ABI.CCK.Components;
 using AvatarBridge.Yaps;
 using UnityEditor;
@@ -105,23 +106,61 @@ namespace AvatarBridge
         {
             if (socket == null) return;
             var t = socket.transform;
+            bool hole = socket.kind == YapsSocket.SocketKind.Hole;
+
+            // What is ALREADY announced beneath this socket, outside the
+            // toolkit's own folders. A converted socket keeps VRCFury's
+            // WorldSpace/Lights and WorldSpace/Senders — the same markers
+            // under other names — and building a second set beside them
+            // would double every pointer, with a socket trigger then
+            // reporting whichever entered last. So the toolkit adds only
+            // what is missing, and its own folders are the only things it
+            // ever replaces.
+            bool hasRootLight = false, hasFrontLight = false;
+            var havePointers = new System.Collections.Generic.HashSet<string>();
+            foreach (var l in t.GetComponentsInChildren<Light>(true))
+            {
+                if (l.transform.IsChildOf(t) && Owned(l.transform, t)) continue;
+                if (!YapsScanner.IsProtocolLight(l)) continue;
+                int d = YapsScanner.LightDigit(l);
+                if (d >= 1 && d <= 4) hasRootLight = true;
+                if (d == 5 || d == 6) hasFrontLight = true;
+            }
+            foreach (var p in t.GetComponentsInChildren<CVRPointer>(true))
+            {
+                if (p == null || string.IsNullOrEmpty(p.type) || Owned(p.transform, t)) continue;
+                havePointers.Add(p.type);
+            }
 
             Replace(t, LightsName, lights =>
             {
                 if (!socket.emitLights) return;
-                bool hole = socket.kind == YapsSocket.SocketKind.Hole;
-                MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
-                MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
+                if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
+                if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
             });
 
             Replace(t, PointersName, pointers =>
             {
-                bool hole = socket.kind == YapsSocket.SocketKind.Hole;
-                Pointer(pointers, "SPS Root", hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Ring", Vector3.zero);
-                Pointer(pointers, "SPS Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
-                Pointer(pointers, "TPS Root", "TPS_Orf_Root", Vector3.zero);
-                Pointer(pointers, "TPS Norm", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
+                string spsRoot = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Ring";
+                bool anySpsRoot = havePointers.Any(k => k.StartsWith("SPSLL_Socket_Root") || k.StartsWith("SPSLL_Socket_Hole") || k.StartsWith("SPSLL_Socket_Ring"));
+                if (!anySpsRoot) Pointer(pointers, "SPS Root", spsRoot, Vector3.zero);
+                if (!havePointers.Any(k => k.StartsWith("SPSLL_Socket_Front"))) Pointer(pointers, "SPS Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
+                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Root"))) Pointer(pointers, "TPS Root", "TPS_Orf_Root", Vector3.zero);
+                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Norm"))) Pointer(pointers, "TPS Norm", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
             });
+        }
+
+        // Is this marker inside one of the toolkit's own folders under the
+        // socket? Those are replaced wholesale; anything else is somebody
+        // else's (the converter's, VRCFury's, the author's) and is counted
+        // as already present.
+        static bool Owned(Transform marker, Transform socket)
+        {
+            for (var at = marker; at != null && at != socket; at = at.parent)
+            {
+                if (at.parent == socket && (at.name == LightsName || at.name == PointersName)) return true;
+            }
+            return false;
         }
 
         static void Replace(Transform parent, string name, System.Action<Transform> fill)

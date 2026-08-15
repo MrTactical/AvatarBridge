@@ -6,7 +6,8 @@
 // lands under a bone you SEE it, and the shape rows offer the avatar's own
 // blendshapes from a dropdown instead of a name to type.
 //
-// The gizmos are drawn at a FIXED world size, about a real socket's, with
+// The gizmos are drawn at a FIXED world size — about 5 cm, twice a real
+// socket, so they hold their own beside the CCK's icons — with
 // enough line weight to read and nothing extra. A first version scaled
 // them with the camera distance so they stayed a fixed size on screen,
 // and that swam disorientingly as you moved. Fixed, they sit still and
@@ -118,7 +119,7 @@ namespace AvatarBridge
             var socket = (YapsSocket) target;
             var avatarRoot = AvatarRootOf(socket.transform);
             bool hole = _kind.enumValueIndex == (int) YapsSocket.SocketKind.Hole;
-            bool built = socket.transform.Find("YAPS Lights") != null || socket.transform.Find("YAPS Pointers") != null;
+            bool built = IsBuilt(socket.transform);
             var tint = !built ? YapsInspectorStyle.BadColour : hole ? YapsInspectorStyle.HoleColour : YapsInspectorStyle.RingColour;
 
             YapsInspectorStyle.Header(
@@ -387,6 +388,27 @@ namespace AvatarBridge
             return renderers.OrderByDescending(r => r.sharedMesh.blendShapeCount).FirstOrDefault();
         }
 
+        // Built means a plug can FIND it: a root marker light or a root
+        // pointer somewhere beneath. Not "has the folder the toolkit makes"
+        // — a converted socket keeps VRCFury's WorldSpace/Lights and
+        // WorldSpace/Senders and is every bit as built, and twelve of
+        // Angela's read "not built" while working perfectly.
+        internal static bool IsBuilt(Transform socket)
+        {
+            foreach (var l in socket.GetComponentsInChildren<Light>(true))
+            {
+                if (!YapsScanner.IsProtocolLight(l)) continue;
+                int d = YapsScanner.LightDigit(l);
+                if (d >= 1 && d <= 6) return true;
+            }
+            foreach (var p in socket.GetComponentsInChildren<ABI.CCK.Components.CVRPointer>(true))
+            {
+                if (p == null || string.IsNullOrEmpty(p.type)) continue;
+                if (p.type.StartsWith("SPSLL_Socket_") || p.type.StartsWith("TPS_Orf_")) return true;
+            }
+            return false;
+        }
+
         internal static Transform AvatarRootOf(Transform t)
         {
             Transform top = t;
@@ -403,7 +425,7 @@ namespace AvatarBridge
         {
             bool selected = (type & GizmoType.Selected) != 0;
             var t = socket.transform;
-            bool built = t.Find("YAPS Lights") != null || t.Find("YAPS Pointers") != null;
+            bool built = IsBuilt(t);
             bool hole = socket.kind == YapsSocket.SocketKind.Hole;
             var colour = !built ? YapsInspectorStyle.BadColour : hole ? YapsInspectorStyle.HoleColour : YapsInspectorStyle.RingColour;
             colour.a = selected ? 1f : 0.7f;
@@ -417,8 +439,8 @@ namespace AvatarBridge
             // the CCK's own icons on the markers beneath. Follows the
             // avatar's scale so a shrunk avatar's sockets shrink with it.
             float scale = Mathf.Max(0.05f, (t.lossyScale.x + t.lossyScale.y + t.lossyScale.z) / 3f);
-            float r = 0.025f * scale;
-            float thick = selected ? 3f : 2f;
+            float r = 0.05f * scale;
+            float thick = selected ? 4f : 3f;
 
             Handles.color = colour;
             Handles.DrawWireDisc(c, f, r, thick);
@@ -524,7 +546,7 @@ namespace AvatarBridge
             // frame), else the plug object.
             var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
             Vector3 b = frame.position, f = frame.forward;
-            float thick = selected ? 3f : 2f;
+            float thick = selected ? 4f : 3f;
             float scale = Mathf.Max(0.05f, (frame.lossyScale.x + frame.lossyScale.y + frame.lossyScale.z) / 3f);
 
             if (length <= 0f)
@@ -537,7 +559,7 @@ namespace AvatarBridge
             Vector3 tip = b + f * length * scale;
             // True length along the axis, a ring at the base at a typical
             // radius, a small arrow at the tip. Fixed world size.
-            float r = 0.02f * scale;
+            float r = 0.035f * scale;
             Handles.DrawLine(b, tip, thick);
             Handles.DrawWireDisc(b, f, r, thick);
             Handles.ConeHandleCap(0, tip, Quaternion.LookRotation(f), r * 1.2f, EventType.Repaint);

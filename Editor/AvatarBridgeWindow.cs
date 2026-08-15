@@ -717,22 +717,22 @@ namespace AvatarBridge
                     "them. Removing GoGo remains the recommended path."));
             }
             b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
-                "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
+                "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR. " +
+                "What happens to the penetration itself is the next option.",
                 settings.stripSpsSystems, v => settings.stripSpsSystems = v));
-            b.Add(BridgeElements.Bind("Convert SPS to YAPS instead of removing it",
-                "Keeps the penetration system and rebuilds it for ChilloutVR, rather than stripping " +
-                "it out. The mesh deform is written from scratch — no VRChat code is shipped — so it " +
-                "behaves like SPS without being SPS, and it is called YAPS to keep that honest. " +
-                "It reads and is read by everything already on the platform: your plug finds DPS, " +
-                "TPS and SPS sockets, and their plugs find your sockets, through the contacts and " +
-                "the marker lights those systems already use. Nothing here ever aims at a person " +
-                "who carries neither — a plug only bends toward a socket. It does nothing at all " +
-                "unless \"Remove SPS / OGB / PCS / Wholesome\" is also ticked.",
+            b.Add(BridgeElements.Bind("Convert DPS, TPS and SPS to YAPS (recommended)",
+                "Keeps the avatar's penetration and rebuilds it for ChilloutVR — plugs bend, sockets " +
+                "open, and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries " +
+                "across. YAPS is written from scratch, no VRChat code shipped, and it reads and is " +
+                "read by everything already on the platform: your plug finds DPS, TPS and SPS sockets, " +
+                "and their plugs find your sockets. Nothing here ever aims at a person who carries " +
+                "neither — a plug only bends toward a socket. Untick to remove the penetration system " +
+                "outright. Needs the option above ticked too, since that is what clears the VRChat " +
+                "transports YAPS replaces.",
                 settings.convertYapsSystems, v => settings.convertYapsSystems = v));
             b.Add(BridgeElements.Hint(
-                "Already on ChilloutVR and want to add, tune or upgrade penetration on an avatar or " +
-                "prop that never came from VRChat? That is the YAPS tool — Tools ▸ YAPS ▸ Setup. Same " +
-                "system, same shader; this converts, that builds."));
+                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
+                "avatar or prop — same system, same shader. This converts; that builds."));
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have — the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +

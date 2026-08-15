@@ -545,8 +545,11 @@ namespace AvatarBridge.Regression
         }
 
         // Set AVATARBRIDGE_YAPS=1 to convert with the penetration system
-        // on. Off is what the main corpus measures, because that is what
-        // every existing user gets.
+        // on — the DEFAULT since 2026-08-15, so Regression/Yaps is what a
+        // user gets. Unset measures the opt-out (convertYapsSystems false),
+        // which still has to hold: it is one tick away for anyone. The
+        // folder names predate the flip and stay, so both accepted
+        // baselines remain valid.
         static bool YapsMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_YAPS") == "1";
 

@@ -131,11 +131,11 @@ namespace AvatarBridge
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
-        // Convert SPS into YAPS instead of stripping it. Off: the
-        // deform is a reimplementation, not a port, and an avatar
-        // carrying it needs testing with a second person before
-        // anyone should count on it.
-        public bool convertYapsSystems = false;
+        // Convert DPS, TPS and SPS into YAPS instead of stripping them.
+        // ON by default since 2026-08-15: every tier proven in game, both
+        // directions of legacy interop, on avatars and props. Off is now
+        // the choice for someone who wants the penetration system gone.
+        public bool convertYapsSystems = true;
         // Encode socket markers the way ChilloutVR's existing DPS
         // content does, so its plugs can see them. Off, they use our
         // own ordering, which wins the light slots cleanly but is
