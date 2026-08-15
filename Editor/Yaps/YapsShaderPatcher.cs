@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "9";
+        const string Revision = "10";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -78,8 +78,21 @@ namespace AvatarBridge
         _YAPS_BulgeDistance (""YAPS bulge reach"", Range(0.01,1)) = 0.2
         _YAPS_PumpStrength (""YAPS pumping"", Range(0,0.5)) = 0
         _YAPS_PumpSpeed (""YAPS pumping speed"", Range(0,20)) = 6
+        _YAPS_PumpWidth (""YAPS pumping width"", Range(0.05,1)) = 1
         _YAPS_WriggleStrength (""YAPS wriggle"", Range(0,0.5)) = 0
         _YAPS_WriggleSpeed (""YAPS wriggle speed"", Range(0,20)) = 2
+        [Header(YAPS shape at rest)]
+        _YAPS_Curvature (""YAPS curvature"", Range(-1.5,1.5)) = 0
+        _YAPS_ReCurvature (""YAPS recurvature"", Range(-1.5,1.5)) = 0
+        _YAPS_EntranceStiffness (""YAPS entrance stiffness"", Range(0,1)) = 0
+        [Header(YAPS curve)]
+        _YAPS_BezierSmoothness (""YAPS bezier smoothness"", Range(0.2,3)) = 1
+        _YAPS_BezierStart (""YAPS straight before bend"", Range(0,0.8)) = 0
+        _YAPS_SmoothStart (""YAPS ease into bend"", Range(0,0.5)) = 0
+        _YAPS_MinimumSocketDistance (""YAPS minimum socket distance"", Range(0,1)) = 0
+        [Header(YAPS tags)]
+        _YAPS_TagInclude (""YAPS only sockets tagged"", Float) = 0
+        _YAPS_TagExclude (""YAPS never sockets tagged"", Float) = 0
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)

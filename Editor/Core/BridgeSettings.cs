@@ -148,6 +148,14 @@ namespace AvatarBridge
         // four fronts with no roots. Neither is a socket. Holes are
         // kept first, then rings.
         public int maxLightEmittingSockets = 2;
+        // How fast a converted plug follows a socket the CONTACT channel
+        // reports, as the most the smoothed value may move per frame.
+        // Lower is a heavier plug that lags a thrust — TPS calls the same
+        // idea buffered depth. Only the channel is buffered: marker lights
+        // and legacy content have no smoothing stage to lag in, and a DPS
+        // plug never had one either. 0.05 is the constant it always was.
+        [Range(0.01f, 0.5f)]
+        public float yapsSocketFollow = 0.05f;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

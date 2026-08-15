@@ -54,6 +54,16 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_PumpSpeed ("Pumping speed", Range(0,20)) = 6
         _YAPS_WriggleStrength ("Wriggle", Range(0,0.5)) = 0
         _YAPS_WriggleSpeed ("Wriggle speed", Range(0,20)) = 2
+        _YAPS_PumpWidth ("Pumping width", Range(0.05,1)) = 1
+        _YAPS_Curvature ("Curvature", Range(-1.5,1.5)) = 0
+        _YAPS_ReCurvature ("Recurvature", Range(-1.5,1.5)) = 0
+        _YAPS_EntranceStiffness ("Entrance stiffness", Range(0,1)) = 0
+        _YAPS_BezierSmoothness ("Bezier smoothness", Range(0.2,3)) = 1
+        _YAPS_BezierStart ("Straight before bend", Range(0,0.8)) = 0
+        _YAPS_SmoothStart ("Ease into bend", Range(0,0.5)) = 0
+        _YAPS_MinimumSocketDistance ("Minimum socket distance", Range(0,1)) = 0
+        _YAPS_TagInclude ("Only sockets tagged", Float) = 0
+        _YAPS_TagExclude ("Never sockets tagged", Float) = 0
         _YAPS_ShapeCount ("Shape count", Float) = 0
         _YAPS_ShapeWeights ("Shape weights 0-3", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 ("Shape weights 4-7", Vector) = (0,0,0,0)

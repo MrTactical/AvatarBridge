@@ -481,6 +481,19 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 toSocket = socketWorld - rootWorld;
     float gap = length(toSocket);
 
+    // MINIMUM SOCKET DISTANCE, from TPS. A socket pushed right up against
+    // the root, or past it, asks the curve to reach a point behind where
+    // the shaft begins, and the bezier answers with a hairpin. Hold the
+    // socket off at a floor instead: the plug then presses against it,
+    // which is what the bodies are doing anyway.
+    float minimumGap = max(_YAPS_MinimumSocketDistance, 0) * worldLength;
+    if (gap < minimumGap && gap > 1e-5)
+    {
+        socketWorld = rootWorld + toSocket * (minimumGap / gap);
+        toSocket = socketWorld - rootWorld;
+        gap = minimumGap;
+    }
+
     // A resolved socket may arrive without an axis — the globals have no
     // rotation at all, and a root light can turn up without its front.
     // Aiming along the approach is the honest fallback: it produces a
@@ -520,6 +533,39 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     baked.position.z *= lerp(1, max(_YAPS_IdleLength, 0.01), idle);
     baked.position.xy *= lerp(1, max(_YAPS_IdleWidth, 0.01), idle);
 
+    // CURVATURE and RECURVATURE, from DPS. A plug at rest is not a straight
+    // rod, and DPS lets an author say so: a bend along the whole length,
+    // and a second bend of the opposite sign near the tip, so a shaft can
+    // sweep up and then hook.
+    //
+    // Done as a rotation of the baked position about the plug's x axis by
+    // an angle that grows along the shaft — a bend, not a shear, so the
+    // shaft keeps its length and its normals turn with it. The total turn
+    // at the tip is the knob, in radians, so a big plug and a small one
+    // curve the same fraction of themselves. Recurvature uses the square
+    // of the fraction so it stays out of the base and gathers at the tip.
+    //
+    // Applied to the baked position BEFORE the walk, so the curve carries
+    // a shaft that already has its resting shape — exactly as it carries
+    // one with a girth slider on. That is why this composes with
+    // everything after it instead of fighting it.
+    if (abs(_YAPS_Curvature) > 1e-4 || abs(_YAPS_ReCurvature) > 1e-4)
+    {
+        float t = saturate(baked.position.z / max(worldLength, 0.0001));
+        float turn = _YAPS_Curvature * t - _YAPS_ReCurvature * t * t;
+        float s, c;
+        sincos(turn, s, c);
+        // Rotate in the y/z plane; x is the bend axis. Position and the
+        // two directions turn together or the lighting lies about the
+        // shape.
+        float2 yz = baked.position.yz;
+        baked.position.yz = float2(yz.x * c - yz.y * s, yz.x * s + yz.y * c);
+        float2 nyz = baked.normal.yz;
+        baked.normal.yz = float2(nyz.x * c - nyz.y * s, nyz.x * s + nyz.y * c);
+        float2 tyz = baked.tangent.yz;
+        baked.tangent.yz = float2(tyz.x * c - tyz.y * s, tyz.x * s + tyz.y * c);
+    }
+
     // PUMPING and WRIGGLE, from TPS and DPS. Motion the plug makes on its
     // own, so it is not a rigid prop between events.
     //
@@ -536,7 +582,15 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     if (_YAPS_PumpStrength > 0)
     {
         float t = _Time.y * max(_YAPS_PumpSpeed, 0);
-        baked.position.z += sin(t) * _YAPS_PumpStrength * worldLength * along * engage;
+        // How much of the shaft takes part. Width 1 moves the whole shaft
+        // as one stroke (still zero at the very base, so it stays welded);
+        // small widths hold the base still and throw only the tip. Raising
+        // `along` to a power is the cheap way to shape that: width 1 is
+        // linear, width 0.25 is quartic and tip-heavy. TPS has this as its
+        // own knob; ours was fixed at linear.
+        float width = clamp(_YAPS_PumpWidth, 0.05, 1);
+        float share = pow(along, 1 / width);
+        baked.position.z += sin(t) * _YAPS_PumpStrength * worldLength * share * engage;
     }
 
     if (_YAPS_WriggleStrength > 0)
@@ -557,16 +611,72 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // and the plug ends up following the opening arc of that loop, which
     // points nowhere near the socket. Measured on a 0.6 m plug at partial
     // engagement: a 1.8 m curve, and a shaft aimed off into space.
-    float approachHandle = gap * 0.5;
+    // BEZIER SMOOTHNESS, from TPS. Scales both handles: below 1 the curve
+    // turns sharper and arrives more directly, above 1 it sweeps a wider
+    // arc. 1 is the law the deform has always used.
+    float smoothness = max(_YAPS_BezierSmoothness, 0.05);
+    float approachHandle = gap * 0.5 * smoothness;
     float rootHandle = lerp(worldLength * 5, approachHandle, engage);
+
+    // ENTRANCE STIFFNESS, from DPS. The base resists the bend: the root
+    // handle is held longer along the plug's own forward, so the first
+    // part of the shaft stays put and only the far part turns toward the
+    // socket. 0 is the shaft bending evenly from the root, as it always
+    // has; 1 holds a full plug length of the base rigid before the curve
+    // is allowed to begin.
+    rootHandle = max(rootHandle, saturate(_YAPS_EntranceStiffness) * worldLength * engage);
 
     float3 p0 = rootWorld;
     float3 p1 = rootWorld + rootForward * rootHandle;
     float3 p2 = socketWorld - socketForward * approachHandle;
     float3 p3 = socketWorld;
 
+    // BEZIER START and SMOOTH START, from TPS. The first fraction of the
+    // shaft is held perfectly straight before any bend begins; SmoothStart
+    // eases the join between that straight part and the curve rather than
+    // letting it kink. Done by moving the curve's START along the plug's
+    // forward by the straight length, and asking the walk for the vertex's
+    // distance PAST that start. A vertex inside the straight part is not
+    // walked at all — it stays on the plug's own forward, which is exactly
+    // "straight".
+    float straight = saturate(_YAPS_BezierStart) * worldLength;
+    float ease = max(_YAPS_SmoothStart, 0) * worldLength;
+    float zAlong = max(baked.position.z, 0);
     float leftOver;
-    YapsFrame frame = YapsWalk(p0, p1, p2, p3, max(baked.position.z, 0), rootUp, leftOver);
+    YapsFrame frame;
+    if (straight > 1e-5)
+    {
+        float3 startWorld = rootWorld + rootForward * straight;
+        float3 sp1 = startWorld + rootForward * max(rootHandle - straight, worldLength * 0.1);
+        if (zAlong <= straight)
+        {
+            // In the straight part. On the plug's own axis, no walk.
+            frame.position = rootWorld + rootForward * zAlong;
+            frame.forward = rootForward;
+            frame.up = rootUp;
+            leftOver = 0;
+        }
+        else
+        {
+            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, leftOver);
+            // The join: blend the walked frame back toward the straight
+            // frame over the ease length past the start, so the shaft
+            // bends into the curve instead of breaking at one point.
+            if (ease > 1e-5)
+            {
+                float k = saturate((zAlong - straight) / ease);
+                k = k * k * (3 - 2 * k);
+                float3 straightPos = rootWorld + rootForward * zAlong;
+                frame.position = lerp(straightPos, frame.position, k);
+                frame.forward = YapsSafeNormalize(lerp(rootForward, frame.forward, k), rootForward);
+                frame.up = YapsPerpendicular(frame.forward, lerp(rootUp, frame.up, k));
+            }
+        }
+    }
+    else
+    {
+        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, leftOver);
+    }
 
     // Past the end of the curve. A hole swallows the remainder and tapers
     // the tip to a point; a ring lets it carry straight on through.

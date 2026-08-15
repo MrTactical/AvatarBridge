@@ -471,7 +471,16 @@ namespace AvatarBridge
                     // they come out 0, and a direct tree whose every weight
                     // is zero produces nothing at all — the layer runs, reads
                     // its input, and writes a value that never moves.
-                    Declare(ctx, mine, parameter.type, parameter.defaultFloat);
+                    //
+                    // StepSize is also the one honest place for TPS's
+                    // "buffered depth": how far behind a socket the plug is
+                    // allowed to be. A vertex shader has no memory between
+                    // frames, so a lag cannot live there; it lives here, as
+                    // the setting the user calls socket follow.
+                    float value = parameter.name.EndsWith("StepSize", System.StringComparison.Ordinal)
+                        ? ctx.Settings.yapsSocketFollow
+                        : parameter.defaultFloat;
+                    Declare(ctx, mine, parameter.type, value);
                     renames[parameter.name] = mine;
                 }
                 // The clips are what actually WRITE these parameters: they

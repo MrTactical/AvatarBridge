@@ -322,6 +322,23 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // Engagement and flags: the discrete channel, always, alone.
     socket.engaged = saturate(_YAPS_SocketFlags.x);
     socket.isHole = _YAPS_SocketFlags.y;
+
+    // TAG FILTER, from SPS. The channel may carry the socket's tag as a
+    // small integer in the flags' z. A plug that refuses that tag, or
+    // requires a different one, ignores the socket outright — engagement
+    // goes to zero and the light refinement below has nothing to sharpen.
+    // Zero on either knob means no filter; a socket carrying no tag (0)
+    // is only ever refused by a REQUIRE, never by an exclude, since there
+    // is nothing to match against. Marker lights carry no tag and cannot
+    // be filtered, which is why this sits on the channel's answer alone.
+    float socketTag = round(_YAPS_SocketFlags.z);
+    float wantTag = round(_YAPS_TagInclude);
+    float banTag = round(_YAPS_TagExclude);
+    if ((banTag > 0.5 && socketTag > 0.5 && abs(socketTag - banTag) < 0.5)
+        || (wantTag > 0.5 && abs(socketTag - wantTag) > 0.5))
+    {
+        socket.engaged = 0;
+    }
     socket.position = _YAPS_SocketPos.xyz;
     socket.forward = _YAPS_SocketForward.xyz;
     socket.up = _YAPS_SocketUp.xyz;

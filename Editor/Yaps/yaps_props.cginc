@@ -121,8 +121,75 @@ float _YAPS_BulgeDistance;
 // only while idle, so the two can never fight.
 float _YAPS_PumpStrength;
 float _YAPS_PumpSpeed;
+// How much of the shaft pumps: 1 is the whole length in one stroke, small
+// values keep the base still and throw the tip. TPS has this as its own
+// knob; ours was fixed at the tip-heavy end.
+float _YAPS_PumpWidth;
 float _YAPS_WriggleStrength;
 float _YAPS_WriggleSpeed;
+
+// --- shape at rest, from DPS ------------------------------------------
+//
+// A plug is not a straight rod. DPS gives it a resting bend and a curl at
+// the tip, and lets the base resist bending toward a socket. All three
+// are applied to the BAKED position before the curve walk, so the walk
+// carries a shaft that already has a shape, exactly as it would carry one
+// with a girth slider on.
+//
+// Curvature bends the whole shaft up (+) or down (-) along its length,
+// most at the tip. ReCurvature adds a second bend of the opposite sign
+// concentrated near the tip, so a plug can sweep up and then hook. Both
+// are radians of total turn at the tip, so a big plug and a small one
+// curve the same fraction of themselves.
+float _YAPS_Curvature;
+float _YAPS_ReCurvature;
+// How much the BASE resists the bend toward a socket. 0 is the shaft
+// bending evenly from the root, as it does now; 1 holds the first part of
+// the shaft on the plug's own forward and lets only the far part turn.
+// Reads as a plug that is stiff where it joins the body.
+float _YAPS_EntranceStiffness;
+
+// --- the curve's shape, from TPS ---------------------------------------
+//
+// The bezier's handles decide how the shaft arrives. The defaults are the
+// law the deform has always used; these move it.
+//
+// BezierSmoothness scales BOTH handles: below 1 the curve turns sharper
+// and arrives more directly, above 1 it sweeps in a wider arc. Two dials
+// TPS also has: BezierStart holds the first fraction of the shaft
+// straight before any bend starts, and SmoothStart eases the transition
+// from that straight part into the curve rather than kinking at it.
+float _YAPS_BezierSmoothness;
+float _YAPS_BezierStart;
+float _YAPS_SmoothStart;
+// A socket nearer than this (fraction of plug length) is treated as if it
+// were this far away, so a plug pushed hard against a socket does not
+// fold into a hairpin trying to reach a point behind its own root.
+float _YAPS_MinimumSocketDistance;
+//
+// TPS's BUFFERED DEPTH — the deform following the socket with a lag, so a
+// thrust has weight — is deliberately NOT a uniform here. A vertex shader
+// has no memory between frames, so a lag cannot live in it honestly. It
+// already exists in the right place: the channel's smoothing layer moves
+// the received value at most StepSize per frame, and that step is the
+// buffer. The converter exposes it as "socket follow" and writes it into
+// the layer's constant. Lights and legacy content have no channel and no
+// lag, which is also honest — a DPS plug never had one either.
+
+// --- which sockets this plug will answer, from SPS ---------------------
+//
+// SPS lets a plug name up to four tags it insists on and four it refuses.
+// Here it is two: one tag to require, one to refuse, each carried as a
+// small integer the converter hashes from the tag string, and the channel
+// carries the socket's own tag the same way (_YAPS_SocketFlags.z). A
+// socket whose tag is refused is ignored; if a required tag is set, only
+// sockets carrying it are answered. Zero means "no filter" on both.
+//
+// Marker lights carry no tag, so a light-only socket cannot be filtered
+// and is always answered — the filter only bites where the channel
+// speaks, which is where a tag exists to compare.
+float _YAPS_TagInclude;
+float _YAPS_TagExclude;
 
 // --- blendshapes -----------------------------------------------------
 //
