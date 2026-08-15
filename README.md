@@ -51,6 +51,7 @@ sit along it — because that's the trip your avatar is making.</em></p>
 [Parameter types](#parameter-types) ·
 [Face tracking](#face-tracking) ·
 [Store description](#store-description) ·
+[Toolkit](#chilloutvr-toolkit) ·
 [Setup mode](#setup-mode) ·
 [Known limitations](#known-limitations) ·
 [Troubleshooting](#troubleshooting) ·
@@ -176,6 +177,10 @@ actually running.
   with its renderer.
 - **Your avatar writes its own store listing** — counted from what was actually built, sized to
   ChilloutVR's 256-character box, and typed straight into the upload page.
+- **A [Toolkit](#chilloutvr-toolkit) for any ChilloutVR avatar** — the converter's passes as
+  standalone cards: check what the game will break, patch stereo shaders, wire visemes and
+  blink, clamp audio, fix mesh bounds, add the height slider, write the description, and merge
+  animators.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
 humanoid for ChilloutVR.)*
@@ -703,13 +708,31 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
 1. **Pick your avatar or prop.** Drag it into the box.
 2. **What it has, and what to add.** One row per plug or socket the scan found — which systems can
    read it, whether it has an axis, what it lacks. **customise** takes you to its inspector;
-   **preview** bends a plug toward it in the scene view. Beneath: **Add a hole**, **Add a ring**
-   (under the bone you have selected in the Hierarchy, or in a `YAPS/` folder on the avatar) and
-   **Make selected mesh a plug**. A line under the buttons says what the Hierarchy selection is,
-   and a box above says what to do next.
+   **preview** bends a plug toward it in the scene view; a DPS, TPS or SPS row offers **upgrade to
+   YAPS**. Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
+   Hierarchy, or in a `YAPS/` folder on the avatar) and **Make selected mesh a plug** — or, with a
+   *bone* selected, **Make a plug from bone**, which bakes the skinned mesh that bone drives from
+   that bone down, on the material slot weighted to it. A line under the buttons says what the
+   Hierarchy selection is, and a box above says what to do next.
 3. **Build.** Bakes every plug — measuring the mesh, patching the material's own shader, writing
    the knobs, announcing it to every socket family — and rebuilds each socket's markers. Safe to
-   run again; it edits, not stacks.
+   run again; it edits, not stacks. On an avatar with DPS, TPS or SPS on it, Build is the upgrade.
+
+**Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
+becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
+A plug is baked with the author's values carried onto the YAPS knobs and the old deform switched
+off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enabled` off), a DPS plug
+moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug's **Root Bone** on a
+skinned mesh before you Build. TPS is written from its documented properties and untested here —
+Thry's system is no longer obtainable — so treat a TPS upgrade as something to look at in game.
+
+**Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
+and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup with *Disallow
+Theft* on (a channel value is written by whoever's socket the prop met, and that write would hand
+the prop to them), a collider to grab by sized from the bake, and — for a baked plug — the synced
+contact channel: eight values, one trigger each, that reach every viewer, not just the ones whose
+client draws the marker lights. **Verify prop** before each upload; the CCK's own inspector can
+blank a channel value's parameter name if the Spawnable is left open, and Verify puts it back.
 
 **Universal socket prefabs** — *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
 and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z the way a plug
@@ -746,14 +769,12 @@ window hides those while you place sockets and puts back exactly what it found. 
 preference; nothing on the avatar changes.
 
 **Test props** (the window's second tab) — a test plug and a test hole or ring, dropped in front
-of the scene camera; select the socket and click Preview. To try them in ChilloutVR, put each on
-its own CVR Spawnable and upload them as props: a prop needs a collider to be grabbable, and
-**Disallow Theft** on the plug so a socket switching on cannot pull it out of someone's hand.
+of the scene camera; select the socket and click Preview. **Make the selected test object a prop**
+does the rest; upload each from the CCK and try them with a second person.
 
-**What the tool does not do yet, and says so:** upgrade a DPS/TPS/SPS setup in place on an avatar
-that never went through the converter (for now, if it came from VRChat, the converter is the
-route); build a plug on a skinned mesh's bone chain (*Make this a plug* is for static meshes and
-props today); the synced contact channel between props.
+**What the tool does not do yet, and says so:** the synced contact channel on an *avatar's own*
+controller for a plug built with the tool (a converted avatar has one; a native plug reads
+sockets by their marker lights until then).
 
 ### Testing it
 
@@ -913,6 +934,27 @@ written) and **Copy description**. Either way it's saved as `Description.txt` be
 mentioned if the component is really there. This goes into a public listing under your name, so a
 line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-character box with
 ~90 left free for your own words: it's meant to be the footer of your description, not all of it.
+
+## ChilloutVR Toolkit
+
+*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit.* The converter's own passes, one card each, run on
+**any** ChilloutVR avatar or prop — VRChat history or not, YAPS or not. Pick the object, press the
+button, read the rows. Same look, same report style, same code as the converter, so nothing here
+can drift from what a conversion does.
+
+| card | does |
+|---|---|
+| **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, cloth with no root bones |
+| **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them — see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye) |
+| **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. Touches nothing else on it |
+| **Audio limits** | Clamps every audio source to settings ChilloutVR handles — doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
+| **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
+| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the root's animator controller and advanced settings. This one edits the controller asset the avatar uses |
+| **Store description** | Writes the [description](#store-description) from what the avatar has and types it into the upload page when that window is open |
+| **Merge animators** | Any sources into a target: every layer and parameter deep-copied, layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. Written to a copy beside the target by default; sources are never edited |
+
+The Toolkit sits in the same package as the converter and YAPS and links to both; it lives in its
+own window because a general utility should not require opening a penetration tool.
 
 ## Setup mode
 
