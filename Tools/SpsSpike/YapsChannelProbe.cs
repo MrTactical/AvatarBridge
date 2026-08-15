@@ -78,7 +78,12 @@ namespace AvatarBridge.Spike
                 return;
             }
 
-            var material = _renderer.material;
+            // sharedMaterial, NEVER .material. Touching .material
+            // instantiates a copy, so the probe would be creating the very
+            // divergence it then reports — and once instantiated,
+            // sharedMaterial returns the instance too, which makes the
+            // comparison between them meaningless rather than merely wrong.
+            var material = _renderer.sharedMaterial;
             _length = material.HasProperty("_YAPS_Length") ? material.GetFloat("_YAPS_Length") : 0f;
             _extent = material.HasProperty("_YAPS_ChannelExtents")
                 ? material.GetVector("_YAPS_ChannelExtents").x : 0f;
@@ -154,18 +159,17 @@ namespace AvatarBridge.Spike
 
         static void Report()
         {
-            var instance = _renderer.material;
             var shared = _renderer.sharedMaterial;
 
-            Vector4 flags = instance.GetVector("_YAPS_SocketFlags");
-            Vector4 read = instance.GetVector("_YAPS_SocketPos");
-            Vector4 readFront = instance.GetVector("_YAPS_SocketFront");
+            Vector4 flags = shared.GetVector("_YAPS_SocketFlags");
+            Vector4 read = shared.GetVector("_YAPS_SocketPos");
+            Vector4 readFront = shared.GetVector("_YAPS_SocketFront");
 
             var report = new System.Text.StringBuilder();
             report.AppendLine("[YAPS] Channel probe on \"" + _renderer.name + "\", after " +
                               SettleTicks + " ticks.");
             report.AppendLine($"  wrote    E 1  H 0   pos {Fmt(_pos)}   front {Fmt(_front)}");
-            report.AppendLine($"  material instance reads:");
+            report.AppendLine($"  shared material reads:");
             report.AppendLine($"    _YAPS_SocketFlags  {Fmt(flags)}   (x is engagement)");
             report.AppendLine($"    _YAPS_SocketPos    {Fmt(read)}");
             report.AppendLine($"    _YAPS_SocketFront  {Fmt(readFront)}");
@@ -192,17 +196,42 @@ namespace AvatarBridge.Spike
                                   $"length {info.length:0.000}");
             }
 
-            // A material the animator instantiated is not the one the
-            // renderer was authored with. If they have diverged, reading the
-            // wrong one reports zeros on a perfectly healthy channel — which
-            // is a failure mode of the PROBE, and worth catching here rather
-            // than believing.
-            report.AppendLine($"  materials: instance id {instance.GetInstanceID()}, " +
-                              $"shared id {shared.GetInstanceID()}" +
-                              (instance.GetInstanceID() == shared.GetInstanceID()
-                                  ? " (SAME — the animator has not instantiated one)"
-                                  : " (different, as expected while animating)"));
-            report.AppendLine($"    shared _YAPS_SocketFlags {Fmt(shared.GetVector("_YAPS_SocketFlags"))}");
+            // DOES THE CURVE EVEN RESOLVE? Everything above says the animator
+            // is healthy — layers weighted, states playing, parameters
+            // correct — so what is left is whether the clip's binding finds
+            // anything on this hierarchy. A binding whose path, component
+            // type or property name misses resolves to nothing and is
+            // discarded in silence, which looks exactly like an animator that
+            // is not running.
+            //
+            // AnimationUtility answers it outright against the live
+            // GameObject, which is worth more than reading the path and the
+            // classID out of the asset and believing they match the scene.
+            report.AppendLine("  clip bindings, resolved against the animator's own hierarchy:");
+            var root = _animator.gameObject;
+            report.AppendLine($"    animator on \"{root.name}\", renderer at \"" +
+                              Path(root.transform, _renderer.transform) + "\", type " +
+                              _renderer.GetType().Name);
+
+            int resolved = 0, unresolved = 0;
+            if (controller != null)
+            {
+                foreach (var clip in controller.animationClips.Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        bool ok = AnimationUtility.GetFloatValue(root, binding, out float live);
+                        if (ok) resolved++; else unresolved++;
+                        if (unresolved <= 3 || resolved <= 1)
+                        {
+                            report.AppendLine($"    {(ok ? "OK  " : "MISS")} path \"{binding.path}\" " +
+                                              $"{binding.type.Name}.{binding.propertyName}" +
+                                              (ok ? $" = {live:0.000}" : ""));
+                        }
+                    }
+                }
+            }
+            report.AppendLine($"    {resolved} binding(s) resolve, {unresolved} do not.");
 
             bool engagementArrived = Mathf.Abs(flags.x - 1f) < 0.01f;
             bool positionArrived = Approximately(read, _pos);
@@ -291,6 +320,20 @@ namespace AvatarBridge.Spike
         {
             float t = Mathf.Clamp01((x - from) / Mathf.Max(to - from, 1e-6f));
             return t * t * (3f - 2f * t);
+        }
+
+        // The path a clip binding has to match, built the way Unity builds
+        // it: names joined from the animator down, and empty for the
+        // animator's own object.
+        static string Path(Transform root, Transform of)
+        {
+            if (of == root) return "";
+            string path = of.name;
+            for (var t = of.parent; t != null && t != root; t = t.parent)
+            {
+                path = t.name + "/" + path;
+            }
+            return path;
         }
 
         static string Fmt(Vector3 v) => $"({v.x:0.000}, {v.y:0.000}, {v.z:0.000})";
