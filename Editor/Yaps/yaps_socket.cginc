@@ -99,6 +99,12 @@ bool YapsFindPlug(float3 socketWorld, out float3 plugAt, out float plugLength)
         int digit = (int) round(fmod(range, 0.1) * 100);
         if (digit != 8 && digit != 9) continue;
 
+        // The wearer's own plug does not open the wearer's own socket. A
+        // converted avatar carrying both has its plug's tracker a hand's
+        // width from its own socket, permanently within a plug length, and
+        // without this the socket read as always full.
+        if (YapsSocketOwnPlug(socketWorld, i)) continue;
+
         float3 at = YapsLightPosition(i);
         float away = distance(at, socketWorld);
         if (away >= nearest) continue;

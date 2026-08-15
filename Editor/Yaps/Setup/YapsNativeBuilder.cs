@@ -196,12 +196,25 @@ namespace AvatarBridge
             {
                 // Tip and root as separate points, because that is how a
                 // socket measures depth. Both families' names, so a TPS
-                // orifice and an SPS socket both see it.
-                YapsSocketBuilder.Pointer(m, "Tip", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
-                YapsSocketBuilder.Pointer(m, "Tip (SPS)", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
-                YapsSocketBuilder.Pointer(m, "Root", "TPS_Pen_Root", Vector3.zero);
-                YapsSocketBuilder.Pointer(m, "Root (SPS)", "SPSLL_Pen_Root", Vector3.zero);
-                YapsSocketBuilder.Pointer(m, "Width", "TPS_Pen_Width", new Vector3(Mathf.Max(radius, 0.005f), 0, 0));
+                // orifice and an SPS socket both see it — but ONLY the names
+                // not already announced beneath the parent. VRCFury's bake
+                // leaves TPS pen pointers, which the converter carries; a
+                // second TPS_Pen_Penetrating beside them would have a socket
+                // trigger reporting whichever entered last, tip and root
+                // taking turns, and the depth value jumping between two
+                // unrelated distances. That bug has been had once already.
+                var have = new HashSet<string>(parent.GetComponentsInChildren<CVRPointer>(true)
+                    .Where(p => p != null && p.transform != m && !p.transform.IsChildOf(m))
+                    .Select(p => p.type));
+                void Add(string name, string type, Vector3 at)
+                {
+                    if (!have.Contains(type)) YapsSocketBuilder.Pointer(m, name, type, at);
+                }
+                Add("Tip", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
+                Add("Tip (SPS)", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
+                Add("Root", "TPS_Pen_Root", Vector3.zero);
+                Add("Root (SPS)", "SPSLL_Pen_Root", Vector3.zero);
+                Add("Width", "TPS_Pen_Width", new Vector3(Mathf.Max(radius, 0.005f), 0, 0));
             }
             if (m.childCount == 0) { Object.DestroyImmediate(go); return null; }
             return go;

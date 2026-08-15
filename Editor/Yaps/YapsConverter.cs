@@ -193,10 +193,23 @@ namespace AvatarBridge
                 Material = patched,
                 MaterialSlot = slot,
                 Length = result.Length,
+                Radius = result.Radius,
                 Shapes = result.Shapes,
                 Origin = result.Origin,
                 Rotation = result.Rotation,
             });
+
+            // Announce the plug so sockets can see it — the same markers the
+            // toolkit builds for a native plug, on the MEASURED frame. Until
+            // this, a converted plug bent toward every socket and no socket
+            // reacted to it: VRCFury's bake leaves TPS pen pointers, which the
+            // contact converter carries, but never a DPS tracker light (Raliv
+            // orifices, and the tube prop's socket deform, read only that) and
+            // never the SPS names. A converted plug was invisible to half of
+            // what it could bend toward. Same builder as the toolkit, so a
+            // converted plug and a native one are identical to every reader.
+            YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
+                result.Length, result.Radius, tipLight: true, pointers: true);
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",
                 $"\"{renderer.name}\" material {slot} (\"{materials[slot].name}\"), " +
