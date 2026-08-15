@@ -294,12 +294,21 @@ namespace AvatarBridge
             _summary.text = $"Built: {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")}, {socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.  " + string.Join("  ", lines);
         }
 
+        // Where a new socket goes follows the convention avatar authors
+        // already use — Angela's author did both: sockets that must follow a
+        // bone sit UNDER that bone (Armature/…/Hips/[VF] Pussy), and the
+        // rest are organised in a folder (SPS/Handjob/Double, SPS/Feet/…).
+        // So: if a BONE is selected, the socket goes under it and follows
+        // it. Otherwise it goes in a "YAPS" folder at the avatar root, named
+        // for the kind, where the user can move it. Never loose at the root
+        // among the meshes and cloth roots — that is where the first version
+        // dropped it and it looked like a mistake.
         void AddSocket(YapsSocket.SocketKind kind, bool atCamera = false)
         {
-            var parent = atCamera ? null : (Selection.activeGameObject != null ? Selection.activeGameObject : _target);
-            var go = new GameObject(kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring");
-            if (parent != null) go.transform.SetParent(parent.transform, false);
-            else
+            string name = kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring";
+            var go = new GameObject(name);
+
+            if (atCamera)
             {
                 var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
                 if (cam != null)
@@ -308,12 +317,66 @@ namespace AvatarBridge
                     go.transform.rotation = Quaternion.LookRotation(-cam.transform.forward);
                 }
             }
+            else
+            {
+                var selected = Selection.activeGameObject != null ? Selection.activeGameObject.transform : null;
+                var avatarRoot = _target != null ? _target.transform
+                    : selected != null ? YapsSocketEditor.AvatarRootOf(selected) : null;
+                bool onBone = selected != null && avatarRoot != null && selected != avatarRoot
+                              && IsBone(selected, avatarRoot);
+                Transform parent;
+                if (onBone)
+                {
+                    parent = selected;
+                }
+                else if (avatarRoot != null)
+                {
+                    parent = avatarRoot.Find("YAPS");
+                    if (parent == null)
+                    {
+                        var folder = new GameObject("YAPS");
+                        folder.transform.SetParent(avatarRoot, false);
+                        Undo.RegisterCreatedObjectUndo(folder, "YAPS folder");
+                        parent = folder.transform;
+                    }
+                }
+                else
+                {
+                    parent = selected;
+                }
+                if (parent != null) go.transform.SetParent(parent, false);
+                if (!onBone && parent != null)
+                {
+                    // In the folder: unique names, so three holes are not
+                    // three "YAPS Hole"s.
+                    int n = 1;
+                    foreach (Transform c in parent) if (c.name.StartsWith(name)) n++;
+                    if (n > 1) go.name = $"{name} {n}";
+                }
+            }
+
             var socket = go.AddComponent<YapsSocket>();
             socket.kind = kind;
             YapsSocketBuilder.Build(socket);
             Undo.RegisterCreatedObjectUndo(go, "Add YAPS socket");
             Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
             if (!atCamera) Rescan();
+        }
+
+        // A bone: any transform a skinned mesh under the avatar is bound
+        // to, or anything under a transform named Armature.
+        static bool IsBone(Transform t, Transform avatarRoot)
+        {
+            foreach (var smr in avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.bones != null && System.Array.IndexOf(smr.bones, t) >= 0) return true;
+            }
+            for (var at = t; at != null && at != avatarRoot; at = at.parent)
+            {
+                if (at.name == "Armature") return true;
+            }
+            return false;
         }
     }
 }
