@@ -270,11 +270,12 @@ defines.
 | FinalIK components | kept as-is | ⚠️ CVR deletes some — see [quadrupeds](#quadruped--finalik-avatars) |
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 
-**GoGo Loco and SPS/OGB/TPS/PCS are stripped by default** (both toggleable). CVR has its own
-locomotion, and the haptics stacks don't function there while eating most of the sync budget.
+**GoGo Loco is stripped by default** (toggleable). CVR has its own locomotion, and GoGo's layers
+fight it while eating ~15 synced parameters. The VRChat haptics stacks (OGB, PCS, Wholesome)
+go the same way: they don't function in CVR and cost most of the sync budget.
 
-**The penetration itself is converted, not stripped** — *Convert DPS, TPS and SPS to YAPS*, on by
-default. The mesh deform is written from scratch rather than ported, so it behaves like the
+**The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
+*Convert to YAPS*. The mesh deform is written from scratch rather than ported, so it behaves like the
 originals without being them; the separate name keeps that honest, and DPS, TPS and SPS are
 credited as the prior art. Sockets on other people are found through ChilloutVR's contact system
 and the marker lights the platform's existing DPS content already emits — so a converted plug
@@ -879,8 +880,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
-| **Remove SPS / OGB / PCS / Wholesome (recommended)** | on | Strips VRChat-only intimacy systems that have no ChilloutVR equivalent |
-| **Convert DPS, TPS and SPS to YAPS (recommended)** | on | Rebuilds the penetration system for ChilloutVR instead of stripping it — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. Untick to remove penetration outright. Needs *Remove SPS…* ticked as well |
+| **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Remove* strips DPS/TPS/SPS and the OGB, PCS and Wholesome stacks that ride with them — they do not work in ChilloutVR and cost most of the sync budget. *Leave as VRChat built it* touches nothing, and functions nowhere |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -1026,8 +1026,8 @@ Bipeds are unaffected by any of it.
 - **Synced animator layers** and **ONSP audio**
 - **Content tags** — set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading
 - **VRChat-only rendering** — anything needing VRChat's own shader systems. Meshes and materials
-  survive; the effect doesn't. SPS deformation is the exception, and only if you tick *Convert SPS
-  to YAPS* — otherwise it goes the same way.
+  survive; the effect doesn't. Penetration deformation (DPS, TPS, SPS) is the exception, with
+  *Penetration* left on *Convert to YAPS* — set to *Remove*, it goes the same way.
 
 ### Converted with caveats
 

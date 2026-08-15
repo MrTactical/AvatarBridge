@@ -202,8 +202,10 @@ namespace AvatarBridge
                 Btn("Test hole", () => AddSocket(YapsSocket.SocketKind.Hole, atCamera: true)),
                 Btn("Test ring", () => AddSocket(YapsSocket.SocketKind.Ring, atCamera: true))));
             make.Body.Add(BridgeElements.Hint(
-                "Each lands in front of the scene camera. The plug wears Standard, patched. Select the " +
-                "hole or ring and tick Preview, then move it around the plug."));
+                "Each lands in front of the scene camera. The plug wears YAPS Simple Lit — the plain " +
+                "shader the toolkit falls back to when a mesh's own cannot be patched — baked and " +
+                "announced like any plug. Select the hole or ring and click Preview, then move it around " +
+                "the plug."));
             make.Body.Add(BridgeElements.SubHeading("Prefabs"));
             make.Body.Add(BridgeElements.Row(Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs)));
             make.Body.Add(BridgeElements.Hint(
@@ -214,10 +216,10 @@ namespace AvatarBridge
             var game = new BridgeElements.Card("In game", null, false, null, 1f);
             game.Body.Add(BridgeElements.Hint(
                 "To try a test plug and socket in ChilloutVR, put each on its own CVR Spawnable and " +
-                "upload them as props. The prop needs a collider to be grabbable, and Disallow Theft " +
-                "on the plug so a socket switching on cannot pull it out of someone's hand. Full " +
-                "prop-building — the channel, pickup rules, sync — is the toolkit's next piece; " +
-                "until then the spike's Build YAPS test props does it, under Tools ▸ Avatar Bridge ▸ Spike."));
+                "upload them as props. A prop needs a collider to be grabbable, and Disallow Theft on " +
+                "the plug so a socket switching on cannot pull it out of someone's hand. As props they " +
+                "find each other by marker lights; the synced contact channel between props — the " +
+                "part that reaches remote viewers — is the toolkit's next piece."));
             _pages.Add(game);
         }
 

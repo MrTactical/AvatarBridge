@@ -358,8 +358,7 @@ namespace AvatarBridge
                         : $"Found \"{avatar.name}\" — enter PLAY MODE to drive it; animators only evaluate there.")));
             pick.Body.Add(BridgeElements.Hint(
                 "VRChat's Gesture Manager cannot drive a converted avatar: it needs the VRC " +
-                "descriptor, which conversion removes. This window is the ChilloutVR-side " +
-                "equivalent — every control writes exactly what the game writes."));
+                "descriptor, which conversion removes. This window is the ChilloutVR-side equivalent."));
             scroll.Add(pick);
 
             // ---- gestures ----------------------------------------------------------------

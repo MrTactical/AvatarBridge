@@ -33,6 +33,10 @@ namespace AvatarBridge
         enum Mode { Convert, Setup }
         Mode mode = Mode.Convert;
         VRCAvatarDescriptor avatar;
+
+        // One question over two settings (stripSpsSystems, convertYapsSystems);
+        // the popup's labels come from these names, spaced out.
+        enum PenetrationChoice { ConvertToYaps, Remove, LeaveAsIs }
 #endif
         GameObject setupAvatar;
 
@@ -489,14 +493,15 @@ namespace AvatarBridge
         static string Nicify(Enum value) =>
             value == null ? string.Empty : ObjectNames.NicifyVariableName(value.ToString());
 
-        static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set)
+        static PopupField<string> EnumPopup<T>(string label, string tooltip, T current, Action<T> set,
+            string[] labels = null)
             where T : Enum
         {
             var values = (T[])Enum.GetValues(typeof(T));
             var names = new System.Collections.Generic.List<string>();
-            foreach (var value in values)
+            for (int i = 0; i < values.Length; i++)
             {
-                names.Add(Nicify(value));
+                names.Add(labels != null && i < labels.Length ? labels[i] : Nicify(values[i]));
             }
             int index = Math.Max(0, Array.IndexOf(values, current));
 
@@ -716,20 +721,34 @@ namespace AvatarBridge
                     "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
                     "them. Removing GoGo remains the recommended path."));
             }
-            b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
-                "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR. " +
-                "What happens to the penetration itself is the next option.",
-                settings.stripSpsSystems, v => settings.stripSpsSystems = v));
-            b.Add(BridgeElements.Bind("Convert DPS, TPS and SPS to YAPS (recommended)",
-                "Keeps the avatar's penetration and rebuilds it for ChilloutVR — plugs bend, sockets " +
-                "open, and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries " +
-                "across. YAPS is written from scratch, no VRChat code shipped, and it reads and is " +
-                "read by everything already on the platform: your plug finds DPS, TPS and SPS sockets, " +
-                "and their plugs find your sockets. Nothing here ever aims at a person who carries " +
-                "neither — a plug only bends toward a socket. Untick to remove the penetration system " +
-                "outright. Needs the option above ticked too, since that is what clears the VRChat " +
-                "transports YAPS replaces.",
-                settings.convertYapsSystems, v => settings.convertYapsSystems = v));
+            // Two settings, one question. "Remove SPS" beside "Convert SPS
+            // to YAPS" read as a contradiction — remove it AND convert it? —
+            // when they are one decision with three answers: rebuild the
+            // penetration as YAPS, remove it, or leave VRChat's in place. The
+            // fourth combination the two ticks allowed (convert without
+            // removing) was never coherent, so it is not offered.
+            var penetration = EnumPopup<PenetrationChoice>("Penetration  (DPS, TPS, SPS)",
+                "What happens to the avatar's penetration system — Raliv DPS, Thry TPS, VRCFury SPS, " +
+                "and OGB, PCS and Wholesome that ride with them.\n\n" +
+                "Convert to YAPS: keeps it and rebuilds it for ChilloutVR — plugs bend, sockets open, " +
+                "and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries across. " +
+                "YAPS is written from scratch, no VRChat code shipped, and it reads and is read by " +
+                "everything already on the platform: your plug finds DPS, TPS and SPS sockets, and " +
+                "their plugs find your sockets. A plug only ever bends toward a socket — never toward " +
+                "a person carrying none.\n\n" +
+                "Remove: takes the whole system out. Its shaders, contacts and parameters do not work " +
+                "in ChilloutVR and cost most of the sync budget.\n\n" +
+                "Leave as VRChat built it: converts nothing and removes nothing. It will not function " +
+                "in ChilloutVR; only for looking at what was there.",
+                settings.stripSpsSystems ? (settings.convertYapsSystems ? PenetrationChoice.ConvertToYaps : PenetrationChoice.Remove)
+                                         : PenetrationChoice.LeaveAsIs,
+                choice =>
+                {
+                    settings.stripSpsSystems = choice != PenetrationChoice.LeaveAsIs;
+                    settings.convertYapsSystems = choice == PenetrationChoice.ConvertToYaps;
+                },
+                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" });
+            b.Add(penetration);
             // The other door. The YAPS tool builds and tunes penetration on
             // an avatar already here; this converts. Present, say where it
             // is; absent, say where to get it.
