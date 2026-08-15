@@ -176,6 +176,9 @@ namespace AvatarBridge
                     // clip would reach the package it came from.
                     Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
                          PassTraits.EditsClips),
+                    // Transition thresholds on the merged controller only;
+                    // touches no clip.
+                    Pass("Steady auto socket mode", YapsConverter.SteadyAutoMode),
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on

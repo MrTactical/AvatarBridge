@@ -129,6 +129,33 @@ namespace AvatarBridge
                 { "FingerIndexR", new[] { "index" } },
             };
 
+        // The two penetration ecosystems tag the same points differently,
+        // and VRCFury's own receivers listen for the TPS name alone — its
+        // auto socket mode is a receiver tagged TPS_Pen_Penetrating and
+        // nothing else. A receiver converted here should hear a plug from
+        // either family, so each name learns the other. Nothing is renamed;
+        // a receiver only listens more widely.
+        //
+        // Kept apart from the table above on purpose. That one doubles as
+        // "tags every ChilloutVR player carries", and the unreachable-tag
+        // report reads it to decide what NOT to warn about. Penetration tags
+        // are exactly what that report should keep naming: no stranger's
+        // hand fires them.
+        static readonly Dictionary<string, string[]> PenetrationTagTwins =
+            new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                { "TPS_Pen_Penetrating",   new[] { "SPSLL_Pen_Penetrating" } },
+                { "SPSLL_Pen_Penetrating", new[] { "TPS_Pen_Penetrating" } },
+                { "TPS_Pen_Root",          new[] { "SPSLL_Pen_Root" } },
+                { "SPSLL_Pen_Root",        new[] { "TPS_Pen_Root" } },
+                { "TPS_Pen_Width",         new[] { "SPSLL_Pen_Width" } },
+                { "SPSLL_Pen_Width",       new[] { "TPS_Pen_Width" } },
+                { "TPS_Orf_Root",          new[] { "SPSLL_Socket_Root" } },
+                { "SPSLL_Socket_Root",     new[] { "TPS_Orf_Root" } },
+                { "TPS_Orf_Norm",          new[] { "SPSLL_Socket_Front" } },
+                { "SPSLL_Socket_Front",    new[] { "TPS_Orf_Norm" } },
+            };
+
         static string[] WithChilloutVrPointerTypes(IEnumerable<string> vrcTags)
         {
             var types = new List<string>();
@@ -139,15 +166,24 @@ namespace AvatarBridge
                     continue;
                 }
                 types.Add(tag);
-                if (!ChilloutVrPointerTypes.TryGetValue(tag, out var equivalents))
+                if (ChilloutVrPointerTypes.TryGetValue(tag, out var equivalents))
                 {
-                    continue;
-                }
-                foreach (string equivalent in equivalents)
-                {
-                    if (!types.Contains(equivalent))
+                    foreach (string equivalent in equivalents)
                     {
-                        types.Add(equivalent);
+                        if (!types.Contains(equivalent))
+                        {
+                            types.Add(equivalent);
+                        }
+                    }
+                }
+                if (PenetrationTagTwins.TryGetValue(tag, out var twins))
+                {
+                    foreach (string twin in twins)
+                    {
+                        if (!types.Contains(twin))
+                        {
+                            types.Add(twin);
+                        }
                     }
                 }
             }

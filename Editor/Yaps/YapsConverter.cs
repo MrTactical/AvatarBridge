@@ -1014,6 +1014,102 @@ namespace AvatarBridge
             }
         }
 
+        // --- auto socket mode --------------------------------------------
+
+        // VRCFury's auto mode is one 1 m proximity trigger teleported from
+        // socket to socket by a constraint, asking at each stop "is this one
+        // closer than the active one" and switching on ANY positive answer:
+        //
+        //     Settle3 X -> Switch To X   when   Current - Active > 0
+        //
+        // That is VRCFury's own comparison, ported faithfully, and it has no
+        // hysteresis. Two sockets a few centimetres apart — thighjob and
+        // pussy — read nearly the same proximity from a plug between them,
+        // and the active hole flips between the two on noise. VRChat has the
+        // same flicker; here it is louder because the socket toggles it drives
+        // also switch marker lights, so the flip is a visible light change.
+        //
+        // So a visited socket has to beat the active one by a MARGIN. The
+        // Update state still refreshes the active reading every lap, so a
+        // plug genuinely moving from one socket to the next still switches —
+        // it just has to be clearly nearer the new one, not equidistant.
+        // Proximity is 0..1 across the receiver's 1 m sphere, so 0.05 is
+        // five centimetres of preference for the socket already chosen.
+        //
+        // The Turn Off transition (active socket out of range) is left
+        // exactly as it was: that one wants to fire promptly.
+        const float AutoModeMargin = 0.05f;
+
+        public static void SteadyAutoMode(BridgeContext ctx)
+        {
+            if (!ctx.Settings.convertYapsSystems || ctx.MergedController == null)
+            {
+                return;
+            }
+
+            int changed = 0;
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                if (layer.stateMachine == null)
+                {
+                    continue;
+                }
+                foreach (var child in layer.stateMachine.states)
+                {
+                    var state = child.state;
+                    if (state == null)
+                    {
+                        continue;
+                    }
+                    foreach (var transition in state.transitions)
+                    {
+                        if (transition == null || transition.destinationState == null
+                            || !transition.destinationState.name.StartsWith("Switch To ", StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                        // The one condition on that transition is the DBT
+                        // subtraction "Current - Active", compared Greater 0.
+                        // Named by VRCFury as the two parameters with a
+                        // minus between them, so match on the shape rather
+                        // than on a Fury id.
+                        var conditions = transition.conditions;
+                        bool touched = false;
+                        for (int i = 0; i < conditions.Length; i++)
+                        {
+                            var c = conditions[i];
+                            if (c.mode == UnityEditor.Animations.AnimatorConditionMode.Greater
+                                && Mathf.Approximately(c.threshold, 0f)
+                                && c.parameter.Contains("AutoCurrentDist")
+                                && c.parameter.Contains("AutoActiveDist"))
+                            {
+                                c.threshold = AutoModeMargin;
+                                conditions[i] = c;
+                                touched = true;
+                            }
+                        }
+                        if (touched)
+                        {
+                            transition.conditions = conditions;
+                            changed++;
+                        }
+                    }
+                }
+            }
+
+            if (changed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Auto socket mode switches only for a clearly nearer socket ({changed} transition(s))",
+                    "VRChat's auto mode picks the socket nearest a plug and switches the moment " +
+                    "another reads even fractionally closer, so two sockets a few centimetres " +
+                    "apart flicker between each other with a plug in between. A socket now has " +
+                    $"to be about {AutoModeMargin * 100:0} cm nearer than the active one before " +
+                    "it takes over. Moving the plug from one socket to another still switches; " +
+                    "sitting between them no longer does.");
+            }
+        }
+
         // --- the transport we do not port ------------------------------
 
         // A vertex shader cannot read a blendshape weight, so every clip
