@@ -63,17 +63,41 @@ namespace AvatarBridge
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
 
-            // Patch its own shader — Standard, Poiyomi, whatever it wears.
-            // Already wearing a patched one (a re-bake): keep it.
+            // Patch its own shader — Poiyomi, whatever it wears. Already
+            // wearing a patched one (a re-bake): keep it.
+            //
+            // Standard cannot be patched, and neither can anything else
+            // built into Unity: there is no source on disk, the vertex
+            // functions live in Unity's own includes, and the input struct
+            // has no vertex id to address the bake with. A surface shader
+            // has no vertex function of its own either. So when its own
+            // shader refuses, the plug goes on YAPS's plain lit shader
+            // instead — colour, albedo, normal map, metallic and smoothness
+            // carried over by name — and the outcome says so. The one
+            // refusal that does NOT fall back is a shader still carrying
+            // VRChat's SPS: that is a conversion, and swapping Poiyomi for
+            // a plain shader would be the wrong answer to it.
             Shader shader;
             string refusal = null;
-            if (source.shader.name.StartsWith("Hidden/YAPS/"))
+            if (source.HasProperty("_YAPS_Bake"))
             {
                 shader = source.shader;
             }
             else
             {
                 shader = YapsShaderPatcher.Patch(source, dir, report, out refusal, out _);
+                if (shader == null && !source.HasProperty("_SPS_Bake"))
+                {
+                    var plain = OnSimpleLit(source, out string why);
+                    if (plain == null) { o.Message = "could not patch the shader: " + refusal + "; and " + why; return o; }
+                    shader = YapsShaderPatcher.Patch(plain, dir, report, out string plainRefusal, out _);
+                    if (shader == null) { o.Message = "could not patch the shader: " + refusal + "; and YAPS Simple Lit refused too: " + plainRefusal; return o; }
+                    o.Notes.Add($"\"{source.shader.name}\" could not be patched ({refusal}), so the plug now wears " +
+                                "YAPS Simple Lit with its colour, albedo, normal map, metallic and smoothness carried " +
+                                "over. Its original material is untouched. Put a shader with source on it (Poiyomi, " +
+                                "for one) and re-bake if you need more than that.");
+                    source = plain;
+                }
             }
             if (shader == null) { o.Message = "could not patch the shader: " + refusal; return o; }
 
@@ -108,6 +132,28 @@ namespace AvatarBridge
                         "Contact-only sockets (TPS orifices) will not move it until the channel lands.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
+        }
+
+        public const string SimpleLitName = "YAPS/Simple Lit";
+
+        // The same material on YAPS's plain lit shader, in memory only —
+        // the bake clones it into the output folder. Unity keeps a
+        // property's value across a shader change when the new shader
+        // declares the same name, and Simple Lit deliberately uses
+        // Standard's: _Color, _MainTex, _BumpMap, _BumpScale, _Metallic,
+        // _Glossiness, _EmissionColor.
+        static Material OnSimpleLit(Material source, out string why)
+        {
+            why = null;
+            var shader = Shader.Find(SimpleLitName);
+            if (shader == null)
+            {
+                why = "YAPS Simple Lit is not in the project (Editor/Yaps/YapsSimpleLit.shader)";
+                return null;
+            }
+            var m = new Material(source) { name = source.name };
+            m.shader = shader;
+            return m;
         }
 
         static void WriteKnobs(YapsPlug p, Material m)
@@ -324,11 +370,17 @@ namespace AvatarBridge
 
         // --- the test plug ---------------------------------------------------
 
-        // A capsule with a YapsPlug on it, wearing STANDARD, baked through the
-        // exact path a user's mesh takes. Building it proves the path; having
-        // it proves a socket, since it will bend toward whatever socket is
-        // near. Dropped in front of the scene camera.
-        public static GameObject BuildTestPlug(Transform parent = null)
+        // A capsule with a YapsPlug on it, wearing YAPS Simple Lit, baked
+        // through the exact path a user's mesh takes. Building it proves the
+        // path; having it proves a socket, since it will bend toward
+        // whatever socket is near. Dropped in front of the scene camera.
+        //
+        // It wore Standard once, and Standard cannot be patched — the test
+        // plug then spawned straight, unbaked, with the console saying why
+        // and the scene saying "not baked". Simple Lit is the shader the
+        // toolkit falls back to for exactly that case, so the test plug
+        // wearing it from the start tests the fallback path too.
+        public static GameObject BuildTestPlug(Transform parent = null, bool select = true)
         {
             const float length = 0.25f, radius = 0.028f;
             var root = new GameObject("YAPS Test Plug");
@@ -344,7 +396,8 @@ namespace AvatarBridge
             var mesh = CapsuleMesh(length, radius);
             AssetDatabase.CreateAsset(mesh, AssetDatabase.GenerateUniqueAssetPath(OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset"));
             mf.sharedMesh = mesh;
-            var mat = new Material(Shader.Find("Standard")) { name = "YAPS Test Plug", color = new Color(0.85f, 0.55f, 0.65f) };
+            var shader = Shader.Find(SimpleLitName) ?? Shader.Find("Standard");
+            var mat = new Material(shader) { name = "YAPS Test Plug", color = new Color(0.85f, 0.55f, 0.65f) };
             AssetDatabase.CreateAsset(mat, AssetDatabase.GenerateUniqueAssetPath(OutputRoot + "/Test Plug/YAPS Test Plug.mat"));
             mr.sharedMaterial = mat;
 
@@ -354,7 +407,7 @@ namespace AvatarBridge
             Debug.Log("[YAPS] " + o.Message + (o.Notes.Count > 0 ? "\n  " + string.Join("\n  ", o.Notes) : ""));
             if (!o.Ok) Debug.LogError("[YAPS] test plug failed to bake: " + o.Message);
             Undo.RegisterCreatedObjectUndo(root, "YAPS test plug");
-            Selection.activeGameObject = root;
+            if (select) Selection.activeGameObject = root;
             return root;
         }
 

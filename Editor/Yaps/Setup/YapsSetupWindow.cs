@@ -49,7 +49,7 @@ namespace AvatarBridge
         Label _summary;
         HelpBox _next;
         Label _selection;
-        Button _addHole, _addRing, _makePlug;
+        Button _addHole, _addRing, _makePlug, _quiet;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
 
@@ -122,6 +122,20 @@ namespace AvatarBridge
             have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug));
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
+
+            // The scene view over a converted avatar is a wall of the CCK's
+            // pointer and trigger icons — ninety of them on Angela — plus
+            // MagicaCloth's collider wires. None of it is ours and all of it
+            // buries a socket. One switch hides those icons while you work
+            // on sockets and puts them back after; it changes only what the
+            // scene view DRAWS, nothing on the avatar.
+            have.Body.Add(BridgeElements.SubHeading("Scene view"));
+            _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
+            _quiet.tooltip = "Hides the CCK component icons, the pointers' blue spheres, MagicaCloth's collider " +
+                             "wires and Light icons in the scene view, so socket and plug gizmos can be seen. " +
+                             "An editor preference only — nothing on the avatar changes — and it puts back " +
+                             "exactly what it found.";
+            have.Body.Add(BridgeElements.Row(_quiet));
             _pages.Add(have);
             Selection.selectionChanged -= RefreshSelection;
             Selection.selectionChanged += RefreshSelection;
@@ -191,6 +205,10 @@ namespace AvatarBridge
         }
 
         // --- behaviour -----------------------------------------------------------
+
+        static string QuietLabel() => SceneQuiet.IsQuiet
+            ? "Show the CCK's icons again"
+            : "Quiet the scene view while I work";
 
         static Button Btn(string text, System.Action act)
         {

@@ -363,7 +363,10 @@ namespace AvatarBridge
         {
             var existing = GameObject.Find(PreviewPlugName);
             if (existing != null) return;
-            var go = YapsNativeBuilder.BuildTestPlug(null);
+            // Keep the socket selected: the button that stops the preview
+            // is on its inspector, and a spawn that stole the selection took
+            // that button away.
+            var go = YapsNativeBuilder.BuildTestPlug(null, select: false);
             if (go == null) return;
             go.name = PreviewPlugName;
             var t = socket.transform;
@@ -372,6 +375,18 @@ namespace AvatarBridge
             go.transform.position = t.position + t.forward * 0.3f;
             go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
             EditorGUIUtility.PingObject(go);
+
+            // A test plug that did not bake sits there straight and does
+            // nothing, and the only clue was a console line. Say it here.
+            var plug = go.GetComponent<YapsPlug>();
+            bool baked = plug != null && plug.Target != null
+                         && plug.Target.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_Bake"));
+            if (!baked)
+            {
+                EditorUtility.DisplayDialog("YAPS preview",
+                    "The test plug was placed but did not bake, so it will not bend. The Console has the " +
+                    "reason on a [YAPS] line — usually the shader could not be patched.", "OK");
+            }
         }
 
         static void RemovePreviewPlug(YapsSocket socket)
@@ -420,7 +435,7 @@ namespace AvatarBridge
             return top;
         }
 
-        [DrawGizmo(GizmoType.Selected | GizmoType.NonSelected | GizmoType.Pickable)]
+        [DrawGizmo(GizmoType.Selected | GizmoType.InSelectionHierarchy | GizmoType.Pickable)]
         static void DrawSocket(YapsSocket socket, GizmoType type)
         {
             bool selected = (type & GizmoType.Selected) != 0;
@@ -529,7 +544,7 @@ namespace AvatarBridge
             serializedObject.ApplyModifiedProperties();
         }
 
-        [DrawGizmo(GizmoType.Selected | GizmoType.NonSelected | GizmoType.Pickable)]
+        [DrawGizmo(GizmoType.Selected | GizmoType.InSelectionHierarchy | GizmoType.Pickable)]
         static void DrawPlug(YapsPlug plug, GizmoType type)
         {
             bool selected = (type & GizmoType.Selected) != 0;
