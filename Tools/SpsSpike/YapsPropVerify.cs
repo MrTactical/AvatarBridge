@@ -9,27 +9,28 @@
 //     if (... || string.IsNullOrEmpty(spawnableValue.animatorParameterName)
 //         || ...) return;
 //
-// The CCK's own inspector writes that field back on EVERY repaint:
+// The CCK's synced-value inspector assigns that field back on every draw:
 //
-//     animatorParameterNameProp.stringValue = AdvancedDropdownInput(
-//         rect, animatorParameterNameProp.stringValue,
-//         CVRCommon.GetParametersFromAnimatorAsString(animator), ...);
+//     animatorParameterNameProp.stringValue = AdvancedDropdownInput(...);
 //
-// and the list it offers comes from animator.parameters, which is empty for
-// a prefab asset whose Animator has never been initialised. So selecting the
-// prop to CHECK the channel is what breaks it, and it blanks the row the
-// list happens to be drawing — the first one, which is engagement.
+// and underneath the dropdown it is an editable EditorGUI.TextField, not a
+// fixed list. It returns the value unchanged when nobody touches it, so this
+// is not an automatic rewrite — but it IS a live text box sitting in a
+// reorderable list, where a stray click or keystroke clears a name with no
+// undo anyone would notice.
+//
+// What is certain rather than inferred: the builder sets all eight names,
+// and two prefabs built from that same script disagreed — the project whose
+// prop had been open in the inspector had a blank first name, the one that
+// had not kept "E". So the value does not survive inspection, whatever the
+// exact mechanism, and the blank is what the client acts on.
 //
 // The damage is invisible from every angle that matters. No error, no
-// warning, and the inspector renders the loss as an empty dropdown, which
-// reads as a control nobody has touched rather than as data that was there a
-// moment ago. In game the plug simply stops reacting to contact-only sockets
-// while continuing to work perfectly on lit ones, because the light path
-// never touches this value.
-//
-// Two prefabs built from the same script settled it: the project whose
-// prefab had been open in the inspector had a blank name, the one that had
-// not kept "E".
+// warning, and the row renders as an empty field, which reads as a control
+// nobody has filled in rather than data that was there a moment ago. In game
+// the plug simply stops reacting to contact-only sockets while continuing to
+// work perfectly on lit ones, because the light path never touches this
+// value.
 //
 // The parameter list here is read from the CONTROLLER ASSET rather than from
 // animator.parameters, which is the whole reason this can repair something
