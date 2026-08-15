@@ -44,70 +44,96 @@ namespace AvatarBridge.Yaps
 
         [Header("Shape at rest")]
         [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends up.")]
+        [YapsFrom("DPS")]
         public float curvature;
         [Range(-1.5f, 1.5f), Tooltip("A second bend near the tip, opposite in sign, so the shaft can sweep and then hook.")]
+        [YapsFrom("DPS")]
         public float recurvature;
         [Range(0f, 1f), Tooltip("How much the base resists bending toward a socket. 0 bends evenly from the root.")]
+        [YapsFrom("DPS")]
         public float entranceStiffness;
 
         [Header("Inside a socket")]
         [Range(0f, 1f), Tooltip("How much the socket narrows the shaft where it grips.")]
+        [YapsFrom("DPS · TPS")]
         public float squeeze;
         [Range(0.01f, 1f), Tooltip("How far either side of the opening the grip reaches, as a fraction of length.")]
+        [YapsFrom("DPS · TPS")]
         public float squeezeReach = 0.15f;
         [Range(0f, 1f), Tooltip("The swell just short of the opening, as a fraction of radius.")]
+        [YapsFrom("DPS · TPS")]
         public float bulge;
         [Range(0.01f, 1f), Tooltip("How far before the opening the swell begins.")]
+        [YapsFrom("DPS · TPS")]
         public float bulgeReach = 0.2f;
 
         [Header("Out of a socket")]
         [Range(0.1f, 1f), Tooltip("How much of its length it keeps when no socket is using it. 1 is no change.")]
+        [YapsFrom("TPS")]
         public float idleLength = 1f;
         [Range(0.1f, 1f), Tooltip("How much of its width it keeps when no socket is using it.")]
+        [YapsFrom("TPS")]
         public float idleWidth = 1f;
         [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time — the scene view shows it while this plug is selected.")]
+        [YapsFrom("DPS")]
         public float wriggle;
         [Range(0f, 20f), Tooltip("How fast it wriggles.")]
+        [YapsFrom("DPS")]
         public float wriggleSpeed = 2f;
 
         [Header("Motion inside a socket")]
         [Range(0f, 0.5f), Tooltip("A stroke along the shaft, only while a socket has it.")]
+        [YapsFrom("TPS")]
         public float pumping;
         [Range(0f, 20f), Tooltip("How fast it pumps.")]
+        [YapsFrom("TPS")]
         public float pumpingSpeed = 6f;
         [Range(0.05f, 1f), Tooltip("How much of the shaft pumps. 1 is the whole length; small values move only the tip.")]
+        [YapsFrom("TPS")]
         public float pumpingWidth = 1f;
 
         [Header("The bend toward a socket")]
         [Range(0.2f, 3f), Tooltip("Below 1 arrives more directly, above 1 sweeps a wider arc.")]
+        [YapsFrom("TPS")]
         public float bezierSmoothness = 1f;
         [Range(0f, 0.8f), Tooltip("A fraction of the shaft held straight before any bend.")]
+        [YapsFrom("TPS")]
         public float straightBeforeBend;
         [Range(0f, 0.5f), Tooltip("Ease the join between the straight part and the curve.")]
+        [YapsFrom("TPS")]
         public float easeIntoBend;
         [Range(0f, 1f), Tooltip("A socket nearer than this (fraction of length) is held off, so a plug pushed hard against one does not fold.")]
+        [YapsFrom("TPS")]
         public float minimumSocketDistance;
         [Range(0.01f, 0.5f), Tooltip("How fast the plug follows a socket the contact channel reports. Lower is heavier.")]
+        [YapsFrom("TPS · YAPS")]
         public float socketFollow = 0.05f;
 
         [Header("Past the opening")]
         [Range(0f, 1f), Tooltip("How far past a hole before the shaft narrows, as a fraction of length.")]
+        [YapsFrom("YAPS")]
         public float taperStart = 0.10f;
         [Range(0f, 1f), Tooltip("...and how far past it before the shaft has closed to a point.")]
+        [YapsFrom("YAPS")]
         public float taperEnd = 0.30f;
         [Tooltip("Let the tip carry on past a ring. Off, the shaft stops at every socket.")]
+        [YapsFrom("SPS")]
         public bool overrun = true;
 
         [Header("Which sockets it answers")]
         [Tooltip("Only sockets carrying this tag. Blank answers all.")]
+        [YapsFrom("SPS")]
         public string onlySocketsTagged = "";
         [Tooltip("Never sockets carrying this tag.")]
+        [YapsFrom("SPS")]
         public string neverSocketsTagged = "";
 
         [Header("How sockets find it")]
         [Tooltip("Emit the tip light Raliv DPS orifices read, and the contact pointers TPS and " +
                  "SPS sockets read. Both on unless you know why not.")]
+        [YapsFrom("DPS")]
         public bool emitTipLight = true;
+        [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
 
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();

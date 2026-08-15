@@ -167,10 +167,26 @@ namespace AvatarBridge
                 "YAPS Socket's markers. Then checks the lot. Safe to run again; it edits, not stacks."));
             _pages.Add(build);
 
+            // The other door, the same way AvatarBridge points here: present,
+            // say where it is; absent, say where to get it.
             var cross = new BridgeElements.Card("Converting from VRChat?", null, false, null, 0f);
-            cross.Body.Add(BridgeElements.Hint(
-                "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +
-                "automatically — same shader, same wire format as this. Tools ▸ Avatar Bridge."));
+            if (BridgeLinks.HasAvatarBridge)
+            {
+                cross.Body.Add(BridgeElements.Hint(
+                    "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +
+                    "automatically — same shader, same wire format as this. Tools ▸ Avatar Bridge ▸ " +
+                    "VRChat to ChilloutVR Converter."));
+                cross.Body.Add(BridgeElements.Row(Btn("Open AvatarBridge", () =>
+                    EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter"))));
+            }
+            else
+            {
+                cross.Body.Add(BridgeElements.Hint(
+                    "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +
+                    "automatically — same shader, same wire format as this. It is not in this project."));
+                cross.Body.Add(BridgeElements.Row(BridgeElements.Link("Get AvatarBridge (GitHub)  ↗",
+                    () => Application.OpenURL(BridgeLinks.Repo))));
+            }
             _pages.Add(cross);
 
             if (_target == null && Selection.activeGameObject != null) _picker.value = Selection.activeGameObject;
@@ -364,6 +380,21 @@ namespace AvatarBridge
                 var plugComp = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
                 bool hasComp = socketComp != null || plugComp != null;
 
+                // Every row with a component gets "customise": select it,
+                // and its inspector — kind, shapes, every knob — is the
+                // customisation. Clicking the row does the same; the chip
+                // says so, which the row alone did not.
+                if (hasComp)
+                {
+                    var edit = BridgeElements.Chip("customise", new Color(0.45f, 0.65f, 0.95f), true, () =>
+                    {
+                        if (captured.Root == null) { Rescan(); return; }
+                        Selection.activeTransform = captured.Root;
+                        EditorGUIUtility.PingObject(captured.Root);
+                    });
+                    edit.style.marginLeft = 6;
+                    wrap.Add(edit);
+                }
                 if (socketComp != null)
                 {
                     var chip = BridgeElements.Chip(socketComp.preview ? "previewing" : "preview",
@@ -376,7 +407,7 @@ namespace AvatarBridge
                             YapsPreview.Set(socketComp, !socketComp.preview);
                             Rescan();
                         }, socketComp.preview);
-                    chip.style.marginLeft = 6; chip.style.marginRight = 8;
+                    chip.style.marginLeft = 4; chip.style.marginRight = 8;
                     wrap.Add(chip);
                 }
                 else if (f.IsYapsAlready && !hasComp && f.Root != null)

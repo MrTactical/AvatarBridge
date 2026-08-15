@@ -51,7 +51,8 @@ namespace AvatarBridge
         // A bound control for one serialized field, with the field's own
         // range and tooltip, and the tooltip as the hint under it — the
         // material panel's idiom, so nobody has to hover to learn a knob.
-        public static VisualElement Field(SerializedProperty p, System.Reflection.FieldInfo field, string label = null)
+        public static VisualElement Field(SerializedProperty p, System.Reflection.FieldInfo field, string label = null,
+            string from = null)
         {
             var tip = field?.GetCustomAttributes(typeof(TooltipAttribute), false).FirstOrDefault() as TooltipAttribute;
             var range = field?.GetCustomAttributes(typeof(RangeAttribute), false).FirstOrDefault() as RangeAttribute;
@@ -89,10 +90,9 @@ namespace AvatarBridge
                 {
                     var t = new Toggle(label); t.BindProperty(p);
                     t.AddToClassList("ab-toggle");
-                    var wrap = new VisualElement();
-                    wrap.Add(t);
-                    if (help != null) wrap.Add(BridgeElements.Hint(help));
-                    return wrap;
+                    t.style.flexGrow = 1;
+                    control = t;
+                    break;
                 }
                 case SerializedPropertyType.String:
                 {
@@ -114,12 +114,55 @@ namespace AvatarBridge
                     var f = new PropertyField(p, label); control = f; break;
                 }
             }
-            control.AddToClassList("ab-field");
+            if (p.propertyType != SerializedPropertyType.Boolean) control.AddToClassList("ab-field");
             control.tooltip = help;
+
+            // The control, and to its right the system it came from — one
+            // small chip per system, coloured by system, the same everywhere.
+            var line = new VisualElement();
+            line.style.flexDirection = FlexDirection.Row;
+            line.style.alignItems = Align.Center;
+            control.style.flexGrow = 1;
+            control.style.flexShrink = 1;
+            line.Add(control);
+            if (!string.IsNullOrEmpty(from))
+            {
+                foreach (var s in from.Split(new[] { " · " }, System.StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var chip = BridgeElements.Chip(s, SystemColour(s), true, null, false, false);
+                    chip.AddToClassList("ab-from");
+                    chip.tooltip = SystemName(s);
+                    line.Add(chip);
+                }
+            }
+
             var box = new VisualElement();
-            box.Add(control);
+            box.Add(line);
             if (help != null) box.Add(BridgeElements.Hint(help));
             return box;
+        }
+
+        // The four systems, told apart by colour wherever they are named.
+        public static Color SystemColour(string system)
+        {
+            switch (system)
+            {
+                case "DPS": return new Color(0.70f, 0.50f, 0.95f);
+                case "TPS": return new Color(0.30f, 0.78f, 0.72f);
+                case "SPS": return new Color(0.95f, 0.62f, 0.28f);
+                default: return PlugColour;
+            }
+        }
+
+        public static string SystemName(string system)
+        {
+            switch (system)
+            {
+                case "DPS": return "From Raliv's Dynamic Penetration System";
+                case "TPS": return "From Thry's Penetration System";
+                case "SPS": return "From VRCFury's Super Plug Shader";
+                default: return "YAPS's own — none of the others had it";
+            }
         }
 
         public static Button Button(string text, System.Action act)
@@ -632,6 +675,29 @@ namespace AvatarBridge
             "Shape at rest", "Inside a socket", "Out of a socket", "Motion inside a socket", "The bend toward a socket",
         };
 
+        // The filter and the folds' open state, kept for the session so
+        // clicking between plugs does not reset the view.
+        static readonly List<string> Systems = new List<string> { "All systems", "DPS", "TPS", "SPS", "YAPS" };
+        static string _filter = "All systems";
+        static readonly Dictionary<string, bool> _open = new Dictionary<string, bool>();
+
+        static bool Passes(string from)
+        {
+            if (_filter == "All systems") return true;
+            if (string.IsNullOrEmpty(from)) return false;
+            return from.Split(new[] { " · " }, System.StringSplitOptions.RemoveEmptyEntries).Contains(_filter);
+        }
+
+        // A fold's summary names the systems its knobs came from; a fold
+        // the filter emptied is hidden rather than left as a bare header.
+        static void FinishFold(BridgeElements.Card fold, HashSet<string> systems)
+        {
+            if (fold == null) return;
+            var ordered = new[] { "DPS", "TPS", "SPS", "YAPS" }.Where(systems.Contains).ToList();
+            fold.SetSummary(ordered.Count > 0 ? "from " + string.Join(" · ", ordered) : null);
+            if (fold.Body.childCount == 0) fold.style.display = DisplayStyle.None;
+        }
+
         // A selected plug animates in the scene view — wriggle and pumping
         // are time-driven, and a scene view left to itself repaints only on
         // input. YapsPreview stops the repaint on its own once nothing
@@ -672,30 +738,68 @@ namespace AvatarBridge
             var sockets = new BridgeElements.Card("Sockets");
             body.Add(mesh); body.Add(move); body.Add(sockets);
 
+            // WHERE DO I LOOK. Every knob came from somewhere — DPS, TPS,
+            // SPS, or YAPS itself — and a user who knows a feature from one
+            // of those knows it by that system's name. So each knob wears a
+            // tag saying which, each section is a fold that says what it
+            // holds, and one filter shows only the knobs of one system.
+            var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));
+            filter.AddToClassList("ab-field");
+            filter.RegisterValueChangedCallback(e => { _filter = e.newValue; RebuildLater(); });
+            move.Body.Add(filter);
+            move.Body.Add(BridgeElements.Hint(
+                "Every knob is tagged with the system it comes from. Know a feature from DPS, TPS or SPS? " +
+                "Pick that system and only its knobs stay. YAPS is what none of them had. Applies to Sockets below too."));
+
             // Walk the serialized fields in declaration order; a [Header]
-            // opens a subheading in whichever card owns that section.
+            // opens a section in whichever card owns it — a subheading in
+            // Mesh, a fold in the other two — and each knob's origin decides
+            // whether the filter lets it through.
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             string header = "Mesh";
             VisualElement into = mesh.Body;
+            BridgeElements.Card fold = null;
+            var foldSystems = new HashSet<string>();
             bool first = true;
             while (it.NextVisible(false))
             {
                 var field = typeof(YapsPlug).GetField(it.name);
                 var h = field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() as HeaderAttribute;
+                var from = (field?.GetCustomAttributes(typeof(YapsFromAttribute), false).FirstOrDefault() as YapsFromAttribute)?.System;
                 if (h != null && h.header != header)
                 {
+                    FinishFold(fold, foldSystems);
                     header = h.header;
-                    into = MeshHeaders.Contains(header) ? mesh.Body : MoveHeaders.Contains(header) ? move.Body : sockets.Body;
-                    into.Add(BridgeElements.SubHeading(header));
+                    if (MeshHeaders.Contains(header))
+                    {
+                        into = mesh.Body; fold = null;
+                        into.Add(BridgeElements.SubHeading(header));
+                    }
+                    else
+                    {
+                        var owner = MoveHeaders.Contains(header) ? move.Body : sockets.Body;
+                        if (!_open.TryGetValue(header, out bool open)) open = true;
+                        string title = header;
+                        fold = new BridgeElements.Card(header, null, open, null, 0f, o => _open[title] = o);
+                        fold.AddToClassList("ab-fold");
+                        owner.Add(fold);
+                        into = fold.Body;
+                        foldSystems.Clear();
+                    }
                 }
                 else if (first)
                 {
                     into.Add(BridgeElements.SubHeading("Mesh"));
                 }
                 first = false;
-                into.Add(YapsInspectorStyle.Field(it.Copy(), field));
+
+                if (!string.IsNullOrEmpty(from))
+                    foreach (var s in from.Split(new[] { " · " }, System.StringSplitOptions.RemoveEmptyEntries)) foldSystems.Add(s);
+                if (!Passes(from)) continue;
+                into.Add(YapsInspectorStyle.Field(it.Copy(), field, null, from));
             }
+            FinishFold(fold, foldSystems);
 
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked

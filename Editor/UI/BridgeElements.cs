@@ -280,6 +280,14 @@ namespace AvatarBridge
             return group;
         }
 
+        // A link-styled button: opens a page, a window, a folder.
+        public static Button Link(string text, Action action)
+        {
+            var button = new Button(action) { text = text };
+            button.AddToClassList("ab-btn");
+            return button;
+        }
+
         public static VisualElement Row(params VisualElement[] children)
         {
             var row = new VisualElement();

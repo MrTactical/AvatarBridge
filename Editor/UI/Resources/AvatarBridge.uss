@@ -372,6 +372,28 @@
     margin: 2px 0 6px 0;
 }
 
+/* The system a knob came from, as a small chip to the control's right. */
+.ab-from {
+    margin-left: 4px;
+    padding: 1px 6px;
+    font-size: 9px;
+    flex-shrink: 0;
+}
+
+/* A section fold inside a card: the same card, a little tighter. */
+.ab-fold {
+    margin: 4px 0 4px 0;
+}
+
+.ab-fold > .ab-card-header {
+    padding: 4px 8px;
+    min-height: 22px;
+}
+
+.ab-fold > .ab-card-body {
+    padding: 6px 8px 8px 8px;
+}
+
 /* One question, a few answers: radio buttons stacked under the field's label column, each
  * row hovering like a toggle so the group reads as part of the same list. */
 .ab-radio {

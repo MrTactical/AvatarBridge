@@ -27,6 +27,12 @@ namespace AvatarBridge
         public static bool HasYapsTool =>
             AppDomain.CurrentDomain.GetAssemblies()
                 .Any(a => a.GetType("AvatarBridge.YapsSetupWindow", false) != null);
+
+        // And the other way round: is the converter here? The YAPS tool asks
+        // before it names a menu that may not exist.
+        public static bool HasAvatarBridge =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => a.GetType("AvatarBridge.AvatarBridgeWindow", false) != null);
         // Anchor must match a real heading in README.md, or the button silently drops the user at
         // the top of the repo page; which is what it did for a long time, pointing at an
         // "#install-troubleshooting" section that never existed.

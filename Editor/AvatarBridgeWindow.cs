@@ -744,9 +744,30 @@ namespace AvatarBridge
                 {
                     settings.stripSpsSystems = choice != 2;
                     settings.convertYapsSystems = choice == 0;
+                    ScheduleRebuild();
                 });
             b.Add(penetration);
             b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome stacks that ride with them."));
+            // Say what the other two answers cost, where the choice is
+            // made — the tooltip explains, but nobody hovers before
+            // clicking, and both of these break something on purpose.
+            if (settings.stripSpsSystems && !settings.convertYapsSystems)
+            {
+                b.Add(new HelpBox(
+                    "Remove: every plug and socket goes, with its lights, contacts, parameters and " +
+                    "menu entries — the plug mesh stays, straight and undeformable. Nothing on this " +
+                    "avatar will penetrate or be penetrated in ChilloutVR. Reversible only by converting " +
+                    "again.", HelpBoxMessageType.Warning));
+            }
+            else if (!settings.stripSpsSystems)
+            {
+                b.Add(new HelpBox(
+                    "Leave as VRChat built it: the DPS/TPS/SPS shaders, contacts and parameters come " +
+                    "across untouched and do not function in ChilloutVR — the plug will not bend, sockets " +
+                    "will not open, and the haptics parameters keep most of the 3200-bit sync budget " +
+                    "for nothing. On a full avatar that alone can push it over the cap. Choose this only " +
+                    "to inspect what was there.", HelpBoxMessageType.Warning));
+            }
             // The other door. The YAPS tool builds and tunes penetration on
             // an avatar already here; this converts. Present, say where it
             // is; absent, say where to get it.
@@ -1361,12 +1382,7 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- footer ---
 
-        static Button Link(string text, Action action)
-        {
-            var button = new Button(action) { text = text };
-            button.AddToClassList("ab-btn");
-            return button;
-        }
+        static Button Link(string text, Action action) => BridgeElements.Link(text, action);
 
         Button DiscordButton()
         {
