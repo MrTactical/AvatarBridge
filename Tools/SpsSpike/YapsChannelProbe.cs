@@ -152,27 +152,43 @@ namespace AvatarBridge.Spike
             // moment it decides nothing is driving them.
             foreach (var (name, value) in Values()) _animator.SetFloat(name, value);
 
-            if (++_ticks < SettleTicks) return;
-            EditorApplication.update -= Tick;
-            Report();
+            // Report once settled, then KEEP HOLDING until play mode ends, so
+            // the bend can be looked at rather than glimpsed. Run the menu
+            // item again to re-report.
+            if (++_ticks == SettleTicks) Report();
         }
 
         static void Report()
         {
             var shared = _renderer.sharedMaterial;
 
-            Vector4 flags = shared.GetVector("_YAPS_SocketFlags");
-            Vector4 read = shared.GetVector("_YAPS_SocketPos");
-            Vector4 readFront = shared.GetVector("_YAPS_SocketFront");
+            // THE PROPERTY BLOCK IS WHERE ANIMATED VALUES LIVE. Unity
+            // applies an animated material property through the renderer's
+            // MaterialPropertyBlock, never through the material asset —
+            // deliberately, so playing an animation cannot dirty the asset.
+            // The material's own values are therefore the one place an
+            // animated value is GUARANTEED never to appear, and the first
+            // three versions of this probe read exactly that place and
+            // declared a working channel dead. The shader reads the block at
+            // draw time, so the block is the truth about what renders.
+            var block = new MaterialPropertyBlock();
+            _renderer.GetPropertyBlock(block);
+
+            Vector4 flags = block.GetVector("_YAPS_SocketFlags");
+            Vector4 read = block.GetVector("_YAPS_SocketPos");
+            Vector4 readFront = block.GetVector("_YAPS_SocketFront");
 
             var report = new System.Text.StringBuilder();
             report.AppendLine("[YAPS] Channel probe on \"" + _renderer.name + "\", after " +
                               SettleTicks + " ticks.");
             report.AppendLine($"  wrote    E 1  H 0   pos {Fmt(_pos)}   front {Fmt(_front)}");
-            report.AppendLine($"  shared material reads:");
+            report.AppendLine($"  the renderer's property block — what the shader actually gets:");
+            report.AppendLine($"    block {(block.isEmpty ? "EMPTY" : "populated")}");
             report.AppendLine($"    _YAPS_SocketFlags  {Fmt(flags)}   (x is engagement)");
             report.AppendLine($"    _YAPS_SocketPos    {Fmt(read)}");
             report.AppendLine($"    _YAPS_SocketFront  {Fmt(readFront)}");
+            report.AppendLine($"  the material asset (animated values never appear here, by design):");
+            report.AppendLine($"    _YAPS_SocketFlags  {Fmt(shared.GetVector("_YAPS_SocketFlags"))}");
 
             // --- where the chain actually stands -------------------------
             report.AppendLine("  animator:");
@@ -238,11 +254,13 @@ namespace AvatarBridge.Spike
 
             if (!engagementArrived && !positionArrived)
             {
-                report.AppendLine("  VERDICT: nothing reached the material, and it has had frames " +
-                                  "in which to. Contacts are exonerated — the break is between " +
-                                  "the parameter and the material. Check the layer table above: " +
-                                  "a weight of 0, a state count of 0, or a playing hash of 0 each " +
-                                  "name a different cause.");
+                report.AppendLine(resolved > 0 && unresolved == 0
+                    ? "  VERDICT: the bindings resolve but the property block is empty — the " +
+                      "animator is evaluating and Unity is not applying the result to the " +
+                      "renderer. That is a Unity-side application failure, not a wiring one."
+                    : "  VERDICT: nothing reached the renderer, and it has had frames in which " +
+                      "to. Contacts are exonerated — check the layer table and the binding " +
+                      "resolution above; each zero names a different cause.");
             }
             else if (!positionArrived)
             {
@@ -258,8 +276,10 @@ namespace AvatarBridge.Spike
                 report.AppendLine($"  the shader will measure a gap of {gap:0.0000} m against a " +
                                   $"{_length:0.0000} m plug and engage at {engaged:0.000}.");
                 report.AppendLine(engaged > 0.01f
-                    ? "  VERDICT: the channel is INTACT end to end and the plug should be visibly " +
-                      "bent right now. Everything except contact delivery works."
+                    ? "  VERDICT: the channel is INTACT end to end. The values are HELD until " +
+                      "play mode ends, so the plug is bent towards +X right now and stays that " +
+                      "way — look at it. Everything except contact delivery works, and contact " +
+                      "delivery only exists in game."
                     : "  VERDICT: every value arrived and the shader's own curve still collapses " +
                       "to zero. The remap is the bug.");
             }
