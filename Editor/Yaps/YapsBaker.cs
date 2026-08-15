@@ -57,6 +57,7 @@ namespace AvatarBridge
             public Texture2D Bake;
             public int VertexCount;
             public float Length;        // plug-local, along +Z
+            public float Radius;        // plug-local, the widest active vertex off the axis
             public float ActiveVertices;
             public bool FromSkinnedMesh;
             public List<string> Shapes = new List<string>();
@@ -137,7 +138,7 @@ namespace AvatarBridge
             var positions = new Vector3[count];
             var normals = new Vector3[count];
             var tangents = new Vector3[count];
-            float length = 0f;
+            float length = 0f, radius = 0f;
             int active = 0;
 
             for (int i = 0; i < count; i++)
@@ -149,6 +150,7 @@ namespace AvatarBridge
                 {
                     active++;
                     length = Mathf.Max(length, positions[i].z);
+                    radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
                 }
             }
 
@@ -202,6 +204,7 @@ namespace AvatarBridge
                 Bake = texture,
                 VertexCount = count,
                 Length = length,
+                Radius = Mathf.Sqrt(radius),
                 ActiveVertices = active,
                 FromSkinnedMesh = skin != null,
                 Shapes = shapeNames,

@@ -150,13 +150,33 @@ namespace AvatarBridge
                 return;
             }
 
-            var patched = YapsBaker.Apply(result, materials[slot], shader, ctx.OutputDir + "/YAPS",
+            // What the author tuned on the ORIGINAL material, read before
+            // the patch repoints it — a Poiyomi material loses its TPS
+            // properties the moment it wears our shader, and DPS's live on
+            // a shader we replace outright. Every value with a YAPS
+            // counterpart is carried; the ones without are named.
+            var source = materials[slot];
+            var patched = YapsBaker.Apply(result, source, shader, ctx.OutputDir + "/YAPS",
                 result.FromSkinnedMesh);
+            var unmapped = new List<string>();
+            var carried = YapsLegacyMap.Carry(source, patched, unmapped, result.Length, result.Radius);
+            if (carried.Count > 0)
+            {
+                var system = YapsLegacyMap.Detect(source, out _);
+                ctx.Report.Converted(Category,
+                    $"Carried {carried.Count} {system} setting(s) onto the YAPS plug",
+                    string.Join(", ", carried.ConvertAll(c => $"{c.From} → {c.To}")) +
+                    (unmapped.Count > 0
+                        ? $". No YAPS counterpart for: {string.Join(", ", unmapped)}"
+                        : ""));
+            }
 
             // The author's own choice about whether the tip may travel past
             // the socket, read off the plug component before the bake
             // destroyed it. Defaulting silently to yes was overriding a
-            // decision somebody had made.
+            // decision somebody had made. Wins over the material's copy of
+            // the same setting, since the component is what SPS's own tools
+            // edit.
             string plugObject = plugRoot.parent != null ? plugRoot.parent.name : null;
             bool overrun = plugObject != null
                            && YapsBakePrep.AuthoredOverrun.TryGetValue(plugObject, out bool authored)
