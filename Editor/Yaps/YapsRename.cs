@@ -98,13 +98,26 @@ namespace AvatarBridge
                 return;
             }
 
+            // Paths already dead before anything moves. An earlier pass
+            // removed their object on purpose, so they are not this
+            // pass's failure and not its warning.
+            var deadBefore = new HashSet<string>();
+            foreach (string path in AnimatedPaths(ctx))
+            {
+                if (Remap(path, remap, out string moved)
+                    && BridgeContext.FindByAnimationPath(ctx.Target.transform, path) == null)
+                {
+                    deadBefore.Add(moved);
+                }
+            }
+
             foreach (var (target, to) in doomed)
             {
                 target.name = to;
             }
 
             int rewritten = RewriteClips(ctx, remap);
-            var unresolved = Unresolved(ctx);
+            var unresolved = Unresolved(ctx, deadBefore);
 
             if (unresolved.Count > 0)
             {
@@ -210,28 +223,32 @@ namespace AvatarBridge
             return false;
         }
 
-        // Proves the rewrite was complete rather than assuming it. Counts
-        // only paths naming an object we renamed, so an avatar's own
-        // pre-existing broken curves are not blamed on this pass.
-        static List<string> Unresolved(BridgeContext ctx)
+        static HashSet<string> AnimatedPaths(BridgeContext ctx)
         {
-            var wanted = new HashSet<string>();
+            var paths = new HashSet<string>();
             foreach (var clip in Clips(ctx))
             {
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    wanted.Add(binding.path);
+                    paths.Add(binding.path);
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    wanted.Add(binding.path);
+                    paths.Add(binding.path);
                 }
             }
+            return paths;
+        }
 
+        // Proves the rewrite was complete rather than assuming it. Counts
+        // only paths naming an object we renamed, so an avatar's own
+        // pre-existing broken curves are not blamed on this pass.
+        static List<string> Unresolved(BridgeContext ctx, HashSet<string> deadBefore)
+        {
             var missing = new List<string>();
-            foreach (string path in wanted.OrderBy(p => p, StringComparer.Ordinal))
+            foreach (string path in AnimatedPaths(ctx).OrderBy(p => p, StringComparer.Ordinal))
             {
-                if (string.IsNullOrEmpty(path))
+                if (string.IsNullOrEmpty(path) || deadBefore.Contains(path))
                 {
                     continue;
                 }

@@ -44,13 +44,14 @@ namespace AvatarBridge
                 Physics = db,
                 Root = data.Root
             });
-            if (!data.InitiallyActive)
+            // The DynamicBone lives on the source object, so an object toggle
+            // already carries it. Only a disabled source component disables it.
+            if (!data.ComponentEnabled)
             {
                 db.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name,
-                    "Source PhysBone was disabled; DynamicBone created disabled. Animator toggles that " +
-                    "activated the original object or component keep working — object toggles hit this " +
-                    "same GameObject, and component toggles are re-wired by the animator pass.");
+                    "Source PhysBone component was disabled; DynamicBone created disabled. Component " +
+                    "toggles are re-wired by the animator pass.");
             }
 
             db.m_Elasticity = Mathf.Clamp01(data.Pull) * ElasticityScale;

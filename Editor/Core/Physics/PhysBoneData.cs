@@ -18,6 +18,7 @@ namespace AvatarBridge
         // VRChat avatars often stack several PhysBones on the same chain and toggle
         // between them via the animator; converted physics must start in the same state.
         public bool InitiallyActive;
+        public bool ComponentEnabled = true;
         public List<Transform> Ignores = new List<Transform>();
         public Vector3 EndpointPosition;
 
@@ -67,6 +68,7 @@ namespace AvatarBridge
                 SourceGameObject = pb.gameObject,
                 Root = pb.rootTransform != null ? pb.rootTransform : pb.transform,
                 InitiallyActive = pb.isActiveAndEnabled,
+                ComponentEnabled = pb.enabled,
                 EndpointPosition = pb.endpointPosition,
                 IsAdvancedIntegration = pb.integrationType.ToString().Contains("Advanced"),
                 Pull = pb.pull,

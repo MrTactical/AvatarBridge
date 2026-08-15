@@ -17,10 +17,10 @@ namespace AvatarBridge
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
         public const string Releases = Repo + "/releases/latest";
 
-        // The YAPS tool's own home. It ships inside AvatarBridge today and
-        // is meant to stand on its own; when it does, this is where the
-        // converter sends someone who does not have it.
-        public const string YapsRepo = "https://github.com/MrTactical/YAPS";
+        // Where the converter sends someone without the YAPS tool. It ships
+        // inside the AvatarBridge package today, so that is the release
+        // page; point this at its own repo the day it has one.
+        public const string YapsRepo = Releases;
 
         // Is the YAPS tool present in this project? By type, not by define:
         // once it is its own package the converter cannot assume it.

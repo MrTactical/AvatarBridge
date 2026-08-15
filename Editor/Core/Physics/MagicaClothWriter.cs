@@ -43,11 +43,23 @@ namespace AvatarBridge
             holder.transform.SetParent(home, false);
             var cloth = holder.AddComponent<MagicaCloth>();
 
-            // "Off" is carried by the component, not the holder.
-            // Enabling a component on an inactive GameObject does
-            // nothing, so a clip switching the chain on would be inert.
-            // The component flag is the property such clips drive.
-            if (!data.InitiallyActive)
+            // Where "off" lives. A holder inside an inactive object rides
+            // that object's toggle, so its component stays enabled unless
+            // the source component itself was disabled. A holder that is
+            // active while its source was not carries off on the component,
+            // and the animator pass writes the switch onto that flag.
+            bool ridesObject = !holder.activeInHierarchy;
+            if (ridesObject)
+            {
+                cloth.enabled = data.ComponentEnabled;
+                if (!data.ComponentEnabled)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        "Source PhysBone component was disabled; cloth created disabled. Component " +
+                        "toggles are re-wired by the animator pass.");
+                }
+            }
+            else if (!data.InitiallyActive)
             {
                 cloth.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
