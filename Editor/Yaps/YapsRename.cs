@@ -25,6 +25,7 @@
 // prove every path a clip still names actually resolves.
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -103,18 +104,25 @@ namespace AvatarBridge
             }
 
             int rewritten = RewriteClips(ctx, remap);
-            int unresolved = Unresolved(ctx);
+            var unresolved = Unresolved(ctx);
 
-            if (unresolved > 0)
+            if (unresolved.Count > 0)
             {
                 // Loud, because the failure is invisible in game until
-                // somebody notices a toggle doing nothing.
+                // somebody notices a toggle doing nothing. And NAMED: a
+                // count alone once fired at 86 on a real avatar and left
+                // nothing to diagnose from, because the paths were counted
+                // and thrown away — the check had the evidence in hand and
+                // discarded it.
+                var sample = unresolved.Take(12).ToList();
                 ctx.Report.Warning(Category,
-                    $"{unresolved} animation path(s) no longer point at anything",
+                    $"{unresolved.Count} animation path(s) no longer point at anything",
                     "Objects were renamed to read as YAPS and the animations addressing them were " +
                     "rewritten to match, but some now name a path this avatar does not have. " +
                     "Anything they drove will not move. Please report this at the AvatarBridge " +
-                    "repo — it is a bug in the rename, not in your avatar.");
+                    "repo — it is a bug in the rename, not in your avatar. The first few:\n  " +
+                    string.Join("\n  ", sample) +
+                    (unresolved.Count > sample.Count ? $"\n  … and {unresolved.Count - sample.Count} more" : ""));
             }
 
             ctx.Report.Converted(Category,
@@ -205,7 +213,7 @@ namespace AvatarBridge
         // Proves the rewrite was complete rather than assuming it. Counts
         // only paths naming an object we renamed, so an avatar's own
         // pre-existing broken curves are not blamed on this pass.
-        static int Unresolved(BridgeContext ctx)
+        static List<string> Unresolved(BridgeContext ctx)
         {
             var wanted = new HashSet<string>();
             foreach (var clip in Clips(ctx))
@@ -220,8 +228,8 @@ namespace AvatarBridge
                 }
             }
 
-            int missing = 0;
-            foreach (string path in wanted)
+            var missing = new List<string>();
+            foreach (string path in wanted.OrderBy(p => p, StringComparer.Ordinal))
             {
                 if (string.IsNullOrEmpty(path))
                 {
@@ -230,7 +238,7 @@ namespace AvatarBridge
                 bool ours = Names.Any(n => path.Contains(n.To));
                 if (ours && ctx.Target.transform.Find(path) == null)
                 {
-                    missing++;
+                    missing.Add(path);
                 }
             }
             return missing;

@@ -556,7 +556,9 @@ VRChat contacts convert onto the CCK's own primitives: each **sender** becomes a
 collision tag, each **receiver** an Advanced Avatar Trigger driving its parameter. The mapping
 covers what avatars actually do with contacts — *OnEnter* receivers get an enter pulse, *Constant*
 receivers a matching enter/exit pair, and *Proximity* receivers are driven from real distance by
-the trigger's stay task. `allowSelf` / `allowOthers` map onto the trigger's local/network
+the trigger's stay task and return to 0 when the sender leaves — ChilloutVR doesn't do that on
+its own the way VRChat does, and a proximity value that stuck at its last reading is what made
+VRCFury's auto socket mode flicker between holes. `allowSelf` / `allowOthers` map onto the trigger's local/network
 interaction flags, and the parameter writes go through the game's animator manager, so **they
 sync** — what a contact sets off is seen by everyone.
 

@@ -198,8 +198,21 @@ namespace AvatarBridge
                     // 1 at the centre, exactly like VRChat, and
                     // SetFromDistance writes the value raw.
                 });
+                // A VRChat proximity receiver falls back to 0 on its own the
+                // moment the sender leaves. ChilloutVR's does not: the stay
+                // task writes only while something is inside, and when the
+                // last sender leaves the parameter simply KEEPS its final
+                // reading. For most consumers that is invisible, because the
+                // value only matters while something is in range. It is not
+                // invisible to anything that compares readings over time —
+                // VRCFury's auto socket mode teleports one trigger from
+                // socket to socket and asks each time "is this one closer
+                // than the active one", and with the value stuck at whatever
+                // the last socket saw, every socket answered yes and the
+                // active hole flickered through all of them.
+                trigger.exitTasks.Add(MakeTask(receiver.parameter, 0f, 0f));
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
-                    $"Proximity receiver -> distance-driven \"{receiver.parameter}\"");
+                    $"Proximity receiver -> distance-driven \"{receiver.parameter}\", 0 on exit");
             }
 
             ctx.ContactParameters.Add(receiver.parameter);
