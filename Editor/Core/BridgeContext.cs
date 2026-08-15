@@ -83,6 +83,7 @@ namespace AvatarBridge
             // exactly that gap.
             public UnityEngine.Vector3 Origin;
             public UnityEngine.Quaternion Rotation;
+            public float Radius;
         }
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();

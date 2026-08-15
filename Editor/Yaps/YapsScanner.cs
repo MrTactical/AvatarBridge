@@ -159,6 +159,17 @@ namespace AvatarBridge
                 if (f.Material == null) f.Notes.Add("not baked yet");
                 result.Plugs.Add(f);
             }
+            // The plug OBJECT and the plug's RENDERER are routinely different
+            // subtrees: on a converted avatar the material sits on the body
+            // mesh at the avatar root while "YAPS Plug" (VRCFury's
+            // "BakedSpsPlug") hangs under the shaft's bone with the pointers
+            // and lights beneath it. So a material that says plug is paired
+            // with the nearest such object anywhere under the avatar, not
+            // only above the renderer — otherwise the plug reads as having no
+            // markers it plainly has.
+            var plugObjects = root.GetComponentsInChildren<Transform>(true)
+                .Where(t => t.name == "YAPS Plug" || t.name.Contains("BakedSpsPlug"))
+                .Where(t => !owned.Contains(t)).ToList();
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
                 if (owned.Contains(r.transform)) continue;
@@ -167,7 +178,16 @@ namespace AvatarBridge
                 {
                     var origin = YapsLegacyMap.Detect(mats[i], out var part);
                     if (origin == YapsLegacyMap.Origin.None || part != YapsLegacyMap.Part.Plug) continue;
-                    var f = NewPlug(PlugOwner(r.transform), r);
+                    var owner = PlugOwner(r.transform);
+                    if (owner == r.transform && plugObjects.Count > 0)
+                    {
+                        // Not above the renderer: take the first unclaimed plug
+                        // object. One plug per avatar is overwhelmingly the case;
+                        // several are paired in order.
+                        owner = plugObjects[0];
+                        plugObjects.RemoveAt(0);
+                    }
+                    var f = NewPlug(owner, r);
                     f.Material = mats[i]; f.MaterialSlot = i;
                     f.Origin = origin;
                     f.IsYapsAlready = origin == YapsLegacyMap.Origin.YAPS;
@@ -239,11 +259,15 @@ namespace AvatarBridge
         // OrificeTracker/OrificeNormalTracker sit directly under the socket.
         static Transform SocketOwner(Transform marker, Transform root)
         {
-            for (var at = marker; at != null && at != root; at = at.parent)
+            // Inclusive of the root: the scan target may BE the socket (a
+            // user picks the prefab they just dropped), and stopping short
+            // of it split one socket into its Lights and Pointers folders.
+            for (var at = marker; at != null; at = at.parent)
             {
                 string n = at.name;
                 if (n == "YAPS Socket" || n.Contains("BakedSpsSocket")) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
+                if (at == root) break;
             }
             // No named owner. Take the nearest ancestor that contains at
             // least one light AND one pointer, or failing that the marker's

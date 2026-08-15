@@ -149,29 +149,62 @@ namespace AvatarBridge
 
         static void BuildMarkers(YapsPlug plug, float length, float radius)
         {
-            var t = plug.transform;
-            var old = t.Find(MarkersName);
+            // On a static mesh the plug object IS the frame; on a skinned one
+            // the baker measured a frame in world space, and the markers
+            // must sit THERE, not on the object — which on a real avatar is
+            // routinely a quarter of a metre from the shaft.
+            AnnouncePlug(plug.transform, null, null, length, radius, plug.emitTipLight, plug.emitPointers);
+        }
+
+        // Make a plug visible to every socket family: a DPS tracker light at
+        // the BASE with intensity = length, and the tip/root/width pointers
+        // both contact families read. Called by the toolkit for a native plug
+        // and by the converter for one arriving from VRChat, so the two are
+        // identical to every reader. Idempotent: rebuild replaces.
+        //
+        // `worldOrigin`/`worldRotation` are the MEASURED frame when known
+        // (skinned meshes); null means the parent's own transform is the
+        // frame (a static plug object).
+        public static GameObject AnnouncePlug(Transform parent, Vector3? worldOrigin, Quaternion? worldRotation,
+            float length, float radius, bool tipLight = true, bool pointers = true)
+        {
+            var old = parent.Find(MarkersName);
             if (old != null) Object.DestroyImmediate(old.gameObject);
             var go = new GameObject(MarkersName);
-            go.transform.SetParent(t, false);
+            go.transform.SetParent(parent, false);
+            if (worldOrigin.HasValue && worldRotation.HasValue
+                && (worldRotation.Value.x != 0f || worldRotation.Value.y != 0f
+                    || worldRotation.Value.z != 0f || worldRotation.Value.w != 0f))
+            {
+                go.transform.SetPositionAndRotation(worldOrigin.Value, worldRotation.Value);
+            }
             var m = go.transform;
 
-            if (plug.emitTipLight)
+            if (tipLight)
             {
-                // At the BASE, intensity = length. Read out of Raliv's own
-                // functions: depth = length - distance(orifice, light).
+                // Read out of Raliv's own functions, not guessed:
+                //   penetratorLength = unity_LightColor[i].a
+                //   depth = max(0, penetratorLength - distance(orifice, light))
+                // so the light sits at the BASE and its intensity is the
+                // length in metres. Range 0.49 exactly — SPS2 tags its own
+                // lights with a fourth decimal of 5–7 to ignore them, and
+                // this is the one light where wearing that tag would cost.
                 var l = YapsSocketBuilder.MarkerLight(m, "DPS Tracker", TrackerRange, Vector3.zero);
                 l.intensity = Mathf.Max(length, 0.01f);
             }
-            if (plug.emitPointers)
+            if (pointers)
             {
+                // Tip and root as separate points, because that is how a
+                // socket measures depth. Both families' names, so a TPS
+                // orifice and an SPS socket both see it.
                 YapsSocketBuilder.Pointer(m, "Tip", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
                 YapsSocketBuilder.Pointer(m, "Tip (SPS)", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
                 YapsSocketBuilder.Pointer(m, "Root", "TPS_Pen_Root", Vector3.zero);
                 YapsSocketBuilder.Pointer(m, "Root (SPS)", "SPSLL_Pen_Root", Vector3.zero);
-                YapsSocketBuilder.Pointer(m, "Width", "TPS_Pen_Width", new Vector3(radius, 0, 0));
+                YapsSocketBuilder.Pointer(m, "Width", "TPS_Pen_Width", new Vector3(Mathf.Max(radius, 0.005f), 0, 0));
             }
-            if (m.childCount == 0) Object.DestroyImmediate(go);
+            if (m.childCount == 0) { Object.DestroyImmediate(go); return null; }
+            return go;
         }
 
         // --- the test plug ---------------------------------------------------

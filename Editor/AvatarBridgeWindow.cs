@@ -729,6 +729,10 @@ namespace AvatarBridge
                 "who carries neither — a plug only bends toward a socket. It does nothing at all " +
                 "unless \"Remove SPS / OGB / PCS / Wholesome\" is also ticked.",
                 settings.convertYapsSystems, v => settings.convertYapsSystems = v));
+            b.Add(BridgeElements.Hint(
+                "Already on ChilloutVR and want to add, tune or upgrade penetration on an avatar or " +
+                "prop that never came from VRChat? That is the YAPS tool — Tools ▸ YAPS ▸ Setup. Same " +
+                "system, same shader; this converts, that builds."));
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have — the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +

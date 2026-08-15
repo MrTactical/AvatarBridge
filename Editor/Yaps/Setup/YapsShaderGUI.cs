@@ -255,7 +255,9 @@ namespace AvatarBridge
 
         static void Banner(string role, float length, Material material)
         {
-            var rect = GUILayoutUtility.GetRect(0, 44, GUILayout.ExpandWidth(true));
+            var laid = GUILayoutUtility.GetRect(0, 44, GUILayout.ExpandWidth(true));
+            // Bled to the inspector edges, like the section headers.
+            var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
             // The family gradient, VRChat blue to ChilloutVR orange through
             // the bridge purple — the same walk the windows' banners take.
             const int steps = 32;
@@ -275,28 +277,60 @@ namespace AvatarBridge
             GUILayout.Space(6);
         }
 
+        // A section header. Restrained on purpose: a hairline of the
+        // section's colour, an arrow, the title, and a rule beneath — not a
+        // coloured slab. The rect is bled to the inspector's full width, so
+        // it does not stop short at the scrollbar gutter.
         static bool SectionHeader(string title, Color tint, bool open, string right = null)
         {
-            var rect = GUILayoutUtility.GetRect(0, 22, GUILayout.ExpandWidth(true));
-            var bg = tint; bg.a = EditorGUIUtility.isProSkin ? 0.16f : 0.22f;
-            EditorGUI.DrawRect(rect, bg);
-            var bar = new Rect(rect.x, rect.y, 3, rect.height);
-            EditorGUI.DrawRect(bar, tint);
-            var arrow = new Rect(rect.x + 8, rect.y + 3, 16, 16);
-            EditorGUI.Foldout(arrow, open, GUIContent.none, true);
-            var label = new Rect(rect.x + 22, rect.y, rect.width - 22, rect.height);
-            GUI.Label(label, title, _header);
+            var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
+            // Bleed to the inspector's edges. The MaterialEditor insets its
+            // layout on both sides; the header ignores that so it lines up
+            // with the banner above and reads as structure.
+            var full = new Rect(0, rect.y, EditorGUIUtility.currentViewWidth, rect.height);
+
+            bool hover = full.Contains(Event.current.mousePosition);
+            if (hover)
+            {
+                EditorGUI.DrawRect(full, new Color(1, 1, 1, EditorGUIUtility.isProSkin ? 0.04f : 0.08f));
+            }
+            // The colour: a bar on the left, the section's whole identity.
+            EditorGUI.DrawRect(new Rect(full.x, full.y + 4, 3, full.height - 8), tint);
+            // Arrow, drawn as two strokes so it is crisp at any skin.
+            var arrowRect = new Rect(full.x + 12, full.y + 8, 10, 10);
+            DrawArrow(arrowRect, open, _header.normal.textColor);
+            GUI.Label(new Rect(full.x + 28, full.y, full.width - 40, full.height), title, _header);
             if (!string.IsNullOrEmpty(right))
             {
-                var r = new Rect(rect.x, rect.y, rect.width - 8, rect.height);
-                GUI.Label(r, right, _from);
+                GUI.Label(new Rect(full.x, full.y, full.width - 12, full.height), right, _from);
             }
+            // Rule beneath.
+            EditorGUI.DrawRect(new Rect(full.x, full.yMax - 1, full.width, 1),
+                new Color(0.5f, 0.5f, 0.5f, EditorGUIUtility.isProSkin ? 0.18f : 0.28f));
+
             var e = Event.current;
-            if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
+            if (e.type == EventType.MouseDown && full.Contains(e.mousePosition))
             {
                 open = !open; e.Use();
+                GUI.changed = true;
             }
+            if (e.type == EventType.MouseMove) EditorWindow.focusedWindow?.Repaint();
             return open;
+        }
+
+        static void DrawArrow(Rect r, bool open, Color colour)
+        {
+            Handles.BeginGUI();
+            Handles.color = colour;
+            if (open)
+            {
+                Handles.DrawAAPolyLine(2f, new Vector3(r.x, r.y + 3), new Vector3(r.center.x, r.yMax - 2), new Vector3(r.xMax, r.y + 3));
+            }
+            else
+            {
+                Handles.DrawAAPolyLine(2f, new Vector3(r.x + 3, r.y), new Vector3(r.xMax - 2, r.center.y), new Vector3(r.x + 3, r.yMax));
+            }
+            Handles.EndGUI();
         }
 
         static void DrawKnob(MaterialEditor editor, MaterialProperty prop, Knob knob)
@@ -348,10 +382,11 @@ namespace AvatarBridge
             }
         }
 
+        // No box. A section body is just its rows, inset a little under
+        // the header — the header IS the structure.
         static GUIStyle BoxStyle()
         {
-            var s = new GUIStyle(EditorStyles.helpBox) { padding = new RectOffset(8, 8, 6, 6) };
-            return s;
+            return new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };
         }
 
         static void Rule()
