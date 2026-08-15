@@ -699,9 +699,13 @@ namespace AvatarBridge
                     }
                     return m.Value;
                 });
+                // One line ending throughout, whichever the source used:
+                // the inlined YAPS source may not match, and Unity warns
+                // about a file that mixes them on every import.
+                file.Text = file.Text.Replace("\r\n", "\n");
                 if (file.Crlf)
                 {
-                    file.Text = file.Text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    file.Text = file.Text.Replace("\n", "\r\n");
                 }
             }
 
