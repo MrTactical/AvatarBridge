@@ -167,6 +167,65 @@ namespace AvatarBridge
             }
             return path;
         }
+
+        // Resolves an animation path the way the ANIMATOR does, which is not
+        // the way Transform.Find does. Find splits on every "/" and walks
+        // one child per segment; the animator hashes the whole path and
+        // matches it against each object's full path, so an object whose
+        // own NAME contains a slash is perfectly animatable and perfectly
+        // invisible to Find. VRCFury names every contact trigger it bakes
+        // after its parameter — "CVRTrigger_OGB/Orf/Pussy/PenOthersNewRoot"
+        // is ONE object — so a converted avatar has dozens of them, and any
+        // check built on Find calls each one dead. Eighty-six of them, on
+        // one avatar, all working in game.
+        //
+        // Greedy on the name: at each level, try the longest child name that
+        // is a prefix of the remainder first, then shorter. Depth-first, so a
+        // "Haptics" child and a "Haptics/PenOthers" child under the same
+        // parent both resolve.
+        public static Transform FindByAnimationPath(Transform root, string path)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+            if (string.IsNullOrEmpty(path))
+            {
+                return root;
+            }
+            // The common case first — it is faster and it is exactly what
+            // the animator finds when no name contains a slash.
+            var direct = root.Find(path);
+            if (direct != null)
+            {
+                return direct;
+            }
+            return FindGreedy(root, path);
+        }
+
+        static Transform FindGreedy(Transform at, string remainder)
+        {
+            for (int i = 0; i < at.childCount; i++)
+            {
+                var child = at.GetChild(i);
+                string name = child.name;
+                if (remainder == name)
+                {
+                    return child;
+                }
+                if (remainder.Length > name.Length
+                    && remainder.StartsWith(name, StringComparison.Ordinal)
+                    && remainder[name.Length] == '/')
+                {
+                    var deeper = FindGreedy(child, remainder.Substring(name.Length + 1));
+                    if (deeper != null)
+                    {
+                        return deeper;
+                    }
+                }
+            }
+            return null;
+        }
     }
 }
 #endif

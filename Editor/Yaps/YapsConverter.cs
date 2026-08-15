@@ -1014,6 +1014,86 @@ namespace AvatarBridge
             }
         }
 
+        // --- the atlas's animation ----------------------------------------
+
+        // RemoveAtlasJunk deletes the screen-atlas OBJECTS early, before the
+        // merge, while the clips are still VRCFury's to leave alone. Nothing
+        // deleted the CURVES that animated them, and there are a lot: every
+        // socket's _SPS_SocketTag*, _SPS_Id*, tangents, hole flag and radius,
+        // written into the atlas marker's material by the toggle that lights
+        // the socket. 2,470 bindings on one avatar, all addressing an object
+        // that no longer exists. Harmless at runtime — the animator skips a
+        // path it cannot find — but dead weight in every socket clip, and it
+        // was what the rename's own sweep kept tripping over.
+        //
+        // Late, with EditsClips, once the clips are ours.
+        public static void StripAtlasCurves(BridgeContext ctx)
+        {
+            if (!ctx.Settings.convertYapsSystems || ctx.MergedController == null)
+            {
+                return;
+            }
+
+            int removed = 0;
+            var seen = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip == null || !seen.Add(clip))
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (AddressesAtlas(binding.path))
+                    {
+                        AnimationUtility.SetEditorCurve(clip, binding, null);
+                        removed++;
+                    }
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (AddressesAtlas(binding.path))
+                    {
+                        AnimationUtility.SetObjectReferenceCurve(clip, binding, null);
+                        removed++;
+                    }
+                }
+            }
+
+            if (removed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Removed {removed} animation curve(s) that drove the screen atlas",
+                    "The socket toggles also wrote each socket's identity, tags and shape into the " +
+                    "atlas marker's material, so VRChat's shader could read them back off the " +
+                    "screen. The marker is gone and those writes went to nothing.");
+            }
+        }
+
+        static bool AddressesAtlas(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+            // Any path segment that IS an atlas object, or sits beneath one.
+            foreach (string hint in AtlasJunk)
+            {
+                int at = path.IndexOf(hint, StringComparison.Ordinal);
+                if (at < 0)
+                {
+                    continue;
+                }
+                // Segment boundary before it: start of path, or a slash.
+                if (at > 0 && path[at - 1] != '/')
+                {
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        }
+
         // --- auto socket mode --------------------------------------------
 
         // VRCFury's auto mode is one 1 m proximity trigger teleported from

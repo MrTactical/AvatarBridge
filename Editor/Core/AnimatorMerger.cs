@@ -8329,7 +8329,7 @@ namespace AvatarBridge
             {
                 if (!pathCache.TryGetValue(path, out var t))
                 {
-                    pathCache[path] = t = string.IsNullOrEmpty(path) ? root : root.Find(path);
+                    pathCache[path] = t = BridgeContext.FindByAnimationPath(root, path);
                 }
                 return t;
             }
@@ -9056,7 +9056,14 @@ namespace AvatarBridge
                     {
                         return;
                     }
-                    if (root.Find(binding.path) != null)
+                    // Resolved the way the animator does. Find splits on
+                    // every slash, and an object whose own name has one —
+                    // every converted contact trigger, named after its
+                    // parameter — reads as missing to it while animating
+                    // fine. Handing a healthy path to the fuzzy repair
+                    // below is how a working curve gets moved somewhere
+                    // wrong.
+                    if (BridgeContext.FindByAnimationPath(root, binding.path) != null)
                     {
                         return;
                     }
@@ -9270,7 +9277,10 @@ namespace AvatarBridge
                 }
                 if (!resolveCache.TryGetValue(path, out var ok))
                 {
-                    resolveCache[path] = ok = root.Find(path) != null;
+                    // The animator's resolution, not Find's — see
+                    // BridgeContext.FindByAnimationPath. Slash-named
+                    // objects otherwise audit as dead while working.
+                    resolveCache[path] = ok = BridgeContext.FindByAnimationPath(root, path) != null;
                 }
                 return ok;
             }

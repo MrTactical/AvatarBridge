@@ -236,7 +236,12 @@ namespace AvatarBridge
                     continue;
                 }
                 bool ours = Names.Any(n => path.Contains(n.To));
-                if (ours && ctx.Target.transform.Find(path) == null)
+                // Resolved the way the animator resolves, not with Find:
+                // the converted contact triggers under every socket are
+                // named after their parameter, slashes and all, and Find
+                // called all eighty-six of them dead while every one of
+                // them worked in game.
+                if (ours && BridgeContext.FindByAnimationPath(ctx.Target.transform, path) == null)
                 {
                     missing.Add(path);
                 }

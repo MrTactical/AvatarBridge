@@ -185,6 +185,11 @@ namespace AvatarBridge
                     // the Magica path; named as lost and removed.
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
+                    // The atlas objects went early; their curves go here,
+                    // once the clips are ours. Before the rename so its
+                    // dead-path sweep judges a clean set.
+                    Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
+                         PassTraits.EditsClips),
                     // DEAD LAST among the passes that touch a clip. It
                     // renames objects and rewrites every path naming them,
                     // so anything running after it that wrote a path would
