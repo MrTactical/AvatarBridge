@@ -44,7 +44,7 @@ namespace AvatarBridge.Spike
         const float SideOffset = 0.06f;
         const float DepthFraction = 0.6f;
 
-        [MenuItem("Tools/Avatar Bridge/Spike/Probe plug channel (Play mode)")]
+        [MenuItem("AvatarBridge/Spike/Probe plug channel (Play mode)")]
         public static void Probe()
         {
             if (!Application.isPlaying)

@@ -49,7 +49,7 @@ namespace AvatarBridge.Spike
     {
         const string Dir = "Assets/SpsSpike/Props";
 
-        [MenuItem("Tools/Avatar Bridge/Spike/Verify and repair YAPS props")]
+        [MenuItem("AvatarBridge/Spike/Verify and repair YAPS props")]
         public static void Run()
         {
             var paths = AssetDatabase.FindAssets("t:Prefab", new[] { Dir })
