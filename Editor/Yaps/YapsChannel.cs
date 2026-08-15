@@ -1,40 +1,9 @@
-// YAPS — the discrete channel. How a plug learns where a socket is, and
-// whether it is engaged at all.
-//
-// ---------------------------------------------------------------------
-// WHY IT IS THIS SHAPE
-// ---------------------------------------------------------------------
-//
-// Three facts about ChilloutVR decide the whole design, and all three were
-// read out of the client rather than guessed.
-//
-// A trigger only exists on the wearer. CVRAdvancedAvatarSettingsTrigger is
-// on the client's LocalComponentWhitelist and nothing else, so a remote
-// copy of an avatar has none. The wearer's own machine works out where the
-// socket is; everyone else has to be told.
-//
-// A trigger reports position in its own frame. The client computes
-// inverse(rotation) * (contactPoint - position) / halfExtents, so the value
-// is the pointer's offset inside the receiver's box, normalised per axis.
-// There is no way to ask it for a world position. Putting the box on the
-// plug therefore costs nothing and gains everything: what crosses the wire
-// is the gap between two bodies that are already touching, which barely
-// moves, instead of a world position that changes every time either person
-// walks. One axis per trigger, because sampleDirection belongs to the
-// trigger rather than the task.
-//
-// A contact must never drive a synced parameter. The contact system writes
-// straight at the animator without filling the outbound buffer, so a synced
-// parameter gets the incoming stream's value written back over the top,
-// intermittently. The author of that system is explicit about it. So the
-// trigger drives a "#" local, and a CVRAnimatorDriver copies it into the
-// synced twin — driver writes do go through the manager.
-//
-// Both drivers read ANIMATED FIELDS rather than parameters, which is why
-// each value costs a small blend tree: a two-motion tree on the source
-// parameter, blending a field between its two ends. Twice per value, once
-// to publish and once to consume, because the local copy reads the "#" and
-// a remote copy has only the synced one.
+// YAPS: the discrete channel. How a plug learns where a socket is.
+// A trigger exists only on the wearer's copy and reports position in
+// its own frame, one axis per trigger, so the box sits on the plug.
+// A contact write bypasses the outbound buffer, so a trigger drives a
+// "#" local and a CVRAnimatorDriver copies it into the synced twin.
+// Drivers read animated fields, so each value costs a two-motion tree.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -49,15 +18,12 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Two material-driver tasks per plug — one float4 for the socket
-        // position, one for the flags — against sixteen tasks. The real
-        // ceiling is the sync budget, not the tasks: five synced floats
-        // per plug at 32 bits each.
+        // Two material-driver tasks per plug against sixteen. The real
+        // ceiling is the sync budget, not the tasks.
         const int MaxPlugs = 4;
 
-        // How far out the box reaches, as a multiple of plug length. The
-        // deform stops responding past 1.6 lengths, so a box any larger
-        // spends its precision on distances that cannot matter.
+        // Box reach as a multiple of plug length. The deform stops
+        // responding past 1.6 lengths.
         const float BoxLengths = 1.75f;
 
         public static void Run(BridgeContext ctx)
@@ -93,9 +59,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Nothing was wired, so say nothing. Claiming otherwise
-            // directly under the warning explaining why it could not be
-            // is how a report stops being worth reading.
+            // Nothing wired: remove the drivers and say nothing.
             if (wired == 0)
             {
                 Object.DestroyImmediate(materialDriver);
@@ -103,11 +67,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // Anything built in memory after the controller became an asset
-            // has to embed itself, and a layer that forgets serializes with
-            // a null state machine — named correctly, driving nothing, with
-            // no error anywhere. That has now cost two separate debugging
-            // sessions, so it is checked rather than remembered.
+            // A layer built after the controller became an asset must embed
+            // itself, or it serializes with a null state machine, silently.
             var hollow = ctx.MergedController.layers
                 .Where(l => l.name.StartsWith("YAPS") && l.stateMachine == null)
                 .Select(l => l.name)
@@ -139,27 +100,11 @@ namespace AvatarBridge
             float extent = Mathf.Max(plug.Length, 0.01f) * BoxLengths;
             var box = new Vector3(extent * 2f, extent * 2f, extent * 2f);
 
-            // Sync slots are handed out in declaration order and run out
-            // silently, so ask before spending. Engagement is bought first
-            // because it is the on-switch: without it nothing deforms for
-            // anyone, whereas without the offset the socket is still found
-            // by its marker lights at contact range and by the player
-            // globals beyond that.
-            //
-            // The offset is all three axes or none. Two axes out of three
-            // is not a degraded position, it is a wrong one.
-            // One float of slack on every threshold. The CCK's own inspector
-            // counts the budget slightly more harshly than the client does —
-            // it counted an avatar at 3200 that this measured at 3168 — and
-            // being 32 bits over turns that inspector red on the user's
-            // screen whatever the client thinks. Sitting a float short of
-            // the line costs nothing; sitting a float past it costs the
-            // avatar's credibility at upload time.
+            // Sync slots run out silently, so ask before spending. One float
+            // of slack: the CCK inspector counts the budget more harshly than the client.
             int spare = SpareSyncFloats(ctx);
-            // Orientation is bought LAST and dropped FIRST, because a plug
-            // without it still finds the socket and bends to it — it just
-            // reaches the socket rather than threading it. A plug without
-            // the position does not know where to go at all.
+            // Orientation is bought last and dropped first: without it the
+            // plug reaches the socket rather than threading it.
             bool carryOrientation = spare >= 9;   // the offset tier, and three more
             bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
             bool carryEngagement = spare >= 3;   // engagement and is-hole
@@ -170,11 +115,8 @@ namespace AvatarBridge
 
             if (!carryEngagement)
             {
-                // Not a failure. The light path resolves position AND
-                // engages on its own within about a plug length, which is
-                // exactly how a plug meets content this tool never touched,
-                // and this avatar's own sockets were re-ranged to be found
-                // that way too.
+                // Not a failure: the light path resolves position and
+                // engages on its own within about a plug length.
                 ctx.Report.Warning(Category,
                     "No sync budget left for the socket channel — marker lights only",
                     $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
@@ -216,23 +158,16 @@ namespace AvatarBridge
                 var (axis, direction) = axes[a];
                 AddAxisTrigger(ctx, plug, index, box, axis, direction, SocketPointerTypes, "");
 
-                // The same three axes again, reading the socket's SECOND
-                // point instead of its root. Subtracting one from the other
-                // is the socket's facing, which is the one thing the light
-                // path had that this channel did not.
+                // The same axes again on the socket's second point; the
+                // difference is the socket's facing.
                 if (carryOrientation)
                 {
                     AddAxisTrigger(ctx, plug, index, box, axis, direction, FrontPointerTypes, "F");
                 }
             }
 
-            // ONE task per material property, not one per value. A driver
-            // task writes the WHOLE float4 every frame, from its own
-            // materialNN X/Y/Z/W group — so three tasks all pointing at
-            // _YAPS_SocketPos do not contribute a component each, they take
-            // turns overwriting one another with zeros. That is why the
-            // channel did nothing at all: the position was being blanked as
-            // fast as it was written.
+            // One task per material property. A task writes the whole float4
+            // from its own materialNN X/Y/Z/W group; three tasks would overwrite each other.
             int flagsTask = materialDriver.tasks.Count + 1;
             materialDriver.tasks.Add(new CVRMaterialDriverTask
             {
@@ -266,9 +201,7 @@ namespace AvatarBridge
                 });
             }
 
-            // Engagement first, deliberately: slots go out in declaration
-            // order, so the one value the deform cannot work without is the
-            // one that gets a slot when the avatar is nearly full.
+            // Engagement first: slots go out in declaration order.
             var values = new List<(string axis, string field)>
             {
                 ("E", $"material{flagsTask:00}X"),
@@ -282,9 +215,8 @@ namespace AvatarBridge
             {
                 foreach (var (axis, _) in axes)
                 {
-                    // "F" only names the parameter. The FIELD keeps the bare
-                    // axis letter, because a driver task's four fields are
-                    // X/Y/Z/W of its own float4 whatever that float4 holds.
+                    // "F" only names the parameter; the field keeps the bare
+                    // axis letter, since a task's fields are X/Y/Z/W of its float4.
                     values.Add(("F" + axis, $"material{frontTask:00}{axis}"));
                 }
             }
@@ -306,11 +238,8 @@ namespace AvatarBridge
                 AddDriverLayer(ctx, $"YAPS{index}{axis} publish", local,
                     "", typeof(CVRAnimatorDriver), $"animatorParameter{slot + 1:00}");
 
-                // Consume: the synced value into the material. Everyone runs
-                // this, wearer and viewer alike.
-                // Read the SMOOTHED name, so a remote viewer follows the
-                // value instead of stepping to it. Falls back to the raw
-                // synced name if the template is missing.
+                // Consume: the synced value into the material, on every client.
+                // Read the smoothed name so a remote viewer follows the value.
                 var smoothLayers = new HashSet<string>();
                 string source = Smoothed(ctx, synced, smoothLayers);
                 AddDriverLayer(ctx, $"YAPS{index}{axis} apply", source,
@@ -320,20 +249,16 @@ namespace AvatarBridge
             return true;
         }
 
-        // Its own object rather than sharing an axis trigger's: those only
-        // exist when there is sync budget for them, and engagement has to
-        // work either way. DisallowMultipleComponent settles it anyway.
+        // Its own object: axis triggers exist only with sync budget, and
+        // engagement must work either way.
         static void BuildEngagementTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
             var host = TriggerHost($"YAPS Channel {index} E", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // A trigger carrying ONLY a distance task is a SPHERE, and its
-            // radius is areaSize.x outright — not half of it, the way a box
-            // uses the same field. Handing it the box size gave a sphere of
-            // twice the intended reach, a metre and a half of engagement
-            // range around the plug, and a gizmo that filled the room.
+            // A trigger with only a distance task is a sphere, and its
+            // radius is areaSize.x outright, not half as a box uses it.
             trigger.areaSize = box * 0.5f;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
@@ -346,8 +271,7 @@ namespace AvatarBridge
                 maxValue = 1f,
             });
             AddHoleTrigger(ctx, plug, index, box);
-            // Nothing writes a stay task once the sender leaves, so without
-            // this the plug stays bent at whatever it last saw, forever.
+            // Nothing writes a stay task after the sender leaves; reset on exit.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
                 settingName = Local(index, "E"),
@@ -356,24 +280,16 @@ namespace AvatarBridge
             });
         }
 
-        // A hole closes around the plug and stops it; a ring lets it pass
-        // straight through. The difference is the whole character of the
-        // effect, and the socket's own pointer tag already says which — so
-        // a second trigger, filtered to hole tags alone, raises a flag
-        // whenever a hole is what is in reach.
-        //
-        // Enter and exit rather than a stay task, because this is a fact
-        // about the socket rather than a measurement of it: there is no
-        // "how much of a hole" to sample.
+        // A hole closes around the plug; a ring lets it pass. The socket's
+        // pointer tag says which, so a second trigger raises a flag for holes.
         static void AddHoleTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
             var host = TriggerHost($"YAPS Channel {index} H", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // Enter/exit only and no stay tasks at all, which the CCK also
-            // counts as distance-only — so this is a sphere too, and its
-            // radius is areaSize.x outright.
+            // Enter/exit with no stay tasks counts as distance-only, so this
+            // is a sphere too, radius areaSize.x.
             trigger.areaSize = box * 0.5f;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
@@ -393,30 +309,14 @@ namespace AvatarBridge
         }
 
         // Only the tags that mean "hole". A plain TPS_Orf_Root says nothing
-        // either way and is deliberately absent: unknown stays a ring,
-        // which passes through rather than trapping a plug in something
-        // that was never meant to hold it.
+        // either way; unknown stays a ring.
         static readonly string[] HolePointerTypes =
         {
             "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
         };
 
-        // What a remote viewer receives is a stepped value: the wearer's
-        // machine measures continuously, but ChilloutVR transmits avatar
-        // parameters on a schedule, and in practice a viewer sees a couple
-        // of updates a second. Joe watched a plug stutter for exactly this
-        // reason.
-        //
-        // So every client eases the value it received toward its target
-        // each frame instead of snapping to it. AvatarBridge already ships
-        // the layer that does this — the constant-speed Linear Smoothing
-        // template the avatar scaler uses — so it is cloned per value with
-        // its Input and Output renamed.
-        //
-        // The smoothed name is "#" local on purpose. It is derived, not
-        // transmitted: every client already has the synced value and can
-        // smooth its own copy, so this costs no sync bits at all. Only the
-        // wearer's own view is unaffected, since theirs was never stepped.
+        // Synced parameters arrive stepped, so every client eases toward the
+        // received value. The "#" smoothed name is derived and costs no sync bits.
         static string Smoothed(BridgeContext ctx, string synced, HashSet<string> layerNames)
         {
             var template = AvatarScalerInjector.LoadController();
@@ -428,10 +328,8 @@ namespace AvatarBridge
             string output = "#" + synced + "sm";
             var copier = new AnimatorDeepCopier();
             var layers = ctx.MergedController.layers.ToList();
-            // Every parameter this layer writes, old name to new. The
-            // template's clips bind these as Animator properties, and a clip
-            // binding is not a "parameter reference" — renaming references
-            // does not reach it.
+            // Every parameter this layer writes, old name to new. Clip
+            // bindings are not parameter references; renaming references misses them.
             var renames = new Dictionary<string, string>();
             foreach (var source in template.layers)
             {
@@ -448,11 +346,8 @@ namespace AvatarBridge
                 renames[AvatarScalerInjector.TemplateParam] = synced;
                 renames["Output"] = output;
 
-                // Every OTHER parameter the template uses is scratch — its
-                // own frame timer and accumulators. Five copies of this
-                // layer sharing one set of those would each stamp on the
-                // others' working state, and the smoothing would come out
-                // as noise. Give each copy its own.
+                // Every other template parameter is scratch. Each copy of the
+                // layer needs its own, or the copies stamp on each other's state.
                 foreach (var parameter in template.parameters)
                 {
                     if (parameter.name == AvatarScalerInjector.TemplateParam
@@ -463,47 +358,21 @@ namespace AvatarBridge
                     string mine = "#" + synced + "_" + parameter.name.TrimStart('#');
                     AvatarScalerInjector.RenameParameterReferences(clone.stateMachine,
                         parameter.name, mine);
-                    // Carry the template's DEFAULT across, not just the name
-                    // and type. These are its constants: "One" is the direct
-                    // blend weight every child of the smoothing tree rides on
-                    // and ships at 1, and "StepSize" is how fast the value
-                    // may travel per frame and ships at 0.05. Declared bare
-                    // they come out 0, and a direct tree whose every weight
-                    // is zero produces nothing at all — the layer runs, reads
-                    // its input, and writes a value that never moves.
-                    //
-                    // StepSize is also the one honest place for TPS's
-                    // "buffered depth": how far behind a socket the plug is
-                    // allowed to be. A vertex shader has no memory between
-                    // frames, so a lag cannot live there; it lives here, as
-                    // the setting the user calls socket follow.
+                    // Carry the template's defaults; declared bare they come
+                    // out 0. StepSize is the socket follow setting.
                     float value = parameter.name.EndsWith("StepSize", System.StringComparison.Ordinal)
                         ? ctx.Settings.yapsSocketFollow
                         : parameter.defaultFloat;
                     Declare(ctx, mine, parameter.type, value);
                     renames[parameter.name] = mine;
                 }
-                // The clips are what actually WRITE these parameters: they
-                // bind them as Animator properties, which is how a value
-                // gets into a parameter at all without a script. Renaming
-                // the state machine's references leaves those bindings
-                // pointing at the template's own names — so five copies of
-                // this layer all sat on "Output", which is the AVATAR
-                // SCALER's parameter, and drove the wearer's height to zero
-                // while never writing the value they existed to produce.
-                // One cause, two symptoms: a shrinking avatar and a dead
-                // channel.
+                // The clips bind these parameters as Animator properties;
+                // renaming references leaves those bindings on the template names.
                 RebindMachine(clone.stateMachine, renames, ctx,
                     new Dictionary<AnimationClip, AnimationClip>());
 
-                // The controller is already an asset by the time this pass
-                // runs, so the saver's own embed walk is long past. A clone
-                // that does not add itself serializes with a null state
-                // machine: the layer appears, correctly named, smoothing
-                // nothing, and the value it was meant to produce stays at
-                // zero forever. Since that value is ENGAGEMENT, the whole
-                // contact channel goes quiet and only the light path still
-                // works — which is exactly how this hid.
+                // The controller is already an asset here, so the clone must
+                // embed itself or it serializes with a null state machine.
                 AnimatorAssetSaver.EmbedLayer(clone, ctx.MergedController);
 
                 layers.Add(clone);
@@ -518,9 +387,8 @@ namespace AvatarBridge
             return output;
         }
 
-        // ChilloutVR's own budget, the same rule BridgeDiagnostics reports
-        // against: 32 bits a float, "#" names and triggers are free, and
-        // anything declared past the cap silently never replicates.
+        // ChilloutVR's budget, as BridgeDiagnostics reports it: 32 bits a
+        // float, "#" names and triggers free, past the cap never replicates.
         const int AasBitBudget = 3200;
 
         static int SpareSyncFloats(BridgeContext ctx)
@@ -538,15 +406,8 @@ namespace AvatarBridge
             return Mathf.Max(0, (AasBitBudget - used) / 32);
         }
 
-        // The socket end of a contact, exactly as the tags read on a
-        // converted avatar — the client matches these as whole strings, so
-        // a near miss is a miss. Filtering on them keeps the plug from
-        // reaching for every hand and fingertip in the instance.
-        //
-        // ChilloutVR's own existing DPS content is NOT in this list and
-        // cannot be: it carries no contacts at all, only marker lights.
-        // That interop rides the light path in yaps_resolve.cginc instead,
-        // which is why the light path is allowed to engage on its own.
+        // The socket end of a contact. The client matches these as whole
+        // strings. DPS content carries no contacts and rides the light path.
         static readonly string[] SocketPointerTypes =
         {
             "TPS_Orf_Root", "TPS_Orf_Root_SelfNotOnHips",
@@ -555,12 +416,8 @@ namespace AvatarBridge
             "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
         };
 
-        // The socket's SECOND point, which is what says which way it faces.
-        // TPS puts a TPS_Orf_Norm a centimetre along the orifice's forward
-        // from its root; SPS does the same and calls it a Front. Both are
-        // here because a converted avatar carries both — twelve of each on
-        // the avatar this was built against — and because a plug should not
-        // care which system dressed the socket it just met.
+        // The socket's second point, which says which way it faces. TPS calls
+        // it TPS_Orf_Norm, SPS calls it a Front; a converted avatar carries both.
         static readonly string[] FrontPointerTypes =
         {
             "TPS_Orf_Norm", "TPS_Orf_Norm_SelfNotOnHips",
@@ -571,9 +428,8 @@ namespace AvatarBridge
         static string Synced(int index, string axis) => $"YAPS{index}{axis}";
 
 
-        // A two-motion blend tree is the whole trick: the driver's field is
-        // an animated float, so blending between a clip that sets it to 0
-        // and one that sets it to 1 makes the field track the parameter.
+        // A two-motion blend tree: the driver's field is an animated float,
+        // so blending 0 and 1 clips makes the field track the parameter.
         static void AddDriverLayer(BridgeContext ctx, string name, string parameter,
             string path, System.Type component, string field)
         {
@@ -594,11 +450,8 @@ namespace AvatarBridge
             state.motion = tree;
             machine.defaultState = state;
 
-            // Everything built here lives only in memory until it is made
-            // part of the controller asset. Skip this and Unity serializes
-            // the layer with a null state machine — the layers appear,
-            // correctly named, driving nothing at all, and the channel is
-            // silently dead with no error anywhere.
+            // In memory until added to the controller asset; skipped, the
+            // layer serializes with a null state machine and no error.
             string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
             if (!string.IsNullOrEmpty(controllerPath))
             {
@@ -631,9 +484,8 @@ namespace AvatarBridge
             return clip;
         }
 
-        // One box for one axis, filtered to one family of pointers. Called
-        // twice per axis: once for the socket's root, once for the second
-        // point that says which way it faces.
+        // One box for one axis, one family of pointers. Called twice per
+        // axis: the socket's root, then its second point.
         static void AddAxisTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
             Vector3 box, string axis, CVRAdvancedAvatarSettingsTrigger.SampleDirection direction,
             string[] types, string prefix)
@@ -654,22 +506,15 @@ namespace AvatarBridge
             });
         }
 
-        // A trigger measures from its OWN transform, and the shader
-        // reconstructs the socket against the frame measured from the mesh.
-        // Those must be the same frame. Parenting the host to the plug
-        // object leaves them apart by however far the object sits from the
-        // plug it names — 28 cm on a 46 cm plug for a real avatar, so the
-        // socket landed more than half a plug length short of where it was,
-        // which reads in game as a plug that only engages half way down.
+        // A trigger measures from its own transform, and the shader
+        // reconstructs the socket against the measured mesh frame. Same frame.
         static GameObject TriggerHost(string name, BridgeContext.YapsPlug plug)
         {
             var host = new GameObject(name);
             host.transform.SetParent(plug.Root, false);
 
-            // An all-zero quaternion is not a rotation; it means no frame was
-            // recorded. Sit on the object rather than teleporting to world
-            // zero, which is where a plug with no frame would otherwise put
-            // every contact it owns.
+            // An all-zero quaternion means no frame was recorded. Sit on the
+            // object rather than at world zero.
             if (plug.Rotation.x != 0f || plug.Rotation.y != 0f
                 || plug.Rotation.z != 0f || plug.Rotation.w != 0f)
             {
@@ -722,9 +567,8 @@ namespace AvatarBridge
             return motion;
         }
 
-        // A COPY, never the original. These clips live in the scaler package
-        // and are shared by every avatar the tool has ever converted, so
-        // rebinding one in place would reach back into the package itself.
+        // A copy, never the original: these clips live in the scaler package
+        // and are shared by every converted avatar.
         static AnimationClip RebindClip(AnimationClip source, Dictionary<string, string> renames,
             BridgeContext ctx)
         {
@@ -748,12 +592,8 @@ namespace AvatarBridge
             return clip;
         }
 
-        // The default MATTERS for anything cloned from a template. A
-        // smoothing tree blends its children directly on a parameter the
-        // template ships at 1, and steps at a rate it ships at 0.05; declare
-        // those as a bare name and they arrive as 0, which is a tree with no
-        // weight stepping at no speed. AddParameter cannot set a default, so
-        // the parameter is written into the array by hand.
+        // Defaults matter for template clones: "One" ships at 1, "StepSize"
+        // at 0.05, and bare declarations arrive as 0. AddParameter cannot set one.
         static void Declare(BridgeContext ctx, string name,
             AnimatorControllerParameterType type = AnimatorControllerParameterType.Float,
             float defaultFloat = 0f)

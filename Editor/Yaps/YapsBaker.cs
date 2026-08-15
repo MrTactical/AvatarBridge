@@ -1,32 +1,9 @@
-// Phase 1c. Bakes a plug mesh into the texture the deform reads.
-//
-// Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// The format is implemented from its documented layout, not from their
-// code. See Tools/SpsSpike/LICENSE-POSTURE.md.
-//
-// ---------------------------------------------------------------------
-// WHAT GETS BAKED, AND IN WHICH SPACE
-// ---------------------------------------------------------------------
-//
-// The deform needs each vertex expressed as a point on a rod: Z along the
-// shaft, X and Y off its centre line. So every vertex is measured in the
-// PLUG ROOT's frame — its rotation and position, deliberately without its
-// scale, so the numbers come out in the same units the renderer works in
-// and the shader can compare them against skinned positions directly.
-//
-// Vertices are placed through the bind pose rather than read raw. A
-// skinned mesh's stored vertices sit whereever the modeller left them;
-// where the plug actually IS comes from bone × bindpose, which is what
-// skinning itself computes.
-//
-// The `active` weight is how much of a vertex belongs to the plug — the
-// total skin weight it has on the plug's own bone chain. That gives the
-// feather at the base for free: a vertex half-weighted to the hip is half
-// deformed, which is exactly right, and it is why the shader multiplies
-// by this rather than thresholding it.
-// Guarded on the CCK alone, not the VRChat SDK: nothing here touches a
-// VRChat type, and the native authoring window planned for avatars that
-// never came from VRChat has to be able to compile without it.
+// Bakes a plug mesh into the texture the deform reads. Format from
+// SPS's documented layout, not its code; see Tools/SpsSpike/LICENSE-POSTURE.md.
+// Each vertex is stored in the plug root's frame without its scale, in
+// renderer units, placed through bone x bindpose. The active weight is
+// the vertex's skin weight on the plug's bone chain; it feathers the base.
+// Guarded on the CCK alone; nothing here touches a VRChat type.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -44,12 +21,7 @@ namespace AvatarBridge
         const int FloatsPerVertex = 10;
         const int FloatsPerShapeVertex = 9;   // delta position, normal, tangent
 
-        // Sixteen, matching SPS. Eight was chosen when the bake was new and
-        // texture cost was the worry, on the reasoning that nobody would
-        // use more — but a plug with separate length, girth, curve and knot
-        // sliders spends eight without trying, and a shape the bake does
-        // not carry is one the deform silently ignores while the mesh moves
-        // out from under it. The weights ride four float4s.
+        // Sixteen, matching SPS. The weights ride four float4s.
         public const int MaxShapes = 16;
 
         public class Result
@@ -62,11 +34,8 @@ namespace AvatarBridge
             public bool FromSkinnedMesh;
             public List<string> Shapes = new List<string>();
 
-            // The frame the deform actually works in, in world space at bake
-            // time. It is NOT the plug object's transform — the object can
-            // sit anywhere, and on a real avatar it does. Anything measuring
-            // against the plug from outside the shader has to use this or it
-            // measures from somewhere the deform has never heard of.
+            // The frame the deform works in, world space at bake time. Not
+            // the plug object's transform; anything measuring the plug uses this.
             public Vector3 Origin;
             public Quaternion Rotation;
         }
@@ -87,10 +56,8 @@ namespace AvatarBridge
                 failure = "the renderer has no mesh";
                 return null;
             }
-            // Read/Write Enabled gates the PLAYER, not the editor, so an
-            // unticked mesh is usually still readable here. Ask the mesh
-            // rather than the flag: a real refusal is one that throws or
-            // hands back nothing.
+            // Read/Write Enabled gates the player, not the editor, so ask the
+            // mesh rather than the flag.
             Vector3[] probe;
             try
             {
@@ -116,20 +83,8 @@ namespace AvatarBridge
                 return null;
             }
 
-            // The shaft direction is MEASURED, not taken from the plug
-            // root's rotation.
-            //
-            // VRCFury aims that object down the shaft as part of its own SPS
-            // step, and the converter deliberately turns that step off — so
-            // the rotation we would inherit is whatever the author left. On
-            // a real avatar that put the +Z axis somewhere across the plug
-            // instead of along it, and every number downstream is scaled by
-            // the length measured along it: baked 0.667 m where the plug is
-            // 0.427. Engagement envelope, bezier handles, hole taper and
-            // trigger box all inherit the error, and the mesh mangles.
-            //
-            // Neither the origin nor the axis can be taken from that object.
-            // Both are measured from the mesh — see MeasureFrame.
+            // The shaft direction and origin are measured from the mesh, not
+            // taken from the plug root, whose rotation is whatever the author left.
             MeasureFrame(worldPositions, activeWeights, plugRoot,
                 out var origin, out var rotation, out float axisDrift, out float originDrift);
             var toPlug = Matrix4x4.TRS(origin, rotation, Vector3.one).inverse;
@@ -167,13 +122,8 @@ namespace AvatarBridge
                 return null;
             }
 
-            // Blendshapes that move the plug. The mesh arriving at the
-            // vertex shader already has them applied, but the BAKE is the
-            // rest pose — so a slider that lengthens or fattens a plug puts
-            // every vertex somewhere the bake does not describe, and both
-            // the distance-along-the-rod and the recovered frame go wrong
-            // with it. Storing the deltas lets the shader rebuild the rest
-            // pose the vertex actually came from.
+            // The mesh reaching the vertex shader has blendshapes applied and
+            // the bake is the rest pose; the deltas let the shader rebuild it.
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, out var shapeNames);
 
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);

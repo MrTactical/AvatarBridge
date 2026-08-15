@@ -387,29 +387,12 @@ namespace AvatarBridge
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
                     int digit = Digit(light.range);
-                    // A twin alongside our own encoding does not work: four
-                    // vertex slots cannot hold a legacy root, a legacy front
-                    // AND our root, and ours outranks both, so the twins
-                    // never get a slot except when movement reshuffles the
-                    // ranking. Measured in game as a legacy plug that
-                    // reacted only while walking backwards.
-                    //
-                    // So it is one encoding or the other, and legacy wins
-                    // the lights. A YAPS plug has three ways to find a
-                    // socket and lights are the middle one; a DPS plug has
-                    // lights and nothing else. Spending the slots on the
-                    // reader who has no alternative is the whole trade.
+                    // One encoding or the other. Legacy wins the lights: a
+                    // DPS plug has lights and nothing else.
                     if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
                     {
-                        // Legacy mode leaves the range EXACTLY as VRCFury
-                        // baked it — 0.4106, 0.4206, 0.4506, keeping the
-                        // trailing digits and everything else about them.
-                        // Rewriting to a rounded 0.4100 was an unexamined
-                        // change: those trailing digits are part of what
-                        // every other SPS avatar on the platform emits, and
-                        // the test prop that worked carries them. Matching
-                        // the ecosystem byte for byte beats reasoning about
-                        // which parts of it matter.
+                        // Legacy mode leaves the range exactly as baked
+                        // (0.4106, 0.4206, 0.4506), trailing digits included.
                         if (!ctx.Settings.emitLegacySocketLights)
                         {
                             light.range = RootRange;
@@ -419,25 +402,8 @@ namespace AvatarBridge
                     }
                     else if (digit == 5 || digit == 6)
                     {
-                        // 0.45, the value legacy has always used, and NOT
-                        // the 0.35 that briefly lived here.
-                        //
-                        // The first decimal is free to OUR decoder, which
-                        // reads the second — so 0.35 still says "front"
-                        // while ranking below every root, which looked like
-                        // a clean way to stop twelve sockets' fronts
-                        // evicting their roots. It is not: a DPS decoder
-                        // gates on a range window around 0.4 and never saw
-                        // them at all. Its plugs were left with a root and
-                        // no front, which is a position with no axis, so
-                        // they fell back to a fixed direction and engaged
-                        // from one side only. The green test prop at a plain
-                        // 0.4506 was omnidirectional for that same plug the
-                        // whole time, which is what gave it away.
-                        //
-                        // The eviction this was solving is gone regardless:
-                        // socket lights follow their menu toggle now, so one
-                        // socket lit is two lights against four slots.
+                        // A DPS decoder gates on a range window around 0.4;
+                        // a front outside it is invisible to legacy plugs.
                         if (!ctx.Settings.emitLegacySocketLights)
                         {
                             light.range = FrontRange;
@@ -450,18 +416,8 @@ namespace AvatarBridge
                         left++;
                         continue;
                     }
-                    // Belt and braces on what the protocol assumes: a
-                    // socket light is a marker, not lighting, and a
-                    // vertex light is what keeps it out of ChilloutVR's
-                    // Advanced Safety light budget entirely.
-                    //
-                    // Black, but intensity stays at ONE. Black is what
-                    // stops it lighting anything and what lets the decoder
-                    // separate protocol lights from real ones. Zeroing the
-                    // intensity instead makes Unity drop the light from the
-                    // per-object list altogether — it contributes nothing,
-                    // so it never occupies a slot, so the socket cannot be
-                    // seen at all. Every socket on the avatar goes dark.
+                    // Black at intensity 1: zero intensity drops the light from
+                    // the per-object list. Vertex mode skips the safety light budget.
                     light.color = Color.black;
                     light.intensity = 1f;
                     light.bounceIntensity = 0f;
@@ -523,35 +479,8 @@ namespace AvatarBridge
                 (left > 0 ? $" {left} other marker light(s) left exactly as they were." : ""));
         }
 
-
-        //
-        // A socket cannot say both things with one light. Within the 0.4x
-        // band legacy roots are digits 1 to 4 and fronts are 5 and 6, so a
-        // front always outranks its own root on Unity's range-based slot
-        // ranking — the eviction measured at twelve sockets, and structural,
-        // since no arrangement of legacy digits puts a root above its front.
-        // Our own ordering fixes that and is unreadable to legacy in
-        // exchange, because 7 and 0 mean nothing to it.
-        //
-        // So the socket says both. Ours wins the slot for a YAPS plug; the
-        // twin is there for the DPS content already on the platform, which
-        // is most of it.
-
-        // Wire a socket's marker lights to the menu entry that already turns
-        // that socket on and off.
-        //
-        // The toggles exist and do nothing to the lights. VRCFury's socket
-        // menu drives a parameter that told SPS's screen atlas which socket
-        // to publish, and the atlas is the one part of its transport we
-        // delete — so on a converted avatar every socket stays lit whatever
-        // the menu says, and an avatar with "one socket at a time" still
-        // emits two dozen lights. Nothing in the controller touches
-        // m_IsActive on a socket at all.
-        //
-        // That matters because four vertex light slots cannot carry a dozen
-        // sockets. Wiring the existing menu to the lights hands that problem
-        // to the person best placed to solve it: the wearer, who already has
-        // a control that says exactly what they want lit.
+        // The menu entry that toggles this socket. VRCFury's toggle drove
+        // the deleted atlas and never touched the lights.
         static string ToggleFor(BridgeContext ctx, Transform socket)
         {
             var names = ctx.CvrAvatar.avatarSettings.settings
@@ -559,8 +488,7 @@ namespace AvatarBridge
                 .Where(n => !string.IsNullOrEmpty(n))
                 .ToList();
 
-            // Walk up from the socket: VRCFury names the object the author
-            // made, and the menu entry is named after the same thing.
+            // The menu entry is named after the author's object, so walk up.
             for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
             {
                 string mine = Normalise(at.name);
@@ -568,8 +496,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Longest match first, so "SteppiesLeft" wins over anything
-                // that merely starts the same way.
+                // Longest match first, so a name beats its own prefix.
                 string best = names
                     .Where(n => mine.StartsWith(Normalise(n), StringComparison.Ordinal)
                                 && Normalise(n).Length >= 3)
@@ -583,10 +510,8 @@ namespace AvatarBridge
             return null;
         }
 
-        // "[VF958] Blowjob" and "VF80_Blowjob" and "Handjob Left" against
-        // "HandjobLeft" all have to meet in the middle. Fury's own numbering
-        // is noise, and "Target" is a word it adds to the object but not to
-        // the menu.
+        // "[VF958] Blowjob", "VF80_Blowjob" and "Handjob Left" must all meet
+        // "HandjobLeft". VRCFury's numbering is noise; "Target" is object-only.
         static string Normalise(string name)
         {
             string clean = System.Text.RegularExpressions.Regex.Replace(name, @"\[VF\d+\]", "");
@@ -595,9 +520,7 @@ namespace AvatarBridge
             return clean;
         }
 
-        // Holes first, then rings, then anything unlabelled — so the sockets
-        // that keep their lights are the ones a plug is most likely to be
-        // looking for.
+        // Holes first, then rings, then anything unlabelled.
         static int SocketRank(Transform socket)
         {
             int best = 3;
@@ -610,8 +533,7 @@ namespace AvatarBridge
             return best;
         }
 
-        // Two states and a parameter. Not a blend tree: m_IsActive is a
-        // switch, and blending one halfway is meaningless.
+        // Two states, not a blend tree: m_IsActive is a switch.
         static bool AddLightToggle(BridgeContext ctx, string parameter, List<string> lightPaths)
         {
             var controller = ctx.MergedController;
@@ -632,22 +554,14 @@ namespace AvatarBridge
             string path = AssetDatabase.GetAssetPath(controller);
             if (!string.IsNullOrEmpty(path))
             {
-                // Built in memory, so it has to become part of the asset or
-                // Unity drops the lot on save and leaves an empty layer.
+                // Built in memory; it must join the asset or Unity drops it on save.
                 AssetDatabase.AddObjectToAsset(machine, controller);
                 AssetDatabase.AddObjectToAsset(on, controller);
                 AssetDatabase.AddObjectToAsset(off, controller);
             }
 
-            // Default ON, and that is deliberate. A layer that starts Off
-            // and relies on a transition to switch the lights on fails
-            // DARK: if the parameter never arrives, or arrives before the
-            // layer is evaluated, or is driven some way this does not
-            // expect, every socket on the avatar goes silent and the whole
-            // feature looks broken. Starting On means the worst case is the
-            // behaviour we had before any of this existed — all sockets
-            // lit, contending for slots — which is degraded rather than
-            // dead.
+            // Default On. If the parameter never arrives the sockets stay
+            // lit and contending, rather than all going dark.
             var onState = machine.AddState("On");
             onState.writeDefaultValues = false;
             onState.motion = on;
@@ -685,21 +599,13 @@ namespace AvatarBridge
             return true;
         }
 
-        // Enables the LIGHT COMPONENT, not the GameObject. Animating
-        // m_IsActive churns the object every frame the curve is applied,
-        // which re-registers the light with Unity and can leave it missing
-        // from the per-object light lists a decoder reads — a socket that
-        // resolves only while something is moving. Toggling the component
-        // leaves the object alone.
         static AnimationClip ClipFor(string name, List<string> paths, float active)
         {
             var clip = new AnimationClip { name = name };
             foreach (string path in paths)
             {
-                // The OBJECT, for every link in the chain. The Light
-                // components are already enabled — that was never the
-                // problem — and adding a component curve to the objects
-                // above them would only bind to nothing.
+                // The object, for every link in the chain; the Light
+                // components are already enabled.
                 clip.SetCurve(path, typeof(GameObject), "m_IsActive",
                     AnimationCurve.Constant(0f, 1f / 60f, active));
             }
@@ -708,35 +614,8 @@ namespace AvatarBridge
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
 
-        // DPS and TPS predate VRCFury entirely, so an avatar carrying them
-        // has no BakedSps markers and this pass finds nothing to do. It
-        // used to return in silence, which left the owner of a perfectly
-        // ordinary older avatar unable to tell whether the feature had run,
-        // was unsupported, or had broken.
-        //
-        // The answer is worth saying, because it is not "nothing happened":
-        // their SOCKETS come through and work, and their PLUG does not.
-        // Give a socket a deform of its own, so it opens around what
-        // arrives instead of sitting rigid.
-        //
-        // THE RULE THAT DECIDES EVERYTHING HERE: a shape driven by BOTH the
-        // animator and the shader applies TWICE. The animator sets the
-        // blendshape weight, so the mesh reaches the vertex shader already
-        // bulged, and the shader then adds the baked delta of the same
-        // shape on top.
-        //
-        // They never have to fire together, though. A plug carrying
-        // CONTACTS moves the author's own parameters, so the animator
-        // handles it — with the author's curves, no shape limit, and the
-        // winces and material swaps the shader cannot touch at all. A plug
-        // with NO contacts, which is every piece of Raliv DPS content,
-        // moves nothing, and the animator is inert exactly when the shader
-        // should act.
-        //
-        // So the shader covers what the animator cannot reach and stands
-        // down where it can, and the switch is simply whether we publish a
-        // depth for it: left at -1, the shader falls back to reading a
-        // plug's tracker light and never fights the animator.
+        // Socket deform. A shape driven by both animator and shader applies
+        // twice, so with no published depth (-1) the shader reads a tracker light.
         static void ConvertSockets(BridgeContext ctx, List<Transform> socketRoots)
         {
             if (socketRoots.Count == 0)
@@ -753,8 +632,7 @@ namespace AvatarBridge
                 if (renderer == null || MeshOf(renderer) == null
                     || MeshOf(renderer).blendShapeCount == 0)
                 {
-                    // No shapes to open with, but still a socket somebody
-                    // may want to retune — kind, tag, lights.
+                    // No shapes to open with, but still a socket to retune.
                     YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
                     noShapes++;
                     continue;
@@ -763,17 +641,8 @@ namespace AvatarBridge
                 bool animatorDrivesIt = AnimatorDrivesShapes(ctx, renderer);
                 int slot = MaterialSlotOf(renderer, socketRoot);
 
-                // A socket usually hangs off the BODY, and on a real avatar
-                // the body is the same mesh the plug lives on. Patching it a
-                // second time is refused outright — "it already carries
-                // YAPS" — which is how the corpus found this before any
-                // avatar was reconverted.
-                //
-                // So when they share a renderer and slot, they share the
-                // MATERIAL. One mesh, one bake, one patched shader, both
-                // ends: the shader already carries both deforms and each
-                // guards on its own enable, so the plug half stays live and
-                // the socket half simply switches on beside it.
+                // Socket and plug on the same renderer and slot share the
+                // material; the shader carries both deforms behind their own enables.
                 var shared = ctx.YapsPlugs.FirstOrDefault(
                     p => p.Renderer == renderer && p.MaterialSlot == slot);
 
@@ -783,10 +652,7 @@ namespace AvatarBridge
                 {
                     material = shared.Material;
                     bakedShapes = shared.Shapes;
-                    // NOT setting _YAPS_Enabled to 0 here, unlike a socket
-                    // with a mesh of its own. This material is a working
-                    // plug as well, and switching the plug off to turn a
-                    // socket on would trade one for the other.
+                    // _YAPS_Enabled stays 1: this material is a working plug too.
                 }
                 else
                 {
@@ -810,9 +676,7 @@ namespace AvatarBridge
 
                     material = YapsBaker.Apply(result, materials[slot], patched,
                         ctx.OutputDir + "/YAPS", renderer is SkinnedMeshRenderer);
-                    // No plug on this mesh, so the plug half must stay
-                    // asleep or it would try to bend the socket's own mesh
-                    // toward the nearest socket.
+                    // No plug on this mesh: the plug half stays asleep.
                     material.SetFloat("_YAPS_Enabled", 0f);
 
                     materials[slot] = material;
@@ -820,17 +684,11 @@ namespace AvatarBridge
                 }
 
                 material.SetFloat("_YAPS_SocketPower", 1f);
-                // -1, never 0. Zero is "a plug is here and not yet in";
-                // -1 is "nobody has told me anything", which is what lets
-                // the shader fall back to lights and never fight the
-                // animator when a contact is driving.
+                // -1, never 0. Zero is "a plug is here, not yet in"; -1 is
+                // "nothing told me", which lets the shader fall back to lights.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
 
-                // Leave the authoring component ON the socket, filled in
-                // from what was just built, so the owner can change it
-                // afterwards — kind, which shapes, how deep — with the YAPS
-                // tool, and differ from the author. Without this a converted
-                // socket was a bare object nobody could touch.
+                // The authoring component, filled in from what was just built.
                 YapsNativeBuilder.AdoptSocket(socketRoot, renderer, material, bakedShapes);
 
                 deformed++;
@@ -873,9 +731,8 @@ namespace AvatarBridge
             }
         }
 
-        // The renderer wearing this socket's mesh. A socket object is a
-        // marker; the mesh it belongs to is usually a parent, since an
-        // author hangs the socket off the body they want reshaped.
+        // The renderer wearing this socket's mesh, usually a parent: authors
+        // hang the socket off the body they want reshaped.
         static Renderer SocketRenderer(Transform socketRoot)
         {
             var own = socketRoot.GetComponentInChildren<Renderer>(true);
@@ -905,10 +762,7 @@ namespace AvatarBridge
             return filter != null ? filter.sharedMesh : null;
         }
 
-        // Whether anything in the controller already animates a blendshape
-        // on this renderer. Only informational: the shader stands down on
-        // depth rather than on this, so a wrong answer changes what the
-        // report says and nothing else.
+        // Informational only: the shader stands down on depth, not on this.
         static bool AnimatorDrivesShapes(BridgeContext ctx, Renderer renderer)
         {
             if (ctx.MergedController == null)
@@ -988,17 +842,8 @@ namespace AvatarBridge
 
         // --- the atlas's animation ----------------------------------------
 
-        // RemoveAtlasJunk deletes the screen-atlas OBJECTS early, before the
-        // merge, while the clips are still VRCFury's to leave alone. Nothing
-        // deleted the CURVES that animated them, and there are a lot: every
-        // socket's _SPS_SocketTag*, _SPS_Id*, tangents, hole flag and radius,
-        // written into the atlas marker's material by the toggle that lights
-        // the socket. 2,470 bindings on one avatar, all addressing an object
-        // that no longer exists. Harmless at runtime — the animator skips a
-        // path it cannot find — but dead weight in every socket clip, and it
-        // was what the rename's own sweep kept tripping over.
-        //
-        // Late, with EditsClips, once the clips are ours.
+        // RemoveAtlasJunk deletes the atlas objects early, before the merge.
+        // The curves that animated them go late, once the clips are copies.
         public static void StripAtlasCurves(BridgeContext ctx)
         {
             if (!ctx.Settings.convertYapsSystems || ctx.MergedController == null)
@@ -1048,7 +893,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            // Any path segment that IS an atlas object, or sits beneath one.
+            // Any path segment that is an atlas object, or sits beneath one.
             foreach (string hint in AtlasJunk)
             {
                 int at = path.IndexOf(hint, StringComparison.Ordinal);
@@ -1068,28 +913,8 @@ namespace AvatarBridge
 
         // --- auto socket mode --------------------------------------------
 
-        // VRCFury's auto mode is one 1 m proximity trigger teleported from
-        // socket to socket by a constraint, asking at each stop "is this one
-        // closer than the active one" and switching on ANY positive answer:
-        //
-        //     Settle3 X -> Switch To X   when   Current - Active > 0
-        //
-        // That is VRCFury's own comparison, ported faithfully, and it has no
-        // hysteresis. Two sockets a few centimetres apart — thighjob and
-        // pussy — read nearly the same proximity from a plug between them,
-        // and the active hole flips between the two on noise. VRChat has the
-        // same flicker; here it is louder because the socket toggles it drives
-        // also switch marker lights, so the flip is a visible light change.
-        //
-        // So a visited socket has to beat the active one by a MARGIN. The
-        // Update state still refreshes the active reading every lap, so a
-        // plug genuinely moving from one socket to the next still switches —
-        // it just has to be clearly nearer the new one, not equidistant.
-        // Proximity is 0..1 across the receiver's 1 m sphere, so 0.05 is
-        // five centimetres of preference for the socket already chosen.
-        //
-        // The Turn Off transition (active socket out of range) is left
-        // exactly as it was: that one wants to fire promptly.
+        // VRCFury's auto mode switches on Current - Active > 0, no hysteresis.
+        // Proximity is 0..1 over a 1 m sphere, so 0.05 is 5 cm of preference.
         const float AutoModeMargin = 0.05f;
 
         public static void SteadyAutoMode(BridgeContext ctx)
@@ -1120,11 +945,8 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        // The one condition on that transition is the DBT
-                        // subtraction "Current - Active", compared Greater 0.
-                        // Named by VRCFury as the two parameters with a
-                        // minus between them, so match on the shape rather
-                        // than on a Fury id.
+                        // The condition is VRCFury's "Current - Active" DBT
+                        // subtraction; match on shape rather than on a Fury id.
                         var conditions = transition.conditions;
                         bool touched = false;
                         for (int i = 0; i < conditions.Length; i++)
@@ -1162,15 +984,10 @@ namespace AvatarBridge
             }
         }
 
-        // --- the transport we do not port ------------------------------
+        // --- shape curves, atlas objects ---------------------------------
 
-        // A vertex shader cannot read a blendshape weight, so every clip
-        // that drives one of the plug's shapes gets a parallel curve
-        // writing the same value onto the material.
-        //
-        // Registered as a clip-editing pass, after ownership settles: these
-        // are the conversion's own copies, and editing a shared clip would
-        // reach the source package.
+        // A vertex shader cannot read a blendshape weight, so each plug shape
+        // curve is mirrored onto the material. Runs late, on owned clip copies.
         public static void MirrorShapeCurves(BridgeContext ctx)
         {
             if (!ctx.Settings.convertYapsSystems || ctx.YapsPlugs.Count == 0
@@ -1209,9 +1026,8 @@ namespace AvatarBridge
                             continue;
                         }
 
-                        // Unity animates a blendshape from 0 to 100 and the
-                        // bake stores the shape at full, so the material
-                        // wants the same curve scaled to 0..1.
+                        // Blendshapes animate 0..100; the bake stores full
+                        // shapes, so the material takes 0..1.
                         var source = AnimationUtility.GetEditorCurve(clip, binding);
                         var scaled = new AnimationCurve();
                         foreach (var key in source.keys)
@@ -1301,11 +1117,8 @@ namespace AvatarBridge
             return depth;
         }
 
-        // VRCFury's own names, at the START of the object's name. Contains()
-        // also caught "FPRExclusion_BakedSpsSocket" — the first-person
-        // exclusion the head-chop pass builds at the avatar root for the
-        // blowjob socket, one pass earlier — and adopted it as a thirteenth
-        // socket sitting on the avatar root, named after the avatar.
+        // StartsWith, not Contains: the first-person exclusion object is
+        // named "FPRExclusion_BakedSpsSocket" and is not a socket.
         static List<Transform> Named(BridgeContext ctx, string needle) =>
             ctx.Target.GetComponentsInChildren<Transform>(true)
                 .Where(t => t != null && t.name.StartsWith(needle, System.StringComparison.Ordinal))
