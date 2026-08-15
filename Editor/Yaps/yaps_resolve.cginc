@@ -49,8 +49,11 @@
 // CVR publishes these for every player in the instance, on every client.
 // Declared at the client's capacity: Unity locks an array's size at first
 // bind, so matching it avoids a silent mismatch.
+//
+// Read for ONE purpose only: telling a wearer's own socket lights from
+// everybody else's (YapsSameBodyAs), so a plug does not bend into the hip
+// it grows from. Never as a target. See the note before the resolver.
 float4 _CVR_PlayerHipPositions[255];
-float4 _CVR_PlayerChestPositions[255];
 float4 CVRGlobalParams1;
 
 struct YapsSocket
@@ -61,10 +64,10 @@ struct YapsSocket
     float engaged;
     float isHole;
     // Who decided this answer: 0 nobody, 1 the contact channel, 2 a marker
-    // light, 3 the player-globals floor. Diagnostic, not behaviour — it
-    // exists because a plug bending near a socket does not say WHO bent it,
-    // and a stray light reads exactly like a working channel until the two
-    // are coloured apart. A day was lost to precisely that.
+    // light. Diagnostic, not behaviour — it exists because a plug bending
+    // near a socket does not say WHO bent it, and a stray light reads
+    // exactly like a working channel until the two are coloured apart. A
+    // day was lost to precisely that.
     float tier;
 };
 
@@ -287,34 +290,28 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
     return found;
 }
 
-// --- player globals --------------------------------------------------
-
-// Nearest player's hip, biased a little toward the chest so the target
-// sits on the body rather than inside the pelvis. No rotation exists in
-// the API, so the axis is left to the caller's approach direction.
-bool YapsFindGlobalSocket(float3 plugOrigin, float reach, out float3 position)
-{
-    position = 0;
-    float bestDistanceSq = reach * reach;
-    bool found = false;
-    int count = min((int) round(CVRGlobalParams1.y), 255);
-
-    [loop]
-    for (int i = 0; i < count; i++)
-    {
-        float3 hip = _CVR_PlayerHipPositions[i].xyz;
-        if (dot(hip, hip) < 1e-6) continue;   // slot not written
-        float3 chest = _CVR_PlayerChestPositions[i].xyz;
-        float3 at = dot(chest, chest) > 1e-6 ? lerp(hip, chest, 0.15) : hip;
-
-        float distanceSq = dot(at - plugOrigin, at - plugOrigin);
-        if (distanceSq >= bestDistanceSq) continue;
-        bestDistanceSq = distanceSq;
-        position = at;
-        found = true;
-    }
-    return found;
-}
+// --- what the player globals are NOT for -------------------------------
+//
+// There used to be a fourth tier here: when nothing else resolved, aim the
+// plug at the nearest player's body from ChilloutVR's per-player position
+// arrays. It was removed on 2026-08-15, deliberately and permanently, and
+// this comment exists so nobody rebuilds it as an "improvement".
+//
+// A socket is an act of consent. Someone who authored one, or switched it
+// on from their menu, has said what they want. Someone standing nearby
+// carrying nothing has said nothing — and there is no button on their side
+// to say no, because they have nothing this reads. A plug that reaches for
+// a body on its own is depicting an act on a person who never agreed to
+// it, and this tool will not do that however approximate the aim was.
+//
+// So the plug only ever bends toward a socket: a contact channel written by
+// a socket, a marker light emitted by a socket. Nothing else. A plug near a
+// body with no socket stays exactly as it was.
+//
+// The one thing the player positions ARE still read for is YapsSameBodyAs
+// above, and it goes the other way: it REJECTS a wearer's own socket lights
+// so a plug does not bend into the hip it is growing out of. It never aims
+// at anyone. Keep that distinction if this file is ever touched again.
 
 // --- the resolution --------------------------------------------------
 
@@ -413,10 +410,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         }
     }
 
-    // What the CHANNEL resolved, kept before the floor invents anything.
-    // The light refinement below is allowed to sharpen this answer but not
-    // to replace it with a different socket, and telling those apart needs
-    // the original to compare against.
+    // What the CHANNEL resolved. The light refinement below is allowed to
+    // sharpen this answer but not to replace it with a different socket,
+    // and telling those apart needs the original to compare against.
     bool channelFound = found;
     float3 channelPosition = socket.position;
     if (channelFound)
@@ -424,18 +420,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.tier = 1;
     }
 
-    // Floor: if nothing has written a position, aim at the nearest body.
-    if (!found)
-    {
-        float3 fromGlobals;
-        if (YapsFindGlobalSocket(plugOrigin, worldLength * 2, fromGlobals))
-        {
-            socket.position = fromGlobals;
-            socket.forward = 0;   // caller derives it from the approach
-            found = true;
-            socket.tier = 3;
-        }
-    }
+    // There is deliberately NO floor here. If neither the channel nor a
+    // light has named a socket, nothing has, and the plug stays as it is.
+    // See "what the player globals are NOT for" above.
 
     // Refinement: a protocol light close to where we already believe the
     // socket to be. It only sharpens the position — it can never switch

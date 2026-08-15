@@ -143,16 +143,16 @@ Shader "AvatarBridge/YAPS Test Plug"
                     // "orange used to work" hunt in one glance — a stray
                     // marker light bending the plug reads exactly like a
                     // working contact channel until they are coloured apart.
-                    //   black   nobody
+                    //   black   nobody — and nobody is the ONLY other
+                    //           answer: a plug bends toward a socket or it
+                    //           does not bend
                     //   green   the contact channel
                     //   yellow  a marker light
-                    //   blue    the player-globals floor (aiming at a body)
                     // Dim means resolved but not engaged, so a nearby answer
                     // shows before it starts bending anything.
                     float3 tint = i.tier.x < 0.5 ? float3(0, 0, 0)
                                 : i.tier.x < 1.5 ? float3(0.1, 0.9, 0.2)
-                                : i.tier.x < 2.5 ? float3(0.95, 0.85, 0.15)
-                                : float3(0.2, 0.45, 0.95);
+                                : float3(0.95, 0.85, 0.15);
                     return fixed4(tint * (0.35 + 0.65 * saturate(i.tier.y)), 1);
                 }
 

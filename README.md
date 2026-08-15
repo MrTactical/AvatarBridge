@@ -299,20 +299,26 @@ shader whose deform doesn't exist here and won't bend. But its sockets come thro
 and work for everyone else, and leaving the setting **on** is what keeps their contacts and depth
 reactions; turning it off strips both. The report says which of those two cases you're in.
 
-**How a plug finds a socket.** Three routes, tried in that order, and which ones an avatar gets
-depends on how much parameter sync it has left:
+**How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
+parameter sync it has left:
 
 | | costs | reaches | when it's used |
 |---|---|---|---|
 | **Contact channel** | up to 8 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
 | **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
-| **Player positions** | nothing | everyone, every frame | the floor — aims at a body when nothing better resolves |
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than
 silently going over. Dropped in that order because a plug that knows where a socket is but not
 which way it faces still reaches it; one that doesn't know where it is has nowhere to go. An
 avatar with no budget at all still works through the lights.
+
+**A plug only ever bends toward a socket.** Both routes above are things a socket *publishes* —
+a contact its author placed, a light its wearer switched on from their menu. Someone standing
+nearby who carries neither has said nothing, and there is no button on their side to say no. So
+nothing here aims at a body: a plug near a person with no socket stays exactly as it is.
+ChilloutVR does publish every player's position to shaders, and an earlier build used that as a
+last resort — it was removed on purpose, and it will not come back.
 
 **What other people see.** The wearer's own machine works out where the socket is, and a driver
 publishes it so everyone else sees the same bend. Marker lights are read independently by each

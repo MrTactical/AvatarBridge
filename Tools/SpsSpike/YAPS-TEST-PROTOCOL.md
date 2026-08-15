@@ -42,8 +42,7 @@ the socket it is bending toward:
 |---|---|
 | **green** | the contact channel |
 | **yellow** | a marker light |
-| **blue** | the player-globals floor (aiming at a body; not engaged) |
-| **black** | nobody |
+| **black** | nobody — a plug bends toward a socket or it does not bend; there is no third answer |
 
 Dim means resolved but not yet engaged. A light that only sharpened the channel's answer still
 shows green — whoever provides the *engagement* owns the colour.

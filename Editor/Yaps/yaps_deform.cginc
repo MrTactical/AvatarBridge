@@ -377,8 +377,7 @@ float4 YapsDebug(uint vertexId)
 }
 
 // WHO resolved the socket, for the "Resolved by" debug view: x is the tier
-// (0 nobody, 1 the contact channel, 2 a marker light, 3 the player-globals
-// floor), y the engagement, so the view can dim an answer that resolved but
+// (0 nobody, 1 the contact channel, 2 a marker light), y the engagement, so the view can dim an answer that resolved but
 // did not engage.
 //
 // The distinction this buys: a plug bending near a socket does not say who
@@ -468,7 +467,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
 
     // Everything platform-specific happens in here: the discrete channel,
-    // protocol lights at contact range, the player globals as a floor.
+    // protocol lights at contact range. Nothing else — a plug only ever
+    // bends toward a SOCKET, never toward a body.
     // The recovered frame, not the renderer's: on a skinned mesh the
     // renderer sits at the avatar root while a bone carries the plug, and
     // the channel reports the socket in the PLUG's frame.

@@ -1,10 +1,10 @@
 // Test every flavour of socket at your desk, without launching anything.
 //
-// Of the three ways a plug finds a socket, only ONE works in the editor by
+// Of the two ways a plug finds a socket, only ONE works in the editor by
 // itself. Marker lights do, because Unity fills the vertex light slots in
 // the scene view exactly as it does in game. The contact channel does not,
 // because triggers are a ChilloutVR client system and nothing runs them
-// here. The player globals do not either, for the same reason.
+// here.
 //
 // So this stands in for the client. Drop it on any object — a socket prop,
 // an empty, a bone — and it writes onto every YAPS plug in the scene the
