@@ -92,7 +92,8 @@ namespace AvatarBridge
 
         static void SetupCvrAvatar(BridgeContext ctx)
         {
-            var cvrAvatar = ctx.Target.GetComponent<CVRAvatar>() ?? ctx.Target.AddComponent<CVRAvatar>();
+            var cvrAvatar = ctx.Target.GetComponent<CVRAvatar>();
+            if (cvrAvatar == null) cvrAvatar = ctx.Target.AddComponent<CVRAvatar>();
             ctx.CvrAvatar = cvrAvatar;
 
             var animator = ctx.TargetAnimator;

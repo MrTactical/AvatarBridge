@@ -72,12 +72,14 @@ namespace AvatarBridge
             // other, and physics would only add drift. Theft off, because a
             // channel value is written by whoever's socket the prop met, and
             // that write hands the prop to them.
-            var pickup = root.GetComponent<CVRPickupObject>() ?? Undo.AddComponent<CVRPickupObject>(root);
+            var pickup = root.GetComponent<CVRPickupObject>();
+            if (pickup == null) pickup = Undo.AddComponent<CVRPickupObject>(root);
             pickup.moveMode = CVRPickupObject.MoveMode.Transform;
             pickup.maximumGrabDistance = 8f;
             pickup.disallowTheft = true;
 
-            var spawnable = root.GetComponent<CVRSpawnable>() ?? Undo.AddComponent<CVRSpawnable>(root);
+            var spawnable = root.GetComponent<CVRSpawnable>();
+            if (spawnable == null) spawnable = Undo.AddComponent<CVRSpawnable>(root);
             spawnable.spawnHeight = 1.2f;
 
             if (root.GetComponentInChildren<Collider>(true) == null) AddCollider(root, plug, o);
@@ -216,7 +218,8 @@ namespace AvatarBridge
             string clipPath = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
             var controller = BuildController(dir, clipPath, renderer.GetType());
 
-            var animator = root.GetComponent<Animator>() ?? Undo.AddComponent<Animator>(root);
+            var animator = root.GetComponent<Animator>();
+            if (animator == null) animator = Undo.AddComponent<Animator>(root);
             animator.runtimeAnimatorController = controller;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 

@@ -297,7 +297,7 @@ namespace AvatarBridge.Regression
                 var plain = new GameObject("Smoke Setup Avatar");
                 created.Add(plain);
                 plain.AddComponent<Animator>();
-                var r = CvrSetup.Run(plain, new BridgeSettings());
+                var r = CvrSetup.Run(plain, new BridgeSettings { cloneAvatar = false });
                 Check(plain.GetComponent<CVRAvatar>() != null, "CVRAvatar added");
                 Check(!r.Entries.Any(e => e.Status == ReportStatus.Error), "no errors: " +
                     string.Join("; ", r.Entries.Where(e => e.Status == ReportStatus.Error).Select(e => e.Subject)));
