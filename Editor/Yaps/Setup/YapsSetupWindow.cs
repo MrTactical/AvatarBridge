@@ -391,6 +391,10 @@ namespace AvatarBridge
                         if (captured.Root == null) { Rescan(); return; }
                         Selection.activeTransform = captured.Root;
                         EditorGUIUtility.PingObject(captured.Root);
+                        // And take them there: bring the Inspector to the
+                        // front — opening one if the layout has none — so
+                        // the knobs are on screen, not behind this window.
+                        EditorApplication.ExecuteMenuItem("Window/General/Inspector");
                     });
                     edit.style.marginLeft = 6;
                     wrap.Add(edit);
