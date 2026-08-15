@@ -307,12 +307,15 @@ namespace AvatarBridge.Spike
             // and everyone sees the same bend. See BuildPropChannel.
             material.SetFloat("_YAPS_ChannelSpace", 1f);
             material.SetFloat("_YAPS_SelfTag", -1f);   // a prop wears no sockets of its own
-            // Start narrowing a twentieth of a plug length past the hole and
-            // close over the next third of one. The old 0.10 shut it over a
-            // twentieth, which reads as the shaft popping out of existence
-            // rather than sinking into something.
-            material.SetFloat("_YAPS_TaperStart", 0.05f);
-            material.SetFloat("_YAPS_TaperEnd", 0.20f);
+            // Start narrowing a tenth of a plug length past the hole and
+            // close over the next fifth of one. Two earlier settings bracket
+            // this: 0.05/0.10 shut over a twentieth and read as the shaft
+            // popping out of existence, and 0.05/0.20 was called "pretty non
+            // aggressive" in game — too much tip visible past the hole. The
+            // patcher's Properties defaults are the same numbers, so a
+            // converted avatar and this prop taper alike.
+            material.SetFloat("_YAPS_TaperStart", 0.10f);
+            material.SetFloat("_YAPS_TaperEnd", 0.30f);
             renderer.sharedMaterial = material;
 
             // The plug END of a contact. Without these the prop can bend

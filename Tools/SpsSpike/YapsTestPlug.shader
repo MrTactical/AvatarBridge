@@ -42,8 +42,8 @@ Shader "AvatarBridge/YAPS Test Plug"
         _YAPS_ChannelSpace ("Channel space", Range(0,1)) = 0
         _YAPS_ChannelExtents ("Channel extents", Vector) = (1,1,1,0)
         _YAPS_SelfTag ("Self tag", Float) = -1
-        _YAPS_TaperStart ("Hole taper start", Range(0,1)) = 0.05
-        _YAPS_TaperEnd ("Hole taper end", Range(0,1)) = 0.20
+        _YAPS_TaperStart ("Hole taper start", Range(0,1)) = 0.10
+        _YAPS_TaperEnd ("Hole taper end", Range(0,1)) = 0.30
         _YAPS_IdleLength ("Idle length", Range(0.1,1)) = 1
         _YAPS_IdleWidth ("Idle width", Range(0.1,1)) = 1
         _YAPS_Squeeze ("Squeeze", Range(0,1)) = 0

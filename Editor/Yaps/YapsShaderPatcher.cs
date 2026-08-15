@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "8";
+        const string Revision = "9";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -68,8 +68,8 @@ namespace AvatarBridge
         _YAPS_ChannelSpace (""YAPS channel space"", Range(0,1)) = 0
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
-        _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.05
-        _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.20
+        _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10
+        _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.30
         _YAPS_IdleLength (""YAPS idle length"", Range(0.1,1)) = 1
         _YAPS_IdleWidth (""YAPS idle width"", Range(0.1,1)) = 1
         _YAPS_Squeeze (""YAPS squeeze"", Range(0,1)) = 0
