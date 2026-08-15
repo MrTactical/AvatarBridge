@@ -32,7 +32,7 @@ namespace AvatarBridge
         Label _summary;
         HelpBox _next;
         Label _selection;
-        Button _addHole, _addRing, _makePlug, _quiet;
+        Button _addHole, _addRing, _makePlug, _quiet, _makeProp, _verifyProp;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
 
@@ -136,6 +136,22 @@ namespace AvatarBridge
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
 
+            // Props: a plug or socket on its own object becomes a spawnable
+            // with a pickup, a collider and, for a baked plug, the channel.
+            have.Body.Add(BridgeElements.SubHeading("Props"));
+            _makeProp = Btn("Make selected object a prop", () => MakeProp(Selection.activeGameObject));
+            _verifyProp = Btn("Verify prop", () =>
+            {
+                var o = YapsPropBuilder.Verify(Selection.activeGameObject);
+                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            });
+            have.Body.Add(BridgeElements.Row(_makeProp, _verifyProp));
+            have.Body.Add(BridgeElements.Hint(
+                "Select the top object of a plug or socket meant to be spawned in ChilloutVR. It gets a CVR " +
+                "Spawnable, a pickup with theft off, a collider to grab by and, for a baked plug, the synced " +
+                "contact channel that reaches everyone. Verify before each upload: the CCK inspector can blank " +
+                "a channel value's parameter name."));
+
             // One switch hides the CCK's icons while sockets are placed.
             have.Body.Add(BridgeElements.SubHeading("Scene view"));
             _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
@@ -207,6 +223,8 @@ namespace AvatarBridge
                 "shader the toolkit falls back to when a mesh's own cannot be patched — baked and " +
                 "announced like any plug. Select the hole or ring and click Preview, then move it around " +
                 "the plug."));
+            make.Body.Add(BridgeElements.Row(Btn("Make the selected test object a prop", () => MakeProp(Selection.activeGameObject))));
+            make.Body.Add(BridgeElements.Hint("Select the test plug or socket at its top object first. Upload the result as a prop from the CCK."));
             make.Body.Add(BridgeElements.SubHeading("Prefabs"));
             make.Body.Add(BridgeElements.Row(Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs)));
             make.Body.Add(BridgeElements.Hint(
@@ -261,9 +279,11 @@ namespace AvatarBridge
             }
             else if (anyLegacy)
             {
-                _next.text = "This has DPS, TPS or SPS on it that is not YAPS yet. Upgrade-in-place is " +
-                             "coming — for now, if it came from VRChat, AvatarBridge converts it (Tools ▸ " +
-                             "Avatar Bridge) and the result arrives here already YAPS.";
+                _next.text = "This has DPS, TPS or SPS on it that is not YAPS yet. Click \"upgrade to YAPS\" on a " +
+                             "row, or Build, which does them all: sockets gain the markers they lack; a plug is " +
+                             "baked with its author's values carried and the old deform switched off (DPS moves " +
+                             "to YAPS Simple Lit, since its deform has no switch). Check the plug's Root Bone " +
+                             "first on a skinned mesh.";
                 _next.messageType = HelpBoxMessageType.Warning;
             }
             else if (anyIssue)
@@ -312,12 +332,16 @@ namespace AvatarBridge
             bool bone = root != null && go.transform != root && IsBone(go.transform, root);
             bool mesh = go.GetComponent<Renderer>() != null;
             _selection.text = bone
-                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it."
-                : mesh ? $"Selected: mesh \"{go.name}\" — Make selected mesh a plug will bake this one."
+                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
+                : mesh ? $"Selected: mesh \"{go.name}\" — Make a plug will bake this one."
                 : $"Selected: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
-            if (_makePlug != null) { _makePlug.text = mesh ? $"Make \"{go.name}\" a plug" : "Make selected mesh a plug"; _makePlug.SetEnabled(mesh); }
+            if (_makePlug != null)
+            {
+                _makePlug.text = mesh ? $"Make \"{go.name}\" a plug" : bone ? $"Make a plug from bone {go.name}" : "Make selected mesh a plug";
+                _makePlug.SetEnabled(mesh || bone);
+            }
         }
 
         void Rescan()
@@ -397,14 +421,17 @@ namespace AvatarBridge
                     chip.style.marginLeft = 4; chip.style.marginRight = 8;
                     wrap.Add(chip);
                 }
-                else if (f.IsYapsAlready && !hasComp && f.Root != null)
+                else if (!hasComp && f.Root != null)
                 {
-                    // Converter output with no component. Adopt makes it editable.
-                    var chip = BridgeElements.Chip("make editable", BridgeTheme.Warn, false, () =>
+                    // No component yet. YAPS output adopts; DPS, TPS or SPS
+                    // upgrades in place: adopt, then build or bake.
+                    bool legacy = !f.IsYapsAlready;
+                    var chip = BridgeElements.Chip(legacy ? "upgrade to YAPS" : "make editable", BridgeTheme.Warn, false, () =>
                     {
                         if (captured.Root == null) { Rescan(); return; }
                         Undo.RegisterFullObjectHierarchyUndo(captured.Root.gameObject, "Adopt YAPS " + (captured.Kind == YapsScanner.Kind.Plug ? "plug" : "socket"));
                         Adopt(captured);
+                        if (legacy) Upgrade(captured);
                         Rescan();
                     });
                     chip.style.marginLeft = 6; chip.style.marginRight = 8;
@@ -436,13 +463,34 @@ namespace AvatarBridge
             }
         }
 
+        // A legacy socket becomes YAPS by building the markers it lacks; a
+        // legacy plug by baking, which carries its values and switches the
+        // old deform off.
+        void Upgrade(YapsScanner.Found f)
+        {
+            if (f.Root == null) return;
+            if (f.Kind == YapsScanner.Kind.Socket)
+            {
+                var socket = f.Root.GetComponent<YapsSocket>();
+                if (socket != null) YapsSocketBuilder.Build(socket);
+            }
+            else
+            {
+                var plug = f.Root.GetComponent<YapsPlug>();
+                if (plug == null) return;
+                var o = YapsNativeBuilder.Bake(plug);
+                if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
+                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            }
+        }
+
         int AdoptAll()
         {
             if (_scan == null) return 0;
             int n = 0;
             foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
             {
-                if (!f.IsYapsAlready || f.Root == null) continue;
+                if (f.Root == null) continue;
                 if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
                 Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
                 Adopt(f);
@@ -451,13 +499,27 @@ namespace AvatarBridge
             return n;
         }
 
+        // A mesh selected: the plug is that mesh. A bone selected: the plug
+        // is the skinned mesh that bone drives, from that bone down, and
+        // the component sits on the bone so its markers follow it.
         void MakePlug()
         {
             var go = Selection.activeGameObject;
             var renderer = go != null ? go.GetComponent<Renderer>() : null;
+            Transform rootBone = null;
+            if (renderer == null && go != null)
+            {
+                var root = YapsSocketEditor.AvatarRootOf(go.transform);
+                if (root != null && go.transform != root && IsBone(go.transform, root))
+                {
+                    renderer = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                        .FirstOrDefault(s => s.bones != null && System.Array.IndexOf(s.bones, go.transform) >= 0);
+                    rootBone = go.transform;
+                }
+            }
             if (renderer == null)
             {
-                _summary.text = "Select the mesh that should bend in the Hierarchy — an object with a Mesh Renderer or Skinned Mesh Renderer — then press this.";
+                _summary.text = "Select the mesh that should bend, or the bone the shaft grows from, in the Hierarchy, then press this.";
                 return;
             }
             var plug = go.GetComponent<YapsPlug>();
@@ -465,10 +527,22 @@ namespace AvatarBridge
             {
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
+                plug.rootBone = rootBone;
+                var skin = renderer as SkinnedMeshRenderer;
+                if (skin != null && rootBone != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
             }
             var o = YapsNativeBuilder.Bake(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
             if (_target == null) _picker.value = YapsSocketEditor.AvatarRootOf(go.transform).gameObject;
+            Rescan();
+            _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+        }
+
+        void MakeProp(GameObject root)
+        {
+            var o = YapsPropBuilder.MakeProp(root);
+            if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
+            if (o.Ok && _target == null) _picker.value = root;
             Rescan();
             _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
         }

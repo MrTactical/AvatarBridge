@@ -106,7 +106,7 @@ namespace AvatarBridge
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
-            out string refusal, out int skippedShadowPasses)
+            out string refusal, out int skippedShadowPasses, bool allowSps = false)
         {
             refusal = null;
             skippedShadowPasses = 0;
@@ -138,7 +138,7 @@ namespace AvatarBridge
                 refusal = "it already carries YAPS";
                 return null;
             }
-            if (shaderFile.Text.Contains("_SPS_Bake"))
+            if (shaderFile.Text.Contains("_SPS_Bake") && !allowSps)
             {
                 // Two deform systems moving the same vertices would fight,
                 // and the result would be neither. The converter suppresses

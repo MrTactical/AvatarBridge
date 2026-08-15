@@ -54,8 +54,16 @@ namespace AvatarBridge
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
 
+            // What the material already is. A legacy plug is upgraded in
+            // place: TPS and SPS keep their shader with the old deform
+            // switched off, DPS moves to Simple Lit because its deform has
+            // no switch. The author's values are carried either way.
+            var legacy = source.HasProperty("_YAPS_Bake") ? YapsLegacyMap.Origin.None
+                : YapsLegacyMap.Detect(source, out _);
+            var original = source;
+
             // Patch its own shader; keep one already patched. When it refuses,
-            // fall back to Simple Lit, except a shader still carrying SPS.
+            // fall back to Simple Lit.
             Shader shader;
             string refusal = null;
             if (source.HasProperty("_YAPS_Bake"))
@@ -64,24 +72,31 @@ namespace AvatarBridge
             }
             else
             {
-                shader = YapsShaderPatcher.Patch(source, dir, report, out refusal, out _);
-                if (shader == null && !source.HasProperty("_SPS_Bake"))
+                shader = legacy == YapsLegacyMap.Origin.DPS ? null
+                    : YapsShaderPatcher.Patch(source, dir, report, out refusal, out _, allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
                     if (plain == null) { o.Message = "could not patch the shader: " + refusal + "; and " + why; return o; }
                     shader = YapsShaderPatcher.Patch(plain, dir, report, out string plainRefusal, out _);
                     if (shader == null) { o.Message = "could not patch the shader: " + refusal + "; and YAPS Simple Lit refused too: " + plainRefusal; return o; }
-                    o.Notes.Add($"\"{source.shader.name}\" could not be patched ({refusal}), so the plug now wears " +
-                                "YAPS Simple Lit with its colour, albedo, normal map, metallic and smoothness carried " +
-                                "over. Its original material is untouched. Put a shader with source on it (Poiyomi, " +
-                                "for one) and re-bake if you need more than that.");
+                    o.Notes.Add(legacy == YapsLegacyMap.Origin.DPS
+                        ? "A DPS shader has no switch for its own deform, so the plug now wears YAPS Simple Lit " +
+                          "with its colour, albedo, normal map, metallic and smoothness carried over. Its original " +
+                          "material is untouched."
+                        : $"\"{source.shader.name}\" could not be patched ({refusal}), so the plug now wears " +
+                          "YAPS Simple Lit with its colour, albedo, normal map, metallic and smoothness carried " +
+                          "over. Its original material is untouched. Put a shader with source on it (Poiyomi, " +
+                          "for one) and re-bake if you need more than that.");
                     source = plain;
                 }
             }
             if (shader == null) { o.Message = "could not patch the shader: " + refusal; return o; }
 
-            var patched = source.HasProperty("_YAPS_Bake") ? source
-                : YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
+            bool fresh = !source.HasProperty("_YAPS_Bake");
+            var patched = fresh
+                ? YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh)
+                : source;
             if (patched != source)
             {
                 mats[slot] = patched;
@@ -97,6 +112,20 @@ namespace AvatarBridge
             if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", plug.lengthOverride);
             patched.SetFloat("_YAPS_Enabled", 1f);
             patched.SetFloat("_YAPS_SelfTag", -1f);   // native: self-exclusion is by body, no tag
+
+            // A fresh bake of a legacy plug: carry the author's values onto
+            // the YAPS knobs, switch the old deform off, and let the
+            // component take the carried values as its own.
+            if (fresh && legacy != YapsLegacyMap.Origin.None && legacy != YapsLegacyMap.Origin.YAPS)
+            {
+                var unmapped = new List<string>();
+                var carried = YapsLegacyMap.Carry(original, patched, unmapped, o.Length, o.Radius);
+                SwitchOffLegacyDeform(patched, legacy);
+                ReadKnobs(plug, patched);
+                EditorUtility.SetDirty(plug);
+                o.Notes.Add($"Upgraded from {legacy}: {carried.Count} setting(s) carried" +
+                            (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
+            }
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
             o.Material = patched;
@@ -107,13 +136,29 @@ namespace AvatarBridge
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
                         $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
-            o.Notes.Add("Contact channel not built yet — this plug reads sockets by their marker lights. " +
-                        "Contact-only sockets (TPS orifices) will not move it until the channel lands.");
+            o.Notes.Add(YapsPropBuilder.IsProp(TopOf(plug.transform).gameObject)
+                ? "This plug is on a prop; make it a prop again to rebuild its contact channel for the new bake."
+                : "On an avatar this plug reads sockets by their marker lights only; on a prop, Make this a prop adds the synced contact channel.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
         }
 
         public const string SimpleLitName = "YAPS/Simple Lit";
+
+        // The old system's deform must not run beside YAPS. TPS and SPS have
+        // a switch; both are turned off, and any keyword carrying the
+        // system's name goes with it.
+        static void SwitchOffLegacyDeform(Material m, YapsLegacyMap.Origin legacy)
+        {
+            string flag = legacy == YapsLegacyMap.Origin.TPS ? "_TPS_PenetratorEnabled"
+                        : legacy == YapsLegacyMap.Origin.SPS ? "_SPS_Enabled" : null;
+            if (flag != null && m.HasProperty(flag)) m.SetFloat(flag, 0f);
+            string tag = legacy.ToString();
+            foreach (var keyword in m.shaderKeywords)
+            {
+                if (keyword.IndexOf(tag, System.StringComparison.OrdinalIgnoreCase) >= 0) m.DisableKeyword(keyword);
+            }
+        }
 
         // The same material on Simple Lit, in memory. Property names match Standard's.
         static Material OnSimpleLit(Material source, out string why)
@@ -291,7 +336,10 @@ namespace AvatarBridge
             comp = plugRoot.gameObject.AddComponent<YapsPlug>();
             comp.renderer = renderer;
             comp.materialSlot = slot;
-            comp.rootBone = rootBone;
+            // Guessed only when the plug object is the renderer itself; a marker
+            // object under a bone already names the chain by where it sits.
+            comp.rootBone = rootBone != null ? rootBone
+                : (renderer != null && plugRoot == renderer.transform ? GuessRootBone(renderer as SkinnedMeshRenderer, slot) : null);
             comp.lengthOverride = lengthOverride;
             if (material != null) ReadKnobs(comp, material);
             comp.emitTipLight = plugRoot.GetComponentsInChildren<Light>(true)
@@ -299,6 +347,71 @@ namespace AvatarBridge
             comp.emitPointers = plugRoot.GetComponentsInChildren<CVRPointer>(true)
                 .Any(p => p != null && p.type != null && (p.type.StartsWith("TPS_Pen_") || p.type.StartsWith("SPSLL_Pen_")));
             return comp;
+        }
+
+        // The bone a skinned plug grows from, from the mesh: the bone that
+        // carries the most weight in the plug's material slot, climbed to
+        // the top of its weighted chain. Null when nothing decides it.
+        public static Transform GuessRootBone(SkinnedMeshRenderer skin, int slot)
+        {
+            if (skin == null || skin.sharedMesh == null || skin.bones == null || slot < 0) return null;
+            var mesh = skin.sharedMesh;
+            if (slot >= mesh.subMeshCount) return null;
+            var weights = mesh.boneWeights;
+            if (weights == null || weights.Length == 0) return null;
+            var total = new float[skin.bones.Length];
+            var seen = new HashSet<int>();
+            foreach (int v in mesh.GetTriangles(slot))
+            {
+                if (v >= weights.Length || !seen.Add(v)) continue;
+                var w = weights[v];
+                void Add(int b, float f) { if (b >= 0 && b < total.Length) total[b] += f; }
+                Add(w.boneIndex0, w.weight0); Add(w.boneIndex1, w.weight1);
+                Add(w.boneIndex2, w.weight2); Add(w.boneIndex3, w.weight3);
+            }
+            int best = -1;
+            for (int i = 0; i < total.Length; i++) if (total[i] > 0f && (best < 0 || total[i] > total[best])) best = i;
+            if (best < 0 || skin.bones[best] == null) return null;
+            // Climb while the parent is also a weighted bone of this slot.
+            var bone = skin.bones[best];
+            for (var up = bone.parent; up != null; up = up.parent)
+            {
+                int i = System.Array.IndexOf(skin.bones, up);
+                if (i < 0 || total[i] <= 0f) break;
+                bone = up;
+            }
+            return bone;
+        }
+
+        // The material slot whose triangles are weighted to this bone and
+        // its children the most. -1 when none is.
+        public static int SlotWeightedTo(SkinnedMeshRenderer skin, Transform rootBone)
+        {
+            if (skin == null || skin.sharedMesh == null || skin.bones == null || rootBone == null) return -1;
+            var mesh = skin.sharedMesh;
+            var weights = mesh.boneWeights;
+            if (weights == null || weights.Length == 0) return -1;
+            var chain = new HashSet<int>();
+            for (int i = 0; i < skin.bones.Length; i++)
+                if (skin.bones[i] != null && (skin.bones[i] == rootBone || skin.bones[i].IsChildOf(rootBone))) chain.Add(i);
+            if (chain.Count == 0) return -1;
+            int best = -1; float bestWeight = 0f;
+            for (int s = 0; s < mesh.subMeshCount; s++)
+            {
+                float total = 0f;
+                var seen = new HashSet<int>();
+                foreach (int v in mesh.GetTriangles(s))
+                {
+                    if (v >= weights.Length || !seen.Add(v)) continue;
+                    var w = weights[v];
+                    if (chain.Contains(w.boneIndex0)) total += w.weight0;
+                    if (chain.Contains(w.boneIndex1)) total += w.weight1;
+                    if (chain.Contains(w.boneIndex2)) total += w.weight2;
+                    if (chain.Contains(w.boneIndex3)) total += w.weight3;
+                }
+                if (total > bestWeight) { bestWeight = total; best = s; }
+            }
+            return best;
         }
 
         // The mirror of WriteKnobs.
@@ -393,17 +506,21 @@ namespace AvatarBridge
 
         // --- helpers ------------------------------------------------------------
 
-        static string TopName(Transform t)
+        static Transform TopOf(Transform t)
         {
             var top = t; while (top.parent != null) top = top.parent;
-            return top.name;
+            return top;
         }
+
+        static string TopName(Transform t) => TopOf(t).name;
 
         static string Sanitise(string s)
         {
             foreach (char c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
             return s.Trim();
         }
+
+        public static void EnsureFolderPublic(string path) => EnsureFolder(path);
 
         static void EnsureFolder(string path)
         {
