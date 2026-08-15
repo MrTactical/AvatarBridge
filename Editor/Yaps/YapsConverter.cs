@@ -211,6 +211,12 @@ namespace AvatarBridge
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
                 result.Length, result.Radius, tipLight: true, pointers: true);
 
+            // And the authoring component, so the owner can retune every
+            // knob afterwards with the YAPS tool. Its fields are read back
+            // off the material the converter just wrote — the author's
+            // carried values included — so a re-bake writes the same thing.
+            YapsNativeBuilder.AdoptPlug(plugRoot, renderer, slot, patched, null);
+
             ctx.Report.Converted(Category, $"Plug converted at {where}",
                 $"\"{renderer.name}\" material {slot} (\"{materials[slot].name}\"), " +
                 $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long. " +
@@ -827,6 +833,9 @@ namespace AvatarBridge
                 if (renderer == null || MeshOf(renderer) == null
                     || MeshOf(renderer).blendShapeCount == 0)
                 {
+                    // No shapes to open with, but still a socket somebody
+                    // may want to retune — kind, tag, lights.
+                    YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
                     noShapes++;
                     continue;
                 }
@@ -849,9 +858,11 @@ namespace AvatarBridge
                     p => p.Renderer == renderer && p.MaterialSlot == slot);
 
                 Material material;
+                List<string> bakedShapes;
                 if (shared != null)
                 {
                     material = shared.Material;
+                    bakedShapes = shared.Shapes;
                     // NOT setting _YAPS_Enabled to 0 here, unlike a socket
                     // with a mesh of its own. This material is a working
                     // plug as well, and switching the plug off to turn a
@@ -866,6 +877,7 @@ namespace AvatarBridge
                         failures.Add($"{socketRoot.name}: {failure}");
                         continue;
                     }
+                    bakedShapes = result.Shapes;
 
                     var materials = renderer.sharedMaterials;
                     var patched = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
@@ -893,6 +905,13 @@ namespace AvatarBridge
                 // the shader fall back to lights and never fight the
                 // animator when a contact is driving.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
+
+                // Leave the authoring component ON the socket, filled in
+                // from what was just built, so the owner can change it
+                // afterwards — kind, which shapes, how deep — with the YAPS
+                // tool, and differ from the author. Without this a converted
+                // socket was a bare object nobody could touch.
+                YapsNativeBuilder.AdoptSocket(socketRoot, renderer, material, bakedShapes);
 
                 deformed++;
                 if (animatorDrivesIt)

@@ -245,9 +245,23 @@ namespace AvatarBridge
             }
             else if (allYaps)
             {
-                _next.text = "All YAPS and complete. Nothing to do here unless you want to add more or " +
-                             "retune — click a row to select it and use its Inspector. Upload as normal.";
-                _next.messageType = HelpBoxMessageType.Info;
+                int bare = _scan.Plugs.Concat(_scan.Sockets).Count(f => f.Root != null
+                    && f.Root.GetComponent<YapsSocket>() == null && f.Root.GetComponent<YapsPlug>() == null);
+                if (bare > 0)
+                {
+                    _next.text = $"All YAPS, and {bare} of it came from a conversion with nothing on it you " +
+                                 "can edit yet. Click \"make editable\" on a row — or Build, which does all " +
+                                 "of them — and each socket and plug gets its component, filled from what " +
+                                 "was built. Then retune anything you like and Build again.";
+                    _next.messageType = HelpBoxMessageType.Info;
+                }
+                else
+                {
+                    _next.text = "All YAPS and editable. Click a row to select it and retune it in the " +
+                                 "Inspector — kind, shapes, every knob — then Build to bake the changes. " +
+                                 "Upload as normal.";
+                    _next.messageType = HelpBoxMessageType.Info;
+                }
             }
         }
 
@@ -319,29 +333,87 @@ namespace AvatarBridge
                     if (captured.Root != null) { Selection.activeTransform = captured.Root; EditorGUIUtility.PingObject(captured.Root); }
                 });
 
-                var comp = f.Root != null ? f.Root.GetComponent<YapsSocket>() : null;
-                if (comp != null)
+                var wrap = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
+                row.style.flexGrow = 1;
+                wrap.Add(row);
+
+                var socketComp = f.Root != null ? f.Root.GetComponent<YapsSocket>() : null;
+                var plugComp = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
+                bool hasComp = socketComp != null || plugComp != null;
+
+                if (socketComp != null)
                 {
-                    var wrap = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
-                    row.style.flexGrow = 1;
-                    var chip = BridgeElements.Chip(comp.preview ? "previewing" : "preview",
-                        BridgeTheme.Good, comp.preview, () =>
+                    var chip = BridgeElements.Chip(socketComp.preview ? "previewing" : "preview",
+                        BridgeTheme.Good, socketComp.preview, () =>
                         {
-                            Undo.RecordObject(comp, "YAPS preview");
-                            comp.preview = !comp.preview;
-                            EditorUtility.SetDirty(comp);
+                            Undo.RecordObject(socketComp, "YAPS preview");
+                            socketComp.preview = !socketComp.preview;
+                            EditorUtility.SetDirty(socketComp);
                             SceneView.RepaintAll();
                             Rescan();
-                        }, comp.preview);
+                        }, socketComp.preview);
                     chip.style.marginLeft = 6; chip.style.marginRight = 8;
-                    wrap.Add(row); wrap.Add(chip);
-                    _foundBody.Add(wrap);
+                    wrap.Add(chip);
                 }
-                else _foundBody.Add(row);
+                else if (f.IsYapsAlready && !hasComp && f.Root != null)
+                {
+                    // Converter output with no authoring component: a bare
+                    // object nobody can retune. Adopt puts the component on
+                    // it, filled from what was built, and then it edits like
+                    // one placed by hand.
+                    var chip = BridgeElements.Chip("make editable", BridgeTheme.Warn, false, () =>
+                    {
+                        Undo.RegisterFullObjectHierarchyUndo(captured.Root.gameObject, "Adopt YAPS " + (captured.Kind == YapsScanner.Kind.Plug ? "plug" : "socket"));
+                        Adopt(captured);
+                        Rescan();
+                    });
+                    chip.style.marginLeft = 6; chip.style.marginRight = 8;
+                    wrap.Add(chip);
+                }
+                _foundBody.Add(wrap);
                 alt = !alt;
             }
             foreach (var f in _scan.Plugs) Row(f);
             foreach (var f in _scan.Sockets) Row(f);
+        }
+
+        // Put the authoring component on a found plug or socket that has
+        // none, from what the scan saw. The converter does this itself for
+        // anything it builds from now on; this is for what it built before,
+        // and for anything else that is YAPS by material alone.
+        static void Adopt(YapsScanner.Found f)
+        {
+            if (f.Root == null) return;
+            if (f.Kind == YapsScanner.Kind.Socket)
+            {
+                var shapes = new List<string>();
+                if (f.Material != null && f.Material.HasProperty("_YAPS_ShapeCount"))
+                {
+                    // The bake's shape names are not on the material; the
+                    // component's rows are left for the user to fill from
+                    // the dropdown. Kind, lights and strength still carry.
+                }
+                YapsNativeBuilder.AdoptSocket(f.Root, f.Renderer, f.Material, shapes);
+            }
+            else
+            {
+                YapsNativeBuilder.AdoptPlug(f.Root, f.Renderer, f.MaterialSlot, f.Material, null);
+            }
+        }
+
+        int AdoptAll()
+        {
+            if (_scan == null) return 0;
+            int n = 0;
+            foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
+            {
+                if (!f.IsYapsAlready || f.Root == null) continue;
+                if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
+                Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
+                Adopt(f);
+                n++;
+            }
+            return n;
         }
 
         void MakePlug()
@@ -369,8 +441,13 @@ namespace AvatarBridge
         void BuildAll()
         {
             if (_target == null) return;
+            // Adopt first, so a converted avatar's bare sockets and plug get
+            // their components before the bake reads them.
+            int adopted = AdoptAll();
+            if (adopted > 0) _scan = YapsScanner.Scan(_target);
             int plugsOk = 0, plugsTried = 0, socketsBuilt = 0;
             var lines = new List<string>();
+            if (adopted > 0) lines.Add($"made {adopted} editable");
             foreach (var p in _target.GetComponentsInChildren<YapsPlug>(true))
             {
                 plugsTried++;

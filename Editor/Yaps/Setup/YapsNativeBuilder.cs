@@ -220,6 +220,108 @@ namespace AvatarBridge
             return go;
         }
 
+        // --- adopting what the converter (or an older build) made --------------
+        //
+        // A converted avatar's sockets and plug are bare objects with lights
+        // and pointers beneath — the converter made them and nothing lets a
+        // user change them afterwards. Adoption puts the authoring component
+        // ON them, filled in from what was built: kind from the light range,
+        // the shape rows from what was baked, the knobs from the material.
+        // After that a converted socket is as editable as one placed by hand,
+        // and the user can differ from the author. Idempotent — an existing
+        // component is left alone, so a re-run never resets someone's edits.
+
+        public static YapsSocket AdoptSocket(Transform socketRoot, Renderer renderer, Material material,
+            IList<string> bakedShapes)
+        {
+            if (socketRoot == null) return null;
+            var comp = socketRoot.GetComponent<YapsSocket>();
+            if (comp != null) return comp;
+            comp = socketRoot.gameObject.AddComponent<YapsSocket>();
+
+            // Kind: the root light's second decimal says it (1 hole, 2
+            // ring); the SPS pointer name says it too. Ring if neither does.
+            bool hole = false;
+            foreach (var l in socketRoot.GetComponentsInChildren<Light>(true))
+            {
+                if (!YapsScanner.IsProtocolLight(l)) continue;
+                int d = YapsScanner.LightDigit(l);
+                if (d == 1) { hole = true; break; }
+                if (d == 2) { hole = false; break; }
+            }
+            foreach (var p in socketRoot.GetComponentsInChildren<CVRPointer>(true))
+            {
+                if (p != null && p.type != null && p.type.StartsWith("SPSLL_Socket_Hole")) { hole = true; break; }
+            }
+            comp.kind = hole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
+            comp.renderer = renderer as SkinnedMeshRenderer;
+            comp.emitLights = socketRoot.GetComponentsInChildren<Light>(true).Any(YapsScanner.IsProtocolLight);
+
+            // The shape rows, from the bake, staged the way the material says.
+            if (bakedShapes != null && material != null && material.HasProperty("_YAPS_SocketShapeStart"))
+            {
+                var starts = material.GetVector("_YAPS_SocketShapeStart");
+                var fades = material.GetVector("_YAPS_SocketShapeFade");
+                comp.shapes.Clear();
+                for (int i = 0; i < bakedShapes.Count && i < 4; i++)
+                {
+                    comp.shapes.Add(new YapsSocket.ShapeStage
+                    {
+                        blendshape = bakedShapes[i], startsAt = starts[i], fadeOver = fades[i],
+                    });
+                }
+                if (material.HasProperty("_YAPS_SocketPower")) comp.shapePower = material.GetFloat("_YAPS_SocketPower");
+            }
+            return comp;
+        }
+
+        public static YapsPlug AdoptPlug(Transform plugRoot, Renderer renderer, int slot, Material material,
+            Transform rootBone, float lengthOverride = 0f)
+        {
+            if (plugRoot == null) return null;
+            var comp = plugRoot.GetComponent<YapsPlug>();
+            if (comp != null) return comp;
+            comp = plugRoot.gameObject.AddComponent<YapsPlug>();
+            comp.renderer = renderer;
+            comp.materialSlot = slot;
+            comp.rootBone = rootBone;
+            comp.lengthOverride = lengthOverride;
+            if (material != null) ReadKnobs(comp, material);
+            comp.emitTipLight = plugRoot.GetComponentsInChildren<Light>(true)
+                .Any(l => YapsScanner.IsProtocolLight(l) && (YapsScanner.LightDigit(l) == 8 || YapsScanner.LightDigit(l) == 9));
+            comp.emitPointers = plugRoot.GetComponentsInChildren<CVRPointer>(true)
+                .Any(p => p != null && p.type != null && (p.type.StartsWith("TPS_Pen_") || p.type.StartsWith("SPSLL_Pen_")));
+            return comp;
+        }
+
+        // The mirror of WriteKnobs: what the material carries becomes the
+        // component's fields, so a re-bake writes back the same values.
+        static void ReadKnobs(YapsPlug p, Material m)
+        {
+            float F(string n, float d) => m.HasProperty(n) ? m.GetFloat(n) : d;
+            p.overrun = F("_YAPS_Overrun", 1f) > 0.5f;
+            p.taperStart = F("_YAPS_TaperStart", 0.10f);
+            p.taperEnd = F("_YAPS_TaperEnd", 0.30f);
+            p.curvature = F("_YAPS_Curvature", 0f);
+            p.recurvature = F("_YAPS_ReCurvature", 0f);
+            p.entranceStiffness = F("_YAPS_EntranceStiffness", 0f);
+            p.squeeze = F("_YAPS_Squeeze", 0f);
+            p.squeezeReach = F("_YAPS_SqueezeDistance", 0.15f);
+            p.bulge = F("_YAPS_Bulge", 0f);
+            p.bulgeReach = F("_YAPS_BulgeDistance", 0.2f);
+            p.idleLength = F("_YAPS_IdleLength", 1f);
+            p.idleWidth = F("_YAPS_IdleWidth", 1f);
+            p.wriggle = F("_YAPS_WriggleStrength", 0f);
+            p.wriggleSpeed = F("_YAPS_WriggleSpeed", 2f);
+            p.pumping = F("_YAPS_PumpStrength", 0f);
+            p.pumpingSpeed = F("_YAPS_PumpSpeed", 6f);
+            p.pumpingWidth = F("_YAPS_PumpWidth", 1f);
+            p.bezierSmoothness = F("_YAPS_BezierSmoothness", 1f);
+            p.straightBeforeBend = F("_YAPS_BezierStart", 0f);
+            p.easeIntoBend = F("_YAPS_SmoothStart", 0f);
+            p.minimumSocketDistance = F("_YAPS_MinimumSocketDistance", 0f);
+        }
+
         // --- the test plug ---------------------------------------------------
 
         // A capsule with a YapsPlug on it, wearing STANDARD, baked through the
