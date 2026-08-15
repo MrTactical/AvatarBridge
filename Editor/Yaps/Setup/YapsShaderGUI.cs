@@ -1,23 +1,6 @@
 // The material panel for anything wearing YAPS: the knobs grouped and
-// named the way a user thinks, drawn like a product rather than a debug
-// dump, with the shader's ORIGINAL panel underneath, untouched.
-//
-// Wrapping rather than replacing is the whole trick. The patcher injects
-// `CustomEditor "AvatarBridge.YapsShaderGUI"` into every shader it
-// patches and remembers the editor the shader HAD (Poiyomi's ThryEditor,
-// Standard's, or none) in a hidden property's description. This panel
-// draws the YAPS sections, then instantiates that original editor by
-// name and hands it every property that is not ours — so a Poiyomi user
-// keeps Poiyomi's panel entire, with YAPS sitting above it. Same panel
-// whether the plug wears Poiyomi, Standard, or the test shader: the
-// property names are the wire format and they do not change.
-//
-// Presentation, since that was the complaint: a banner in the family's
-// gradient, coloured section headers that fold, a switch drawn as a
-// switch, sliders labelled with what the number MEANS and which system a
-// user knows the knob from, a one-line "what this is" under each section,
-// and the channel's internals genuinely out of the way — visible on
-// request, never editable.
+// named, with the shader's original panel underneath. The patcher injects
+// this editor and records the original's class in a hidden property.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -54,8 +37,7 @@ namespace AvatarBridge
             public bool StartOpen;
         }
 
-        // Section tints: a walk along the family gradient, so the panel
-        // reads as one thing rather than a list. Muted, they are headers.
+        // Section tints along the family gradient.
         static readonly Color TintPlug   = new Color(0.32f, 0.55f, 0.85f);
         static readonly Color TintRest   = new Color(0.55f, 0.45f, 0.85f);
         static readonly Color TintIn     = new Color(0.85f, 0.40f, 0.60f);
@@ -188,9 +170,7 @@ namespace AvatarBridge
 
             Banner(role, length, material);
 
-            // Any YAPS knob moved here is written back onto the YapsPlug
-            // component that owns this material, so its inspector shows the
-            // same value — the two panels are two doors to one set of knobs.
+            // Write the knobs back to the YapsPlug that owns this material.
             EditorGUI.BeginChangeCheck();
             foreach (var section in Sections)
             {
@@ -217,7 +197,7 @@ namespace AvatarBridge
                 foreach (var t in editor.targets) YapsNativeBuilder.SyncPlugsFrom(t as Material);
             }
 
-            // Internals: a single folded row, read-only inside.
+            // Internals, read only.
             {
                 string key = material.shader.name + "/Internals";
                 if (!Open.TryGetValue(key, out bool open)) open = false;
@@ -241,7 +221,7 @@ namespace AvatarBridge
             Rule();
             GUILayout.Space(4);
 
-            // Everything that is not ours goes to the shader's own panel.
+            // Everything else goes to the shader's own panel.
             var rest = properties.Where(p => !p.name.StartsWith("_YAPS_", StringComparison.Ordinal)).ToArray();
             var original = OriginalEditor(material);
             if (original != null)
@@ -264,10 +244,8 @@ namespace AvatarBridge
         static void Banner(string role, float length, Material material)
         {
             var laid = GUILayoutUtility.GetRect(0, 44, GUILayout.ExpandWidth(true));
-            // Bled to the inspector edges, like the section headers.
             var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
-            // The family gradient, VRChat blue to ChilloutVR orange through
-            // the bridge purple — the same walk the windows' banners take.
+            // The family gradient.
             const int steps = 32;
             for (int i = 0; i < steps; i++)
             {
@@ -285,16 +263,11 @@ namespace AvatarBridge
             GUILayout.Space(6);
         }
 
-        // A section header. Restrained on purpose: a hairline of the
-        // section's colour, an arrow, the title, and a rule beneath — not a
-        // coloured slab. The rect is bled to the inspector's full width, so
-        // it does not stop short at the scrollbar gutter.
+        // A section header: colour bar, arrow, title, rule.
         static bool SectionHeader(string title, Color tint, bool open, string right = null)
         {
             var rect = GUILayoutUtility.GetRect(0, 26, GUILayout.ExpandWidth(true));
-            // Bleed to the inspector's edges. The MaterialEditor insets its
-            // layout on both sides; the header ignores that so it lines up
-            // with the banner above and reads as structure.
+            // Bled to the inspector's edges.
             var full = new Rect(0, rect.y, EditorGUIUtility.currentViewWidth, rect.height);
 
             bool hover = full.Contains(Event.current.mousePosition);
@@ -302,9 +275,8 @@ namespace AvatarBridge
             {
                 EditorGUI.DrawRect(full, new Color(1, 1, 1, EditorGUIUtility.isProSkin ? 0.04f : 0.08f));
             }
-            // The colour: a bar on the left, the section's whole identity.
             EditorGUI.DrawRect(new Rect(full.x, full.y + 4, 3, full.height - 8), tint);
-            // Arrow, drawn as two strokes so it is crisp at any skin.
+            // Two strokes, crisp at any skin.
             var arrowRect = new Rect(full.x + 12, full.y + 8, 10, 10);
             DrawArrow(arrowRect, open, _header.normal.textColor);
             GUI.Label(new Rect(full.x + 28, full.y, full.width - 40, full.height), title, _header);
@@ -312,7 +284,6 @@ namespace AvatarBridge
             {
                 GUI.Label(new Rect(full.x, full.y, full.width - 12, full.height), right, _from);
             }
-            // Rule beneath.
             EditorGUI.DrawRect(new Rect(full.x, full.yMax - 1, full.width, 1),
                 new Color(0.5f, 0.5f, 0.5f, EditorGUIUtility.isProSkin ? 0.18f : 0.28f));
 
@@ -358,7 +329,7 @@ namespace AvatarBridge
                     }
                     case RowKind.Slider:
                     {
-                        // Ranged in the shader; Unity draws it as a slider.
+                        // Ranged in the shader, so a slider.
                         editor.ShaderProperty(prop, label);
                         break;
                     }
@@ -390,8 +361,7 @@ namespace AvatarBridge
             }
         }
 
-        // No box. A section body is just its rows, inset a little under
-        // the header — the header IS the structure.
+        // No box; the header is the structure.
         static GUIStyle BoxStyle()
         {
             return new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };

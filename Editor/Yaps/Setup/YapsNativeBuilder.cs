@@ -1,14 +1,5 @@
-// Turns a YapsPlug into a plug: measures the mesh, bakes, patches the
-// material's OWN shader, writes the knobs onto it, and announces the plug
-// so sockets can see it. This is what "Make this a plug" does, and what
-// the test plug is built through — the same path a user's mesh takes, so
-// building the test plug IS a test of the path.
-//
-// TODAY (2026-08-15) it covers a static mesh and the tip/pointer markers.
-// The contact channel for an avatar's own controller, and skinned-mesh
-// bone chains, are next; the baker already handles skinned meshes and the
-// prop rig already builds a prop channel, so both are wiring rather than
-// invention. Everything it does not yet do, it says.
+// Turns a YapsPlug into a plug: measure, bake, patch, write knobs,
+// announce. Static meshes and markers today.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.IO;
@@ -25,7 +16,7 @@ namespace AvatarBridge
         public const string OutputRoot = "Assets/YAPS/Generated";
         const string MarkersName = "YAPS Markers";
 
-        // DPS's tracker: range 0.49, intensity = length, at the BASE.
+        // DPS's tracker: range 0.49, intensity = length, at the base.
         public const float TrackerRange = 0.49f;
 
         public class Outcome
@@ -49,38 +40,22 @@ namespace AvatarBridge
             string dir = OutputRoot + "/" + Sanitise(TopName(plug.transform));
             EnsureFolder(dir);
 
-            // Measure and bake. The plug object IS the frame on a static
-            // mesh; on a skinned one the frame is recovered per vertex.
             var report = new BridgeReport();
-            // The bone the shaft grows from, when the user named one, is the
-            // chain the baker weights by; otherwise the plug object, and the
-            // baker climbs to the first real bone above it.
+            // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             o.Length = plug.lengthOverride > 0 ? plug.lengthOverride : result.Length;
             o.Radius = result.Radius;
 
-            // Which material. The named slot, else the first.
+            // The named slot, else the first.
             var mats = renderer.sharedMaterials;
             int slot = plug.materialSlot >= 0 && plug.materialSlot < mats.Length ? plug.materialSlot : 0;
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
 
-            // Patch its own shader — Poiyomi, whatever it wears. Already
-            // wearing a patched one (a re-bake): keep it.
-            //
-            // Standard cannot be patched, and neither can anything else
-            // built into Unity: there is no source on disk, the vertex
-            // functions live in Unity's own includes, and the input struct
-            // has no vertex id to address the bake with. A surface shader
-            // has no vertex function of its own either. So when its own
-            // shader refuses, the plug goes on YAPS's plain lit shader
-            // instead — colour, albedo, normal map, metallic and smoothness
-            // carried over by name — and the outcome says so. The one
-            // refusal that does NOT fall back is a shader still carrying
-            // VRChat's SPS: that is a conversion, and swapping Poiyomi for
-            // a plain shader would be the wrong answer to it.
+            // Patch its own shader; keep one already patched. When it refuses,
+            // fall back to Simple Lit, except a shader still carrying SPS.
             Shader shader;
             string refusal = null;
             if (source.HasProperty("_YAPS_Bake"))
@@ -114,7 +89,7 @@ namespace AvatarBridge
             }
             else
             {
-                // Re-bake onto an already-patched material: refresh the bake.
+                // Re-bake: refresh the bake.
                 patched.SetTexture("_YAPS_Bake", result.Bake);
                 patched.SetFloat("_YAPS_VertexCount", result.VertexCount);
                 patched.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
@@ -126,7 +101,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(patched);
             o.Material = patched;
 
-            // Announce: tip light for DPS, pointers for TPS/SPS.
+            // Announce: tip light for DPS, pointers for TPS and SPS.
             BuildMarkers(plug, result, o.Length, o.Radius);
 
             o.Ok = true;
@@ -140,12 +115,7 @@ namespace AvatarBridge
 
         public const string SimpleLitName = "YAPS/Simple Lit";
 
-        // The same material on YAPS's plain lit shader, in memory only —
-        // the bake clones it into the output folder. Unity keeps a
-        // property's value across a shader change when the new shader
-        // declares the same name, and Simple Lit deliberately uses
-        // Standard's: _Color, _MainTex, _BumpMap, _BumpScale, _Metallic,
-        // _Glossiness, _EmissionColor.
+        // The same material on Simple Lit, in memory. Property names match Standard's.
         static Material OnSimpleLit(Material source, out string why)
         {
             why = null;
@@ -160,9 +130,7 @@ namespace AvatarBridge
             return m;
         }
 
-        // The material's YAPS panel calls this after a change: every YapsPlug
-        // whose renderer wears this material takes the values back, so the
-        // component and the material never disagree about a knob.
+        // Every YapsPlug wearing this material takes the values back.
         public static void SyncPlugsFrom(Material m)
         {
             if (m == null) return;
@@ -170,9 +138,7 @@ namespace AvatarBridge
             {
                 var r = plug.Target;
                 if (r == null || !r.sharedMaterials.Contains(m)) continue;
-                // Only a real change dirties the scene: the panel calls this
-                // on every fold click too, and a no-op read must not mark
-                // the scene modified.
+                // Only a real change dirties the scene.
                 string before = JsonUtility.ToJson(plug);
                 Undo.RecordObject(plug, "YAPS plug knobs");
                 ReadKnobs(plug, m);
@@ -207,8 +173,7 @@ namespace AvatarBridge
             m.SetFloat("_YAPS_TagExclude", TagNumber(p.neverSocketsTagged));
         }
 
-        // A tag string becomes a small stable integer, 0 for none. The
-        // shader compares rounded floats, so keep it under a few thousand.
+        // A small stable integer, 0 for none. The shader compares rounded floats.
         public static float TagNumber(string tag)
         {
             if (string.IsNullOrWhiteSpace(tag)) return 0f;
@@ -219,24 +184,14 @@ namespace AvatarBridge
 
         static void BuildMarkers(YapsPlug plug, YapsBaker.Result result, float length, float radius)
         {
-            // On a static mesh the plug object IS the frame; on a skinned one
-            // the baker measured a frame in world space, and the markers
-            // must sit THERE, not on the object — which on a real avatar is
-            // routinely a quarter of a metre from the shaft.
+            // A skinned mesh's markers sit on the measured frame.
             bool skinned = result != null && result.FromSkinnedMesh;
             AnnouncePlug(plug.transform, skinned ? result.Origin : (Vector3?) null, skinned ? result.Rotation : (Quaternion?) null,
                 length, radius, plug.emitTipLight, plug.emitPointers);
         }
 
-        // Make a plug visible to every socket family: a DPS tracker light at
-        // the BASE with intensity = length, and the tip/root/width pointers
-        // both contact families read. Called by the toolkit for a native plug
-        // and by the converter for one arriving from VRChat, so the two are
-        // identical to every reader. Idempotent: rebuild replaces.
-        //
-        // `worldOrigin`/`worldRotation` are the MEASURED frame when known
-        // (skinned meshes); null means the parent's own transform is the
-        // frame (a static plug object).
+        // Announces a plug to every socket family: tracker light at the base,
+        // tip, root and width pointers. Null frame means the parent's transform.
         public static GameObject AnnouncePlug(Transform parent, Vector3? worldOrigin, Quaternion? worldRotation,
             float length, float radius, bool tipLight = true, bool pointers = true)
         {
@@ -254,27 +209,14 @@ namespace AvatarBridge
 
             if (tipLight)
             {
-                // Read out of Raliv's own functions, not guessed:
-                //   penetratorLength = unity_LightColor[i].a
-                //   depth = max(0, penetratorLength - distance(orifice, light))
-                // so the light sits at the BASE and its intensity is the
-                // length in metres. Range 0.49 exactly — SPS2 tags its own
-                // lights with a fourth decimal of 5–7 to ignore them, and
-                // this is the one light where wearing that tag would cost.
+                // Raliv reads intensity as the length and measures from the base.
                 var l = YapsSocketBuilder.MarkerLight(m, "DPS Tracker", TrackerRange, Vector3.zero);
                 l.intensity = Mathf.Max(length, 0.01f);
             }
             if (pointers)
             {
-                // Tip and root as separate points, because that is how a
-                // socket measures depth. Both families' names, so a TPS
-                // orifice and an SPS socket both see it — but ONLY the names
-                // not already announced beneath the parent. VRCFury's bake
-                // leaves TPS pen pointers, which the converter carries; a
-                // second TPS_Pen_Penetrating beside them would have a socket
-                // trigger reporting whichever entered last, tip and root
-                // taking turns, and the depth value jumping between two
-                // unrelated distances. That bug has been had once already.
+                // Tip and root as separate points. Only names not already announced;
+                // a second TPS_Pen_Penetrating would have a trigger reporting either.
                 var have = new HashSet<string>(parent.GetComponentsInChildren<CVRPointer>(true)
                     .Where(p => p != null && p.transform != m && !p.transform.IsChildOf(m))
                     .Select(p => p.type));
@@ -292,16 +234,10 @@ namespace AvatarBridge
             return go;
         }
 
-        // --- adopting what the converter (or an older build) made --------------
+        // --- adoption --------------------------------------------------------
         //
-        // A converted avatar's sockets and plug are bare objects with lights
-        // and pointers beneath — the converter made them and nothing lets a
-        // user change them afterwards. Adoption puts the authoring component
-        // ON them, filled in from what was built: kind from the light range,
-        // the shape rows from what was baked, the knobs from the material.
-        // After that a converted socket is as editable as one placed by hand,
-        // and the user can differ from the author. Idempotent — an existing
-        // component is left alone, so a re-run never resets someone's edits.
+        // Puts the authoring component on a converted socket or plug, filled
+        // from what was built. An existing component is left alone.
 
         public static YapsSocket AdoptSocket(Transform socketRoot, Renderer renderer, Material material,
             IList<string> bakedShapes)
@@ -311,8 +247,7 @@ namespace AvatarBridge
             if (comp != null) return comp;
             comp = socketRoot.gameObject.AddComponent<YapsSocket>();
 
-            // Kind: the root light's second decimal says it (1 hole, 2
-            // ring); the SPS pointer name says it too. Ring if neither does.
+            // Kind from the root light's digit, or the SPS pointer name.
             bool hole = false;
             foreach (var l in socketRoot.GetComponentsInChildren<Light>(true))
             {
@@ -329,7 +264,7 @@ namespace AvatarBridge
             comp.renderer = renderer as SkinnedMeshRenderer;
             comp.emitLights = socketRoot.GetComponentsInChildren<Light>(true).Any(YapsScanner.IsProtocolLight);
 
-            // The shape rows, from the bake, staged the way the material says.
+            // Shape rows from the bake, staged as the material says.
             if (bakedShapes != null && material != null && material.HasProperty("_YAPS_SocketShapeStart"))
             {
                 var starts = material.GetVector("_YAPS_SocketShapeStart");
@@ -366,8 +301,7 @@ namespace AvatarBridge
             return comp;
         }
 
-        // The mirror of WriteKnobs: what the material carries becomes the
-        // component's fields, so a re-bake writes back the same values.
+        // The mirror of WriteKnobs.
         public static void ReadKnobs(YapsPlug p, Material m)
         {
             float F(string n, float d) => m.HasProperty(n) ? m.GetFloat(n) : d;
@@ -396,16 +330,7 @@ namespace AvatarBridge
 
         // --- the test plug ---------------------------------------------------
 
-        // A capsule with a YapsPlug on it, wearing YAPS Simple Lit, baked
-        // through the exact path a user's mesh takes. Building it proves the
-        // path; having it proves a socket, since it will bend toward
-        // whatever socket is near. Dropped in front of the scene camera.
-        //
-        // It wore Standard once, and Standard cannot be patched — the test
-        // plug then spawned straight, unbaked, with the console saying why
-        // and the scene saying "not baked". Simple Lit is the shader the
-        // toolkit falls back to for exactly that case, so the test plug
-        // wearing it from the start tests the fallback path too.
+        // A capsule with a YapsPlug, on Simple Lit, baked through the normal path.
         public static GameObject BuildTestPlug(Transform parent = null, bool select = true)
         {
             const float length = 0.25f, radius = 0.028f;

@@ -1,17 +1,6 @@
-// A YAPS plug, as a component you place on the mesh that should bend.
-//
-// Authoring intent only, like YapsSocket: which renderer and material,
-// which bones carry the shaft (for a skinned mesh), where the base is if
-// the measurement picked the wrong end, and the knobs. The toolkit reads
-// it, measures the mesh, bakes, patches the material's own shader and
-// writes the knobs onto it. ChilloutVR strips this at upload; leaving it
-// on means the toolkit edits your choices next time instead of guessing.
-//
-// The knobs here are the same ones the material carries after a bake.
-// They live here too so a plug can be set up BEFORE it has been baked,
-// and so re-baking (a new mesh, a changed bone chain) does not lose them.
-//
-// No dependency on any SDK, no #if. It compiles in an empty project.
+// A YAPS plug: authoring data for the mesh that bends.
+// The toolkit bakes from it and writes the knobs to the material.
+// ChilloutVR strips it at upload. No SDK dependency.
 using UnityEngine;
 
 namespace AvatarBridge.Yaps

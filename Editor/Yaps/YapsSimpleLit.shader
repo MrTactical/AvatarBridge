@@ -1,18 +1,7 @@
-// A plain lit shader that the YAPS patcher can patch, for plugs and props
-// whose own shader cannot be: Unity's Standard and everything else built
-// in has no source on disk, and a surface shader has no vertex function
-// of its own to wrap. It is also what the test plug wears.
-//
-// It carries NO YAPS itself. It is a template: the patcher reads it like
-// any other shader, wraps the vertex functions, inlines the includes and
-// writes a copy beside the avatar or prop — so a material on the copy is
-// a real patched material, and building the test plug tests the path.
-//
-// Metallic workflow through Unity's own BRDF, so a plug on it sits beside
-// a Standard prop without looking out of place. Forward base with the
-// vertex-light slots (the marker lights ride those), one additive pass
-// per pixel light, shadows cast and received. Each pass keeps its vertex
-// function in its own program block, which is where the patcher looks.
+// A plain lit shader the YAPS patcher can patch, for meshes whose own
+// shader cannot be, and for the test plug. It carries no YAPS itself.
+// Metallic workflow through Unity's BRDF; each pass keeps its vertex
+// function in its own program block.
 Shader "YAPS/Simple Lit"
 {
     Properties
@@ -66,10 +55,7 @@ Shader "YAPS/Simple Lit"
             UNITY_VERTEX_OUTPUT_STEREO
         };
 
-        // The interpolators every lit pass needs, from an already
-        // positioned vertex. The vertex functions below call this AFTER
-        // they have set the position, so the patcher's edit at the top of
-        // each of them is what this sees.
+        // Shared interpolators. Called after the vertex functions set the position.
         v2f Interpolate(appdata v)
         {
             v2f o;
@@ -148,8 +134,7 @@ Shader "YAPS/Simple Lit"
                 float3 worldPos = float3(o.tspace0.w, o.tspace1.w, o.tspace2.w);
                 o.ambient = ShadeSH9(half4(wn, 1));
                 #ifdef VERTEXLIGHT_ON
-                // The marker lights are black and add nothing here; real
-                // vertex lights add their share.
+                // Marker lights are black and add nothing.
                 o.ambient += Shade4PointLights(
                     unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0,
                     unity_LightColor[0].rgb, unity_LightColor[1].rgb, unity_LightColor[2].rgb, unity_LightColor[3].rgb,

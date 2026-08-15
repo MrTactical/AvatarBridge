@@ -1027,7 +1027,7 @@ namespace AvatarBridge.Regression
                 // is the one fact needed to judge a transition cycle: a driver inside the cycle
                 // that writes a parameter the cycle's own conditions read can break the loop, and
                 // without the target names the digest cannot tell a real loop from a self-
-                // limiting one. Cost this exact question a night on Umbreon's emission layer.
+                // limiting one.
                 var behaviours = st.behaviours
                     .Where(b => b != null)
                     .Select(b =>

@@ -17,3 +17,6 @@ desktop.ini
 
 # Internal development notes; local only.
 /CLAUDE.md
+
+# Development spike and probes; local only.
+/Tools/SpsSpike/

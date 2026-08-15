@@ -1,53 +1,23 @@
-// Finds every penetration setup under a root — DPS, TPS, SPS, YAPS, or
-// any mixture — and says what it found. Touches nothing.
+// Finds every penetration setup under a root, DPS, TPS, SPS or YAPS,
+// and says what it found. Touches nothing.
 //
-// This is the first thing the YAPS toolkit does and the last thing that
-// should ever surprise a user: "Pussy: hole, readable by DPS, TPS and SPS,
-// 2 lights, 8 pointers, has an axis." Everything downstream — upgrade,
-// verify, the overlay — starts from this list, so it errs toward finding
-// and describing rather than deciding.
+// A socket is one object with a cluster of markers beneath it. Markers
+// are gathered, each walked up to the object that owns the cluster, and
+// grouped by that owner.
 //
-// ---------------------------------------------------------------------
-// ONE SOCKET, MANY MARKERS — the model, and why the first draft was wrong
-// ---------------------------------------------------------------------
+// How each system announces itself:
+//   DPS plug     material with _EntranceStiffness and _ReCurvature; a
+//                black ForceVertex tip light at range 0.49, intensity =
+//                length, in a nested prefab.
+//   DPS orifice  lights at 0.41 (hole) or 0.42 (ring) and 0.45 (normal).
+//   TPS          Poiyomi material with _TPS_PenetratorEnabled; pointers
+//                TPS_Orf_Root and TPS_Orf_Norm. No lights.
+//   SPS          BakedSpsPlug and BakedSpsSocket objects, _SPS_Bake on the
+//                material, lights 0.4106, 0.4206, 0.4506, pointers SPSLL_*.
+//   YAPS         _YAPS_Bake on the material; YapsPlug and YapsSocket.
 //
-// A socket is one OBJECT with a cluster of markers beneath it: DPS-style
-// lights, TPS pointers, SPS pointers, sometimes all three — a converted
-// avatar's sockets carry all three deliberately, so every plug family
-// reads them. The first draft attributed by MARKER and reported Angela's
-// twelve sockets thirty-seven times: once as TPS, once as DPS, once as
-// SPS. It also looked for a socket's front pointer under the root
-// pointer's PARENT, when the two sit under sibling objects, and so
-// warned "no axis" on sockets that had one.
-//
-// So this walks the other way. Gather every marker under the root; for
-// each, walk UP to the object that owns the whole cluster (the nearest
-// ancestor holding every marker within reach that belongs to the same
-// socket); group by that owner; then describe each cluster by everything
-// it carries. A socket readable by three systems is one row saying so.
-//
-// ---------------------------------------------------------------------
-// HOW EACH SYSTEM ANNOUNCES ITSELF, read from the systems' own shipped
-// files on 2026-08-15, not from memory
-// ---------------------------------------------------------------------
-//
-// Raliv DPS penetrator   material with _EntranceStiffness + _ReCurvature;
-//                        a TIP light, near-black (0.004), ForceVertex, range
-//                        0.49, intensity = plug length, in a NESTED prefab.
-// Raliv DPS orifice      lights at 0.41 (hole) or 0.42 (ring), and 0.45 (the
-//                        normal). Bulger tube: material with _OrificeData.
-// Thry TPS               a Poiyomi material with _TPS_PenetratorEnabled = 1
-//                        (plug); pointers TPS_Orf_Root / TPS_Orf_Norm
-//                        (orifice). No lights of its own.
-// VRCFury SPS            BakedSpsPlug / BakedSpsSocket objects, _SPS_Bake on
-//                        the material, lights 0.4106 / 0.4206 / 0.4506,
-//                        pointers SPSLL_*.
-// YAPS                   _YAPS_Bake on the material; YapsPlug / YapsSocket
-//                        components; "YAPS Plug" / "YAPS Socket" objects.
-//
-// A light is a PROTOCOL light when its colour is near black and its range
-// is under 0.5; the second decimal of the range says what it is. Same
-// decoder the shader uses, in C#.
+// A protocol light is near black with a range under 0.5; the second
+// decimal of the range says what it is.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -64,8 +34,7 @@ namespace AvatarBridge
         [Flags]
         public enum Speaks { None = 0, DPS = 1, TPS = 2, SPS = 4, YAPS = 8 }
 
-        // One thing found: a plug or a socket, as ONE object, with every
-        // system that reads it and everything it carries.
+        // One plug or socket, as one object, with everything it carries.
         public class Found
         {
             public Kind Kind;
@@ -117,7 +86,7 @@ namespace AvatarBridge
             }
         }
 
-        // The decoder, in C#. Mirrors yaps_resolve.cginc.
+        // The decoder, mirroring yaps_resolve.cginc.
         public static bool IsProtocolLight(Light light)
         {
             if (light == null || light.type != LightType.Point) return false;
@@ -145,22 +114,15 @@ namespace AvatarBridge
             if (root == null) return result;
             var owned = new HashSet<Transform>();
 
-            // PLUGS first. A plug is a renderer whose material carries a
-            // deform (YAPS, SPS, TPS, DPS), or a YapsPlug component, or a
-            // BakedSpsPlug object. Its markers (tip light, pen pointers)
-            // are gathered from the object that owns it.
+            // Plugs first: a plug material, a YapsPlug, or a BakedSpsPlug object.
             foreach (var comp in root.GetComponentsInChildren<Yaps.YapsPlug>(true))
             {
                 var f = NewPlug(comp.transform, comp.Target);
                 f.IsYapsAlready = true;
                 f.Origin = YapsLegacyMap.Origin.YAPS;
                 f.StatedLength = comp.lengthOverride;
-                // The component names its renderer, and on a baked plug that
-                // renderer already wears the material. Read it here: Finish
-                // claims the renderer, so the material loop below never sees
-                // it, and a converted plug — component on the marker object,
-                // material on the body mesh — read "not baked yet" beside a
-                // summary line that had just found its bake.
+                // The component's renderer may already wear the material. Finish
+                // claims the renderer, so read it here.
                 var target = comp.Target;
                 if (target != null)
                 {
@@ -181,14 +143,8 @@ namespace AvatarBridge
                 if (f.Material == null) f.Notes.Add("not baked yet");
                 result.Plugs.Add(f);
             }
-            // The plug OBJECT and the plug's RENDERER are routinely different
-            // subtrees: on a converted avatar the material sits on the body
-            // mesh at the avatar root while "YAPS Plug" (VRCFury's
-            // "BakedSpsPlug") hangs under the shaft's bone with the pointers
-            // and lights beneath it. So a material that says plug is paired
-            // with the nearest such object anywhere under the avatar, not
-            // only above the renderer — otherwise the plug reads as having no
-            // markers it plainly has.
+            // The plug object and its renderer are often different subtrees.
+            // Pair a plug material with the nearest plug object under the avatar.
             var plugObjects = root.GetComponentsInChildren<Transform>(true)
                 .Where(t => t.name == "YAPS Plug" || t.name.StartsWith("BakedSpsPlug"))
                 .Where(t => !owned.Contains(t)).ToList();
@@ -203,9 +159,7 @@ namespace AvatarBridge
                     var owner = PlugOwner(r.transform);
                     if (owner == r.transform && plugObjects.Count > 0)
                     {
-                        // Not above the renderer: take the first unclaimed plug
-                        // object. One plug per avatar is overwhelmingly the case;
-                        // several are paired in order.
+                        // Not above the renderer: the first unclaimed plug object.
                         owner = plugObjects[0];
                         plugObjects.RemoveAt(0);
                     }
@@ -220,8 +174,7 @@ namespace AvatarBridge
                 }
             }
 
-            // SOCKETS: every marker, grouped by the object that owns the
-            // cluster.
+            // Sockets: every marker, grouped by the owning object.
             var markers = new List<(Transform host, Light light, CVRPointer pointer)>();
             foreach (var l in root.GetComponentsInChildren<Light>(true))
             {
@@ -235,7 +188,7 @@ namespace AvatarBridge
                 if (p == null || string.IsNullOrEmpty(p.type)) continue;
                 if (IsSocketRootTag(p.type) || IsSocketFrontTag(p.type)) markers.Add((p.transform, null, p));
             }
-            // Skip markers that belong to a plug we already own.
+            // Skip markers under a plug already found.
             markers.RemoveAll(m => result.Plugs.Any(pl => pl.Root != null && m.host.IsChildOf(pl.Root)));
 
             var clusters = new Dictionary<Transform, Found>();
@@ -249,7 +202,7 @@ namespace AvatarBridge
                 }
                 if (m.light != null) f.Lights.Add(m.light); else f.Pointers.Add(m.pointer);
             }
-            // YapsSocket components with nothing built yet still count.
+            // YapsSocket components with nothing built still count.
             foreach (var comp in root.GetComponentsInChildren<Yaps.YapsSocket>(true))
             {
                 if (!clusters.TryGetValue(comp.transform, out var f))
@@ -274,16 +227,10 @@ namespace AvatarBridge
 
         // --- ownership -----------------------------------------------------
 
-        // The object that IS the socket: walk up from a marker until the
-        // parent would take us past a sibling cluster or to the avatar root.
-        // Named markers of the systems' own bakes are recognised outright —
-        // VRCFury's "BakedSpsSocket" and our "YAPS Socket" — and DPS's
-        // OrificeTracker/OrificeNormalTracker sit directly under the socket.
+        // The object that is the socket, walking up from a marker.
         static Transform SocketOwner(Transform marker, Transform root)
         {
-            // Inclusive of the root: the scan target may BE the socket (a
-            // user picks the prefab they just dropped), and stopping short
-            // of it split one socket into its Lights and Pointers folders.
+            // Inclusive of the root; the scan target may be the socket.
             for (var at = marker; at != null; at = at.parent)
             {
                 string n = at.name;
@@ -291,17 +238,14 @@ namespace AvatarBridge
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
                 if (at == root) break;
             }
-            // No named owner. Take the nearest ancestor that contains at
-            // least one light AND one pointer, or failing that the marker's
-            // parent — a lone DPS orifice is its own object with the two
-            // lights directly beneath.
+            // No named owner: the nearest ancestor holding a light and a pointer,
+            // else the marker's parent.
             for (var at = marker.parent; at != null && at != root; at = at.parent)
             {
                 bool light = at.GetComponentsInChildren<Light>(true).Any(IsProtocolLight);
                 bool pointer = at.GetComponentsInChildren<CVRPointer>(true).Any(p => p != null && (IsSocketRootTag(p.type) || IsSocketFrontTag(p.type)));
                 if (light && pointer) return at;
-                // A DPS-only orifice: two lights, no pointers. Its owner is
-                // the first ancestor holding both lights.
+                // A DPS-only orifice: two lights, no pointers.
                 var lights = at.GetComponentsInChildren<Light>(true).Where(IsProtocolLight).ToList();
                 if (lights.Count >= 2 && lights.Any(l => LightDigit(l) == 1 || LightDigit(l) == 2)
                                       && lights.Any(l => LightDigit(l) == 5 || LightDigit(l) == 6)) return at;
@@ -319,9 +263,7 @@ namespace AvatarBridge
             return renderer;
         }
 
-        // A name a user recognises: VRCFury's "[VF80] Pussy" gives "Pussy";
-        // otherwise the owner's own name, or its parent's if the owner is
-        // one of the systems' generic names.
+        // A name a user recognises. "[VF80] Pussy" gives "Pussy".
         static string SocketName(Transform owner)
         {
             for (var at = owner; at != null; at = at.parent)
@@ -356,8 +298,7 @@ namespace AvatarBridge
             }
             if (f.Renderer != null) owned.Add(f.Renderer.transform);
 
-            // A plug is READABLE BY a socket family when it announces itself
-            // in that family's terms.
+            // Readable by a family when announced in its terms.
             if (f.Lights.Any(l => LightDigit(l) == 9)) f.ReadableBy |= Speaks.DPS;
             if (f.Pointers.Any(p => p.type.StartsWith("TPS_Pen_"))) f.ReadableBy |= Speaks.TPS;
             if (f.Pointers.Any(p => p.type.StartsWith("SPSLL_Pen_"))) f.ReadableBy |= Speaks.SPS;
@@ -382,14 +323,13 @@ namespace AvatarBridge
             f.HasAxis = f.Lights.Any(l => LightDigit(l) == 5 || LightDigit(l) == 6)
                      || f.Pointers.Any(p => IsSocketFrontTag(p.type));
 
-            // Readable by: lights → DPS (and any converted plug); TPS names →
-            // TPS; SPS names → SPS. YAPS plugs read all three.
+            // Lights: DPS. TPS names: TPS. SPS names: SPS. YAPS reads all three.
             if (rootLight != null) f.ReadableBy |= Speaks.DPS;
             if (f.Pointers.Any(p => p.type.StartsWith("TPS_Orf_"))) f.ReadableBy |= Speaks.TPS;
             if (f.Pointers.Any(p => p.type.StartsWith("SPSLL_Socket_"))) f.ReadableBy |= Speaks.SPS;
             if (f.ReadableBy != Speaks.None) f.ReadableBy |= Speaks.YAPS;
 
-            // Authored by, best guess, for the report only.
+            // Authored by, best guess.
             if (f.IsYapsAlready || (f.Root != null && f.Root.name == "YAPS Socket")) f.Origin = YapsLegacyMap.Origin.YAPS;
             else if (f.Root != null && f.Root.name.StartsWith("BakedSpsSocket")) f.Origin = YapsLegacyMap.Origin.SPS;
             else if (rootLight != null && f.Pointers.Count == 0) f.Origin = YapsLegacyMap.Origin.DPS;

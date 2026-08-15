@@ -1,20 +1,6 @@
-// The inspectors for YapsSocket and YapsPlug, and the scene gizmos that
-// go with them.
-//
-// Built with UI Toolkit on AvatarBridge's own elements — the same
-// banner, cards, subheadings, hints, toggles and stylesheet as the two
-// windows — so a component's inspector and the window that placed it
-// are one family. They were IMGUI once, with a hand-drawn header and
-// section bars that resembled the family without being it, and read as a
-// third look beside the other two.
-//
-// The gizmos are drawn at a FIXED world size — about 5 cm, twice a real
-// socket, so they hold their own beside the CCK's icons — with enough
-// line weight to read and nothing extra. A first version scaled them with
-// the camera distance so they stayed a fixed size on screen, and that
-// swam disorientingly as you moved. Fixed, they sit still and read as
-// things in the world. The plug axis is its true length — that IS the
-// information — with a modest arrow at the tip.
+// Inspectors and scene gizmos for YapsSocket and YapsPlug, built with
+// UI Toolkit on the same elements as the windows. Gizmos are drawn at a
+// fixed world size, about 5 cm.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -35,8 +21,7 @@ namespace AvatarBridge
         public static readonly Color PlugColour = new Color(0.55f, 0.85f, 0.35f);
         public static readonly Color BadColour = new Color(0.95f, 0.30f, 0.30f);
 
-        // The inspector's root: the family stylesheet and skin, and the
-        // banner. Everything else is a card.
+        // The family stylesheet and skin.
         public static VisualElement Root()
         {
             var root = new VisualElement();
@@ -48,9 +33,7 @@ namespace AvatarBridge
             return root;
         }
 
-        // A bound control for one serialized field, with the field's own
-        // range and tooltip, and the tooltip as the hint under it — the
-        // material panel's idiom, so nobody has to hover to learn a knob.
+        // A bound control for one field, with its help line under it.
         public static VisualElement Field(SerializedProperty p, System.Reflection.FieldInfo field, string label = null,
             string from = null)
         {
@@ -117,8 +100,7 @@ namespace AvatarBridge
             if (p.propertyType != SerializedPropertyType.Boolean) control.AddToClassList("ab-field");
             control.tooltip = help;
 
-            // The control, and to its right the system it came from — one
-            // small chip per system, coloured by system, the same everywhere.
+            // A chip per system to the control's right.
             var line = new VisualElement();
             line.style.flexDirection = FlexDirection.Row;
             line.style.alignItems = Align.Center;
@@ -142,7 +124,7 @@ namespace AvatarBridge
             return box;
         }
 
-        // The four systems, told apart by colour wherever they are named.
+        // The four systems, by colour.
         public static Color SystemColour(string system)
         {
             switch (system)
@@ -175,19 +157,9 @@ namespace AvatarBridge
 
     // --- preview -----------------------------------------------------------
 
-    // One place that turns a socket's preview on and off, whoever asks —
-    // the socket's inspector, the window's row chip. Preview needs a PLUG
-    // to bend, and "there is nothing there" is what a user sees when the
-    // scene has none: so if no baked YAPS plug is in the scene, a test plug
-    // is dropped a little way in front of the socket, aimed at it, and
-    // removed again when preview goes off. With a real plug in the scene it
-    // bends that one and spawns nothing. The socket is written into the
-    // plugs the same instant, so the bend is there on the first repaint.
-    //
-    // While a preview is on, or a plug is selected, the scene view is
-    // repainted continuously so the time-driven parts of the deform —
-    // wriggle, pumping — actually move. A scene view otherwise repaints
-    // only on input, and a wriggle at 0.5 looked exactly like none.
+    // Turns a socket's preview on and off for the inspector and the window.
+    // Spawns a test plug when the scene has no baked plug. Repaints the
+    // scene view while a preview is on or a plug is selected.
     static class YapsPreview
     {
         public const string PlugName = "YAPS Preview Plug";
@@ -216,8 +188,7 @@ namespace AvatarBridge
 
         static void Tick()
         {
-            // Stop on our own once nothing needs it: no socket previewing
-            // and no plug selected.
+            // Stop once nothing needs it.
             bool previewing = Object.FindObjectsOfType<YapsSocket>().Any(s => s.preview);
             bool plugSelected = Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<YapsPlug>() != null;
             if (!previewing && !plugSelected) { Animate(false); return; }
@@ -233,27 +204,21 @@ namespace AvatarBridge
             return n;
         }
 
-        // A test plug in front of the socket, aimed at it, at a distance
-        // where the deform is clearly engaged but not fully swallowed — so
-        // moving the socket a little either way shows the whole range.
+        // A test plug in front of the socket, engaged but not swallowed.
         static void Spawn(YapsSocket socket)
         {
             if (GameObject.Find(PlugName) != null) return;
-            // Keep the socket selected: the button that stops the preview
-            // is on its inspector, and a spawn that stole the selection took
-            // that button away.
+            // Keep the socket selected; its inspector holds the stop button.
             var go = YapsNativeBuilder.BuildTestPlug(null, select: false);
             if (go == null) return;
             go.name = PlugName;
             var t = socket.transform;
-            // A quarter metre is the test plug's length; sit its base 0.3 m
-            // out along the socket's forward, pointing back at it.
+            // Base 0.3 m out along the socket's forward, pointing back at it.
             go.transform.position = t.position + t.forward * 0.3f;
             go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
             EditorGUIUtility.PingObject(go);
 
-            // A test plug that did not bake sits there straight and does
-            // nothing, and the only clue was a console line. Say it here.
+            // Say when it did not bake; the console alone was missed.
             var plug = go.GetComponent<YapsPlug>();
             bool baked = plug != null && plug.Target != null
                          && plug.Target.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_Bake"));
@@ -265,10 +230,7 @@ namespace AvatarBridge
             }
         }
 
-        // The preview plug's assets go with it — its mesh, its material and
-        // its bake texture — or every preview left three more files in
-        // Assets/YAPS/Generated/Test Plug ("YAPS Test Plug 8" by the eighth).
-        // The patched shader copy is shared by name and stays.
+        // The preview plug's mesh, material and bake go with it. The shader copy stays.
         static void Remove()
         {
             var existing = GameObject.Find(PlugName);
@@ -287,7 +249,6 @@ namespace AvatarBridge
                     doomed.Add(AssetDatabase.GetAssetPath(m));
                 }
             }
-            // No undo: the assets it needs are about to go with it.
             Object.DestroyImmediate(existing);
             foreach (var path in doomed)
             {
@@ -304,11 +265,7 @@ namespace AvatarBridge
     {
         VisualElement _root;
 
-        // Drive the preview from here while the socket is selected. Update
-        // on the component runs in edit mode only when the scene changed,
-        // and "changed" did not reliably include the test plug that had
-        // just been baked — the plug sat straight until something else
-        // moved. A scene repaint is every drag, every frame.
+        // Ticks the preview on every scene repaint while selected.
         void OnSceneGUI()
         {
             var socket = target as YapsSocket;
@@ -322,14 +279,10 @@ namespace AvatarBridge
             return _root;
         }
 
-        // Structural changes come from callbacks inside the very elements
-        // about to be replaced; rebuilding on the next tick keeps the
-        // dispatch that asked for it intact.
+        // Callbacks ask for a rebuild from inside the elements about to go.
         void RebuildLater() => _root?.schedule.Execute(Rebuild);
 
-        // The whole inspector is rebuilt on structural change — kind,
-        // renderer, a shape added or removed, preview on or off, a bake —
-        // and bound; slider drags on bound fields need nothing.
+        // Rebuilt on structural change and bound. Sliders need nothing.
         void Rebuild()
         {
             if (_root == null) return;
@@ -454,7 +407,7 @@ namespace AvatarBridge
                     head.Add(remove);
                     inner.Add(head);
 
-                    // Depth as ONE range bar: from start to fully open.
+                    // Depth as one range bar.
                     float s0 = start.floatValue, e0 = Mathf.Min(1f, start.floatValue + fade.floatValue);
                     var range = new MinMaxSlider("Opens from → fully open by", s0, e0, 0f, 1f);
                     range.AddToClassList("ab-field");
@@ -510,11 +463,7 @@ namespace AvatarBridge
             see.Body.Add(previewButton);
             body.Add(see);
 
-            // The socket-side deform, once baked. These knobs live on the
-            // renderer's material — the shader reads them there — but a
-            // socket's customisation belongs in one place, so they are drawn
-            // here too when the socket's mesh has been baked. Same values,
-            // written straight through.
+            // The socket-side knobs live on the material. Drawn here too once baked.
             var bakedMat = FindSocketMaterial(socket);
             if (bakedMat != null)
             {
@@ -572,9 +521,7 @@ namespace AvatarBridge
             _root.Bind(so);
         }
 
-        // The material carrying this socket's baked deform: on the renderer
-        // the socket names, or failing that any YAPS-socket material on a
-        // mesh this socket's bone drives.
+        // The material with this socket's baked deform.
         static Material FindSocketMaterial(YapsSocket socket)
         {
             IEnumerable<Renderer> candidates = socket.renderer != null
@@ -602,11 +549,7 @@ namespace AvatarBridge
             return renderers.OrderByDescending(r => r.sharedMesh.blendShapeCount).FirstOrDefault();
         }
 
-        // Built means a plug can FIND it: a root marker light or a root
-        // pointer somewhere beneath. Not "has the folder the toolkit makes"
-        // — a converted socket keeps VRCFury's WorldSpace/Lights and
-        // WorldSpace/Senders and is every bit as built, and twelve of
-        // Angela's read "not built" while working perfectly.
+        // Built means a plug can find it: a root light or a root pointer beneath.
         internal static bool IsBuilt(Transform socket)
         {
             foreach (var l in socket.GetComponentsInChildren<Light>(true))
@@ -645,26 +588,19 @@ namespace AvatarBridge
             colour.a = selected ? 1f : 0.7f;
 
             Vector3 c = t.position, f = t.forward, u = t.up;
-            // FIXED world size — a socket about 5 cm across, drawn at 5 cm.
-            // It used to scale with the camera distance and that swam as
-            // you moved; fixed, it sits still and reads as a thing in the
-            // world. Obvious enough by weight of line, quiet enough by
-            // having one ring, one arrow, and nothing that competes with
-            // the CCK's own icons on the markers beneath. Follows the
-            // avatar's scale so a shrunk avatar's sockets shrink with it.
+            // Fixed world size, scaled with the avatar.
             float scale = Mathf.Max(0.05f, (t.lossyScale.x + t.lossyScale.y + t.lossyScale.z) / 3f);
             float r = 0.05f * scale;
             float thick = selected ? 4f : 3f;
 
             Handles.color = colour;
             Handles.DrawWireDisc(c, f, r, thick);
-            // Entry arrow: from where a plug comes, into the socket. Short.
+            // Entry arrow, from where a plug comes.
             Handles.DrawLine(c + f * (r * 2.0f), c + f * (r * 0.6f), thick);
             Handles.ConeHandleCap(0, c + f * (r * 0.6f), Quaternion.LookRotation(-f), r * 0.5f, EventType.Repaint);
             if (hole)
             {
-                // Depth: a fainter ring set back, joined at four points, so
-                // it reads as a short tube rather than a disc.
+                // A fainter ring behind, so a hole reads as a tube.
                 var faint = colour; faint.a *= 0.4f;
                 Handles.color = faint;
                 Vector3 back = c - f * (r * 1.4f);
@@ -690,18 +626,14 @@ namespace AvatarBridge
     {
         VisualElement _root;
 
-        // The component's fields, grouped into cards by the [Header] each
-        // declares — the same names the material panel uses. Three cards:
-        // the mesh, how it moves, and sockets; the sections are subheadings
-        // within them, so the inspector reads like the window does.
+        // Fields grouped into three cards by their [Header].
         static readonly string[] MeshHeaders = { "Mesh", "Skinned mesh", "Measurement" };
         static readonly string[] MoveHeaders =
         {
             "Shape at rest", "Inside a socket", "Out of a socket", "Motion inside a socket", "The bend toward a socket",
         };
 
-        // The filter and the folds' open state, kept for the session so
-        // clicking between plugs does not reset the view.
+        // Filter and fold state, kept for the session.
         static readonly List<string> Systems = new List<string> { "All systems", "DPS", "TPS", "SPS", "YAPS" };
         static string _filter = "All systems";
         static readonly Dictionary<string, bool> _open = new Dictionary<string, bool>();
@@ -713,8 +645,7 @@ namespace AvatarBridge
             return from.Split(new[] { " · " }, System.StringSplitOptions.RemoveEmptyEntries).Contains(_filter);
         }
 
-        // A fold's summary names the systems its knobs came from; a fold
-        // the filter emptied is hidden rather than left as a bare header.
+        // The fold names its systems; an emptied fold is hidden.
         static void FinishFold(BridgeElements.Card fold, HashSet<string> systems)
         {
             if (fold == null) return;
@@ -723,10 +654,7 @@ namespace AvatarBridge
             if (fold.Body.childCount == 0) fold.style.display = DisplayStyle.None;
         }
 
-        // A selected plug animates in the scene view — wriggle and pumping
-        // are time-driven, and a scene view left to itself repaints only on
-        // input. YapsPreview stops the repaint on its own once nothing
-        // needs it.
+        // A selected plug animates in the scene view.
         void OnEnable() => YapsPreview.Animate(true);
 
         public override VisualElement CreateInspectorGUI()
@@ -763,11 +691,7 @@ namespace AvatarBridge
             var sockets = new BridgeElements.Card("Sockets");
             body.Add(mesh); body.Add(move); body.Add(sockets);
 
-            // WHERE DO I LOOK. Every knob came from somewhere — DPS, TPS,
-            // SPS, or YAPS itself — and a user who knows a feature from one
-            // of those knows it by that system's name. So each knob wears a
-            // tag saying which, each section is a fold that says what it
-            // holds, and one filter shows only the knobs of one system.
+            // Every knob is tagged with its system, and the filter shows one system.
             var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));
             filter.AddToClassList("ab-field");
             filter.RegisterValueChangedCallback(e => { _filter = e.newValue; RebuildLater(); });
@@ -776,10 +700,7 @@ namespace AvatarBridge
                 "Every knob is tagged with the system it comes from. Know a feature from DPS, TPS or SPS? " +
                 "Pick that system and only its knobs stay. YAPS is what none of them had. Applies to Sockets below too."));
 
-            // Walk the serialized fields in declaration order; a [Header]
-            // opens a section in whichever card owns it — a subheading in
-            // Mesh, a fold in the other two — and each knob's origin decides
-            // whether the filter lets it through.
+            // Fields in declaration order; a [Header] opens a section.
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             string header = "Mesh";
@@ -841,19 +762,13 @@ namespace AvatarBridge
 
             _root.Bind(serializedObject);
 
-            // A knob moved here moves the material the same instant. The
-            // material's YAPS panel writes back the same way, so the two
-            // agree; and a change of renderer rebuilds so the banner and
-            // the bake state follow.
+            // Knobs write through to the material. The material panel writes back.
             body.TrackSerializedObjectValue(serializedObject, so =>
             {
                 var mats = BakedMaterials(plug.Target);
                 if (plug.Target != renderer)
                 {
-                    // The RENDERER changed. If the new one already wears a
-                    // baked YAPS material, its knobs are the truth — read
-                    // them in rather than stamping this component's values
-                    // over an author's tuning. Then rebuild for the new state.
+                    // A new renderer that is already baked owns the knobs. Read them in.
                     if (mats.Count > 0)
                     {
                         Undo.RecordObject(plug, "YAPS plug knobs");
@@ -897,8 +812,7 @@ namespace AvatarBridge
                 foreach (var m in renderer.sharedMaterials)
                     if (m != null && m.HasProperty("_YAPS_Length")) { length = m.GetFloat("_YAPS_Length"); break; }
 
-            // The frame: the markers object if built (it sits on the measured
-            // frame), else the plug object.
+            // The markers object is the frame when built.
             var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
             Vector3 b = frame.position, f = frame.forward;
             float thick = selected ? 4f : 3f;
@@ -912,8 +826,7 @@ namespace AvatarBridge
                 return;
             }
             Vector3 tip = b + f * length * scale;
-            // True length along the axis, a ring at the base at a typical
-            // radius, a small arrow at the tip. Fixed world size.
+            // True length along the axis, a ring at the base, an arrow at the tip.
             float r = 0.035f * scale;
             Handles.DrawLine(b, tip, thick);
             Handles.DrawWireDisc(b, f, r, thick);

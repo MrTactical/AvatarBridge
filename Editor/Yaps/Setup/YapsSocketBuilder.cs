@@ -1,31 +1,7 @@
-// Turns a YapsSocket component into a socket every plug on the platform
-// can find, and builds the universal Hole and Ring prefabs from the same
-// code — so a prefab dropped under a bone and a socket authored by hand
-// are the same thing.
-//
-// "Universal" was settled by the green test socket, in game, on
-// 2026-08-14 and 15: it means speaking LEGACY plus both contact families,
-// not speaking more. On a socket that is:
-//
-//   marker lights   black, ForceVertex, at VRCFury's exact ranges — 0.4106
-//                   for a hole, 0.4206 for a ring, 0.4506 for the normal a
-//                   centimetre along +Z. Every DPS plug and every converted
-//                   plug reads these, and they cost no sync.
-//   SPS pointers    SPSLL_Socket_Hole or _Ring at the origin (the kind IS
-//                   the tag), SPSLL_Socket_Front a centimetre along +Z.
-//   TPS pointers    TPS_Orf_Root at the origin, TPS_Orf_Norm along +Z.
-//
-// A root with no front is a shape that does not exist in the wild — the
-// plug aims at it but cannot thread it — so the front is not optional.
-//
-// The lights are the whole cost of a socket, and it is a real one: Unity
-// gives a mesh four vertex-light slots and a socket takes two, so an
-// avatar with many sockets should wire them to menu toggles rather than
-// leave them all lit. That is the toolkit's job on an avatar; a prefab
-// starts lit because a lone socket lit is exactly right.
-//
-// The generated children are NAMED so a rebuild replaces rather than
-// stacks, and so a scan recognises its own work.
+// Turns a YapsSocket into a socket every plug can find, and builds the
+// universal Hole and Ring prefabs from the same code. Marker lights at
+// VRCFury's ranges, SPS and TPS pointers, and a front a centimetre along
+// +Z. The children are named so a rebuild replaces rather than stacks.
 #if CVR_CCK_EXISTS
 using System.Linq;
 using ABI.CCK.Components;
@@ -37,11 +13,7 @@ namespace AvatarBridge
 {
     public static class YapsSocketBuilder
     {
-        // VRCFury's exact values. Matching the ecosystem byte for byte
-        // beats reasoning about which digits matter — the fourth decimal
-        // does not survive the light's reconstruction, but emitting what
-        // everyone else emits removes a whole class of "why does mine
-        // differ" questions.
+        // VRCFury's exact values, emitted byte for byte.
         public const float HoleRange = 0.4106f;
         public const float RingRange = 0.4206f;
         public const float FrontRange = 0.4506f;
@@ -100,22 +72,15 @@ namespace AvatarBridge
 
         // --- the build ---------------------------------------------------
 
-        // Makes the component's object a working socket: lights and
-        // pointers as children, replacing any it built before. Idempotent.
+        // Lights and pointers as children, replacing what it built before.
         public static void Build(YapsSocket socket)
         {
             if (socket == null) return;
             var t = socket.transform;
             bool hole = socket.kind == YapsSocket.SocketKind.Hole;
 
-            // What is ALREADY announced beneath this socket, outside the
-            // toolkit's own folders. A converted socket keeps VRCFury's
-            // WorldSpace/Lights and WorldSpace/Senders — the same markers
-            // under other names — and building a second set beside them
-            // would double every pointer, with a socket trigger then
-            // reporting whichever entered last. So the toolkit adds only
-            // what is missing, and its own folders are the only things it
-            // ever replaces.
+            // What is already announced outside the toolkit's folders. Only
+            // what is missing is added; only the folders are replaced.
             bool hasRootLight = false, hasFrontLight = false;
             var havePointers = new System.Collections.Generic.HashSet<string>();
             foreach (var l in t.GetComponentsInChildren<Light>(true))
@@ -150,10 +115,7 @@ namespace AvatarBridge
             });
         }
 
-        // Is this marker inside one of the toolkit's own folders under the
-        // socket? Those are replaced wholesale; anything else is somebody
-        // else's (the converter's, VRCFury's, the author's) and is counted
-        // as already present.
+        // Inside one of the toolkit's own folders under the socket.
         static bool Owned(Transform marker, Transform socket)
         {
             for (var at = marker; at != null && at != socket; at = at.parent)
@@ -181,11 +143,7 @@ namespace AvatarBridge
             var light = go.AddComponent<Light>();
             light.type = LightType.Point;
             light.range = range;
-            // Black, but NOT zero intensity. Black is what lets the decoder
-            // tell a protocol light from real lighting; intensity zero is
-            // something else — Unity drops a light contributing nothing
-            // from the per-object list, and the slot the decoder reads
-            // never fills.
+            // Black, never intensity zero: Unity drops a light that adds nothing.
             light.color = Color.black;
             light.intensity = 1f;
             light.bounceIntensity = 0f;

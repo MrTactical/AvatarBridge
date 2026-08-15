@@ -1,16 +1,6 @@
-// One switch that quietens the scene view while sockets are being placed.
-//
-// A converted avatar carries ninety-odd CCK components — every pointer,
-// every trigger, every driver — and each draws an icon in the scene view,
-// plus a blue sphere per pointer and MagicaCloth's collider wires. None of
-// it is YAPS's and all of it buries a socket gizmo. This hides those, and
-// only those, and puts back exactly what it found: it records each type's
-// icon and gizmo state before touching it, so a user who had already
-// hidden Light icons does not get them switched on by "restore".
-//
-// It changes what the scene view DRAWS — an editor preference — and
-// nothing on the avatar. Unity's own colliders are left alone; those are
-// the Gizmos menu's business.
+// One switch that hides the CCK's icons, pointer spheres and cloth wires
+// in the scene view while sockets are placed, and restores exactly what
+// it found. An editor preference only.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -33,11 +23,7 @@ namespace AvatarBridge
             SceneView.RepaintAll();
         }
 
-        // Icons go for every CCK component type and for Light (two marker
-        // lights per socket add up). Gizmos go only where they are drawn
-        // unselected and everywhere at once: the pointer's blue sphere and
-        // MagicaCloth's wires. A trigger's box draws only when selected and
-        // is useful then, so it stays.
+        // Icons for every CCK type and Light. Gizmos only where drawn unselected.
         static IEnumerable<(Type type, bool hideGizmo)> Targets()
         {
             Type[] cck;
@@ -73,9 +59,7 @@ namespace AvatarBridge
 
         static void Restore()
         {
-            // Exactly what was recorded, and nothing else: a type with no
-            // record was never touched, and switching it on would undo a
-            // choice the user made themselves.
+            // Only what was recorded.
             string saved = EditorPrefs.GetString(SavedKey, "");
             foreach (var line in saved.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {

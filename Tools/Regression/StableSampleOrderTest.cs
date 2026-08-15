@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
     // "[VF397] Assjob"; and assigns those ids fresh on every bake, so sorting the raw string
     // reordered the set whenever Fury renumbered. The harness redacts "[VF397]" to "[VF#]" before
     // comparing digests, so two runs of an unchanged avatar produced a diff naming a different
-    // path with an identical count. Seen on Angela_PC_SPS and Sally_PC_SPS on the same day.
+    // path with an identical count.
     //
     // The ordering therefore ignores Fury ids. The second case below is the one that matters:
     // ignoring them must NOT make two different strings compare equal, or a SortedSet would

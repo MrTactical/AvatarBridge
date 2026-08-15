@@ -1,14 +1,5 @@
-// A YAPS socket, as a component you place. This is what the universal
-// Hole and Ring prefabs carry, and what the toolkit reads when it bakes.
-//
-// It holds AUTHORING intent only — kind, tag, which blendshapes open as a
-// plug goes in and at what depth. Nothing here runs in game: the toolkit
-// turns it into marker lights, contact pointers and a baked deform on the
-// mesh, and ChilloutVR strips unknown MonoBehaviours at upload anyway. So
-// this can be left on the avatar; it does no harm and it means running
-// the toolkit again edits what you set instead of re-guessing it.
-//
-// No dependency on any SDK, no #if. It compiles in an empty project.
+// A YAPS socket: authoring data the prefabs carry and the toolkit bakes.
+// ChilloutVR strips it at upload. No SDK dependency.
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -66,39 +57,19 @@ namespace AvatarBridge.Yaps
                  "them when turned off. Only one socket previews at a time.")]
         public bool preview;
 
-        // Which way the socket faces is the object's +Z. The front pointer
-        // and the normal light both sit a centimetre along it.
+        // Faces along +Z; the front markers sit a centimetre along it.
         public Vector3 Forward => transform.forward;
 
 #if UNITY_EDITOR
-        // The interaction preview. In the editor there is no ChilloutVR
-        // client, so no contact channel; the plug shader still reads the
-        // socket values off its material, and this writes them — a world
-        // position, this object's forward and up, engaged from distance —
-        // exactly as the game's channel would. Marker lights work in the
-        // scene view already, so a lit socket previews on its own; this
-        // exists for the CONTACT half and for holes, whose kind rides in the
-        // flags. Only touches materials carrying _YAPS_Bake, and only while
-        // `preview` is on; turning it off, disabling, or destroying clears
-        // what it wrote.
+        // Editor preview: writes the socket into every YAPS plug in the scene.
         static YapsSocket _previewing;
 
-        // Written through MaterialPropertyBlocks on the renderers, never
-        // onto the material assets. A block is runtime-only — not saved with
-        // the scene, not uploaded — so a preview left on at upload time
-        // cannot ship a plug bent toward a fixed point in the world, which
-        // writing the material would have done. It is also exactly where the
-        // game's own channel writes. Each touched slot remembers the
-        // material's channel-space flag so Release can put it back.
+        // Property blocks only. They are not saved and not uploaded.
         struct Touched { public Renderer Renderer; public int Slot; public float ChannelSpace; }
         readonly System.Collections.Generic.List<Touched> _touched = new System.Collections.Generic.List<Touched>();
         static readonly MaterialPropertyBlock _block = new MaterialPropertyBlock();
 
-        // Update runs in edit mode only when something in the scene changed,
-        // which is not reliably "now": the inspector calls PreviewTick
-        // itself when preview goes on and on every scene repaint while the
-        // socket is selected, so the plug bends the moment preview starts
-        // and follows the socket as it is dragged.
+        // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
 
         public void PreviewTick()
@@ -110,7 +81,7 @@ namespace AvatarBridge.Yaps
             }
             if (_previewing != null && _previewing != this) { _previewing.preview = false; _previewing.Release(); }
             _previewing = this;
-            if (UnityEngine.Application.isPlaying) return;   // the sim's job, not this one's
+            if (UnityEngine.Application.isPlaying) return;
 
             foreach (var r in FindObjectsOfType<Renderer>())
             {
@@ -144,9 +115,7 @@ namespace AvatarBridge.Yaps
         void OnDisable() { if (_previewing == this) { Release(); _previewing = null; } }
         void OnDestroy() { if (_previewing == this) { Release(); _previewing = null; } }
 
-        // Put every touched slot back to what its material says: zero
-        // socket, and the channel-space flag it had. A block cannot drop a
-        // single property, so it is left equal to the material — inert.
+        // Back to what the material says. A block cannot drop a property.
         void Release()
         {
             foreach (var t in _touched)

@@ -1,22 +1,5 @@
-// Tools ▸ YAPS ▸ Setup. The YAPS toolkit's window, for any ChilloutVR
-// avatar or prop, no VRChat history needed.
-//
-// It is built on AvatarBridge's own skeleton — the same banner, the same
-// mode tabs, the same numbered cards, the same gradient action button —
-// because a new user should not have to learn two layouts, and because
-// the two are one family: AvatarBridge converts a VRChat avatar and
-// carries its penetration across as YAPS; this is for an avatar already
-// here. Each points at the other.
-//
-// Three steps, like the converter's three:
-//   1  Pick the avatar or prop.
-//   2  What it has — the scan, one row per plug or socket, with what
-//      reads it and what it lacks; and what to add — hole, ring, plug.
-//   3  Build — bake every plug, verify.
-//
-// TODAY (2026-08-15): scan, add sockets, make/bake plugs on static meshes,
-// a test plug, preview. Upgrade-in-place, the avatar channel and skinned
-// bone chains are marked coming rather than pretended.
+// Tools ▸ YAPS ▸ Setup. The toolkit's window for any ChilloutVR avatar
+// or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -59,9 +42,7 @@ namespace AvatarBridge
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
         }
 
-        // The found list describes objects, and objects come and go — a
-        // reconvert destroys the avatar the list was built from and rebuilds
-        // it. Rescan after any hierarchy change, once per edit.
+        // Rescan after any hierarchy change, once per edit.
         bool _rescanQueued;
         void OnHierarchyChanged()
         {
@@ -93,9 +74,7 @@ namespace AvatarBridge
 
         void ShowPage()
         {
-            // The strip is rebuilt with the mode, so the active tab's tint
-            // follows the switch — built once, it highlighted whichever tab
-            // was current when the window opened, forever.
+            // Rebuilt with the mode so the active tab's tint follows.
             _tabs.Clear();
             _tabs.Add(BridgeElements.Tabs(
                 new[] { "Set up an avatar or prop", "Test props" },
@@ -106,8 +85,7 @@ namespace AvatarBridge
             _pages.Add(Footer());
         }
 
-        // The same footer the converter has: help, a pre-filled bug report,
-        // the author on Discord. The report says it came from this tool.
+        // The converter's footer: guide, bug report, Discord.
         static VisualElement Footer()
         {
             var footer = new VisualElement();
@@ -131,14 +109,14 @@ namespace AvatarBridge
 
         void BuildSetupPage()
         {
-            // 1 — Pick.
+            // 1. Pick.
             var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, 1, 0f);
             _picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
             _picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; Rescan(); });
             pick.Body.Add(_picker);
             _pages.Add(pick);
 
-            // 2 — What it has, and what to add.
+            // 2. What it has, and what to add.
             var have = new BridgeElements.Card("What it has, and what to add", null, null, 2, 0.5f);
             _summary = new Label("Pick something above.");
             _summary.AddToClassList("ab-hint");
@@ -146,9 +124,7 @@ namespace AvatarBridge
             _foundBody = new VisualElement();
             have.Body.Add(_foundBody);
 
-            // WHAT TO DO NEXT. The one line a new user actually needs, and
-            // it reads the scan and the Hierarchy selection to say it — so
-            // the window teaches itself rather than needing a manual.
+            // What to do next, from the scan and the selection.
             _next = new HelpBox("", HelpBoxMessageType.Info);
             have.Body.Add(_next);
 
@@ -160,12 +136,7 @@ namespace AvatarBridge
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
 
-            // The scene view over a converted avatar is a wall of the CCK's
-            // pointer and trigger icons — ninety of them on Angela — plus
-            // MagicaCloth's collider wires. None of it is ours and all of it
-            // buries a socket. One switch hides those icons while you work
-            // on sockets and puts them back after; it changes only what the
-            // scene view DRAWS, nothing on the avatar.
+            // One switch hides the CCK's icons while sockets are placed.
             have.Body.Add(BridgeElements.SubHeading("Scene view"));
             _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
             _quiet.tooltip = "Hides the CCK component icons, the pointers' blue spheres, MagicaCloth's collider " +
@@ -179,7 +150,7 @@ namespace AvatarBridge
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             EditorApplication.hierarchyChanged += OnHierarchyChanged;
 
-            // 3 — Build.
+            // 3. Build.
             var build = new BridgeElements.Card("Build", null, null, 3, 1f);
             _build = new BridgeElements.PrimaryButton("Bake every plug and verify", BuildAll);
             build.Body.Add(_build);
@@ -189,8 +160,7 @@ namespace AvatarBridge
                 "YAPS Socket's markers. Then checks the lot. Safe to run again; it edits, not stacks."));
             _pages.Add(build);
 
-            // The other door, the same way AvatarBridge points here: present,
-            // say where it is; absent, say where to get it.
+            // Present, say where; absent, say where to get it.
             var cross = new BridgeElements.Card("Converting from VRChat?", null, false, null, 0f);
             if (BridgeLinks.HasAvatarBridge)
             {
@@ -267,8 +237,7 @@ namespace AvatarBridge
             return b;
         }
 
-        // The one line that says what to do next, from what the scan found.
-        // Four situations a user is actually in, and a sentence for each.
+        // The next-step line, from the scan and the selection.
         void SayNext()
         {
             if (_next == null) return;
@@ -326,8 +295,7 @@ namespace AvatarBridge
             }
         }
 
-        // The buttons say what they will act on, since that is the Hierarchy
-        // selection and the window cannot otherwise show it.
+        // The buttons name what they will act on.
         void RefreshSelection()
         {
             if (_selection == null) return;
@@ -402,10 +370,7 @@ namespace AvatarBridge
                 var plugComp = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
                 bool hasComp = socketComp != null || plugComp != null;
 
-                // Every row with a component gets "customise": select it,
-                // and its inspector — kind, shapes, every knob — is the
-                // customisation. Clicking the row does the same; the chip
-                // says so, which the row alone did not.
+                // Customise: select it and open its inspector.
                 if (hasComp)
                 {
                     var edit = BridgeElements.Chip("customise", new Color(0.45f, 0.65f, 0.95f), true, () =>
@@ -413,9 +378,7 @@ namespace AvatarBridge
                         if (captured.Root == null) { Rescan(); return; }
                         Selection.activeTransform = captured.Root;
                         EditorGUIUtility.PingObject(captured.Root);
-                        // And take them there: bring the Inspector to the
-                        // front — opening one if the layout has none — so
-                        // the knobs are on screen, not behind this window.
+                        // Front the Inspector, opening one if there is none.
                         EditorApplication.ExecuteMenuItem("Window/General/Inspector");
                     });
                     edit.style.marginLeft = 6;
@@ -426,9 +389,7 @@ namespace AvatarBridge
                     var chip = BridgeElements.Chip(socketComp.preview ? "previewing" : "preview",
                         BridgeTheme.Good, socketComp.preview, () =>
                         {
-                            // The list can outlive its avatar — a reconvert
-                            // destroys and rebuilds it — and a chip holding a
-                            // dead component threw on click. Rescan instead.
+                            // A reconvert can leave the chip holding a dead component.
                             if (socketComp == null) { Rescan(); return; }
                             YapsPreview.Set(socketComp, !socketComp.preview);
                             Rescan();
@@ -438,10 +399,7 @@ namespace AvatarBridge
                 }
                 else if (f.IsYapsAlready && !hasComp && f.Root != null)
                 {
-                    // Converter output with no authoring component: a bare
-                    // object nobody can retune. Adopt puts the component on
-                    // it, filled from what was built, and then it edits like
-                    // one placed by hand.
+                    // Converter output with no component. Adopt makes it editable.
                     var chip = BridgeElements.Chip("make editable", BridgeTheme.Warn, false, () =>
                     {
                         if (captured.Root == null) { Rescan(); return; }
@@ -459,10 +417,7 @@ namespace AvatarBridge
             foreach (var f in _scan.Sockets) Row(f);
         }
 
-        // Put the authoring component on a found plug or socket that has
-        // none, from what the scan saw. The converter does this itself for
-        // anything it builds from now on; this is for what it built before,
-        // and for anything else that is YAPS by material alone.
+        // Puts the authoring component on a found plug or socket that has none.
         static void Adopt(YapsScanner.Found f)
         {
             if (f.Root == null) return;
@@ -471,9 +426,7 @@ namespace AvatarBridge
                 var shapes = new List<string>();
                 if (f.Material != null && f.Material.HasProperty("_YAPS_ShapeCount"))
                 {
-                    // The bake's shape names are not on the material; the
-                    // component's rows are left for the user to fill from
-                    // the dropdown. Kind, lights and strength still carry.
+                    // Shape names are not on the material; the rows stay for the user.
                 }
                 YapsNativeBuilder.AdoptSocket(f.Root, f.Renderer, f.Material, shapes);
             }
@@ -523,8 +476,7 @@ namespace AvatarBridge
         void BuildAll()
         {
             if (_target == null) return;
-            // Adopt first, so a converted avatar's bare sockets and plug get
-            // their components before the bake reads them.
+            // Adopt first, so bare converted sockets and plugs get components.
             int adopted = AdoptAll();
             if (adopted > 0) _scan = YapsScanner.Scan(_target);
             int plugsOk = 0, plugsTried = 0, socketsBuilt = 0;
@@ -546,15 +498,7 @@ namespace AvatarBridge
             _summary.text = $"Built: {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")}, {socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.  " + string.Join("  ", lines);
         }
 
-        // Where a new socket goes follows the convention avatar authors
-        // already use — Angela's author did both: sockets that must follow a
-        // bone sit UNDER that bone (Armature/…/Hips/[VF] Pussy), and the
-        // rest are organised in a folder (SPS/Handjob/Double, SPS/Feet/…).
-        // So: if a BONE is selected, the socket goes under it and follows
-        // it. Otherwise it goes in a "YAPS" folder at the avatar root, named
-        // for the kind, where the user can move it. Never loose at the root
-        // among the meshes and cloth roots — that is where the first version
-        // dropped it and it looked like a mistake.
+        // Under the selected bone, else in a YAPS folder on the avatar.
         void AddSocket(YapsSocket.SocketKind kind, bool atCamera = false)
         {
             string name = kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring";
@@ -599,8 +543,7 @@ namespace AvatarBridge
                 if (parent != null) go.transform.SetParent(parent, false);
                 if (!onBone && parent != null)
                 {
-                    // In the folder: unique names, so three holes are not
-                    // three "YAPS Hole"s.
+                    // Unique names in the folder.
                     int n = 1;
                     foreach (Transform c in parent) if (c.name.StartsWith(name)) n++;
                     if (n > 1) go.name = $"{name} {n}";
@@ -616,8 +559,7 @@ namespace AvatarBridge
             if (!atCamera) Rescan();
         }
 
-        // A bone: any transform a skinned mesh under the avatar is bound
-        // to, or anything under a transform named Armature.
+        // A bone: bound by a skinned mesh, or under an Armature.
         static bool IsBone(Transform t, Transform avatarRoot)
         {
             foreach (var smr in avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true))
