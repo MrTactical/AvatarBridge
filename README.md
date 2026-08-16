@@ -141,8 +141,8 @@ actually running.
   open, in game, for everyone, with the author's tuning carried over — and it reads and is read by
   every system already on the platform. The **YAPS tool** (*Tools ▸ YAPS ▸ Setup*) sets it up on
   any ChilloutVR avatar or prop, VRChat history or not.
-- **Bloat removed** — GoGo Loco and the VRChat haptics stacks stripped (one avatar went from 3088
-  to 240 of 3200 sync bits).
+- **Sync budget freed** — GoGo Loco removed, and the haptics stacks kept but made local, so their
+  contacts cost nothing of ChilloutVR's 3200 bits instead of most of them.
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
   up, or your avatar's own FT rig converted whole. ARKit and Unified Expressions meshes both work.
 - **Contacts a stranger can actually set off** — boops, headpats and proximity effects become
@@ -749,21 +749,28 @@ skinned mesh before you Build. TPS upgrades are tested in game, on both props an
 and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup anyone can take, a
 trigger collider to grab by — sized from the bake, on the prop's own object because that is where
 the game looks for it, and a trigger so the prop passes through people instead of shoving them —
-and, for a baked plug, the synced
-contact channel: eight values, one trigger each, that reach every viewer, not just the ones whose
-client draws the marker lights. A prop with an animator controller of its own keeps it and gains
-the channel's layers; one without gets a channel controller. Run it again after a re-bake; it
-replaces its own work, not yours. **Verify prop** before each upload; the CCK's own inspector can
-blank a channel value's parameter name if the Spawnable is left open, and Verify puts it back.
+and nothing else. It finds sockets through
+their marker lights, which every client works out for itself, so no one owns the answer and no
+one takes the prop off anyone. Run it again after a re-bake; it replaces its own work, not yours.
 
-**Who owns a prop in a socket** is worth knowing before you upload one. A channel value is
-written by whoever's *socket* the prop met, not by whoever is holding it, and that write re-sends
-the prop's position and marks it no longer remotely synced. Two ways to go, and neither is free:
-with *Disallow Theft* **off** (what you get) the prop can be tugged out of a remote hand the
-moment a socket switches on, but everyone can always pick it up again; **on**, that tug is
-closed, and the prop then belongs to whoever last had it in a socket — `GrabbedBy` only clears
-when updates stop arriving, and a socket still touching the prop keeps them coming, so nobody
-else can pick it up until the prop is respawned. The tick is on the CVR Pickup Object if you want
+**The synced contact channel is a separate button**, *Add the synced channel*, and *Drop the
+contact channel* takes it off again. It is the exact route — eight values, one trigger each,
+reaching viewers whose client never draws the marker lights — and it costs the prop's ownership,
+so it is worth adding only when you need it. A prop with an animator controller of its own keeps
+it and gains the channel's layers; one without gets a channel controller. **Verify prop** before
+each upload; the CCK's own inspector can blank a channel value's parameter name if the Spawnable
+is left open, and Verify puts it back, and it also says when a prop from an early build has its
+grab collider in the wrong place.
+
+**Who owns a prop in a socket** is why the channel is not the default. A channel value is written
+by whoever's *socket* the prop met, not by whoever is holding it, and the client grants that write
+to your own avatar's contact whoever is carrying the thing; the write re-sends the prop's position
+and marks it no longer remotely synced, which pulls it out of their hand. No pickup setting
+reaches that. *Disallow Theft* only changes which way it fails: **off** (what you get) the prop
+can be tugged away but everyone can always pick it up again; **on**, that tug is closed and the
+prop belongs to whoever last had it in a socket — `GrabbedBy` only clears when updates stop
+arriving, and a socket still touching the prop keeps them coming, so nobody else can pick it up
+until the prop is respawned. The tick is on the CVR Pickup Object if you want
 the other one.
 
 **Universal socket prefabs** — *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
@@ -772,9 +779,9 @@ should enter, and every plug on the platform reads it: DPS marker lights at VRCF
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
 **A plug prop prefab** — *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` beside
-them: a whole spawnable in one click, built and baked on the current shader with the pickup,
-collider and synced contact channel already wired. Drop it in a scene and upload it from the CCK
-as a prop. **Make it again after updating AvatarBridge**: a prop that is already uploaded carries
+them: a whole spawnable in one click, built and baked on the current shader with its pickup and
+grab collider wired, finding sockets by their marker lights. Drop it in a scene and upload it
+from the CCK as a prop. **Make it again after updating AvatarBridge**: a prop that is already uploaded carries
 the bake and the patched shader copy it was built with, and nothing in the project reaches it — an
 old one bending oddly next to a current avatar is that, not a fault in the avatar.
 
@@ -786,9 +793,10 @@ and for the contact route a **Full depth (m)** field says how far in counts as f
 contact cannot know a visiting plug's length (left at 0 it takes the longest baked plug on the
 avatar). **Test depth** moves those shapes on the mesh in the editor so you can see the stages
 without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
-baked plug in the scene toward the socket — with a test plug the tool drops in front of it when
-the scene has none — and while it runs, the plug's own tip drives the shapes the way the game
-will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
+baked plug in the scene toward the socket, and drops one in front of it when nothing baked is
+within a couple of metres: the plug prop prefab if the project has one, since that is baked on
+the shader the project has today, otherwise a plug built on the spot. While it runs, the plug's
+own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
@@ -811,6 +819,14 @@ The **Animate it** card on each component lists the names. Size is wired for you
 or hyper toggle that scales the plug's root bone, or moves one of its baked blendshapes, gets a
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
 weights), so the deform is the size the mesh is drawn at.
+
+**Everything is named after the bone it hangs from.** An avatar can carry a dozen sockets, and a
+menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
+menu entry, its parameter, the reactions layer, the row in the window and the socket's own object
+in the Hierarchy all read `Chest ring`, `hand ring`, `cock plug`. A socket you have named yourself
+keeps that name and gains the bone in brackets; the object is renamed only while nothing animates
+it by path. Moving a socket to another bone renames all of it on the next Build, rather than
+leaving a second copy behind.
 
 **A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
 vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
@@ -841,13 +857,13 @@ colour, albedo, normal map, metallic and smoothness carried over. The test plug 
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more.
 
 **Quiet the scene view.** A converted avatar carries ninety-odd CCK components, each with an
-icon, plus pointer spheres and cloth wires, and all of it buries a socket. One switch in the
-window hides those while you place sockets and puts back exactly what it found. An editor
-preference; nothing on the avatar changes.
+icon, plus pointer spheres, trigger boxes and cloth wires, and all of it buries a socket. One
+switch in the window hides those while you place sockets and puts back exactly what it found. An
+editor preference; nothing on the avatar changes.
 
 **Test it** (the window's second tab) — drop a test hole or ring in front of the scene camera and it
-arrives with Preview on: every baked plug in the scene bends toward it while you move it. A test
-plug too, if the scene has none. **Make the selected test object a prop** does the rest; upload each
+arrives with Preview on: every baked plug in the scene bends toward it while you move it. **Test
+plug** drops one of those too. **Make the selected test object a prop** does the rest; upload each
 from the CCK and try them with a second person.
 
 **What the tool does not do yet, and says so:** the synced contact channel on an *avatar's own*
@@ -1923,8 +1939,8 @@ Work down the list; the first that fits is usually it.
   several sockets lit at once a plug sees the two nearest its bounds — a hand-held prop at the
   wrist can lose the Handjob pair to a lit torso socket. Try the socket alone.
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
-  alone, and that channel is built for converted avatars; a plug built with the YAPS tool reads
-  lights only until the avatar channel lands. The report and the tool both say which a plug has.
+  alone. A converted avatar has that channel; a plug built with the YAPS tool reads lights only,
+  and a prop has one only if you added it. The report and the tool both say which a plug has.
 - **Is the socket behind the plug?** Anything from dead ahead to square beside the base engages in
   full, and only a socket clearly behind it is refused, fading out by about a hundred and twenty
   degrees. That gate is what stops a plug folding back on itself to reach its own root, and it
