@@ -2077,7 +2077,8 @@ regenerating the controller.
 ## Reporting a bug
 
 Hit **Report an issue** in the AvatarBridge window — it opens a pre-filled GitHub issue with your
-versions and detected packages already in it.
+versions and detected packages already in it. A bug somebody hit while wearing an avatar comes
+before anything on the [roadmap](docs/Roadmap.md), which is where the larger ideas live.
 
 Two things make a report solvable immediately:
 
