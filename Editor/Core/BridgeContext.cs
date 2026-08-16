@@ -80,6 +80,9 @@ namespace AvatarBridge
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
             public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
+            // The bone a size animation scales: the level the plug's mesh was
+            // found at when it is a bone, else the first bone beneath it.
+            public Transform ChainRoot;
 
             // Measured from the mesh in world space. The plug object can sit
             // elsewhere; a contact box placed there lands short.

@@ -154,6 +154,10 @@ namespace AvatarBridge
             // Announce: tip light for DPS, pointers for TPS and SPS.
             BuildMarkers(plug, result, o.Length, o.Radius);
 
+            // The avatar's own animations that change the plug's size, shape
+            // sliders and bone scale, now tell the material too.
+            WireSize(plug, renderer, result, o);
+
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
                         $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
@@ -162,6 +166,51 @@ namespace AvatarBridge
                 : "On an avatar this plug reads sockets by their marker lights only; on a prop, Make this a prop adds the synced contact channel.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
+        }
+
+        // Mirrors the avatar's own size animations onto the plug's material:
+        // shape curves onto the shape weights, the root bone's scale onto
+        // the bake scale. Edits the user's clips, adding a curve beside each
+        // it mirrors, and says so. Idempotent: the same curve every time.
+        static void WireSize(YapsPlug plug, Renderer renderer, YapsBaker.Result result, Outcome o)
+        {
+            var top = TopOf(plug.transform);
+            var animator = top.GetComponentInParent<Animator>();
+            if (animator == null || animator.runtimeAnimatorController == null) return;
+            var clips = YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController)
+                .Where(YapsCurveMirror.UserOwned).ToList();
+            if (clips.Count == 0) return;
+            string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animator.transform);
+
+            var missed = new HashSet<string>();
+            int shapes = result.Shapes.Count > 0
+                ? YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer.GetType(), result.Shapes,
+                    result.MovingShapes, missed)
+                : 0;
+
+            int scaled = 0;
+            var chainRoot = plug.rootBone;
+            if (chainRoot != null)
+            {
+                var bones = new List<string> { AnimationUtility.CalculateTransformPath(chainRoot, animator.transform) };
+                for (int i = 0; i < chainRoot.childCount; i++)
+                    bones.Add(AnimationUtility.CalculateTransformPath(chainRoot.GetChild(i), animator.transform));
+                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType());
+            }
+
+            if (shapes + scaled > 0)
+            {
+                AssetDatabase.SaveAssets();
+                o.Notes.Add($"Wired the plug's size into {shapes + scaled} of the avatar's own clip(s)" +
+                            (shapes > 0 ? $": {shapes} shape curve(s)" : "") +
+                            (scaled > 0 ? $"{(shapes > 0 ? "," : ":")} {scaled} bone scale curve(s)" : "") +
+                            ". A curve was added beside each, so a size slider or hyper toggle reaches the shader too.");
+            }
+            if (missed.Count > 0)
+            {
+                o.Notes.Add($"{missed.Count} animated shape(s) that move the plug are not in the bake " +
+                            $"({string.Join(", ", missed.Take(6))}); the bake holds the {YapsBaker.MaxShapes} that move it most.");
+            }
         }
 
         public const string SimpleLitName = "YAPS/Simple Lit";

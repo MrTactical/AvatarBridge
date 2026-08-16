@@ -410,6 +410,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     YapsVertex baked = YapsReadBaked(vertexId);
     if (baked.active <= 0) return;
 
+    // The plug scaled by its bones, which the skinned vertex already is
+    // and the bake is not. Set by an animation curve beside the bone's
+    // own scale curve, so the recovered frame and the length agree with
+    // what is drawn. 1 when nothing scales it. Before the recovery, so
+    // that a scaled vertex still lands on its own root.
+    baked.position *= max(_YAPS_BakeScale, 0.0001);
+
     float3 originalPosition = position;
     float3 originalNormal = normal;
     float3 originalTangent = tangent;

@@ -397,7 +397,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     if (_YAPS_ChannelSpace > 0.5)
     {
         found = socket.engaged > 0;
-        float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz;
+        // The trigger boxes ride the plug object, so a scaled plug has
+        // scaled boxes; the decode scales with them.
+        float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
         float3 plugRight = cross(plugUp, plugForward);
         socket.position = plugOrigin + plugRight * offset.x
                                      + plugUp * offset.y
@@ -448,7 +450,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // belonging to a different socket than the root did. Either way the
         // honest answer is to say nothing and let the deform take its
         // direction from the approach, which is what a zero forward means.
-        float3 frontOffset = (_YAPS_SocketFront.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz;
+        float3 frontOffset = (_YAPS_SocketFront.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
         float3 frontAt = plugOrigin + plugRight * frontOffset.x
                                     + plugUp * frontOffset.y
                                     + plugForward * frontOffset.z;

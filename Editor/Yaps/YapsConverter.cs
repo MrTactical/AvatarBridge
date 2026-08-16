@@ -215,6 +215,7 @@ namespace AvatarBridge
                 Radius = result.Radius,
                 Shapes = result.Shapes,
                 MovingShapes = result.MovingShapes,
+                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot),
                 Origin = result.Origin,
                 Rotation = result.Rotation,
             });
@@ -287,6 +288,53 @@ namespace AvatarBridge
                 }
             }
             return best;
+        }
+
+        // The bone whose scale is the plug's scale: the level the mesh was
+        // found at when that is one of the mesh's bones, else the topmost
+        // bone of the mesh beneath it, else the plug object's first bone
+        // ancestor. Null when the mesh has no bones there at all.
+        static Transform ChainRootOf(SkinnedMeshRenderer skin, Transform level, Transform plugRoot)
+        {
+            if (skin == null || skin.bones == null)
+            {
+                return null;
+            }
+            var bones = new HashSet<Transform>(skin.bones.Where(b => b != null));
+            if (level != null && bones.Contains(level))
+            {
+                return level;
+            }
+            if (level != null)
+            {
+                Transform top = null;
+                foreach (var b in bones)
+                {
+                    if (!b.IsChildOf(level))
+                    {
+                        continue;
+                    }
+                    // Topmost: no other bone of the mesh above it under the level.
+                    bool topmost = true;
+                    for (var at = b.parent; at != null && at != level; at = at.parent)
+                    {
+                        if (bones.Contains(at)) { topmost = false; break; }
+                    }
+                    if (topmost) { top = b; break; }
+                }
+                if (top != null)
+                {
+                    return top;
+                }
+            }
+            for (var at = plugRoot; at != null; at = at.parent)
+            {
+                if (bones.Contains(at))
+                {
+                    return at;
+                }
+            }
+            return null;
         }
 
         // The humanoid bone an object IS, or null. The avatar root counts
@@ -1141,8 +1189,9 @@ namespace AvatarBridge
 
         // --- shape curves, atlas objects ---------------------------------
 
-        // A vertex shader cannot read a blendshape weight, so each plug shape
-        // curve is mirrored onto the material. Runs late, on owned clip copies.
+        // A vertex shader cannot read a blendshape weight or a bone's scale,
+        // so each plug shape curve is mirrored onto the material, and the
+        // chain root's scale curve onto the bake scale. Late, on owned copies.
         public static void MirrorShapeCurves(BridgeContext ctx)
         {
             if (!ctx.Settings.convertYapsSystems || ctx.YapsPlugs.Count == 0
@@ -1151,55 +1200,27 @@ namespace AvatarBridge
                 return;
             }
 
-            int written = 0;
+            int written = 0, scaled = 0;
             var missed = new SortedSet<string>(StableSampleOrder.Instance);
+            var clips = YapsCurveMirror.ClipsOf(ctx.MergedController).ToList();
             foreach (var plug in ctx.YapsPlugs)
             {
-                if (plug.Shapes.Count == 0)
-                {
-                    continue;
-                }
                 string path = ctx.PathInTarget(plug.Renderer.transform);
-                foreach (var clip in ctx.MergedController.animationClips.Distinct())
+                if (plug.Shapes.Count > 0)
                 {
-                    if (clip == null)
+                    written += YapsCurveMirror.MirrorShapes(clips, path, plug.Renderer.GetType(),
+                        plug.Shapes, plug.MovingShapes, missed);
+                }
+                // The chain root and its bone children: a size slider scales
+                // one of them, and the shader takes that as the plug's scale.
+                if (plug.ChainRoot != null)
+                {
+                    var bones = new List<string> { ctx.PathInTarget(plug.ChainRoot) };
+                    for (int i = 0; i < plug.ChainRoot.childCount; i++)
                     {
-                        continue;
+                        bones.Add(ctx.PathInTarget(plug.ChainRoot.GetChild(i)));
                     }
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (binding.path != path
-                            || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
-                        {
-                            continue;
-                        }
-                        string shape = binding.propertyName.Substring("blendShape.".Length);
-                        int slot = plug.Shapes.IndexOf(shape);
-                        if (slot < 0)
-                        {
-                            // Only a shape that moves the plug and lost its slot; the
-                            // rest of the mesh has nothing to do with the bake.
-                            if (plug.MovingShapes.Contains(shape)) missed.Add(shape);
-                            continue;
-                        }
-
-                        // Blendshapes animate 0..100; the bake stores full
-                        // shapes, so the material takes 0..1.
-                        var source = AnimationUtility.GetEditorCurve(clip, binding);
-                        var scaled = new AnimationCurve();
-                        foreach (var key in source.keys)
-                        {
-                            scaled.AddKey(new Keyframe(key.time, key.value * 0.01f,
-                                key.inTangent * 0.01f, key.outTangent * 0.01f));
-                        }
-                        AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                        {
-                            path = path,
-                            type = plug.Renderer.GetType(),
-                            propertyName = "material." + WeightProperty(slot),
-                        }, scaled);
-                        written++;
-                    }
+                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType());
                 }
             }
 
@@ -1212,6 +1233,14 @@ namespace AvatarBridge
                     "left, and a plug with a size slider bends as though it were still its " +
                     "original size.");
             }
+            if (scaled > 0)
+            {
+                ctx.Report.Converted(Category, $"Mirrored {scaled} bone scale curve(s) onto the plug",
+                    "The plug's root bone is scaled by an animation, a size or hyper toggle. The " +
+                    "shader cannot see a bone's scale, so the same curve now drives the plug's bake " +
+                    "scale on its material: at twice the size it reaches twice as far and bends as " +
+                    "the bigger plug it is.");
+            }
             if (missed.Count > 0)
             {
                 ctx.Report.Warning(Category,
@@ -1223,16 +1252,6 @@ namespace AvatarBridge
                     "raised. Bulge shapes on a SOCKET are unaffected by this — those are ordinary " +
                     "animation and have no limit.");
             }
-        }
-
-        // Four float4s, sixteen shapes, matching SPS.
-        static string WeightProperty(int slot)
-        {
-            string pack = slot < 4 ? "_YAPS_ShapeWeights"
-                        : slot < 8 ? "_YAPS_ShapeWeights2"
-                        : slot < 12 ? "_YAPS_ShapeWeights3"
-                        : "_YAPS_ShapeWeights4";
-            return pack + "." + "xyzw"[slot & 3];
         }
 
         static void RemoveAtlasJunk(BridgeContext ctx)
