@@ -278,7 +278,7 @@ namespace AvatarBridge
                 // Depth parameters no layer reads.
                 foreach (var p in controller.parameters.ToList())
                 {
-                    if (!(p.name.StartsWith("YAPS/") || p.name.StartsWith("#YAPS/")) || !p.name.EndsWith("/Depth")) continue;
+                    if (!YapsSocketReactions.IsDepthName(p.name)) continue;
                     if (ParameterUsed(controller, p.name)) continue;
                     Undo.RegisterCompleteObjectUndo(controller, "Clean up YAPS leftovers");
                     controller.RemoveParameter(p);
@@ -378,7 +378,7 @@ namespace AvatarBridge
 
         // Does any layer still read this parameter: a tree blends by it, a
         // transition tests it, or a state's speed or time follows it.
-        static bool ParameterUsed(AnimatorController controller, string parameter)
+        public static bool ParameterUsed(AnimatorController controller, string parameter)
         {
             foreach (var layer in controller.layers)
             {

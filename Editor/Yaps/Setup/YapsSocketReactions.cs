@@ -80,6 +80,14 @@ namespace AvatarBridge
             }
         }
 
+        // A YAPS depth parameter by shape, whoever wrote it: this build's
+        // synced form, the local one older builds used, or a hand edit of
+        // either.
+        public static bool IsDepthName(string name) =>
+            !string.IsNullOrEmpty(name)
+            && (name.StartsWith("YAPS/", System.StringComparison.Ordinal) || name.StartsWith("#YAPS/", System.StringComparison.Ordinal))
+            && name.EndsWith("/Depth", System.StringComparison.Ordinal);
+
         // A parameter-safe name: letters, digits, dash and underscore.
         static string Machine(string s)
         {
@@ -211,14 +219,29 @@ namespace AvatarBridge
             EnsureTrigger(socket, parameter);
 
             // The parameter, synced, so remote viewers see the shapes move.
-            // An earlier build's local one goes, or it holds a name nothing
-            // reads and shows up as a leftover for ever.
-            string legacy = LegacyParameter(socket);
-            var stale = controller.parameters.FirstOrDefault(p => p.name == legacy);
-            if (stale != null) controller.RemoveParameter(stale);
             if (!controller.parameters.Any(p => p.name == parameter))
             {
                 controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
+            }
+
+            // Every other YAPS depth parameter here that no socket owns and
+            // no layer reads goes with it: an earlier build's local name, a
+            // socket since renamed, a name edited by hand. Left alone they
+            // pile up in the CCK's parameter list, one per experiment.
+            var owned = new HashSet<string>();
+            foreach (var s in avatar.GetComponentsInChildren<YapsSocket>(true))
+            {
+                owned.Add(Parameter(s));
+                owned.Add(LegacyParameter(s));
+            }
+            owned.Remove(LegacyParameter(socket));   // this socket's old one is ours to drop
+            int cleared = 0;
+            foreach (var p in controller.parameters.ToList())
+            {
+                if (!IsDepthName(p.name) || p.name == parameter || owned.Contains(p.name)) continue;
+                if (YapsRemover.ParameterUsed(controller, p.name)) continue;
+                controller.RemoveParameter(p);
+                cleared++;
             }
 
             // The layer: one blend tree over depth, breakpoints wherever a
@@ -291,6 +314,7 @@ namespace AvatarBridge
 
             string note = $"✓ {socket.name}: {stages.Count} shape(s) on \"{renderer.name}\" react to a plug's tip through a contact, " +
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})";
+            if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
             if (animator.runtimeAnimatorController != controller)
                 note += "; the avatar's animator is not the base controller's copy, so press Create Animator on the CVRAvatar for it to pick the layer up";
