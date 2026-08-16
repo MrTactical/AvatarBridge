@@ -188,11 +188,13 @@ namespace AvatarBridge
                     {
                         ctx.Report.Warning(Category,
                             "OGB haptics parameters kept synced for OSC toys",
-                            "You asked for it: every OGB/… parameter stays synced so OSCGoesBrrr and the " +
-                            "like see it under its VRChat name. Each costs 32 sync bits, about nine per " +
-                            "plug and per socket, and ChilloutVR's cap is 3200. The sync budget entry " +
-                            "below says where this avatar landed; over the cap, nothing on it syncs. " +
-                            "Turn the option off to make them local again, at no cost.");
+                            "You asked for it: every OGB/… parameter stays synced so OSCGoesBrrr's " +
+                            "automatic detection sees it under its VRChat name. Each costs 32 sync " +
+                            "bits, about nine per plug and per socket, and ChilloutVR's cap is 3200. The " +
+                            "sync budget entry below says where this avatar landed; over the cap, " +
+                            "nothing on it syncs. Off, they are local and free, and OGB still reads them " +
+                            "through its manual avatar-parameter links; the Diagnostics entry lists the " +
+                            "names to paste.");
                     }
                 }
                 else

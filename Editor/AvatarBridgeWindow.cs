@@ -776,9 +776,10 @@ namespace AvatarBridge
                 // OSC toys. Local parameters wear a "#" in ChilloutVR and
                 // OSCGoesBrrr does not read those, so the choice is theirs.
                 b.Add(BridgeElements.Bind("Keep OGB haptics synced for OSC toys (OSCGoesBrrr, Lovense)",
-                    "Off, the OGB haptics parameters are local, free, and invisible to OSC toy apps, " +
-                    "which read them by their VRChat names and skip ChilloutVR's \"#\" local ones. On, " +
-                    "they stay synced and the apps see them, at 32 sync bits each.",
+                    "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
+                    "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
+                    "report lists the names to paste. On, they stay synced and automatic detection works " +
+                    "with no setup, at 32 sync bits each.",
                     settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
                 if (settings.syncHapticsForOsc)
                 {

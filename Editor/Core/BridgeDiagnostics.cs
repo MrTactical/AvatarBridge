@@ -44,7 +44,46 @@ namespace AvatarBridge
             Validate(ctx, master, usage);
             CheckRemoteDefaultLoops(ctx, master);
             CheckStuckStates(ctx, master);
+            ReportOscHaptics(ctx, master);
             ctx.Report.Appendix = BuildAppendix(ctx, master, usage);
+        }
+
+        // The OGB haptics parameters by their final names, for OSC toy
+        // apps. Local ones wear a "#" and OSCGoesBrrr's automatic
+        // detection skips those, but its manual avatar-parameter links
+        // read a parameter by exact name, "#" included, so the list is
+        // what a user pastes there. Synced ones cost sync and need no setup.
+        static void ReportOscHaptics(BridgeContext ctx, AnimatorController master)
+        {
+            var names = master.parameters
+                .Select(p => p.name)
+                .Where(n => n.StartsWith("OGB/", StringComparison.Ordinal)
+                            || n.StartsWith("#OGB/", StringComparison.Ordinal))
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
+            if (names.Count == 0)
+            {
+                return;
+            }
+            bool synced = names.Any(n => !n.StartsWith("#", StringComparison.Ordinal));
+            string list = string.Join("\n  ", names);
+            if (synced)
+            {
+                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s) kept synced for OSC toys",
+                    "OSCGoesBrrr's automatic plug and socket detection reads these by name and needs no " +
+                    "setup. Launch ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game. " +
+                    $"They cost 32 sync bits each; the sync budget entry has the total.\n  {list}");
+            }
+            else
+            {
+                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s), local and free",
+                    "ChilloutVR computes contacts on every client, so these cost no sync. OSCGoesBrrr's " +
+                    "automatic detection skips a name starting with \"#\", but its manual links do not: in " +
+                    "OGB, add an avatar-parameter link per name below and it drives the toy from these. " +
+                    "Launch ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game. " +
+                    "\"Keep OGB haptics synced for OSC toys\" makes the automatic detection work instead, " +
+                    $"at 32 sync bits each.\n  {list}");
+            }
         }
 
         // ------------------------------------------------------------------ validation ----

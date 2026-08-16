@@ -1043,7 +1043,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Convert* also carries the OGB, PCS and Wholesome haptics and sound stacks across as local, contact-driven parameters (free in ChilloutVR); *Remove* strips DPS/TPS/SPS and those stacks with them. *Leave as VRChat built it* touches nothing, and functions nowhere |
-| **Keep OGB haptics synced for OSC toys** | off | Under *Convert to YAPS*. Off, the OGB haptics parameters are local (free) and invisible to OSC toy apps such as OSCGoesBrrr, which read them by their VRChat names and skip ChilloutVR's `#` local ones. On, they stay synced and the apps see them, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **Keep OGB haptics synced for OSC toys** | off | Under *Convert to YAPS*. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -1894,19 +1894,24 @@ Two facts. ChilloutVR has native OSC with VRChat's defaults (listens on 9000, se
 `/avatar/parameters/<name>`, OSCQuery), and it sends *every* animator parameter, local ones
 included, under their real name; a local parameter in ChilloutVR is one whose name starts with
 `#`. OSCGoesBrrr finds the game by an OSCQuery service name starting with `VRChat-Client-`, and
-reads only parameters whose name starts with `OGB/`.
+its automatic plug and socket detection reads only parameters whose name starts with `OGB/`.
 
 So: launch ChilloutVR with `--osc-query-prefix=VRChat-Client` (its own launch argument for OSC
-tools written for VRChat), and OGB will find it. But the haptics parameters this tool keeps are
-local by default, so they arrive as `#OGB/…`, and OGB does not recognise them. Two ways out:
+tools written for VRChat), and OGB will find it. The haptics parameters this tool keeps are local
+by default, so they arrive as `#OGB/…`, which OGB's *automatic* plug and socket detection skips.
+Three ways to the toy, cheapest first:
 
-- **Keep OGB haptics synced for OSC toys**, under the Penetration choice. They stay synced under
-  their VRChat names and OGB sees them, at 32 sync bits each, about nine per plug and per socket:
-  one plug and three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the
-  3200-bit cap on its own. Over the cap nothing on the avatar syncs, so read the report's sync
-  budget entry after converting. Your budget, your call.
+- **Manual links, free.** OGB's own *avatar parameter* links (Output links → add link) read a
+  parameter by its exact name, `#` and all. The report's Diagnostics section lists every
+  `#OGB/…` name on the converted avatar; add a link per name you want driving a device. Costs
+  no sync, works today.
+- **Keep OGB haptics synced for OSC toys**, under the Penetration choice. Automatic detection
+  works with no setup, at 32 sync bits each, about nine per plug and per socket: one plug and
+  three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the 3200-bit cap on
+  its own. Over the cap nothing on the avatar syncs, so read the report's sync budget entry
+  after converting. Your budget, your call.
 - **Ask OGB to accept `#OGB` as `OGB`** (a one-line change on its side, in the spirit of its
-  existing `TPS_Internal` alias). Then the default, local and free, works too.
+  existing `TPS_Internal` alias). Then automatic detection is free for everyone.
 
 Everything else in those stacks, the sounds and particles, plays for everyone either way.
 
