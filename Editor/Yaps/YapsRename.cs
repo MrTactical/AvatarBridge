@@ -117,6 +117,7 @@ namespace AvatarBridge
             }
 
             int rewritten = RewriteClips(ctx, remap);
+            RewriteMasks(ctx, remap);
             var unresolved = Unresolved(ctx, deadBefore);
 
             if (unresolved.Count > 0)
@@ -196,6 +197,46 @@ namespace AvatarBridge
                 }
             }
             return count;
+        }
+
+        // A layer mask that lists transforms lets the layer move only the
+        // ones listed, by path. A listed path that no longer matches drops
+        // that object's position and scale curves without a word.
+        static void RewriteMasks(BridgeContext ctx, Dictionary<string, string> remap)
+        {
+            var seen = new HashSet<AvatarMask>();
+            string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
+            foreach (var layer in ctx.MergedController.layers)
+            {
+                var mask = layer?.avatarMask;
+                if (mask == null || !seen.Add(mask))
+                {
+                    continue;
+                }
+                // Only masks this conversion owns. The self-container has
+                // copied every foreign one by now, but a shared asset must
+                // never be edited in place.
+                string assetPath = AssetDatabase.GetAssetPath(mask);
+                bool ours = string.IsNullOrEmpty(assetPath) || assetPath == controllerPath
+                            || assetPath.StartsWith(ctx.OutputDir + "/", StringComparison.Ordinal);
+                if (!ours)
+                {
+                    continue;
+                }
+                bool touched = false;
+                for (int i = 0; i < mask.transformCount; i++)
+                {
+                    if (Remap(mask.GetTransformPath(i), remap, out string path))
+                    {
+                        mask.SetTransformPath(i, path);
+                        touched = true;
+                    }
+                }
+                if (touched)
+                {
+                    EditorUtility.SetDirty(mask);
+                }
+            }
         }
 
         static bool Remap(string path, Dictionary<string, string> remap, out string moved)

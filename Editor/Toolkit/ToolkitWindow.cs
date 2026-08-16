@@ -141,13 +141,16 @@ namespace AvatarBridge
         VisualElement Stereo() => Tool("Stereo shaders",
             "ChilloutVR renders single-pass instanced; a shader that never opted in draws into one eye in VR. " +
             "Copies such shaders with the stereo macros added and points this object's materials at the copies. " +
-            "Originals untouched; a copy that fails to compile is thrown away.",
+            "Originals untouched; a copy that fails to compile is thrown away. Materials an animation swaps in " +
+            "are not followed here, because that would mean editing your animation clips.",
             "Patch shaders for VR stereo", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Patch stereo shaders");
-                ShaderSpiPatcher.Patch(_target, ctx.OutputDir + "/RehomedAssets", ctx.MergedController, report);
+                // No controller: the clip pass would rewrite the user's own
+                // clips in place. Renderers only.
+                ShaderSpiPatcher.Patch(_target, ctx.OutputDir + "/RehomedAssets", null, report);
                 return report;
             }, "Every shader on it already declares stereo support, or has no source to patch.");
 
@@ -190,7 +193,17 @@ namespace AvatarBridge
                 if (ctx.MergedController == null) { report.Error("Scaler", "No animator controller on the root"); return report; }
                 if (ctx.CvrAvatar == null) { report.Error("Scaler", "No CVRAvatar on the root"); return report; }
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Height slider");
-                AvatarScalerInjector.Inject(ctx.MergedController, ctx);
+                ctx.Settings.addAvatarScaler = true;
+                var controller = ctx.MergedController;
+                int before = controller.layers.Length;
+                AvatarScalerInjector.Inject(controller, ctx);
+                // Inject builds its layers in memory. On a persistent
+                // controller they must be embedded or they serialize empty.
+                var layers = controller.layers;
+                for (int i = before; i < layers.Length; i++)
+                {
+                    AnimatorAssetSaver.EmbedLayer(layers[i], controller);
+                }
                 EditorUtility.SetDirty(ctx.MergedController);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
                 AssetDatabase.SaveAssets();

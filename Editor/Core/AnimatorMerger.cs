@@ -10089,16 +10089,73 @@ namespace AvatarBridge
         static AvatarMask BuildRigMask(string name, BridgeContext ctx, params AvatarMaskBodyPart[] activeParts)
         {
             var mask = BuildMask(name, activeParts);
-            var root = ctx.Target != null ? ctx.Target.transform : null;
-            if (root != null)
+            ListEveryTransform(mask, ctx);
+            return mask;
+        }
+
+        // A rig mask names every transform by PATH, and a mask with any
+        // transform listed animates only the ones listed. So an object
+        // renamed or created after the merge is invisible to every layer
+        // wearing one, and its position and scale curves are silently
+        // dropped: the socket senders that stopped scaling after the YAPS
+        // rename. Rebuilt from the hierarchy as it stands at the end.
+        public static void RefreshRigMasks(BridgeContext ctx)
+        {
+            var master = ctx.MergedController;
+            if (master == null || ctx.Target == null)
             {
-                mask.AddTransformPath(root, true);
+                return;
+            }
+            var seen = new HashSet<AvatarMask>();
+            int refreshed = 0;
+            foreach (var layer in master.layers)
+            {
+                var mask = layer?.avatarMask;
+                if (mask == null || !seen.Add(mask) || mask.transformCount == 0
+                    || !mask.name.StartsWith("AvatarBridge_", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var before = new HashSet<string>();
                 for (int i = 0; i < mask.transformCount; i++)
                 {
-                    mask.SetTransformActive(i, true);
+                    before.Add(mask.GetTransformPath(i));
                 }
+                ListEveryTransform(mask, ctx);
+                bool changed = before.Count != mask.transformCount;
+                for (int i = 0; !changed && i < mask.transformCount; i++)
+                {
+                    changed = !before.Contains(mask.GetTransformPath(i));
+                }
+                if (!changed)
+                {
+                    continue;
+                }
+                EditorUtility.SetDirty(mask);
+                refreshed++;
             }
-            return mask;
+            if (refreshed > 0)
+            {
+                ctx.Report.Converted("Animator", $"Refreshed {refreshed} layer mask(s)",
+                    "The masks that let a layer move any object list every object by name, and " +
+                    "objects were renamed after those lists were written. Rewritten from the final " +
+                    "hierarchy, so a position or scale toggle on a renamed object still lands.");
+            }
+        }
+
+        static void ListEveryTransform(AvatarMask mask, BridgeContext ctx)
+        {
+            var root = ctx.Target != null ? ctx.Target.transform : null;
+            if (root == null)
+            {
+                return;
+            }
+            mask.transformCount = 0;
+            mask.AddTransformPath(root, true);
+            for (int i = 0; i < mask.transformCount; i++)
+            {
+                mask.SetTransformActive(i, true);
+            }
         }
 
         static AvatarMask ReplaceVrcMask(AvatarMask mask, BridgeContext ctx)
