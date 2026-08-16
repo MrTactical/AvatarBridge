@@ -180,8 +180,32 @@ namespace AvatarBridge
     static class YapsPreview
     {
         public const string PlugName = "YAPS Preview Plug";
+
+        // How close a baked plug has to be before the socket counts it as
+        // the one to watch. Avatar scale: everything on one body is within
+        // a couple of metres of everything else, so this is arm's reach.
+        public const float NearEnough = 0.4f;
+
         static bool _fromPrefab;
         static bool _animating;
+
+        // A test plug in front of this socket, asked for outright.
+        public static void DropTestPlug(YapsSocket socket)
+        {
+            if (socket == null) return;
+            Remove();
+            Spawn(socket);
+            Animate(true);
+            SceneView.RepaintAll();
+        }
+
+        public static bool TestPlugInScene => GameObject.Find(PlugName) != null;
+
+        public static void RemoveTestPlug()
+        {
+            Remove();
+            SceneView.RepaintAll();
+        }
 
         public static void Set(YapsSocket socket, bool on, bool spawnPlugIfNone = true)
         {
@@ -189,7 +213,7 @@ namespace AvatarBridge
             socket.preview = on;
             // A plug on the far side of the scene is no use to look at, so
             // the test one arrives unless a real plug is already close.
-            if (on && spawnPlugIfNone && CountBakedPlugsNear(socket, 2f) == 0) Spawn(socket);
+            if (on && spawnPlugIfNone && CountBakedPlugsNear(socket, NearEnough) == 0) Spawn(socket);
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
@@ -795,19 +819,34 @@ namespace AvatarBridge
             body.Add(opens);
 
             // See it work.
-            int bakedPlugs = YapsPreview.CountBakedPlugsNear(socket, 2f);
+            int bakedPlugs = YapsPreview.CountBakedPlugsNear(socket, YapsPreview.NearEnough);
             var see = new BridgeElements.Card("See it work");
             string shapesToo = contactRoute && shapesProp.arraySize > 0
                 ? $" The shapes follow the plug's tip as the game would: 0 at the socket plane, 1 at {YapsSocketReactions.ReachOf(socket):0.00} m in."
                 : "";
-            see.Body.Add(BridgeElements.Hint(bakedPlugs > 0
-                ? $"Preview bends the {bakedPlugs} YAPS plug{(bakedPlugs == 1 ? "" : "s")} in the scene toward this socket, in the editor, so you can place it and watch before uploading. Writes nothing that ships.{shapesToo}"
-                : "There is no baked plug in the scene (a hidden one does not count), so Preview drops a test plug in front of this socket and bends it. Move the socket and watch it follow. The test plug goes when preview stops." +
-                  (contactRoute && shapesProp.arraySize > 0 ? " It is one full depth long, so all the way in reads 1." : "") + shapesToo));
+            see.Body.Add(BridgeElements.Hint(
+                "Preview bends every baked YAPS plug in the scene toward this socket, in the editor, so you can " +
+                "place it and watch before uploading. Writes nothing that ships. " +
+                (bakedPlugs > 0
+                    ? $"There {(bakedPlugs == 1 ? "is a plug" : "are plugs")} within reach of this socket already; drop a test one anyway if you want something to move."
+                    : "Nothing baked is near this socket, so it drops a test plug in front of it.") +
+                (contactRoute && shapesProp.arraySize > 0 ? " A test plug is one full depth long, so all the way in reads 1." : "") + shapesToo));
             var previewButton = new BridgeElements.PrimaryButton(
                 socket.preview ? "Previewing — click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
                 () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); });
             see.Body.Add(previewButton);
+            // Asked for outright, since guessing whether the avatar's own
+            // plug is the one to watch gets it wrong on a body where
+            // everything is within arm's reach of everything.
+            bool testPlug = YapsPreview.TestPlugInScene;
+            see.Body.Add(BridgeElements.Row(YapsInspectorStyle.Button(
+                testPlug ? "Take the test plug away" : "Drop a test plug here",
+                () =>
+                {
+                    if (testPlug) YapsPreview.RemoveTestPlug();
+                    else { YapsPreview.Set(socket, true, spawnPlugIfNone: false); YapsPreview.DropTestPlug(socket); }
+                    RebuildLater();
+                })));
 
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.
