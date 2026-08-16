@@ -84,7 +84,7 @@ namespace AvatarBridge
         {
             string where = ctx.PathInTarget(plugRoot);
 
-            var renderer = FindPlugRenderer(ctx, plugRoot, out int plugVertices);
+            var renderer = FindPlugRenderer(ctx, plugRoot, out int plugVertices, out var chainLevel);
             if (renderer == null)
             {
                 ctx.Report.Warning(Category, $"No mesh found for the plug at {where}",
@@ -94,31 +94,28 @@ namespace AvatarBridge
                 return;
             }
 
+            // The plug's chain must be its own. When the first bones found
+            // above the plug object are the wearer's, Hips or Spine or a
+            // leg, "the plug" is the body: nothing beneath the plug object
+            // told its vertices apart. Length says nothing here; a hyper
+            // plug is longer than its wearer and has a chain of its own.
+            string bodyBone = HumanoidBoneName(ctx, chainLevel);
+            if (bodyBone != null)
+            {
+                ctx.Report.Warning(Category, $"The plug at {where} was left alone",
+                    $"The first bones above the plug object belong to the body ({bodyBone}), so the " +
+                    "bake could not tell the plug's vertices from the rest of the mesh and would have " +
+                    "bent the whole avatar. Put the SPS Plug component on the plug's root bone, or on " +
+                    "an empty under it, and convert again. Until then the plug keeps its mesh and " +
+                    "does not bend.");
+                return;
+            }
+
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure);
             if (result == null)
             {
                 ctx.Report.Warning(Category, $"Could not bake the plug at {where}", bakeFailure);
-                return;
-            }
-
-            // A plug the height of the wearer is not a plug: the bake took
-            // the whole mesh because nothing under the plug object told the
-            // plug's vertices from the body's. Left alone rather than bent.
-            float height = AvatarScalerInjector.MeasureHeight(ctx);
-            if (result.Length > height * 0.6f)
-            {
-                ctx.Report.Warning(Category, $"The plug at {where} measured {result.Length:0.##} m, so it was left alone",
-                    $"That is most of the avatar's {height:0.##} m height, which means the bake could not " +
-                    "tell the plug's vertices from the rest of the mesh: no bone chain of its own sits " +
-                    "beneath the plug object. Put the SPS Plug component on the plug's root bone, or on " +
-                    "an empty under it, and convert again. Until then the plug keeps its mesh and " +
-                    "does not bend.");
-                string bakePath = result.Bake != null ? AssetDatabase.GetAssetPath(result.Bake) : null;
-                if (!string.IsNullOrEmpty(bakePath))
-                {
-                    AssetDatabase.DeleteAsset(bakePath);
-                }
                 return;
             }
 
@@ -243,10 +240,12 @@ namespace AvatarBridge
                     : ""));
         }
 
-        static Renderer FindPlugRenderer(BridgeContext ctx, Transform plugRoot, out int plugVertices)
+        static Renderer FindPlugRenderer(BridgeContext ctx, Transform plugRoot, out int plugVertices,
+            out Transform chainLevel)
         {
             Renderer best = null;
             plugVertices = 0;
+            chainLevel = null;
 
             // VRCFury's own first rule: a renderer sitting on the plug's
             // object is the plug. A dedicated mesh object carrying the
@@ -283,10 +282,38 @@ namespace AvatarBridge
                 }
                 if (best != null)
                 {
+                    chainLevel = level;
                     return best;
                 }
             }
             return best;
+        }
+
+        // The humanoid bone an object IS, or null. The avatar root counts
+        // too: a chain found there is every bone the avatar has.
+        static string HumanoidBoneName(BridgeContext ctx, Transform level)
+        {
+            if (level == null)
+            {
+                return null;
+            }
+            if (level == ctx.Target.transform)
+            {
+                return "the avatar root";
+            }
+            var animator = ctx.TargetAnimator;
+            if (animator == null || !animator.isHuman)
+            {
+                return null;
+            }
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+            {
+                if (animator.GetBoneTransform(bone) == level)
+                {
+                    return bone.ToString();
+                }
+            }
+            return null;
         }
 
         // A submesh belongs to the plug if its triangles use plug vertices.
