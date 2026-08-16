@@ -263,13 +263,27 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            // VRCFury's second rule, and the one that matters: climb ONCE
+            // from the plug object, and at the first level where any mesh
+            // has vertices on that level's bones, take the mesh with most.
+            // Letting every mesh climb on its own let the body climb to the
+            // hips and win by sheer count over a plug with its own armature;
+            // ten corpus avatars were baking their whole body as the plug.
+            var renderers = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            for (var level = plugRoot; level != null && level != ctx.Target.transform.parent; level = level.parent)
             {
-                int count = YapsBaker.CountPlugVertices(renderer, plugRoot);
-                if (count > plugVertices)
+                foreach (var renderer in renderers)
                 {
-                    plugVertices = count;
-                    best = renderer;
+                    int count = YapsBaker.CountVerticesUnder(renderer, level);
+                    if (count > plugVertices)
+                    {
+                        plugVertices = count;
+                        best = renderer;
+                    }
+                }
+                if (best != null)
+                {
+                    return best;
                 }
             }
             return best;

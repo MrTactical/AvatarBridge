@@ -244,15 +244,33 @@ namespace AvatarBridge
                     plugBones = BonesUnder(skin.bones, above);
                 }
             }
-            if (plugBones.Count == 0)
+            return CountWeighted(skin, plugBones);
+        }
+
+        // Vertices weighted to any bone at or under one object, no
+        // climbing: the caller decides which level of the hierarchy is
+        // being asked about.
+        public static int CountVerticesUnder(Renderer renderer, Transform level)
+        {
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || level == null || skin.sharedMesh == null
+                || skin.bones == null || skin.bones.Length == 0)
             {
                 return 0;
             }
+            return CountWeighted(skin, BonesUnder(skin.bones, level));
+        }
 
+        static int CountWeighted(SkinnedMeshRenderer skin, HashSet<int> bones)
+        {
+            if (bones.Count == 0)
+            {
+                return 0;
+            }
             int count = 0;
             foreach (var w in skin.sharedMesh.boneWeights)
             {
-                if (WeightOnPlug(w, plugBones) > 0.001f)
+                if (WeightOnPlug(w, bones) > 0.001f)
                 {
                     count++;
                 }
