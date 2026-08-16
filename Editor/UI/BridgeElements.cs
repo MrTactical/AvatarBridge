@@ -69,7 +69,7 @@ namespace AvatarBridge
                     tab.Add(image);
                 }
                 tab.Add(new Label(labels[i]));
-                tab.RegisterCallback<MouseDownEvent>(_ => onSelect(index));
+                tab.RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onSelect(index); });
                 strip.Add(tab);
             }
             return strip;
@@ -128,8 +128,9 @@ namespace AvatarBridge
 
                 if (expanded.HasValue)
                 {
-                    header.RegisterCallback<MouseDownEvent>(_ =>
+                    header.RegisterCallback<MouseDownEvent>(e =>
                     {
+                        if (e.button != 0) return;
                         _open = !_open;
                         Apply();
                         onToggle?.Invoke(_open);
@@ -169,7 +170,7 @@ namespace AvatarBridge
 
                 // A disabled VisualElement stops receiving events, so SetEnabled is the guard;
                 // the class only supplies the look, since a bare element has no disabled styling.
-                RegisterCallback<MouseDownEvent>(_ => onClick());
+                RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onClick(); });
                 RegisterCallback<MouseEnterEvent>(_ =>
                     style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient(true)));
                 RegisterCallback<MouseLeaveEvent>(_ =>
@@ -205,7 +206,7 @@ namespace AvatarBridge
             if (onClick != null && clickable)
             {
                 chip.AddToClassList("ab-chip-click");
-                chip.RegisterCallback<MouseDownEvent>(_ => onClick());
+                chip.RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onClick(); });
             }
             return chip;
         }
@@ -261,6 +262,29 @@ namespace AvatarBridge
             toggle.AddToClassList("ab-toggle");
             toggle.RegisterValueChangedCallback(e => set(e.newValue));
             return toggle;
+        }
+
+        // One question with a few answers, as radio buttons under a short label.
+        public static RadioButtonGroup Choice(string label, string tooltip, string[] answers, int current,
+            Action<int> set)
+        {
+            var group = new RadioButtonGroup(label, new System.Collections.Generic.List<string>(answers))
+            {
+                value = current,
+                tooltip = tooltip,
+            };
+            group.AddToClassList("ab-field");
+            group.AddToClassList("ab-radio");
+            group.RegisterValueChangedCallback(e => set(e.newValue));
+            return group;
+        }
+
+        // A link-styled button: opens a page, a window, a folder.
+        public static Button Link(string text, Action action)
+        {
+            var button = new Button(action) { text = text };
+            button.AddToClassList("ab-btn");
+            return button;
         }
 
         public static VisualElement Row(params VisualElement[] children)

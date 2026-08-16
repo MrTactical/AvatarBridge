@@ -340,7 +340,7 @@ namespace AvatarBridge
                 }
                 Transform target = string.IsNullOrEmpty(binding.path)
                     ? ctx.Target.transform
-                    : ctx.Target.transform.Find(binding.path);
+                    : BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                 var renderer = target != null ? target.GetComponent<Renderer>() : null;
                 if (renderer == null)
                 {
@@ -639,7 +639,7 @@ namespace AvatarBridge
 
             foreach (var target in targets)
             {
-                var transform = ctx.Target.transform.Find(target.Path);
+                var transform = BridgeContext.FindByAnimationPath(ctx.Target.transform, target.Path);
                 if (transform == null)
                 {
                     ctx.Report.Warning(Category, entry.name,

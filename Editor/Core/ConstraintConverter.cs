@@ -215,6 +215,13 @@ namespace AvatarBridge
 
         static void RepointConstraintCurves(BridgeContext ctx)
         {
+            // Nothing was built to repoint at. The VRC curves die with
+            // their components; warning about them here would blame the
+            // bake for a choice the user made.
+            if (!ctx.Settings.convertConstraints)
+            {
+                return;
+            }
             var clips = new HashSet<AnimationClip>();
             var controllers = new List<RuntimeAnimatorController>();
             foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
@@ -263,13 +270,9 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    // Never write into the author's own asset. This runs
-                    // before AnimationSelfContainer copies anything, so
-                    // clips here can still be source files on disk.
-                    // Breaking the VRChat original is the one failure
-                    // this tool must never have.
-                    // Checked here, not per clip, so the guard speaks
-                    // only when it actually refused work.
+                    // Never write into the author's own asset: this runs
+                    // before the clips are copied, so they can still be
+                    // source files on disk.
                     if (!mayRewrite)
                     {
                         protectedSources.Add(sourcePath);
@@ -744,10 +747,21 @@ namespace AvatarBridge
             {
                 live.Add(ctx.PathInTarget(t));
             }
+            string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
             foreach (var layer in ctx.MergedController.layers)
             {
                 var mask = layer.avatarMask;
                 if (mask == null)
+                {
+                    continue;
+                }
+                // Only a mask this conversion owns. This runs before the
+                // self-container copies foreign masks, so the CCK's, the
+                // package's and the source avatar's are still theirs.
+                string maskPath = AssetDatabase.GetAssetPath(mask);
+                bool ours = string.IsNullOrEmpty(maskPath) || maskPath == controllerPath
+                            || maskPath.StartsWith(ctx.OutputDir + "/", StringComparison.Ordinal);
+                if (!ours)
                 {
                     continue;
                 }
@@ -904,6 +918,13 @@ namespace AvatarBridge
         {
             unity.weight = Get(vrc, "GlobalWeight", 1f);
             unity.locked = Get(vrc, "Locked", true);
+            // The component's own checkbox travels too: a constraint left
+            // disabled at rest and switched on by a toggle must start off,
+            // or the toggle can only ever release it.
+            if (vrc is Behaviour source)
+            {
+                unity.enabled = source.enabled;
+            }
             // Activate last so Unity doesn't recompute rest values.
             unity.constraintActive = Get(vrc, "IsActive", true);
         }
@@ -1003,15 +1024,10 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "rotation");
                 return true;
             }
-            // Measured from the live pose whenever the constraint's
-            // output is unambiguous; the VRChat field is the fallback.
-            // Copying the field trusts both engines to apply the offset
-            // in the same space, which fails across differently
-            // oriented bones. The scene pose at conversion time is
-            // VRChat's own solver output, so:
-            // result = source.rotation * Euler(offset), hence
-            // offset = Inverse(source.rotation) * current.rotation. World rotations throughout,
-            // so AlignLocalSpaceRelays re-parenting cannot disturb the measurement.
+            // Measured from the live pose, which is VRChat's own solver
+            // output; the field is the fallback. Copying it trusts both
+            // engines to use the same space, which differently oriented
+            // bones break. World rotations, so re-parenting cannot bite.
             var driven = DrivenBy(ctx, vrc);
             var rotSources = ReadSources(vrc);
             bool rotMeasured = Get(vrc, "IsActive", true)
@@ -1142,14 +1158,9 @@ namespace AvatarBridge
             return target.gameObject;
         }
 
-        // The transform the converted constraint actually drives. With
-        // VRC's 'Target Transform' that is the target, not the object the
-        // VRC component sat on, and Unity's constraint only ever affects
-        // the object it sits on. Every rest value and every measured
-        // offset has to describe THAT transform: measuring the component's
-        // own instead pins the driven bone to a pose belonging to another
-        // object entirely, which is how a hand-swap rig's finger
-        // constraints snapped the fingers into a pose nobody authored.
+        // The transform the converted constraint drives. With VRC's
+        // Target Transform that is the target, not the object the
+        // component sat on, and every rest value must describe it.
         static Transform DrivenBy(BridgeContext ctx, Component vrc)
         {
             var host = HostFor(ctx, vrc);

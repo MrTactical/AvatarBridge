@@ -10,10 +10,16 @@ desktop.ini
 # avatars (layer, parameter and clip names) and this repo is public. They are local test
 # data; losing them costs one re-run and an "accept current as baseline".
 #
-# Leading slash matters: an unanchored "Regression/" also swallows Tools/Regression/, which
+# Leading slash matters: an unanchored "Regression/" also swallows Dev/Corpus/, which
 # is the harness itself and must be committed.
 /Regression/
 
 
 # Internal development notes; local only.
 /CLAUDE.md
+
+# Development spike and probes; local only.
+/Dev/Spikes/
+
+# Superseded local builds.
+*.unitypackage.superseded-*

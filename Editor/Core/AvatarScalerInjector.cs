@@ -10,25 +10,10 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Optional avatar scaler. Injects the bundled **Linear Smoothing Layer** (constant-speed
-    // float smoothing so size changes glide instead of snapping. JustSleightly's
-    // ControllerTemplates blend-tree math), then GENERATES a **Size** layer calibrated to this
-    // avatar.
-    //
-    // The menu control is a **Slider**, 0..1, mapped GEOMETRICALLY onto 0.25×-4× of the
-    // avatar's measured height, so scale 1× sits at exactly mid-slider (0.25 × 16^0.5 = 1).
-    //
-    // It used to be an InputSingle reading in metres; a nicer unit, and unusable: the CCK's
-    // InputSingle carries only a defaultValue, no min/max/step, and ChilloutVR's quick menu
-    // renders it as a raw numeric keypad. A tester typing on it got 9999 and 0000, and the
-    // constant-speed smoothing then glided toward the garbage so slowly the avatar looked
-    // frozen. A slider drags normally on the quick menu.
-    //
-    // Geometric rather than linear because scale is multiplicative: on a linear 0.25×-4× the
-    // whole useful zone around 1× collapses into a sliver of travel, while geometric gives
-    // every doubling the same slider distance. The blend tree approximates the exponential
-    // with a knot at each √2 step (9 children), which keeps the error between knots under two
-    // percent; invisible next to the smoothing.
+    // Optional avatar scaler: the bundled smoothing layer plus a generated
+    // Size layer. The menu control is a slider, 0..1, mapped geometrically
+    // onto 0.25x to 4x of the measured height, so 1x sits at mid-slider. The
+    // blend tree approximates the exponential with a knot each sqrt(2) step.
     public static class AvatarScalerInjector
     {
         const string Category = "Avatar scaler";
@@ -36,8 +21,8 @@ namespace AvatarBridge
         const string HeightMenu = "Height";
 
         const string HeightParam = "Height";
-        const string TemplateParam = "Input";
-        const string SmoothingLayer = "Linear Smoothing Layer";
+        internal const string TemplateParam = "Input";
+        internal const string SmoothingLayer = "Linear Smoothing Layer";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;
 
@@ -206,7 +191,7 @@ namespace AvatarBridge
             return candidate;
         }
 
-        static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
+        internal static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
         {
             if (machine == null)
             {
@@ -301,7 +286,9 @@ namespace AvatarBridge
             // A Slider, not an InputSingle: the quick menu renders InputSingle as an unclamped
             // numeric keypad (the CCK type carries only a defaultValue; no min, max or step),
             // which in practice meant typing 9999 and watching nothing happen. Sliders drag.
-            settings.Add(new CVRAdvancedSettingsEntry
+            // First in the menu: it is the one everybody reaches for, and the
+            // end of a long list is where nobody looks.
+            settings.Insert(0, new CVRAdvancedSettingsEntry
             {
                 name = HeightMenu,
                 machineName = HeightParam,
@@ -315,7 +302,7 @@ namespace AvatarBridge
             });
         }
 
-        static AnimatorController LoadController()
+        internal static AnimatorController LoadController()
         {
             string path = AssetDatabase.GUIDToAssetPath(ControllerGuid);
             if (string.IsNullOrEmpty(path))

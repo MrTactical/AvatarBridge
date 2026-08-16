@@ -10,11 +10,11 @@
 # Packages built before 2026-08-01 have no suffix and are all public.
 # They keep those names; GitHub released them under those names.
 #
-# Public builds prune Tools/ and Regression/. That is what ships.
-# Dev builds carry them under Editor/DevTools/. Never release a dev build.
+# Public builds prune Dev/ and Regression/. That is what ships.
+# Dev builds carry the harness under Editor/DevTools/. Never release a dev build.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ROOT_GUID="979cbf9a9a344ae7ad3f8b3bb3381da0"   # the "Assets/AvatarBridge" folder entry
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -75,7 +75,7 @@ while IFS= read -r -d '' path; do
   rel="${path#./}"
   case "$rel" in
     .*) continue ;;                      # repo plumbing
-    *.unitypackage|*.meta) continue ;;   # prior builds; metas ride with their asset
+    *.unitypackage|*.unitypackage.superseded-*|*.meta) continue ;;   # prior builds; metas ride with their asset
   esac
   meta="$rel.meta"
   if [ ! -f "$meta" ]; then
@@ -94,7 +94,7 @@ while IFS= read -r -d '' path; do
 done < <(find . -mindepth 1 \
   \( -name '.*' \
      -o -path './docs' \
-     -o -path './Tools' \
+     -o -path './Dev' \
      -o -path './Regression' \
      -o -name 'CLAUDE.md' \) -prune -o -print0)
 
@@ -104,7 +104,7 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 # ---- dev extras -------------------------------------------------------------------------
-# Remapped from Tools/Regression/ to Editor/DevTools/. Unity only
+# Remapped from Dev/ to Editor/DevTools/. Unity only
 # compiles editor scripts under an "Editor" folder.
 #
 # Metas are synthesized, not committed. The GUID is an md5 of the
@@ -129,7 +129,7 @@ EOF
     count=$((count+1))
   done
 
-  for src in "$REPO"/Tools/Regression/*.cs; do
+  for src in "$REPO"/Dev/Corpus/*.cs "$REPO"/Dev/Tests/*.cs "$REPO"/Dev/Probes/*.cs "$REPO"/Dev/Scenes/*.cs; do
     [ -e "$src" ] || continue
     base="$(basename "$src")"
     dest="Editor/DevTools/$base"

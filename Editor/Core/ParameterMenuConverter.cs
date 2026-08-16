@@ -549,7 +549,7 @@ namespace AvatarBridge
 
             foreach (var control in menu.controls)
             {
-                string display = prefix + CleanMenuName(control.name);
+                string display = prefix + YapsLabel(ctx, CleanMenuName(control.name));
                 switch (control.type)
                 {
                     case VRCExpressionsMenu.Control.ControlType.Toggle:
@@ -702,6 +702,20 @@ namespace AvatarBridge
                 return null;
             }
             return trimmed;
+        }
+
+        // Menu labels naming the source system read YAPS after conversion.
+        // Display only: parameter names stay, since ChilloutVR restores a
+        // saved profile by parameter name. DPS is not matched; it also means
+        // damage per second.
+        static string YapsLabel(BridgeContext ctx, string display)
+        {
+            if (ctx == null || !ctx.Settings.convertYapsSystems || string.IsNullOrEmpty(display))
+            {
+                return display;
+            }
+            return System.Text.RegularExpressions.Regex.Replace(
+                display, @"\b(?:SPS|TPS)(?=\d|\b)", "YAPS");
         }
 
         static string CleanMenuName(string name)

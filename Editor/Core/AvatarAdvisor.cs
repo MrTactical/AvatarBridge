@@ -392,10 +392,8 @@ namespace AvatarBridge
             VRCAvatarDescriptor.AnimLayerType type)
             => descriptor != null && CustomLayer(descriptor, type) != null;
 
-        // Whether a baker may still put a layer in an empty slot. VRCFury
-        // and Modular Avatar build controllers during the bake that the
-        // scene has no trace of — a Fury avatar whose Action slot reads
-        // empty here converted with an 8-layer Fury Action controller.
+        // Whether a baker may still put a layer in an empty slot: VRCFury and
+        // Modular Avatar build controllers during the bake.
         internal static bool LayersDecidedByBaker(GameObject root)
             => VRCFuryBaker.HasFuryComponents(root)
                || ModularAvatarBaker.HasModularAvatarComponents(root);
@@ -403,6 +401,32 @@ namespace AvatarBridge
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,
             bool baked)
         {
+            // Off, empty, and a baker may fill it. One row per layer, manual, so
+            // apply-everything leaves them alone.
+            if (baked)
+            {
+                foreach (var (type, setting) in OptionalLayers)
+                {
+                    if (IsOn(settings, type) || SuppliesOwnLayer(descriptor, type))
+                    {
+                        continue;
+                    }
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Manual,
+                        Setting = setting,
+                        Finding = "Off, and its slot is empty right now — but this avatar is built " +
+                                  "by a baker, and VRCFury or Modular Avatar can create one during " +
+                                  "the bake, which is what the conversion actually reads. If one " +
+                                  "arrives while the box is off it is dropped whole, and the only " +
+                                  "notice is a warning in the report after the conversion has run. " +
+                                  "Nothing in the scene can say which way it will go, so it is left " +
+                                  "to you.",
+                        Apply = s => SetOn(s, type, true),
+                    });
+                }
+            }
+
             foreach (var (type, setting) in OptionalLayers)
             {
                 if (!IsOn(settings, type) || SuppliesOwnLayer(descriptor, type))
@@ -486,9 +510,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // On a GoGo avatar the Base layer IS GoGo, and merging what is about to be stripped
-            // buys nothing. Only an avatar with locomotion of its own has anything to graft.
-            if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco)
+            // Exempt only when what is in Base really is GoGo; VRCFury can merge
+            // its own content in beside it.
+            if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco
+                && !HasContentGogoDidNotPutThere(baseLayer))
             {
                 return;
             }
@@ -504,6 +529,44 @@ namespace AvatarBridge
                           "movement blend trees, keeping ChilloutVR's structure and the avatar's motion.",
                 Apply = s => s.convertBaseLayer = true,
             });
+        }
+
+        // A layer GoGo did not name, with something actually in it. An empty
+        // one is not content: VRCFury and friends leave placeholders behind,
+        // and advising a merge for the sake of an empty layer is noise.
+        static bool HasContentGogoDidNotPutThere(AnimatorController controller)
+        {
+            if (controller == null)
+            {
+                return false;
+            }
+            foreach (var layer in controller.layers)
+            {
+                if (SystemStripper.IsGogoLayerName(layer.name))
+                {
+                    continue;
+                }
+                bool any = false;
+                WalkMachines(layer.stateMachine, machine => any |= machine.states.Length > 0);
+                if (any)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
+        {
+            if (machine == null)
+            {
+                return;
+            }
+            visit(machine);
+            foreach (var child in machine.stateMachines)
+            {
+                WalkMachines(child.stateMachine, visit);
+            }
         }
 
         // ------------------------------------------------------------------- shaders ----

@@ -129,6 +129,24 @@ namespace AvatarBridge
                 { "FingerIndexR", new[] { "index" } },
             };
 
+        // Both penetration families tag the same points; a converted receiver
+        // hears either name. Kept apart from the table above, which also
+        // decides what the unreachable-tag report leaves out.
+        static readonly Dictionary<string, string[]> PenetrationTagTwins =
+            new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                { "TPS_Pen_Penetrating",   new[] { "SPSLL_Pen_Penetrating" } },
+                { "SPSLL_Pen_Penetrating", new[] { "TPS_Pen_Penetrating" } },
+                { "TPS_Pen_Root",          new[] { "SPSLL_Pen_Root" } },
+                { "SPSLL_Pen_Root",        new[] { "TPS_Pen_Root" } },
+                { "TPS_Pen_Width",         new[] { "SPSLL_Pen_Width" } },
+                { "SPSLL_Pen_Width",       new[] { "TPS_Pen_Width" } },
+                { "TPS_Orf_Root",          new[] { "SPSLL_Socket_Root" } },
+                { "SPSLL_Socket_Root",     new[] { "TPS_Orf_Root" } },
+                { "TPS_Orf_Norm",          new[] { "SPSLL_Socket_Front" } },
+                { "SPSLL_Socket_Front",    new[] { "TPS_Orf_Norm" } },
+            };
+
         static string[] WithChilloutVrPointerTypes(IEnumerable<string> vrcTags)
         {
             var types = new List<string>();
@@ -139,15 +157,24 @@ namespace AvatarBridge
                     continue;
                 }
                 types.Add(tag);
-                if (!ChilloutVrPointerTypes.TryGetValue(tag, out var equivalents))
+                if (ChilloutVrPointerTypes.TryGetValue(tag, out var equivalents))
                 {
-                    continue;
-                }
-                foreach (string equivalent in equivalents)
-                {
-                    if (!types.Contains(equivalent))
+                    foreach (string equivalent in equivalents)
                     {
-                        types.Add(equivalent);
+                        if (!types.Contains(equivalent))
+                        {
+                            types.Add(equivalent);
+                        }
+                    }
+                }
+                if (PenetrationTagTwins.TryGetValue(tag, out var twins))
+                {
+                    foreach (string twin in twins)
+                    {
+                        if (!types.Contains(twin))
+                        {
+                            types.Add(twin);
+                        }
                     }
                 }
             }
@@ -198,22 +225,20 @@ namespace AvatarBridge
                     // 1 at the centre, exactly like VRChat, and
                     // SetFromDistance writes the value raw.
                 });
+                // ChilloutVR's stay task writes only while something is inside; the
+                // parameter keeps its last reading after. Reset to 0 on exit.
+                trigger.exitTasks.Add(MakeTask(receiver.parameter, 0f, 0f));
                 ctx.Report.Converted(Category, PathOf(ctx, receiver.transform),
-                    $"Proximity receiver -> distance-driven \"{receiver.parameter}\"");
+                    $"Proximity receiver -> distance-driven \"{receiver.parameter}\", 0 on exit");
             }
 
             ctx.ContactParameters.Add(receiver.parameter);
             Object.DestroyImmediate(receiver);
         }
 
-        // A boop zone authored at 7 mm on the nose is fine; a slap zone
-        // authored on a body a slider doubles is not - the mesh grows
-        // past it and every touch lands inside the body, short of the
-        // zone. Measured the way the physics sizes are: the mesh around
-        // the zone at rest and with every animated shape at full reach.
-        // When one slider owns the growth the zone is left authored-size
-        // and ScaleZonesWithSliders animates it along; only growth spread
-        // across shapes falls back to statically sizing for the largest.
+        // A zone on a body a slider doubles is left behind by the mesh,
+        // so touches land inside it. Sized like the physics: at rest and
+        // with every animated shape at full reach.
         static void GrowZoneForSliders(BridgeContext ctx, GameObject zone, string reportPath)
         {
             if (!ctx.Settings.sizeContactZonesForLargest)
@@ -247,13 +272,8 @@ namespace AvatarBridge
             // that hurls vertices cannot make a zone the size of a room.
             float growth = Mathf.Min((worldRadius + push) / worldRadius, 3f);
 
-            // One slider responsible for the bulk of the push means the
-            // zone can follow it live instead of sitting at the grown
-            // size while the body is small. Contributions are grouped by
-            // what animates together — one slider driving the same shape
-            // on the body and three clothing meshes is one owner, not
-            // four rivals — and dominance is judged against the measured
-            // total, so shapes grazing the capture edge cannot dilute it.
+            // One dominant slider lets the zone follow it live. Contributions are
+            // grouped by what animates together, judged against the measured total.
             var groups = new Dictionary<string, float>();
             var reps = new Dictionary<string, (string key, float push)>();
             foreach (var pair in perShape)
@@ -370,13 +390,8 @@ namespace AvatarBridge
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
-                // A toggle that animates the contact's OBJECT rather than
-                // the component gated the contact just as hard in VRChat:
-                // the component died with its container. The host is
-                // parented at the shape's anchor, not under the container,
-                // so the curve is copied onto it — copied, not moved,
-                // because the container often holds the reaction's sound
-                // and particles too.
+                // A toggle on the contact's object gated it in VRChat too. The host
+                // sits at the anchor, so the curve is copied onto it, not moved.
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
                     if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive")
@@ -430,16 +445,9 @@ namespace AvatarBridge
 
                     string prop = binding.propertyName;
 
-                    // What each property maps to, each verdict from the
-                    // shipped client rather than hope:
-                    //   m_Enabled     -> host object active (the backing
-                    //                    contact registers in OnEnable).
-                    //   position.xyz  -> the host transform carries the
-                    //                    offset, 1:1 onto m_LocalPosition.
-                    //   allowSelf/allowOthers/localOnly -> baked into the
-                    //                    backing contact at Create and never
-                    //                    read again, so those drop with the
-                    //                    warning.
+                    // From the shipped client: m_Enabled becomes the host
+                    // object's activity, position rides the transform, and
+                    // the allow flags are baked at Create, so they drop.
                     UnityEditor.EditorCurveBinding? target = null;
                     if (prop == "m_Enabled")
                     {
@@ -493,25 +501,14 @@ namespace AvatarBridge
             }
         }
 
-        // Runs after both repoint passes, because the merge's own restore
-        // passes ran before the rewiring existed, on bindings naming
-        // deleted VRChat components they could not sample.
-        //
-        // The rewiring folds two VRChat properties into one zone binding,
-        // and layers that never fought before now write over each other.
-        // ChilloutVR restores nothing a state does not write, so each
-        // layer is settled by what it says across ALL its clips:
-        //   on and off  -> a real toggle; untouched, and it owns the zone.
-        //   on only     -> VRCFury's baked Write Defaults residue,
-        //                  asserting rest from a later layer every frame,
-        //                  which is what overrode the toggles. Stripped.
-        //   off only    -> a switch-off nothing takes back. In a blend
-        //                  tree (the spawn-time receiver guard) the off
-        //                  curve is removed; suppression for a few load
-        //                  frames is not worth zones dead forever. In
-        //                  plain states the other states get the rest
-        //                  value written in, the same answer the old
-        //                  Write Defaults gave.
+        // Runs after both repoint passes: the merge's restores happened
+        // before this rewiring existed. Folding two properties into one
+        // binding sets layers fighting, so each is settled by what it
+        // says across all its clips:
+        //   on and off  -> a real toggle, left alone.
+        //   on only     -> Write Defaults residue. Stripped.
+        //   off only    -> nothing takes it back. The curve goes from a
+        //                  tree; plain states get the rest value written.
         internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -712,7 +709,7 @@ namespace AvatarBridge
                     {
                         // Restore to what the avatar rests at. A zone
                         // authored inactive rests off; 0 is already right.
-                        var t = ctx.Target.transform.Find(binding.path);
+                        var t = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                         if (t != null && t.gameObject.activeSelf)
                         {
                             toFill.Add(binding);
@@ -819,13 +816,9 @@ namespace AvatarBridge
             }
         }
 
-        // A zone one slider grows follows the slider instead of holding
-        // the grown size: every clip driving that blendshape gains scale
-        // curves on the zone mapped through the same keyframes, and the
-        // contact behind the trigger takes its size from the transform
-        // every frame. Authored size at rest, the measured growth at the
-        // slider's full reach, scaled between. A clip that latches the
-        // shape latches the zone with it, so the two never disagree.
+        // A zone one slider grows follows it: every clip driving that
+        // shape gains scale curves through the same keyframes, and the
+        // contact takes its size from the transform each frame.
         internal static void ScaleZonesWithSliders(BridgeContext ctx)
         {
             if (ctx.ZoneSliderGrowth.Count == 0)
@@ -853,7 +846,7 @@ namespace AvatarBridge
             var wired = new HashSet<string>();
             foreach (var entry in ctx.ZoneSliderGrowth)
             {
-                var zone = ctx.Target.transform.Find(entry.zonePath);
+                var zone = BridgeContext.FindByAnimationPath(ctx.Target.transform, entry.zonePath);
                 if (zone == null)
                 {
                     continue;
@@ -906,7 +899,7 @@ namespace AvatarBridge
         static void HoldGrownSize(BridgeContext ctx,
             (string zonePath, string shapeKey, float growth, float reach, string reportPath) entry)
         {
-            var zone = ctx.Target.transform.Find(entry.zonePath);
+            var zone = BridgeContext.FindByAnimationPath(ctx.Target.transform, entry.zonePath);
             if (zone == null)
             {
                 return;

@@ -18,7 +18,8 @@ namespace AvatarBridge
     // does; the viewpoint, visemes and blink wiring, face tracking, the height scaler .
     // is CVR-side work that never needed VRChat in the first place. This runs exactly
     // those passes against features read straight off the rig and meshes, so it works on
-    // a Booth model, an original avatar, or one that was already converted.
+    // a Booth model or an original avatar. Not on one that already has a menu:
+    // it builds the controller and the menu fresh, and says so when it replaces one.
     //
     // What it deliberately does NOT do: anything requiring VRChat data (menus and
     // parameters from expression assets, PhysBone/contact conversion, animator merging).
@@ -92,7 +93,8 @@ namespace AvatarBridge
 
         static void SetupCvrAvatar(BridgeContext ctx)
         {
-            var cvrAvatar = ctx.Target.GetComponent<CVRAvatar>() ?? ctx.Target.AddComponent<CVRAvatar>();
+            var cvrAvatar = ctx.Target.GetComponent<CVRAvatar>();
+            if (cvrAvatar == null) cvrAvatar = ctx.Target.AddComponent<CVRAvatar>();
             ctx.CvrAvatar = cvrAvatar;
 
             var animator = ctx.TargetAnimator;
@@ -214,6 +216,19 @@ namespace AvatarBridge
             WireBlink(ctx, cvrAvatar, mesh);
 
             // --- advanced settings container ----------------------------------------
+            // Setup builds the menu and the controller fresh from the CCK
+            // base. An avatar that already had a menu loses it here, and
+            // says so; Undo brings it back.
+            int hadEntries = cvrAvatar.avatarSettings != null && cvrAvatar.avatarSettings.settings != null
+                ? cvrAvatar.avatarSettings.settings.Count : 0;
+            if (hadEntries > 0)
+            {
+                ctx.Report.Warning(Category, $"Replaced a menu of {hadEntries} entr{(hadEntries == 1 ? "y" : "ies")}",
+                    "Setup mode prepares a plain humanoid: it builds the animator controller and the " +
+                    "advanced settings menu fresh from the CCK base, so what this avatar already had is " +
+                    "gone. Undo restores it. An avatar with its own toggles should be converted, or " +
+                    "have the ChilloutVR Toolkit run its cards one at a time, not set up.");
+            }
             cvrAvatar.avatarUsesAdvancedSettings = true;
             cvrAvatar.avatarSettings = new CVRAdvancedAvatarSettings
             {
@@ -221,6 +236,44 @@ namespace AvatarBridge
                 initialized = true
             };
             EditorUtility.SetDirty(cvrAvatar);
+        }
+
+        // Face only, on an avatar that already has its CVRAvatar: the face
+        // mesh, visemes and blink. The toolkit's card. Nothing else moves.
+        public static BridgeReport WireFace(GameObject avatar, BridgeSettings settings)
+        {
+            var report = new BridgeReport();
+            var cvrAvatar = avatar != null ? avatar.GetComponent<CVRAvatar>() : null;
+            if (cvrAvatar == null)
+            {
+                report.Warning(Category, "No CVRAvatar", "Add the CVRAvatar component first, or run Setup mode in AvatarBridge.");
+                return report;
+            }
+            var ctx = new BridgeContext { Settings = settings, Report = report, Target = avatar, CvrAvatar = cvrAvatar };
+            Undo.RecordObject(cvrAvatar, "Wire face");
+            var face = AvatarFeatureDetect.FindFaceMesh(avatar);
+            if (face == null)
+            {
+                report.Warning(Category, "No face mesh found", "No skinned mesh with blendshapes; nothing to wire.");
+                return report;
+            }
+            cvrAvatar.bodyMesh = face;
+            report.Converted(Category, "Face mesh", face.name);
+            var mesh = face.sharedMesh;
+            var visemes = AvatarFeatureDetect.DetectVisemes(mesh);
+            if (visemes != null)
+            {
+                cvrAvatar.useVisemeLipsync = true;
+                cvrAvatar.visemeBlendshapes = visemes;
+                report.Converted(Category, "Visemes", $"{visemes.Count(v => !string.IsNullOrEmpty(v))} of 15 detected on \"{face.name}\"");
+            }
+            else
+            {
+                report.Warning(Category, "Visemes not detected", "No standard viseme blendshapes on the face mesh.");
+            }
+            WireBlink(ctx, cvrAvatar, mesh);
+            EditorUtility.SetDirty(cvrAvatar);
+            return report;
         }
 
         static void WireBlink(BridgeContext ctx, CVRAvatar cvrAvatar, Mesh mesh)
@@ -303,6 +356,7 @@ namespace AvatarBridge
             overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
+            ctx.CvrAvatar.avatarSettings.baseOverrideController = overrides;
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
@@ -327,8 +381,8 @@ namespace AvatarBridge
             if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
             {
                 ctx.Report.Warning(Category, $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
-                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
-                folder = "Assets/AvatarBridge/Output";
+                    "Using the default \"Assets/AvatarBridgeOutput\" instead.");
+                folder = "Assets/AvatarBridgeOutput";
             }
             ctx.OutputDir = folder + "/" + safeName;
 

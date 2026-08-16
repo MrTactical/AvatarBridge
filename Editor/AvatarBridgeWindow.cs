@@ -31,10 +31,10 @@ namespace AvatarBridge
         // Mode only exists when there's a choice to make: without the VRChat SDK the
         // window is Setup-only, so there's nothing to switch between.
         enum Mode { Convert, Setup }
-        Mode mode = Mode.Convert;
-        VRCAvatarDescriptor avatar;
+        [SerializeField] Mode mode = Mode.Convert;
+        [SerializeField] VRCAvatarDescriptor avatar;
 #endif
-        GameObject setupAvatar;
+        [SerializeField] GameObject setupAvatar;
 
         [SerializeField] BridgeSettings settings = new BridgeSettings();
         BridgeReport lastReport;
@@ -77,6 +77,13 @@ namespace AvatarBridge
                 catch
                 {
                     settings = new BridgeSettings();
+                }
+                // Three answers on two flags. Settings saved by the release
+                // with two independent ticks can hold the fourth pair, which
+                // reads as "Leave" while YAPS still runs. Convert wins.
+                if (settings.convertYapsSystems && !settings.stripSpsSystems)
+                {
+                    settings.stripSpsSystems = true;
                 }
             }
             // Old saved settings can point inside the tool's folder,
@@ -544,13 +551,24 @@ namespace AvatarBridge
                     HelpBoxMessageType.Warning));
             }
 
-            b.Add(BridgeElements.Bind("GrabbyBones mod support",
-                "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
-                "_IsGrabbed / _Angle grab-reactive logic.",
-                settings.grabbyBonesSupport, v => settings.grabbyBonesSupport = v));
+            if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                // Only the cloth writer reads it.
+                b.Add(BridgeElements.Bind("GrabbyBones mod support",
+                    "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
+                    "_IsGrabbed / _Angle grab-reactive logic.",
+                    settings.grabbyBonesSupport, v => settings.grabbyBonesSupport = v));
+            }
             b.Add(BridgeElements.Bind("Delete PhysBones after converting",
                 "Leave on — leftover PhysBone components upset the CCK upload checks.",
                 settings.deleteConvertedPhysBones, v => settings.deleteConvertedPhysBones = v));
+            // Both writers skip toe chains, so the choice is shown for both.
+            b.Add(BridgeElements.Bind("Convert toe PhysBones",
+                "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
+                "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
+                "bones (or named like toes) are skipped and listed in the report. Turn on if " +
+                "this avatar's toe physics are deliberate.",
+                settings.convertToePhysBones, v => settings.convertToePhysBones = v));
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
@@ -648,12 +666,6 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Hint(
                     "The avatar doesn't answer these — each either departs from the source or turns on " +
                     "intent only you know. Leaving them alone converts fine."));
-                b.Add(BridgeElements.Bind("Convert toe PhysBones",
-                    "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
-                    "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
-                    "bones (or named like toes) are skipped and listed in the report. Turn on if " +
-                    "this avatar's toe physics are deliberate.",
-                    settings.convertToePhysBones, v => settings.convertToePhysBones = v));
                 b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
                     "Some avatars ship a toggled style (usually an add-on hairstyle) whose " +
                     "container carries its own bone rig and mesh but NO PhysBone — rigid in " +
@@ -716,9 +728,70 @@ namespace AvatarBridge
                     "poses, and CVR's quick-menu emotes won't animate — GoGo's wheel replaces " +
                     "them. Removing GoGo remains the recommended path."));
             }
-            b.Add(BridgeElements.Bind("Remove SPS / OGB / PCS / Wholesome (recommended)",
-                "VRChat-specific systems whose shaders, contacts and parameters do not function in CVR.",
-                settings.stripSpsSystems, v => settings.stripSpsSystems = v));
+            // One question over two settings, three answers; the fourth
+            // combination the ticks allowed is not offered. Radio buttons stack
+            // like the toggles around them.
+            var penetration = BridgeElements.Choice("Penetration",
+                "What happens to the avatar's penetration system — Raliv DPS, Thry TPS, VRCFury SPS, " +
+                "and OGB, PCS and Wholesome that ride with them.\n\n" +
+                "Convert to YAPS: keeps it and rebuilds it for ChilloutVR — plugs bend, sockets open, " +
+                "and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries across. " +
+                "YAPS is written from scratch, no VRChat code shipped, and it reads and is read by " +
+                "everything already on the platform: your plug finds DPS, TPS and SPS sockets, and " +
+                "their plugs find your sockets.\n\n" +
+                "Remove: takes the whole system out. Its shaders, contacts and parameters do not work " +
+                "in ChilloutVR and cost most of the sync budget.\n\n" +
+                "Leave as VRChat built it: converts nothing and removes nothing. It will not function " +
+                "in ChilloutVR; only for looking at what was there.",
+                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" },
+                settings.stripSpsSystems ? (settings.convertYapsSystems ? 0 : 1) : 2,
+                choice =>
+                {
+                    settings.stripSpsSystems = choice != 2;
+                    settings.convertYapsSystems = choice == 0;
+                    ScheduleRebuild();
+                });
+            b.Add(penetration);
+            b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome haptics and sound stacks that ride with them; under Convert those come across as local contact-driven parameters, free in ChilloutVR."));
+            // What the other two answers cost, where the choice is made.
+            if (settings.stripSpsSystems && !settings.convertYapsSystems)
+            {
+                b.Add(new HelpBox(
+                    "Remove: every plug and socket goes, with its lights, contacts, parameters and " +
+                    "menu entries — the plug mesh stays, straight and undeformable. Nothing on this " +
+                    "avatar will penetrate or be penetrated in ChilloutVR. Reversible only by converting " +
+                    "again.", HelpBoxMessageType.Warning));
+            }
+            else if (!settings.stripSpsSystems)
+            {
+                b.Add(new HelpBox(
+                    "Leave as VRChat built it: the DPS/TPS/SPS shaders, contacts and parameters come " +
+                    "across untouched and do not function in ChilloutVR — the plug will not bend, sockets " +
+                    "will not open, and the haptics parameters keep most of the 3200-bit sync budget " +
+                    "for nothing. On a full avatar that alone can push it over the cap. Choose this only " +
+                    "to inspect what was there.", HelpBoxMessageType.Warning));
+            }
+            else if (settings.convertYapsSystems && settings.syncHapticsForOsc)
+            {
+                b.Add(BridgeElements.Hint(
+                    "The OGB haptics stay synced for OSC toys: that is on under Manual options ▸ Opt-ins."));
+            }
+            // The other door. The YAPS tool builds and tunes penetration on
+            // an avatar already here; this converts. Present, say where it
+            // is; absent, say where to get it.
+            if (BridgeLinks.HasYapsTool)
+            {
+                b.Add(BridgeElements.Hint(
+                    "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
+                    "avatar or prop — same system, same shader. This converts; that builds."));
+            }
+            else
+            {
+                b.Add(BridgeElements.Hint(
+                    "Already on ChilloutVR? The YAPS tool adds, tunes or upgrades penetration on any avatar " +
+                    "or prop — same system, same shader. This converts; that builds. It is not in this project."));
+                b.Add(Link("Get the YAPS tool (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
+            }
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have — the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +
@@ -825,6 +898,61 @@ namespace AvatarBridge
                     "in both eyes: compilation is verified, appearance isn't.",
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
+
+            // Opt-ins live here, not beside the choice they qualify: a
+            // feature nobody can find is a feature nobody turns on.
+            b.Add(BridgeElements.SubHeading("Opt-ins"));
+            var optIns = new VisualElement();
+            optIns.style.paddingLeft = 10;
+            optIns.style.borderLeftWidth = 2;
+            optIns.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
+            optIns.style.marginBottom = 6;
+            b.Add(optIns);
+            optIns.Add(BridgeElements.Hint(
+                "Off unless you switch them on, and each says what it costs."));
+
+            optIns.Add(BridgeElements.SubHeading("OSC toys"));
+            optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
+                "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
+                "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
+                "report lists the names to paste. On, they stay synced and automatic detection works " +
+                "with no setup, at 32 sync bits each. Needs Penetration on Convert to YAPS.",
+                settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
+            if (settings.syncHapticsForOsc)
+            {
+                optIns.Add(new HelpBox(
+                    "Each haptics parameter costs 32 of ChilloutVR's 3200 sync bits, and a plug or a " +
+                    "socket carries about nine. One plug and three sockets is roughly 1,150 bits; a " +
+                    "socket-heavy avatar goes over the cap on its own, and over the cap nothing on the " +
+                    "avatar syncs. The report's sync budget entry says where you landed. Launch " +
+                    "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
+                    HelpBoxMessageType.Warning));
+                if (!settings.convertYapsSystems)
+                {
+                    optIns.Add(new HelpBox(
+                        "Penetration is not set to Convert to YAPS, so there are no haptics parameters " +
+                        "for this to keep. It does nothing as things stand.", HelpBoxMessageType.Info));
+                }
+            }
+
+            optIns.Add(BridgeElements.SubHeading("Penetration"));
+            optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
+                "Not YAPS's socket shapes: those already play for everyone, on a synced parameter, with " +
+                "nothing to switch on. This is the bulges and winces the avatar's author animated in " +
+                "VRChat, which ride on VRCFury's own depth parameters. ChilloutVR runs an avatar's " +
+                "triggers on the wearer's machine alone, so off, those are local: free, and only you see " +
+                "them. On, they sync and the room sees them too, at 32 bits for each of the two " +
+                "parameters a socket carries. Needs Penetration on Convert to YAPS.",
+                settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
+            if (settings.syncSocketDepthForOthers)
+            {
+                optIns.Add(new HelpBox(
+                    "Two parameters per socket at 32 of ChilloutVR's 3200 sync bits each: six sockets is " +
+                    "about 384 bits. The report's sync budget entry says where this avatar landed, and " +
+                    "over the cap nothing on it syncs at all. YAPS's own socket shapes sync either way; " +
+                    "this is for the reactions the avatar's author animated.",
+                    HelpBoxMessageType.Warning));
+            }
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",
@@ -1317,12 +1445,7 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- footer ---
 
-        static Button Link(string text, Action action)
-        {
-            var button = new Button(action) { text = text };
-            button.AddToClassList("ab-btn");
-            return button;
-        }
+        static Button Link(string text, Action action) => BridgeElements.Link(text, action);
 
         Button DiscordButton()
         {

@@ -31,20 +31,35 @@ namespace AvatarBridge
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
             }
+            // The holder goes under the PhysBone component's own parent, never
+            // loose at the root. Placed before any clip is aimed at it.
+            var home = HolderHome(ctx, data);
             // Sibling-unique, because animation paths address children by name: an avatar with
             // four hairstyles produces several chains rooted at a bone called "Hair_root", and
             // two holders both named "MagicaCloth_Hair_root" mean every animation curve aimed at
             // one of them resolves to whichever Unity finds first.
-            holderName = UniqueChildName(ctx.Target.transform, holderName);
+            holderName = UniqueChildName(home, holderName);
             var holder = new GameObject(holderName);
-            holder.transform.SetParent(ctx.Target.transform, false);
+            holder.transform.SetParent(home, false);
             var cloth = holder.AddComponent<MagicaCloth>();
 
-            // "Off" is carried by the component, not the holder.
-            // Enabling a component on an inactive GameObject does
-            // nothing, so a clip switching the chain on would be inert.
-            // The component flag is the property such clips drive.
-            if (!data.InitiallyActive)
+            // Where "off" lives. A holder inside an inactive object rides
+            // that object's toggle, so its component stays enabled unless
+            // the source component itself was disabled. A holder that is
+            // active while its source was not carries off on the component,
+            // and the animator pass writes the switch onto that flag.
+            bool ridesObject = !holder.activeInHierarchy;
+            if (ridesObject)
+            {
+                cloth.enabled = data.ComponentEnabled;
+                if (!data.ComponentEnabled)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        "Source PhysBone component was disabled; cloth created disabled. Component " +
+                        "toggles are re-wired by the animator pass.");
+                }
+            }
+            else if (!data.InitiallyActive)
             {
                 cloth.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
@@ -291,6 +306,27 @@ namespace AvatarBridge
             return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
         }
 
+        // Where the cloth holder lives: under the target-side counterpart of
+        // the object the PhysBone COMPONENT sat on in the source. The
+        // component is on the source avatar and the holder goes on the clone,
+        // so the path is mapped across; if the mapping fails (the object was
+        // stripped, or is the root itself) the avatar root is the fallback,
+        // which is exactly where holders always went before.
+        static Transform HolderHome(BridgeContext ctx, PhysBoneChainData data)
+        {
+            var target = ctx.Target.transform;
+            // The chain data was read from the target itself, so its
+            // objects are already target-side. Mapping them through the
+            // source descriptor only works when the two are one object.
+            var home = data.SourceGameObject != null ? data.SourceGameObject.transform : null;
+            if (home == null || home == target || !home.IsChildOf(target)) return target;
+            // A component on the chain's own bone: the holder goes beside it,
+            // not inside the chain it drives.
+            var chainRoot = data.Root;
+            bool onChain = chainRoot != null && (home == chainRoot || home.IsChildOf(chainRoot));
+            return onChain ? (home.parent != null ? home.parent : target) : home;
+        }
+
         static string UniqueChildName(Transform parent, string name)
         {
             if (parent.Find(name) == null)
@@ -323,7 +359,9 @@ namespace AvatarBridge
                     leaf = false;
                     Walk(child);
                 }
-                if (leaf)
+                // A tip written by an earlier cloth on the same root is a
+                // leaf too; stacked PhysBones must not grow X_End_End.
+                if (leaf && !node.name.EndsWith("_End", StringComparison.Ordinal))
                 {
                     var tip = new GameObject(node.name + "_End");
                     tip.transform.SetParent(node, false);
@@ -440,13 +478,9 @@ namespace AvatarBridge
                 deadRoots = sdata.rootBones.Where(r => MovableDescendants(r) == 0).ToList();
             }
 
-            // What honouring the ignores costs, measured. Excluding a
-            // bone roots below it, so every joint above stops too.
-            // Ignores near the tips can price out the whole chain.
-            //
-            // Two ignores should cost about two bones. Losing more than half the chain to them is
-            // not honouring an intent, it is destroying the thing the intent was about, so the
-            // whole-root fallback below is the better answer even though it over-simulates.
+            // Excluding a bone roots below it, so ignores near the tips
+            // can price out the chain. Losing over half of it means the
+            // whole-root fallback, over-simulated but intact.
             int wholeChain = MovableDescendants(data.Root);
             int kept = sdata.rootBones.Where(r => !deadRoots.Contains(r))
                                       .Sum(r => 1 + MovableDescendants(r));
@@ -710,20 +744,10 @@ namespace AvatarBridge
                     "Gravity direction flipped to point up — the source PhysBone used negative gravity.");
             }
 
-            // immobile -> inertia influence. Same 0..1 question,
-            // opposite polarity. Only applied when the author set it.
-            //
-            // Both inertia values, not just worldInertia. They are the
-            // same motion answered at two granularities:
-            //
-            //   movementShift        = 1 - worldInertia   // per frame, shifts the reference frame
-            //   localMovementInertia = 1 - localInertia   // per step, shifts each particle
-            //
-            // Split values ask the chain to hold still and swing freely
-            // at once. Every MagicaCloth2 preset keeps the pair equal.
-            //
-            // Not for a soft body. An anchored volume cannot be flung;
-            // holding inertia down only stops it answering movement.
+            // immobile -> inertia influence, the same question with the
+            // polarity flipped. Both values move together: split, they ask
+            // the chain to hold still and swing at once. Never on a soft
+            // body, which cannot be flung anyway.
             if (data.Immobile > 0.01f && !softBody)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
@@ -738,27 +762,10 @@ namespace AvatarBridge
                         "granularities, not a local/networked split.");
                 }
 
-                // The other half of immobile. All Motion cancels motion
-                // relative to the chain's root parent: a head turn, not
-                // just walking. The two values above cannot express
-                // that; MagicaCloth2 measures inertia at the component
-                // transform, which sits on the avatar root.
-                //
-                // `inertiaConstraint.anchor` is MagicaCloth2's own answer: "Anchor that cancels
-                // inertia. Anchor translation and rotation are excluded from simulation." Pointing
-                // it at the chain's parent bone reproduces All Motion's reference frame exactly,
-                // and its influence carries the same polarity as the other two:
-                //
-                //   anchorRatio = 1 - anchorInertia;                       // TeamManager
-                //   oldComponentWorldPosition += anchorDelta * anchorRatio;  // 打ち消す, "cancel out"
-                //
-                // so a low anchorInertia cancels MORE of the parent's motion, exactly as a low
-                // worldInertia absorbs more of the avatar's. All three therefore take 1 - immobile
-                // and stay consistent with each other.
-                //
-                // Only for All Motion: a "World" PhysBone deliberately keeps reacting to its
-                // parent, and anchoring it would take away motion its author wanted. Anchor is
-                // [NG] for preset import, so no preset can clobber this afterwards.
+                // All Motion cancels motion relative to the chain's parent, a head
+                // turn included. MagicaCloth2's anchor does the same: anchorRatio is
+                // 1 - anchorInertia, so all three take 1 - immobile. All Motion only;
+                // a World PhysBone keeps reacting to its parent.
                 if (data.ImmobileTypeName == "AllMotion" && data.Root != null && data.Root.parent != null)
                 {
                     var anchor = data.Root.parent;
@@ -986,12 +993,8 @@ namespace AvatarBridge
                 return saved;
             }
             // Measured again with every animated shape at full reach,
-            // keeping the larger. Bone identity stays the saved pose's
-            // answer; only the size may grow.
-            //
-            // Taking the larger of two readings handles both directions without deciding per
-            // shape which way it goes: a growth slider is caught by the second reading, and a
-            // shape that SHRINKS makes the second reading smaller, so the first simply wins.
+            // keeping the larger. That catches a growth slider without
+            // deciding per shape which way it goes.
             float atReach = MeasureMeshAt(ctx, data, out _, out _, out _, true);
             grown = atReach > saved;
             return Mathf.Max(saved, atReach);
@@ -1598,13 +1601,9 @@ namespace AvatarBridge
                 branches.Add(meshBones.ToList());
             }
 
-            // Each branch measures against its own middle, the middle
-            // of the mesh it carries. Averaging bone positions ties on
-            // a two-bone branch and floating point picks the winner.
-            //
-            // Weighting by vertex count breaks the tie honestly: the bone carrying most of
-            // the volume pulls the middle toward itself, instead of counting the same as a bone
-            // holding almost none of it.
+            // Each branch measures against the middle of the mesh it
+            // carries, weighted by vertex count. Averaging bone positions
+            // ties on two bones and leaves floating point to choose.
             var vertices = BoneVertices(ctx);
             foreach (var branch in branches)
             {

@@ -20,6 +20,13 @@ namespace AvatarBridge
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
+            // Converting to YAPS implies stripping what it replaces. The
+            // window says so; a caller with the pair the other way round
+            // (older saved settings, a script) gets the same answer.
+            if (settings.convertYapsSystems && !settings.stripSpsSystems)
+            {
+                settings.stripSpsSystems = true;
+            }
             var report = new BridgeReport();
             var ctx = new BridgeContext
             {
@@ -133,6 +140,13 @@ namespace AvatarBridge
                     // reads live world poses.
                     Pass("Constraint scale relays", ConstraintScaleRelay.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
+                    // After the SPI patch, so the deform lands on the stereo-fixed copy.
+                    Pass("YAPS penetration system", YapsConverter.Run),
+                    // Straight after, and not before: it wires the plugs
+                    // that pass finds, into the controller the merge has
+                    // already produced. Registered earlier it ran on an
+                    // empty list and reported nothing at all.
+                    Pass("YAPS socket channel", YapsChannel.Run),
 
                     // Last content pass before anything edits a clip.
                     // The controller is final; every referenced clip is
@@ -140,6 +154,10 @@ namespace AvatarBridge
                     // edits owned copies.
                     Pass("Self-contain clips and masks", AnimationSelfContainer.Run,
                          PassTraits.MakesClipsOurs),
+                    // The stereo patch's other half: swap curves in the
+                    // clips, now that the clips are copies of this run's.
+                    Pass("Repoint material swaps at stereo copies", ShaderSpiPatcher.RepointSwapClipsPass,
+                         PassTraits.EditsClips),
 
                     // After self-containment; it renames clip assets,
                     // and only an owned copy may be renamed.
@@ -162,12 +180,35 @@ namespace AvatarBridge
                     // scale curves written beside that slider's own.
                     Pass("Scale zones with their sliders", ContactsConverter.ScaleZonesWithSliders,
                          PassTraits.EditsClips),
+                    // After ownership settles: it writes into the clips that
+                    // drive the plug's own blendshapes, and editing a shared
+                    // clip would reach the package it came from.
+                    Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
+                         PassTraits.EditsClips),
+                    // Transition thresholds on the merged controller only;
+                    // touches no clip.
+                    Pass("Steady auto socket mode", YapsConverter.SteadyAutoMode),
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on
                     // the Magica path; named as lost and removed.
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
+                    // The atlas objects went early; their curves go here,
+                    // once the clips are ours. Before the rename so its
+                    // dead-path sweep judges a clean set.
+                    Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
+                         PassTraits.EditsClips),
+                    // DEAD LAST among the passes that touch a clip. It
+                    // renames objects and rewrites every path naming them,
+                    // so anything running after it that wrote a path would
+                    // write the old one and address nothing.
+                    Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
+                    // Last thing that touches the animator: the masks that
+                    // list every transform by name must match the final
+                    // hierarchy, or a renamed object's transform curves are
+                    // silently dropped by every layer wearing one.
+                    Pass("Refresh transform masks", AnimatorMerger.RefreshRigMasks),
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
@@ -363,7 +404,17 @@ namespace AvatarBridge
             // Fury's bake also runs NDMF internally, so it covers avatars that use both
             // VRCFury and Modular Avatar.
             {
-                var baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                // Flips the plugs' SPS flag off for the bake, so the plain shader comes back.
+                var yaps = YapsBakePrep.Begin(ctx, source);
+                GameObject baked;
+                try
+                {
+                    baked = VRCFuryBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
+                }
+                finally
+                {
+                    yaps.Restore();
+                }
                 if (baked != null)
                 {
                     AdoptBakedCopy(ctx, baked, source);

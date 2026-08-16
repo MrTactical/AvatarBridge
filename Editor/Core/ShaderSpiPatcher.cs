@@ -31,92 +31,63 @@ namespace AvatarBridge
             "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
         };
 
+        // Per conversion: what the renderer pass patched, for the swap
+        // pass that runs once the clips are the conversion's own.
+        static Dictionary<Shader, Shader> _patched;
+        static Dictionary<Material, Material> _clones;
+        static string _dir;
+
         public static void Run(BridgeContext ctx)
         {
+            _patched = null;
+            _clones = null;
             if (!ctx.Settings.patchNonSpiShaders)
             {
                 return;
             }
+            // Renderers only here. The clips are still the avatar's own
+            // assets at this point; RepointSwapClips runs after they are copied.
+            Patch(ctx.Target, ctx.OutputDir.TrimEnd('/') + "/RehomedAssets", null, ctx.Report);
+        }
 
-            string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
-            var patched = new Dictionary<Shader, Shader>();
-            // One clone per material, not per material slot: a material used by four slots is
-            // still one material, and cloning it per slot would break batching between them.
-            var clones = new Dictionary<Material, Material>();
+        // Late pass: material-swap curves in the merged controller's clips
+        // point at the patched copies. After the self-container, so every
+        // clip it touches is a copy owned by this conversion.
+        public static void RepointSwapClipsPass(BridgeContext ctx)
+        {
+            if (!ctx.Settings.patchNonSpiShaders || ctx.MergedController == null || _patched == null)
+            {
+                return;
+            }
             var repointed = new List<string>();
-            var recipesUsed = new List<string>();
             var refused = new List<string>();
             var alreadyCorrect = new List<string>();
+            var recipesUsed = new List<string>();
             var grabLimited = new List<string>();
-
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
+            RepointSwapClips(ctx.MergedController, _dir, _patched, _clones, ctx.Report,
+                repointed, refused, alreadyCorrect, recipesUsed, grabLimited);
+            if (repointed.Count > 0)
             {
-                var materials = renderer.sharedMaterials;
-                bool changed = false;
-                for (int i = 0; i < materials.Length; i++)
-                {
-                    var material = materials[i];
-                    var shader = material != null ? material.shader : null;
-                    if (shader == null)
-                    {
-                        continue;
-                    }
-                    if (patched.TryGetValue(shader, out var already))
-                    {
-                        if (already != null) { materials[i] = Repoint(material, already, dir, clones); changed = true; }
-                        continue;
-                    }
-
-                    string source = SourcePathOf(shader);
-                    if (source == null)
-                    {
-                        // Engine shaders have no source on disk and ship
-                        // stereo-correct. Generated avatar shaders do
-                        // have source and fall through to the real check.
-                        patched[shader] = null;
-                        continue;
-                    }
-                    if (DeclaresStereo(source))
-                    {
-                        patched[shader] = null;
-                        alreadyCorrect.Add(shader.name);
-                        continue;
-                    }
-
-                    var fixedShader = TryPatch(source, shader.name, dir, out string reason,
-                        out var appliedRecipe, out bool recipeWasExact, out bool grabPassLimited);
-                    patched[shader] = fixedShader;
-                    if (fixedShader == null)
-                    {
-                        refused.Add($"{shader.name} ({reason})");
-                        continue;
-                    }
-                    materials[i] = Repoint(material, fixedShader, dir, clones);
-                    repointed.Add(shader.name);
-                    if (grabPassLimited)
-                    {
-                        grabLimited.Add(shader.name);
-                    }
-                    if (appliedRecipe != null)
-                    {
-                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
-                            (recipeWasExact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
-                    }
-                    changed = true;
-                }
-                if (changed)
-                {
-                    renderer.sharedMaterials = materials;
-                }
+                ctx.Report.Approximated(Category,
+                    $"{repointed.Distinct().Count()} shader(s) patched for VR stereo, found only in animated swaps",
+                    $"{string.Join(", ", repointed.Distinct())} — never on a renderer at rest, assigned by a " +
+                    "toggle. Copied into RehomedAssets with the stereo macros added and the swap repointed.");
             }
+            if (refused.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{refused.Count} shader(s) in animated swaps could not be patched for VR stereo",
+                    $"{string.Join(", ", refused)} — these still draw into one eye when the toggle assigns them.");
+            }
+        }
 
-            // Materials that arrive by animated swap sit on no renderer
-            // right now, invisible to the loop above, and draw into one
-            // eye just as badly when assigned. The curve is rewritten
-            // to the patched clone too; otherwise the toggle would
-            // still assign the original.
+        static void RepointSwapClips(AnimatorController controller, string dir,
+            Dictionary<Shader, Shader> patched, Dictionary<Material, Material> clones, BridgeReport report,
+            List<string> repointed, List<string> refused, List<string> alreadyCorrect,
+            List<string> recipesUsed, List<string> grabLimited)
+        {
             int swapsRepointed = 0;
-            foreach (var clip in ClipsOf(ctx.MergedController))
+            foreach (var clip in ClipsOf(controller))
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -180,7 +151,7 @@ namespace AvatarBridge
             }
             if (swapsRepointed > 0)
             {
-                ctx.Report.Converted(Category,
+                report.Converted(Category,
                     $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
                     "These materials are never assigned to a renderer — an animation swaps them in, " +
                     "which is how hypno overlays, transformation skins and costume recolours are " +
@@ -188,10 +159,100 @@ namespace AvatarBridge
                     "toggle would still have assigned the original, so the swap itself now points " +
                     "at the patched copy.");
             }
+        }
+
+        // The same pass on any object: the toolkit runs it standalone.
+        public static void Patch(GameObject target, string dir, AnimatorController controller, BridgeReport report)
+        {
+            var patched = new Dictionary<Shader, Shader>();
+            // One clone per material, not per material slot: a material used by four slots is
+            // still one material, and cloning it per slot would break batching between them.
+            var clones = new Dictionary<Material, Material>();
+            var repointed = new List<string>();
+            var recipesUsed = new List<string>();
+            var refused = new List<string>();
+            var alreadyCorrect = new List<string>();
+            var grabLimited = new List<string>();
+
+            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+            {
+                var materials = renderer.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    var material = materials[i];
+                    var shader = material != null ? material.shader : null;
+                    if (shader == null)
+                    {
+                        continue;
+                    }
+                    if (patched.TryGetValue(shader, out var already))
+                    {
+                        if (already != null) { materials[i] = Repoint(material, already, dir, clones); changed = true; }
+                        continue;
+                    }
+
+                    string source = SourcePathOf(shader);
+                    if (source == null)
+                    {
+                        // Engine shaders have no source on disk and ship
+                        // stereo-correct. Generated avatar shaders do
+                        // have source and fall through to the real check.
+                        patched[shader] = null;
+                        continue;
+                    }
+                    if (DeclaresStereo(source))
+                    {
+                        patched[shader] = null;
+                        alreadyCorrect.Add(shader.name);
+                        continue;
+                    }
+
+                    var fixedShader = TryPatch(source, shader.name, dir, out string reason,
+                        out var appliedRecipe, out bool recipeWasExact, out bool grabPassLimited);
+                    patched[shader] = fixedShader;
+                    if (fixedShader == null)
+                    {
+                        refused.Add($"{shader.name} ({reason})");
+                        continue;
+                    }
+                    materials[i] = Repoint(material, fixedShader, dir, clones);
+                    repointed.Add(shader.name);
+                    if (grabPassLimited)
+                    {
+                        grabLimited.Add(shader.name);
+                    }
+                    if (appliedRecipe != null)
+                    {
+                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
+                            (recipeWasExact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
+                    }
+                    changed = true;
+                }
+                if (changed)
+                {
+                    renderer.sharedMaterials = materials;
+                }
+            }
+
+            // Materials that arrive by animated swap sit on no renderer
+            // right now, invisible to the loop above, and draw into one
+            // eye just as badly when assigned. Their curves are rewritten
+            // to the patched clone too, in RepointSwapClips: the clips
+            // are the avatar's own until the self-container copies them,
+            // so the converter runs that part late. Kept for the caches.
+            _patched = patched;
+            _clones = clones;
+            _dir = dir;
+            if (controller != null)
+            {
+                RepointSwapClips(controller, dir, patched, clones, report,
+                    repointed, refused, alreadyCorrect, recipesUsed, grabLimited);
+            }
 
             if (repointed.Count > 0)
             {
-                ctx.Report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
+                report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
                     $"{string.Join(", ", repointed.Distinct())} — copied into RehomedAssets with the single-pass " +
                     "instanced macros added, and this avatar's materials repointed at the copies. The originals " +
                     "are untouched. Each copy was checked for compile errors, though whether it *looks* right " +
@@ -204,7 +265,7 @@ namespace AvatarBridge
             }
             if (grabLimited.Count > 0)
             {
-                ctx.Report.Warning(Category,
+                report.Warning(Category,
                     $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen — the background they " +
                     "refract comes from one eye",
                     $"{string.Join(", ", grabLimited.Distinct())} — these now DRAW in both eyes, but they read " +
@@ -216,7 +277,7 @@ namespace AvatarBridge
             }
             if (recipesUsed.Count > 0)
             {
-                ctx.Report.Approximated(Category,
+                report.Approximated(Category,
                     $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
                     string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
                     "edit was written by hand once and pinned to that exact version of the file — a shader " +
@@ -226,7 +287,7 @@ namespace AvatarBridge
             }
             if (refused.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{refused.Count} shader(s) could not be patched for VR stereo",
+                report.Warning(Category, $"{refused.Count} shader(s) could not be patched for VR stereo",
                     $"{string.Join(", ", refused)} — these still won't draw correctly in both eyes. Patching is " +
                     "only attempted on plainly written vertex/fragment shaders; anything else needs doing by " +
                     "hand or replacing with a different shader.");
@@ -235,7 +296,7 @@ namespace AvatarBridge
             // not need it. Silence reads as a miss.
             if (alreadyCorrect.Count > 0)
             {
-                ctx.Report.Converted(Category,
+                report.Converted(Category,
                     $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced — left untouched",
                     $"{string.Join(", ", alreadyCorrect.Distinct())} — the source declares the full " +
                     "stereo-instancing macro set, so ChilloutVR's rendering mode is already handled and " +
@@ -274,7 +335,7 @@ namespace AvatarBridge
         // pulls in. The vertex stage often lives in an include, and
         // editing a shared include reaches every shader using it, so
         // includes are cloned and the clones are what get edited.
-        class SourceFile
+        internal class SourceFile
         {
             public string OriginalPath;   // as on disk
             public string IncludedAs;     // exactly as written in the #include, or null for the shader
@@ -283,7 +344,7 @@ namespace AvatarBridge
             public bool Crlf;
         }
 
-        static List<SourceFile> ReadUnit(string shaderPath)
+        internal static List<SourceFile> ReadUnit(string shaderPath)
         {
             var unit = new List<SourceFile>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -311,7 +372,9 @@ namespace AvatarBridge
                 foreach (Match m in Regex.Matches(text, @"#include\s+""([^""]+)"""))
                 {
                     string rel = m.Groups[1].Value;
-                    string candidate = Path.Combine(folder, rel);
+                    // A leading slash in an include is relative to Unity and rooted
+                    // to Path.Combine.
+                    string candidate = Path.Combine(folder, rel.TrimStart('/', '\\'));
                     if (File.Exists(candidate))
                     {
                         Walk(candidate.Replace('\\', '/'), rel);
@@ -323,7 +386,7 @@ namespace AvatarBridge
             return unit;
         }
 
-        static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
+        internal static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
             foreach (var file in unit)
             {
@@ -526,7 +589,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder, m.Groups[1].Value);
+                    string candidate = Path.Combine(folder,
+                        m.Groups[1].Value.TrimStart('/', '\\'));
                     if (File.Exists(candidate) &&
                         byPath.TryGetValue(Path.GetFullPath(candidate), out var target) &&
                         target != file)

@@ -21,24 +21,70 @@ namespace AvatarBridge
         static readonly string[] GogoParamPrefixes = { "Go/" };
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
-        // "OGB" (no separator) also catches OGB_ENABLED and friends.
-        static readonly string[] SpsParamPrefixes =
+        // Whether GoGo put this animator layer there. Used by the advisor to
+        // tell "the Base layer IS GoGo" apart from "GoGo is in there with
+        // the avatar's own content", which look identical from outside.
+        internal static bool IsGogoLayerName(string name) =>
+            !string.IsNullOrEmpty(name)
+            && GogoNameHints.Any(h => name.ToLowerInvariant().Contains(h));
+
+        // "OGB" with no separator also catches OGB_ENABLED. Named apart because
+        // the object and pointer lists change when the system is converted.
+        // PCS (Dismay's contact-driven sounds and particles) and the Wholesome
+        // SPS audio add-on are contact-driven too: kept and made local like OGB.
+        static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS", "pcs/", "WH_" };
+
+        static readonly string[] OtherSpsParamPrefixes =
         {
-            "OGB", "TPS_", "SPS", "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
+            "VF77_", "VF23_", "VRCF_WSD"
         };
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
         // face-gesture smoothing system, which must survive.
-        static readonly string[] SpsLayerHints =
+        static readonly string[] YapsLayerHints = { "sps", "ogb", "haptic", "pcs", "wholesome" };
+        static readonly string[] OtherSpsLayerHints =
         {
-            "sps", "ogb", "pcs", "haptic", "wsd", "world scale detector", "wholesome"
+            "wsd", "world scale detector"
         };
-        static readonly string[] SpsObjectHints =
+        static readonly string[] YapsObjectHints =
         {
-            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket",
-            "<PCS Target>", "Penetration Contact System", "World Scale Detector", "SpsAutoDistance"
+            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket", "SpsAutoDistance",
+            "<PCS Target>", "<PCS Particle>", "Penetration Contact System"
         };
-        static readonly string[] SpsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS", "VRCF_" };
+        static readonly string[] OtherSpsObjectHints =
+        {
+            "World Scale Detector"
+        };
+        // Contact-driven penetration parameters must be "#" local when kept.
+        // VRCFury stamps a per-component id, so the shape after it is matched:
+        //   VF<n>_<Socket>/Self|Others/Contact/Root|Tip   depth per socket
+        //   VF<n>_AutoCurrentDist                          the plug's auto-distance
+        // Toggles and modes under the same id do not match and keep syncing.
+        static readonly System.Text.RegularExpressions.Regex[] YapsContactParamPatterns =
+        {
+            new System.Text.RegularExpressions.Regex(
+                @"^VF\d+_.+/(Self|Others)/Contact/(Root|Tip)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled),
+            new System.Text.RegularExpressions.Regex(
+                @"^VF\d+_AutoCurrentDist$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled),
+        };
+
+        static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS" };
+        static readonly string[] OtherSpsPointerTypePrefixes = { "VRCF_" };
+
+        // The penetration system survives the strip only while converted.
+        // The scene survives; the parameters still go. YAPS builds its own
+        // channel, and the haptic parameters would cost most of the budget.
+        static bool KeepingPenetration(BridgeContext ctx) =>
+            ctx.Settings.stripSpsSystems && ctx.Settings.convertYapsSystems;
+
+        static readonly string[] AllSpsParamPrefixes =
+            OtherSpsParamPrefixes.Concat(YapsParamPrefixes).ToArray();
+        static readonly string[] AllSpsLayerHints =
+            OtherSpsLayerHints.Concat(YapsLayerHints).ToArray();
 
         internal static bool AvatarUsesGogo(BridgeContext ctx) =>
             AvatarUsesGogo(ctx != null ? ctx.SourceDescriptor : null);
@@ -67,7 +113,16 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                prefixes.AddRange(SpsParamPrefixes);
+                // Converting keeps the depth parameters and makes them local,
+                // free but wearer-only: CVR runs a trigger on that machine alone.
+                if (KeepingPenetration(ctx))
+                {
+                    prefixes.AddRange(OtherSpsParamPrefixes);
+                }
+                else
+                {
+                    prefixes.AddRange(AllSpsParamPrefixes);
+                }
             }
             if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
             {
@@ -116,7 +171,53 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints);
+                if (KeepingPenetration(ctx))
+                {
+                    // The layers that play a socket's reactions stay, since
+                    // their parameters now do.
+                    layerHints.AddRange(OtherSpsLayerHints);
+                    // OGB's haptics stay synced only on request: an OSC toy
+                    // app reads them by their VRChat name, and a local
+                    // parameter's "#" hides them. Their sync cost is the
+                    // user's, and the budget check names it.
+                    ctx.ForceLocalPrefixes.AddRange(ctx.Settings.syncHapticsForOsc
+                        ? YapsParamPrefixes.Where(p => p != "OGB")
+                        : YapsParamPrefixes);
+                    // The author's depth reactions: local and free, or
+                    // synced so the room sees them. Left synced, they fall
+                    // to the contact rule below and keep their names.
+                    if (!ctx.Settings.syncSocketDepthForOthers)
+                    {
+                        ctx.ForceLocalPatterns.AddRange(YapsContactParamPatterns);
+                    }
+                    else
+                    {
+                        ctx.Report.Warning(Category,
+                            "Socket depth reactions kept synced so other players see them",
+                            "You asked for it: each socket's depth parameter stays synced, so the " +
+                            "bulges and winces its author animated play for everyone rather than the " +
+                            "wearer alone. ChilloutVR runs an avatar's triggers on the wearer's machine " +
+                            "only, which is why the choice exists. Two parameters per socket at 32 bits " +
+                            "each against a cap of 3200: six sockets is about 384. The sync budget entry " +
+                            "below says where this avatar landed; over the cap, nothing on it syncs.");
+                    }
+                    if (ctx.Settings.syncHapticsForOsc)
+                    {
+                        ctx.Report.Warning(Category,
+                            "OGB haptics parameters kept synced for OSC toys",
+                            "You asked for it: every OGB/… parameter stays synced so OSCGoesBrrr's " +
+                            "automatic detection sees it under its VRChat name. Each costs 32 sync " +
+                            "bits, about nine per plug and per socket, and ChilloutVR's cap is 3200. The " +
+                            "sync budget entry below says where this avatar landed; over the cap, " +
+                            "nothing on it syncs. Off, they are local and free, and OGB still reads them " +
+                            "through its manual avatar-parameter links; the Diagnostics entry lists the " +
+                            "names to paste.");
+                    }
+                }
+                else
+                {
+                    layerHints.AddRange(AllSpsLayerHints);
+                }
             }
             // User-supplied keywords (comma separated) act as both parameter prefixes and
             // layer-name hints, for add-ons this list doesn't know about yet.
@@ -192,7 +293,7 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                layerHints.AddRange(SpsLayerHints);
+                layerHints.AddRange(AllSpsLayerHints);
             }
             bool IsStrippedParam(string name) =>
                 !string.IsNullOrEmpty(name) &&
@@ -758,6 +859,9 @@ namespace AvatarBridge
 
         static void RemoveObjects(BridgeContext ctx)
         {
+            var objectHints = KeepingPenetration(ctx)
+                ? OtherSpsObjectHints
+                : OtherSpsObjectHints.Concat(YapsObjectHints).ToArray();
             var doomed = new List<Transform>();
             foreach (var transform in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
@@ -765,7 +869,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (SpsObjectHints.Any(hint => transform.name.Contains(hint)))
+                if (objectHints.Any(hint => transform.name.Contains(hint)))
                 {
                     doomed.Add(transform);
                 }
@@ -799,11 +903,16 @@ namespace AvatarBridge
 
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)
         {
+            // A converted socket's pointer is the thing a plug looks for,
+            // so it has to outlive the strip that used to delete it.
+            var pointerPrefixes = KeepingPenetration(ctx)
+                ? OtherSpsPointerTypePrefixes
+                : OtherSpsPointerTypePrefixes.Concat(YapsPointerTypePrefixes).ToArray();
             int removed = 0;
             foreach (var pointer in ctx.Target.GetComponentsInChildren<CVRPointer>(true))
             {
                 if (!string.IsNullOrEmpty(pointer.type) &&
-                    SpsPointerTypePrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    pointerPrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 {
                     UnityEngine.Object.DestroyImmediate(pointer.gameObject);
                     removed++;

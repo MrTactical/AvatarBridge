@@ -49,7 +49,13 @@ namespace AvatarBridge.Regression
                 if (string.IsNullOrEmpty(repo))
                     throw new InvalidOperationException(
                         "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
-                return repo.Replace('\\', '/').TrimEnd('/') + "/Regression";
+                // A flag-on run keeps its own Baseline and Current. The two
+                // answer different questions — one asks whether existing
+                // users are unaffected, the other whether the new feature
+                // is stable — and sharing a folder would have each
+                // overwrite the other's reference.
+                string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
+                return repo.Replace('\\', '/').TrimEnd('/') + suffix;
             }
         }
         static string BaselineDir => Root + "/Baseline";
@@ -538,8 +544,18 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
+        // Set AVATARBRIDGE_YAPS=1 to convert with the penetration system
+        // on — the DEFAULT since 2026-08-15, so Regression/Yaps is what a
+        // user gets. Unset measures the opt-out (convertYapsSystems false),
+        // which still has to hold: it is one tick away for anyone. The
+        // folder names predate the flip and stay, so both accepted
+        // baselines remain valid.
+        static bool YapsMode =>
+            Environment.GetEnvironmentVariable("AVATARBRIDGE_YAPS") == "1";
+
         static BridgeSettings CorpusSettings() => new BridgeSettings
         {
+            convertYapsSystems = YapsMode,
             cloneAvatar = true,
             outputFolder = "Assets/AvatarBridgeOutput",
 
@@ -1011,7 +1027,7 @@ namespace AvatarBridge.Regression
                 // is the one fact needed to judge a transition cycle: a driver inside the cycle
                 // that writes a parameter the cycle's own conditions read can break the loop, and
                 // without the target names the digest cannot tell a real loop from a self-
-                // limiting one. Cost this exact question a night on Umbreon's emission layer.
+                // limiting one.
                 var behaviours = st.behaviours
                     .Where(b => b != null)
                     .Select(b =>

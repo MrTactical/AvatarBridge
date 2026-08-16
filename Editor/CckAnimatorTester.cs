@@ -358,8 +358,7 @@ namespace AvatarBridge
                         : $"Found \"{avatar.name}\" — enter PLAY MODE to drive it; animators only evaluate there.")));
             pick.Body.Add(BridgeElements.Hint(
                 "VRChat's Gesture Manager cannot drive a converted avatar: it needs the VRC " +
-                "descriptor, which conversion removes. This window is the ChilloutVR-side " +
-                "equivalent — every control writes exactly what the game writes."));
+                "descriptor, which conversion removes. This window is the ChilloutVR-side equivalent."));
             scroll.Add(pick);
 
             // ---- gestures ----------------------------------------------------------------
@@ -1548,6 +1547,17 @@ namespace AvatarBridge
                         Register(hint, label, parameter);
                         break;
                 }
+            }
+            // Greyed entries: the menu has them, the animator does not yet.
+            // Said once here, not only in a tooltip.
+            if (missingCount > 0)
+            {
+                parent.Add(new HelpBox(
+                    $"{missingCount} greyed entr{(missingCount == 1 ? "y is" : "ies are")} in the menu but not in the " +
+                    "animator yet: no parameter of that name. The CCK writes one per entry when you press Create " +
+                    "Animator on the CVRAvatar's Advanced Settings; the YAPS toolkit writes its own entries' layers " +
+                    "straight into the animator the avatar wears. Hover an entry for its parameter name.",
+                    HelpBoxMessageType.Info));
             }
         }
     }

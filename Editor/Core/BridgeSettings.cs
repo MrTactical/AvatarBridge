@@ -131,6 +131,23 @@ namespace AvatarBridge
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
+        // Convert DPS, TPS and SPS into YAPS instead of stripping them.
+        public bool convertYapsSystems = true;
+        // Keep the OGB haptics parameters synced instead of local, so OSC
+        // toy apps see them under their VRChat names. 32 sync bits each.
+        public bool syncHapticsForOsc = false;
+        // Keep each socket's depth parameter synced, so the author's own
+        // depth reactions play for the room. Two per socket, 32 bits each.
+        public bool syncSocketDepthForOthers = false;
+        // Encode socket markers the way existing DPS content reads them.
+        public bool emitLegacySocketLights = true;
+        // How many sockets may carry marker lights. A mesh gets four vertex
+        // light slots and a socket takes two. Holes first, then rings.
+        public int maxLightEmittingSockets = 2;
+        // How far the smoothed channel value may move per frame. Lower is a
+        // heavier plug. Only the channel is buffered.
+        [Range(0.01f, 0.5f)]
+        public float yapsSocketFollow = 0.05f;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

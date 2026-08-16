@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -15,6 +16,23 @@ namespace AvatarBridge
     {
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
         public const string Releases = Repo + "/releases/latest";
+
+        // Where the converter sends someone without the YAPS tool. It ships
+        // inside the AvatarBridge package today, so that is the release
+        // page; point this at its own repo the day it has one.
+        public const string YapsRepo = Releases;
+
+        // Is the YAPS tool present in this project? By type, not by define:
+        // once it is its own package the converter cannot assume it.
+        public static bool HasYapsTool =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => a.GetType("AvatarBridge.YapsSetupWindow", false) != null);
+
+        // And the other way round: is the converter here? The YAPS tool asks
+        // before it names a menu that may not exist.
+        public static bool HasAvatarBridge =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => a.GetType("AvatarBridge.AvatarBridgeWindow", false) != null);
         // Anchor must match a real heading in README.md, or the button silently drops the user at
         // the top of the repo page; which is what it did for a long time, pointing at an
         // "#install-troubleshooting" section that never existed.
@@ -53,6 +71,18 @@ namespace AvatarBridge
         {
             string url = Repo + "/issues/new?template=bug_report.yml&environment=" +
                          Uri.EscapeDataString(BuildDiagnostics(report));
+            Application.OpenURL(url);
+        }
+
+        // The YAPS tool's own chapter in the README, and its bug report:
+        // the same issue tracker while the tool ships inside AvatarBridge,
+        // with the environment blob saying which tool it came from.
+        public const string YapsHelp = Repo + "#yaps--penetration-that-works-in-chilloutvr";
+
+        public static void OpenYapsBugReport()
+        {
+            string url = Repo + "/issues/new?template=bug_report.yml&environment=" +
+                         Uri.EscapeDataString("Tool:          YAPS (Tools ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null));
             Application.OpenURL(url);
         }
 

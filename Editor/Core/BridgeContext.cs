@@ -1,5 +1,7 @@
 #if CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor.Animations;
 using UnityEngine;
 #if VRC_SDK_VRCSDK3
@@ -47,6 +49,11 @@ namespace AvatarBridge
 
         public string OutputDir;
 
+        // Set by the ChilloutVR Toolkit: an avatar being checked or fixed
+        // in place, never converted. Texts that name the converter's
+        // options or its origin read differently.
+        public bool Standalone;
+
         // Parameter bookkeeping, filled by ParameterMenuConverter / ContactsConverter and
         // consumed by the animator rename pass.
         public HashSet<string> PreserveParameters = new HashSet<string>();
@@ -62,12 +69,61 @@ namespace AvatarBridge
         public List<(string zonePath, string shapeKey, float growth, float reach, string reportPath)>
             ZoneSliderGrowth = new List<(string, string, float, float, string)>();
 
+        // One entry per plug the YAPS pass converted, so the channel pass
+        // knows which renderers and materials it is wiring to.
+        public class YapsPlug
+        {
+            public Transform Root;
+            public Renderer Renderer;
+            public Material Material;
+            public int MaterialSlot;
+            public float Length;
+            public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
+            public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
+            // The bone a size animation scales: the level the plug's mesh was
+            // found at when it is a bone, else the first bone beneath it.
+            public Transform ChainRoot;
+
+            // Measured from the mesh in world space. The plug object can sit
+            // elsewhere; a contact box placed there lands short.
+            public UnityEngine.Vector3 Origin;
+            public UnityEngine.Quaternion Rotation;
+            public float Radius;
+        }
+
+        public List<YapsPlug> YapsPlugs = new List<YapsPlug>();
+
         public Dictionary<string, List<string>> PhysicsColliderHosts =
             new Dictionary<string, List<string>>();
 
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
 
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
+
+        // Prefixes forced "#" local. A contact-driven parameter must be local:
+        // a synced twin gets the stream written back over it.
+        public List<string> ForceLocalPrefixes = new List<string>();
+
+        // The same rule by shape, for names a prefix cannot catch. VRCFury
+        // stamps a per-component id; the shape after it is what is stable.
+        // Toggles and modes under the same id do not match and stay synced.
+        public List<System.Text.RegularExpressions.Regex> ForceLocalPatterns =
+            new List<System.Text.RegularExpressions.Regex>();
+
+        public bool ForcesLocal(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            if (ForceLocalPrefixes.Count > 0
+                && ForceLocalPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+            for (int i = 0; i < ForceLocalPatterns.Count; i++)
+            {
+                if (ForceLocalPatterns[i].IsMatch(name)) return true;
+            }
+            return false;
+        }
 
         public bool AnimatorBlinkPending;
 
@@ -87,7 +143,7 @@ namespace AvatarBridge
                 return Target.transform;
             }
             string path = RelativePath(SourceDescriptor.transform, sourceChild);
-            return Target.transform.Find(path);
+            return FindByAnimationPath(Target.transform, path);
         }
 #endif
 
@@ -104,6 +160,52 @@ namespace AvatarBridge
                 path = child.name + "/" + path;
             }
             return path;
+        }
+
+        // Resolves a path the way the animator does: whole path against each
+        // object, so a name containing a slash still matches. Plain Find
+        // first, then a greedy longest-name walk.
+        public static Transform FindByAnimationPath(Transform root, string path)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+            if (string.IsNullOrEmpty(path))
+            {
+                return root;
+            }
+            // The common case first.
+            var direct = root.Find(path);
+            if (direct != null)
+            {
+                return direct;
+            }
+            return FindGreedy(root, path);
+        }
+
+        static Transform FindGreedy(Transform at, string remainder)
+        {
+            for (int i = 0; i < at.childCount; i++)
+            {
+                var child = at.GetChild(i);
+                string name = child.name;
+                if (remainder == name)
+                {
+                    return child;
+                }
+                if (remainder.Length > name.Length
+                    && remainder.StartsWith(name, StringComparison.Ordinal)
+                    && remainder[name.Length] == '/')
+                {
+                    var deeper = FindGreedy(child, remainder.Substring(name.Length + 1));
+                    if (deeper != null)
+                    {
+                        return deeper;
+                    }
+                }
+            }
+            return null;
         }
     }
 }

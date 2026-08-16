@@ -345,6 +345,79 @@
     flex-shrink: 0;
 }
 
+/* Component inspectors (YapsSocket, YapsPlug) are built from the same elements as the windows.
+ * The inspector already insets its content; pull the banner back out to the edges. */
+.ab-inspector {
+    margin: -4px -15px 0 -15px;
+}
+
+.ab-inspector .ab-banner {
+    height: 52px;
+}
+
+.ab-inspector .ab-banner-title {
+    font-size: 15px;
+}
+
+/* A slider's number box: wide enough for three decimals, no wider. */
+.ab-slider .unity-base-slider__text-field {
+    width: 52px;
+    min-width: 52px;
+    flex-shrink: 0;
+}
+
+/* One shape stage on a socket: a tinted stripe beside its rows, like a report row. */
+.ab-stage {
+    flex-direction: row;
+    margin: 2px 0 6px 0;
+}
+
+/* The system a knob came from, as a small chip to the control's right. */
+.ab-from {
+    margin-left: 4px;
+    padding: 1px 6px;
+    font-size: 9px;
+    flex-shrink: 0;
+}
+
+/* A section fold inside a card: the same card, a little tighter. */
+.ab-fold {
+    margin: 4px 0 4px 0;
+}
+
+.ab-fold > .ab-card-header {
+    padding: 4px 8px;
+    min-height: 22px;
+}
+
+.ab-fold > .ab-card-body {
+    padding: 6px 8px 8px 8px;
+}
+
+/* One question, a few answers: radio buttons stacked under the field's label column, each
+ * row hovering like a toggle so the group reads as part of the same list. */
+.ab-radio {
+    margin: 2px 0 4px 0;
+}
+
+.ab-radio .unity-radio-button-group__container {
+    flex-direction: column;
+}
+
+.ab-radio .unity-radio-button {
+    margin: 0 0 1px -4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.dark .ab-radio .unity-radio-button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.light .ab-radio .unity-radio-button:hover {
+    background-color: rgba(0, 0, 0, 0.045);
+}
+
 /* ----------------------------------------------------------- primary  ---- */
 
 .ab-primary {

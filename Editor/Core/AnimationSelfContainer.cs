@@ -132,7 +132,9 @@ namespace AvatarBridge
                 string path = AssetDatabase.GetAssetPath(clip);
                 if (!NeedsCopy(path, outputDir, controllerPath))
                 {
+                    // Not copied, but it may still carry a reference that has to travel.
                     map[clip] = clip;
+                    CarryAdditivePose(clip, controller, controllerPath, outputDir, dir, map, copied);
                     return clip;
                 }
                 AnimationClip copy = null;
@@ -153,6 +155,7 @@ namespace AvatarBridge
                 }
                 map[clip] = copy;
                 copied.Add(clip.name);
+                CarryAdditivePose(copy, controller, controllerPath, outputDir, dir, map, copied);
                 return copy;
             }
             if (motion is BlendTree tree)
@@ -221,6 +224,41 @@ namespace AvatarBridge
             return copy;
         }
 
+        // A clip's additive reference pose is a second clip and not a motion,
+        // so the walk never reaches it. Runs for every clip this tool owns.
+        static void CarryAdditivePose(AnimationClip clip, AnimatorController controller,
+            string controllerPath, string outputDir, string dir,
+            Dictionary<Motion, Motion> map, List<string> copied)
+        {
+            if (clip == null || !Ours(AssetDatabase.GetAssetPath(clip), outputDir, controllerPath))
+            {
+                return;   // somebody else's asset; editing it reaches their package
+            }
+
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            // Only when the pose is actually in use. The field is often left
+            // populated on a clip that ignores it, and dragging a clip
+            // nothing reads into the output folder is just litter.
+            if (!settings.hasAdditiveReferencePose || settings.additiveReferencePoseClip == null
+                || !NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip),
+                              outputDir, controllerPath))
+            {
+                return;
+            }
+
+            settings.additiveReferencePoseClip = Fix(settings.additiveReferencePoseClip,
+                controller, controllerPath, outputDir, dir, map, copied) as AnimationClip;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            EditorUtility.SetDirty(clip);
+        }
+
+        // Editable here: in memory, embedded in the built controller, or in
+        // this avatar's output folder. Never an engine or package asset.
+        static bool Ours(string path, string outputDir, string controllerPath)
+            => string.IsNullOrEmpty(path)
+               || path == controllerPath
+               || path.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal);
+
         static bool NeedsCopy(string path, string outputDir, string controllerPath)
         {
             if (string.IsNullOrEmpty(path))
@@ -231,7 +269,7 @@ namespace AvatarBridge
             {
                 return false; // embedded in the controller — already travels with it
             }
-            if (path.StartsWith(outputDir, StringComparison.Ordinal))
+            if (path.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal))
             {
                 return false;
             }

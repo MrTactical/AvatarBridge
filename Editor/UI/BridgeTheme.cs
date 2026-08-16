@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -99,8 +100,18 @@ namespace AvatarBridge
             return tex;
         }
 
+        // One texture per colour for the session. Every rebuild asked for
+        // a fresh one and nothing freed them.
+        static readonly Dictionary<int, Texture2D> _solids = new Dictionary<int, Texture2D>();
+
         public static Texture2D Solid(Color colour)
         {
+            Color32 c = colour;
+            int key = (c.r << 24) | (c.g << 16) | (c.b << 8) | c.a;
+            if (_solids.TryGetValue(key, out var have) && have != null)
+            {
+                return have;
+            }
             var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false)
             {
                 hideFlags = HideFlags.HideAndDontSave,
@@ -108,6 +119,7 @@ namespace AvatarBridge
             };
             tex.SetPixel(0, 0, colour);
             tex.Apply();
+            _solids[key] = tex;
             return tex;
         }
 
