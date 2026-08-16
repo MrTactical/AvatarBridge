@@ -936,12 +936,13 @@ namespace AvatarBridge
             }
 
             optIns.Add(BridgeElements.SubHeading("Penetration"));
-            optIns.Add(BridgeElements.Bind("Show socket depth reactions to other players",
-                "The bulges, winces and depth animations a socket's author built are driven by contacts, " +
-                "and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each " +
-                "socket's depth parameter is local: free, and only you see the reaction. On, it syncs and " +
-                "the room sees it, at 32 bits for each of the two parameters a socket carries. Needs " +
-                "Penetration on Convert to YAPS.",
+            optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
+                "Not YAPS's socket shapes: those already play for everyone, on a synced parameter, with " +
+                "nothing to switch on. This is the bulges and winces the avatar's author animated in " +
+                "VRChat, which ride on VRCFury's own depth parameters. ChilloutVR runs an avatar's " +
+                "triggers on the wearer's machine alone, so off, those are local: free, and only you see " +
+                "them. On, they sync and the room sees them too, at 32 bits for each of the two " +
+                "parameters a socket carries. Needs Penetration on Convert to YAPS.",
                 settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
             if (settings.syncSocketDepthForOthers)
             {
