@@ -46,7 +46,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "14";
+        const string Revision = "15";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -204,7 +204,7 @@ namespace AvatarBridge
             shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
                 "Shader \"" + newName + "\"");
 
-            InstallShaderGui(shaderFile);
+            InstallShaderGui(shaderFile, material.shader.name);
 
             var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
             if (patched == null)
@@ -236,7 +236,20 @@ namespace AvatarBridge
         // The original editor's class name is carried in the DESCRIPTION of
         // a hidden float property, a shader property is the only place a
         // string can ride in a shader that the material can read back.
-        static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile)
+        // The source shader's name rides the same way, so Remove can put a
+        // material back on it when the material it replaced is gone.
+        public const string SourceShaderProperty = "_YAPS_SourceShader";
+
+        public static string SourceShaderOf(Material material)
+        {
+            if (material == null || material.shader == null) return null;
+            int index = material.shader.FindPropertyIndex(SourceShaderProperty);
+            if (index < 0) return null;
+            string name = material.shader.GetPropertyDescription(index);
+            return string.IsNullOrEmpty(name) ? null : name;
+        }
+
+        static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile, string sourceShaderName)
         {
             string original = null;
             var existing = Regex.Match(shaderFile.Text, @"^\s*CustomEditor\s+""([^""]+)""\s*$",
@@ -247,12 +260,14 @@ namespace AvatarBridge
                 shaderFile.Text = shaderFile.Text.Remove(existing.Index, existing.Length);
             }
 
-            // The marker property, into the Properties block beside ours.
+            // The marker properties, into the Properties block beside ours.
             var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
             if (properties.Success)
             {
                 string marker = "\n        [HideInInspector] " + YapsShaderGUI.OriginalEditorProperty
-                                + " (\"" + (original ?? "") + "\", Float) = 0";
+                                + " (\"" + (original ?? "") + "\", Float) = 0"
+                                + "\n        [HideInInspector] " + SourceShaderProperty
+                                + " (\"" + (sourceShaderName ?? "").Replace("\"", "") + "\", Float) = 0";
                 shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length, marker);
             }
 

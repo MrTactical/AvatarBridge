@@ -161,6 +161,27 @@ namespace AvatarBridge
                              "An editor preference only — nothing on the avatar changes — and it puts back " +
                              "exactly what it found.";
             have.Body.Add(BridgeElements.Row(_quiet));
+
+            // What a socket or plug deleted by hand leaves behind.
+            have.Body.Add(BridgeElements.SubHeading("Tidy"));
+            var sweep = Btn("Clean up leftovers", () =>
+            {
+                if (_target == null) return;
+                var done = YapsRemover.Sweep(_target.transform);
+                _summary.text = done.Count == 0
+                    ? "Nothing left behind: every YAPS layer, parameter, toggle and marker object belongs to a socket or plug that is still here."
+                    : $"Cleaned up {done.Count} leftover(s): " + string.Join("; ", done) + ". One undo step.";
+                foreach (var line in done) Debug.Log("[YAPS] Cleaned up " + line);
+                Rescan();
+            });
+            sweep.tooltip = "Deleted a socket or plug by hand? This removes what it left: an animator layer with no " +
+                            "socket, a depth parameter nothing reads, a menu toggle aiming at nothing, and the toolkit's " +
+                            "marker objects with no component above them. Use the remove chip on a row instead to take " +
+                            "one out cleanly in the first place.";
+            have.Body.Add(BridgeElements.Row(sweep));
+            have.Body.Add(BridgeElements.Hint(
+                "Every row above has a remove chip that takes the plug or socket out entire, in one undo step. " +
+                "Deleted one by hand instead? Clean up leftovers finds what it left behind."));
             _pages.Add(have);
             Selection.selectionChanged -= RefreshSelection;
             Selection.selectionChanged += RefreshSelection;
@@ -442,6 +463,17 @@ namespace AvatarBridge
                     });
                     edit.style.marginLeft = 6;
                     wrap.Add(edit);
+                    // Remove: out entire, after a dialog saying what goes.
+                    var gone = BridgeElements.Chip("remove", BridgeTheme.Bad, false, () =>
+                    {
+                        if (captured.Root == null) { Rescan(); return; }
+                        var s = captured.Root.GetComponent<YapsSocket>();
+                        var p = captured.Root.GetComponent<YapsPlug>();
+                        bool did = s != null ? YapsRemover.Ask(s) : YapsRemover.Ask(p);
+                        if (did) Rescan();
+                    });
+                    gone.style.marginLeft = 4;
+                    wrap.Add(gone);
                 }
                 if (socketComp != null)
                 {

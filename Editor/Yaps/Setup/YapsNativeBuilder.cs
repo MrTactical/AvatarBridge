@@ -111,6 +111,8 @@ namespace AvatarBridge
             {
                 mats[slot] = patched;
                 renderer.sharedMaterials = mats;
+                // What the slot held, for Remove to put back.
+                if (plug.bakedFrom == null) { plug.bakedFrom = original; EditorUtility.SetDirty(plug); }
             }
             else
             {
@@ -455,6 +457,7 @@ namespace AvatarBridge
                 }
                 material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
                 material.SetFloat("_YAPS_Enabled", 0f);
+                if (socket.bakedFrom == null) { socket.bakedFrom = mats[0]; EditorUtility.SetDirty(socket); }
                 mats[0] = material;
                 renderer.sharedMaterials = mats;
             }

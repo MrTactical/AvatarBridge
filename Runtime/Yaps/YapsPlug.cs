@@ -115,6 +115,11 @@ namespace AvatarBridge.Yaps
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
 
+        // The material the bake replaced, so Remove can put it back. Set
+        // by the first bake; the toolkit's own, not a knob.
+        [HideInInspector]
+        public Material bakedFrom;
+
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();
     }
 }

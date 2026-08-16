@@ -46,6 +46,11 @@ namespace AvatarBridge.Yaps
                  "off on an avatar with many sockets, where the toolkit wires them to a menu instead.")]
         public bool emitLights = true;
 
+        // The material the socket bake replaced on its own mesh, so Remove
+        // can put it back. Set by the first bake; the toolkit's own.
+        [HideInInspector]
+        public Material bakedFrom;
+
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.
         [NonSerialized]

@@ -794,6 +794,16 @@ namespace AvatarBridge
                     RebuildLater();
                 }),
                 YapsInspectorStyle.Button("Open YAPS Setup", YapsSetupWindow.Open)));
+            var removeSocket = YapsInspectorStyle.Button("Remove this socket", () =>
+            {
+                var parent = socket.transform.parent;
+                if (YapsRemover.Ask(socket)) Selection.activeTransform = parent;
+            });
+            removeSocket.style.color = BridgeTheme.Bad;
+            advanced.Body.Add(BridgeElements.Row(removeSocket));
+            advanced.Body.Add(BridgeElements.Hint(
+                "Takes the socket out entire: its objects, its animator layer and parameter, its menu " +
+                "toggle, and the socket bake on its own mesh. One undo step."));
             body.Add(advanced);
 
             _root.Bind(so);
@@ -1027,7 +1037,19 @@ namespace AvatarBridge
                 if (o.Ok) Debug.Log("[YAPS] " + o.Message); else Debug.LogError("[YAPS] " + o.Message);
                 RebuildLater();
             }));
-            bake.Body.Add(BridgeElements.Row(YapsInspectorStyle.Button("Open YAPS Setup", YapsSetupWindow.Open)));
+            var removePlug = YapsInspectorStyle.Button("Remove this plug", () =>
+            {
+                var parent = plug.transform.parent;
+                if (YapsRemover.Ask(plug)) Selection.activeTransform = parent;
+            });
+            removePlug.style.color = BridgeTheme.Bad;
+            bake.Body.Add(BridgeElements.Row(YapsInspectorStyle.Button("Open YAPS Setup", YapsSetupWindow.Open), removePlug));
+            if (isBaked)
+            {
+                bake.Body.Add(BridgeElements.Hint(
+                    "Remove takes the plug out entire: the material it replaced goes back in its slot, " +
+                    "the size wiring leaves your animations, the menu toggle and the markers go. One undo step."));
+            }
             body.Add(bake);
 
             // Every knob is a material property, so every knob is animatable
