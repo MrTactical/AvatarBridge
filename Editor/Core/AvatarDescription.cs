@@ -61,7 +61,8 @@ namespace AvatarBridge
         public static string Build(BridgeContext ctx)
         {
             // The credit is the fixed cost and gets measured first; features fill what is left.
-            string credit = "Converted from VRChat with AvatarBridge\n" + ShortLink(BridgeLinks.Repo);
+            string credit = (ctx.Standalone ? "Set up with the ChilloutVR Toolkit\n" : "Converted from VRChat with AvatarBridge\n")
+                            + ShortLink(BridgeLinks.Repo);
             string name = DisplayName(ctx.Target.name);
 
             // Two blank lines first, deliberately. Whoever pastes this almost always has something

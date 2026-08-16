@@ -197,6 +197,24 @@ namespace AvatarBridge
             var spawnable = root.GetComponent<CVRSpawnable>();
             if (spawnable != null)
                 spawnable.syncValues.RemoveAll(v => Channel.Any(c => c.Value == v.name));
+            // The channel's layers and parameters, wherever they went.
+            var animator = root.GetComponent<Animator>();
+            var controller = animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
+            if (controller != null) StripChannel(controller);
+        }
+
+        static void StripChannel(AnimatorController controller)
+        {
+            var layers = controller.layers.ToList();
+            int before = layers.Count;
+            layers.RemoveAll(l => Channel.Any(c => c.Value == l.name));
+            if (layers.Count != before) controller.layers = layers.ToArray();
+            foreach (var (value, _) in Channel)
+            {
+                if (controller.parameters.Any(p => p.name == value)) controller.RemoveParameter(
+                    controller.parameters.First(p => p.name == value));
+            }
+            EditorUtility.SetDirty(controller);
         }
 
         // The channel: eight synced values driven by triggers, each value a
@@ -216,16 +234,25 @@ namespace AvatarBridge
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(root.name);
             if (!AssetDatabase.IsValidFolder(dir)) YapsNativeBuilder.EnsureFolderPublic(dir);
             string clipPath = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
-            var controller = BuildController(dir, clipPath, renderer.GetType());
 
+            // The prop's own controller keeps its layers and gains the
+            // channel's; a prop without one gets the channel controller,
+            // the same file every time rather than a numbered new one.
             var animator = root.GetComponent<Animator>();
             if (animator == null) animator = Undo.AddComponent<Animator>(root);
+            var existing = animator.runtimeAnimatorController as AnimatorController;
+            bool own = existing != null && !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(existing));
+            var controller = BuildController(dir, clipPath, renderer.GetType(), own ? existing : null);
             animator.runtimeAnimatorController = controller;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
+            // The trigger tasks index the value list, so each value's slot
+            // is the one it was given, not its place in our own list.
             spawnable.useAdditionalValues = true;
+            var slot = new Dictionary<string, int>();
             foreach (var (value, _) in Channel)
             {
+                slot[value] = spawnable.syncValues.Count;
                 spawnable.syncValues.Add(new CVRSpawnableValue
                 {
                     name = value,
@@ -253,13 +280,13 @@ namespace AvatarBridge
             engage.allowedTypes = SocketTypes;
             engage.stayTasks.Add(new CVRSpawnableTriggerTaskStay
             {
-                settingIndex = 0,
+                settingIndex = slot["E"],
                 updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromDistance,
                 minValue = 0f, maxValue = 1f,
             });
             engage.exitTasks.Add(new CVRSpawnableTriggerTask
             {
-                settingIndex = 0, settingValue = 0f,
+                settingIndex = slot["E"], settingValue = 0f,
                 updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
             });
 
@@ -269,25 +296,25 @@ namespace AvatarBridge
             hole.allowedTypes = HoleTypes;
             hole.enterTasks.Add(new CVRSpawnableTriggerTask
             {
-                settingIndex = 1, settingValue = 1f,
+                settingIndex = slot["H"], settingValue = 1f,
                 updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
             });
             hole.exitTasks.Add(new CVRSpawnableTriggerTask
             {
-                settingIndex = 1, settingValue = 0f,
+                settingIndex = slot["H"], settingValue = 0f,
                 updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
             });
 
             var axes = new[]
             {
-                (2, "X", SocketTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
-                (3, "Y", SocketTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
-                (4, "Z", SocketTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
-                (5, "FX", FrontTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
-                (6, "FY", FrontTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
-                (7, "FZ", FrontTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
+                ("X", SocketTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
+                ("Y", SocketTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
+                ("Z", SocketTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
+                ("FX", FrontTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
+                ("FY", FrontTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
+                ("FZ", FrontTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
             };
-            foreach (var (index, name, types, direction) in axes)
+            foreach (var (name, types, direction) in axes)
             {
                 var axis = Host(name).AddComponent<CVRSpawnableTrigger>();
                 axis.areaSize = box;
@@ -296,7 +323,7 @@ namespace AvatarBridge
                 axis.allowedTypes = types;
                 axis.stayTasks.Add(new CVRSpawnableTriggerTaskStay
                 {
-                    settingIndex = index,
+                    settingIndex = slot[name],
                     updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
                     minValue = 0f, maxValue = 1f,
                 });
@@ -304,12 +331,24 @@ namespace AvatarBridge
         }
 
         // One layer per value: a two-clip blend tree, 0 and 1, blended by
-        // the parameter. Everything is embedded by walking the layer.
-        static AnimatorController BuildController(string dir, string clipPath, System.Type rendererType)
+        // the parameter. Everything is embedded by walking the layer. Into
+        // the prop's own controller when it has one; else the channel
+        // controller, reused across runs rather than numbered anew.
+        static AnimatorController BuildController(string dir, string clipPath, System.Type rendererType,
+            AnimatorController into)
         {
-            string path = AssetDatabase.GenerateUniqueAssetPath(dir + "/YAPS Prop Channel.controller");
-            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
-            for (int i = controller.layers.Length - 1; i >= 0; i--) controller.RemoveLayer(i);
+            var controller = into;
+            if (controller == null)
+            {
+                string path = dir + "/YAPS Prop Channel.controller";
+                controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                if (controller == null)
+                {
+                    controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+                    for (int i = controller.layers.Length - 1; i >= 0; i--) controller.RemoveLayer(i);
+                }
+            }
+            StripChannel(controller);
 
             foreach (var (value, property) in Channel)
             {

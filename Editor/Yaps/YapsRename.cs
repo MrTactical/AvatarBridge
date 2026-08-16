@@ -98,6 +98,23 @@ namespace AvatarBridge
                 return;
             }
 
+            // A renamed object under a renamed object: its new path runs
+            // through its parent's NEW name. Shortest first, so a parent is
+            // settled before any child looks it up.
+            foreach (string key in remap.Keys.OrderBy(k => k.Length).ToList())
+            {
+                string value = remap[key];
+                int cut = value.LastIndexOf('/');
+                if (cut < 0)
+                {
+                    continue;
+                }
+                if (Remap(value.Substring(0, cut), remap, out string movedParent))
+                {
+                    remap[key] = movedParent + value.Substring(cut);
+                }
+            }
+
             // Paths already dead before anything moves. An earlier pass
             // removed their object on purpose, so they are not this
             // pass's failure and not its warning.
@@ -246,7 +263,9 @@ namespace AvatarBridge
             {
                 return false;
             }
-            foreach (var pair in remap)
+            // Longest key first: an object renamed inside another renamed
+            // object must take its own new name, not only its parent's.
+            foreach (var pair in remap.OrderByDescending(p => p.Key.Length))
             {
                 if (path == pair.Key)
                 {

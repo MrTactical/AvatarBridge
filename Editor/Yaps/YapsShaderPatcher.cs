@@ -660,13 +660,18 @@ namespace AvatarBridge
             error = null;
             Directory.CreateDirectory(dir);
 
+            // The hash names the file as well as the shader. Two locked
+            // Poiyomi materials both come from a "Poiyomi Toon.shader" of
+            // their own, and one output name would have the second write
+            // over the first.
             var shaderFile = unit[0];
-            shaderFile.OutputName = Path.GetFileNameWithoutExtension(sourcePath) + "_YAPS.shader";
+            string tag = "_YAPS_" + hash.Substring(0, Math.Min(8, hash.Length));
+            shaderFile.OutputName = Path.GetFileNameWithoutExtension(sourcePath) + tag + ".shader";
 
             var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { shaderFile.OutputName };
             foreach (var file in unit.Skip(1))
             {
-                string stem = Path.GetFileNameWithoutExtension(file.OriginalPath) + "_YAPS";
+                string stem = Path.GetFileNameWithoutExtension(file.OriginalPath) + tag;
                 string extension = Path.GetExtension(file.OriginalPath);
                 string name = stem + extension;
                 for (int n = 2; !used.Add(name); n++)

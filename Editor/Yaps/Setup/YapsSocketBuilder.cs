@@ -46,7 +46,8 @@ namespace AvatarBridge
             var socket = root.AddComponent<YapsSocket>();
             socket.kind = kind;
             Build(socket);
-            string path = AssetDatabase.GenerateUniqueAssetPath(PrefabFolder + "/" + name + ".prefab");
+            // The same file each time: a prefab is a thing to update, not to number.
+            string path = PrefabFolder + "/" + name + ".prefab";
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
             Object.DestroyImmediate(root);
             return prefab;

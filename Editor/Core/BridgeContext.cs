@@ -49,6 +49,11 @@ namespace AvatarBridge
 
         public string OutputDir;
 
+        // Set by the ChilloutVR Toolkit: an avatar being checked or fixed
+        // in place, never converted. Texts that name the converter's
+        // options or its origin read differently.
+        public bool Standalone;
+
         // Parameter bookkeeping, filled by ParameterMenuConverter / ContactsConverter and
         // consumed by the animator rename pass.
         public HashSet<string> PreserveParameters = new HashSet<string>();
@@ -74,6 +79,7 @@ namespace AvatarBridge
             public int MaterialSlot;
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
+            public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
 
             // Measured from the mesh in world space. The plug object can sit
             // elsewhere; a contact box placed there lands short.

@@ -986,7 +986,7 @@ namespace AvatarBridge
                 $"{Join(listed, 6)} — these draw into ONE EYE ONLY under ChilloutVR's rendering mode. " +
                 "It looked fine in VRChat because VRChat's mode hands a shader both eyes without it asking, " +
                 "so expect this to be new. " +
-                (ctx.Settings.patchNonSpiShaders
+                (ctx.Standalone ? "The Toolkit's \"Patch shaders for VR stereo\" patches a copy and checks it compiles." : ctx.Settings.patchNonSpiShaders
                     ? "AvatarBridge tried to fix them and the entry above says why it couldn't."
                     : "Turn on \"Patch non-SPI shaders for VR\" in Advanced and convert again — it patches a " +
                       "copy and checks it compiles.") +

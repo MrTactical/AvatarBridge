@@ -98,6 +98,7 @@ namespace AvatarBridge
                 CvrAvatar = _target != null ? _target.GetComponent<CVRAvatar>() : null,
                 MergedController = animator != null ? animator.runtimeAnimatorController as AnimatorController : null,
                 OutputDir = _target != null ? OutputRoot + "/" + _target.name : OutputRoot,
+                Standalone = true,
             };
         }
 

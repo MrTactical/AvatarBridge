@@ -33,6 +33,7 @@ namespace AvatarBridge
             public float ActiveVertices;
             public bool FromSkinnedMesh;
             public List<string> Shapes = new List<string>();
+            public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
 
             // The frame the deform works in, world space at bake time. Not
             // the plug object's transform; anything measuring the plug uses this.
@@ -163,7 +164,8 @@ namespace AvatarBridge
 
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.
-            var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames, wantedShapes);
+            var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
+                out var movingShapes, wantedShapes);
 
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
@@ -212,6 +214,7 @@ namespace AvatarBridge
                 ActiveVertices = active,
                 FromSkinnedMesh = !staticMesh,
                 Shapes = shapeNames,
+                MovingShapes = movingShapes,
                 Origin = origin,
                 Rotation = rotation,
             };
@@ -467,9 +470,10 @@ namespace AvatarBridge
         // real face-tracking rig.
         static List<Vector3[]> CaptureShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
             List<float> active, List<Matrix4x4> placements, out List<string> names,
-            IList<string> wanted = null)
+            out List<string> movers, IList<string> wanted = null)
         {
             names = new List<string>();
+            movers = new List<string>();
             var captured = new List<Vector3[]>();
             if (mesh.blendShapeCount == 0)
             {
@@ -531,6 +535,7 @@ namespace AvatarBridge
                 if (moved > 1e-8f)
                 {
                     scored.Add((moved, s));
+                    movers.Add(mesh.GetBlendShapeName(s));
                 }
             }
 

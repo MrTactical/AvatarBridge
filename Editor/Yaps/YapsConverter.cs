@@ -217,6 +217,7 @@ namespace AvatarBridge
                 Length = result.Length,
                 Radius = result.Radius,
                 Shapes = result.Shapes,
+                MovingShapes = result.MovingShapes,
                 Origin = result.Origin,
                 Rotation = result.Rotation,
             });
@@ -370,13 +371,15 @@ namespace AvatarBridge
             // menu toggle get their lights wired to it; the rest are capped.
 
             // VRCFury bakes every socket branch inactive and relies on SPS's
-            // enable service, which is deleted. Wake from each light upward.
+            // enable service, which is deleted. Wake from each light up to
+            // the baked socket, and no further: what sits above it is the
+            // author's, on or off as they left it.
             int woken = 0;
             foreach (var socket in socketRoots)
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
-                    for (var at = light.transform; at != null && at != ctx.Target.transform;
+                    for (var at = light.transform; at != null && at != socket.parent;
                          at = at.parent)
                     {
                         if (!at.gameObject.activeSelf)
@@ -731,11 +734,19 @@ namespace AvatarBridge
 
                 Material material;
                 List<string> bakedShapes;
+                var already = renderer.sharedMaterials.Length > slot ? renderer.sharedMaterials[slot] : null;
                 if (shared != null)
                 {
                     material = shared.Material;
                     bakedShapes = shared.Shapes;
                     // _YAPS_Enabled stays 1: this material is a working plug too.
+                }
+                else if (already != null && already.HasProperty("_YAPS_Bake"))
+                {
+                    // A second socket on a mesh the first already baked:
+                    // one material, one set of stages, shared.
+                    material = already;
+                    bakedShapes = null;
                 }
                 else
                 {
@@ -749,6 +760,11 @@ namespace AvatarBridge
                     bakedShapes = result.Shapes;
 
                     var materials = renderer.sharedMaterials;
+                    if (slot < 0 || slot >= materials.Length || materials[slot] == null)
+                    {
+                        failures.Add($"{socketRoot.name}: its mesh has no material on the socket's slot");
+                        continue;
+                    }
                     var patched = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
                         ctx.Report, out string refusal, out _);
                     if (patched == null)
@@ -1114,7 +1130,9 @@ namespace AvatarBridge
                         int slot = plug.Shapes.IndexOf(shape);
                         if (slot < 0)
                         {
-                            missed.Add(shape);
+                            // Only a shape that moves the plug and lost its slot; the
+                            // rest of the mesh has nothing to do with the bake.
+                            if (plug.MovingShapes.Contains(shape)) missed.Add(shape);
                             continue;
                         }
 

@@ -554,7 +554,6 @@ namespace AvatarBridge
             mf.sharedMesh = mesh;
             var shader = Shader.Find(SimpleLitName) ?? Shader.Find("Standard");
             var mat = new Material(shader) { name = "YAPS Test Plug", color = new Color(0.85f, 0.55f, 0.65f) };
-            AssetDatabase.CreateAsset(mat, AssetDatabase.GenerateUniqueAssetPath(OutputRoot + "/Test Plug/YAPS Test Plug.mat"));
             mr.sharedMaterial = mat;
 
             var plug = root.AddComponent<YapsPlug>();
