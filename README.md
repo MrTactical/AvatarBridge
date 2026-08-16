@@ -725,9 +725,10 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
    Hierarchy, or in a `YAPS/` folder on the avatar) and **Make selected mesh a plug** — or, with a
    *bone* selected, **Make a plug from bone**, which bakes the skinned mesh that bone drives from
    that bone down, on the material slot weighted to it. Where a new socket or plug goes is the
-   Hierarchy selection, and a line under the buttons says what that is. Under *Tidy*, **Clean up
-   leftovers** sweeps an avatar for what a hand-deleted socket left behind: an animator layer with
-   no socket, a depth parameter nothing reads, a menu toggle aiming at nothing.
+   Hierarchy selection, and a line under the buttons says what that is. (Right-clicking a bone in
+   the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) Under *Tidy*,
+   **Clean up leftovers** sweeps an avatar for what a hand-deleted socket left behind: an animator
+   layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing.
 3. **Build.** Bakes every plug — measuring the mesh, patching the material's own shader, writing
    the knobs, wiring its size animations, announcing it to every socket family — and builds each
    socket: markers, shapes, and a menu toggle for anything the avatar cannot already switch off.
