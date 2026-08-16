@@ -69,14 +69,33 @@ namespace AvatarBridge
             Undo.RegisterFullObjectHierarchyUndo(root, "YAPS prop");
 
             // Grabbable. Move mode Transform: these are held against each
-            // other, and physics would only add drift. Theft off, because a
-            // channel value is written by whoever's socket the prop met, and
-            // that write hands the prop to them.
+            // other, and physics would only add drift.
+            //
+            // Theft is ALLOWED, and that is the lesser of two faults. A
+            // channel value is written by whoever's socket the prop met,
+            // not by whoever holds it, and that write re-sends the prop's
+            // position and marks it no longer remotely synced. With theft
+            // disallowed, CanPickup refuses anyone but whoever GrabbedBy
+            // names — and GrabbedBy only clears when updates stop arriving,
+            // which a socket still touching the prop keeps from happening.
+            // The prop then belongs to whoever last had it in a socket and
+            // nobody else can pick it up until it is respawned. Allowing
+            // theft costs the older fault instead: a prop can be tugged out
+            // of a remote hand the moment a socket switches on. Tick
+            // Disallow Theft on the CVR Pickup Object if you would rather
+            // have that one.
+            bool fresh = root.GetComponent<CVRPickupObject>() == null;
             var pickup = root.GetComponent<CVRPickupObject>();
             if (pickup == null) pickup = Undo.AddComponent<CVRPickupObject>(root);
             pickup.moveMode = CVRPickupObject.MoveMode.Transform;
             pickup.maximumGrabDistance = 8f;
-            pickup.disallowTheft = true;
+            // Only on a prop this is making for the first time: a user who
+            // ticked it themselves keeps their answer, and hears what it does.
+            if (fresh) pickup.disallowTheft = false;
+            else if (pickup.disallowTheft)
+                o.Notes.Add("Disallow Theft is on. Earlier builds set it, and on a prop with a contact channel it " +
+                            "means whoever last had the prop in a socket keeps it: nobody else can pick it up until " +
+                            "the prop is respawned. Untick it on the CVR Pickup Object unless you want that.");
 
             var spawnable = root.GetComponent<CVRSpawnable>();
             if (spawnable == null) spawnable = Undo.AddComponent<CVRSpawnable>(root);

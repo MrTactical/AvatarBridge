@@ -747,14 +747,25 @@ skinned mesh before you Build. TPS is written from its documented properties and
 Thry's system is no longer obtainable — so treat a TPS upgrade as something to look at in game.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
-and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup with *Disallow
-Theft* on (a channel value is written by whoever's socket the prop met, and that write would hand
-the prop to them), a trigger collider to grab by — sized from the bake, on the prop's own object because that is where the game looks for it, and a trigger so the prop passes through people instead of shoving them — and, for a baked plug, the synced
+and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup anyone can take, a
+trigger collider to grab by — sized from the bake, on the prop's own object because that is where
+the game looks for it, and a trigger so the prop passes through people instead of shoving them —
+and, for a baked plug, the synced
 contact channel: eight values, one trigger each, that reach every viewer, not just the ones whose
 client draws the marker lights. A prop with an animator controller of its own keeps it and gains
 the channel's layers; one without gets a channel controller. Run it again after a re-bake; it
 replaces its own work, not yours. **Verify prop** before each upload; the CCK's own inspector can
 blank a channel value's parameter name if the Spawnable is left open, and Verify puts it back.
+
+**Who owns a prop in a socket** is worth knowing before you upload one. A channel value is
+written by whoever's *socket* the prop met, not by whoever is holding it, and that write re-sends
+the prop's position and marks it no longer remotely synced. Two ways to go, and neither is free:
+with *Disallow Theft* **off** (what you get) the prop can be tugged out of a remote hand the
+moment a socket switches on, but everyone can always pick it up again; **on**, that tug is
+closed, and the prop then belongs to whoever last had it in a socket — `GrabbedBy` only clears
+when updates stop arriving, and a socket still touching the prop keeps them coming, so nobody
+else can pick it up until the prop is respawned. The tick is on the CVR Pickup Object if you want
+the other one.
 
 **Universal socket prefabs** — *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
 and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z the way a plug
