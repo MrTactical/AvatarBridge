@@ -1,9 +1,10 @@
 // A socket nobody can switch off holds a light slot forever, and a plug
 // with no switch cannot be put away. When nothing on the avatar already
 // toggles one, Build gives it an Advanced Settings entry the CCK turns
-// into a menu toggle and an animator layer of its own, and the toolkit
-// regenerates the menu animator itself, since a line telling the user to
-// press Create Animator went unread.
+// into a menu toggle, and the toolkit writes the layer and parameter
+// into the animator the avatar wears itself, in place, since a line
+// telling the user to press Create Animator went unread. YAPS toggles
+// default to off: a socket or a deform is opted into from the menu.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -18,10 +19,18 @@ namespace AvatarBridge
     public static class YapsToggles
     {
         // How many entries the toolkit added or removed, so a build knows
-        // whether the menu animator needs regenerating; and the machine
-        // names of removed entries, whose layers go with them.
+        // whether the animator needs touching; and which, by machine name,
+        // so the layer of an added entry is written and a removed one's
+        // taken out.
         public static int Edits { get; private set; }
+        static readonly List<string> _added = new List<string>();
         static readonly List<string> _removed = new List<string>();
+
+        static void NoteAdded(string machineName)
+        {
+            Edits++;
+            if (!string.IsNullOrEmpty(machineName)) _added.Add(machineName);
+        }
 
         public static void NoteRemoved(string machineName)
         {
@@ -29,21 +38,29 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(machineName)) _removed.Add(machineName);
         }
 
-        public static List<string> TakeRemoved()
-        {
-            var list = new List<string>(_removed);
-            _removed.Clear();
-            return list;
-        }
-
-        // Regenerates the avatar's menu animator when entries changed since
-        // `editsBefore`; the CCK's Create Animator, run for the user.
-        // Returns the note, or null when nothing changed.
+        // Puts the layers of entries added since `editsBefore` into the
+        // animator the avatar wears, and takes removed ones out. Returns
+        // the note, or null when nothing changed.
         public static string RefreshMenuAnimator(CVRAvatar avatar, int editsBefore)
         {
             if (avatar == null || Edits == editsBefore) return null;
-            YapsAasAnimator.Regenerate(avatar, TakeRemoved(), out string note);
-            return note;
+            var notes = new List<string>();
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            foreach (string machine in _added.ToList())
+            {
+                var entry = settings?.FirstOrDefault(e => e != null && e.machineName == machine);
+                if (entry == null) continue;
+                string note = YapsAasAnimator.Wire(avatar, entry);
+                if (note != null) notes.Add(note);
+            }
+            foreach (string machine in _removed.ToList())
+            {
+                string note = YapsAasAnimator.Unwire(avatar, machine);
+                if (note != null) notes.Add(note);
+            }
+            _added.Clear();
+            _removed.Clear();
+            return notes.Count > 0 ? string.Join("; ", notes) : null;
         }
 
         // What already switches this object, by name; null when nothing does.
@@ -166,7 +183,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, it is already switched by {already}";
             }
-            if (ours != null) return $"{label}: menu toggle already there";
+            if (ours != null)
+            {
+                // The entry is there; its layer may not be, if the animator
+                // was never regenerated. Written now, in place.
+                string wired = YapsAasAnimator.Wire(avatar, ours);
+                return $"{label}: menu toggle already there" + (wired != null ? "; " + wired : "");
+            }
             if (avatar.avatarSettings == null)
             {
                 avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
@@ -175,7 +198,7 @@ namespace AvatarBridge
             settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
-            Edits++;
+            NoteAdded(machine);
             settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = label,
@@ -183,7 +206,7 @@ namespace AvatarBridge
                 type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
                 toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
                 {
-                    defaultValue = target.activeSelf,
+                    defaultValue = false,
                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
                     gameObjectTargets = new List<CVRAdvancedSettingsTargetEntryGameObject>
                     {
@@ -217,7 +240,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, the plug is already switched by {already}";
             }
-            if (ours != null) return $"{label}: menu toggle already there";
+            if (ours != null)
+            {
+                // The entry is there; its layer may not be, if the animator
+                // was never regenerated. Written now, in place.
+                string wired = YapsAasAnimator.Wire(avatar, ours);
+                return $"{label}: menu toggle already there" + (wired != null ? "; " + wired : "");
+            }
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
@@ -233,7 +262,7 @@ namespace AvatarBridge
             settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
-            Edits++;
+            NoteAdded(machine);
             settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = label,
@@ -241,7 +270,7 @@ namespace AvatarBridge
                 type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
                 toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
                 {
-                    defaultValue = true,
+                    defaultValue = false,
                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
                     useAnimationClip = true,
                     animationClip = on,
