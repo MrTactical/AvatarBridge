@@ -82,7 +82,10 @@ namespace AvatarBridge
             if (spawnable == null) spawnable = Undo.AddComponent<CVRSpawnable>(root);
             spawnable.spawnHeight = 1.2f;
 
-            if (root.GetComponentInChildren<Collider>(true) == null) AddCollider(root, plug, o);
+            // On the root, not in a child: a collider a child owns is one
+            // the pickup cannot see, so a prop built by an early build
+            // stayed ungrabbable no matter how often this ran.
+            if (root.GetComponent<Collider>() == null) AddCollider(root, plug, o);
 
             if (plug != null)
             {
@@ -166,11 +169,17 @@ namespace AvatarBridge
         }
 
         // The collider a hand grabs by, and it has to be on the ROOT: the
-        // client reads its pickup's collider with TryGetComponent, on the
-        // pickup's own object, and a pickup with none can never be picked
-        // up. It is not a trigger either — a prop nobody can rest on the
-        // floor is half a prop, and the contact hosts carry their own
-        // trigger shapes.
+        // client reads its pickup's collider with TryGetComponent on the
+        // pickup's own object, and both grab paths — the interaction ray
+        // and the proximity overlap — look the pickup up from the collider
+        // they hit. A pickup with none can never be picked up.
+        //
+        // A trigger, and it must be: the client gives every pickup a
+        // KINEMATIC rigidbody, so a solid collider never rests on anything
+        // anyway; all it does is shove players about and hold the prop off
+        // the socket it is being brought to. Both grab paths take triggers
+        // — the proximity overlap asks for them, and the interaction ray
+        // leaves Physics.queriesHitTriggers alone, which is on.
         //
         // A capsule along the plug when the plug's frame lines up with the
         // root, since a capsule has a direction but no rotation; a box
@@ -189,7 +198,7 @@ namespace AvatarBridge
             {
                 float length = material.GetFloat("_YAPS_Length");
                 var capsule = Undo.AddComponent<CapsuleCollider>(root);
-                capsule.isTrigger = false;
+                capsule.isTrigger = true;
                 capsule.direction = 2;
                 capsule.height = length;
                 capsule.radius = Mathf.Max(0.02f, length * 0.12f);
@@ -201,7 +210,7 @@ namespace AvatarBridge
             var bounds = renderers[0].bounds;
             foreach (var r in renderers) bounds.Encapsulate(r.bounds);
             var box = Undo.AddComponent<BoxCollider>(root);
-            box.isTrigger = false;
+            box.isTrigger = true;
             box.center = root.transform.InverseTransformPoint(bounds.center);
             box.size = Vector3.Scale(bounds.size, new Vector3(
                 1f / Mathf.Max(root.transform.lossyScale.x, 1e-4f),

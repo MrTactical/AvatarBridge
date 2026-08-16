@@ -749,7 +749,7 @@ Thry's system is no longer obtainable — so treat a TPS upgrade as something to
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
 and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup with *Disallow
 Theft* on (a channel value is written by whoever's socket the prop met, and that write would hand
-the prop to them), a collider to grab by, sized from the bake and on the prop's own object because that is where the game looks for it, and — for a baked plug — the synced
+the prop to them), a trigger collider to grab by — sized from the bake, on the prop's own object because that is where the game looks for it, and a trigger so the prop passes through people instead of shoving them — and — for a baked plug — the synced
 contact channel: eight values, one trigger each, that reach every viewer, not just the ones whose
 client draws the marker lights. A prop with an animator controller of its own keeps it and gains
 the channel's layers; one without gets a channel controller. Run it again after a re-bake; it
