@@ -162,7 +162,7 @@ namespace AvatarBridge
 
         public const string AnimatableSocketProperties =
             "_YAPS_SocketPower  (shape strength, 0 is off)\n" +
-            "_YAPS_SocketShapeStart, _YAPS_SocketShapeFade  (four stages each, x y z w)";
+            "_YAPS_SocketShapeStart .. _YAPS_SocketShapeStart4, _YAPS_SocketShapeFade .. _YAPS_SocketShapeFade4  (sixteen shapes, four per float4, x y z w)";
 
         public static Button Button(string text, System.Action act)
         {
@@ -376,7 +376,7 @@ namespace AvatarBridge
             var opens = new BridgeElements.Card("Opens as a plug goes in");
             opens.Body.Add(BridgeElements.Hint(
                 "For a socket with a mesh of its own, origin at the entrance: pick that mesh, then up " +
-                "to four of its shapes. The entry opens as the plug arrives; each later one starts " +
+                "to sixteen of its shapes, several per depth if you like. The entry opens as the plug arrives; each later one starts " +
                 "deeper. Depths are fractions of the plug's length, and they stack. Baked by " +
                 "\"Bake every plug and verify\". A body mesh cannot open this way; its reactions " +
                 "stay with the animator."));
@@ -415,10 +415,11 @@ namespace AvatarBridge
                 var shapeNames = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToList();
                 var options = new List<string> { "— pick a shape —" };
                 options.AddRange(shapeNames);
-                string[] stageNames = { "Entry", "Depth 1", "Depth 2", "Depth 3" };
+                // Rows are named by their depth; several rows may share one.
+                string StageName(int i, float at) => i == 0 && at <= 0.001f ? "Entry" : $"At {at:0.00}";
                 var tint = hole ? YapsInspectorStyle.HoleColour : YapsInspectorStyle.RingColour;
 
-                for (int i = 0; i < shapesProp.arraySize && i < 4; i++)
+                for (int i = 0; i < shapesProp.arraySize && i < YapsBaker.MaxShapes; i++)
                 {
                     int index = i;
                     var row = shapesProp.GetArrayElementAtIndex(i);
@@ -431,7 +432,7 @@ namespace AvatarBridge
                     stage.AddToClassList("ab-stage");
                     var stripe = new VisualElement();
                     stripe.AddToClassList("ab-report-stripe");
-                    stripe.style.backgroundColor = Color.Lerp(tint, Color.white, 0.6f - i * 0.2f);
+                    stripe.style.backgroundColor = Color.Lerp(tint, Color.white, Mathf.Clamp01(0.6f - start.floatValue * 0.6f));
                     stage.Add(stripe);
                     var inner = new VisualElement();
                     inner.style.flexGrow = 1;
@@ -440,7 +441,7 @@ namespace AvatarBridge
                     var head = new VisualElement();
                     head.AddToClassList("ab-row");
                     head.style.alignItems = Align.Center;
-                    var shapePopup = new PopupField<string>(stageNames[i], options, sIndex + 1);
+                    var shapePopup = new PopupField<string>(StageName(i, start.floatValue), options, sIndex + 1);
                     shapePopup.AddToClassList("ab-field");
                     shapePopup.style.flexGrow = 1;
                     shapePopup.RegisterValueChangedCallback(e =>
@@ -477,19 +478,35 @@ namespace AvatarBridge
                         inner.Add(new HelpBox($"\"{name.stringValue}\" is not on this mesh.", HelpBoxMessageType.Warning));
                     opens.Body.Add(stage);
                 }
-                if (shapesProp.arraySize < 4)
+                if (shapesProp.arraySize < YapsBaker.MaxShapes)
                 {
-                    opens.Body.Add(YapsInspectorStyle.Button(
-                        shapesProp.arraySize == 0 ? "+ Add the entry shape" : "+ Add a deeper shape", () =>
-                        {
-                            shapesProp.arraySize++;
-                            var row = shapesProp.GetArrayElementAtIndex(shapesProp.arraySize - 1);
-                            row.FindPropertyRelative("blendshape").stringValue = "";
-                            row.FindPropertyRelative("startsAt").floatValue = 0.25f * (shapesProp.arraySize - 1);
-                            row.FindPropertyRelative("fadeOver").floatValue = 0.3f;
-                            so.ApplyModifiedProperties();
-                            RebuildLater();
-                        }));
+                    // Two ways to add: another shape at the same depth as the
+                    // last row (several open together), or one deeper.
+                    void AddRow(float startsAt, float fadeOver)
+                    {
+                        shapesProp.arraySize++;
+                        var row = shapesProp.GetArrayElementAtIndex(shapesProp.arraySize - 1);
+                        row.FindPropertyRelative("blendshape").stringValue = "";
+                        row.FindPropertyRelative("startsAt").floatValue = startsAt;
+                        row.FindPropertyRelative("fadeOver").floatValue = fadeOver;
+                        so.ApplyModifiedProperties();
+                        RebuildLater();
+                    }
+                    int n = shapesProp.arraySize;
+                    float lastStart = n > 0 ? shapesProp.GetArrayElementAtIndex(n - 1).FindPropertyRelative("startsAt").floatValue : 0f;
+                    float lastFade = n > 0 ? shapesProp.GetArrayElementAtIndex(n - 1).FindPropertyRelative("fadeOver").floatValue : 0.3f;
+                    var adders = new List<VisualElement>();
+                    if (n == 0)
+                    {
+                        adders.Add(YapsInspectorStyle.Button("+ Add the entry shape", () => AddRow(0f, 0.3f)));
+                    }
+                    else
+                    {
+                        adders.Add(YapsInspectorStyle.Button("+ Another shape at the same depth", () => AddRow(lastStart, lastFade)));
+                        adders.Add(YapsInspectorStyle.Button("+ A shape deeper in", () => AddRow(Mathf.Min(1f, lastStart + 0.25f), 0.3f)));
+                    }
+                    opens.Body.Add(BridgeElements.Row(adders.ToArray()));
+                    opens.Body.Add(BridgeElements.Hint($"{n} of {YapsBaker.MaxShapes} shapes. Several may share a depth; each opens over its own range."));
                 }
                 if (shapesProp.arraySize > 0)
                     opens.Body.Add(YapsInspectorStyle.Field(powerProp, type.GetField("shapePower"), "Strength"));
@@ -533,22 +550,21 @@ namespace AvatarBridge
                     EditorUtility.SetDirty(bakedMat);
                 });
                 opensHow.Body.Add(power);
-                string[] stageNames = { "Entry", "Depth 1", "Depth 2", "Depth 3" };
-                for (int i = 0; i < 4; i++)
+                // One range per baked shape, named after the shape when the
+                // component knows it, else by its slot.
+                int baked = bakedMat.HasProperty("_YAPS_ShapeCount") ? Mathf.RoundToInt(bakedMat.GetFloat("_YAPS_ShapeCount")) : 0;
+                for (int i = 0; i < Mathf.Min(baked, YapsBaker.MaxShapes); i++)
                 {
                     int stage = i;
-                    Vector4 starts = bakedMat.GetVector("_YAPS_SocketShapeStart");
-                    Vector4 fades = bakedMat.GetVector("_YAPS_SocketShapeFade");
-                    var mm = new MinMaxSlider(stageNames[i], starts[i], Mathf.Min(1f, starts[i] + fades[i]), 0f, 1f);
+                    var (st0, fd0) = YapsNativeBuilder.ReadStage(bakedMat, i);
+                    string label = i < socket.shapes.Count && !string.IsNullOrEmpty(socket.shapes[i].blendshape)
+                        ? socket.shapes[i].blendshape : $"Shape {i}";
+                    var mm = new MinMaxSlider(label, st0, Mathf.Min(1f, st0 + fd0), 0f, 1f);
                     mm.AddToClassList("ab-field");
                     mm.RegisterValueChangedCallback(e =>
                     {
                         Undo.RecordObject(bakedMat, "YAPS socket shape");
-                        Vector4 st = bakedMat.GetVector("_YAPS_SocketShapeStart");
-                        Vector4 fd = bakedMat.GetVector("_YAPS_SocketShapeFade");
-                        st[stage] = e.newValue.x; fd[stage] = Mathf.Max(0.01f, e.newValue.y - e.newValue.x);
-                        bakedMat.SetVector("_YAPS_SocketShapeStart", st);
-                        bakedMat.SetVector("_YAPS_SocketShapeFade", fd);
+                        YapsNativeBuilder.WriteStage(bakedMat, stage, e.newValue.x, e.newValue.y - e.newValue.x);
                         EditorUtility.SetDirty(bakedMat);
                     });
                     opensHow.Body.Add(mm);

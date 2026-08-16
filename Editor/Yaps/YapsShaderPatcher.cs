@@ -102,8 +102,14 @@ namespace AvatarBridge
         [Header(YAPS socket)]
         _YAPS_SocketPower (""YAPS socket power"", Range(0,1)) = 0
         _YAPS_SocketDepth (""YAPS socket depth (-1 none)"", Range(-1,1)) = -1
-        _YAPS_SocketShapeStart (""YAPS socket shape starts"", Vector) = (0, 0.25, 0.5, 0.75)
-        _YAPS_SocketShapeFade (""YAPS socket shape fades"", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeStart (""YAPS socket shape starts 0-3"", Vector) = (0, 0.25, 0.5, 0.75)
+        _YAPS_SocketShapeStart2 (""YAPS socket shape starts 4-7"", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeStart3 (""YAPS socket shape starts 8-11"", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeStart4 (""YAPS socket shape starts 12-15"", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeFade (""YAPS socket shape fades 0-3"", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade2 (""YAPS socket shape fades 4-7"", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade3 (""YAPS socket shape fades 8-11"", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade4 (""YAPS socket shape fades 12-15"", Vector) = (0.3, 0.3, 0.3, 0.3)
 ";
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,

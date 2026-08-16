@@ -286,7 +286,9 @@ namespace AvatarBridge
             // A Slider, not an InputSingle: the quick menu renders InputSingle as an unclamped
             // numeric keypad (the CCK type carries only a defaultValue; no min, max or step),
             // which in practice meant typing 9999 and watching nothing happen. Sliders drag.
-            settings.Add(new CVRAdvancedSettingsEntry
+            // First in the menu: it is the one everybody reaches for, and the
+            // end of a long list is where nobody looks.
+            settings.Insert(0, new CVRAdvancedSettingsEntry
             {
                 name = HeightMenu,
                 machineName = HeightParam,

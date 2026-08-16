@@ -2,6 +2,7 @@
 // or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
+using ABI.CCK.Components;
 using System.Linq;
 using AvatarBridge.Yaps;
 using UnityEditor;
@@ -627,6 +628,10 @@ namespace AvatarBridge
                 socketsBuilt++;
                 string shapes = YapsNativeBuilder.BakeSocket(s);
                 if (shapes != null) lines.Add(shapes);
+                // A socket nobody can switch off holds a light slot forever.
+                var avatarForToggle = s.GetComponentInParent<CVRAvatar>();
+                string toggled = YapsToggles.EnsureObjectToggle(s.gameObject, avatarForToggle, s.name);
+                if (toggled != null) lines.Add(toggled);
             }
             Rescan();
             _summary.text = $"Built: {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")}, {socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.  " + string.Join("  ", lines);

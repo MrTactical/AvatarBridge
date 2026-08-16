@@ -158,6 +158,14 @@ namespace AvatarBridge
             // sliders and bone scale, now tell the material too.
             WireSize(plug, renderer, result, o);
 
+            // A switch for the deform, unless the avatar already has one.
+            var avatarForToggle = plug.GetComponentInParent<CVRAvatar>();
+            if (avatarForToggle != null)
+            {
+                string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, plug.name + " YAPS");
+                if (toggled != null) o.Notes.Add(toggled);
+            }
+
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
                         $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
@@ -339,6 +347,50 @@ namespace AvatarBridge
             return go;
         }
 
+        // The stage table on a socket material: sixteen starts and fades in
+        // four float4s each. Missing entries read as the defaults.
+        static readonly string[] StartProps = { "_YAPS_SocketShapeStart", "_YAPS_SocketShapeStart2", "_YAPS_SocketShapeStart3", "_YAPS_SocketShapeStart4" };
+        static readonly string[] FadeProps = { "_YAPS_SocketShapeFade", "_YAPS_SocketShapeFade2", "_YAPS_SocketShapeFade3", "_YAPS_SocketShapeFade4" };
+
+        public static void WriteStages(Material m, IList<(float start, float fade)> stages)
+        {
+            for (int pack = 0; pack < 4; pack++)
+            {
+                var starts = Vector4.zero;
+                var fades = new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
+                for (int lane = 0; lane < 4; lane++)
+                {
+                    int i = pack * 4 + lane;
+                    if (i < stages.Count)
+                    {
+                        starts[lane] = stages[i].start;
+                        fades[lane] = Mathf.Max(0.01f, stages[i].fade);
+                    }
+                }
+                m.SetVector(StartProps[pack], starts);
+                m.SetVector(FadeProps[pack], fades);
+            }
+        }
+
+        public static (float start, float fade) ReadStage(Material m, int i)
+        {
+            int pack = Mathf.Clamp(i / 4, 0, 3), lane = i & 3;
+            var starts = m.HasProperty(StartProps[pack]) ? m.GetVector(StartProps[pack]) : Vector4.zero;
+            var fades = m.HasProperty(FadeProps[pack]) ? m.GetVector(FadeProps[pack]) : new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
+            return (starts[lane], fades[lane]);
+        }
+
+        public static void WriteStage(Material m, int i, float start, float fade)
+        {
+            int pack = Mathf.Clamp(i / 4, 0, 3), lane = i & 3;
+            var starts = m.HasProperty(StartProps[pack]) ? m.GetVector(StartProps[pack]) : Vector4.zero;
+            var fades = m.HasProperty(FadeProps[pack]) ? m.GetVector(FadeProps[pack]) : new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
+            starts[lane] = start;
+            fades[lane] = Mathf.Max(0.01f, fade);
+            m.SetVector(StartProps[pack], starts);
+            m.SetVector(FadeProps[pack], fades);
+        }
+
         // --- the socket's shapes ------------------------------------------------
         //
         // The socket shader measures depth from its mesh's own origin, so
@@ -406,15 +458,7 @@ namespace AvatarBridge
                 renderer.sharedMaterials = mats;
             }
 
-            var starts = Vector4.zero;
-            var fades = new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
-            for (int i = 0; i < stages.Count && i < 4; i++)
-            {
-                starts[i] = stages[i].startsAt;
-                fades[i] = Mathf.Max(0.01f, stages[i].fadeOver);
-            }
-            material.SetVector("_YAPS_SocketShapeStart", starts);
-            material.SetVector("_YAPS_SocketShapeFade", fades);
+            WriteStages(material, stages.Select(s => (s.startsAt, s.fadeOver)).ToList());
             material.SetFloat("_YAPS_SocketPower", socket.shapePower);
             material.SetFloat("_YAPS_SocketDepth", -1f);
             EditorUtility.SetDirty(material);
@@ -454,14 +498,13 @@ namespace AvatarBridge
             // Shape rows from the bake, staged as the material says.
             if (bakedShapes != null && material != null && material.HasProperty("_YAPS_SocketShapeStart"))
             {
-                var starts = material.GetVector("_YAPS_SocketShapeStart");
-                var fades = material.GetVector("_YAPS_SocketShapeFade");
                 comp.shapes.Clear();
-                for (int i = 0; i < bakedShapes.Count && i < 4; i++)
+                for (int i = 0; i < bakedShapes.Count && i < YapsBaker.MaxShapes; i++)
                 {
+                    var (start, fade) = ReadStage(material, i);
                     comp.shapes.Add(new YapsSocket.ShapeStage
                     {
-                        blendshape = bakedShapes[i], startsAt = starts[i], fadeOver = fades[i],
+                        blendshape = bakedShapes[i], startsAt = start, fadeOver = fade,
                     });
                 }
                 if (material.HasProperty("_YAPS_SocketPower")) comp.shapePower = material.GetFloat("_YAPS_SocketPower");

@@ -60,20 +60,27 @@
 float _YAPS_SocketDepth;
 
 // Where each shape starts and how far it takes to arrive, in fractions of
-// the plug's length. Four shapes: an entry-open plus three staged ones,
-// the arrangement DPS settled on and the one socket authors already build
-// their meshes around.
-//
-// KNOWN LIMIT, and it bites the converter rather than a prop. Staging here
-// is POSITIONAL, shape 0 is the entry, shape 3 the deepest, but the
-// baker picks shapes by how far they move a mesh and keeps them in that
-// order. Ties hold their mesh order, so a set of evenly sized shapes comes
-// through correctly, and the test tube's four do. A socket whose entry
-// shape moves further than its deep ones would arrive scrambled. Baking a
-// socket in mesh order, or mapping names to stages, is the fix, and it is
-// not written yet.
-float4 _YAPS_SocketShapeStart;
-float4 _YAPS_SocketShapeFade;
+// the plug's length. Up to sixteen, each with its own depth, so several can
+// open together; the toolkit bakes the socket's named shapes in the order
+// the author staged them, the converter its own picks.
+float4 _YAPS_SocketShapeStart, _YAPS_SocketShapeStart2, _YAPS_SocketShapeStart3, _YAPS_SocketShapeStart4;
+float4 _YAPS_SocketShapeFade, _YAPS_SocketShapeFade2, _YAPS_SocketShapeFade3, _YAPS_SocketShapeFade4;
+
+float YapsSocketStageStart(uint s)
+{
+    uint pack = s >> 2, lane = s & 3;
+    float4 v = pack == 0 ? _YAPS_SocketShapeStart : pack == 1 ? _YAPS_SocketShapeStart2
+             : pack == 2 ? _YAPS_SocketShapeStart3 : _YAPS_SocketShapeStart4;
+    return v[lane];
+}
+
+float YapsSocketStageFade(uint s)
+{
+    uint pack = s >> 2, lane = s & 3;
+    float4 v = pack == 0 ? _YAPS_SocketShapeFade : pack == 1 ? _YAPS_SocketShapeFade2
+             : pack == 2 ? _YAPS_SocketShapeFade3 : _YAPS_SocketShapeFade4;
+    return v[lane];
+}
 
 // How much of the baked shapes to apply at all. Zero is off, so a socket
 // converted before this existed behaves exactly as it did.
@@ -168,10 +175,10 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     uint block = 1 + total * 10;
 
     [loop]
-    for (uint s = 0; s < min(shapeCount, 4u); s++)
+    for (uint s = 0; s < min(shapeCount, 16u); s++)
     {
-        float start = _YAPS_SocketShapeStart[s];
-        float fade = max(_YAPS_SocketShapeFade[s], 0.0001);
+        float start = YapsSocketStageStart(s);
+        float fade = max(YapsSocketStageFade(s), 0.0001);
 
         // CUMULATIVE, as DPS is: once a shape has arrived it stays, and
         // going deeper stacks the next one on top. Not a travelling band , 

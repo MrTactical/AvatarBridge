@@ -115,8 +115,14 @@ namespace AvatarBridge
                 Knobs = new[]
                 {
                     new Knob("_YAPS_SocketPower", "Shape strength", RowKind.Slider, "DPS", "0 is off"),
-                    new Knob("_YAPS_SocketShapeStart", "Stage starts", RowKind.Vector, "DPS", "entry, then depths 1–3, as fractions of the plug's length"),
-                    new Knob("_YAPS_SocketShapeFade", "Stage fades", RowKind.Vector, "DPS", "how far past its start each stage takes to arrive"),
+                    new Knob("_YAPS_SocketShapeStart", "Starts, shapes 0-3", RowKind.Vector, "DPS", "where each shape begins to open, as a fraction of the plug's length; the component's rows are the friendlier view"),
+                    new Knob("_YAPS_SocketShapeStart2", "Starts, shapes 4-7", RowKind.Vector, "DPS"),
+                    new Knob("_YAPS_SocketShapeStart3", "Starts, shapes 8-11", RowKind.Vector, "DPS"),
+                    new Knob("_YAPS_SocketShapeStart4", "Starts, shapes 12-15", RowKind.Vector, "DPS"),
+                    new Knob("_YAPS_SocketShapeFade", "Fades, shapes 0-3", RowKind.Vector, "DPS", "how far past its start each shape takes to arrive"),
+                    new Knob("_YAPS_SocketShapeFade2", "Fades, shapes 4-7", RowKind.Vector, "DPS"),
+                    new Knob("_YAPS_SocketShapeFade3", "Fades, shapes 8-11", RowKind.Vector, "DPS"),
+                    new Knob("_YAPS_SocketShapeFade4", "Fades, shapes 12-15", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketDepth", "Depth from channel", RowKind.Slider, help: "-1 reads plugs by their tracker light alone"),
                 }},
             new Section { Title = "Debug", Tint = TintDebug,
