@@ -412,6 +412,8 @@ namespace AvatarBridge
             var lines = new List<string>();
             if (socket == null) return lines;
             Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Build YAPS socket");
+            string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>());
+            if (renamed != null) lines.Add($"✓ {renamed}");
             YapsSocketBuilder.Build(socket);
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);

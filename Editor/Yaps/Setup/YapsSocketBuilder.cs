@@ -22,6 +22,7 @@ namespace AvatarBridge
         const string LightsName = "YAPS Lights";
         const string PointersName = "YAPS Pointers";
         const string PrefabFolder = "Assets/YAPS/Prefabs";
+        public const string PlugPropPrefabPath = PrefabFolder + "/YAPS Plug Prop.prefab";
 
         // --- the prefabs ------------------------------------------------
 
@@ -68,7 +69,7 @@ namespace AvatarBridge
             }
             var prop = YapsPropBuilder.MakeProp(root);
 
-            string path = PrefabFolder + "/YAPS Plug Prop.prefab";
+            string path = PlugPropPrefabPath;
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
             Object.DestroyImmediate(root);
             AssetDatabase.SaveAssets();

@@ -90,9 +90,25 @@ namespace AvatarBridge
             string bone = BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>());
             string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
             if (bone == null) return socket.name;
-            return DefaultSocketNames.Contains(socket.name)
-                ? $"{bone} {kind}"
-                : $"{socket.name} ({bone})";
+            if (DefaultSocketNames.Contains(socket.name)) return $"{bone} {kind}";
+            // A name that already says where it is says it once.
+            return socket.name.Contains(bone) ? socket.name : $"{socket.name} ({bone})";
+        }
+
+        // The default-named socket object renamed after its bone, so the
+        // Hierarchy reads like the menu. Left alone when anything already
+        // animates it by path, and when the user has named it themselves.
+        public static string RenameToLabel(YapsSocket socket, CVRAvatar avatar)
+        {
+            if (socket == null || !DefaultSocketNames.Contains(socket.name)) return null;
+            string label = LabelFor(socket);
+            if (label == socket.name) return null;
+            if (ToggledBy(socket.gameObject, avatar) != null) return null;
+            string was = socket.name;
+            Undo.RecordObject(socket.gameObject, "YAPS socket name");
+            socket.gameObject.name = label;
+            EditorUtility.SetDirty(socket.gameObject);
+            return $"renamed \"{was}\" to \"{label}\"";
         }
 
         public static string LabelFor(YapsPlug plug)

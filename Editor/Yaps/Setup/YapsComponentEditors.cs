@@ -180,13 +180,16 @@ namespace AvatarBridge
     static class YapsPreview
     {
         public const string PlugName = "YAPS Preview Plug";
+        static bool _fromPrefab;
         static bool _animating;
 
         public static void Set(YapsSocket socket, bool on, bool spawnPlugIfNone = true)
         {
             if (socket == null) return;
             socket.preview = on;
-            if (on && spawnPlugIfNone && CountBakedPlugs() == 0) Spawn(socket);
+            // A plug on the far side of the scene is no use to look at, so
+            // the test one arrives unless a real plug is already close.
+            if (on && spawnPlugIfNone && CountBakedPlugsNear(socket, 2f) == 0) Spawn(socket);
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
@@ -212,6 +215,21 @@ namespace AvatarBridge
             foreach (var s in sockets)
                 if (s.preview) YapsShapeSim.FollowPlugs(s);
             SceneView.RepaintAll();
+        }
+
+        // Baked plugs whose base is within `metres` of the socket.
+        public static int CountBakedPlugsNear(YapsSocket socket, float metres)
+        {
+            if (socket == null) return CountBakedPlugs();
+            int n = 0;
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            {
+                if (!PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
+                float gap = Mathf.Min(Vector3.Distance(origin, socket.transform.position),
+                                      Vector3.Distance(origin + forward * length, socket.transform.position));
+                if (gap <= metres + length) n++;
+            }
+            return n;
         }
 
         public static int CountBakedPlugs()
@@ -260,13 +278,28 @@ namespace AvatarBridge
         static void Spawn(YapsSocket socket)
         {
             if (GameObject.Find(PlugName) != null) return;
-            // Keep the socket selected; its inspector holds the stop button.
             // For shapes on another mesh the game measures depth in reaches,
             // so the test plug is one reach long: all the way in reads 1.
             bool contact = socket.renderer != null && socket.shapes.Count > 0
                            && !YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
             float length = contact ? YapsSocketReactions.ReachOf(socket) : 0.25f;
-            var go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);
+
+            // The prop prefab when there is one: it is baked on the shader
+            // the project has now, which a plug built here may not be.
+            _fromPrefab = false;
+            GameObject go = null;
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.PlugPropPrefabPath);
+            if (prefab != null)
+            {
+                go = (GameObject) PrefabUtility.InstantiatePrefab(prefab);
+                if (go != null)
+                {
+                    _fromPrefab = true;
+                    Undo.RegisterCreatedObjectUndo(go, "YAPS preview plug");
+                }
+            }
+            // Keep the socket selected; its inspector holds the stop button.
+            if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);
             if (go == null) return;
             go.name = PlugName;
             var t = socket.transform;
@@ -293,6 +326,14 @@ namespace AvatarBridge
         {
             var existing = GameObject.Find(PlugName);
             if (existing == null) return;
+            // A prefab instance owns none of its assets: destroying them
+            // would gut the prefab.
+            if (_fromPrefab || PrefabUtility.IsPartOfPrefabInstance(existing))
+            {
+                Object.DestroyImmediate(existing);
+                _fromPrefab = false;
+                return;
+            }
             var doomed = new List<string>();
             var mf = existing.GetComponent<MeshFilter>();
             var mr = existing.GetComponent<MeshRenderer>();
@@ -526,7 +567,7 @@ namespace AvatarBridge
             bool hole = kindProp.enumValueIndex == (int) YapsSocket.SocketKind.Hole;
             bool built = IsBuilt(socket.transform);
 
-            _root.Add(BridgeElements.Banner((hole ? "Hole" : "Ring") + "  ·  " + socket.name,
+            _root.Add(BridgeElements.Banner((hole ? "Hole" : "Ring") + "  ·  " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built — no plug can find it yet",
                 built ? "YAPS" : "not built"));
 
@@ -762,7 +803,7 @@ namespace AvatarBridge
             body.Add(opens);
 
             // See it work.
-            int bakedPlugs = YapsPreview.CountBakedPlugs();
+            int bakedPlugs = YapsPreview.CountBakedPlugsNear(socket, 2f);
             var see = new BridgeElements.Card("See it work");
             string shapesToo = contactRoute && shapesProp.arraySize > 0
                 ? $" The shapes follow the plug's tip as the game would: 0 at the socket plane, 1 at {YapsSocketReactions.ReachOf(socket):0.00} m in."

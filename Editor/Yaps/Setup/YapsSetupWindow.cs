@@ -504,7 +504,14 @@ namespace AvatarBridge
                 if (f.Renderer != null && f.Kind == YapsScanner.Kind.Socket) detail.Add("shapes on " + f.Renderer.name);
                 detail.AddRange(f.Notes);
 
-                var row = BridgeElements.ReportRow(what, f.Name, string.Join("  ·  ", detail), colour, alt);
+                // By the bone it hangs from, so two rings are two rows a
+                // reader can tell apart.
+                var sc = f.Root != null ? f.Root.GetComponent<YapsSocket>() : null;
+                var pc = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
+                string title = sc != null ? YapsToggles.LabelFor(sc)
+                             : pc != null ? YapsToggles.LabelFor(pc)
+                             : f.Name;
+                var row = BridgeElements.ReportRow(what, title, string.Join("  ·  ", detail), colour, alt);
                 var captured = f;
                 row.RegisterCallback<ClickEvent>(_ =>
                 {

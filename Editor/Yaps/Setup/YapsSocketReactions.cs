@@ -1,19 +1,6 @@
-// A socket's shapes on a mesh that is not the socket, the body as a rule:
-// the shader cannot open those, since it measures depth from the mesh's
-// origin, so a contact does. A trigger on the socket reads the plug's tip
-// pointer into a depth parameter, and a layer in the avatar's own
-// controller plays the staged shapes from it.
-//
-// The depth is SYNCED, unlike the contact-driven parameters the converter
-// makes local. Those are read by the client on every machine; this one is
-// not. ChilloutVR creates a trigger's receiver with localOnly set and its
-// task writes PlayerSetup — the local player — so the contact is computed
-// on the wearer's machine alone. A '#' name never leaves it and everyone
-// else sees a still body. 32 bits per socket, and the client registers a
-// synced parameter only while the avatar is under the 3200-bit cap.
-//
-// TPS, SPS and YAPS plugs carry the tip pointer; a DPS light-only plug
-// does not.
+// Shapes on a mesh the shader cannot open: a depth trigger drives them
+// instead. The depth syncs, since the client runs this contact on the
+// wearer's machine only.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -39,29 +26,16 @@ namespace AvatarBridge
         // When no plug on the avatar says how long a plug is, this deep is 1.
         public const float DefaultReach = 0.25f;
 
-        // The depth parameter is SYNCED, and has to be. The client makes the
-        // trigger's receiver localOnly and its task writes PlayerSetup's own
-        // animator, so a socket's shapes only ever move on the wearer's
-        // machine; a '#' name never leaves it, and everyone else sees a still
-        // body. 32 bits of the avatar's 3200 per socket, and the client
-        // registers a synced parameter only while AASBitUsage is under that
-        // cap. The name carries no spaces: a parameter CVR will not take is
-        // one nothing writes at all, locally or otherwise.
-        // Named after the bone the socket hangs from, like its menu entry:
-        // an avatar can carry a dozen sockets and "YAPS Ring" tells nobody
-        // which one this is. The socket remembers what it was called last
-        // build, so a rename moves the layer rather than leaving a second.
+        // Synced, and named after the bone. No '#', no spaces: CVR takes
+        // neither.
         public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(YapsToggles.LabelFor(socket)) + "/Depth";
 
-        // What earlier builds used, for a rebuild to clear out.
         public static string LegacyParameter(YapsSocket socket) => "#YAPS/" + Sanitise(socket.name) + "/Depth";
 
         public static string LayerName(YapsSocket socket) => "YAPS " + YapsToggles.LabelFor(socket) + " reactions";
 
-        // How the avatar stands against ChilloutVR's 3200-bit cap, for the
-        // report. The client registers a synced parameter only while the
-        // tally is under it, so a full avatar silently drops the depth and
-        // the shapes go still for everyone but the wearer.
+        // Sync tally for the report. Past the cap the client drops the
+        // parameter and only the wearer sees the shapes.
         static string SyncRoom(CVRAvatar avatar)
         {
             if (avatar == null) return "";
