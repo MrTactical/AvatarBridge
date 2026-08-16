@@ -444,6 +444,9 @@ namespace AvatarBridge
                     var shapePopup = new PopupField<string>(StageName(i, start.floatValue), options, sIndex + 1);
                     shapePopup.AddToClassList("ab-field");
                     shapePopup.style.flexGrow = 1;
+                    shapePopup.style.flexShrink = 1;
+                    shapePopup.style.minWidth = 0;
+                    shapePopup.style.width = StyleKeyword.Auto;
                     shapePopup.RegisterValueChangedCallback(e =>
                     {
                         int picked = shapePopup.index - 1;
@@ -457,6 +460,8 @@ namespace AvatarBridge
                         so.ApplyModifiedProperties();
                         RebuildLater();
                     });
+                    remove.style.flexShrink = 0;
+                    remove.style.marginLeft = 4;
                     head.Add(remove);
                     inner.Add(head);
 
