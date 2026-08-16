@@ -20,3 +20,6 @@ desktop.ini
 
 # Development spike and probes; local only.
 /Tools/SpsSpike/
+
+# Superseded local builds.
+*.unitypackage.superseded-*

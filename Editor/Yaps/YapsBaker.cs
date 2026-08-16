@@ -102,15 +102,9 @@ namespace AvatarBridge
                     "baking, then move it back afterwards.");
             }
 
-            // The shaft direction and origin are measured from the mesh, not
-            // taken from the plug root, whose rotation is whatever the author left.
-            //
-            // A skinned mesh is baked in that measured frame; the shader
-            // recovers it per vertex from the bones. A plain mesh has no
-            // bones to recover it from, so the shader takes the object's
-            // own origin and +Z, and the markers sit there too. Its bake
-            // is in that frame, mesh units, and the measurement only says
-            // how far the mesh disagrees with it.
+            // Frame measured from the mesh, not from the plug root. A
+            // plain mesh bakes in its object's own origin and +Z instead:
+            // it has no bones for the shader to recover a frame from.
             bool staticMesh = skin == null || skin.bones == null || skin.bones.Length == 0;
             Vector3 rootPos = plugRoot.position;
             Quaternion rootRot = plugRoot.rotation;
@@ -386,17 +380,10 @@ namespace AvatarBridge
             return true;
         }
 
-        // Both the origin AND the axis come from the mesh, because neither
-        // can be taken from the object VRCFury leaves behind once its own
-        // SPS step is suppressed, measured on a real avatar, that object's
-        // rotation pointed across the plug and its position sat a quarter
-        // of a metre back up the body, so a plug 0.427 m long baked first at
-        // 0.667 and then at 0.693.
-        //
-        // A plug is a rod, and a rod's own axis is the direction its points
-        // are most spread along. That is the dominant eigenvector of their
-        // covariance, found by power iteration; no transform is consulted at
-        // all. The base is then simply the near end along that axis.
+        // Origin and axis both from the mesh: the object VRCFury leaves
+        // behind points anywhere. A rod's axis is where its points spread
+        // most, the dominant eigenvector of their covariance. The base is
+        // the near end along it.
         static void MeasureFrame(List<Vector3> positions, List<float> active, Vector3 rootPosition, Quaternion rootRotation, bool flip,
             out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
@@ -479,15 +466,9 @@ namespace AvatarBridge
             rotation = Quaternion.LookRotation(axis, up);
         }
 
-        // One entry per shape that actually moves the plug, holding a delta
-        // position, normal and tangent per vertex, nine floats, in the
-        // same plug frame as the base block.
-        //
-        // Shapes that leave the plug alone are skipped rather than stored
-        // as zeros: an avatar can carry two hundred blendshapes and four
-        // slots, so which four is the whole question, and "the ones that
-        // move it most" is the only answer that survives contact with a
-        // real face-tracking rig.
+        // One entry per shape that moves the plug: delta position, normal
+        // and tangent per vertex, in the plug frame. Shapes that leave it
+        // alone are skipped, not stored as zeros.
         static List<Vector3[]> CaptureShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
             List<float> active, List<Matrix4x4> placements, out List<string> names,
             out List<string> movers, IList<string> wanted = null)
@@ -559,23 +540,8 @@ namespace AvatarBridge
                 }
             }
 
-            // SELECT by movement, EMIT in mesh order. Two different
-            // questions that were being answered with one sort.
-            //
-            // Which shapes to keep when more than sixteen exist is a
-            // question about cost, and the biggest movers are the right
-            // answer. What ORDER to write them in is a question about
-            // meaning: a socket stages its shapes by INDEX, shape 0 is the
-            // entry, shape 3 the deepest, so a socket whose entry shape
-            // moved furthest would open at full depth and close as the plug
-            // went in.
-            //
-            // Sorting once by movement answered the cost question and
-            // silently gave a wrong answer to the meaning one. Doing both,
-            // in that order, costs nothing and removes the hazard for good
-            //, including for a socket sharing its mesh with a plug, where
-            // one bake has to serve both ends and could not have been
-            // ordered two ways.
+            // Select by movement, emit in mesh order. A socket stages its
+            // shapes by index, so the order carries meaning of its own.
             var chosen = scored
                 .OrderByDescending(x => x.moved)
                 .Take(MaxShapes)
@@ -708,14 +674,8 @@ namespace AvatarBridge
             return texture;
         }
 
-        // The CCK's uploader refuses a texture that is readable or has
-        // streaming mipmaps off, and it checks generated .asset textures
-        // too — so every bake used to hand the user the same two errors
-        // and the same two Auto Fix clicks. A texture made in code has no
-        // importer to carry those flags, so they are written the way the
-        // CCK's own fix writes them, on the asset itself. Nothing of ours
-        // reads the pixels back at runtime: the shader samples them, and
-        // the bake reader blits when a texture will not give them up.
+        // The uploader wants these flags and a code-made texture has no
+        // importer to carry them. Written on the asset, as the CCK does.
         public static void SettleForUpload(Texture2D texture)
         {
             if (texture == null) return;

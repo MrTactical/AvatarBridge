@@ -1,11 +1,5 @@
-// Takes a socket or a plug out again, entire: the objects the toolkit
-// made, the reactions layer and its parameter, the menu toggle, the size
-// wiring, the bake, and the material it replaced back in its slot. Also
-// sweeps up what a socket or plug deleted by hand left behind, since a
-// layer whose parameter is gone shouts in the console on every reload.
-// The scene, the controllers and the avatar's settings go in one undo
-// step; the generated files stay where they are and come back with the
-// next Bake, so an undo never points at a missing asset.
+// Takes a socket or plug out entire, in one undo step, and sweeps up
+// what a hand delete left. Generated files stay for the next bake.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;

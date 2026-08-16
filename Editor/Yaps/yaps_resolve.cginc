@@ -568,11 +568,10 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.tier = 2;
     }
 
-    // A socket has to be roughly ahead of the plug to engage. Distance
-    // alone said a socket beside or behind the base, within a length of
-    // it, was engaged, and the plug folded back on itself reaching for
-    // it. Dead ahead is 1; about seventy degrees off fades to nothing;
-    // beside and behind are nothing. DPS behaves the same.
+    // Only a socket clearly BEHIND the base is refused. Anything from
+    // dead ahead to square beside it engages in full; past that it fades
+    // out by about a hundred and twenty degrees. That is enough to stop
+    // the plug folding back on itself, and it still lets one reach up.
     if (socket.engaged > 0)
     {
         float3 toSocket = socket.position - plugOrigin;
@@ -580,7 +579,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         if (gapAhead > 0.0001)
         {
             float ahead = dot(toSocket / gapAhead, plugForward);
-            socket.engaged *= smoothstep(0.0, 0.35, ahead);
+            socket.engaged *= smoothstep(-0.5, 0.0, ahead);
         }
     }
 

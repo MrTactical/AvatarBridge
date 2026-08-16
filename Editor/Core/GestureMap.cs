@@ -32,16 +32,6 @@ namespace AvatarBridge
             "GestureLeftWeight", "GestureRightWeight"
         };
 
-        public static string IdxParameterFor(string gestureParameter)
-        {
-            switch (gestureParameter)
-            {
-                case "GestureLeft": return "GestureLeftIdx";
-                case "GestureRight": return "GestureRightIdx";
-                default: return gestureParameter;
-            }
-        }
-
         public static float VrcToCvr(float vrcGesture)
         {
             switch ((int)vrcGesture)

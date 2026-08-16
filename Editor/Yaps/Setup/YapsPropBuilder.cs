@@ -68,29 +68,14 @@ namespace AvatarBridge
 
             Undo.RegisterFullObjectHierarchyUndo(root, "YAPS prop");
 
-            // Grabbable. Move mode Transform: these are held against each
-            // other, and physics would only add drift.
-            //
-            // Theft is ALLOWED, and that is the lesser of two faults. A
-            // channel value is written by whoever's socket the prop met,
-            // not by whoever holds it, and that write re-sends the prop's
-            // position and marks it no longer remotely synced. With theft
-            // disallowed, CanPickup refuses anyone but whoever GrabbedBy
-            // names — and GrabbedBy only clears when updates stop arriving,
-            // which a socket still touching the prop keeps from happening.
-            // The prop then belongs to whoever last had it in a socket and
-            // nobody else can pick it up until it is respawned. Allowing
-            // theft costs the older fault instead: a prop can be tugged out
-            // of a remote hand the moment a socket switches on. Tick
-            // Disallow Theft on the CVR Pickup Object if you would rather
-            // have that one.
+            // Transform move mode: physics only adds drift. Theft stays
+            // allowed, or a socket's owner keeps the prop until respawn.
             bool fresh = root.GetComponent<CVRPickupObject>() == null;
             var pickup = root.GetComponent<CVRPickupObject>();
             if (pickup == null) pickup = Undo.AddComponent<CVRPickupObject>(root);
             pickup.moveMode = CVRPickupObject.MoveMode.Transform;
             pickup.maximumGrabDistance = 8f;
-            // Only on a prop this is making for the first time: a user who
-            // ticked it themselves keeps their answer, and hears what it does.
+            // A user who ticked it themselves keeps their answer.
             if (fresh) pickup.disallowTheft = false;
             else if (pickup.disallowTheft)
                 o.Notes.Add("Disallow Theft is on. Earlier builds set it, and on a prop with a contact channel it " +
@@ -101,20 +86,11 @@ namespace AvatarBridge
             if (spawnable == null) spawnable = Undo.AddComponent<CVRSpawnable>(root);
             spawnable.spawnHeight = 1.2f;
 
-            // On the root, not in a child: a collider a child owns is one
-            // the pickup cannot see, so a prop built by an early build
-            // stayed ungrabbable no matter how often this ran.
+            // On the root: the pickup cannot see a child's collider.
             if (root.GetComponent<Collider>() == null) AddCollider(root, plug, o);
 
-            // No contact channel unless it is asked for. A channel value is
-            // written by whoever's SOCKET the prop met, and the client
-            // grants that write to your own avatar's contact whoever is
-            // holding the prop — so a socket switching on takes the prop
-            // off the person carrying it, and no pickup setting can stop
-            // it. Without a channel the prop reads sockets by their marker
-            // lights, which every client works out for itself: no owner, no
-            // fight, no sync. Add one only for a prop that needs the exact
-            // route, and expect to hand ownership around while it is in use.
+            // The channel is opt in. A socket's owner writes its values and
+            // takes the prop over, so lights are the quiet default.
             if (plug != null && HasChannel(root))
             {
                 var material = BakedMaterial(plug);
@@ -156,9 +132,7 @@ namespace AvatarBridge
             return false;
         }
 
-        // The exact route, on request: a plug prop that must reach a viewer
-        // with lights off, or work among more than four lit sockets. It
-        // costs the prop's ownership, which is why it is not the default.
+        // The exact route, on request. It costs the prop's ownership.
         public static Outcome AddChannel(GameObject root)
         {
             var o = new Outcome();
@@ -251,22 +225,8 @@ namespace AvatarBridge
             return r.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Length"));
         }
 
-        // The collider a hand grabs by, and it has to be on the ROOT: the
-        // client reads its pickup's collider with TryGetComponent on the
-        // pickup's own object, and both grab paths — the interaction ray
-        // and the proximity overlap — look the pickup up from the collider
-        // they hit. A pickup with none can never be picked up.
-        //
-        // A trigger, and it must be: the client gives every pickup a
-        // KINEMATIC rigidbody, so a solid collider never rests on anything
-        // anyway; all it does is shove players about and hold the prop off
-        // the socket it is being brought to. Both grab paths take triggers
-        // — the proximity overlap asks for them, and the interaction ray
-        // leaves Physics.queriesHitTriggers alone, which is on.
-        //
-        // A capsule along the plug when the plug's frame lines up with the
-        // root, since a capsule has a direction but no rotation; a box
-        // round the renderers otherwise.
+        // On the root, or no hand can find the pickup. A trigger, or it
+        // shoves people. Capsule when the plug lines up, else a box.
         static void AddCollider(GameObject root, YapsPlug plug, Outcome o)
         {
             // Whatever an earlier build left, wherever it left it.
@@ -331,9 +291,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(controller);
         }
 
-        // The channel: eight synced values driven by triggers, each value a
-        // one-parameter layer blending a material property between 0 and 1.
-        // The material reads them in its own box, centred on the plug's base.
+        // Eight synced values, each a layer blending one material property.
+        // The material reads them in a box centred on the plug's base.
         static void BuildChannel(GameObject root, YapsPlug plug, Material material, CVRSpawnable spawnable)
         {
             var renderer = plug.Target;
@@ -349,9 +308,8 @@ namespace AvatarBridge
             if (!AssetDatabase.IsValidFolder(dir)) YapsNativeBuilder.EnsureFolderPublic(dir);
             string clipPath = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
 
-            // The prop's own controller keeps its layers and gains the
-            // channel's; a prop without one gets the channel controller,
-            // the same file every time rather than a numbered new one.
+            // A prop's own controller gains the layers; one without gets
+            // the channel controller, the same file each run.
             var animator = root.GetComponent<Animator>();
             if (animator == null) animator = Undo.AddComponent<Animator>(root);
             var existing = animator.runtimeAnimatorController as AnimatorController;
@@ -444,10 +402,8 @@ namespace AvatarBridge
             }
         }
 
-        // One layer per value: a two-clip blend tree, 0 and 1, blended by
-        // the parameter. Everything is embedded by walking the layer. Into
-        // the prop's own controller when it has one; else the channel
-        // controller, reused across runs rather than numbered anew.
+        // One layer per value: a two-clip blend tree, 0 and 1, on the
+        // parameter. Embedded by walking the layer.
         static AnimatorController BuildController(string dir, string clipPath, System.Type rendererType,
             AnimatorController into)
         {

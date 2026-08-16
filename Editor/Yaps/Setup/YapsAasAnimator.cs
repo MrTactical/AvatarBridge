@@ -1,13 +1,6 @@
-// Puts a menu entry's layer and parameter into the animator the avatar
-// wears, in place, through the CCK's own SetupAnimator for that entry
-// type: the same layer the CCK's Create Animator would make, without
-// copying the base controller or replacing the override controller,
-// which is what that button does and what surprises anyone who set the
-// animator up by hand. Every controller the avatar plays gets it, the
-// Advanced Settings base and the one on the Animator, so the CCK
-// inspector's parameter check passes, and the CCK's own generation, if
-// run later, sees the parameter already driven and skips the entry, as
-// it is meant to.
+// A menu entry's layer and parameter, written into the animators the
+// avatar wears through the CCK's own SetupAnimator. No copied
+// controller, no replaced overrides.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.IO;

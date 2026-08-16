@@ -73,11 +73,8 @@ namespace AvatarBridge
             return string.IsNullOrEmpty(clean) ? "Socket" : clean;
         }
 
-        // How far in counts as depth 1, in metres: the socket's own number,
-        // else the longest baked plug on the avatar, else the default. The
-        // contact cannot know a visiting plug's length, so this stands for
-        // it, and the preview uses the same figure so what it shows is
-        // what the game does.
+        // How far in counts as depth 1, in metres. A contact cannot know a
+        // visiting plug's length, so this stands in for it.
         public static float ReachOf(YapsSocket socket)
         {
             if (socket == null) return DefaultReach;
@@ -202,10 +199,8 @@ namespace AvatarBridge
                 controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
             }
 
-            // Every other YAPS depth parameter here that no socket owns and
-            // no layer reads goes with it: an earlier build's local name, a
-            // socket since renamed, a name edited by hand. Left alone they
-            // pile up in the CCK's parameter list, one per experiment.
+            // Depth parameters no socket owns and no layer reads go with
+            // it, or they pile up one per rename.
             var owned = new HashSet<string>();
             foreach (var s in avatar.GetComponentsInChildren<YapsSocket>(true))
             {
@@ -222,11 +217,8 @@ namespace AvatarBridge
                 cleared++;
             }
 
-            // The layer: one blend tree over depth, breakpoints wherever a
-            // stage starts or finishes, each child a clip holding every
-            // shape at its weight for that depth. Linear between them. The
-            // strength is the layer's weight, so it can change later
-            // without a rebuild.
+            // One blend tree over depth, a breakpoint at every stage edge.
+            // Strength is the layer's weight, so it moves without a rebuild.
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
             string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animator.transform);
@@ -313,12 +305,8 @@ namespace AvatarBridge
             return note;
         }
 
-        // The trigger: a box behind the socket plane, the reach deep, its
-        // local Z along the socket's forward. The client reads the tip's
-        // position in the box, -1..1 along Z, and Set From Position maps
-        // it: 0 where the tip crosses the plane, 1 a full reach in. Left
-        // alone when it is already right, so a shape edit does not churn
-        // the hierarchy.
+        // A box behind the socket plane, one reach deep, read by Set From
+        // Position on Z: 0 at the plane, 1 a reach in.
         static void EnsureTrigger(YapsSocket socket, string parameter)
         {
             TriggerBox(socket, out var offset, out var size);

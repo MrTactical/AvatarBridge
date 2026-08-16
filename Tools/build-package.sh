@@ -75,7 +75,7 @@ while IFS= read -r -d '' path; do
   rel="${path#./}"
   case "$rel" in
     .*) continue ;;                      # repo plumbing
-    *.unitypackage|*.meta) continue ;;   # prior builds; metas ride with their asset
+    *.unitypackage|*.unitypackage.superseded-*|*.meta) continue ;;   # prior builds; metas ride with their asset
   esac
   meta="$rel.meta"
   if [ ! -f "$meta" ]; then

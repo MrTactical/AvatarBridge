@@ -1072,19 +1072,6 @@ namespace AvatarBridge
             return root.transform.TransformPoint(Vector3.Scale(stored, inverse));
         }
 
-        public static Vector3 EstimateVoicePosition(GameObject root, Animator animator)
-        {
-            if (animator != null && animator.isHuman)
-            {
-                var head = animator.GetBoneTransform(HumanBodyBones.Head);
-                if (head != null)
-                {
-                    return RootOffset(root, head.position);
-                }
-            }
-            return EstimateViewPosition(root, animator);
-        }
-
         static Bounds CalculateBounds(GameObject root)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(true);

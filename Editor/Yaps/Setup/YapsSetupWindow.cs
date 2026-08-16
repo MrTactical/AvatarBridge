@@ -311,10 +311,8 @@ namespace AvatarBridge
 
         // --- behaviour -----------------------------------------------------------
 
-        // Whatever lands in the picker, the avatar or prop above it is the
-        // target: a bone or a mesh dropped in stands for the whole thing.
-        // The list then covers everything on it, so a socket doubled up on
-        // one bone is seen, not hidden by which object was picked.
+        // Whatever lands here, the avatar or prop above it is the target,
+        // so the list always covers the whole thing.
         void Pick(GameObject picked)
         {
             var top = TopOf(picked);
@@ -417,11 +415,8 @@ namespace AvatarBridge
                 }
             }
         }
-        // The buttons name what they will act on.
-        // What the plug and socket buttons act on: the Hierarchy selection.
-        // The box always holds the whole avatar or prop, so it cannot be
-        // the "where"; the selection is. Something outside the target is
-        // not a candidate, so a click on another avatar adds nothing here.
+        // Where a new socket or plug goes: the Hierarchy selection, and
+        // only when it sits under the target.
         GameObject Candidate()
         {
             var go = Selection.activeGameObject;
@@ -481,10 +476,8 @@ namespace AvatarBridge
             bool alt = false;
             void Row(YapsScanner.Found f)
             {
-                // Two sockets on one spot: the second was added without
-                // seeing the first, as a rule. Said on both rows, as a
-                // warning. Two under one bone is normal; two within three
-                // centimetres is not.
+                // Two sockets within three centimetres is one too many.
+                // Said on both rows.
                 if (f.Kind == YapsScanner.Kind.Socket && f.Root != null)
                 {
                     var twins = _scan.Sockets.Where(o => o != f && o.Root != null
@@ -655,10 +648,8 @@ namespace AvatarBridge
                 var root = YapsSocketEditor.AvatarRootOf(go.transform);
                 if (root != null && go.transform != root && IsBone(go.transform, root))
                 {
-                    // The mesh with the most vertices actually weighted to
-                    // this chain. A body mesh lists every armature bone in
-                    // its bones array with nothing weighted to most of them,
-                    // so "the first mesh that names the bone" is the body.
+                    // Most vertices weighted to the chain, not the first
+                    // mesh that names the bone: that is always the body.
                     int most = 0;
                     foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                     {

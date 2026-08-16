@@ -357,12 +357,8 @@ namespace AvatarBridge
         }
     }
 
-    // Moves a socket's shapes on its mesh, in the editor, from a depth: the
-    // slider on the socket's inspector, or the previewing plug's tip. The
-    // same stage maths the built reactions and the socket shader use, so
-    // what it shows is what ships. Nothing is saved: every weight it
-    // touches goes back when the test ends, the socket is deselected, play
-    // mode starts or scripts reload.
+    // Moves a socket's shapes from a depth, in the editor, by the same
+    // maths the built reactions use. Every weight goes back after.
     static class YapsShapeSim
     {
         class Held { public SkinnedMeshRenderer Renderer; public readonly Dictionary<int, float> Original = new Dictionary<int, float>(); }
@@ -435,12 +431,8 @@ namespace AvatarBridge
             foreach (int id in _held.Keys.ToList()) Release(id);
         }
 
-        // While a socket previews, the deepest plug's tip sets its depth:
-        // penetration past the socket plane, in plug lengths for a mesh of
-        // the socket's own (the shader's measure), in reaches for any other
-        // mesh (the contact's: the tip's position in the trigger box). A
-        // tip in front of the plane is depth 0, as the game reads it. No
-        // plug about, no change.
+        // The deepest plug's tip sets the depth: plug lengths for the
+        // socket's own mesh, reaches for any other. No plug, no change.
         public static void FollowPlugs(YapsSocket socket)
         {
             if (socket == null || socket.renderer == null || socket.shapes.Count == 0) return;

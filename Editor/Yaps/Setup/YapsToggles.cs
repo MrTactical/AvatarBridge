@@ -1,10 +1,5 @@
-// A socket nobody can switch off holds a light slot forever, and a plug
-// with no switch cannot be put away. When nothing on the avatar already
-// toggles one, Build gives it an Advanced Settings entry the CCK turns
-// into a menu toggle, and the toolkit writes the layer and parameter
-// into the animator the avatar wears itself, in place, since a line
-// telling the user to press Create Animator went unread. YAPS toggles
-// default to off: a socket or a deform is opted into from the menu.
+// Menu toggles for a socket or plug nothing else switches, off by
+// default. The layer and parameter are written in place, not generated.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -64,11 +59,7 @@ namespace AvatarBridge
         }
 
         // --- names ------------------------------------------------------------
-        //
-        // A menu full of "YAPS Ring" says nothing about which ring, and an
-        // avatar can carry a dozen. Everything the toolkit names — the menu
-        // entry, its parameter, the reactions layer — is named after the
-        // bone it hangs from, so the menu reads like the body.
+        // Named after the bone, so a menu of a dozen sockets reads.
 
         static readonly string[] DefaultSocketNames = { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket" };
 
@@ -118,13 +109,8 @@ namespace AvatarBridge
             return $"{bone} plug";
         }
 
-        // What already switches this object, by name; null when nothing does.
-        // An Advanced Settings entry aiming at it or an ancestor, an entry
-        // whose own clips do, or a clip in any of the avatar's controllers
-        // that drives m_IsActive on it or an ancestor, or its renderer's
-        // m_Enabled. Clips the toolkit generated do not count, nor does the
-        // entry named in `ignoreEntry`: those are the toolkit's own toggle,
-        // and the question is whether anything ELSE switches it.
+        // What already switches this object off, by name. Entries, their
+        // clips, and any controller clip hiding it or its renderer.
         public static string ToggledBy(GameObject target, CVRAvatar avatar, string ignoreEntry = null)
         {
             if (target == null) return null;

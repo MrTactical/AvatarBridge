@@ -1,33 +1,14 @@
-// Phase 1b. Puts the YAPS deform into an avatar's own body shader.
+// Puts the YAPS deform into an avatar's own body shader.
 //
 // Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// This patches the plug material's CURRENT shader, the same class of
-// input their patcher takes, and injects a clean-room deform. No
-// SPS code is read or emitted. See docs/YAPS-CLEAN-ROOM.md.
+// The deform injected here is clean room: no SPS code is read or
+// emitted. See docs/YAPS-CLEAN-ROOM.md.
 //
-// ---------------------------------------------------------------------
-// WHAT IT DOES TO A SHADER
-// ---------------------------------------------------------------------
-//
-//   1. Clones the whole source unit, the .shader and every .cginc it
-//      pulls in, into the conversion output. Originals are never edited.
-//   2. Adds the YAPS properties to Properties{}, so the material and the
-//      animator have something to write to.
-//   3. In EVERY pass that has a vertex stage, inlines the YAPS includes
-//      and wraps the vertex function: the wrapper deforms position,
-//      normal and tangent, then calls the original.
-//   4. Compiles the result and only then repoints the material. A shader
-//      that fails to compile is deleted and the material left alone.
-//
-// Every pass, not just the forward one, because a deform that ran in some
-// passes and not others would cast an undeformed shadow through a bent
-// mesh. The includes are INLINED rather than #included, so the patched
-// shader is self-contained and survives being built into an avatar bundle
-// with no dependency on where the package sits.
-//
-// The wrapper finds struct members by SEMANTIC, never by name. Shaders
-// call the same field `vertex`, `pos`, `positionOS` and worse, but they
-// all tag it POSITION.
+// Clones the source unit, adds the properties, edits the vertex stage of
+// every pass, compiles, and only then repoints the material. Every pass,
+// or a bent mesh casts a straight shadow. Includes are inlined so the
+// copy survives in a bundle. Struct members are found by semantic: the
+// same field is called vertex, pos and positionOS in the wild.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -46,7 +27,7 @@ namespace AvatarBridge
 
         // Bumped when the emitted code changes, so a stale cached patch is
         // never reused for new code.
-        const string Revision = "15";
+        const string Revision = "16";
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -228,16 +209,9 @@ namespace AvatarBridge
 
         // --- the material panel -----------------------------------------
 
-        // Point the patched shader at YapsShaderGUI, and remember what it
-        // pointed at before, so the panel can draw YAPS on top and hand the
-        // rest to the shader's own editor. A Poiyomi user keeps Poiyomi's
-        // panel entire; a Standard user keeps Standard's.
-        //
-        // The original editor's class name is carried in the DESCRIPTION of
-        // a hidden float property, a shader property is the only place a
-        // string can ride in a shader that the material can read back.
-        // The source shader's name rides the same way, so Remove can put a
-        // material back on it when the material it replaced is gone.
+        // YapsShaderGUI on top, the shader's own editor underneath. Its
+        // class name and the source shader's name ride in the description
+        // of a hidden property: the only place a string can travel.
         public const string SourceShaderProperty = "_YAPS_SourceShader";
 
         public static string SourceShaderOf(Material material)
@@ -283,27 +257,10 @@ namespace AvatarBridge
 
         // --- the vertex wrapper ---------------------------------------
 
-        // Modify the vertex function IN PLACE rather than wrapping it.
-        //
-        // The first attempt built a wrapper and renamed the pragma, which
-        // needed the signature to be one simple parameter. Poiyomi, by a
-        // distance the most common avatar shader, declares its vertex
-        // stage across five lines with a preprocessor conditional choosing
-        // between two input types:
-        //
-        //     VertexOut vert(
-        //     #ifndef POI_TESSELLATED
-        //     appdata v
-        //     #else
-        //     tessAppData v
-        //     #endif
-        //     )
-        //
-        // No wrapper can reproduce that signature without reimplementing
-        // the preprocessor. Editing the body sidesteps the whole problem:
-        // the parameter is a local copy in HLSL, so deforming it at the top
-        // of the function is exactly equivalent to deforming it on the way
-        // in, and the pragma never has to change.
+        // The vertex function is edited in place, not wrapped. Poiyomi
+        // declares its signature across a preprocessor conditional, which
+        // no wrapper can reproduce. The parameter is a local copy, so
+        // deforming it at the top is the same thing.
         static int PatchProgramBlocks(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             out string refusal, out int skippedShadowPasses)
         {

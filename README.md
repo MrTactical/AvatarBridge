@@ -1926,9 +1926,10 @@ Work down the list; the first that fits is usually it.
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
   alone, and that channel is built for converted avatars; a plug built with the YAPS tool reads
   lights only until the avatar channel lands. The report and the tool both say which a plug has.
-- **Is the socket in front of the plug?** A socket has to be roughly ahead of the base to engage —
-  dead ahead fully, about seventy degrees off fading, beside and behind not at all. That gate is
-  what stops a plug folding back on itself to reach a socket beside its own root.
+- **Is the socket behind the plug?** Anything from dead ahead to square beside the base engages in
+  full, and only a socket clearly behind it is refused, fading out by about a hundred and twenty
+  degrees. That gate is what stops a plug folding back on itself to reach its own root, and it
+  still lets one reach upward or across.
 - **The plug bends but too little or too much:** *The bend toward a socket* and *Inside a socket*
   on the plug component are the knobs; the material panel has the same ones. Squeeze and bulge
   are as authored on the source avatar.

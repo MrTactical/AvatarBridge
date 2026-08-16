@@ -41,11 +41,8 @@ namespace AvatarBridge
                       "component, then bake from Tools ▸ YAPS ▸ Setup.");
         }
 
-        // A plug prop, ready to upload: the toolkit's own mesh, baked on the
-        // current shader, made a prop with the synced contact channel, saved
-        // over the same file. Run it again after any change to the deform —
-        // an uploaded prop carries its own baked material and its own shader
-        // copy, so nothing in the project reaches one already in the world.
+        // A plug prop ready to upload, over the same file each time. An
+        // uploaded prop keeps the bake and shader it was built with.
         [MenuItem("Tools/YAPS/Create a plug prop prefab")]
         public static void CreatePlugPropPrefab()
         {
