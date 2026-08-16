@@ -33,6 +33,7 @@ namespace AvatarBridge
         Label _summary;
         HelpBox _next;
         Label _selection;
+        Label _pickNote;
         Button _addHole, _addRing, _makePlug, _quiet, _makeProp, _verifyProp;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
@@ -113,8 +114,12 @@ namespace AvatarBridge
             // 1. Pick.
             var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, 1, 0f);
             _picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
-            _picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; Rescan(); });
+            _pickNote = BridgeElements.Hint(
+                "Drop the avatar here, or anything under it: a bone, a mesh, a socket. The toolkit takes the " +
+                "avatar or prop above it and lists everything on the whole thing, so a doubled-up socket shows.");
+            _picker.RegisterValueChangedCallback(e => Pick(e.newValue as GameObject));
             pick.Body.Add(_picker);
+            pick.Body.Add(_pickNote);
             _pages.Add(pick);
 
             // 2. What it has, and what to add.
@@ -227,7 +232,7 @@ namespace AvatarBridge
             toolkit.Body.Add(BridgeElements.Row(BridgeElements.Link("Open the Toolkit", ToolkitWindow.Open)));
             _pages.Add(toolkit);
 
-            if (_target == null && Selection.activeGameObject != null) _picker.value = Selection.activeGameObject;
+            if (_target == null && Selection.activeGameObject != null) Pick(Selection.activeGameObject);
             else Rescan();
         }
 
@@ -281,6 +286,40 @@ namespace AvatarBridge
 
         // --- behaviour -----------------------------------------------------------
 
+        // Whatever lands in the picker, the avatar or prop above it is the
+        // target: a bone or a mesh dropped in stands for the whole thing.
+        // The list then covers everything on it, so a socket doubled up on
+        // one bone is seen, not hidden by which object was picked.
+        void Pick(GameObject picked)
+        {
+            var top = TopOf(picked);
+            _target = top;
+            if (_picker != null && _picker.value != top) _picker.SetValueWithoutNotify(top);
+            if (_pickNote != null)
+            {
+                _pickNote.text = top == null
+                    ? "Drop the avatar here, or anything under it: a bone, a mesh, a socket. The toolkit takes the " +
+                      "avatar or prop above it and lists everything on the whole thing, so a doubled-up socket shows."
+                    : top == picked
+                        ? $"Everything on \"{top.name}\" is listed below, wherever it sits."
+                        : $"You dropped \"{picked.name}\"; the {(top.GetComponent<CVRAvatar>() != null ? "avatar" : top.GetComponent<CVRSpawnable>() != null ? "prop" : "top object")} " +
+                          $"above it, \"{top.name}\", is the target. Everything on it is listed below.";
+            }
+            Rescan();
+        }
+
+        // The avatar or prop an object belongs to: the CVRAvatar or
+        // CVRSpawnable above it, else its top object.
+        static GameObject TopOf(GameObject go)
+        {
+            if (go == null) return null;
+            var avatar = go.GetComponentInParent<CVRAvatar>();
+            if (avatar != null) return avatar.gameObject;
+            var prop = go.GetComponentInParent<CVRSpawnable>();
+            if (prop != null) return prop.gameObject;
+            return go.transform.root.gameObject;
+        }
+
         static string QuietLabel() => SceneQuiet.IsQuiet
             ? "Show the CCK's icons again"
             : "Quiet the scene view while I work";
@@ -311,7 +350,7 @@ namespace AvatarBridge
             {
                 _next.text = "Nothing on it yet, and that is normal for an avatar that never had penetration: " +
                              "YAPS is what adds it. A plug: click the mesh that should bend (or the bone its " +
-                             "shaft grows from) in the Hierarchy, or drop it in the box above, then Make a plug. " +
+                             "shaft grows from) in the Hierarchy, then Make a plug. " +
                              "A socket: click the bone it should follow (Hips, say), then Add a hole or Add a " +
                              "ring. Then Build.";
                 _next.messageType = HelpBoxMessageType.Info;
@@ -354,19 +393,16 @@ namespace AvatarBridge
             }
         }
         // The buttons name what they will act on.
-        // What the plug and socket buttons act on. What is in the box wins
-        // when it is itself a mesh or a bone: the user put it there on
-        // purpose. When the box holds the avatar, the Hierarchy selection
-        // says which part.
+        // What the plug and socket buttons act on: the Hierarchy selection.
+        // The box always holds the whole avatar or prop, so it cannot be
+        // the "where"; the selection is. Something outside the target is
+        // not a candidate, so a click on another avatar adds nothing here.
         GameObject Candidate()
         {
-            if (_target != null)
-            {
-                var root = YapsSocketEditor.AvatarRootOf(_target.transform);
-                bool bone = root != null && _target.transform != root && IsBone(_target.transform, root);
-                if (_target.GetComponent<Renderer>() != null || bone) return _target;
-            }
-            return Selection.activeGameObject;
+            var go = Selection.activeGameObject;
+            if (go == null) return null;
+            if (_target != null && !go.transform.IsChildOf(_target.transform)) return null;
+            return go;
         }
 
         void RefreshSelection()
@@ -375,22 +411,19 @@ namespace AvatarBridge
             var go = Candidate();
             if (go == null)
             {
-                _selection.text = "Nothing selected in the Hierarchy. Sockets will go in a YAPS folder on the avatar; a plug needs a mesh selected, or the plug mesh dropped in the box above.";
+                _selection.text = "Select a bone or a mesh in the Hierarchy: a socket goes under the selected bone (a YAPS folder on the avatar when nothing is selected); a plug is made from the selected mesh, or from the mesh a selected bone drives.";
                 if (_addHole != null) _addHole.text = "Add a hole";
                 if (_addRing != null) _addRing.text = "Add a ring";
                 if (_makePlug != null) { _makePlug.text = "Make selected mesh a plug"; _makePlug.SetEnabled(false); }
                 return;
             }
-            bool picked = go == _target;
             var root = YapsSocketEditor.AvatarRootOf(go.transform);
             bool bone = root != null && go.transform != root && IsBone(go.transform, root);
             bool mesh = go.GetComponent<Renderer>() != null;
-            string how = picked ? "Picked" : "Selected";
-            string where = picked ? " (the box above; the Hierarchy selection is ignored while a mesh or bone is picked)" : "";
             _selection.text = bone
-                ? $"{how}: bone \"{go.name}\"{where} — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
-                : mesh ? $"{how}: mesh \"{go.name}\"{where} — Make a plug will bake this one." + (picked ? " Pick the avatar's root to see everything on it." : "")
-                : $"{how}: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
+                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
+                : mesh ? $"Selected: mesh \"{go.name}\" — Make a plug will bake this one."
+                : $"Selected: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
             if (_makePlug != null)
@@ -423,6 +456,17 @@ namespace AvatarBridge
             bool alt = false;
             void Row(YapsScanner.Found f)
             {
+                // Two sockets on one spot: the second was added without
+                // seeing the first, as a rule. Said on both rows, as a
+                // warning. Two under one bone is normal; two within three
+                // centimetres is not.
+                if (f.Kind == YapsScanner.Kind.Socket && f.Root != null)
+                {
+                    var twins = _scan.Sockets.Where(o => o != f && o.Root != null
+                        && Vector3.Distance(o.Root.position, f.Root.position) < 0.03f)
+                        .Select(o => o.Name).ToList();
+                    if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
+                }
                 bool complete = f.Notes.Count == 0;
                 var colour = f.IsYapsAlready && complete ? BridgeTheme.Good
                            : !complete ? BridgeTheme.Warn
@@ -697,9 +741,8 @@ namespace AvatarBridge
             }
             else
             {
-                // The selection, or the picked bone; and the avatar's own
-                // root, not whatever was picked, so a picked mesh or bone
-                // does not become the home of the YAPS folder.
+                // The selected bone; and the avatar's own root for the YAPS
+                // folder when nothing is selected.
                 var candidate = Candidate();
                 var selected = candidate != null ? candidate.transform : null;
                 var avatarRoot = _target != null ? YapsSocketEditor.AvatarRootOf(_target.transform)
