@@ -743,8 +743,7 @@ becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug
 A plug is baked with the author's values carried onto the YAPS knobs and the old deform switched
 off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enabled` off), a DPS plug
 moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug's **Root Bone** on a
-skinned mesh before you Build. TPS is written from its documented properties and untested here —
-Thry's system is no longer obtainable — so treat a TPS upgrade as something to look at in game.
+skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
 and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup anyone can take, a
@@ -1091,6 +1090,7 @@ settle. Leaving all of them alone converts fine.
 
 | setting | default | what it does |
 |---|---|---|
+| **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -1117,7 +1117,6 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Convert* also carries the OGB, PCS and Wholesome haptics and sound stacks across as local, contact-driven parameters (free in ChilloutVR); *Remove* strips DPS/TPS/SPS and those stacks with them. *Leave as VRChat built it* touches nothing, and functions nowhere |
-| **Keep OGB haptics synced for OSC toys** | off | Under *Convert to YAPS*. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -1984,7 +1983,7 @@ Three ways to the toy, cheapest first:
   parameter by its exact name, `#` and all. The report's Diagnostics section lists every
   `#OGB/…` name on the converted avatar; add a link per name you want driving a device. Costs
   no sync, works today.
-- **Keep OGB haptics synced for OSC toys**, under the Penetration choice. Automatic detection
+- **Keep OGB haptics synced for OSC toys**, under *Manual options ▸ Opt-ins*. Automatic detection
   works with no setup, at 32 sync bits each, about nine per plug and per socket: one plug and
   three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the 3200-bit cap on
   its own. Over the cap nothing on the avatar syncs, so read the report's sync budget entry

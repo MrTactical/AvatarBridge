@@ -771,26 +771,10 @@ namespace AvatarBridge
                     "for nothing. On a full avatar that alone can push it over the cap. Choose this only " +
                     "to inspect what was there.", HelpBoxMessageType.Warning));
             }
-            else if (settings.convertYapsSystems)
+            else if (settings.convertYapsSystems && settings.syncHapticsForOsc)
             {
-                // OSC toys. Local parameters wear a "#" in ChilloutVR and
-                // OSCGoesBrrr does not read those, so the choice is theirs.
-                b.Add(BridgeElements.Bind("Keep OGB haptics synced for OSC toys (OSCGoesBrrr, Lovense)",
-                    "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
-                    "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
-                    "report lists the names to paste. On, they stay synced and automatic detection works " +
-                    "with no setup, at 32 sync bits each.",
-                    settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
-                if (settings.syncHapticsForOsc)
-                {
-                    b.Add(new HelpBox(
-                        "Each haptics parameter costs 32 of ChilloutVR's 3200 sync bits, and a plug or a " +
-                        "socket carries about nine. One plug and three sockets is roughly 1,150 bits; a " +
-                        "socket-heavy avatar goes over the cap on its own, and over the cap nothing on the " +
-                        "avatar syncs. The report's sync budget entry says where you landed. Launch " +
-                        "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
-                        HelpBoxMessageType.Warning));
-                }
+                b.Add(BridgeElements.Hint(
+                    "The OGB haptics stay synced for OSC toys: that is on under Manual options ▸ Opt-ins."));
             }
             // The other door. The YAPS tool builds and tunes penetration on
             // an avatar already here; this converts. Present, say where it
@@ -914,6 +898,42 @@ namespace AvatarBridge
                     "in both eyes: compilation is verified, appearance isn't.",
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
+
+            // Opt-ins live here, not beside the choice they qualify: a
+            // feature nobody can find is a feature nobody turns on.
+            b.Add(BridgeElements.SubHeading("Opt-ins"));
+            var optIns = new VisualElement();
+            optIns.style.paddingLeft = 10;
+            optIns.style.borderLeftWidth = 2;
+            optIns.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
+            optIns.style.marginBottom = 6;
+            b.Add(optIns);
+            optIns.Add(BridgeElements.Hint(
+                "Off unless you switch them on, and each says what it costs."));
+
+            optIns.Add(BridgeElements.SubHeading("OSC toys"));
+            optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
+                "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
+                "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
+                "report lists the names to paste. On, they stay synced and automatic detection works " +
+                "with no setup, at 32 sync bits each. Needs Penetration on Convert to YAPS.",
+                settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
+            if (settings.syncHapticsForOsc)
+            {
+                optIns.Add(new HelpBox(
+                    "Each haptics parameter costs 32 of ChilloutVR's 3200 sync bits, and a plug or a " +
+                    "socket carries about nine. One plug and three sockets is roughly 1,150 bits; a " +
+                    "socket-heavy avatar goes over the cap on its own, and over the cap nothing on the " +
+                    "avatar syncs. The report's sync budget entry says where you landed. Launch " +
+                    "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
+                    HelpBoxMessageType.Warning));
+                if (!settings.convertYapsSystems)
+                {
+                    optIns.Add(new HelpBox(
+                        "Penetration is not set to Convert to YAPS, so there are no haptics parameters " +
+                        "for this to keep. It does nothing as things stand.", HelpBoxMessageType.Info));
+                }
+            }
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",
