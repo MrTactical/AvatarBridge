@@ -46,11 +46,9 @@ namespace AvatarBridge.Yaps
                  "off on an avatar with many sockets, where the toolkit wires them to a menu instead.")]
         public bool emitLights = true;
 
-        [Header("Preview (editor only)")]
-        [Tooltip("While on, every YAPS plug in the scene bends toward this socket in the editor, so " +
-                 "you can place it and see the result before uploading. Writes nothing that ships: " +
-                 "it drives the same material values the game's contact channel would, and clears " +
-                 "them when turned off. Only one socket previews at a time.")]
+        // Editor state, never saved: while on, every YAPS plug in the scene
+        // bends toward this socket. Only one socket previews at a time.
+        [NonSerialized]
         public bool preview;
 
         // Faces along +Z; the front markers sit a centimetre along it.

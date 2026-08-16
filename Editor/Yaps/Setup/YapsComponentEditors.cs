@@ -168,9 +168,7 @@ namespace AvatarBridge
         public static void Set(YapsSocket socket, bool on)
         {
             if (socket == null) return;
-            Undo.RecordObject(socket, "YAPS preview");
             socket.preview = on;
-            EditorUtility.SetDirty(socket);
             if (on && CountBakedPlugs() == 0) Spawn(socket);
             if (!on) Remove();
             socket.PreviewTick();
@@ -316,11 +314,15 @@ namespace AvatarBridge
                 new[] { "Hole", "Ring" }, kindProp.enumValueIndex, i =>
                 {
                     if (i == kindProp.enumValueIndex) return;
+                    // One undo step for the kind and the markers it rebuilds:
+                    // the hierarchy is recorded before the enum changes.
+                    Undo.IncrementCurrentGroup();
+                    int group = Undo.GetCurrentGroup();
+                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS socket kind");
                     kindProp.enumValueIndex = i;
                     so.ApplyModifiedProperties();
-                    // The markers carry the kind; rebuild them to match.
-                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS socket kind");
                     YapsSocketBuilder.ApplyKind(socket);
+                    Undo.CollapseUndoOperations(group);
                     RebuildLater();
                 }));
             what.Body.Add(BridgeElements.Hint(hole
@@ -778,9 +780,11 @@ namespace AvatarBridge
                     RebuildLater();
                     return;
                 }
+                // No undo record on the material: the component owns the
+                // values and its own undo replays here, so recording the
+                // material again would only discard the redo history.
                 foreach (var m in mats)
                 {
-                    Undo.RecordObject(m, "YAPS plug knobs");
                     YapsNativeBuilder.WriteKnobs(plug, m);
                     if (plug.lengthOverride > 0) m.SetFloat("_YAPS_Length", plug.lengthOverride);
                     EditorUtility.SetDirty(m);
