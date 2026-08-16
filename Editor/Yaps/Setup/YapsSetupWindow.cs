@@ -156,7 +156,7 @@ namespace AvatarBridge
             // One switch hides the CCK's icons while sockets are placed.
             have.Body.Add(BridgeElements.SubHeading("Scene view"));
             _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
-            _quiet.tooltip = "Hides the CCK component icons, the pointers' blue spheres, MagicaCloth's collider " +
+            _quiet.tooltip = "Hides the CCK component icons, the pointers' blue spheres, the triggers' boxes, MagicaCloth's collider " +
                              "wires and Light icons in the scene view, so socket and plug gizmos can be seen. " +
                              "An editor preference only — nothing on the avatar changes — and it puts back " +
                              "exactly what it found.";

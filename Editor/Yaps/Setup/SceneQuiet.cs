@@ -32,7 +32,12 @@ namespace AvatarBridge
             foreach (var t in cck)
             {
                 if (t.Namespace != "ABI.CCK.Components" || t.IsAbstract || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
-                yield return (t, t == typeof(ABI.CCK.Components.CVRPointer));
+                // Gizmos too for the things that draw big and solid: pointer spheres,
+                // trigger boxes, spawnable trigger boxes.
+                bool solid = t == typeof(ABI.CCK.Components.CVRPointer)
+                             || t == typeof(ABI.CCK.Components.CVRAdvancedAvatarSettingsTrigger)
+                             || t == typeof(ABI.CCK.Components.CVRSpawnableTrigger);
+                yield return (t, solid);
             }
             yield return (typeof(Light), false);
             foreach (var name in new[] { "MagicaCloth2.MagicaCloth", "MagicaCloth2.MagicaSphereCollider",
