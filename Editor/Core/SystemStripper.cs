@@ -30,26 +30,30 @@ namespace AvatarBridge
 
         // "OGB" with no separator also catches OGB_ENABLED. Named apart because
         // the object and pointer lists change when the system is converted.
-        static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS" };
+        // PCS (Dismay's contact-driven sounds and particles) and the Wholesome
+        // SPS audio add-on are contact-driven too: kept and made local like OGB.
+        static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS", "pcs/", "WH_" };
+
         static readonly string[] OtherSpsParamPrefixes =
         {
-            "VF77_", "VF23_", "pcs/", "VRCF_WSD", "WH_"
+            "VF77_", "VF23_", "VRCF_WSD"
         };
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
         // face-gesture smoothing system, which must survive.
-        static readonly string[] YapsLayerHints = { "sps", "ogb", "haptic" };
+        static readonly string[] YapsLayerHints = { "sps", "ogb", "haptic", "pcs", "wholesome" };
         static readonly string[] OtherSpsLayerHints =
         {
-            "pcs", "wsd", "world scale detector", "wholesome"
+            "wsd", "world scale detector"
         };
         static readonly string[] YapsObjectHints =
         {
-            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket", "SpsAutoDistance"
+            "BakedSpsSocket", "BakedSpsPlug", "Haptic Plug", "Haptic Socket", "SpsAutoDistance",
+            "<PCS Target>", "<PCS Particle>", "Penetration Contact System"
         };
         static readonly string[] OtherSpsObjectHints =
         {
-            "<PCS Target>", "Penetration Contact System", "World Scale Detector"
+            "World Scale Detector"
         };
         // Contact-driven penetration parameters must be "#" local when kept.
         // VRCFury stamps a per-component id, so the shape after it is matched:
@@ -68,8 +72,8 @@ namespace AvatarBridge
                 | System.Text.RegularExpressions.RegexOptions.Compiled),
         };
 
-        static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB" };
-        static readonly string[] OtherSpsPointerTypePrefixes = { "PCS", "VRCF_" };
+        static readonly string[] YapsPointerTypePrefixes = { "TPS_", "SPSLL_", "OGB", "PCS" };
+        static readonly string[] OtherSpsPointerTypePrefixes = { "VRCF_" };
 
         // The penetration system survives the strip only while converted.
         // The scene survives; the parameters still go. YAPS builds its own

@@ -284,8 +284,10 @@ defines.
 | Avatar cameras / listeners | removed | a stray `Camera` crashes CVR's asset filter |
 
 **GoGo Loco is stripped by default** (toggleable). CVR has its own locomotion, and GoGo's layers
-fight it while eating ~15 synced parameters. The VRChat haptics stacks (OGB, PCS, Wholesome)
-go the same way: they don't function in CVR and cost most of the sync budget.
+fight it while eating ~15 synced parameters. The VRChat haptics and sound stacks that ride with
+penetration (OGB, PCS, Wholesome) come across under *Convert to YAPS*: their contacts become
+triggers driving local parameters, which every ChilloutVR client computes for itself, so the sounds
+and particles play for everyone at no sync cost. Under *Remove* they go with the rest.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -1040,7 +1042,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
-| **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Remove* strips DPS/TPS/SPS and the OGB, PCS and Wholesome stacks that ride with them — they do not work in ChilloutVR and cost most of the sync budget. *Leave as VRChat built it* touches nothing, and functions nowhere |
+| **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Convert* also carries the OGB, PCS and Wholesome haptics and sound stacks across as local, contact-driven parameters (free in ChilloutVR); *Remove* strips DPS/TPS/SPS and those stacks with them. *Leave as VRChat built it* touches nothing, and functions nowhere |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |

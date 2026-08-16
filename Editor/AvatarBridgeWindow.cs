@@ -752,7 +752,7 @@ namespace AvatarBridge
                     ScheduleRebuild();
                 });
             b.Add(penetration);
-            b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome stacks that ride with them."));
+            b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome haptics and sound stacks that ride with them; under Convert those come across as local contact-driven parameters, free in ChilloutVR."));
             // What the other two answers cost, where the choice is made.
             if (settings.stripSpsSystems && !settings.convertYapsSystems)
             {
