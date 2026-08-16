@@ -286,8 +286,10 @@ defines.
 **GoGo Loco is stripped by default** (toggleable). CVR has its own locomotion, and GoGo's layers
 fight it while eating ~15 synced parameters. The VRChat haptics and sound stacks that ride with
 penetration (OGB, PCS, Wholesome) come across under *Convert to YAPS*: their contacts become
-triggers driving local parameters, which every ChilloutVR client computes for itself, so the sounds
-and particles play for everyone at no sync cost. Under *Remove* they go with the rest.
+triggers driving local parameters, so they cost nothing of the sync budget — and, like every
+contact-driven parameter in ChilloutVR, they play on the wearer's machine rather than the whole
+room. Their menu entries stay synced, since those are yours to set. Under *Remove* they go with
+the rest.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -526,8 +528,11 @@ receivers a matching enter/exit pair, and *Proximity* receivers are driven from 
 the trigger's stay task and return to 0 when the sender leaves — ChilloutVR doesn't do that on
 its own the way VRChat does, and a proximity value that stuck at its last reading is what made
 VRCFury's auto socket mode flicker between holes. `allowSelf` / `allowOthers` map onto the trigger's local/network
-interaction flags, and the parameter writes go through the game's animator manager, so **they
-sync** — what a contact sets off is seen by everyone.
+interaction flags, and the parameter writes go through the game's animator manager, so a parameter
+that stayed **synced** carries what the contact set off to everyone. A parameter made local does
+not: ChilloutVR runs an avatar's triggers on the wearer's machine alone, so a `#` name never
+leaves it. That is the whole reason a boop's reaction is left synced and only the penetration
+depth parameters are forced local.
 
 The approximations: the trigger's area is a box sized from the authored sphere or capsule, a
 minimum-velocity threshold has no equivalent (a slow touch fires), and a *Constant* receiver
@@ -693,13 +698,21 @@ viewer, so they need no sync at all. Both paths degrade quietly if a viewer has 
 shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
 breaks.
 
-**A socket's own reactions cost nothing.** Bulges, winces and depth animations the author built
-are driven by contacts, which every client computes for itself, so they use no sync budget however
-many an author built. In VRChat the same thing costs a synced parameter each — which is why the
-converter makes VRChat's contact-driven depth parameters (`…/Self/Contact/Root`,
-`…/Others/Contact/Tip` and the plug's auto-distance) local rather than synced, whatever VRCFury
-numbered them. The socket toggles and modes next to them stay synced, since those are yours to
-set. An avatar that sat a few bits under the cap without penetration will still fit with it on.
+**A socket's own reactions cost no sync, and only the wearer sees them.** Bulges, winces and depth
+animations the author built are driven by contacts, and the converter makes those contact-driven
+depth parameters (`…/Self/Contact/Root`, `…/Others/Contact/Tip` and the plug's auto-distance)
+local rather than synced, whatever VRCFury numbered them — so they cost nothing of the budget,
+however many an author built, where in VRChat each was a synced parameter. The socket toggles and
+modes next to them stay synced, since those are yours to set. An avatar that sat a few bits under
+the cap without penetration still fits with it on.
+
+⚠️ **What that costs:** ChilloutVR computes a trigger's contact on the *wearer's* machine alone —
+the client makes an avatar trigger's receiver local-only and its task writes the local player's
+animator — so a local parameter never leaves that machine. The author's depth reactions therefore
+play for the wearer and not for anyone watching. Making them synced would show them to the room at
+32 bits each, which on a socket-heavy avatar is hundreds of bits; that trade is not currently
+offered, and [YAPS's own socket shapes](#the-yaps-tool) take the other side of it — their depth is
+a synced parameter precisely so the room sees them move.
 
 **Auto socket mode** — VRCFury's, ported whole and steadied: it picks the nearest enrolled socket
 and stays there instead of flickering between neighbours. Only sockets whose author ticked *Auto*

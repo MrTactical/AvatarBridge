@@ -113,8 +113,8 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                // Converting keeps the depth parameters and makes them local: a
-                // contact must drive a local parameter, and every client computes it.
+                // Converting keeps the depth parameters and makes them local,
+                // free but wearer-only: CVR runs a trigger on that machine alone.
                 if (KeepingPenetration(ctx))
                 {
                     prefixes.AddRange(OtherSpsParamPrefixes);
