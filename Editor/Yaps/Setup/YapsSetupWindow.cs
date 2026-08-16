@@ -32,7 +32,7 @@ namespace AvatarBridge
         Label _summary;
         HelpBox _next;
         Label _selection;
-        Button _addHole, _addRing, _makePlug, _quiet, _makeProp, _verifyProp;
+        Button _addHole, _addRing, _makePlug, _findPlug, _quiet, _makeProp, _verifyProp;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
 
@@ -132,7 +132,11 @@ namespace AvatarBridge
             _addHole = Btn("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole));
             _addRing = Btn("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring));
             _makePlug = Btn("Make selected mesh a plug", MakePlug);
-            have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug));
+            _findPlug = Btn("Find the plug and make it", FindAndMakePlug);
+            _findPlug.tooltip = "Guesses the plug from bone and mesh names (cock, penis, shaft, peen, meat, knot and so on), " +
+                                "picks the mesh weighted to it, bakes it and announces it. One click. If it guesses wrong, " +
+                                "select the right mesh or bone and press Make a plug.";
+            have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug, _findPlug));
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
 
@@ -525,6 +529,57 @@ namespace AvatarBridge
             return n;
         }
 
+        // One click: guess the plug from names, then make it. A bone whose
+        // name says plug and has a skinned mesh weighted to it wins; the
+        // topmost such bone is the chain's root. Else a mesh named so.
+        static readonly System.Text.RegularExpressions.Regex PlugName = new System.Text.RegularExpressions.Regex(
+            @"cock|dick|penis|peen|shaft|dong|meat|knot|phallus|dildo|genital|schlong|willy",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        static GameObject GuessPlug(Transform avatarRoot)
+        {
+            if (avatarRoot == null) return null;
+            var skins = avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            // Bones first: a chain gives the bake its axis and its base.
+            foreach (var t in avatarRoot.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == avatarRoot || !PlugName.IsMatch(t.name) || t.GetComponent<Renderer>() != null) continue;
+                if (!IsBone(t, avatarRoot)) continue;
+                // The topmost matching bone of its chain.
+                bool parentMatches = t.parent != null && t.parent != avatarRoot && PlugName.IsMatch(t.parent.name)
+                                     && IsBone(t.parent, avatarRoot);
+                if (parentMatches) continue;
+                if (skins.Any(s => YapsBaker.CountVerticesUnder(s, t) > 0)) return t.gameObject;
+            }
+            foreach (var r in avatarRoot.GetComponentsInChildren<Renderer>(true))
+            {
+                if (PlugName.IsMatch(r.name) && r.GetComponent<YapsSocket>() == null) return r.gameObject;
+            }
+            return null;
+        }
+
+        void FindAndMakePlug()
+        {
+            var root = _target != null ? YapsSocketEditor.AvatarRootOf(_target.transform)
+                : Selection.activeGameObject != null ? YapsSocketEditor.AvatarRootOf(Selection.activeGameObject.transform) : null;
+            if (root == null)
+            {
+                _summary.text = "Pick the avatar or prop above first.";
+                return;
+            }
+            var guess = GuessPlug(root);
+            if (guess == null)
+            {
+                _summary.text = "No bone or mesh on it is named like a plug (cock, penis, shaft, peen, meat, knot…). " +
+                                "Select the plug mesh, or the bone its shaft grows from, and press Make a plug.";
+                return;
+            }
+            Selection.activeGameObject = guess;
+            MakePlug();
+            _summary.text = $"Guessed the plug: \"{guess.name}\". " + _summary.text +
+                            " If that is the wrong one, undo, select the right mesh or bone, and press Make a plug.";
+        }
+
         // A mesh selected: the plug is that mesh. A bone selected: the plug
         // is the skinned mesh that bone drives, from that bone down, and
         // the component sits on the bone so its markers follow it.
@@ -538,9 +593,23 @@ namespace AvatarBridge
                 var root = YapsSocketEditor.AvatarRootOf(go.transform);
                 if (root != null && go.transform != root && IsBone(go.transform, root))
                 {
-                    renderer = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
-                        .FirstOrDefault(s => s.bones != null && System.Array.IndexOf(s.bones, go.transform) >= 0);
+                    // The mesh with the most vertices actually weighted to
+                    // this chain. A body mesh lists every armature bone in
+                    // its bones array with nothing weighted to most of them,
+                    // so "the first mesh that names the bone" is the body.
+                    int most = 0;
+                    foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    {
+                        int count = YapsBaker.CountVerticesUnder(skin, go.transform);
+                        if (count > most) { most = count; renderer = skin; }
+                    }
                     rootBone = go.transform;
+                    if (renderer == null)
+                    {
+                        _summary.text = $"No skinned mesh has vertices weighted to \"{go.name}\" or the bones under it. " +
+                                        "Select the plug mesh itself instead, or the bone its shaft is actually skinned to.";
+                        return;
+                    }
                 }
             }
             if (renderer == null)
@@ -556,6 +625,16 @@ namespace AvatarBridge
                 plug.rootBone = rootBone;
                 var skin = renderer as SkinnedMeshRenderer;
                 if (skin != null && rootBone != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
+            }
+            else if (rootBone != null && plug.renderer != renderer
+                     && YapsBaker.CountVerticesUnder(plug.renderer, rootBone) == 0)
+            {
+                // A plug made earlier on the wrong mesh: take the right one.
+                Undo.RecordObject(plug, "YAPS plug mesh");
+                plug.renderer = renderer;
+                plug.rootBone = rootBone;
+                var skin = renderer as SkinnedMeshRenderer;
+                if (skin != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
             }
             var o = YapsNativeBuilder.Bake(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
