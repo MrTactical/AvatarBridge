@@ -1887,6 +1887,22 @@ bake warns when the mesh's shaft is not along +Z or its base is not at the origi
 at the base and point +Z along the shaft — in Blender, origin at the base and the shaft along +Y
 before export — then bake again. A skinned mesh is measured from its bones and needs neither.
 
+### OSC toys (OSCGoesBrrr, Lovense): the avatar converts, the toy stays silent
+
+Two facts. ChilloutVR has native OSC with VRChat's defaults (listens on 9000, sends on 9001,
+`/avatar/parameters/<name>`, OSCQuery), and it sends *every* animator parameter, local ones
+included, under their real name; a local parameter in ChilloutVR is one whose name starts with
+`#`. OSCGoesBrrr finds the game by an OSCQuery service name starting with `VRChat-Client-`, and
+reads only parameters whose name starts with `OGB/`.
+
+So: launch ChilloutVR with `--osc-query-prefix=VRChat-Client` (its own launch argument for OSC
+tools written for VRChat), and OGB will find it. But the haptics parameters this tool keeps are
+local, so they arrive as `#OGB/…`, and OGB does not recognise them. That is a one-line change on
+OGB's side (treat `#OGB` as `OGB`); until it lands, toy haptics from a converted avatar do not
+reach OGB. Keeping those parameters synced instead would cost 32 sync bits each, nine or so per
+plug and per socket, which is most of an avatar's budget, so the tool does not do that.
+Everything else in those stacks, the sounds and particles, plays for everyone as it should.
+
 ### YAPS: a socket on the body mesh does not open around a plug
 
 By design. The socket shader measures depth from its mesh's own origin, and a body mesh's origin
