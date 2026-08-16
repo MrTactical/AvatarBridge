@@ -761,6 +761,13 @@ and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z th
 should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
+**A plug prop prefab** — *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` beside
+them: a whole spawnable in one click, built and baked on the current shader with the pickup,
+collider and synced contact channel already wired. Drop it in a scene and upload it from the CCK
+as a prop. **Make it again after updating AvatarBridge**: a prop that is already uploaded carries
+the bake and the patched shader copy it was built with, and nothing in the project reaches it — an
+old one bending oddly next to a current avatar is that, not a fault in the avatar.
+
 **YAPS Socket** (the component the prefabs carry) — hole or ring; the mesh whose shapes should
 open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
 depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens

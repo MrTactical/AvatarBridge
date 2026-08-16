@@ -40,6 +40,47 @@ namespace AvatarBridge
                       "component, then bake from Tools ▸ YAPS ▸ Setup.");
         }
 
+        // A plug prop, ready to upload: the toolkit's own mesh, baked on the
+        // current shader, made a prop with the synced contact channel, saved
+        // over the same file. Run it again after any change to the deform —
+        // an uploaded prop carries its own baked material and its own shader
+        // copy, so nothing in the project reaches one already in the world.
+        [MenuItem("Tools/YAPS/Create a plug prop prefab")]
+        public static void CreatePlugPropPrefab()
+        {
+            EnsureFolder(PrefabFolder);
+            var root = YapsNativeBuilder.BuildTestPlug(null, select: false);
+            if (root == null)
+            {
+                Debug.LogError("[YAPS] Could not build the plug: YAPS Simple Lit is missing from the project.");
+                return;
+            }
+            root.name = "YAPS Plug Prop";
+            root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+            var plug = root.GetComponent<YapsPlug>();
+            var baked = YapsNativeBuilder.Bake(plug);
+            if (!baked.Ok)
+            {
+                Object.DestroyImmediate(root);
+                Debug.LogError("[YAPS] Could not bake the plug prop: " + baked.Message);
+                return;
+            }
+            var prop = YapsPropBuilder.MakeProp(root);
+
+            string path = PrefabFolder + "/YAPS Plug Prop.prefab";
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Selection.activeObject = prefab;
+            EditorGUIUtility.PingObject(prefab);
+
+            Debug.Log("[YAPS] Plug prop prefab written to " + path + ". " + baked.Message + " " + prop.Message +
+                      (prop.Notes.Count > 0 ? " " + string.Join(" ", prop.Notes) : "") +
+                      " Upload it from the CCK as a prop. Run this again after updating AvatarBridge: a prop " +
+                      "already uploaded keeps the shader and bake it was built with.");
+        }
+
         static GameObject CreatePrefab(string name, YapsSocket.SocketKind kind)
         {
             var root = new GameObject(name);

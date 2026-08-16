@@ -267,10 +267,15 @@ namespace AvatarBridge
                 "it from the CCK and try it with a second person. As props they find each other by " +
                 "marker lights and, plug to socket, by the channel."));
             props.Body.Add(BridgeElements.SubHeading("Prefabs"));
-            props.Body.Add(BridgeElements.Row(Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs)));
+            props.Body.Add(BridgeElements.Row(
+                Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
+                Btn("Create a plug prop prefab", YapsSocketBuilder.CreatePlugPropPrefab)));
             props.Body.Add(BridgeElements.Hint(
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
-                "avatar and every plug on the platform reads it."));
+                "avatar and every plug on the platform reads it. The plug prop is a whole spawnable in " +
+                "one click — built, baked on the current shader, pickup and contact channel wired — to " +
+                "drop in the scene and upload. Make it again after updating: a prop already uploaded " +
+                "keeps the bake and the shader copy it was built with, which is why an old one bends oddly."));
             _pages.Add(props);
         }
 
