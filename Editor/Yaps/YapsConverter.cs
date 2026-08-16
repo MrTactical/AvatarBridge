@@ -1220,7 +1220,8 @@ namespace AvatarBridge
                     {
                         bones.Add(ctx.PathInTarget(plug.ChainRoot.GetChild(i)));
                     }
-                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType());
+                    int along = YapsCurveMirror.AlongAxis(plug.ChainRoot, plug.Rotation);
+                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType(), along);
                 }
             }
 

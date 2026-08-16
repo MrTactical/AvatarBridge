@@ -294,7 +294,8 @@ namespace AvatarBridge
             clone.SetTexture("_YAPS_Bake", result.Bake);
             clone.SetFloat("_YAPS_VertexCount", result.VertexCount);
             clone.SetFloat("_YAPS_Length", result.Length);
-            clone.SetFloat("_YAPS_BakeScale", 1f);   // baked in renderer units by construction
+            clone.SetFloat("_YAPS_BakeScale", 1f);   // the rest pose; a size animation drives these
+            clone.SetFloat("_YAPS_BakeGirth", 1f);
             clone.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             clone.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
 

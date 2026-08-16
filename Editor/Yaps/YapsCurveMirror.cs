@@ -77,17 +77,33 @@ namespace AvatarBridge
             return written;
         }
 
-        // The root bone's scale curve becomes the bake scale on the material.
-        // One axis, x first: a size slider scales uniformly, and the shader
-        // takes one number. Bones are given as paths from the animator root.
+        // Which of a bone's local axes runs along the shaft: the bake's
+        // forward, taken into the bone's space, and its dominant axis.
+        // 0 x, 1 y, 2 z.
+        public static int AlongAxis(Transform bone, Quaternion bakeRotation)
+        {
+            if (bone == null) return 2;
+            var local = Quaternion.Inverse(bone.rotation) * (bakeRotation * Vector3.forward);
+            float ax = Mathf.Abs(local.x), ay = Mathf.Abs(local.y), az = Mathf.Abs(local.z);
+            return ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+        }
+
+        // The chain root's scale curves become the bake scale (its length
+        // axis) and the bake girth (a radial axis) on the material. One
+        // bone per clip, the first that has a scale curve. Bones are given
+        // as paths from the animator root.
         public static int MirrorBoneScale(IEnumerable<AnimationClip> clips, IEnumerable<string> bonePaths,
-            string rendererPath, Type rendererType)
+            string rendererPath, Type rendererType, int alongAxis)
         {
             var bones = new HashSet<string>(bonePaths.Where(p => p != null), StringComparer.Ordinal);
             if (bones.Count == 0)
             {
                 return 0;
             }
+            string[] axes = { "m_LocalScale.x", "m_LocalScale.y", "m_LocalScale.z" };
+            string along = axes[Mathf.Clamp(alongAxis, 0, 2)];
+            var radial = axes.Where(a => a != along).ToArray();
+
             int written = 0;
             foreach (var clip in clips)
             {
@@ -95,34 +111,56 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                AnimationCurve scale = null;
-                foreach (var axis in new[] { "m_LocalScale.x", "m_LocalScale.z", "m_LocalScale.y" })
+                // The bone this clip scales, if any of ours.
+                string bone = null;
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                foreach (var b in bindings)
                 {
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                    if (b.type == typeof(Transform) && b.propertyName.StartsWith("m_LocalScale.", StringComparison.Ordinal)
+                        && bones.Contains(b.path))
                     {
-                        if (binding.type == typeof(Transform) && binding.propertyName == axis
-                            && bones.Contains(binding.path))
-                        {
-                            scale = AnimationUtility.GetEditorCurve(clip, binding);
-                            break;
-                        }
-                    }
-                    if (scale != null)
-                    {
+                        bone = b.path;
                         break;
                     }
                 }
-                if (scale == null)
+                if (bone == null)
                 {
                     continue;
                 }
-                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                AnimationCurve Curve(string property)
                 {
-                    path = rendererPath,
-                    type = rendererType,
-                    propertyName = "material._YAPS_BakeScale",
-                }, new AnimationCurve(scale.keys));
-                written++;
+                    foreach (var b in bindings)
+                    {
+                        if (b.type == typeof(Transform) && b.path == bone && b.propertyName == property)
+                        {
+                            return AnimationUtility.GetEditorCurve(clip, b);
+                        }
+                    }
+                    return null;
+                }
+                var length = Curve(along);
+                var girth = Curve(radial[0]) ?? Curve(radial[1]);
+                bool any = false;
+                if (length != null)
+                {
+                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                    {
+                        path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeScale",
+                    }, new AnimationCurve(length.keys));
+                    any = true;
+                }
+                if (girth != null)
+                {
+                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                    {
+                        path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeGirth",
+                    }, new AnimationCurve(girth.keys));
+                    any = true;
+                }
+                if (any)
+                {
+                    written++;
+                }
             }
             return written;
         }

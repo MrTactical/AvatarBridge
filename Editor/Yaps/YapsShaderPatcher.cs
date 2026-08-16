@@ -59,6 +59,7 @@ namespace AvatarBridge
         _YAPS_Length (""YAPS plug length"", Float) = 1
         _YAPS_Overrun (""YAPS allow overrun"", Range(0,1)) = 1
         _YAPS_BakeScale (""YAPS bake scale"", Float) = 1
+        _YAPS_BakeGirth (""YAPS bake girth"", Float) = 1
         _YAPS_FrameFromVertex (""YAPS frame from vertex"", Range(0,1)) = 0
         _YAPS_SocketPos (""YAPS socket position"", Vector) = (0,0,0,0)
         _YAPS_SocketForward (""YAPS socket forward"", Vector) = (0,0,0,0)

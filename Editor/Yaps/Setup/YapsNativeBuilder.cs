@@ -195,7 +195,8 @@ namespace AvatarBridge
                 var bones = new List<string> { AnimationUtility.CalculateTransformPath(chainRoot, animator.transform) };
                 for (int i = 0; i < chainRoot.childCount; i++)
                     bones.Add(AnimationUtility.CalculateTransformPath(chainRoot.GetChild(i), animator.transform));
-                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType());
+                int along = YapsCurveMirror.AlongAxis(chainRoot, result.Rotation);
+                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), along);
             }
 
             if (shapes + scaled > 0)

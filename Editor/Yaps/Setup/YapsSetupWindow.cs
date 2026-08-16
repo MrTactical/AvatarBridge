@@ -625,7 +625,7 @@ namespace AvatarBridge
         }
 
         // Under the selected bone, else in a YAPS folder on the avatar.
-        void AddSocket(YapsSocket.SocketKind kind, bool atCamera = false)
+        YapsSocket AddSocket(YapsSocket.SocketKind kind, bool atCamera = false)
         {
             string name = kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring";
             var go = new GameObject(name);
@@ -688,6 +688,7 @@ namespace AvatarBridge
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
             if (!atCamera) Rescan();
+            return socket;
         }
 
         // A bone: bound by a skinned mesh, or under an Armature.

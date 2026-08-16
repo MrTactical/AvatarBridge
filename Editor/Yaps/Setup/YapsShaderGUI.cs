@@ -129,7 +129,7 @@ namespace AvatarBridge
 
         static readonly string[] Internals =
         {
-            "_YAPS_Bake", "_YAPS_VertexCount", "_YAPS_BakeScale", "_YAPS_FrameFromVertex",
+            "_YAPS_Bake", "_YAPS_VertexCount", "_YAPS_BakeScale", "_YAPS_BakeGirth", "_YAPS_FrameFromVertex",
             "_YAPS_ShapeCount", "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3",
             "_YAPS_ShapeWeights4", "_YAPS_ChannelSpace", "_YAPS_ChannelExtents",
             "_YAPS_SocketPos", "_YAPS_SocketForward", "_YAPS_SocketUp", "_YAPS_SocketFlags",

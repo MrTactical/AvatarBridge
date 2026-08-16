@@ -24,7 +24,8 @@ float _YAPS_Overrun;       // may the tip travel past the socket
 // in renderer units, so there is no scale to undo, kept because a shipped
 // material carries it and removing a property a material references is a
 // bigger change than leaving one that reads 1.
-float _YAPS_BakeScale;
+float _YAPS_BakeScale;   // the plug's length scale, from its bones; 1 at rest
+float _YAPS_BakeGirth;   // its radial scale, likewise
 
 // Where the plug's own frame comes from.
 //   0  the renderer's transform, correct when the plug is its own object
