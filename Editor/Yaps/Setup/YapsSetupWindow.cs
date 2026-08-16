@@ -65,7 +65,7 @@ namespace AvatarBridge
             root.Add(_tabs);
 
             _pages = new ScrollView();
-            _pages.AddToClassList("ab-body");
+            _pages.AddToClassList("ab-scroll");
             root.Add(_pages);
             ShowPage();
         }
@@ -280,9 +280,11 @@ namespace AvatarBridge
 
             if (plugs + sockets == 0)
             {
-                _next.text = "Nothing on it yet. To add a socket: click the bone it should follow in the " +
-                             "Hierarchy (Hips, say), then Add a hole or Add a ring. To make a plug: click " +
-                             "the mesh that should bend, then Make selected mesh a plug. Then Build.";
+                _next.text = "Nothing on it yet, and that is normal for an avatar that never had penetration: " +
+                             "YAPS is what adds it. A plug: click the mesh that should bend (or the bone its " +
+                             "shaft grows from) in the Hierarchy, or drop it in the box above, then Make a plug. " +
+                             "A socket: click the bone it should follow (Hips, say), then Add a hole or Add a " +
+                             "ring. Then Build.";
                 _next.messageType = HelpBoxMessageType.Info;
             }
             else if (anyLegacy)
@@ -324,25 +326,41 @@ namespace AvatarBridge
         }
 
         // The buttons name what they will act on.
+        // What the plug and socket buttons act on: the Hierarchy selection,
+        // or, when nothing is selected, the picked object itself when it is
+        // a mesh or a bone. Dropping the plug mesh into the picker is the
+        // obvious move and it has to work.
+        GameObject Candidate()
+        {
+            var go = Selection.activeGameObject;
+            if (go != null) return go;
+            if (_target == null) return null;
+            var root = YapsSocketEditor.AvatarRootOf(_target.transform);
+            bool bone = root != null && _target.transform != root && IsBone(_target.transform, root);
+            return _target.GetComponent<Renderer>() != null || bone ? _target : null;
+        }
+
         void RefreshSelection()
         {
             if (_selection == null) return;
-            var go = Selection.activeGameObject;
+            var go = Candidate();
             if (go == null)
             {
-                _selection.text = "Nothing selected in the Hierarchy. Sockets will go in a YAPS folder on the avatar; a plug needs a mesh selected.";
+                _selection.text = "Nothing selected in the Hierarchy. Sockets will go in a YAPS folder on the avatar; a plug needs a mesh selected, or the plug mesh dropped in the box above.";
                 if (_addHole != null) _addHole.text = "Add a hole";
                 if (_addRing != null) _addRing.text = "Add a ring";
                 if (_makePlug != null) { _makePlug.text = "Make selected mesh a plug"; _makePlug.SetEnabled(false); }
                 return;
             }
+            bool picked = go == _target && Selection.activeGameObject == null;
             var root = YapsSocketEditor.AvatarRootOf(go.transform);
             bool bone = root != null && go.transform != root && IsBone(go.transform, root);
             bool mesh = go.GetComponent<Renderer>() != null;
+            string how = picked ? "Picked" : "Selected";
             _selection.text = bone
-                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
-                : mesh ? $"Selected: mesh \"{go.name}\" — Make a plug will bake this one."
-                : $"Selected: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
+                ? $"{how}: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
+                : mesh ? $"{how}: mesh \"{go.name}\" — Make a plug will bake this one." + (picked ? " Pick the avatar's root to see everything on it." : "")
+                : $"{how}: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
             if (_makePlug != null)
@@ -512,7 +530,7 @@ namespace AvatarBridge
         // the component sits on the bone so its markers follow it.
         void MakePlug()
         {
-            var go = Selection.activeGameObject;
+            var go = Candidate();
             var renderer = go != null ? go.GetComponent<Renderer>() : null;
             Transform rootBone = null;
             if (renderer == null && go != null)
@@ -599,9 +617,14 @@ namespace AvatarBridge
             }
             else
             {
-                var selected = Selection.activeGameObject != null ? Selection.activeGameObject.transform : null;
-                var avatarRoot = _target != null ? _target.transform
+                // The selection, or the picked bone; and the avatar's own
+                // root, not whatever was picked, so a picked mesh or bone
+                // does not become the home of the YAPS folder.
+                var candidate = Candidate();
+                var selected = candidate != null ? candidate.transform : null;
+                var avatarRoot = _target != null ? YapsSocketEditor.AvatarRootOf(_target.transform)
                     : selected != null ? YapsSocketEditor.AvatarRootOf(selected) : null;
+                if (avatarRoot == null && _target != null) avatarRoot = _target.transform;
                 bool onBone = selected != null && avatarRoot != null && selected != avatarRoot
                               && IsBone(selected, avatarRoot);
                 Transform parent;

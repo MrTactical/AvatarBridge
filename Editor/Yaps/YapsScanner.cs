@@ -74,7 +74,7 @@ namespace AvatarBridge
             {
                 if (Total == 0)
                 {
-                    return "Nothing found: no plug or socket of any system under this object.";
+                    return "No penetration system on it yet: no DPS, TPS, SPS or YAPS plug or socket under this object. Its meshes and bones are what the buttons below turn into one.";
                 }
                 int yaps = Plugs.Count(p => p.IsYapsAlready) + Sockets.Count(s => s.IsYapsAlready);
                 int holes = Sockets.Count(s => s.IsHole);
