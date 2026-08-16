@@ -77,12 +77,13 @@ namespace AvatarBridge
             else
             {
                 ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s), local and free",
-                    "ChilloutVR computes contacts on every client, so these cost no sync. OSCGoesBrrr's " +
-                    "automatic detection skips a name starting with \"#\", but its manual links do not: in " +
-                    "OGB, add an avatar-parameter link per name below and it drives the toy from these. " +
-                    "Launch ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game. " +
-                    "\"Keep OGB haptics synced for OSC toys\" makes the automatic detection work instead, " +
-                    $"at 32 sync bits each.\n  {list}");
+                    "A local parameter costs no sync, and a toy is driven from the wearer's own machine, " +
+                    "which is where these are computed. OSCGoesBrrr's automatic detection skips a name " +
+                    "starting with \"#\", but its manual links do not: in OGB, add an avatar-parameter link " +
+                    "per name below, pasted exactly as printed, and it drives the toy from these. Launch " +
+                    "ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game, and turn OSC " +
+                    "on in its settings. \"Keep OGB haptics synced\", under Manual options and Opt-ins, " +
+                    $"makes the automatic detection work instead, at 32 sync bits each.\n  {list}");
             }
         }
 

@@ -2011,10 +2011,29 @@ tools written for VRChat), and OGB will find it. The haptics parameters this too
 by default, so they arrive as `#OGB/…`, which OGB's *automatic* plug and socket detection skips.
 Three ways to the toy, cheapest first:
 
-- **Manual links, free.** OGB's own *avatar parameter* links (Output links → add link) read a
-  parameter by its exact name, `#` and all. The report's Diagnostics section lists every
-  `#OGB/…` name on the converted avatar; add a link per name you want driving a device. Costs
-  no sync, works today.
+- **Manual links, free.** OGB's own *avatar parameter* links read a parameter by its exact name,
+  `#` and all, so nothing needs syncing. Costs no sync, works today. Step by step:
+
+  1. **Launch ChilloutVR with `--osc-query-prefix=VRChat-Client`.** In Steam: right-click the
+     game ▸ Properties ▸ Launch Options, paste it there. Without this, OGB never finds the game
+     at all, whichever route you take.
+  2. **Turn OSC on in ChilloutVR's settings** and wear the converted avatar, so the game
+     publishes its parameters.
+  3. **Open `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/` and find the entry
+     *"N OGB haptics parameter(s), local and free"*. It lists every name in full, one per line,
+     `#OGB/Pen/…` and `#OGB/Orf/…`.
+  4. **In OSCGoesBrrr, add one link per device**: *Outputs* ▸ add ▸ **Avatar parameter**, then
+     paste a name exactly as the report prints it, including the leading `#`. Nothing else needs
+     changing.
+  5. **Which names to pick.** A plug's are under `#OGB/Pen/…`, a socket's under `#OGB/Orf/…`,
+     and the useful ones end in `PenSelf` / `PenOthers` (something entering it) and `TouchSelf` /
+     `TouchOthers` (something brushing it). Link the ones matching how you want the toy driven,
+     and leave the rest.
+
+  If the toy stays silent after that, the parameter is the thing to check first: OGB's own
+  parameter monitor should show the value moving as you're touched. If it never moves, the name
+  is mistyped or the `#` was dropped; if it moves and the toy doesn't, the fault is in the
+  device link rather than the avatar.
 - **Keep OGB haptics synced for OSC toys**, under *Manual options ▸ Opt-ins*. Automatic detection
   works with no setup, at 32 sync bits each, about nine per plug and per socket: one plug and
   three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the 3200-bit cap on
