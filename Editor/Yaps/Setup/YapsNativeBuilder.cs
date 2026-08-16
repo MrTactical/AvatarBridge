@@ -712,13 +712,34 @@ namespace AvatarBridge
                     v.Add(off * r + new Vector3(0, 0, z)); n.Add(off);
                 }
             }
+            // Wound so the OUTSIDE faces out. Unity's front face is
+            // Cross(B - A, C - A); the first version of this had it the
+            // other way, so backface culling threw away the surface you
+            // were looking at and left the far inside showing through.
             for (int ring = 0; ring < along; ring++)
                 for (int a = 0; a < around; a++)
                 {
                     int nx = (a + 1) % around, here = ring * around, up = (ring + 1) * around;
-                    tri.Add(here + a); tri.Add(up + a); tri.Add(up + nx);
-                    tri.Add(here + a); tri.Add(up + nx); tri.Add(here + nx);
+                    tri.Add(here + a); tri.Add(up + nx); tri.Add(up + a);
+                    tri.Add(here + a); tri.Add(here + nx); tri.Add(up + nx);
                 }
+            // A cap over the base, its own vertices so the edge stays hard.
+            // The tip needs none: the last ring has radius 0. Without this
+            // the mesh is a tube open at one end, and an open end reads as
+            // a hole in the model from any angle that can see into it.
+            int cap = v.Count;
+            v.Add(Vector3.zero); n.Add(Vector3.back);
+            for (int a = 0; a < around; a++)
+            {
+                float ang = a / (float) around * Mathf.PI * 2f;
+                v.Add(new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * radius);
+                n.Add(Vector3.back);
+            }
+            for (int a = 0; a < around; a++)
+            {
+                int nx = (a + 1) % around;
+                tri.Add(cap); tri.Add(cap + 1 + nx); tri.Add(cap + 1 + a);
+            }
             var mesh = new Mesh { name = "YAPS Test Plug Mesh" };
             mesh.SetVertices(v); mesh.SetNormals(n); mesh.SetTriangles(tri, 0);
             mesh.RecalculateTangents(); mesh.RecalculateBounds();
