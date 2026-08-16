@@ -121,11 +121,14 @@ namespace AvatarBridge
             int layers = RemoveLayer(ControllersOf(top), layer, parameter);
             if (layers > 0) done.Add($"layer \"{layer}\" out of {layers} controller(s)");
 
-            // The socket's toggle.
+            // The socket's toggle, and the menu animator without it.
             if (avatar != null)
             {
+                int before = YapsToggles.Edits;
                 int entries = RemoveEntries(avatar, ToggleEntriesFor(avatar, socket.gameObject));
                 if (entries > 0) done.Add("its menu toggle");
+                string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
+                if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
             // The bake on its own mesh: the material it replaced goes back.
@@ -216,8 +219,11 @@ namespace AvatarBridge
 
             if (avatar != null)
             {
+                int before = YapsToggles.Edits;
                 int entries = RemoveEntries(avatar, ToggleEntriesFor(avatar, plug));
                 if (entries > 0) done.Add("its menu toggle");
+                string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
+                if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
             var go = plug.gameObject;
@@ -306,7 +312,10 @@ namespace AvatarBridge
                         done.Add($"menu toggle \"{e.name}\": every object it switched is gone");
                     }
                 }
+                int before = YapsToggles.Edits;
                 RemoveEntries(avatar, dead);
+                string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
+                if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
             // The toolkit's objects with nothing of the toolkit's above them.
@@ -450,7 +459,7 @@ namespace AvatarBridge
             var list = entries.ToList();
             if (list.Count == 0) return 0;
             Undo.RecordObject(avatar, "Remove YAPS toggle");
-            foreach (var e in list) avatar.avatarSettings.settings.Remove(e);
+            foreach (var e in list) { avatar.avatarSettings.settings.Remove(e); YapsToggles.NoteRemoved(e.machineName); }
             EditorUtility.SetDirty(avatar);
             return list.Count;
         }

@@ -416,9 +416,24 @@ namespace AvatarBridge
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
             var avatar = socket.GetComponentInParent<CVRAvatar>();
+            int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, socket.name);
             if (toggled != null) lines.Add(toggled);
+            string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
+            if (menu != null) lines.Add(menu);
             return lines;
+        }
+
+        // A plug's bake, then the menu animator refreshed if its toggle
+        // changed the entries. What the plug inspector's button does.
+        public static Outcome BakeAndRefreshMenu(YapsPlug plug)
+        {
+            int before = YapsToggles.Edits;
+            var o = Bake(plug);
+            var avatar = plug != null ? plug.GetComponentInParent<CVRAvatar>() : null;
+            string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
+            if (menu != null) o.Notes.Add(menu);
+            return o;
         }
 
         // Bakes the socket's chosen shapes into its mesh's material, staged

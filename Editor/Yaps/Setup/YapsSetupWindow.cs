@@ -691,13 +691,19 @@ namespace AvatarBridge
             int plugsOk = 0, plugsTried = 0, socketsBuilt = 0;
             var lines = new List<string>();
             if (adopted > 0) lines.Add($"made {adopted} editable");
+            int edits = YapsToggles.Edits;
             foreach (var p in _target.GetComponentsInChildren<YapsPlug>(true))
             {
                 plugsTried++;
                 var o = YapsNativeBuilder.Bake(p);
                 if (o.Ok) plugsOk++;
                 lines.Add((o.Ok ? "✓ " : "✗ ") + o.Message);
+                // The toggle and wiring notes were only in the console before.
+                lines.AddRange(o.Notes.Where(n => n.Contains("menu toggle") || n.Contains("Wired")));
             }
+            // The plugs' toggles into the menu animator, once. Sockets do their own.
+            string menu = YapsToggles.RefreshMenuAnimator(_target.GetComponentInChildren<CVRAvatar>(), edits);
+            if (menu != null) lines.Add(menu);
             foreach (var s in _target.GetComponentsInChildren<YapsSocket>(true))
             {
                 socketsBuilt++;

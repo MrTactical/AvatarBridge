@@ -234,7 +234,7 @@ namespace AvatarBridge
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", local parameter {parameter}, no sync cost)";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
             if (animator.runtimeAnimatorController != controller)
-                note += "; press Create Animator on the CVRAvatar so its animator picks the layer up";
+                note += "; the avatar's animator is not the base controller's copy, so press Create Animator on the CVRAvatar for it to pick the layer up";
             return note;
         }
 

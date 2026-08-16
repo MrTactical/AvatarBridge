@@ -1548,6 +1548,17 @@ namespace AvatarBridge
                         break;
                 }
             }
+            // Greyed entries: the menu has them, the animator does not yet.
+            // Said once here, not only in a tooltip.
+            if (missingCount > 0)
+            {
+                parent.Add(new HelpBox(
+                    $"{missingCount} greyed entr{(missingCount == 1 ? "y is" : "ies are")} in the menu but not in the " +
+                    "animator yet: no parameter of that name. The CCK writes one per entry when you press Create " +
+                    "Animator on the CVRAvatar's Advanced Settings; the YAPS toolkit runs that for its own entries " +
+                    "when it builds. Hover an entry for its parameter name.",
+                    HelpBoxMessageType.Info));
+            }
         }
     }
 }

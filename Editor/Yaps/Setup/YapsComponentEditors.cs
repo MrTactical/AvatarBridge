@@ -1098,8 +1098,9 @@ namespace AvatarBridge
                 : "Set the mesh up, then Bake: it measures the mesh, patches the material's own shader (or falls back to YAPS Simple Lit), writes the knobs and announces the plug to every socket family."));
             bake.Body.Add(new BridgeElements.PrimaryButton(isBaked ? "Re-bake" : "Bake", () =>
             {
-                var o = YapsNativeBuilder.Bake(plug);
-                if (o.Ok) Debug.Log("[YAPS] " + o.Message); else Debug.LogError("[YAPS] " + o.Message);
+                var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
+                string said = o.Message + (o.Notes.Count > 0 ? "  " + string.Join("  ", o.Notes) : "");
+                if (o.Ok) Debug.Log("[YAPS] " + said); else Debug.LogError("[YAPS] " + said);
                 RebuildLater();
             }));
             var removePlug = YapsInspectorStyle.Button("Remove this plug", () =>
