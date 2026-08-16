@@ -438,15 +438,9 @@ namespace AvatarBridge
             }
             else
             {
-                // Assign the override, not the base. CVR assigns
-                // CVRAvatar.overrides onto the Animator on load.
-                //
-                // Skipped entirely when references resolve to nothing.
-                // The setter rebinds even on a disabled Animator, and
-                // Rebind builds the full playable graph. A dangling
-                // motion reference there segfaults Unity.
-                // CVR reads CVRAvatar.overrides on load, so skipping
-                // the assignment loses nothing.
+                // The override, not the base: CVR assigns it on load, so
+                // skipping this loses nothing. Skipped when references
+                // dangle, since the setter rebinds and that segfaults.
                 if (ControllerWouldCrashUnity(overrides))
                 {
                     ctx.Report.Error(Category, "Controller NOT assigned to the Animator — it crashes Unity",
@@ -606,16 +600,9 @@ namespace AvatarBridge
                 }
                 var children = tree.children;
 
-                // A slider's holes are dropped rather than filled.
-                // Unity blends a 1D tree between the two children either
-                // side of the parameter. A null child never takes weight.
-                // A filler clip does, and it animates nothing.
-                //
-                // Slider only. A dropdown's empty option is a deliberate
-                // "show nothing" the parameter lands exactly on.
-                //
-                // Thresholds are pinned first. Removing a child only
-                // renumbers neighbours while useAutomaticThresholds is on.
+                // A slider's holes are dropped, not filled: a null child
+                // takes no weight, a filler clip does. Sliders only, and
+                // thresholds are pinned first so nothing renumbers.
                 if (tree.blendType == BlendTreeType.Simple1D
                     && !string.IsNullOrEmpty(tree.blendParameter)
                     && sliderParameters.Contains(tree.blendParameter))
@@ -2023,13 +2010,9 @@ namespace AvatarBridge
             var sanitizedNames = new Dictionary<string, string>();
             var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
 
-            // Renames decided while the menu was built. A Joystick2D
-            // addresses its axes as "<machineName>-x"/"-y", so those
-            // exact names must exist.
-            //
-            // Consulted before ParameterRenameMap, so entries shadow the
-            // core translations. Never admit a key the game drives, or a
-            // value colliding with an existing parameter. Skip and report.
+            // Renames from the menu build: a Joystick2D needs its exact
+            // "-x"/"-y" axis names. Read before the core map, so these
+            // shadow it. A key the game drives is skipped and reported.
             foreach (var forced in ctx.ForcedRenames)
             {
                 if (CvrCoreParameters.Contains(forced.Key) || StreamFedParameters.Contains(forced.Key)
@@ -2082,13 +2065,9 @@ namespace AvatarBridge
                 }
                 string result = sanitizedNames.TryGetValue(name, out var sanitized) ? sanitized
                     : ParameterRenameMap.TryGetValue(name, out var mapped) ? mapped : name;
-                // Stream-fed parameters must stay synced. The stream runs
-                // on the wearer's copy only, and a "#" name never
-                // replicates, so remote viewers would see frozen defaults.
-                // Forced local beats every claim to keep a parameter synced.
-                // A contact-driven parameter has to be "#" or the incoming
-                // stream overwrites what the contact just set, and being
-                // local also costs nothing against the sync budget.
+                // Stream-fed parameters stay synced: the stream runs on
+                // the wearer's copy alone. Forced local wins anyway, or
+                // the stream overwrites what a contact just set.
                 if (ctx.ForcesLocal(result)
                     && !result.StartsWith("#", StringComparison.Ordinal))
                 {
@@ -2590,13 +2569,9 @@ namespace AvatarBridge
                 int addedThisLayer = 0;
                 foreach (var state in states)
                 {
-                    // A blend tree stands aside. A constant assertion
-                    // would fight the parameter-driven value.
-                    //
-                    // Routers do not stand aside. Ownership is silence at
-                    // the top, authority at the bottom, and that only
-                    // works while the bottom speaks. The conversion-time
-                    // value is written for bindings this layer owns.
+                    // A blend tree stands aside: a constant would fight
+                    // its parameter. Routers do not, since ownership only
+                    // works while the bottom layer keeps speaking.
                     if (state.motion is BlendTree)
                     {
                         continue;
@@ -3069,15 +3044,10 @@ namespace AvatarBridge
                                     case AnimatorConditionMode.If:
                                     case AnimatorConditionMode.IfNot:
                                         break;
-                                    // Greater/Less read against the threshold.
-                                    // A bool only reads 0 or 1, so an
-                                    // out-of-range comparison is a tautology,
-                                    // never an If/IfNot.
-                                    //
-                                    // VRCFury writes remote branches as a
-                                    // float band meaning "IsLocal is 0".
-                                    // Misread, its NonLocal states become
-                                    // unreachable on every copy.
+                                    // A bool reads 0 or 1, so an out of
+                                    // range compare is a tautology, not an
+                                    // If. VRCFury bands remote branches
+                                    // that way; misread they go unreachable.
                                     case AnimatorConditionMode.Greater:
                                         if (threshold < 0f) { drop = true; break; }          // > -0.001: always
                                         if (threshold >= 1f) { impossible = true; break; }   // > 1: never
@@ -3942,13 +3912,9 @@ namespace AvatarBridge
             master.layers = layers.ToArray();
             EditorUtility.SetDirty(master);
 
-            // CVR's blink is not an animation layer. The client writes
-            // the weight in LateUpdate, after the animator, and owns
-            // the shape outright. A shape an expression still animates
-            // would be flattened for good.
-            //
-            // When the removed layer's shape is contested, move the
-            // native blink onto a family nothing else drives.
+            // CVR's blink is not a layer: the client writes the weight in
+            // LateUpdate and owns the shape. A contested shape gets the
+            // native blink moved onto a family nothing else drives.
             var contested = RaisedFaceShapes(master, ctx.CvrAvatar);
             string pairLeft = null, pairRight = null;
             string chosen = blinkShape;
@@ -4303,15 +4269,9 @@ namespace AvatarBridge
                 }
 
                 // ---- edge-triggered arming ----
-                // Arming on a level replays forever: a dropdown holds its
-                // value, so a played-once pose re-enters on hand-back.
-                // Entry must fire on the rise of the conditions, once.
-                //
-                // A "#" ready flag gates every arming transition, run by
-                // a weight-0 memory layer: Ready raises it, Engaged drops
-                // it while conditions hold, Ready re-raises only after
-                // they go false. The window evaluates first, so one frame
-                // of flag-up arms once per rise.
+                // Arming on a level replays forever, since a dropdown
+                // holds its value. A "#" ready flag on a weight-0 memory
+                // layer gates it, so entry fires once per rise.
                 string readyName = "#AB_Ready_" + SanitizeParameterName(clone.name);
                 if (master.parameters.All(p => p.name != readyName))
                 {
@@ -4457,13 +4417,9 @@ namespace AvatarBridge
                     changed.AddCondition(AnimatorConditionMode.Greater, 0.5f, deltaName);
                 }
                 // ---- disarmed until something actually changes ----
-                // Arming conditions can be true at load. A VRChat Action
-                // layer sits at weight 0, so its conditions may hold
-                // permanently; the transplant has no weight gate.
-                //
-                // The machine starts disarmed, snapshots the values it
-                // woke with, and arms only when one departs from that
-                // snapshot: a real user action, not the avatar existing.
+                // Arming conditions can hold at load, since a VRChat
+                // Action layer sits at weight 0. So it snapshots what it
+                // woke with and arms only when a value departs from it.
                 var restParameters = armedEntries
                     .SelectMany(e => e.Item2.Select(c => c.parameter))
                     .Distinct()
@@ -6668,14 +6624,9 @@ namespace AvatarBridge
                         : "empty state found, but the layer animates nothing to restore";
                     continue;
                 }
-                // ONLY the two-state toggle. VRChat's idiom is exactly one empty "off" state and
-                // one state holding the clip, and that shape is the only one where a snapshot of
-                // the avatar is the right thing to put in the empty half.
-                //
-                // Anything larger is a machine, and its empty states are
-                // structural, not "off" halves. Erring toward doing
-                // nothing is cheap: an unfilled off state behaves as it
-                // did in VRChat. Erring the other way changes the avatar.
+                // Only the two-state toggle, VRChat's idiom: one empty off
+                // state and one holding the clip. Anything larger is a
+                // machine whose empty states are structural.
                 if (stateCount != 2)
                 {
                     restoreVerdicts[layer.name] = $"not a two-state toggle ({stateCount} states)";
@@ -8566,14 +8517,10 @@ namespace AvatarBridge
                         }
                         if (objectToggle && !CurveActivates(curve))
                         {
-                            // A deactivation, mirrored rather than dropped.
-                            // CVR never restores Write Defaults, so a cloth
-                            // switched on would otherwise run forever.
-                            //
-                            // Switching the PhysBone's own object stops
-                            // that one chain deliberately. Only a container
-                            // deactivation must prove nothing still
-                            // visible rides these bones.
+                            // Mirrored, not dropped: CVR restores nothing,
+                            // so cloth switched on runs forever. Only a
+                            // container deactivation needs the proof that
+                            // nothing visible still rides these bones.
                             if (source != animated && ChainSharedOutside(chain, animated))
                             {
                                 sharedChains.Add(chain.Source.name);
@@ -8773,13 +8720,9 @@ namespace AvatarBridge
                 });
             }
 
-            // Bindings the finished controller ALREADY switches off somewhere. A synthetic stop is
-            // for a binding nothing ever takes back; where the avatar's own animation takes it back
-            // already, adding one is at best redundant and at worst destructive.
-            //
-            // Paired chains exist: one enabled while the other disables,
-            // swapped back by a defaults clip. A synthetic stop on top of
-            // that leaves both disabled.
+            // Bindings the finished controller already switches off. A
+            // synthetic stop is for one nothing takes back; on a paired
+            // chain it would leave both halves disabled.
             var alreadySwitchedOff = new HashSet<EditorCurveBinding>();
             foreach (var pair in rewired)
             {
@@ -8796,14 +8739,9 @@ namespace AvatarBridge
                 }
             }
 
-            // The restore passes have already run, so the m_Enabled
-            // bindings created above were invisible to them. Nothing
-            // ever takes the on curve back, and CVR restores nothing.
-            // A toggle with an empty off state has nothing to mirror.
-            //
-            // Scoped tightly: only bindings this pass switched on, only
-            // in a layer that switches them, only into plain-clip states,
-            // and only where the shared-rider guard allows a stop.
+            // The restore passes ran before these bindings existed, and
+            // nothing takes the on curve back. Scoped to what this pass
+            // switched on, in a layer that switches it, plain clips only.
             foreach (var layer in master.layers)
             {
                 var activatedHere = new HashSet<EditorCurveBinding>();
@@ -10239,14 +10177,9 @@ namespace AvatarBridge
             return null;
         }
 
-        // A gesture layer that only ever plays VRChat's proxy_* clips has
-        // no hand poses of its own. Those files are placeholders: the
-        // VRChat CLIENT swaps its real hand animations in at runtime, so
-        // what ships in the project is a stand-in. Merged here they play
-        // literally, and taking ChilloutVR's hand layers out for them
-        // replaces working poses with the stand-in - fingers snapping to
-        // a pose nobody authored. ChilloutVR's own hand set is what this
-        // platform has instead, exactly as with the locomotion proxies.
+        // A gesture layer playing only proxy_* clips has no poses of its
+        // own: the VRChat client swaps the real ones in at runtime. Kept
+        // here they play literally and fingers snap. CVR's own set wins.
         static bool IsProxyOnlyLayer(AnimatorControllerLayer srcLayer)
         {
             if (srcLayer?.stateMachine == null)

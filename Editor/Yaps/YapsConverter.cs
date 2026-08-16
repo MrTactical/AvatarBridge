@@ -165,10 +165,41 @@ namespace AvatarBridge
                 shader = YapsShaderPatcher.Patch(source, ctx.OutputDir + "/YAPS",
                     ctx.Report, out refusal, out skippedShadowPasses, allowSps: legacy == YapsLegacyMap.Origin.SPS);
             }
+
+            // A shader that will not take the deform is not the end of it:
+            // Simple Lit will, with the look carried over. The toolkit has
+            // always done this; the converter used to give up instead.
+            if (shader == null)
+            {
+                var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
+                if (plain != null)
+                {
+                    var second = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
+                        out string plainRefusal, out skippedShadowPasses);
+                    if (second != null)
+                    {
+                        shader = second;
+                        patchSource = plain;
+                        ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
+                            $"Its own shader could not take the deform ({refusal}), so the plug wears YAPS " +
+                            "Simple Lit with its colour, albedo, normal map, metallic and smoothness carried " +
+                            "over. The original material is untouched. Put a shader with source on the mesh " +
+                            "(Poiyomi, for one) and reconvert for more than that.");
+                    }
+                    else
+                    {
+                        refusal += "; and YAPS Simple Lit refused too: " + plainRefusal;
+                    }
+                }
+                else
+                {
+                    refusal += "; and " + why;
+                }
+            }
             if (shader == null)
             {
                 ctx.Report.Warning(Category, $"Could not add the deform to \"{source.name}\"",
-                    $"{refusal}. The plug converts as an ordinary mesh — it will look right and " +
+                    $"{refusal}. The plug converts as an ordinary mesh: it will look right and " +
                     "simply will not bend.");
                 return;
             }
