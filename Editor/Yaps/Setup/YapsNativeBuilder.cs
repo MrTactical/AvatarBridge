@@ -256,6 +256,23 @@ namespace AvatarBridge
             return m;
         }
 
+        // A baked plug's length in world metres. The material holds it in
+        // the units the bake measured it in: metres already off a skinned
+        // mesh, the object's own units off a plain one, which is why the
+        // number on the material cannot be drawn in the scene as it stands.
+        public static float WorldLength(Renderer renderer, Material m)
+        {
+            if (m == null || !m.HasProperty("_YAPS_Length")) return 0f;
+            float length = m.GetFloat("_YAPS_Length");
+            // A size animation stretches the shaft; the tip goes with it.
+            if (m.HasProperty("_YAPS_BakeScale")) length *= Mathf.Max(m.GetFloat("_YAPS_BakeScale"), 0.01f);
+            bool skinned = m.HasProperty("_YAPS_FrameFromVertex")
+                ? m.GetFloat("_YAPS_FrameFromVertex") > 0.5f
+                : renderer is SkinnedMeshRenderer s && s.bones != null && s.bones.Length > 0;
+            if (!skinned && renderer != null) length *= Mathf.Abs(renderer.transform.lossyScale.z);
+            return length;
+        }
+
         // Every YapsPlug wearing this material takes the values back.
         public static void SyncPlugsFrom(Material m)
         {

@@ -135,7 +135,7 @@ namespace AvatarBridge
                         f.Material = mats[i]; f.MaterialSlot = i;
                         f.Origin = origin;
                         f.IsYapsAlready = origin == YapsLegacyMap.Origin.YAPS;
-                        if (f.StatedLength <= 0f) f.StatedLength = StatedLength(mats[i], origin);
+                        if (f.StatedLength <= 0f) f.StatedLength = StatedLength(mats[i], origin, target);
                         break;
                     }
                 }
@@ -167,7 +167,7 @@ namespace AvatarBridge
                     f.Material = mats[i]; f.MaterialSlot = i;
                     f.Origin = origin;
                     f.IsYapsAlready = origin == YapsLegacyMap.Origin.YAPS;
-                    f.StatedLength = StatedLength(mats[i], origin);
+                    f.StatedLength = StatedLength(mats[i], origin, r);
                     Finish(f, owned);
                     result.Plugs.Add(f);
                     break;
@@ -341,11 +341,12 @@ namespace AvatarBridge
             if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights — DPS plugs and light-only plugs cannot see it");
         }
 
-        static float StatedLength(Material m, YapsLegacyMap.Origin origin)
+        static float StatedLength(Material m, YapsLegacyMap.Origin origin, Renderer renderer = null)
         {
             switch (origin)
             {
-                case YapsLegacyMap.Origin.YAPS: return m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0f;
+                // In metres, whatever units the bake measured it in.
+                case YapsLegacyMap.Origin.YAPS: return YapsNativeBuilder.WorldLength(renderer, m);
                 case YapsLegacyMap.Origin.SPS: return m.HasProperty("_SPS_Length") ? m.GetFloat("_SPS_Length") : 0f;
                 case YapsLegacyMap.Origin.TPS: return m.HasProperty("_TPS_PenetratorLength") ? m.GetFloat("_TPS_PenetratorLength") : 0f;
                 case YapsLegacyMap.Origin.DPS: return m.HasProperty("_Length") ? m.GetFloat("_Length") : 0f;
