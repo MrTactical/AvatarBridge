@@ -550,7 +550,6 @@ namespace AvatarBridge
                 bakedMat.SetFloat("_YAPS_SocketPower", socket.shapePower);
                 EditorUtility.SetDirty(bakedMat);
             }
-            YapsSocketReactions.SetStrength(socket);
             if (YapsShapeSim.Holding(socket)) YapsShapeSim.Apply(socket, YapsShapeSim.DepthOf(socket));
         }
 
@@ -781,7 +780,11 @@ namespace AvatarBridge
                     var strength = YapsInspectorStyle.Field(powerProp, type.GetField("shapePower"), "Strength");
                     // Written through as it moves: the material once baked,
                     // the reactions layer once built, the test on the mesh.
-                    strength.TrackPropertyValue(powerProp, p => PushStrength(socket, FindSocketMaterial(socket)));
+                    strength.TrackPropertyValue(powerProp, p =>
+                    {
+                        PushStrength(socket, FindSocketMaterial(socket));
+                        ReactionsChanged(socket);
+                    });
                     opens.Body.Add(strength);
                     if (contactRoute)
                     {

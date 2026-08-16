@@ -150,27 +150,15 @@ namespace AvatarBridge
             return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName || (!string.IsNullOrEmpty(socket.builtLayer) && l.name == socket.builtLayer)));
         }
 
-        // The strength is the layer's weight, so it can change without a
-        // rebuild: the clips hold the shapes at full. Returns whether a
-        // layer took it.
+        // Strength lives in the clips, so changing it rewrites them. The
+        // layer stays at full weight: a partial one creeps to full in game,
+        // blending against its own last frame where nothing else writes
+        // these shapes. Returns whether a built layer took the new value.
         public static bool SetStrength(YapsSocket socket)
         {
-            if (socket == null) return false;
-            string layerName = LayerName(socket);
-            bool any = false;
-            foreach (var controller in Controllers(socket))
-            {
-                var layers = controller.layers;
-                for (int i = 0; i < layers.Length; i++)
-                {
-                    if (layers[i].name != layerName) continue;
-                    layers[i].defaultWeight = Mathf.Clamp01(socket.shapePower);
-                    controller.layers = layers;
-                    EditorUtility.SetDirty(controller);
-                    any = true;
-                }
-            }
-            return any;
+            if (!Exists(socket)) return false;
+            Build(socket);
+            return true;
         }
 
         // Builds or rebuilds the reactions for one socket. Returns what
@@ -272,7 +260,10 @@ namespace AvatarBridge
                 foreach (var s in stages)
                 {
                     float opening = Mathf.Clamp01((depth - s.startsAt) / Mathf.Max(0.01f, s.fadeOver));
-                    float weight = Mathf.Lerp(floor[s.blendshape], 100f, opening);
+                    // Strength scales how far the shape opens, in the CLIP. A layer at
+                    // partial weight blends against what earlier layers wrote, and
+                    // nothing else writes these shapes, so it creeps to full instead.
+                    float weight = Mathf.Lerp(floor[s.blendshape], 100f, opening * Mathf.Clamp01(socket.shapePower));
                     clip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), "blendShape." + s.blendshape,
                         AnimationCurve.Constant(0f, 1f / 60f, weight));
                 }
@@ -290,7 +281,7 @@ namespace AvatarBridge
             machine.defaultState = state;
             var layer = new AnimatorControllerLayer
             {
-                name = layerName, defaultWeight = Mathf.Clamp01(socket.shapePower), stateMachine = machine,
+                name = layerName, defaultWeight = 1f, stateMachine = machine,
             };
             if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
             controller.layers = layers.ToArray();
