@@ -1869,13 +1869,14 @@ means the material carries `_YAPS_Bake`. On an avatar converted before 4.0 the c
 left behind; the window offers **make editable** on each row (or **Build**, which does them all),
 and the socket or plug then reads as it should. Reconverting on the current release does the same.
 
-### YAPS: "the plug measured most of the avatar's height, so it was left alone"
+### YAPS: "the plug was left alone: the first bones above the plug object belong to the body"
 
-The bake could not tell the plug's vertices from the rest of the mesh, so it took everything: no
-bone chain of its own sits beneath the plug object. Put the SPS Plug component (or the YAPS Plug's
-*Root Bone*) on the plug's root bone, or on an empty under it, and convert or bake again. A plug
-mesh that is its own object is found by that object; a plug that is part of the body needs the
-bone.
+The converter found the plug's bone chain by climbing up from the plug object, and the first bones
+it met were the wearer's own (Hips, Spine, a leg), so "the plug" would have been the whole body.
+Put the SPS Plug component (or the YAPS Plug's *Root Bone*) on the plug's root bone, or on an empty
+under it, and convert or bake again. A plug mesh that is its own object is found by that object; a
+plug that is part of the body needs the bone. Length is never the reason: a hyper plug longer
+than its wearer converts as long as it has a chain of its own.
 
 ### YAPS: a plain-mesh plug jumps or turns the moment a socket engages it
 
