@@ -187,7 +187,7 @@ namespace AvatarBridge
             if (socket == null) return;
             socket.preview = on;
             if (on && spawnPlugIfNone && CountBakedPlugs() == 0) Spawn(socket);
-            if (!on) Remove();
+            if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
             SceneView.RepaintAll();
@@ -204,9 +204,13 @@ namespace AvatarBridge
         static void Tick()
         {
             // Stop once nothing needs it.
-            bool previewing = Object.FindObjectsOfType<YapsSocket>().Any(s => s.preview);
+            var sockets = Object.FindObjectsOfType<YapsSocket>();
+            bool previewing = sockets.Any(s => s.preview);
             bool plugSelected = Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<YapsPlug>() != null;
             if (!previewing && !plugSelected) { Animate(false); return; }
+            // The plug's tip drives the previewing socket's shapes.
+            foreach (var s in sockets)
+                if (s.preview) YapsShapeSim.FollowPlugs(s);
             SceneView.RepaintAll();
         }
 
@@ -226,22 +230,30 @@ namespace AvatarBridge
         {
             origin = Vector3.zero; forward = Vector3.forward; up = Vector3.up; length = 0.25f;
             foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
-            {
-                var r = plug.Target;
-                if (r == null) continue;
-                var mat = r.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake")
-                    && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0);
-                if (mat == null) continue;
-                var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
-                origin = frame.position; forward = frame.forward; up = frame.up;
-                length = mat.HasProperty("_YAPS_Length") ? Mathf.Max(mat.GetFloat("_YAPS_Length"), 0.05f) : 0.25f;
-                if (!plug.transform.Find("YAPS Markers") && r is SkinnedMeshRenderer && plug.rootBone != null)
-                {
-                    origin = plug.rootBone.position; forward = plug.rootBone.forward; up = plug.rootBone.up;
-                }
-                return true;
-            }
+                if (PlugFrame(plug, out origin, out forward, out up, out length)) return true;
             return false;
+        }
+
+        // One baked plug as a frame; false when it has no live bake.
+        public static bool PlugFrame(YapsPlug plug, out Vector3 origin, out Vector3 forward, out Vector3 up, out float length)
+        {
+            origin = Vector3.zero; forward = Vector3.forward; up = Vector3.up; length = 0.25f;
+            var r = plug != null ? plug.Target : null;
+            if (r == null) return false;
+            var mat = r.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake")
+                && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0);
+            if (mat == null) return false;
+            var markers = plug.transform.Find("YAPS Markers");
+            var frame = markers ?? plug.transform;
+            origin = frame.position; forward = frame.forward; up = frame.up;
+            length = mat.HasProperty("_YAPS_Length") ? Mathf.Max(mat.GetFloat("_YAPS_Length"), 0.05f) : 0.25f;
+            if (markers == null && r is SkinnedMeshRenderer && plug.rootBone != null)
+            {
+                origin = plug.rootBone.position; forward = plug.rootBone.forward; up = plug.rootBone.up;
+            }
+            // The bake scale stretches the shaft; the tip goes with it.
+            if (mat.HasProperty("_YAPS_BakeScale")) length *= Mathf.Max(mat.GetFloat("_YAPS_BakeScale"), 0.01f);
+            return true;
         }
 
         // A test plug in front of the socket, engaged but not swallowed.
@@ -298,18 +310,159 @@ namespace AvatarBridge
         }
     }
 
+    // Moves a socket's shapes on its mesh, in the editor, from a depth: the
+    // slider on the socket's inspector, or the previewing plug's tip. The
+    // same stage maths the built reactions and the socket shader use, so
+    // what it shows is what ships. Nothing is saved: every weight it
+    // touches goes back when the test ends, the socket is deselected, play
+    // mode starts or scripts reload.
+    static class YapsShapeSim
+    {
+        class Held { public SkinnedMeshRenderer Renderer; public readonly Dictionary<int, float> Original = new Dictionary<int, float>(); }
+        static readonly Dictionary<int, Held> _held = new Dictionary<int, Held>();
+        // The test slider's position per socket, so a rebuilt inspector keeps it.
+        public static readonly Dictionary<int, float> Slider = new Dictionary<int, float>();
+        // The depth last shown per socket, for the slider to read back.
+        static readonly Dictionary<int, float> _depth = new Dictionary<int, float>();
+
+        static YapsShapeSim()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += ReleaseAll;
+            EditorApplication.playModeStateChanged += s => { if (s == PlayModeStateChange.ExitingEditMode) ReleaseAll(); };
+        }
+
+        public static float DepthOf(YapsSocket socket) => socket != null && _depth.TryGetValue(socket.GetInstanceID(), out var d) ? d : 0f;
+        public static bool Holding(YapsSocket socket) => socket != null && _held.ContainsKey(socket.GetInstanceID());
+
+        public static void Apply(YapsSocket socket, float depth)
+        {
+            if (socket == null || socket.renderer == null || socket.renderer.sharedMesh == null) return;
+            var r = socket.renderer;
+            var mesh = r.sharedMesh;
+            int id = socket.GetInstanceID();
+            if (!_held.TryGetValue(id, out var held) || held.Renderer != r)
+            {
+                Release(socket);
+                held = new Held { Renderer = r };
+                _held[id] = held;
+            }
+            _depth[id] = depth;
+            foreach (var s in socket.shapes)
+            {
+                if (s == null || string.IsNullOrEmpty(s.blendshape)) continue;
+                int i = mesh.GetBlendShapeIndex(s.blendshape);
+                if (i < 0) continue;
+                if (!held.Original.ContainsKey(i)) held.Original[i] = r.GetBlendShapeWeight(i);
+                float w = Mathf.Clamp01((depth - s.startsAt) / Mathf.Max(0.01f, s.fadeOver)) * Mathf.Clamp01(socket.shapePower) * 100f;
+                r.SetBlendShapeWeight(i, w);
+            }
+        }
+
+        public static void Release(YapsSocket socket)
+        {
+            if (socket != null) Release(socket.GetInstanceID());
+        }
+
+        static void Release(int id)
+        {
+            _depth.Remove(id);
+            if (!_held.TryGetValue(id, out var held)) return;
+            _held.Remove(id);
+            if (held.Renderer == null) return;
+            foreach (var kv in held.Original) held.Renderer.SetBlendShapeWeight(kv.Key, kv.Value);
+        }
+
+        public static void ReleaseAll()
+        {
+            foreach (int id in _held.Keys.ToList()) Release(id);
+        }
+
+        // While a socket previews, the nearest plug's tip sets its depth:
+        // penetration in plug lengths for a mesh of the socket's own, the
+        // shader's measure; closeness within the trigger's reach for any
+        // other mesh, the contact's. No plug near, no change.
+        public static void FollowPlugs(YapsSocket socket)
+        {
+            if (socket == null || socket.renderer == null || socket.shapes.Count == 0) return;
+            float depth = DepthFromPlugs(socket);
+            if (depth < 0f) { Release(socket); return; }
+            Apply(socket, depth);
+        }
+
+        public static float DepthFromPlugs(YapsSocket socket)
+        {
+            bool own = YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
+            float best = -1f;
+            var at = socket.transform;
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            {
+                if (!YapsPreview.PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
+                var tip = origin + forward * length;
+                float depth = own
+                    ? Vector3.Dot(at.position - tip, at.forward) / Mathf.Max(length, 0.01f)
+                    : 1f - Vector3.Distance(tip, at.position) / YapsSocketReactions.Reach;
+                // Out of reach: more than a plug length short of the socket,
+                // or outside the trigger's box.
+                if (depth < -1f || (!own && depth < 0f)) continue;
+                best = Mathf.Max(best, Mathf.Clamp01(depth));
+            }
+            return best;
+        }
+    }
+
     // --- socket ------------------------------------------------------------
 
     [CustomEditor(typeof(YapsSocket))]
     public class YapsSocketEditor : Editor
     {
         VisualElement _root;
+        IVisualElementScheduledItem _reactionRefresh;
 
         // Ticks the preview on every scene repaint while selected.
         void OnSceneGUI()
         {
             var socket = target as YapsSocket;
             if (socket != null && socket.preview) { socket.PreviewTick(); YapsPreview.Animate(true); }
+        }
+
+        // The test slider's shapes go back on deselect; a preview keeps
+        // driving them until it stops.
+        void OnDisable()
+        {
+            var socket = target as YapsSocket;
+            if (socket != null && !socket.preview) YapsShapeSim.Release(socket);
+        }
+
+        // A shape edit after Build changes the reactions layer too, once
+        // the edit settles, so the animator says what the socket says.
+        void ReactionsChanged(YapsSocket socket)
+        {
+            _reactionRefresh?.Pause();
+            if (!YapsSocketReactions.Exists(socket)) return;
+            _reactionRefresh = _root.schedule.Execute(() =>
+            {
+                if (socket != null) YapsSocketReactions.Build(socket);
+            }).StartingIn(700);
+        }
+
+        // The test slider, if it is up, shows the edited stages at once.
+        static void Retest(YapsSocket socket)
+        {
+            if (socket == null || socket.preview) return;
+            if (YapsShapeSim.Slider.TryGetValue(socket.GetInstanceID(), out float d) && d > 0f) YapsShapeSim.Apply(socket, d);
+        }
+
+        // Strength reaches wherever the shapes live: the socket's material,
+        // the reactions layer, and the shapes on the mesh while a test runs.
+        static void PushStrength(YapsSocket socket, Material bakedMat)
+        {
+            if (bakedMat != null && bakedMat.HasProperty("_YAPS_SocketPower"))
+            {
+                bakedMat.SetFloat("_YAPS_SocketPower", socket.shapePower);
+                EditorUtility.SetDirty(bakedMat);
+            }
+            YapsSocketReactions.SetStrength(socket);
+            if (YapsShapeSim.Holding(socket)) YapsShapeSim.Apply(socket, YapsShapeSim.DepthOf(socket));
         }
 
         public override VisualElement CreateInspectorGUI()
@@ -397,8 +550,10 @@ namespace AvatarBridge
             meshPopup.RegisterValueChangedCallback(e =>
             {
                 int picked = meshPopup.index - 1;
+                YapsShapeSim.Release(socket);
                 rendererProp.objectReferenceValue = picked >= 0 && picked < renderers.Count ? renderers[picked] : null;
                 so.ApplyModifiedProperties();
+                ReactionsChanged(socket);
                 RebuildLater();
             });
             if (current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform))
@@ -452,14 +607,20 @@ namespace AvatarBridge
                     shapePopup.RegisterValueChangedCallback(e =>
                     {
                         int picked = shapePopup.index - 1;
+                        // The old shape goes back before the new one moves.
+                        YapsShapeSim.Release(socket);
                         name.stringValue = picked >= 0 ? shapeNames[picked] : "";
                         so.ApplyModifiedProperties();
+                        ReactionsChanged(socket);
+                        Retest(socket);
                     });
                     head.Add(shapePopup);
                     var remove = YapsInspectorStyle.Button("Remove", () =>
                     {
+                        YapsShapeSim.Release(socket);
                         shapesProp.DeleteArrayElementAtIndex(index);
                         so.ApplyModifiedProperties();
+                        ReactionsChanged(socket);
                         RebuildLater();
                     });
                     remove.style.flexShrink = 0;
@@ -478,6 +639,8 @@ namespace AvatarBridge
                         fade.floatValue = Mathf.Max(0.01f, e.newValue.y - e.newValue.x);
                         so.ApplyModifiedProperties();
                         readout.text = $"{e.newValue.x:0.00}  →  {e.newValue.y:0.00}  of the plug's length";
+                        ReactionsChanged(socket);
+                        Retest(socket);
                     });
                     inner.Add(range);
                     inner.Add(readout);
@@ -497,6 +660,7 @@ namespace AvatarBridge
                         row.FindPropertyRelative("startsAt").floatValue = startsAt;
                         row.FindPropertyRelative("fadeOver").floatValue = fadeOver;
                         so.ApplyModifiedProperties();
+                        ReactionsChanged(socket);
                         RebuildLater();
                     }
                     int n = shapesProp.arraySize;
@@ -516,7 +680,13 @@ namespace AvatarBridge
                     opens.Body.Add(BridgeElements.Hint($"{n} of {YapsBaker.MaxShapes} shapes. Several may share a depth; each opens over its own range."));
                 }
                 if (shapesProp.arraySize > 0)
-                    opens.Body.Add(YapsInspectorStyle.Field(powerProp, type.GetField("shapePower"), "Strength"));
+                {
+                    var strength = YapsInspectorStyle.Field(powerProp, type.GetField("shapePower"), "Strength");
+                    // Written through as it moves: the material once baked,
+                    // the reactions layer once built, the test on the mesh.
+                    strength.TrackPropertyValue(powerProp, p => PushStrength(socket, FindSocketMaterial(socket)));
+                    opens.Body.Add(strength);
+                }
             }
             else if (renderers.Count == 0)
             {
@@ -537,6 +707,36 @@ namespace AvatarBridge
                 socket.preview ? "Previewing — click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
                 () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); });
             see.Body.Add(previewButton);
+
+            // The shapes, tried here: a depth slider moves them on the mesh
+            // in the editor; while previewing, the plug's tip is the depth.
+            if (current != null && shapesProp.arraySize > 0)
+            {
+                int id = socket.GetInstanceID();
+                var test = new Slider("Test depth", 0f, 1f) { showInputField = true };
+                test.AddToClassList("ab-field"); test.AddToClassList("ab-slider");
+                var testHint = BridgeElements.Hint(socket.preview
+                    ? "The preview plug is driving the shapes: move its tip into the socket and watch them open. Nothing is saved."
+                    : "Moves the shapes on the mesh from a depth, here in the editor, so you can see the stages without a plug. " +
+                      "Nothing is saved; they go back when you click away.");
+                if (socket.preview)
+                {
+                    test.SetEnabled(false);
+                    test.schedule.Execute(() => test.SetValueWithoutNotify(YapsShapeSim.DepthOf(socket))).Every(100);
+                }
+                else
+                {
+                    test.value = YapsShapeSim.Slider.TryGetValue(id, out float held) ? held : 0f;
+                    test.RegisterValueChangedCallback(e =>
+                    {
+                        YapsShapeSim.Slider[id] = e.newValue;
+                        YapsShapeSim.Apply(socket, e.newValue);
+                        SceneView.RepaintAll();
+                    });
+                }
+                see.Body.Add(test);
+                see.Body.Add(testHint);
+            }
             body.Add(see);
 
             // The socket-side knobs live on the material. Drawn here too once baked.
@@ -545,18 +745,9 @@ namespace AvatarBridge
             {
                 var opensHow = new BridgeElements.Card("How it opens");
                 opensHow.Body.Add(BridgeElements.Hint(
-                    "Read by the shader on this socket's mesh. Strength scales all the shapes; each stage " +
-                    "opens from its start to start + fade, as fractions of the plug's length. Depth comes " +
-                    "from the plug's tracker light, or from the contact channel where there is one."));
-                var power = new Slider("Strength", 0f, 1f) { value = bakedMat.GetFloat("_YAPS_SocketPower"), showInputField = true };
-                power.AddToClassList("ab-field"); power.AddToClassList("ab-slider");
-                power.RegisterValueChangedCallback(e =>
-                {
-                    Undo.RecordObject(bakedMat, "YAPS socket shape");
-                    bakedMat.SetFloat("_YAPS_SocketPower", e.newValue);
-                    EditorUtility.SetDirty(bakedMat);
-                });
-                opensHow.Body.Add(power);
+                    "Read by the shader on this socket's mesh. Strength above scales all the shapes; each " +
+                    "stage opens from its start to start + fade, as fractions of the plug's length. Depth " +
+                    "comes from the plug's tracker light, or from the contact channel where there is one."));
                 // One range per baked shape, named after the shape when the
                 // component knows it, else by its slot.
                 int baked = bakedMat.HasProperty("_YAPS_ShapeCount") ? Mathf.RoundToInt(bakedMat.GetFloat("_YAPS_ShapeCount")) : 0;

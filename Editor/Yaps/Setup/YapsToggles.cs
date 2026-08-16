@@ -17,9 +17,13 @@ namespace AvatarBridge
     public static class YapsToggles
     {
         // What already switches this object, by name; null when nothing does.
-        // An Advanced Settings entry aiming at it or an ancestor, or a clip in
-        // the avatar's animator that drives m_IsActive on it or an ancestor.
-        public static string ToggledBy(GameObject target, CVRAvatar avatar)
+        // An Advanced Settings entry aiming at it or an ancestor, an entry
+        // whose own clips do, or a clip in any of the avatar's controllers
+        // that drives m_IsActive on it or an ancestor, or its renderer's
+        // m_Enabled. Clips the toolkit generated do not count, nor does the
+        // entry named in `ignoreEntry`: those are the toolkit's own toggle,
+        // and the question is whether anything ELSE switches it.
+        public static string ToggledBy(GameObject target, CVRAvatar avatar, string ignoreEntry = null)
         {
             if (target == null) return null;
             var chain = new List<Transform>();
@@ -30,44 +34,85 @@ namespace AvatarBridge
             }
             var chainObjects = new HashSet<GameObject>(chain.Select(t => t.gameObject));
 
+            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>();
+            var root = animator != null ? animator.transform : (avatar != null ? avatar.transform : target.transform.root);
+            var paths = new HashSet<string>(chain.Select(t => AnimationUtility.CalculateTransformPath(t, root)));
+            string targetPath = AnimationUtility.CalculateTransformPath(target.transform, root);
+
             if (avatar != null && avatar.avatarSettings != null && avatar.avatarSettings.settings != null)
             {
                 foreach (var entry in avatar.avatarSettings.settings)
                 {
-                    if (entry == null) continue;
+                    if (entry == null || entry.name == ignoreEntry) continue;
                     if (entry.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && entry.toggleSettings != null)
                     {
-                        if (entry.toggleSettings.gameObjectTargets.Any(t => t != null && t.gameObject != null && chainObjects.Contains(t.gameObject)))
+                        var t = entry.toggleSettings;
+                        if (t.gameObjectTargets != null && t.gameObjectTargets.Any(g => g != null && g.gameObject != null && chainObjects.Contains(g.gameObject)))
+                            return $"the setting \"{entry.name}\"";
+                        if (t.useAnimationClip && (Switches(t.animationClip, paths, targetPath) || Switches(t.offAnimationClip, paths, targetPath)))
                             return $"the setting \"{entry.name}\"";
                     }
                     if (entry.type == CVRAdvancedSettingsEntry.SettingsType.Dropdown && entry.dropDownSettings != null)
                     {
                         foreach (var option in entry.dropDownSettings.options)
                         {
-                            if (option != null && option.gameObjectTargets.Any(t => t != null && t.gameObject != null && chainObjects.Contains(t.gameObject)))
+                            if (option == null) continue;
+                            if (option.gameObjectTargets != null && option.gameObjectTargets.Any(g => g != null && g.gameObject != null && chainObjects.Contains(g.gameObject)))
+                                return $"the setting \"{entry.name}\"";
+                            if (option.useAnimationClip && Switches(option.animationClip, paths, targetPath))
                                 return $"the setting \"{entry.name}\"";
                         }
                     }
                 }
             }
 
-            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>();
-            var root = animator != null ? animator.transform : (avatar != null ? avatar.transform : target.transform.root);
-            var controller = animator != null ? animator.runtimeAnimatorController : null;
-            if (controller != null)
+            foreach (var clip in ClipsOfAvatar(avatar, animator))
             {
-                var paths = new HashSet<string>(chain.Select(t => AnimationUtility.CalculateTransformPath(t, root)));
-                foreach (var clip in YapsCurveMirror.ClipsOf(controller))
-                {
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive"
-                            && paths.Contains(binding.path))
-                            return $"the animation \"{clip.name}\"";
-                    }
-                }
+                if (Generated(clip)) continue;
+                if (Switches(clip, paths, targetPath)) return $"the animation \"{clip.name}\"";
             }
             return null;
+        }
+
+        // Every clip any of the avatar's controllers plays: the animator's,
+        // the CCK's base controller and its override, once each.
+        static IEnumerable<AnimationClip> ClipsOfAvatar(CVRAvatar avatar, Animator animator)
+        {
+            var seen = new HashSet<AnimationClip>();
+            var controllers = new List<RuntimeAnimatorController>();
+            if (animator != null) controllers.Add(animator.runtimeAnimatorController);
+            if (avatar != null && avatar.avatarSettings != null)
+            {
+                controllers.Add(avatar.avatarSettings.baseController);
+                controllers.Add(avatar.avatarSettings.baseOverrideController);
+            }
+            foreach (var controller in controllers)
+            {
+                foreach (var clip in YapsCurveMirror.ClipsOf(controller))
+                    if (seen.Add(clip)) yield return clip;
+            }
+        }
+
+        // Does this clip switch the object off: its activity or an
+        // ancestor's, its renderer, or a YAPS deform on it.
+        static bool Switches(AnimationClip clip, HashSet<string> paths, string targetPath)
+        {
+            if (clip == null) return false;
+            foreach (var b in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (b.type == typeof(GameObject) && b.propertyName == "m_IsActive" && paths.Contains(b.path)) return true;
+                if (b.path != targetPath) continue;
+                if (b.propertyName == "m_Enabled" && typeof(Renderer).IsAssignableFrom(b.type)) return true;
+                if (b.propertyName == "material._YAPS_Enabled") return true;
+            }
+            return false;
+        }
+
+        static bool Generated(AnimationClip clip)
+        {
+            string path = AssetDatabase.GetAssetPath(clip);
+            return !string.IsNullOrEmpty(path)
+                   && path.Replace('\\', '/').StartsWith(YapsNativeBuilder.OutputRoot + "/", System.StringComparison.OrdinalIgnoreCase);
         }
 
         // A menu toggle for an object: on and off by activity, default as
@@ -75,14 +120,28 @@ namespace AvatarBridge
         public static string EnsureObjectToggle(GameObject target, CVRAvatar avatar, string label)
         {
             if (target == null || avatar == null) return null;
-            string already = ToggledBy(target, avatar);
-            if (already != null) return $"{label}: already switched by {already}";
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            var ours = settings?.FirstOrDefault(e => e != null && e.name == label
+                && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
+                && e.toggleSettings.gameObjectTargets != null
+                && e.toggleSettings.gameObjectTargets.Any(g => g != null && g.gameObject == target));
+            string already = ToggledBy(target, avatar, ignoreEntry: label);
+            if (already != null)
+            {
+                if (ours == null) return $"{label}: already switched by {already}";
+                // An earlier build gave it a toggle it did not need.
+                Undo.RecordObject(avatar, "YAPS toggle");
+                settings.Remove(ours);
+                EditorUtility.SetDirty(avatar);
+                return $"{label}: menu toggle removed, it is already switched by {already}; press Create Animator on the CVRAvatar to drop its layer";
+            }
+            if (ours != null) return $"{label}: menu toggle already there";
             if (avatar.avatarSettings == null)
             {
                 avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
             }
             avatar.avatarUsesAdvancedSettings = true;
-            var settings = avatar.avatarSettings.settings;
+            settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
             settings.Add(new CVRAdvancedSettingsEntry
@@ -107,23 +166,25 @@ namespace AvatarBridge
 
         // A menu toggle for a plug's deform: two clips writing _YAPS_Enabled
         // on its material, on and off, as an Advanced Settings toggle with
-        // its own animation.
+        // its own animation. Not when anything already hides the plug's
+        // mesh: a hidden plug needs no second switch.
         public static string EnsurePlugToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
-            if (avatar.avatarSettings != null && avatar.avatarSettings.settings != null
-                && avatar.avatarSettings.settings.Any(e => e != null && e.name == label))
-                return $"{label}: menu toggle already there";
-            var controller = avatar.GetComponent<Animator>() != null ? avatar.GetComponent<Animator>().runtimeAnimatorController : null;
-            if (controller != null)
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            var ours = settings?.FirstOrDefault(e => e != null && e.name == label
+                && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
+                && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip));
+            string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: label);
+            if (already != null)
             {
-                string rendererPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-                foreach (var clip in YapsCurveMirror.ClipsOf(controller))
-                {
-                    if (AnimationUtility.GetCurveBindings(clip).Any(b => b.path == rendererPath && b.propertyName == "material._YAPS_Enabled"))
-                        return $"{label}: already switched by the animation \"{clip.name}\"";
-                }
+                if (ours == null) return $"{label}: already switched by {already}";
+                Undo.RecordObject(avatar, "YAPS toggle");
+                settings.Remove(ours);
+                EditorUtility.SetDirty(avatar);
+                return $"{label}: menu toggle removed, the plug is already switched by {already}; press Create Animator on the CVRAvatar to drop its layer";
             }
+            if (ours != null) return $"{label}: menu toggle already there";
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
@@ -136,7 +197,7 @@ namespace AvatarBridge
                 avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
             }
             avatar.avatarUsesAdvancedSettings = true;
-            var settings = avatar.avatarSettings.settings;
+            settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
             settings.Add(new CVRAdvancedSettingsEntry

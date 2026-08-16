@@ -21,9 +21,9 @@ namespace AvatarBridge.Yaps
                  "Leave empty for a socket that only bends plugs and plays no shape.")]
         public SkinnedMeshRenderer renderer;
 
-        [Tooltip("Up to four, staged by depth. Shape 0 is the entry, shape 3 the deepest. Each " +
-                 "starts opening at its start depth and is fully open by start + fade, both as " +
-                 "fractions of the plug's length. They accumulate: once a shape has arrived it stays.")]
+        [Tooltip("Up to sixteen, each with its own depth: it starts opening at its start depth and is fully " +
+                 "open by start + fade, both as fractions of the plug's length. Several may share a depth. " +
+                 "They accumulate: once a shape has arrived it stays.")]
         public List<ShapeStage> shapes = new List<ShapeStage>();
 
         [Serializable]
