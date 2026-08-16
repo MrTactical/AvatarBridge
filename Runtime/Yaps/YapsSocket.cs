@@ -16,10 +16,6 @@ namespace AvatarBridge.Yaps
         [Tooltip("A hole closes around the plug and stops it. A ring lets it pass straight through.")]
         public SocketKind kind = SocketKind.Hole;
 
-        [Tooltip("Optional. A plug can be told to answer only sockets with a given tag, or never " +
-                 "ones with another. Leave blank for a socket every plug answers.")]
-        public string tag = "";
-
         [Header("Shapes that open as a plug goes in")]
         [Tooltip("The mesh whose blendshapes should react. Usually the body this socket sits on. " +
                  "Leave empty for a socket that only bends plugs and plays no shape.")]

@@ -43,14 +43,24 @@ namespace AvatarBridge
             var report = new BridgeReport();
             // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
-            var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure);
+            var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
-            o.Length = plug.lengthOverride > 0 ? plug.lengthOverride : result.Length;
-            o.Radius = result.Radius;
+            // A plain mesh bakes in its own units; the markers and the
+            // report want metres.
+            float toMetres = result.FromSkinnedMesh ? 1f : Mathf.Abs(renderer.transform.lossyScale.z);
+            o.Length = plug.lengthOverride > 0 ? plug.lengthOverride : result.Length * toMetres;
+            o.Radius = result.Radius * toMetres;
 
-            // The named slot, else the first.
+            // The named slot; else, on a skinned mesh, the slot the chain
+            // moves; else the first.
             var mats = renderer.sharedMaterials;
-            int slot = plug.materialSlot >= 0 && plug.materialSlot < mats.Length ? plug.materialSlot : 0;
+            if (mats == null || mats.Length == 0) { o.Message = "the renderer has no materials"; return o; }
+            int slot = plug.materialSlot >= 0 && plug.materialSlot < mats.Length ? plug.materialSlot : -1;
+            if (slot < 0 && renderer is SkinnedMeshRenderer skinned && plug.rootBone != null)
+            {
+                slot = SlotWeightedTo(skinned, plug.rootBone);
+            }
+            if (slot < 0) slot = 0;
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
 
@@ -104,10 +114,21 @@ namespace AvatarBridge
             }
             else
             {
-                // Re-bake: refresh the bake.
+                // Re-bake: refresh everything the bake measured, and drop
+                // the texture it replaces so a session of re-bakes does
+                // not leave one twelve-megabyte asset per click behind.
+                var previous = patched.GetTexture("_YAPS_Bake");
                 patched.SetTexture("_YAPS_Bake", result.Bake);
                 patched.SetFloat("_YAPS_VertexCount", result.VertexCount);
                 patched.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+                patched.SetFloat("_YAPS_Length", result.Length);
+                patched.SetFloat("_YAPS_FrameFromVertex", result.FromSkinnedMesh ? 1f : 0f);
+                string old = previous != null && previous != result.Bake
+                    ? AssetDatabase.GetAssetPath(previous) : null;
+                if (!string.IsNullOrEmpty(old) && old.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal))
+                {
+                    AssetDatabase.DeleteAsset(old);
+                }
             }
             if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", plug.lengthOverride);
             patched.SetFloat("_YAPS_Enabled", 1f);
@@ -148,7 +169,7 @@ namespace AvatarBridge
         // The old system's deform must not run beside YAPS. TPS and SPS have
         // a switch; both are turned off, and any keyword carrying the
         // system's name goes with it.
-        static void SwitchOffLegacyDeform(Material m, YapsLegacyMap.Origin legacy)
+        public static void SwitchOffLegacyDeform(Material m, YapsLegacyMap.Origin legacy)
         {
             string flag = legacy == YapsLegacyMap.Origin.TPS ? "_TPS_PenetratorEnabled"
                         : legacy == YapsLegacyMap.Origin.SPS ? "_SPS_Enabled" : null;
@@ -161,7 +182,7 @@ namespace AvatarBridge
         }
 
         // The same material on Simple Lit, in memory. Property names match Standard's.
-        static Material OnSimpleLit(Material source, out string why)
+        public static Material OnSimpleLit(Material source, out string why)
         {
             why = null;
             var shader = Shader.Find(SimpleLitName);
@@ -214,17 +235,6 @@ namespace AvatarBridge
             m.SetFloat("_YAPS_BezierStart", p.straightBeforeBend);
             m.SetFloat("_YAPS_SmoothStart", p.easeIntoBend);
             m.SetFloat("_YAPS_MinimumSocketDistance", p.minimumSocketDistance);
-            m.SetFloat("_YAPS_TagInclude", TagNumber(p.onlySocketsTagged));
-            m.SetFloat("_YAPS_TagExclude", TagNumber(p.neverSocketsTagged));
-        }
-
-        // A small stable integer, 0 for none. The shader compares rounded floats.
-        public static float TagNumber(string tag)
-        {
-            if (string.IsNullOrWhiteSpace(tag)) return 0f;
-            int h = 0;
-            foreach (char c in tag.Trim().ToLowerInvariant()) h = (h * 31 + c) & 0x7fffffff;
-            return 1 + (h % 4000);
         }
 
         static void BuildMarkers(YapsPlug plug, YapsBaker.Result result, float length, float radius)
@@ -279,6 +289,88 @@ namespace AvatarBridge
             return go;
         }
 
+        // --- the socket's shapes ------------------------------------------------
+        //
+        // The socket shader measures depth from its mesh's own origin, so
+        // only a mesh whose origin is the socket can open right. A body
+        // mesh keeps whatever the animator does with its shapes.
+        public static bool MeshIsTheSocket(Renderer renderer, Transform socket)
+        {
+            if (renderer == null || socket == null) return false;
+            return Vector3.Distance(renderer.transform.position, socket.position) < 0.03f;
+        }
+
+        // Bakes the socket's chosen shapes into its mesh's material, staged
+        // as the component says. Returns what happened, for the window.
+        public static string BakeSocket(YapsSocket socket)
+        {
+            if (socket == null) return null;
+            var renderer = socket.renderer;
+            var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
+            if (renderer == null || stages.Count == 0) return null;
+            if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
+                return $"✗ {socket.name}: its mesh has no blendshapes";
+            if (!MeshIsTheSocket(renderer, socket.transform))
+                return $"✗ {socket.name}: the shapes need a mesh whose origin is this socket. " +
+                       $"\"{renderer.name}\" sits {Vector3.Distance(renderer.transform.position, socket.transform.position):0.##} m away; " +
+                       "a body mesh cannot open this way, only a mesh of the socket's own.";
+
+            var mats = renderer.sharedMaterials;
+            if (mats == null || mats.Length == 0 || mats[0] == null) return $"✗ {socket.name}: its mesh has no material";
+            string dir = OutputRoot + "/" + Sanitise(TopName(socket.transform));
+            EnsureFolder(dir);
+            var report = new BridgeReport();
+            var wanted = stages.Select(s => s.blendshape).ToList();
+            var result = YapsBaker.Bake(renderer, socket.transform, dir, report, out string failure,
+                wanted, objectFrame: true);
+            if (result == null) return $"✗ {socket.name}: could not bake: {failure}";
+            if (result.Shapes.Count == 0) return $"✗ {socket.name}: none of the named shapes exist on \"{renderer.name}\"";
+
+            var source = mats[0];
+            Material material;
+            if (source.HasProperty("_YAPS_Bake"))
+            {
+                // Already YAPS, ours to refresh; a plug's material keeps its plug half.
+                material = source;
+                var previous = material.GetTexture("_YAPS_Bake");
+                material.SetTexture("_YAPS_Bake", result.Bake);
+                material.SetFloat("_YAPS_VertexCount", result.VertexCount);
+                material.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+                string old = previous != null && previous != result.Bake ? AssetDatabase.GetAssetPath(previous) : null;
+                if (!string.IsNullOrEmpty(old) && old.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal))
+                    AssetDatabase.DeleteAsset(old);
+            }
+            else
+            {
+                var shader = YapsShaderPatcher.Patch(source, dir, report, out string refusal, out _);
+                if (shader == null)
+                {
+                    var plain = OnSimpleLit(source, out string why);
+                    shader = plain != null ? YapsShaderPatcher.Patch(plain, dir, report, out refusal, out _) : null;
+                    if (shader == null) return $"✗ {socket.name}: could not patch the shader: {refusal}";
+                    source = plain;
+                }
+                material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
+                material.SetFloat("_YAPS_Enabled", 0f);
+                mats[0] = material;
+                renderer.sharedMaterials = mats;
+            }
+
+            var starts = Vector4.zero;
+            var fades = new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
+            for (int i = 0; i < stages.Count && i < 4; i++)
+            {
+                starts[i] = stages[i].startsAt;
+                fades[i] = Mathf.Max(0.01f, stages[i].fadeOver);
+            }
+            material.SetVector("_YAPS_SocketShapeStart", starts);
+            material.SetVector("_YAPS_SocketShapeFade", fades);
+            material.SetFloat("_YAPS_SocketPower", socket.shapePower);
+            material.SetFloat("_YAPS_SocketDepth", -1f);
+            EditorUtility.SetDirty(material);
+            return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
+        }
+
         // --- adoption --------------------------------------------------------
         //
         // Puts the authoring component on a converted socket or plug, filled
@@ -306,7 +398,7 @@ namespace AvatarBridge
                 if (p != null && p.type != null && p.type.StartsWith("SPSLL_Socket_Hole")) { hole = true; break; }
             }
             comp.kind = hole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
-            comp.renderer = renderer as SkinnedMeshRenderer;
+            comp.renderer = material != null ? renderer as SkinnedMeshRenderer : null;
             comp.emitLights = socketRoot.GetComponentsInChildren<Light>(true).Any(YapsScanner.IsProtocolLight);
 
             // Shape rows from the bake, staged as the material says.

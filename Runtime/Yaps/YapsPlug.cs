@@ -24,7 +24,8 @@ namespace AvatarBridge.Yaps
 
         [Header("Measurement")]
         [Tooltip("The toolkit measures the shaft's axis and length from the mesh itself. If it " +
-                 "picked the wrong end as the base, tick this to flip it.")]
+                 "picked the wrong end as the base, tick this to flip it. Skinned meshes only; a plain " +
+                 "mesh bends around its own origin along +Z.")]
         public bool flipAxis;
 
         [Tooltip("Optional. If the measured length is wrong for your mesh, state it here in " +
@@ -94,9 +95,6 @@ namespace AvatarBridge.Yaps
         [Range(0f, 1f), Tooltip("A socket nearer than this (fraction of length) is held off, so a plug pushed hard against one does not fold.")]
         [YapsFrom("TPS")]
         public float minimumSocketDistance;
-        [Range(0.01f, 0.5f), Tooltip("How fast the plug follows a socket the contact channel reports. Lower is heavier.")]
-        [YapsFrom("TPS · YAPS")]
-        public float socketFollow = 0.05f;
 
         [Header("Past the opening")]
         [Range(0f, 1f), Tooltip("How far past a hole before the shaft narrows, as a fraction of length.")]
@@ -108,14 +106,6 @@ namespace AvatarBridge.Yaps
         [Tooltip("Let the tip carry on past a ring. Off, the shaft stops at every socket.")]
         [YapsFrom("SPS")]
         public bool overrun = true;
-
-        [Header("Which sockets it answers")]
-        [Tooltip("Only sockets carrying this tag. Blank answers all.")]
-        [YapsFrom("SPS")]
-        public string onlySocketsTagged = "";
-        [Tooltip("Never sockets carrying this tag.")]
-        [YapsFrom("SPS")]
-        public string neverSocketsTagged = "";
 
         [Header("How sockets find it")]
         [Tooltip("Emit the tip light Raliv DPS orifices read, and the contact pointers TPS and " +

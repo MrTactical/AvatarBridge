@@ -102,6 +102,26 @@ namespace AvatarBridge
                 return;
             }
 
+            // A plug the height of the wearer is not a plug: the bake took
+            // the whole mesh because nothing under the plug object told the
+            // plug's vertices from the body's. Left alone rather than bent.
+            float height = AvatarScalerInjector.MeasureHeight(ctx);
+            if (result.Length > height * 0.6f)
+            {
+                ctx.Report.Warning(Category, $"The plug at {where} measured {result.Length:0.##} m, so it was left alone",
+                    $"That is most of the avatar's {height:0.##} m height, which means the bake could not " +
+                    "tell the plug's vertices from the rest of the mesh: no bone chain of its own sits " +
+                    "beneath the plug object. Put the SPS Plug component on the plug's root bone, or on " +
+                    "an empty under it, and convert again. Until then the plug keeps its mesh and " +
+                    "does not bend.");
+                string bakePath = result.Bake != null ? AssetDatabase.GetAssetPath(result.Bake) : null;
+                if (!string.IsNullOrEmpty(bakePath))
+                {
+                    AssetDatabase.DeleteAsset(bakePath);
+                }
+                return;
+            }
+
             // The plug's material is the slot its triangles use, not a name.
             int slot = MaterialSlotOf(renderer, plugRoot);
             var materials = renderer.sharedMaterials;
@@ -112,11 +132,45 @@ namespace AvatarBridge
                 return;
             }
 
-            var shader = YapsShaderPatcher.Patch(materials[slot], ctx.OutputDir + "/YAPS",
-                ctx.Report, out string refusal, out int skippedShadowPasses);
+            // What the material already is. The old deform must not run
+            // beside YAPS: TPS and SPS keep their shader with theirs
+            // switched off, DPS moves to Simple Lit because Raliv's has no
+            // switch. The same rule the toolkit applies to a native plug.
+            var source = materials[slot];
+            var legacy = YapsLegacyMap.Detect(source, out _);
+            var patchSource = source;
+            Shader shader = null;
+            string refusal = null;
+            int skippedShadowPasses = 0;
+            if (legacy == YapsLegacyMap.Origin.DPS)
+            {
+                var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
+                if (plain == null)
+                {
+                    refusal = why;
+                }
+                else
+                {
+                    shader = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
+                        out refusal, out skippedShadowPasses);
+                    if (shader != null)
+                    {
+                        patchSource = plain;
+                        ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
+                            "A DPS shader has no switch for its own deform, so both would have bent the " +
+                            "plug. Its colour, albedo, normal map, metallic and smoothness were carried " +
+                            "over; the original material is untouched.");
+                    }
+                }
+            }
+            else
+            {
+                shader = YapsShaderPatcher.Patch(source, ctx.OutputDir + "/YAPS",
+                    ctx.Report, out refusal, out skippedShadowPasses, allowSps: legacy == YapsLegacyMap.Origin.SPS);
+            }
             if (shader == null)
             {
-                ctx.Report.Warning(Category, $"Could not add the deform to \"{materials[slot].name}\"",
+                ctx.Report.Warning(Category, $"Could not add the deform to \"{source.name}\"",
                     $"{refusal}. The plug converts as an ordinary mesh — it will look right and " +
                     "simply will not bend.");
                 return;
@@ -124,14 +178,17 @@ namespace AvatarBridge
 
             // Read the author's values off the original material before the
             // patch repoints it; a Poiyomi material loses its TPS properties there.
-            var source = materials[slot];
-            var patched = YapsBaker.Apply(result, source, shader, ctx.OutputDir + "/YAPS",
+            var patched = YapsBaker.Apply(result, patchSource, shader, ctx.OutputDir + "/YAPS",
                 result.FromSkinnedMesh);
             var unmapped = new List<string>();
             var carried = YapsLegacyMap.Carry(source, patched, unmapped, result.Length, result.Radius);
+            if (legacy != YapsLegacyMap.Origin.None && legacy != YapsLegacyMap.Origin.YAPS)
+            {
+                YapsNativeBuilder.SwitchOffLegacyDeform(patched, legacy);
+            }
             if (carried.Count > 0)
             {
-                var system = YapsLegacyMap.Detect(source, out _);
+                var system = legacy;
                 ctx.Report.Converted(Category,
                     $"Carried {carried.Count} {system} setting(s) onto the YAPS plug",
                     string.Join(", ", carried.ConvertAll(c => $"{c.From} → {c.To}")) +
@@ -189,6 +246,22 @@ namespace AvatarBridge
         {
             Renderer best = null;
             plugVertices = 0;
+
+            // VRCFury's own first rule: a renderer sitting on the plug's
+            // object is the plug. A dedicated mesh object carrying the
+            // component has no bones beneath it, and scoring by bone
+            // weight from there climbs to the hips and elects the body.
+            var owner = plugRoot.parent;
+            if (owner != null && owner != ctx.Target.transform)
+            {
+                var onObject = owner.GetComponent<SkinnedMeshRenderer>();
+                if (onObject != null && onObject.sharedMesh != null)
+                {
+                    plugVertices = onObject.sharedMesh.vertexCount;
+                    return onObject;
+                }
+            }
+
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 int count = YapsBaker.CountPlugVertices(renderer, plugRoot);
@@ -623,7 +696,7 @@ namespace AvatarBridge
                 return;
             }
 
-            int deformed = 0, alreadyAnimated = 0, noShapes = 0;
+            int deformed = 0, alreadyAnimated = 0, noShapes = 0, onBody = 0;
             var failures = new List<string>();
 
             foreach (var socketRoot in socketRoots)
@@ -635,6 +708,16 @@ namespace AvatarBridge
                     // No shapes to open with, but still a socket to retune.
                     YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
                     noShapes++;
+                    continue;
+                }
+
+                // The socket shader measures depth from its mesh's own
+                // origin, so only a mesh whose origin IS the socket opens
+                // right. A body mesh keeps its contact-driven reactions.
+                if (!YapsNativeBuilder.MeshIsTheSocket(renderer, socketRoot))
+                {
+                    YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
+                    onBody++;
                     continue;
                 }
 
@@ -657,7 +740,7 @@ namespace AvatarBridge
                 else
                 {
                     var result = YapsBaker.Bake(renderer, socketRoot, ctx.OutputDir + "/YAPS",
-                        null, out string failure);
+                        null, out string failure, objectFrame: true);
                     if (result == null)
                     {
                         failures.Add($"{socketRoot.name}: {failure}");
@@ -713,6 +796,15 @@ namespace AvatarBridge
                     "contacts anywhere in it, so a socket driven only by contacts does nothing at " +
                     "all against it, and most of the penetration content on ChilloutVR is exactly " +
                     "that. Shapes are staged in the order the author built them, entry first.");
+            }
+            if (onBody > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{onBody} socket(s) keep their reactions on the animator",
+                    "Their mesh is the body, and the socket-side shader deform measures depth from " +
+                    "a mesh's own origin, which for a body is the avatar's root. So these sockets " +
+                    "keep exactly what their author built: the shapes a contact drives, made local. " +
+                    "A socket with a mesh of its own, origin at the entrance, gets the shader deform.");
             }
             if (noShapes > 0)
             {

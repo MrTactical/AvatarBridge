@@ -45,7 +45,7 @@ namespace AvatarBridge
             }
 
             var materialDriver = ctx.Target.AddComponent<CVRMaterialDriver>();
-            var animatorDriver = ctx.Target.AddComponent<CVRAnimatorDriver>();
+            var drivers = new DriverPool(ctx);
             var animator = ctx.TargetAnimator;
 
             int taskIndex = 0;
@@ -53,7 +53,7 @@ namespace AvatarBridge
             foreach (var plug in plugs)
             {
                 int index = plugs.IndexOf(plug);
-                if (BuildForPlug(ctx, plug, index, materialDriver, animatorDriver, animator, ref taskIndex))
+                if (BuildForPlug(ctx, plug, index, materialDriver, drivers, animator, ref taskIndex))
                 {
                     wired++;
                 }
@@ -63,14 +63,15 @@ namespace AvatarBridge
             if (wired == 0)
             {
                 Object.DestroyImmediate(materialDriver);
-                Object.DestroyImmediate(animatorDriver);
+                drivers.Discard();
                 return;
             }
 
             // A layer built after the controller became an asset must embed
             // itself, or it serializes with a null state machine, silently.
             var hollow = ctx.MergedController.layers
-                .Where(l => l.name.StartsWith("YAPS") && l.stateMachine == null)
+                .Where(l => l.name.StartsWith("YAPS")
+                            && (l.stateMachine == null || l.stateMachine.states.Length == 0))
                 .Select(l => l.name)
                 .ToList();
             if (hollow.Count > 0)
@@ -93,8 +94,54 @@ namespace AvatarBridge
                 "marker lights sharpen the position further for anyone close enough to see them.");
         }
 
+        // A CVRAnimatorDriver carries sixteen slots. Two plugs with
+        // orientation fill one; the third would have written past its
+        // end, so a full driver hands over to a fresh one on its own
+        // object, which is how a clip tells them apart.
+        class DriverPool
+        {
+            const int Slots = 16;
+            readonly BridgeContext _ctx;
+            readonly List<GameObject> _hosts = new List<GameObject>();
+            CVRAnimatorDriver _current;
+            string _path = "";
+
+            public DriverPool(BridgeContext ctx)
+            {
+                _ctx = ctx;
+                _current = ctx.Target.AddComponent<CVRAnimatorDriver>();
+            }
+
+            public string Take(Animator animator, string parameter, out string field)
+            {
+                if (_current.animators.Count >= Slots)
+                {
+                    var host = new GameObject($"YAPS Driver {_hosts.Count + 2}");
+                    host.transform.SetParent(_ctx.Target.transform, false);
+                    _hosts.Add(host);
+                    _current = host.AddComponent<CVRAnimatorDriver>();
+                    _path = _ctx.PathInTarget(host.transform);
+                }
+                int slot = _current.animators.Count;
+                _current.animators.Add(animator);
+                _current.animatorParameters.Add(parameter);
+                _current.animatorParameterType.Add(0);
+                field = $"animatorParameter{slot + 1:00}";
+                return _path;
+            }
+
+            public void Discard()
+            {
+                Object.DestroyImmediate(_ctx.Target.GetComponent<CVRAnimatorDriver>());
+                foreach (var host in _hosts)
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
         static bool BuildForPlug(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
-            CVRMaterialDriver materialDriver, CVRAnimatorDriver animatorDriver, Animator animator,
+            CVRMaterialDriver materialDriver, DriverPool drivers, Animator animator,
             ref int taskIndex)
         {
             float extent = Mathf.Max(plug.Length, 0.01f) * BoxLengths;
@@ -231,12 +278,9 @@ namespace AvatarBridge
                 ctx.PreserveParameters.Add(synced);
 
                 // Publish: the "#" local into the synced twin.
-                int slot = animatorDriver.animators.Count;
-                animatorDriver.animators.Add(animator);
-                animatorDriver.animatorParameters.Add(synced);
-                animatorDriver.animatorParameterType.Add(0);
+                string driverPath = drivers.Take(animator, synced, out string driverField);
                 AddDriverLayer(ctx, $"YAPS{index}{axis} publish", local,
-                    "", typeof(CVRAnimatorDriver), $"animatorParameter{slot + 1:00}");
+                    driverPath, typeof(CVRAnimatorDriver), driverField);
 
                 // Consume: the synced value into the material, on every client.
                 // Read the smoothed name so a remote viewer follows the value.
@@ -450,29 +494,19 @@ namespace AvatarBridge
             state.motion = tree;
             machine.defaultState = state;
 
-            // In memory until added to the controller asset; skipped, the
-            // layer serializes with a null state machine and no error.
-            string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
-            if (!string.IsNullOrEmpty(controllerPath))
-            {
-                AssetDatabase.AddObjectToAsset(machine, ctx.MergedController);
-                AssetDatabase.AddObjectToAsset(tree, ctx.MergedController);
-                foreach (var child in tree.children)
-                {
-                    if (child.motion != null)
-                    {
-                        AssetDatabase.AddObjectToAsset(child.motion, ctx.MergedController);
-                    }
-                }
-            }
-
-            var layers = ctx.MergedController.layers.ToList();
-            layers.Add(new AnimatorControllerLayer
+            var layer = new AnimatorControllerLayer
             {
                 name = name,
                 defaultWeight = 1f,
                 stateMachine = machine,
-            });
+            };
+            // Built in memory on a saved controller. The walk embeds the
+            // machine, the state, the tree and the clips; a hand-written
+            // list once missed the state and the layer played nothing.
+            AnimatorAssetSaver.EmbedLayer(layer, ctx.MergedController);
+
+            var layers = ctx.MergedController.layers.ToList();
+            layers.Add(layer);
             ctx.MergedController.layers = layers.ToArray();
         }
 

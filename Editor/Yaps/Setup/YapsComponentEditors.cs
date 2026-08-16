@@ -291,7 +291,6 @@ namespace AvatarBridge
             var socket = (YapsSocket) target;
             var so = serializedObject;
             var kindProp = so.FindProperty("kind");
-            var tagProp = so.FindProperty("tag");
             var rendererProp = so.FindProperty("renderer");
             var shapesProp = so.FindProperty("shapes");
             var powerProp = so.FindProperty("shapePower");
@@ -327,26 +326,25 @@ namespace AvatarBridge
             what.Body.Add(BridgeElements.Hint(hole
                 ? "A hole closes around the plug and stops it — a mouth, a pussy, an anus."
                 : "A ring lets the plug pass straight through — a hand, thighs, a foot."));
-            what.Body.Add(YapsInspectorStyle.Field(tagProp, type.GetField("tag"), "Tag"));
             body.Add(what);
 
             // Shapes.
             var opens = new BridgeElements.Card("Opens as a plug goes in");
             opens.Body.Add(BridgeElements.Hint(
-                "Pick the mesh, then up to four of its shapes. The entry opens as the plug arrives; " +
-                "each later one starts deeper. Depths are fractions of the plug's length, and they " +
-                "stack — once a shape has opened it stays open as the plug goes deeper."));
+                "For a socket with a mesh of its own, origin at the entrance: pick that mesh, then up " +
+                "to four of its shapes. The entry opens as the plug arrives; each later one starts " +
+                "deeper. Depths are fractions of the plug's length, and they stack. Baked by " +
+                "\"Bake every plug and verify\". A body mesh cannot open this way; its reactions " +
+                "stay with the animator."));
 
             var renderers = avatarRoot != null
                 ? avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                     .Where(r => r.sharedMesh != null && r.sharedMesh.blendShapeCount > 0).ToList()
                 : new List<SkinnedMeshRenderer>();
+            // The user's choice, never a guess: a guess written on every
+            // draw made "None" impossible and dirtied a socket on selection.
             var current = rendererProp.objectReferenceValue as SkinnedMeshRenderer;
-            if (current == null && renderers.Count > 0)
-            {
-                current = GuessRenderer(socket.transform, renderers);
-                if (current != null) { rendererProp.objectReferenceValue = current; so.ApplyModifiedProperties(); }
-            }
+            if (current != null && !renderers.Contains(current)) renderers.Insert(0, current);
             var rNames = new List<string> { "None — bend plugs, play no shape" };
             rNames.AddRange(renderers.Select(r => $"{r.name}   ·   {r.sharedMesh.blendShapeCount} shapes"));
             int rIndex = current != null ? renderers.IndexOf(current) : -1;
@@ -354,11 +352,17 @@ namespace AvatarBridge
             meshPopup.AddToClassList("ab-field");
             meshPopup.RegisterValueChangedCallback(e =>
             {
-                int picked = rNames.IndexOf(e.newValue) - 1;
-                rendererProp.objectReferenceValue = picked >= 0 ? renderers[picked] : null;
+                int picked = meshPopup.index - 1;
+                rendererProp.objectReferenceValue = picked >= 0 && picked < renderers.Count ? renderers[picked] : null;
                 so.ApplyModifiedProperties();
                 RebuildLater();
             });
+            if (current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform))
+            {
+                opens.Body.Add(new HelpBox(
+                    $"\"{current.name}\" does not sit at this socket, so its shapes cannot be baked here. " +
+                    "The shader deform needs a mesh whose origin is the socket.", HelpBoxMessageType.Warning));
+            }
             opens.Body.Add(meshPopup);
 
             if (current != null)
@@ -397,7 +401,7 @@ namespace AvatarBridge
                     shapePopup.style.flexGrow = 1;
                     shapePopup.RegisterValueChangedCallback(e =>
                     {
-                        int picked = options.IndexOf(e.newValue) - 1;
+                        int picked = shapePopup.index - 1;
                         name.stringValue = picked >= 0 ? shapeNames[picked] : "";
                         so.ApplyModifiedProperties();
                     });
@@ -543,14 +547,6 @@ namespace AvatarBridge
                 }
             }
             return null;
-        }
-
-        static SkinnedMeshRenderer GuessRenderer(Transform socket, List<SkinnedMeshRenderer> renderers)
-        {
-            for (var bone = socket.parent; bone != null; bone = bone.parent)
-                foreach (var r in renderers)
-                    if (r.bones != null && System.Array.IndexOf(r.bones, bone) >= 0) return r;
-            return renderers.OrderByDescending(r => r.sharedMesh.blendShapeCount).FirstOrDefault();
         }
 
         // Built means a plug can find it: a root light or a root pointer beneath.

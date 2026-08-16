@@ -575,6 +575,8 @@ namespace AvatarBridge
             {
                 YapsSocketBuilder.Build(s);
                 socketsBuilt++;
+                string shapes = YapsNativeBuilder.BakeSocket(s);
+                if (shapes != null) lines.Add(shapes);
             }
             Rescan();
             _summary.text = $"Built: {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")}, {socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.  " + string.Join("  ", lines);

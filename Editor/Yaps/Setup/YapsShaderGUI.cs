@@ -108,8 +108,6 @@ namespace AvatarBridge
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_TagInclude", "Only sockets tagged", RowKind.Float, "SPS", "a tag number the setup tool assigns — 0 answers all"),
-                    new Knob("_YAPS_TagExclude", "Never sockets tagged", RowKind.Float, "SPS", "0 refuses none"),
                     new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them — -1 on a prop"),
                 }},
             new Section { Title = "Socket", Tint = TintSocket,

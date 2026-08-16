@@ -35,9 +35,9 @@ namespace AvatarBridge
             Selection.objects = new Object[] { hole, ring };
             Debug.Log("[YAPS] Universal socket prefabs written to " + PrefabFolder + ". Drag one " +
                       "under a bone, point its +Z the way a plug should enter, and it works for " +
-                      "DPS, TPS and SPS plugs and for converted ones. Pick a renderer and shapes " +
-                      "on the component if you want it to open as a plug goes in, then run " +
-                      "Tools ▸ YAPS ▸ Setup to bake those.");
+                      "DPS, TPS and SPS plugs and for converted ones. A socket with a mesh of its " +
+                      "own can open as a plug goes in: pick that mesh and its shapes on the " +
+                      "component, then bake from Tools ▸ YAPS ▸ Setup.");
         }
 
         static GameObject CreatePrefab(string name, YapsSocket.SocketKind kind)

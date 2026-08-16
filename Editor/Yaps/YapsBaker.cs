@@ -40,8 +40,12 @@ namespace AvatarBridge
             public Quaternion Rotation;
         }
 
+        // wantedShapes: a socket names its stages; a plug takes the shapes
+        // that move it most. objectFrame: a socket's shader adds the shape
+        // deltas in the mesh's own frame, so a socket bake stays in it.
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
-            BridgeReport report, out string failure)
+            BridgeReport report, out string failure, IList<string> wantedShapes = null,
+            bool objectFrame = false, bool flipAxis = false)
         {
             failure = null;
             if (renderer == null || plugRoot == null)
@@ -76,18 +80,53 @@ namespace AvatarBridge
             }
 
             var skin = renderer as SkinnedMeshRenderer;
-            if (!TryPlaceVertices(mesh, skin, renderer.transform,
+            if (!TryPlaceVertices(mesh, skin,
                     out var worldPositions, out var worldNormals, out var worldTangents,
-                    out var activeWeights, plugRoot, out failure))
+                    out var activeWeights, out var placements, plugRoot, out failure))
             {
                 return null;
             }
 
+            // The bake is measured in the scene as it stands. A root that
+            // is turned or scaled there puts that turn and scale into
+            // every baked position, and the shader assumes neither.
+            var sceneRoot = renderer.transform.root;
+            if (sceneRoot != null
+                && (Quaternion.Angle(sceneRoot.rotation, Quaternion.identity) > 1f
+                    || (sceneRoot.lossyScale - Vector3.one).magnitude > 0.01f))
+            {
+                report?.Warning(Category, $"\"{sceneRoot.name}\" is rotated or scaled in the scene",
+                    "The plug bake measures the mesh where it stands, so that rotation or scale " +
+                    "is baked in. Reset the root's rotation to zero and its scale to one before " +
+                    "baking, then move it back afterwards.");
+            }
+
             // The shaft direction and origin are measured from the mesh, not
             // taken from the plug root, whose rotation is whatever the author left.
-            MeasureFrame(worldPositions, activeWeights, plugRoot,
+            //
+            // A skinned mesh is baked in that measured frame; the shader
+            // recovers it per vertex from the bones. A plain mesh has no
+            // bones to recover it from, so the shader takes the object's
+            // own origin and +Z, and the markers sit there too. Its bake
+            // is in that frame, mesh units, and the measurement only says
+            // how far the mesh disagrees with it.
+            bool staticMesh = skin == null || skin.bones == null || skin.bones.Length == 0;
+            Vector3 rootPos = plugRoot.position;
+            Quaternion rootRot = plugRoot.rotation;
+            if (staticMesh)
+            {
+                rootPos = renderer.transform.InverseTransformPoint(plugRoot.position);
+                rootRot = Quaternion.Inverse(renderer.transform.rotation) * plugRoot.rotation;
+            }
+            MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis,
                 out var origin, out var rotation, out float axisDrift, out float originDrift);
-            var toPlug = Matrix4x4.TRS(origin, rotation, Vector3.one).inverse;
+            var toPlug = staticMesh || objectFrame ? Matrix4x4.identity
+                : Matrix4x4.TRS(origin, rotation, Vector3.one).inverse;
+            if (staticMesh)
+            {
+                origin = renderer.transform.TransformPoint(origin);
+                rotation = renderer.transform.rotation * rotation;
+            }
 
             int count = worldPositions.Count;
             var positions = new Vector3[count];
@@ -115,7 +154,7 @@ namespace AvatarBridge
                           "there is nothing to bake";
                 return null;
             }
-            if (length <= 0.0001f)
+            if (length <= 0.0001f && !objectFrame)
             {
                 failure = "the plug measures no length along its own +Z — its root is probably " +
                           "pointing the wrong way";
@@ -124,7 +163,7 @@ namespace AvatarBridge
 
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.
-            var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, out var shapeNames);
+            var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames, wantedShapes);
 
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
@@ -137,17 +176,32 @@ namespace AvatarBridge
             // toward someone can vanish mid-bend precisely when it matters.
             ExtendBounds(renderer, mesh, length);
 
+            bool drifted = axisDrift > 5f || originDrift > 0.01f;
+            if (staticMesh && drifted && !objectFrame)
+            {
+                // A plain mesh bends around its object's origin along +Z,
+                // whatever the vertices say. Said loudly, because the plug
+                // looks fine until a socket engages it.
+                report?.Warning(Category, $"\"{renderer.name}\" is not modelled along its object's +Z",
+                    $"Its shaft measures {axisDrift:0} degrees off the object's +Z and its base sits " +
+                    $"{originDrift * 100f:0.#} cm from the object's origin. A plain mesh bends around " +
+                    "the object's origin along its +Z, so it will swing to that frame the moment a " +
+                    "socket engages it. Set the mesh's pivot at the base and point +Z along the shaft " +
+                    "(in Blender: origin to the base, shaft along +Y before export), then bake again.");
+            }
             report?.Converted(Category, renderer.name,
                 $"Baked {active} of {count} vertices, plug length {length:0.###} m" +
-                (axisDrift > 5f || originDrift > 0.01f
+                (drifted && !staticMesh
                     ? $", measuring its own axis {axisDrift:0} degrees off the object's rotation " +
                       $"and its base {originDrift * 100f:0.#} cm from the object's position. Both " +
                       "come from where the vertices actually are, so a plug hanging off an object " +
                       "nobody aimed or placed still bakes correctly. "
                     : ". ") +
-                "Each vertex is stored in the plug root's own frame, with its skin weight on " +
-                "the plug's bone chain as the blend weight, so the base feathers into the body " +
-                "instead of shearing off.");
+                (staticMesh
+                    ? "Each vertex is stored in the object's own frame, base at the origin, shaft along +Z."
+                    : "Each vertex is stored in the plug root's own frame, with its skin weight on " +
+                      "the plug's bone chain as the blend weight, so the base feathers into the body " +
+                      "instead of shearing off."));
 
             return new Result
             {
@@ -156,7 +210,7 @@ namespace AvatarBridge
                 Length = length,
                 Radius = Mathf.Sqrt(radius),
                 ActiveVertices = active,
-                FromSkinnedMesh = skin != null,
+                FromSkinnedMesh = !staticMesh,
                 Shapes = shapeNames,
                 Origin = origin,
                 Rotation = rotation,
@@ -231,15 +285,18 @@ namespace AvatarBridge
 
         // --- placing the vertices -------------------------------------
 
-        static bool TryPlaceVertices(Mesh mesh, SkinnedMeshRenderer skin, Transform rendererTransform,
+        static bool TryPlaceVertices(Mesh mesh, SkinnedMeshRenderer skin,
             out List<Vector3> positions, out List<Vector3> normals, out List<Vector3> tangents,
-            out List<float> active, Transform plugRoot, out string failure)
+            out List<float> active, out List<Matrix4x4> placements, Transform plugRoot, out string failure)
         {
             failure = null;
             positions = new List<Vector3>();
             normals = new List<Vector3>();
             tangents = new List<Vector3>();
             active = new List<float>();
+            // What placed each vertex. A blendshape delta is a mesh-space
+            // direction and has to turn with its vertex.
+            placements = new List<Matrix4x4>();
 
             var meshVertices = mesh.vertices;
             var meshNormals = mesh.normals;
@@ -247,16 +304,17 @@ namespace AvatarBridge
 
             if (skin == null || skin.bones == null || skin.bones.Length == 0)
             {
-                // A plain mesh renderer: its transform IS the placement.
-                var toWorld = rendererTransform.localToWorldMatrix;
+                // A plain mesh renderer: the shader reads its vertices in
+                // the object's own frame and scales by the object itself,
+                // so the bake is the mesh as modelled, untransformed.
                 for (int i = 0; i < meshVertices.Length; i++)
                 {
-                    positions.Add(toWorld.MultiplyPoint3x4(meshVertices[i]));
-                    normals.Add(i < meshNormals.Length
-                        ? toWorld.MultiplyVector(meshNormals[i]) : Vector3.forward);
+                    positions.Add(meshVertices[i]);
+                    normals.Add(i < meshNormals.Length ? meshNormals[i] : Vector3.forward);
                     tangents.Add(i < meshTangents.Length
-                        ? toWorld.MultiplyVector(meshTangents[i]) : Vector3.right);
+                        ? (Vector3) meshTangents[i] : Vector3.right);
                     active.Add(1f);
+                    placements.Add(Matrix4x4.identity);
                 }
                 return true;
             }
@@ -300,6 +358,7 @@ namespace AvatarBridge
                 tangents.Add(i < meshTangents.Length
                     ? place.MultiplyVector(meshTangents[i]) : Vector3.right);
                 active.Add(WeightOnPlug(w, plugBones));
+                placements.Add(place);
             }
             return true;
         }
@@ -315,11 +374,11 @@ namespace AvatarBridge
         // are most spread along. That is the dominant eigenvector of their
         // covariance, found by power iteration; no transform is consulted at
         // all. The base is then simply the near end along that axis.
-        static void MeasureFrame(List<Vector3> positions, List<float> active, Transform plugRoot,
+        static void MeasureFrame(List<Vector3> positions, List<float> active, Vector3 rootPosition, Quaternion rootRotation, bool flip,
             out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
-            var authored = plugRoot.rotation;
-            origin = plugRoot.position;
+            var authored = rootRotation;
+            origin = rootPosition;
             rotation = authored;
             axisDrift = 0f;
             originDrift = 0f;
@@ -368,8 +427,12 @@ namespace AvatarBridge
 
             // An eigenvector has no sign. The tip is the end furthest from
             // where the plug attaches, so point away from the attachment.
-            float alongRoot = Vector3.Dot(plugRoot.position - centre, axis);
+            float alongRoot = Vector3.Dot(rootPosition - centre, axis);
             if (alongRoot > 0f)
+            {
+                axis = -axis;
+            }
+            if (flip)
             {
                 axis = -axis;
             }
@@ -382,7 +445,7 @@ namespace AvatarBridge
 
             var measured = centre + axis * nearest;
             axisDrift = Vector3.Angle(authored * Vector3.forward, axis);
-            originDrift = Vector3.Distance(plugRoot.position, measured);
+            originDrift = Vector3.Distance(rootPosition, measured);
             origin = measured;
 
             var up = authored * Vector3.up;
@@ -403,7 +466,8 @@ namespace AvatarBridge
         // move it most" is the only answer that survives contact with a
         // real face-tracking rig.
         static List<Vector3[]> CaptureShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
-            List<float> active, out List<string> names)
+            List<float> active, List<Matrix4x4> placements, out List<string> names,
+            IList<string> wanted = null)
         {
             names = new List<string>();
             var captured = new List<Vector3[]>();
@@ -417,6 +481,38 @@ namespace AvatarBridge
             var deltaN = new Vector3[count];
             var deltaT = new Vector3[count];
             var scored = new List<(float moved, int index)>();
+
+            // Named shapes, in the order given: a socket's stages are
+            // the author's choice, entry first, and nothing else is
+            // stored. Names the mesh does not have are skipped.
+            if (wanted != null)
+            {
+                var picked = new List<(float, int)>();
+                foreach (string name in wanted)
+                {
+                    int index = string.IsNullOrEmpty(name) ? -1 : mesh.GetBlendShapeIndex(name);
+                    if (index >= 0 && !picked.Any(p => p.Item2 == index) && picked.Count < MaxShapes)
+                    {
+                        picked.Add((1f, index));
+                    }
+                }
+                foreach (var (_, index) in picked)
+                {
+                    int frames = mesh.GetBlendShapeFrameCount(index);
+                    mesh.GetBlendShapeFrameVertices(index, frames - 1, deltaP, deltaN, deltaT);
+                    var block = new Vector3[count * 3];
+                    for (int i = 0; i < count; i++)
+                    {
+                        var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
+                        block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
+                        block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
+                        block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
+                    }
+                    captured.Add(block);
+                    names.Add(mesh.GetBlendShapeName(index));
+                }
+                return captured;
+            }
 
             for (int s = 0; s < mesh.blendShapeCount; s++)
             {
@@ -467,12 +563,14 @@ namespace AvatarBridge
                 var block = new Vector3[count * 3];
                 for (int i = 0; i < count; i++)
                 {
-                    // Directions, so rotation only — a delta is a
+                    // Directions, so rotation only: a delta is a
                     // displacement, and translating one would move the
-                    // whole plug by the frame's origin.
-                    block[i * 3 + 0] = toPlug.MultiplyVector(deltaP[i]);
-                    block[i * 3 + 1] = toPlug.MultiplyVector(deltaN[i]);
-                    block[i * 3 + 2] = toPlug.MultiplyVector(deltaT[i]);
+                    // whole plug by the frame's origin. Turned first by
+                    // whatever placed its vertex, then into the plug frame.
+                    var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
+                    block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
+                    block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
+                    block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
                 }
                 captured.Add(block);
                 names.Add(mesh.GetBlendShapeName(index));
