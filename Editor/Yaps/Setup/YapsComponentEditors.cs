@@ -165,11 +165,11 @@ namespace AvatarBridge
         public const string PlugName = "YAPS Preview Plug";
         static bool _animating;
 
-        public static void Set(YapsSocket socket, bool on)
+        public static void Set(YapsSocket socket, bool on, bool spawnPlugIfNone = true)
         {
             if (socket == null) return;
             socket.preview = on;
-            if (on && CountBakedPlugs() == 0) Spawn(socket);
+            if (on && spawnPlugIfNone && CountBakedPlugs() == 0) Spawn(socket);
             if (!on) Remove();
             socket.PreviewTick();
             Animate(on);

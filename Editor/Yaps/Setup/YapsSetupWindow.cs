@@ -228,7 +228,7 @@ namespace AvatarBridge
                 Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug())));
             make.Body.Add(BridgeElements.Hint(
                 "The socket lands in front of the camera with Preview already on: select it and move " +
-                "it around the plug. A test plug is a capsule baked through the exact path your own " +
+                "it around your baked plug. No plug in the scene yet? Test plug drops one: a capsule baked through the exact path your own " +
                 "mesh takes, on YAPS Simple Lit. Stop Preview on the socket, or delete it, when done."));
             _pages.Add(make);
 
@@ -254,7 +254,7 @@ namespace AvatarBridge
         {
             var socket = AddSocket(kind, atCamera: true);
             if (socket == null) return;
-            YapsPreview.Set(socket, true);
+            YapsPreview.Set(socket, true, spawnPlugIfNone: false);
         }
 
         // --- behaviour -----------------------------------------------------------
