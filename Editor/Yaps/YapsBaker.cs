@@ -172,6 +172,7 @@ namespace AvatarBridge
             string path = AssetDatabase.GenerateUniqueAssetPath(
                 outputDir + "/YAPS " + Sanitise(renderer.name) + " bake.asset");
             AssetDatabase.CreateAsset(texture, path);
+            SettleForUpload(texture);
 
             // The deform throws vertices well outside the rest pose, and
             // Unity culls on the mesh's own bounds, so a plug that bends
@@ -705,6 +706,28 @@ namespace AvatarBridge
             texture.SetPixels32(pixels);
             texture.Apply(false, false);
             return texture;
+        }
+
+        // The CCK's uploader refuses a texture that is readable or has
+        // streaming mipmaps off, and it checks generated .asset textures
+        // too — so every bake used to hand the user the same two errors
+        // and the same two Auto Fix clicks. A texture made in code has no
+        // importer to carry those flags, so they are written the way the
+        // CCK's own fix writes them, on the asset itself. Nothing of ours
+        // reads the pixels back at runtime: the shader samples them, and
+        // the bake reader blits when a texture will not give them up.
+        public static void SettleForUpload(Texture2D texture)
+        {
+            if (texture == null) return;
+            var so = new SerializedObject(texture);
+            var readable = so.FindProperty("m_IsReadable");
+            var streaming = so.FindProperty("m_StreamingMipmaps");
+            var priority = so.FindProperty("m_StreamingMipmapsPriority");
+            if (readable != null) readable.boolValue = false;
+            if (streaming != null) streaming.boolValue = true;
+            if (priority != null) priority.intValue = 0;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(texture);
         }
 
         static void Write(Color32[] pixels, ref int at, float value)
