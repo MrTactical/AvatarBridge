@@ -257,7 +257,7 @@ namespace AvatarBridge
         static bool Ours(string path, string outputDir, string controllerPath)
             => string.IsNullOrEmpty(path)
                || path == controllerPath
-               || path.StartsWith(outputDir, StringComparison.Ordinal);
+               || path.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal);
 
         static bool NeedsCopy(string path, string outputDir, string controllerPath)
         {
@@ -269,7 +269,7 @@ namespace AvatarBridge
             {
                 return false; // embedded in the controller — already travels with it
             }
-            if (path.StartsWith(outputDir, StringComparison.Ordinal))
+            if (path.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal))
             {
                 return false;
             }

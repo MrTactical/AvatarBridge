@@ -20,6 +20,13 @@ namespace AvatarBridge
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
+            // Converting to YAPS implies stripping what it replaces. The
+            // window says so; a caller with the pair the other way round
+            // (older saved settings, a script) gets the same answer.
+            if (settings.convertYapsSystems && !settings.stripSpsSystems)
+            {
+                settings.stripSpsSystems = true;
+            }
             var report = new BridgeReport();
             var ctx = new BridgeContext
             {
@@ -147,6 +154,10 @@ namespace AvatarBridge
                     // edits owned copies.
                     Pass("Self-contain clips and masks", AnimationSelfContainer.Run,
                          PassTraits.MakesClipsOurs),
+                    // The stereo patch's other half: swap curves in the
+                    // clips, now that the clips are copies of this run's.
+                    Pass("Repoint material swaps at stereo copies", ShaderSpiPatcher.RepointSwapClipsPass,
+                         PassTraits.EditsClips),
 
                     // After self-containment; it renames clip assets,
                     // and only an owned copy may be renamed.

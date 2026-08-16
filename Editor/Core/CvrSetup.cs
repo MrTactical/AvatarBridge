@@ -18,7 +18,8 @@ namespace AvatarBridge
     // does; the viewpoint, visemes and blink wiring, face tracking, the height scaler .
     // is CVR-side work that never needed VRChat in the first place. This runs exactly
     // those passes against features read straight off the rig and meshes, so it works on
-    // a Booth model, an original avatar, or one that was already converted.
+    // a Booth model or an original avatar. Not on one that already has a menu:
+    // it builds the controller and the menu fresh, and says so when it replaces one.
     //
     // What it deliberately does NOT do: anything requiring VRChat data (menus and
     // parameters from expression assets, PhysBone/contact conversion, animator merging).
@@ -215,6 +216,19 @@ namespace AvatarBridge
             WireBlink(ctx, cvrAvatar, mesh);
 
             // --- advanced settings container ----------------------------------------
+            // Setup builds the menu and the controller fresh from the CCK
+            // base. An avatar that already had a menu loses it here, and
+            // says so; Undo brings it back.
+            int hadEntries = cvrAvatar.avatarSettings != null && cvrAvatar.avatarSettings.settings != null
+                ? cvrAvatar.avatarSettings.settings.Count : 0;
+            if (hadEntries > 0)
+            {
+                ctx.Report.Warning(Category, $"Replaced a menu of {hadEntries} entr{(hadEntries == 1 ? "y" : "ies")}",
+                    "Setup mode prepares a plain humanoid: it builds the animator controller and the " +
+                    "advanced settings menu fresh from the CCK base, so what this avatar already had is " +
+                    "gone. Undo restores it. An avatar with its own toggles should be converted, or " +
+                    "have the ChilloutVR Toolkit run its cards one at a time, not set up.");
+            }
             cvrAvatar.avatarUsesAdvancedSettings = true;
             cvrAvatar.avatarSettings = new CVRAdvancedAvatarSettings
             {
@@ -342,6 +356,7 @@ namespace AvatarBridge
             overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
+            ctx.CvrAvatar.avatarSettings.baseOverrideController = overrides;
             ctx.CvrAvatar.overrides = overrides;
 
             var animator = ctx.TargetAnimator;
@@ -366,8 +381,8 @@ namespace AvatarBridge
             if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
             {
                 ctx.Report.Warning(Category, $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
-                    "Using the default \"Assets/AvatarBridge/Output\" instead.");
-                folder = "Assets/AvatarBridge/Output";
+                    "Using the default \"Assets/AvatarBridgeOutput\" instead.");
+                folder = "Assets/AvatarBridgeOutput";
             }
             ctx.OutputDir = folder + "/" + safeName;
 

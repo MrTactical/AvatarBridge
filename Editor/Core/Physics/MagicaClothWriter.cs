@@ -315,19 +315,16 @@ namespace AvatarBridge
         static Transform HolderHome(BridgeContext ctx, PhysBoneChainData data)
         {
             var target = ctx.Target.transform;
-#if VRC_SDK_VRCSDK3
-            var source = data.SourceGameObject != null ? data.SourceGameObject.transform : null;
-            if (source == null) return target;
-            var mapped = ctx.FindInTarget(source);
-            if (mapped == null || mapped == target) return target;
+            // The chain data was read from the target itself, so its
+            // objects are already target-side. Mapping them through the
+            // source descriptor only works when the two are one object.
+            var home = data.SourceGameObject != null ? data.SourceGameObject.transform : null;
+            if (home == null || home == target || !home.IsChildOf(target)) return target;
             // A component on the chain's own bone: the holder goes beside it,
             // not inside the chain it drives.
-            var chainRoot = data.Root != null ? ctx.FindInTarget(data.Root) : null;
-            bool onChain = chainRoot != null && (mapped == chainRoot || mapped.IsChildOf(chainRoot));
-            return onChain ? (mapped.parent != null ? mapped.parent : target) : mapped;
-#else
-            return target;
-#endif
+            var chainRoot = data.Root;
+            bool onChain = chainRoot != null && (home == chainRoot || home.IsChildOf(chainRoot));
+            return onChain ? (home.parent != null ? home.parent : target) : home;
         }
 
         static string UniqueChildName(Transform parent, string name)
@@ -362,7 +359,9 @@ namespace AvatarBridge
                     leaf = false;
                     Walk(child);
                 }
-                if (leaf)
+                // A tip written by an earlier cloth on the same root is a
+                // leaf too; stacked PhysBones must not grow X_End_End.
+                if (leaf && !node.name.EndsWith("_End", StringComparison.Ordinal))
                 {
                     var tip = new GameObject(node.name + "_End");
                     tip.transform.SetParent(node, false);

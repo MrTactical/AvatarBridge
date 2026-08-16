@@ -236,20 +236,21 @@ namespace AvatarBridge
 
             var go = new GameObject("DBCollider_" + parent.name);
             go.transform.SetParent(parent, false);
+            go.transform.localPosition = pbCollider.position;
             go.transform.localRotation = pbCollider.rotation;
 
             DynamicBoneColliderBase collider;
             if (shape.Contains("Plane"))
             {
                 var plane = go.AddComponent<DynamicBonePlaneCollider>();
-                plane.m_Center = pbCollider.position;
+                plane.m_Center = Vector3.zero;
                 plane.m_Direction = DynamicBoneColliderBase.Direction.Y;
                 collider = plane;
             }
             else
             {
                 var round = go.AddComponent<DynamicBoneCollider>();
-                round.m_Center = pbCollider.position;
+                round.m_Center = Vector3.zero;
                 round.m_Radius = pbCollider.radius;
                 round.m_Height = shape.Contains("Capsule") ? pbCollider.height : 0f;
                 round.m_Direction = DynamicBoneColliderBase.Direction.Y;

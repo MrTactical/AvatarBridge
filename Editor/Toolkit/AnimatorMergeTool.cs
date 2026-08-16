@@ -57,6 +57,14 @@ namespace AvatarBridge
                 var layers = into.layers.ToList();
                 foreach (var layer in source.layers)
                 {
+                    // A synced layer has no state machine of its own; a copy
+                    // of one is a layer that plays nothing and complains
+                    // every frame. Left behind and named.
+                    if (layer.syncedLayerIndex >= 0)
+                    {
+                        renamed.Add($"{layer.name}: synced layer, not merged");
+                        continue;
+                    }
                     var clone = copier.CloneLayer(layer);
                     if (names.Contains(clone.name))
                     {

@@ -4969,8 +4969,8 @@ namespace AvatarBridge
             ctx.Report.Converted(Category, $"Removed {removed} orphaned animator parameter(s)",
                 $"{string.Join(", ", names.Take(12))}{(names.Count > 12 ? ", …" : "")} — nothing in the " +
                 "animator reads them and their menu entries were removed as dead, so they were declared and " +
-                "doing nothing. (They weren't costing sync either way: ChilloutVR syncs through Advanced " +
-                "Settings entries, not animator parameters.)");
+                "doing nothing. Every declared parameter without a \"#\" costs sync bits in ChilloutVR, so " +
+                "removing them also gives the budget back.");
         }
 
         static HashSet<string> CollectReferencedParameters(AnimatorController master)
@@ -8245,7 +8245,7 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        var at = ctx.Target.transform.Find(binding.path);
+                        var at = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                         if (at != null)
                         {
                             missing.Add((binding, at.gameObject.activeSelf ? 1f : 0f));

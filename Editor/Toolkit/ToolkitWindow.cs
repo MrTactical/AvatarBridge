@@ -39,7 +39,7 @@ namespace AvatarBridge
             BridgeTheme.ApplySkin(root);
             root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any avatar or prop", BridgeDefines.Version));
             _pages = new ScrollView();
-            _pages.AddToClassList("ab-body");
+            _pages.AddToClassList("ab-scroll");
             root.Add(_pages);
             Build();
         }
@@ -193,9 +193,15 @@ namespace AvatarBridge
                 var ctx = Context(report);
                 if (ctx.MergedController == null) { report.Error("Scaler", "No animator controller on the root"); return report; }
                 if (ctx.CvrAvatar == null) { report.Error("Scaler", "No CVRAvatar on the root"); return report; }
+                var controller = ctx.MergedController;
+                if (controller.layers.Any(l => l.name == "Size" || l.name.StartsWith("Size ", System.StringComparison.Ordinal)))
+                {
+                    report.Approximated("Scaler", "Height slider already there",
+                        "The controller already carries a Size layer. Nothing was added twice.");
+                    return report;
+                }
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Height slider");
                 ctx.Settings.addAvatarScaler = true;
-                var controller = ctx.MergedController;
                 int before = controller.layers.Length;
                 AvatarScalerInjector.Inject(controller, ctx);
                 // Inject builds its layers in memory. On a persistent

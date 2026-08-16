@@ -31,10 +31,10 @@ namespace AvatarBridge
         // Mode only exists when there's a choice to make: without the VRChat SDK the
         // window is Setup-only, so there's nothing to switch between.
         enum Mode { Convert, Setup }
-        Mode mode = Mode.Convert;
-        VRCAvatarDescriptor avatar;
+        [SerializeField] Mode mode = Mode.Convert;
+        [SerializeField] VRCAvatarDescriptor avatar;
 #endif
-        GameObject setupAvatar;
+        [SerializeField] GameObject setupAvatar;
 
         [SerializeField] BridgeSettings settings = new BridgeSettings();
         BridgeReport lastReport;
@@ -77,6 +77,13 @@ namespace AvatarBridge
                 catch
                 {
                     settings = new BridgeSettings();
+                }
+                // Three answers on two flags. Settings saved by the release
+                // with two independent ticks can hold the fourth pair, which
+                // reads as "Leave" while YAPS still runs. Convert wins.
+                if (settings.convertYapsSystems && !settings.stripSpsSystems)
+                {
+                    settings.stripSpsSystems = true;
                 }
             }
             // Old saved settings can point inside the tool's folder,
@@ -544,13 +551,24 @@ namespace AvatarBridge
                     HelpBoxMessageType.Warning));
             }
 
-            b.Add(BridgeElements.Bind("GrabbyBones mod support",
-                "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
-                "_IsGrabbed / _Angle grab-reactive logic.",
-                settings.grabbyBonesSupport, v => settings.grabbyBonesSupport = v));
+            if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                // Only the cloth writer reads it.
+                b.Add(BridgeElements.Bind("GrabbyBones mod support",
+                    "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
+                    "_IsGrabbed / _Angle grab-reactive logic.",
+                    settings.grabbyBonesSupport, v => settings.grabbyBonesSupport = v));
+            }
             b.Add(BridgeElements.Bind("Delete PhysBones after converting",
                 "Leave on — leftover PhysBone components upset the CCK upload checks.",
                 settings.deleteConvertedPhysBones, v => settings.deleteConvertedPhysBones = v));
+            // Both writers skip toe chains, so the choice is shown for both.
+            b.Add(BridgeElements.Bind("Convert toe PhysBones",
+                "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
+                "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
+                "bones (or named like toes) are skipped and listed in the report. Turn on if " +
+                "this avatar's toe physics are deliberate.",
+                settings.convertToePhysBones, v => settings.convertToePhysBones = v));
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
@@ -648,12 +666,6 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Hint(
                     "The avatar doesn't answer these — each either departs from the source or turns on " +
                     "intent only you know. Leaving them alone converts fine."));
-                b.Add(BridgeElements.Bind("Convert toe PhysBones",
-                    "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
-                    "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
-                    "bones (or named like toes) are skipped and listed in the report. Turn on if " +
-                    "this avatar's toe physics are deliberate.",
-                    settings.convertToePhysBones, v => settings.convertToePhysBones = v));
                 b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
                     "Some avatars ship a toggled style (usually an add-on hairstyle) whose " +
                     "container carries its own bone rig and mesh but NO PhysBone — rigid in " +

@@ -140,7 +140,7 @@ namespace AvatarBridge
                 return Target.transform;
             }
             string path = RelativePath(SourceDescriptor.transform, sourceChild);
-            return Target.transform.Find(path);
+            return FindByAnimationPath(Target.transform, path);
         }
 #endif
 

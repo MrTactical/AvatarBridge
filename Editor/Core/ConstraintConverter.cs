@@ -215,6 +215,13 @@ namespace AvatarBridge
 
         static void RepointConstraintCurves(BridgeContext ctx)
         {
+            // Nothing was built to repoint at. The VRC curves die with
+            // their components; warning about them here would blame the
+            // bake for a choice the user made.
+            if (!ctx.Settings.convertConstraints)
+            {
+                return;
+            }
             var clips = new HashSet<AnimationClip>();
             var controllers = new List<RuntimeAnimatorController>();
             foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
@@ -744,10 +751,21 @@ namespace AvatarBridge
             {
                 live.Add(ctx.PathInTarget(t));
             }
+            string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
             foreach (var layer in ctx.MergedController.layers)
             {
                 var mask = layer.avatarMask;
                 if (mask == null)
+                {
+                    continue;
+                }
+                // Only a mask this conversion owns. This runs before the
+                // self-container copies foreign masks, so the CCK's, the
+                // package's and the source avatar's are still theirs.
+                string maskPath = AssetDatabase.GetAssetPath(mask);
+                bool ours = string.IsNullOrEmpty(maskPath) || maskPath == controllerPath
+                            || maskPath.StartsWith(ctx.OutputDir + "/", StringComparison.Ordinal);
+                if (!ours)
                 {
                     continue;
                 }
@@ -904,6 +922,13 @@ namespace AvatarBridge
         {
             unity.weight = Get(vrc, "GlobalWeight", 1f);
             unity.locked = Get(vrc, "Locked", true);
+            // The component's own checkbox travels too: a constraint left
+            // disabled at rest and switched on by a toggle must start off,
+            // or the toggle can only ever release it.
+            if (vrc is Behaviour source)
+            {
+                unity.enabled = source.enabled;
+            }
             // Activate last so Unity doesn't recompute rest values.
             unity.constraintActive = Get(vrc, "IsActive", true);
         }

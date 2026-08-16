@@ -732,7 +732,7 @@ namespace AvatarBridge
                     {
                         // Restore to what the avatar rests at. A zone
                         // authored inactive rests off; 0 is already right.
-                        var t = ctx.Target.transform.Find(binding.path);
+                        var t = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                         if (t != null && t.gameObject.activeSelf)
                         {
                             toFill.Add(binding);
@@ -873,7 +873,7 @@ namespace AvatarBridge
             var wired = new HashSet<string>();
             foreach (var entry in ctx.ZoneSliderGrowth)
             {
-                var zone = ctx.Target.transform.Find(entry.zonePath);
+                var zone = BridgeContext.FindByAnimationPath(ctx.Target.transform, entry.zonePath);
                 if (zone == null)
                 {
                     continue;
@@ -926,7 +926,7 @@ namespace AvatarBridge
         static void HoldGrownSize(BridgeContext ctx,
             (string zonePath, string shapeKey, float growth, float reach, string reportPath) entry)
         {
-            var zone = ctx.Target.transform.Find(entry.zonePath);
+            var zone = BridgeContext.FindByAnimationPath(ctx.Target.transform, entry.zonePath);
             if (zone == null)
             {
                 return;

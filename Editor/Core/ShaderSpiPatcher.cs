@@ -31,13 +31,134 @@ namespace AvatarBridge
             "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
         };
 
+        // Per conversion: what the renderer pass patched, for the swap
+        // pass that runs once the clips are the conversion's own.
+        static Dictionary<Shader, Shader> _patched;
+        static Dictionary<Material, Material> _clones;
+        static string _dir;
+
         public static void Run(BridgeContext ctx)
         {
+            _patched = null;
+            _clones = null;
             if (!ctx.Settings.patchNonSpiShaders)
             {
                 return;
             }
-            Patch(ctx.Target, ctx.OutputDir.TrimEnd('/') + "/RehomedAssets", ctx.MergedController, ctx.Report);
+            // Renderers only here. The clips are still the avatar's own
+            // assets at this point; RepointSwapClips runs after they are copied.
+            Patch(ctx.Target, ctx.OutputDir.TrimEnd('/') + "/RehomedAssets", null, ctx.Report);
+        }
+
+        // Late pass: material-swap curves in the merged controller's clips
+        // point at the patched copies. After the self-container, so every
+        // clip it touches is a copy owned by this conversion.
+        public static void RepointSwapClipsPass(BridgeContext ctx)
+        {
+            if (!ctx.Settings.patchNonSpiShaders || ctx.MergedController == null || _patched == null)
+            {
+                return;
+            }
+            var repointed = new List<string>();
+            var refused = new List<string>();
+            var alreadyCorrect = new List<string>();
+            var recipesUsed = new List<string>();
+            var grabLimited = new List<string>();
+            RepointSwapClips(ctx.MergedController, _dir, _patched, _clones, ctx.Report,
+                repointed, refused, alreadyCorrect, recipesUsed, grabLimited);
+            if (repointed.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{repointed.Distinct().Count()} shader(s) patched for VR stereo, found only in animated swaps",
+                    $"{string.Join(", ", repointed.Distinct())} — never on a renderer at rest, assigned by a " +
+                    "toggle. Copied into RehomedAssets with the stereo macros added and the swap repointed.");
+            }
+            if (refused.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{refused.Count} shader(s) in animated swaps could not be patched for VR stereo",
+                    $"{string.Join(", ", refused)} — these still draw into one eye when the toggle assigns them.");
+            }
+        }
+
+        static void RepointSwapClips(AnimatorController controller, string dir,
+            Dictionary<Shader, Shader> patched, Dictionary<Material, Material> clones, BridgeReport report,
+            List<string> repointed, List<string> refused, List<string> alreadyCorrect,
+            List<string> recipesUsed, List<string> grabLimited)
+        {
+            int swapsRepointed = 0;
+            foreach (var clip in ClipsOf(controller))
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null || keys.Length == 0)
+                    {
+                        continue;
+                    }
+                    bool rewritten = false;
+                    for (int k = 0; k < keys.Length; k++)
+                    {
+                        var material = keys[k].value as Material;
+                        var shader = material != null ? material.shader : null;
+                        if (shader == null)
+                        {
+                            continue;
+                        }
+                        if (!patched.TryGetValue(shader, out var fixedShader))
+                        {
+                            string source = SourcePathOf(shader);
+                            if (source == null)
+                            {
+                                patched[shader] = null;
+                                continue;
+                            }
+                            if (DeclaresStereo(source))
+                            {
+                                patched[shader] = null;
+                                alreadyCorrect.Add(shader.name);
+                                continue;
+                            }
+                            fixedShader = TryPatch(source, shader.name, dir, out string reason,
+                                out var recipe, out bool exact, out bool grabbed);
+                            patched[shader] = fixedShader;
+                            if (fixedShader == null)
+                            {
+                                refused.Add($"{shader.name} ({reason})");
+                                continue;
+                            }
+                            repointed.Add(shader.name);
+                            if (grabbed) { grabLimited.Add(shader.name); }
+                            if (recipe != null)
+                            {
+                                recipesUsed.Add($"{shader.name} — {recipe.Note}" +
+                                    (exact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
+                            }
+                        }
+                        if (fixedShader == null)
+                        {
+                            continue;
+                        }
+                        keys[k].value = Repoint(material, fixedShader, dir, clones);
+                        rewritten = true;
+                    }
+                    if (rewritten)
+                    {
+                        AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
+                        swapsRepointed++;
+                    }
+                }
+            }
+            if (swapsRepointed > 0)
+            {
+                report.Converted(Category,
+                    $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
+                    "These materials are never assigned to a renderer — an animation swaps them in, " +
+                    "which is how hypno overlays, transformation skins and costume recolours are " +
+                    "built. Patching the shader alone would have changed nothing, because the " +
+                    "toggle would still have assigned the original, so the swap itself now points " +
+                    "at the patched copy.");
+            }
         }
 
         // The same pass on any object: the toolkit runs it standalone.
@@ -116,81 +237,17 @@ namespace AvatarBridge
 
             // Materials that arrive by animated swap sit on no renderer
             // right now, invisible to the loop above, and draw into one
-            // eye just as badly when assigned. The curve is rewritten
-            // to the patched clone too; otherwise the toggle would
-            // still assign the original.
-            int swapsRepointed = 0;
-            foreach (var clip in ClipsOf(controller))
+            // eye just as badly when assigned. Their curves are rewritten
+            // to the patched clone too, in RepointSwapClips: the clips
+            // are the avatar's own until the self-container copies them,
+            // so the converter runs that part late. Kept for the caches.
+            _patched = patched;
+            _clones = clones;
+            _dir = dir;
+            if (controller != null)
             {
-                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
-                {
-                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    if (keys == null || keys.Length == 0)
-                    {
-                        continue;
-                    }
-                    bool rewritten = false;
-                    for (int k = 0; k < keys.Length; k++)
-                    {
-                        var material = keys[k].value as Material;
-                        var shader = material != null ? material.shader : null;
-                        if (shader == null)
-                        {
-                            continue;
-                        }
-                        if (!patched.TryGetValue(shader, out var fixedShader))
-                        {
-                            string source = SourcePathOf(shader);
-                            if (source == null)
-                            {
-                                patched[shader] = null;
-                                continue;
-                            }
-                            if (DeclaresStereo(source))
-                            {
-                                patched[shader] = null;
-                                alreadyCorrect.Add(shader.name);
-                                continue;
-                            }
-                            fixedShader = TryPatch(source, shader.name, dir, out string reason,
-                                out var recipe, out bool exact, out bool grabbed);
-                            patched[shader] = fixedShader;
-                            if (fixedShader == null)
-                            {
-                                refused.Add($"{shader.name} ({reason})");
-                                continue;
-                            }
-                            repointed.Add(shader.name);
-                            if (grabbed) { grabLimited.Add(shader.name); }
-                            if (recipe != null)
-                            {
-                                recipesUsed.Add($"{shader.name} — {recipe.Note}" +
-                                    (exact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
-                            }
-                        }
-                        if (fixedShader == null)
-                        {
-                            continue;
-                        }
-                        keys[k].value = Repoint(material, fixedShader, dir, clones);
-                        rewritten = true;
-                    }
-                    if (rewritten)
-                    {
-                        AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
-                        swapsRepointed++;
-                    }
-                }
-            }
-            if (swapsRepointed > 0)
-            {
-                report.Converted(Category,
-                    $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
-                    "These materials are never assigned to a renderer — an animation swaps them in, " +
-                    "which is how hypno overlays, transformation skins and costume recolours are " +
-                    "built. Patching the shader alone would have changed nothing, because the " +
-                    "toggle would still have assigned the original, so the swap itself now points " +
-                    "at the patched copy.");
+                RepointSwapClips(controller, dir, patched, clones, report,
+                    repointed, refused, alreadyCorrect, recipesUsed, grabLimited);
             }
 
             if (repointed.Count > 0)

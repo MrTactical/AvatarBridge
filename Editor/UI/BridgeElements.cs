@@ -69,7 +69,7 @@ namespace AvatarBridge
                     tab.Add(image);
                 }
                 tab.Add(new Label(labels[i]));
-                tab.RegisterCallback<MouseDownEvent>(_ => onSelect(index));
+                tab.RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onSelect(index); });
                 strip.Add(tab);
             }
             return strip;
@@ -128,8 +128,9 @@ namespace AvatarBridge
 
                 if (expanded.HasValue)
                 {
-                    header.RegisterCallback<MouseDownEvent>(_ =>
+                    header.RegisterCallback<MouseDownEvent>(e =>
                     {
+                        if (e.button != 0) return;
                         _open = !_open;
                         Apply();
                         onToggle?.Invoke(_open);
@@ -169,7 +170,7 @@ namespace AvatarBridge
 
                 // A disabled VisualElement stops receiving events, so SetEnabled is the guard;
                 // the class only supplies the look, since a bare element has no disabled styling.
-                RegisterCallback<MouseDownEvent>(_ => onClick());
+                RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onClick(); });
                 RegisterCallback<MouseEnterEvent>(_ =>
                     style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient(true)));
                 RegisterCallback<MouseLeaveEvent>(_ =>
@@ -205,7 +206,7 @@ namespace AvatarBridge
             if (onClick != null && clickable)
             {
                 chip.AddToClassList("ab-chip-click");
-                chip.RegisterCallback<MouseDownEvent>(_ => onClick());
+                chip.RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onClick(); });
             }
             return chip;
         }

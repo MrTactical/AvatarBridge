@@ -48,7 +48,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    var child = ctx.Target.transform.Find(binding.path);
+                    var child = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                     var system = child != null ? child.GetComponent<ParticleSystem>() : null;
                     if (system == null)
                     {
