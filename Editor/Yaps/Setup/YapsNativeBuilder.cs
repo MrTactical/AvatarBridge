@@ -404,6 +404,23 @@ namespace AvatarBridge
             return Vector3.Distance(renderer.transform.position, socket.position) < 0.03f;
         }
 
+        // Everything Build does for one socket: its markers, its shapes,
+        // and a menu toggle when nothing switches it. What the window does
+        // per socket, and what the inspector's own button does.
+        public static List<string> BuildSocket(YapsSocket socket)
+        {
+            var lines = new List<string>();
+            if (socket == null) return lines;
+            Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Build YAPS socket");
+            YapsSocketBuilder.Build(socket);
+            string shapes = BakeSocket(socket);
+            if (shapes != null) lines.Add(shapes);
+            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, socket.name);
+            if (toggled != null) lines.Add(toggled);
+            return lines;
+        }
+
         // Bakes the socket's chosen shapes into its mesh's material, staged
         // as the component says. Returns what happened, for the window.
         public static string BakeSocket(YapsSocket socket)
@@ -633,9 +650,10 @@ namespace AvatarBridge
         // --- the test plug ---------------------------------------------------
 
         // A capsule with a YapsPlug, on Simple Lit, baked through the normal path.
-        public static GameObject BuildTestPlug(Transform parent = null, bool select = true)
+        public static GameObject BuildTestPlug(Transform parent = null, bool select = true, float length = 0.25f)
         {
-            const float length = 0.25f, radius = 0.028f;
+            length = Mathf.Clamp(length, 0.08f, 1.5f);
+            float radius = Mathf.Clamp(0.028f * length / 0.25f, 0.015f, 0.07f);
             var root = new GameObject("YAPS Test Plug");
             if (parent != null) root.transform.SetParent(parent, false);
             else

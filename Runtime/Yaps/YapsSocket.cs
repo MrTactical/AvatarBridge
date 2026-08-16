@@ -41,6 +41,12 @@ namespace AvatarBridge.Yaps
         [Range(0f, 1f), Tooltip("Overall strength of the shapes. 1 is as authored.")]
         public float shapePower = 1f;
 
+        [Tooltip("For shapes on a mesh that is not the socket's own (the body): how far in, in metres, " +
+                 "counts as depth 1. The contact that drives them cannot know a plug's length, so this " +
+                 "stands for it. 0 = the longest baked plug on this avatar when built, else 0.25 m.")]
+        [Min(0f)]
+        public float depthReach = 0f;
+
         [Tooltip("Emit the marker lights that let plugs with no contacts (Raliv DPS, and any " +
                  "converted plug with no sync budget) find this socket. Costs nothing; only turn " +
                  "off on an avatar with many sockets, where the toolkit wires them to a menu instead.")]

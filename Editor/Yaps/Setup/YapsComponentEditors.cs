@@ -261,12 +261,18 @@ namespace AvatarBridge
         {
             if (GameObject.Find(PlugName) != null) return;
             // Keep the socket selected; its inspector holds the stop button.
-            var go = YapsNativeBuilder.BuildTestPlug(null, select: false);
+            // For shapes on another mesh the game measures depth in reaches,
+            // so the test plug is one reach long: all the way in reads 1.
+            bool contact = socket.renderer != null && socket.shapes.Count > 0
+                           && !YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
+            float length = contact ? YapsSocketReactions.ReachOf(socket) : 0.25f;
+            var go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);
             if (go == null) return;
             go.name = PlugName;
             var t = socket.transform;
-            // Base 0.3 m out along the socket's forward, pointing back at it.
-            go.transform.position = t.position + t.forward * 0.3f;
+            // Base a little more than its length out along the socket's
+            // forward, pointing back at it: the tip just short of the plane.
+            go.transform.position = t.position + t.forward * (length + 0.05f);
             go.transform.rotation = Quaternion.LookRotation(-t.forward, t.up);
             EditorGUIUtility.PingObject(go);
 
@@ -334,6 +340,17 @@ namespace AvatarBridge
         public static float DepthOf(YapsSocket socket) => socket != null && _depth.TryGetValue(socket.GetInstanceID(), out var d) ? d : 0f;
         public static bool Holding(YapsSocket socket) => socket != null && _held.ContainsKey(socket.GetInstanceID());
 
+        // A shape's weight as the author left it, seen past any test that
+        // is holding the mesh right now.
+        public static float AuthoredWeight(SkinnedMeshRenderer renderer, int shapeIndex)
+        {
+            foreach (var held in _held.Values)
+                if (held.Renderer == renderer && held.Original.TryGetValue(shapeIndex, out float w)) return w;
+            return renderer.GetBlendShapeWeight(shapeIndex);
+        }
+
+        // The same maths as the built layer: each shape opens from its
+        // authored weight to full, scaled by the strength.
         public static void Apply(YapsSocket socket, float depth)
         {
             if (socket == null || socket.renderer == null || socket.renderer.sharedMesh == null) return;
@@ -353,8 +370,8 @@ namespace AvatarBridge
                 int i = mesh.GetBlendShapeIndex(s.blendshape);
                 if (i < 0) continue;
                 if (!held.Original.ContainsKey(i)) held.Original[i] = r.GetBlendShapeWeight(i);
-                float w = Mathf.Clamp01((depth - s.startsAt) / Mathf.Max(0.01f, s.fadeOver)) * Mathf.Clamp01(socket.shapePower) * 100f;
-                r.SetBlendShapeWeight(i, w);
+                float opening = Mathf.Clamp01((depth - s.startsAt) / Mathf.Max(0.01f, s.fadeOver)) * Mathf.Clamp01(socket.shapePower);
+                r.SetBlendShapeWeight(i, Mathf.Lerp(held.Original[i], 100f, opening));
             }
         }
 
@@ -377,10 +394,12 @@ namespace AvatarBridge
             foreach (int id in _held.Keys.ToList()) Release(id);
         }
 
-        // While a socket previews, the nearest plug's tip sets its depth:
-        // penetration in plug lengths for a mesh of the socket's own, the
-        // shader's measure; closeness within the trigger's reach for any
-        // other mesh, the contact's. No plug near, no change.
+        // While a socket previews, the deepest plug's tip sets its depth:
+        // penetration past the socket plane, in plug lengths for a mesh of
+        // the socket's own (the shader's measure), in reaches for any other
+        // mesh (the contact's: the tip's position in the trigger box). A
+        // tip in front of the plane is depth 0, as the game reads it. No
+        // plug about, no change.
         public static void FollowPlugs(YapsSocket socket)
         {
             if (socket == null || socket.renderer == null || socket.shapes.Count == 0) return;
@@ -394,16 +413,29 @@ namespace AvatarBridge
             bool own = YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
             float best = -1f;
             var at = socket.transform;
+            YapsSocketReactions.TriggerBox(socket, out var offset, out var size);
             foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
             {
                 if (!YapsPreview.PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
                 var tip = origin + forward * length;
-                float depth = own
-                    ? Vector3.Dot(at.position - tip, at.forward) / Mathf.Max(length, 0.01f)
-                    : 1f - Vector3.Distance(tip, at.position) / YapsSocketReactions.Reach;
-                // Out of reach: more than a plug length short of the socket,
-                // or outside the trigger's box.
-                if (depth < -1f || (!own && depth < 0f)) continue;
+                var local = at.InverseTransformPoint(tip);   // z along the socket's forward, out of it
+                float depth;
+                if (own)
+                {
+                    depth = -local.z / Mathf.Max(length, 0.01f);
+                    // More than a plug length short of the plane: not about.
+                    if (depth < -1f) continue;
+                }
+                else
+                {
+                    // In the trigger box, or just in front of it: the game
+                    // reads 0 there and 0 at the plane.
+                    var rel = local - offset;
+                    bool inside = Mathf.Abs(rel.x) <= size.x * 0.5f && Mathf.Abs(rel.y) <= size.y * 0.5f
+                                  && rel.z >= -size.z * 0.5f && rel.z <= size.z * 0.5f + size.z;
+                    if (!inside) continue;
+                    depth = -local.z / size.z;
+                }
                 best = Mathf.Max(best, Mathf.Clamp01(depth));
             }
             return best;
@@ -556,13 +588,19 @@ namespace AvatarBridge
                 ReactionsChanged(socket);
                 RebuildLater();
             });
-            if (current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform))
+            bool contactRoute = current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform);
+            if (contactRoute)
             {
+                float reach = YapsSocketReactions.ReachOf(socket);
+                string reachFrom = socket.depthReach > 0f ? "set below"
+                    : YapsSocketReactions.LongestPlugOn(avatarRoot) > 0f ? "the length of the longest plug on this avatar"
+                    : "the default, no plug on this avatar yet";
                 opens.Body.Add(new HelpBox(
                     $"\"{current.name}\" is not a mesh of the socket's own, so Build drives these shapes through a contact: " +
                     "a depth trigger on the socket reads a plug's tip pointer and a layer in your animator plays the " +
                     "stages from it. Works with TPS, SPS and YAPS plugs; a DPS light-only plug has no pointer. " +
-                    "Free: every client computes contacts itself.", HelpBoxMessageType.Info));
+                    $"Free: every client computes contacts itself. A contact cannot know a plug's length, so depth 1 " +
+                    $"is {reach:0.00} m in ({reachFrom}); the depths below are fractions of that.", HelpBoxMessageType.Info));
             }
             opens.Body.Add(meshPopup);
 
@@ -686,6 +724,29 @@ namespace AvatarBridge
                     // the reactions layer once built, the test on the mesh.
                     strength.TrackPropertyValue(powerProp, p => PushStrength(socket, FindSocketMaterial(socket)));
                     opens.Body.Add(strength);
+                    if (contactRoute)
+                    {
+                        var reachProp = so.FindProperty("depthReach");
+                        var reachField = YapsInspectorStyle.Field(reachProp, type.GetField("depthReach"), "Full depth (m)");
+                        reachField.TrackPropertyValue(reachProp, p => { ReactionsChanged(socket); Retest(socket); RebuildLater(); });
+                        opens.Body.Add(reachField);
+                    }
+
+                    // Nothing happens in game until Build has run. Said
+                    // here, where the shapes are set, with the button.
+                    bool shapesBuilt = contactRoute ? YapsSocketReactions.Exists(socket) : FindSocketMaterial(socket) != null;
+                    if (!shapesBuilt)
+                    {
+                        opens.Body.Add(new HelpBox(
+                            "Not built yet: these shapes do nothing in game until the socket is built. Build it here, " +
+                            "or run \"Bake every plug and verify\" in YAPS Setup, which builds every plug and socket at once.",
+                            HelpBoxMessageType.Warning));
+                        opens.Body.Add(new BridgeElements.PrimaryButton("Build this socket", () =>
+                        {
+                            foreach (var line in YapsNativeBuilder.BuildSocket(socket)) Debug.Log("[YAPS] " + line);
+                            RebuildLater();
+                        }));
+                    }
                 }
             }
             else if (renderers.Count == 0)
@@ -700,9 +761,13 @@ namespace AvatarBridge
             // See it work.
             int bakedPlugs = YapsPreview.CountBakedPlugs();
             var see = new BridgeElements.Card("See it work");
+            string shapesToo = contactRoute && shapesProp.arraySize > 0
+                ? $" The shapes follow the plug's tip as the game would: 0 at the socket plane, 1 at {YapsSocketReactions.ReachOf(socket):0.00} m in."
+                : "";
             see.Body.Add(BridgeElements.Hint(bakedPlugs > 0
-                ? $"Preview bends the {bakedPlugs} YAPS plug{(bakedPlugs == 1 ? "" : "s")} in the scene toward this socket, in the editor, so you can place it and watch before uploading. Writes nothing that ships."
-                : "There is no baked plug in the scene, so Preview drops a test plug in front of this socket and bends it. Move the socket and watch it follow. The test plug goes when preview stops."));
+                ? $"Preview bends the {bakedPlugs} YAPS plug{(bakedPlugs == 1 ? "" : "s")} in the scene toward this socket, in the editor, so you can place it and watch before uploading. Writes nothing that ships.{shapesToo}"
+                : "There is no baked plug in the scene (a hidden one does not count), so Preview drops a test plug in front of this socket and bends it. Move the socket and watch it follow. The test plug goes when preview stops." +
+                  (contactRoute && shapesProp.arraySize > 0 ? " It is one full depth long, so all the way in reads 1." : "") + shapesToo));
             var previewButton = new BridgeElements.PrimaryButton(
                 socket.preview ? "Previewing — click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
                 () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); });
