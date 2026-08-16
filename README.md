@@ -1043,6 +1043,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Convert* also carries the OGB, PCS and Wholesome haptics and sound stacks across as local, contact-driven parameters (free in ChilloutVR); *Remove* strips DPS/TPS/SPS and those stacks with them. *Leave as VRChat built it* touches nothing, and functions nowhere |
+| **Keep OGB haptics synced for OSC toys** | off | Under *Convert to YAPS*. Off, the OGB haptics parameters are local (free) and invisible to OSC toy apps such as OSCGoesBrrr, which read them by their VRChat names and skip ChilloutVR's `#` local ones. On, they stay synced and the apps see them, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -1897,11 +1898,17 @@ reads only parameters whose name starts with `OGB/`.
 
 So: launch ChilloutVR with `--osc-query-prefix=VRChat-Client` (its own launch argument for OSC
 tools written for VRChat), and OGB will find it. But the haptics parameters this tool keeps are
-local, so they arrive as `#OGB/…`, and OGB does not recognise them. That is a one-line change on
-OGB's side (treat `#OGB` as `OGB`); until it lands, toy haptics from a converted avatar do not
-reach OGB. Keeping those parameters synced instead would cost 32 sync bits each, nine or so per
-plug and per socket, which is most of an avatar's budget, so the tool does not do that.
-Everything else in those stacks, the sounds and particles, plays for everyone as it should.
+local by default, so they arrive as `#OGB/…`, and OGB does not recognise them. Two ways out:
+
+- **Keep OGB haptics synced for OSC toys**, under the Penetration choice. They stay synced under
+  their VRChat names and OGB sees them, at 32 sync bits each, about nine per plug and per socket:
+  one plug and three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the
+  3200-bit cap on its own. Over the cap nothing on the avatar syncs, so read the report's sync
+  budget entry after converting. Your budget, your call.
+- **Ask OGB to accept `#OGB` as `OGB`** (a one-line change on its side, in the spirit of its
+  existing `TPS_Internal` alias). Then the default, local and free, works too.
+
+Everything else in those stacks, the sounds and particles, plays for everyone either way.
 
 ### YAPS: a socket on the body mesh does not open around a plug
 

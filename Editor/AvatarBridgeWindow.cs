@@ -771,6 +771,26 @@ namespace AvatarBridge
                     "for nothing. On a full avatar that alone can push it over the cap. Choose this only " +
                     "to inspect what was there.", HelpBoxMessageType.Warning));
             }
+            else if (settings.convertYapsSystems)
+            {
+                // OSC toys. Local parameters wear a "#" in ChilloutVR and
+                // OSCGoesBrrr does not read those, so the choice is theirs.
+                b.Add(BridgeElements.Bind("Keep OGB haptics synced for OSC toys (OSCGoesBrrr, Lovense)",
+                    "Off, the OGB haptics parameters are local, free, and invisible to OSC toy apps, " +
+                    "which read them by their VRChat names and skip ChilloutVR's \"#\" local ones. On, " +
+                    "they stay synced and the apps see them, at 32 sync bits each.",
+                    settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
+                if (settings.syncHapticsForOsc)
+                {
+                    b.Add(new HelpBox(
+                        "Each haptics parameter costs 32 of ChilloutVR's 3200 sync bits, and a plug or a " +
+                        "socket carries about nine. One plug and three sockets is roughly 1,150 bits; a " +
+                        "socket-heavy avatar goes over the cap on its own, and over the cap nothing on the " +
+                        "avatar syncs. The report's sync budget entry says where you landed. Launch " +
+                        "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
+                        HelpBoxMessageType.Warning));
+                }
+            }
             // The other door. The YAPS tool builds and tunes penetration on
             // an avatar already here; this converts. Present, say where it
             // is; absent, say where to get it.

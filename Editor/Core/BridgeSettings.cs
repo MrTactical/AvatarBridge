@@ -133,6 +133,9 @@ namespace AvatarBridge
         public bool stripSpsSystems = true;
         // Convert DPS, TPS and SPS into YAPS instead of stripping them.
         public bool convertYapsSystems = true;
+        // Keep the OGB haptics parameters synced instead of local, so OSC
+        // toy apps see them under their VRChat names. 32 sync bits each.
+        public bool syncHapticsForOsc = false;
         // Encode socket markers the way existing DPS content reads them.
         public bool emitLegacySocketLights = true;
         // How many sockets may carry marker lights. A mesh gets four vertex

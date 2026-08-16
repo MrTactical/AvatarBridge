@@ -176,8 +176,24 @@ namespace AvatarBridge
                     // The layers that play a socket's reactions stay, since
                     // their parameters now do.
                     layerHints.AddRange(OtherSpsLayerHints);
-                    ctx.ForceLocalPrefixes.AddRange(YapsParamPrefixes);
+                    // OGB's haptics stay synced only on request: an OSC toy
+                    // app reads them by their VRChat name, and a local
+                    // parameter's "#" hides them. Their sync cost is the
+                    // user's, and the budget check names it.
+                    ctx.ForceLocalPrefixes.AddRange(ctx.Settings.syncHapticsForOsc
+                        ? YapsParamPrefixes.Where(p => p != "OGB")
+                        : YapsParamPrefixes);
                     ctx.ForceLocalPatterns.AddRange(YapsContactParamPatterns);
+                    if (ctx.Settings.syncHapticsForOsc)
+                    {
+                        ctx.Report.Warning(Category,
+                            "OGB haptics parameters kept synced for OSC toys",
+                            "You asked for it: every OGB/… parameter stays synced so OSCGoesBrrr and the " +
+                            "like see it under its VRChat name. Each costs 32 sync bits, about nine per " +
+                            "plug and per socket, and ChilloutVR's cap is 3200. The sync budget entry " +
+                            "below says where this avatar landed; over the cap, nothing on it syncs. " +
+                            "Turn the option off to make them local again, at no cost.");
+                    }
                 }
                 else
                 {
