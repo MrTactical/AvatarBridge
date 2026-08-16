@@ -59,6 +59,13 @@ namespace AvatarBridge
             }
         }
 
+        // What a controller really is, through any overrides.
+        public static AnimatorController Underlying(RuntimeAnimatorController controller)
+        {
+            while (controller is AnimatorOverrideController over) controller = over.runtimeAnimatorController;
+            return controller as AnimatorController;
+        }
+
         // A YAPS depth parameter by shape, whoever wrote it: this build's
         // synced form, the local one older builds used, or a hand edit of
         // either.
@@ -126,8 +133,12 @@ namespace AvatarBridge
             var list = new List<AnimatorController>();
             var avatar = socket.GetComponentInParent<CVRAvatar>();
             var animator = socket.GetComponentInParent<Animator>();
-            if (avatar != null && avatar.avatarSettings != null && avatar.avatarSettings.baseController is AnimatorController based) list.Add(based);
-            if (animator != null && animator.runtimeAnimatorController is AnimatorController own && !list.Contains(own)) list.Add(own);
+            // Through any override: it wraps a controller rather than being one.
+            var based = avatar != null && avatar.avatarSettings != null
+                ? Underlying(avatar.avatarSettings.baseController) : null;
+            if (based != null) list.Add(based);
+            var own = animator != null ? Underlying(animator.runtimeAnimatorController) : null;
+            if (own != null && !list.Contains(own)) list.Add(own);
             return list;
         }
 
@@ -175,9 +186,8 @@ namespace AvatarBridge
             var animator = socket.GetComponentInParent<Animator>();
             if (avatar == null || animator == null)
                 return $"✗ {socket.name}: the shapes need a CVRAvatar and an Animator above the socket";
-            var controller = avatar.avatarSettings != null && avatar.avatarSettings.baseController is AnimatorController based
-                ? based
-                : animator.runtimeAnimatorController as AnimatorController;
+            var controller = (avatar.avatarSettings != null ? Underlying(avatar.avatarSettings.baseController) : null)
+                             ?? Underlying(animator.runtimeAnimatorController);
             if (controller == null)
                 return $"✗ {socket.name}: the avatar has no animator controller to put the reactions in";
             string controllerPath = AssetDatabase.GetAssetPath(controller);
@@ -301,8 +311,11 @@ namespace AvatarBridge
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})";
             if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
-            if (animator.runtimeAnimatorController != controller)
-                note += "; the avatar's animator is not the base controller's copy, so press Create Animator on the CVRAvatar for it to pick the layer up";
+            // An override controller wraps the base, so a layer added to
+            // the base is already playing through it. Only a genuinely
+            // different controller needs saying.
+            if (Underlying(animator.runtimeAnimatorController) != controller)
+                note += "; the Animator plays a different controller, so press Create Animator on the CVRAvatar for it to pick the layer up";
             return note;
         }
 
