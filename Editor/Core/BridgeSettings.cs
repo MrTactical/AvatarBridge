@@ -136,6 +136,9 @@ namespace AvatarBridge
         // Keep the OGB haptics parameters synced instead of local, so OSC
         // toy apps see them under their VRChat names. 32 sync bits each.
         public bool syncHapticsForOsc = false;
+        // Keep each socket's depth parameter synced, so the author's own
+        // depth reactions play for the room. Two per socket, 32 bits each.
+        public bool syncSocketDepthForOthers = false;
         // Encode socket markers the way existing DPS content reads them.
         public bool emitLegacySocketLights = true;
         // How many sockets may carry marker lights. A mesh gets four vertex

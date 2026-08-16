@@ -935,6 +935,24 @@ namespace AvatarBridge
                 }
             }
 
+            optIns.Add(BridgeElements.SubHeading("Penetration"));
+            optIns.Add(BridgeElements.Bind("Show socket depth reactions to other players",
+                "The bulges, winces and depth animations a socket's author built are driven by contacts, " +
+                "and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each " +
+                "socket's depth parameter is local: free, and only you see the reaction. On, it syncs and " +
+                "the room sees it, at 32 bits for each of the two parameters a socket carries. Needs " +
+                "Penetration on Convert to YAPS.",
+                settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
+            if (settings.syncSocketDepthForOthers)
+            {
+                optIns.Add(new HelpBox(
+                    "Two parameters per socket at 32 of ChilloutVR's 3200 sync bits each: six sockets is " +
+                    "about 384 bits. The report's sync budget entry says where this avatar landed, and " +
+                    "over the cap nothing on it syncs at all. YAPS's own socket shapes sync either way; " +
+                    "this is for the reactions the avatar's author animated.",
+                    HelpBoxMessageType.Warning));
+            }
+
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",
                 "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
