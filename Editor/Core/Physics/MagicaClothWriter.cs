@@ -478,13 +478,9 @@ namespace AvatarBridge
                 deadRoots = sdata.rootBones.Where(r => MovableDescendants(r) == 0).ToList();
             }
 
-            // What honouring the ignores costs, measured. Excluding a
-            // bone roots below it, so every joint above stops too.
-            // Ignores near the tips can price out the whole chain.
-            //
-            // Two ignores should cost about two bones. Losing more than half the chain to them is
-            // not honouring an intent, it is destroying the thing the intent was about, so the
-            // whole-root fallback below is the better answer even though it over-simulates.
+            // Excluding a bone roots below it, so ignores near the tips
+            // can price out the chain. Losing over half of it means the
+            // whole-root fallback, over-simulated but intact.
             int wholeChain = MovableDescendants(data.Root);
             int kept = sdata.rootBones.Where(r => !deadRoots.Contains(r))
                                       .Sum(r => 1 + MovableDescendants(r));
@@ -748,20 +744,10 @@ namespace AvatarBridge
                     "Gravity direction flipped to point up — the source PhysBone used negative gravity.");
             }
 
-            // immobile -> inertia influence. Same 0..1 question,
-            // opposite polarity. Only applied when the author set it.
-            //
-            // Both inertia values, not just worldInertia. They are the
-            // same motion answered at two granularities:
-            //
-            //   movementShift        = 1 - worldInertia   // per frame, shifts the reference frame
-            //   localMovementInertia = 1 - localInertia   // per step, shifts each particle
-            //
-            // Split values ask the chain to hold still and swing freely
-            // at once. Every MagicaCloth2 preset keeps the pair equal.
-            //
-            // Not for a soft body. An anchored volume cannot be flung;
-            // holding inertia down only stops it answering movement.
+            // immobile -> inertia influence, the same question with the
+            // polarity flipped. Both values move together: split, they ask
+            // the chain to hold still and swing at once. Never on a soft
+            // body, which cannot be flung anyway.
             if (data.Immobile > 0.01f && !softBody)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
@@ -1007,12 +993,8 @@ namespace AvatarBridge
                 return saved;
             }
             // Measured again with every animated shape at full reach,
-            // keeping the larger. Bone identity stays the saved pose's
-            // answer; only the size may grow.
-            //
-            // Taking the larger of two readings handles both directions without deciding per
-            // shape which way it goes: a growth slider is caught by the second reading, and a
-            // shape that SHRINKS makes the second reading smaller, so the first simply wins.
+            // keeping the larger. That catches a growth slider without
+            // deciding per shape which way it goes.
             float atReach = MeasureMeshAt(ctx, data, out _, out _, out _, true);
             grown = atReach > saved;
             return Mathf.Max(saved, atReach);
@@ -1619,13 +1601,9 @@ namespace AvatarBridge
                 branches.Add(meshBones.ToList());
             }
 
-            // Each branch measures against its own middle, the middle
-            // of the mesh it carries. Averaging bone positions ties on
-            // a two-bone branch and floating point picks the winner.
-            //
-            // Weighting by vertex count breaks the tie honestly: the bone carrying most of
-            // the volume pulls the middle toward itself, instead of counting the same as a bone
-            // holding almost none of it.
+            // Each branch measures against the middle of the mesh it
+            // carries, weighted by vertex count. Averaging bone positions
+            // ties on two bones and leaves floating point to choose.
             var vertices = BoneVertices(ctx);
             foreach (var branch in branches)
             {

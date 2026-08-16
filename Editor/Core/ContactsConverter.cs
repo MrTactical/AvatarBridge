@@ -236,14 +236,9 @@ namespace AvatarBridge
             Object.DestroyImmediate(receiver);
         }
 
-        // A boop zone authored at 7 mm on the nose is fine; a slap zone
-        // authored on a body a slider doubles is not - the mesh grows
-        // past it and every touch lands inside the body, short of the
-        // zone. Measured the way the physics sizes are: the mesh around
-        // the zone at rest and with every animated shape at full reach.
-        // When one slider owns the growth the zone is left authored-size
-        // and ScaleZonesWithSliders animates it along; only growth spread
-        // across shapes falls back to statically sizing for the largest.
+        // A zone on a body a slider doubles is left behind by the mesh,
+        // so touches land inside it. Sized like the physics: at rest and
+        // with every animated shape at full reach.
         static void GrowZoneForSliders(BridgeContext ctx, GameObject zone, string reportPath)
         {
             if (!ctx.Settings.sizeContactZonesForLargest)
@@ -450,16 +445,9 @@ namespace AvatarBridge
 
                     string prop = binding.propertyName;
 
-                    // What each property maps to, each verdict from the
-                    // shipped client rather than hope:
-                    //   m_Enabled     -> host object active (the backing
-                    //                    contact registers in OnEnable).
-                    //   position.xyz  -> the host transform carries the
-                    //                    offset, 1:1 onto m_LocalPosition.
-                    //   allowSelf/allowOthers/localOnly -> baked into the
-                    //                    backing contact at Create and never
-                    //                    read again, so those drop with the
-                    //                    warning.
+                    // From the shipped client: m_Enabled becomes the host
+                    // object's activity, position rides the transform, and
+                    // the allow flags are baked at Create, so they drop.
                     UnityEditor.EditorCurveBinding? target = null;
                     if (prop == "m_Enabled")
                     {
@@ -513,25 +501,14 @@ namespace AvatarBridge
             }
         }
 
-        // Runs after both repoint passes, because the merge's own restore
-        // passes ran before the rewiring existed, on bindings naming
-        // deleted VRChat components they could not sample.
-        //
-        // The rewiring folds two VRChat properties into one zone binding,
-        // and layers that never fought before now write over each other.
-        // ChilloutVR restores nothing a state does not write, so each
-        // layer is settled by what it says across ALL its clips:
-        //   on and off  -> a real toggle; untouched, and it owns the zone.
-        //   on only     -> VRCFury's baked Write Defaults residue,
-        //                  asserting rest from a later layer every frame,
-        //                  which is what overrode the toggles. Stripped.
-        //   off only    -> a switch-off nothing takes back. In a blend
-        //                  tree (the spawn-time receiver guard) the off
-        //                  curve is removed; suppression for a few load
-        //                  frames is not worth zones dead forever. In
-        //                  plain states the other states get the rest
-        //                  value written in, the same answer the old
-        //                  Write Defaults gave.
+        // Runs after both repoint passes: the merge's restores happened
+        // before this rewiring existed. Folding two properties into one
+        // binding sets layers fighting, so each is settled by what it
+        // says across all its clips:
+        //   on and off  -> a real toggle, left alone.
+        //   on only     -> Write Defaults residue. Stripped.
+        //   off only    -> nothing takes it back. The curve goes from a
+        //                  tree; plain states get the rest value written.
         internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -839,13 +816,9 @@ namespace AvatarBridge
             }
         }
 
-        // A zone one slider grows follows the slider instead of holding
-        // the grown size: every clip driving that blendshape gains scale
-        // curves on the zone mapped through the same keyframes, and the
-        // contact behind the trigger takes its size from the transform
-        // every frame. Authored size at rest, the measured growth at the
-        // slider's full reach, scaled between. A clip that latches the
-        // shape latches the zone with it, so the two never disagree.
+        // A zone one slider grows follows it: every clip driving that
+        // shape gains scale curves through the same keyframes, and the
+        // contact takes its size from the transform each frame.
         internal static void ScaleZonesWithSliders(BridgeContext ctx)
         {
             if (ctx.ZoneSliderGrowth.Count == 0)

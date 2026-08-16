@@ -7,15 +7,9 @@ using UnityEngine;
 namespace AvatarBridge
 {
     // Takes the humanoid Jaw mapping off a bone that is not a jaw and
-    // rebuilds the rig without it. A mis-mapped Jaw talks out of the
-    // wrong object and waggles it; Unity's Auto-Map assigns one to
-    // whatever is nearest when it cannot read a face.
-    //
-    // skeleton[0] records the model prefab's root as imported, and
-    // AvatarBuilder wants it back exactly as recorded; renaming it to
-    // the live root makes the rebuild fail. The rig's skeleton passes
-    // through untouched, with a live-hierarchy regeneration as the
-    // fallback (that one carries the current pose, so it is second).
+    // rebuilds the rig. Unity's Auto-Map assigns one to whatever is
+    // nearest when it cannot read a face, and the avatar then talks out
+    // of it. The baked skeleton passes through as recorded.
     public static class JawUnmapper
     {
         const string Category = "Humanoid rig";
@@ -69,14 +63,9 @@ namespace AvatarBridge
                 return;   // the mapping is not in the description; nothing this pass can do
             }
 
-            // The baked skeleton passes through, stale-looking root
-            // name and all. That name is not stale: Unity wants it
-            // exactly as recorded, and renaming it makes the rebuild fail.
-            //
-            // Measured rather than reasoned. Six variants were built: the
-            // unchanged description builds, dropping the Jaw builds, renaming the root refuses,
-            // and a skeleton regenerated from the live hierarchy builds. So the Jaw was never the
-            // obstacle and the rename was the whole of it.
+            // The baked skeleton passes through, root name and all. Unity
+            // wants that name exactly as recorded; renaming it is what
+            // makes a rebuild refuse, not the Jaw.
             var skeleton = description.skeleton.ToArray();
 
             description.human = human;
@@ -106,15 +95,10 @@ namespace AvatarBridge
             animator.avatar = null;
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
 
-            // Second attempt with the skeleton regenerated from the live hierarchy. The baked one
-            // describes the model as imported, and conversion has since added objects and removed
-            // others; where that divergence is what the builder objects to, a skeleton read off
-            // the avatar in front of it has no stale entries to object to. Measured as building on
-            // a real avatar, so it is a real fallback rather than a hopeful retry.
-            //
-            // Second, not first. The baked skeleton carries the
-            // configured T-pose; this one carries the current pose.
-            // Worth having, not worth taking when the baked one works.
+            // Second attempt, from the live hierarchy: the baked skeleton
+            // describes the model as imported and conversion has moved
+            // on. Second because it carries the current pose, not the
+            // configured T-pose.
             bool usedLiveSkeleton = false;
             if (rebuilt == null || !rebuilt.isValid)
             {

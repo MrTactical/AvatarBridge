@@ -1,17 +1,8 @@
-// What an existing DPS, TPS or SPS setup already SAYS about itself, and
-// how each of those statements becomes a YAPS one.
+// What a DPS, TPS or SPS setup says about itself, and how each value
+// becomes a YAPS one. One table, read by the converter and the toolkit
+// alike, so an author's tuning survives whichever door it came in by.
 //
-// Somebody who tuned a penetrator in another system made decisions, how
-// stiff its base is, how much it squeezes, how far its idle shrink goes , 
-// and those decisions are sitting on the material as floats. Upgrading
-// that setup to YAPS without reading them would hand the user a plug that
-// looks nothing like the one they built. So every value that has a
-// counterpart is carried, by ONE table, which the converter (an avatar
-// arriving from VRChat) and the toolkit (an avatar already here) both
-// read. Same author intent, same rule, whichever door it came in by.
-//
-// Read from the systems' own shipped materials and property blocks on
-// 2026-08-15, not from memory:
+// Read from the systems' own materials and property blocks, not memory:
 //
 //   Raliv DPS penetrator  _Length _Squeeze _SqueezeDist _BulgePower
 //                         _BulgeOffset _EntranceStiffness _Curvature
@@ -101,15 +92,9 @@ namespace AvatarBridge
             return Origin.None;
         }
 
-        // Read the authored values off `source` and write their YAPS
-        // counterparts onto `target`. Returns what was carried; fills
-        // `unmapped` with the source knobs that have no counterpart.
-        //
-        // `plugLength` and `plugRadius` are the MEASURED ones from the bake,
-        // in metres. DPS states several of its knobs in metres and YAPS
-        // states them as fractions of the plug, so the conversion needs the
-        // plug's real size, and the mesh is the truth about that, not the
-        // number the author typed into _Length.
+        // Carries the authored values from `source` onto `target`, and
+        // names the ones with no counterpart. The length and radius are
+        // the bake's own: DPS states knobs in metres, YAPS in fractions.
         public static List<Carried> Carry(Material source, Material target,
             List<string> unmapped, float plugLength = 0f, float plugRadius = 0f)
         {
@@ -128,19 +113,9 @@ namespace AvatarBridge
         }
 
         // --- Raliv DPS ------------------------------------------------------
-        //
-        // Read from RalivDPS_Functions.cginc, not from the property labels,
-        // because two of the labels mislead:
-        //
-        //   vertex.xy = lerp(normalize(vertex.xy) * min(length(vertex.xy), _Squeeze), vertex.xy, f)
-        //   vertex.xy *= lerp(1, 1 + _BulgePower, bulgeFactor * ...)
-        //
-        // So _Squeeze is an ABSOLUTE RADIUS IN METRES the shaft is clamped to
-        // at the opening (not a fraction), and _BulgePower is a FRACTION OF
-        // RADIUS added (Raliv's default 0.00272 is a 0.3% swell, genuinely
-        // tiny). A first draft here scaled the bulge by a hundred and read
-        // the squeeze as 0..1; both would have handed a DPS user a plug
-        // nothing like the one they tuned.
+        // Read off RalivDPS_Functions.cginc, since two labels mislead:
+        // _Squeeze is an absolute radius in metres, not a fraction, and
+        // _BulgePower is a fraction of radius added.
 
         static void CarryDpsPlug(Material s, Material t, List<Carried> carried, List<string> unmapped,
             float plugLength, float plugRadius)
@@ -190,14 +165,9 @@ namespace AvatarBridge
 
         static void CarryDpsSocket(Material s, Material t, List<Carried> carried, List<string> unmapped)
         {
-            // DPS stages: an entry-open duration and three (depth, duration)
-            // pairs. Ours: four (start, fade) pairs where stage 0 is the
-            // entry. DPS depths are in metres past the socket; ours are
-            // fractions of the PLUG's length, which a socket does not know , 
-            // so they are carried as metres relative to a 0.3 m reference and
-            // the socket-side deform reads them against the plug it meets.
-            // Close enough that the staging order and proportions survive;
-            // exact enough that a user can then trim.
+            // DPS depths are metres past the socket, ours fractions of a
+            // plug a socket cannot know. Carried against a 0.3 m
+            // reference, which keeps the order and the proportions.
             const float reference = 0.3f;
             var starts = new Vector4(0f, 0.25f, 0.5f, 0.75f);
             var fades = new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
