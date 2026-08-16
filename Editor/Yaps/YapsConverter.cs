@@ -506,7 +506,9 @@ namespace AvatarBridge
             {
                 return;
             }
-            ctx.Report.Converted(Category, $"Re-ranged {roots + fronts} socket marker light(s)" +
+            bool legacyMode = ctx.Settings.emitLegacySocketLights;
+            ctx.Report.Converted(Category,
+                    (legacyMode ? "Retuned " : "Re-ranged ") + $"{roots + fronts} socket marker light(s)" +
                     (woken > 0 ? $", and switched {woken} socket object(s) back on" : ""),
                 (woken > 0
                     ? "VRCFury bakes every socket object INACTIVE and lets its own enable service " +
@@ -517,9 +519,13 @@ namespace AvatarBridge
                     : "") +
                 $"{roots} root, {fronts} front. A socket says where it is by the RANGE of a black " +
                 "vertex light, and Unity gives the four light slots to the largest ranges it can " +
-                "see. VRChat's ordering puts each socket's front above its own root, so on an " +
-                "avatar with several sockets the slots fill with fronts — a direction with no " +
-                "origin. Reversing the two makes roots win their slots." +
+                "see." +
+                (legacyMode
+                    ? " The ranges are left exactly as VRChat baked them; the lights are set black at " +
+                      "intensity 1, vertex mode, no shadows, which is what a decoder reads."
+                    : " VRChat's ordering puts each socket's front above its own root, so on an " +
+                      "avatar with several sockets the slots fill with fronts — a direction with no " +
+                      "origin. Reversing the two makes roots win their slots.") +
                 (legacy > 0
                     ? " These sockets speak LEGACY, so every DPS plug already on ChilloutVR can " +
                       "see them, which is most of the content there is, and from any direction " +
