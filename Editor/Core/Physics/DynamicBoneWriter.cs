@@ -100,51 +100,7 @@ namespace AvatarBridge
                 }
             }
 
-            // PhysBone gravity, applied entirely through m_Force.
-            //
-            // DynamicBone splits the idea across two fields: m_Gravity cancels out the part
-            // already baked into the character's rest pose ("partial force apply to character's
-            // initial pose is cancelled out"), while m_Force is a plain constant pull. This used
-            // to mirror that split, sending gravityFalloff to m_Gravity and the remainder to
-            // m_Force with gravity² = m_Gravity² + m_Force².
-            //
-            // ChilloutVR's m_Gravity is not safe to use. In Zettai/UpdateParticlesJob.GetForce
-            // the rest-pose cancellation is divided by the avatar's lossy scale while gravity
-            // itself is multiplied by it:
-            //
-            //     (gravity - dir * max(dot(x, dir), 0) / scale + m_Force + wind) * scale * dt
-            //
-            // The two only balance at scale 1. AvatarBridge injects a height scaler, so converted
-            // avatars sit off that point by construction, and below scale 1 the cancellation term
-            // can exceed gravity and push bones upward. m_Force is added after the cancellation
-            // and scales uniformly, so it behaves the same at any scale. A tester reported this as
-            // "CVR doesn't play nicely with them at all".
-            //
-            // The two halves were collinear parts of one magnitude, so collapsing them into one
-            // field means the full magnitude; summing the halves would overshoot it by up to 41%.
-            // Added rather than assigned so any force already on the component still composes.
-            //
-            // Scaled by ElasticityScale, and that factor is load-bearing: where a chain settles
-            // is the BALANCE of constant force against elastic restore, and the restore was
-            // already scaled down by ElasticityScale to sit in DynamicBone's useful range.
-            // Carrying the force over at full strength made every gravity-tinted chain deflect
-            // ~5x further than VRChat; a tester's tail with gravity -0.07 (a gentle upward
-            // bias in VRChat) converted to a force that pinned the tail at the sky. Scaling
-            // force and restore by the same factor preserves the resting pose exactly.
-            // Asserted for EVERY chain, not only the ones carrying gravity. Zero is DynamicBone's
-            // own default, so this changed nothing the day it was written; but it was relying on
-            // that default rather than stating the requirement, and the requirement is hard:
-            // anything that reaches m_Gravity on a scaled avatar goes through ChilloutVR's broken
-            // path and can be pushed UPWARD.
-            //
-            // Confirmed against the shipping client. DynamicBone.GetUpdatedDbData writes
-            // m_LocalGravity through the root's world-to-local matrix WITHOUT the renormalisation
-            // stock DynamicBone applies (".normalized * m_Gravity.magnitude"), and
-            // UpdateParticlesJob.GetForce then divides the rest-pose cancellation by scale to
-            // compensate; one factor too many, because local-to-world already put that scale
-            // back. The gravity term works out to (g * scale - g), which is zero only at scale 1:
-            // at 0.376 it is -0.62g, upward. m_Force is added after the cancellation and only ever
-            // multiplied by scale, so it is correct at every size.
+            // Gravity, all through m_Force; see docs/SolverCalibration.md.
             db.m_Gravity = Vector3.zero;
 
             float g = Mathf.Abs(data.Gravity) * GravityScale * ElasticityScale;

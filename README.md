@@ -74,7 +74,7 @@ mid-2026:
 | Menus, parameters, gestures | ✅ | ✅ |
 | The settings picked *from your avatar* rather than from its documentation | ✅ [Analyse](#analyse-this-avatar) measures and offers each one | — |
 | PhysBones → DynamicBone | ✅ built in | via the external [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) |
-| PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source | ✅ | — |
+| PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source ([the derivation](docs/SolverCalibration.md)) | ✅ | — |
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | — |
