@@ -331,20 +331,20 @@ namespace AvatarBridge
                 }
             }
         }
-
         // The buttons name what they will act on.
-        // What the plug and socket buttons act on: the Hierarchy selection,
-        // or, when nothing is selected, the picked object itself when it is
-        // a mesh or a bone. Dropping the plug mesh into the picker is the
-        // obvious move and it has to work.
+        // What the plug and socket buttons act on. What is in the box wins
+        // when it is itself a mesh or a bone: the user put it there on
+        // purpose. When the box holds the avatar, the Hierarchy selection
+        // says which part.
         GameObject Candidate()
         {
-            var go = Selection.activeGameObject;
-            if (go != null) return go;
-            if (_target == null) return null;
-            var root = YapsSocketEditor.AvatarRootOf(_target.transform);
-            bool bone = root != null && _target.transform != root && IsBone(_target.transform, root);
-            return _target.GetComponent<Renderer>() != null || bone ? _target : null;
+            if (_target != null)
+            {
+                var root = YapsSocketEditor.AvatarRootOf(_target.transform);
+                bool bone = root != null && _target.transform != root && IsBone(_target.transform, root);
+                if (_target.GetComponent<Renderer>() != null || bone) return _target;
+            }
+            return Selection.activeGameObject;
         }
 
         void RefreshSelection()
@@ -359,14 +359,15 @@ namespace AvatarBridge
                 if (_makePlug != null) { _makePlug.text = "Make selected mesh a plug"; _makePlug.SetEnabled(false); }
                 return;
             }
-            bool picked = go == _target && Selection.activeGameObject == null;
+            bool picked = go == _target;
             var root = YapsSocketEditor.AvatarRootOf(go.transform);
             bool bone = root != null && go.transform != root && IsBone(go.transform, root);
             bool mesh = go.GetComponent<Renderer>() != null;
             string how = picked ? "Picked" : "Selected";
+            string where = picked ? " (the box above; the Hierarchy selection is ignored while a mesh or bone is picked)" : "";
             _selection.text = bone
-                ? $"{how}: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
-                : mesh ? $"{how}: mesh \"{go.name}\" — Make a plug will bake this one." + (picked ? " Pick the avatar's root to see everything on it." : "")
+                ? $"{how}: bone \"{go.name}\"{where} — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
+                : mesh ? $"{how}: mesh \"{go.name}\"{where} — Make a plug will bake this one." + (picked ? " Pick the avatar's root to see everything on it." : "")
                 : $"{how}: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
