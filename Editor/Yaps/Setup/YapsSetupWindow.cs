@@ -34,6 +34,7 @@ namespace AvatarBridge
         HelpBox _next;
         Label _selection;
         Label _pickNote;
+        VisualElement _buildLog;
         Button _addHole, _addRing, _makePlug, _quiet, _makeProp, _verifyProp;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
@@ -221,6 +222,11 @@ namespace AvatarBridge
                 "Bakes each YAPS Plug under the picked object — measuring the mesh, patching its own " +
                 "shader, writing the knobs, announcing it to every socket family — and rebuilds each " +
                 "YAPS Socket's markers. Then checks the lot. Safe to run again; it edits, not stacks."));
+
+            // What it did, line by line, where the button is. A summary
+            // label was too easy to miss for work this large.
+            _buildLog = new VisualElement();
+            build.Body.Add(_buildLog);
             _pages.Add(build);
 
             // Present, say where; absent, say where to get it.
@@ -733,7 +739,50 @@ namespace AvatarBridge
                 lines.AddRange(YapsNativeBuilder.BuildSocket(s));
             }
             Rescan();
-            _summary.text = $"Built: {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")}, {socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.  " + string.Join("  ", lines);
+            string headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
+                              $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";
+            _summary.text = headline + "  The Build card below says what it did.";
+            ShowBuildLog(headline, lines);
+        }
+
+        // The build's own report, under its button, and in the console for
+        // a bug report to quote.
+        void ShowBuildLog(string headline, List<string> lines)
+        {
+            if (_buildLog == null) return;
+            _buildLog.Clear();
+            _buildLog.Add(BridgeElements.SubHeading("What Build did"));
+            _buildLog.Add(new HelpBox(headline + (lines.Count == 0
+                ? " Nothing needed doing."
+                : $" {lines.Count} note(s) below, and the same lines are in the Console."),
+                lines.Any(l => l.StartsWith("✗")) ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info));
+
+            bool alt = false;
+            foreach (var line in lines)
+            {
+                var colour = line.StartsWith("✗") ? BridgeTheme.Bad
+                           : line.StartsWith("⚠") || line.Contains("⚠") ? BridgeTheme.Warn
+                           : BridgeTheme.Good;
+                string text = line.TrimStart('✓', '✗', '⚠', ' ');
+                int cut = text.IndexOf(':');
+                string what = cut > 0 && cut < 40 ? text.Substring(0, cut) : "Build";
+                string rest = cut > 0 && cut < 40 ? text.Substring(cut + 1).Trim() : text;
+                _buildLog.Add(BridgeElements.ReportRow(colour == BridgeTheme.Bad ? "failed" : "done",
+                    what, rest, colour, alt));
+                alt = !alt;
+                Debug.Log("[YAPS] " + line);
+            }
+
+            // Where the files went, and a way to get there.
+            string dir = YapsNativeBuilder.OutputRoot + "/" + (_target != null ? _target.name : "");
+            _buildLog.Add(BridgeElements.Hint("Generated materials, bakes and clips are in " + dir + "."));
+            _buildLog.Add(BridgeElements.Row(Btn("Show me the files", () =>
+            {
+                var folder = AssetDatabase.LoadAssetAtPath<Object>(dir)
+                             ?? AssetDatabase.LoadAssetAtPath<Object>(YapsNativeBuilder.OutputRoot);
+                if (folder != null) { Selection.activeObject = folder; EditorGUIUtility.PingObject(folder); }
+                else Debug.LogWarning("[YAPS] Nothing has been generated yet, so " + dir + " does not exist.");
+            })));
         }
 
         // Under the selected bone, else in a YAPS folder on the avatar.
