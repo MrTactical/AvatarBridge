@@ -164,7 +164,7 @@ namespace AvatarBridge
             var avatarForToggle = plug.GetComponentInParent<CVRAvatar>();
             if (avatarForToggle != null)
             {
-                string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, plug.name + " YAPS");
+                string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, YapsToggles.LabelFor(plug));
                 if (toggled != null) o.Notes.Add(toggled);
             }
 
@@ -417,7 +417,7 @@ namespace AvatarBridge
             if (shapes != null) lines.Add(shapes);
             var avatar = socket.GetComponentInParent<CVRAvatar>();
             int before = YapsToggles.Edits;
-            string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, socket.name);
+            string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));
             if (toggled != null) lines.Add(toggled);
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) lines.Add(menu);

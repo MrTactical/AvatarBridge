@@ -47,12 +47,16 @@ namespace AvatarBridge
         // registers a synced parameter only while AASBitUsage is under that
         // cap. The name carries no spaces: a parameter CVR will not take is
         // one nothing writes at all, locally or otherwise.
-        public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(socket.name) + "/Depth";
+        // Named after the bone the socket hangs from, like its menu entry:
+        // an avatar can carry a dozen sockets and "YAPS Ring" tells nobody
+        // which one this is. The socket remembers what it was called last
+        // build, so a rename moves the layer rather than leaving a second.
+        public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(YapsToggles.LabelFor(socket)) + "/Depth";
 
         // What earlier builds used, for a rebuild to clear out.
         public static string LegacyParameter(YapsSocket socket) => "#YAPS/" + Sanitise(socket.name) + "/Depth";
 
-        public static string LayerName(YapsSocket socket) => "YAPS " + socket.name + " reactions";
+        public static string LayerName(YapsSocket socket) => "YAPS " + YapsToggles.LabelFor(socket) + " reactions";
 
         // How the avatar stands against ChilloutVR's 3200-bit cap, for the
         // report. The client registers a synced parameter only while the
@@ -160,7 +164,7 @@ namespace AvatarBridge
         {
             if (socket == null) return false;
             string layerName = LayerName(socket);
-            return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName));
+            return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName || (!string.IsNullOrEmpty(socket.builtLayer) && l.name == socket.builtLayer)));
         }
 
         // The strength is the layer's weight, so it can change without a
@@ -260,8 +264,13 @@ namespace AvatarBridge
             }
 
             string layerName = LayerName(socket);
+            // What the last build called it, if the bone or the name has
+            // moved since: the layer is replaced where it stands rather
+            // than added a second time under the new name.
             var layers = controller.layers.ToList();
             int existing = layers.FindIndex(l => l.name == layerName);
+            if (existing < 0 && !string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layerName)
+                existing = layers.FindIndex(l => l.name == socket.builtLayer);
             var tree = new BlendTree
             {
                 name = layerName,
@@ -310,6 +319,15 @@ namespace AvatarBridge
             controller.layers = layers.ToArray();
             AnimatorAssetSaver.EmbedLayer(layer, controller);
             EditorUtility.SetDirty(controller);
+            // What it is called now, so the next build can find it after a
+            // rename and Remove knows what to take out.
+            if (socket.builtLayer != layerName || socket.builtParameter != parameter)
+            {
+                Undo.RecordObject(socket, "YAPS socket reactions");
+                socket.builtLayer = layerName;
+                socket.builtParameter = parameter;
+                EditorUtility.SetDirty(socket);
+            }
             AssetDatabase.SaveAssets();
 
             string note = $"✓ {socket.name}: {stages.Count} shape(s) on \"{renderer.name}\" react to a plug's tip through a contact, " +

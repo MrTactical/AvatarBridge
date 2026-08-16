@@ -152,11 +152,31 @@ namespace AvatarBridge
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
             });
             have.Body.Add(BridgeElements.Row(_makeProp, _verifyProp));
+            // The exact route is a choice, because it costs the prop's ownership.
+            var channelOn = Btn("Add the synced channel", () =>
+            {
+                var o = YapsPropBuilder.AddChannel(Selection.activeGameObject);
+                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            });
+            channelOn.tooltip = "Eight synced values a socket writes, for a plug prop that must reach a viewer with " +
+                                "lights off or work among more than four lit sockets. It costs the prop's ownership: " +
+                                "while a socket touches it, that socket's owner takes it over, which is what pulls a " +
+                                "prop out of someone's hand.";
+            var channelOff = Btn("Drop the contact channel", () =>
+            {
+                var o = YapsPropBuilder.DropChannel(Selection.activeGameObject);
+                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            });
+            channelOff.tooltip = "Takes the channel off a prop that keeps changing hands. It then reads sockets by " +
+                                 "their marker lights, which every client works out for itself.";
+            have.Body.Add(BridgeElements.Row(channelOn, channelOff));
             have.Body.Add(BridgeElements.Hint(
                 "Select the top object of a plug or socket meant to be spawned in ChilloutVR. It gets a CVR " +
-                "Spawnable, a pickup with theft off, a collider to grab by and, for a baked plug, the synced " +
-                "contact channel that reaches everyone. Verify before each upload: the CCK inspector can blank " +
-                "a channel value's parameter name."));
+                "Spawnable, a pickup anyone can take and a collider to grab by, and it finds sockets through " +
+                "their marker lights — every client works those out for itself, so nobody owns the answer and " +
+                "nobody takes the prop off anyone. The synced channel is the exact route and a separate choice; " +
+                "it hands the prop to whoever's socket touches it. Verify before each upload: the CCK inspector " +
+                "can blank a channel value's parameter name."));
 
             // One switch hides the CCK's icons while sockets are placed.
             have.Body.Add(BridgeElements.SubHeading("Scene view"));

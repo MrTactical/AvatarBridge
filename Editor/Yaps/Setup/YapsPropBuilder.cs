@@ -106,20 +106,36 @@ namespace AvatarBridge
             // stayed ungrabbable no matter how often this ran.
             if (root.GetComponent<Collider>() == null) AddCollider(root, plug, o);
 
-            if (plug != null)
+            // No contact channel unless it is asked for. A channel value is
+            // written by whoever's SOCKET the prop met, and the client
+            // grants that write to your own avatar's contact whoever is
+            // holding the prop — so a socket switching on takes the prop
+            // off the person carrying it, and no pickup setting can stop
+            // it. Without a channel the prop reads sockets by their marker
+            // lights, which every client works out for itself: no owner, no
+            // fight, no sync. Add one only for a prop that needs the exact
+            // route, and expect to hand ownership around while it is in use.
+            if (plug != null && HasChannel(root))
             {
                 var material = BakedMaterial(plug);
                 if (material == null)
                 {
-                    o.Notes.Add("The plug is not baked, so no contact channel was built. Bake it, then make it a prop again.");
+                    o.Notes.Add("The plug is not baked, so its contact channel could not be rebuilt. Bake it, then make it a prop again.");
                 }
                 else
                 {
                     RemoveChannel(root);
                     BuildChannel(root, plug, material, spawnable);
-                    o.Notes.Add("Contact channel built: 8 synced values, one trigger per value. Run Verify prop before uploading; " +
-                                "the CCK inspector can blank a value's parameter name if the Spawnable is left open.");
+                    o.Notes.Add("Its contact channel was rebuilt: 8 synced values, one trigger per value. That channel is " +
+                                "why a socket can take the prop out of someone's hand — remove it with Drop the contact " +
+                                "channel if that bites.");
                 }
+            }
+            else if (plug != null)
+            {
+                o.Notes.Add("No contact channel: the prop finds sockets by their marker lights, which every client " +
+                            "works out for itself, so nobody fights over who owns it. Add the synced channel only if " +
+                            "you need the exact route (a viewer with lights off, or more than four lit sockets nearby).");
             }
             if (socket != null && plug == null)
             {
@@ -127,7 +143,55 @@ namespace AvatarBridge
             }
 
             o.Ok = true;
-            o.Message = $"\"{root.name}\" is a prop: spawnable, pickup with theft off" + (plug != null ? ", channel" : "") + ".";
+            o.Message = $"\"{root.name}\" is a prop: spawnable, pickup, collider" + (HasChannel(root) ? ", channel" : "") + ".";
+            return o;
+        }
+
+        // Does this prop carry the channel already: one of its hosts is here.
+        public static bool HasChannel(GameObject root)
+        {
+            if (root == null) return false;
+            for (int i = 0; i < root.transform.childCount; i++)
+                if (root.transform.GetChild(i).name.StartsWith(HostPrefix)) return true;
+            return false;
+        }
+
+        // The exact route, on request: a plug prop that must reach a viewer
+        // with lights off, or work among more than four lit sockets. It
+        // costs the prop's ownership, which is why it is not the default.
+        public static Outcome AddChannel(GameObject root)
+        {
+            var o = new Outcome();
+            var plug = root != null ? root.GetComponentInChildren<YapsPlug>(true) : null;
+            var spawnable = root != null ? root.GetComponent<CVRSpawnable>() : null;
+            if (plug == null || spawnable == null)
+            {
+                o.Message = "Select a plug prop first — one with a YAPS Plug under it and a CVR Spawnable on it.";
+                return o;
+            }
+            var material = BakedMaterial(plug);
+            if (material == null) { o.Message = "The plug is not baked. Bake it, then add the channel."; return o; }
+            Undo.RegisterFullObjectHierarchyUndo(root, "YAPS channel");
+            RemoveChannel(root);
+            BuildChannel(root, plug, material, spawnable);
+            o.Ok = true;
+            o.Message = $"\"{root.name}\" has the contact channel: 8 synced values, one trigger per value.";
+            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over — " +
+                        "that is the channel, not a fault, and it is why a prop can leave someone's hand. Run Verify " +
+                        "prop before uploading.");
+            return o;
+        }
+
+        // And off again, for a prop that fights over ownership in use.
+        public static Outcome DropChannel(GameObject root)
+        {
+            var o = new Outcome();
+            if (root == null || !HasChannel(root)) { o.Message = "That prop has no contact channel."; return o; }
+            Undo.RegisterFullObjectHierarchyUndo(root, "YAPS channel");
+            RemoveChannel(root);
+            o.Ok = true;
+            o.Message = $"\"{root.name}\" lost its contact channel; it finds sockets by their marker lights now, " +
+                        "which every client works out for itself, so nobody takes it off anyone.";
             return o;
         }
 

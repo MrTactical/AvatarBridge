@@ -116,10 +116,19 @@ namespace AvatarBridge
             YapsShapeSim.Release(socket);
 
             // The reactions layer and its parameter, in every controller.
+            // What it is called now, and what the last build called it: the
+            // names follow the bone, so they move when the socket does.
+            var controllers = ControllersOf(top);
             string layer = YapsSocketReactions.LayerName(socket);
             string parameter = YapsSocketReactions.Parameter(socket);
-            int layers = RemoveLayer(ControllersOf(top), layer, parameter);
+            int layers = RemoveLayer(controllers, layer, parameter);
             if (layers > 0) done.Add($"layer \"{layer}\" out of {layers} controller(s)");
+            if (!string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layer)
+            {
+                int old = RemoveLayer(controllers, socket.builtLayer, socket.builtParameter);
+                if (old > 0) done.Add($"the layer it was built as, \"{socket.builtLayer}\"");
+            }
+            RemoveLayer(controllers, layer, YapsSocketReactions.LegacyParameter(socket));
 
             // The socket's toggle, and the menu animator without it.
             if (avatar != null)

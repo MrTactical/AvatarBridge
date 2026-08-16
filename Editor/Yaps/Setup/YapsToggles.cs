@@ -63,6 +63,45 @@ namespace AvatarBridge
             return notes.Count > 0 ? string.Join("; ", notes) : null;
         }
 
+        // --- names ------------------------------------------------------------
+        //
+        // A menu full of "YAPS Ring" says nothing about which ring, and an
+        // avatar can carry a dozen. Everything the toolkit names — the menu
+        // entry, its parameter, the reactions layer — is named after the
+        // bone it hangs from, so the menu reads like the body.
+
+        static readonly string[] DefaultSocketNames = { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket" };
+
+        // The bone a socket or plug hangs from: its parent, through a YAPS
+        // folder, and nothing when that is the avatar itself.
+        public static string BoneOf(Transform t, CVRAvatar avatar)
+        {
+            var at = t != null ? t.parent : null;
+            while (at != null && (at.name == "YAPS" || at.name == "YAPS Sockets")) at = at.parent;
+            if (at == null) return null;
+            if (avatar != null && at == avatar.transform) return null;
+            if (at.parent == null) return null;
+            return at.name;
+        }
+
+        public static string LabelFor(YapsSocket socket)
+        {
+            if (socket == null) return "YAPS socket";
+            string bone = BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>());
+            string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
+            if (bone == null) return socket.name;
+            return DefaultSocketNames.Contains(socket.name)
+                ? $"{bone} {kind}"
+                : $"{socket.name} ({bone})";
+        }
+
+        public static string LabelFor(YapsPlug plug)
+        {
+            if (plug == null) return "YAPS plug";
+            string bone = plug.rootBone != null ? plug.rootBone.name : plug.name;
+            return $"{bone} plug";
+        }
+
         // What already switches this object, by name; null when nothing does.
         // An Advanced Settings entry aiming at it or an ancestor, an entry
         // whose own clips do, or a clip in any of the avatar's controllers
@@ -162,17 +201,43 @@ namespace AvatarBridge
                    && path.Replace('\\', '/').StartsWith(YapsNativeBuilder.OutputRoot + "/", System.StringComparison.OrdinalIgnoreCase);
         }
 
+        // An entry whose label has moved on: renamed in place, and its
+        // animator layer and parameter renamed with it, since the machine
+        // name is what the layer is called. Null when nothing changed.
+        static string Rename(CVRAvatar avatar, CVRAdvancedSettingsEntry entry, string label)
+        {
+            if (entry.name == label) return null;
+            string was = entry.name, wasMachine = entry.machineName;
+            Undo.RecordObject(avatar, "YAPS toggle");
+            entry.name = label;
+            entry.machineName = MachineName(avatar.avatarSettings.settings, label, entry);
+            EditorUtility.SetDirty(avatar);
+            if (entry.machineName != wasMachine)
+            {
+                YapsAasAnimator.Unwire(avatar, wasMachine);
+                NoteAdded(entry.machineName);
+            }
+            return $"{label}: menu toggle renamed from \"{was}\"" +
+                   (entry.machineName != wasMachine ? $" ({wasMachine} → {entry.machineName})" : "");
+        }
+
         // A menu toggle for an object: on and off by activity, default as
         // it stands now. Returns what happened, for the window.
         public static string EnsureObjectToggle(GameObject target, CVRAvatar avatar, string label)
         {
             if (target == null || avatar == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            var ours = settings?.FirstOrDefault(e => e != null && e.name == label
+            // Ours by what it SWITCHES, never by what it is called: the
+            // label follows the bone, so renaming the bone or moving the
+            // socket renames the entry, and matching on the name would add
+            // a second one instead of renaming the first.
+            var ours = settings?.FirstOrDefault(e => e != null
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
+                && !e.toggleSettings.useAnimationClip
                 && e.toggleSettings.gameObjectTargets != null
-                && e.toggleSettings.gameObjectTargets.Any(g => g != null && g.gameObject == target));
-            string already = ToggledBy(target, avatar, ignoreEntry: label);
+                && e.toggleSettings.gameObjectTargets.Count > 0
+                && e.toggleSettings.gameObjectTargets.All(g => g != null && g.gameObject == target));
+            string already = ToggledBy(target, avatar, ignoreEntry: ours != null ? ours.name : label);
             if (already != null)
             {
                 if (ours == null) return $"{label}: already switched by {already}";
@@ -185,10 +250,11 @@ namespace AvatarBridge
             }
             if (ours != null)
             {
+                string renamed = Rename(avatar, ours, label);
                 // The entry is there; its layer may not be, if the animator
                 // was never regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
-                return $"{label}: menu toggle already there" + (wired != null ? "; " + wired : "");
+                return (renamed ?? $"{label}: menu toggle already there") + (wired != null ? "; " + wired : "");
             }
             if (avatar.avatarSettings == null)
             {
@@ -227,10 +293,15 @@ namespace AvatarBridge
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            var ours = settings?.FirstOrDefault(e => e != null && e.name == label
+            // Ours by the clip it plays, not by its name: the label follows
+            // the bone and may have moved since the last build.
+            string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            var ours = settings?.FirstOrDefault(e => e != null
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
-                && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip));
-            string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: label);
+                && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
+                && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
+                    .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_Enabled"));
+            string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: ours != null ? ours.name : label);
             if (already != null)
             {
                 if (ours == null) return $"{label}: already switched by {already}";
@@ -242,10 +313,11 @@ namespace AvatarBridge
             }
             if (ours != null)
             {
+                string renamed = Rename(avatar, ours, label);
                 // The entry is there; its layer may not be, if the animator
                 // was never regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
-                return $"{label}: menu toggle already there" + (wired != null ? "; " + wired : "");
+                return (renamed ?? $"{label}: menu toggle already there") + (wired != null ? "; " + wired : "");
             }
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
@@ -295,12 +367,21 @@ namespace AvatarBridge
             return clip;
         }
 
-        static string MachineName(List<CVRAdvancedSettingsEntry> settings, string label)
+        // A parameter name from a label, unique among the entries. `mine`
+        // is the entry being named, so a rename does not collide with the
+        // name it already holds.
+        static string MachineName(List<CVRAdvancedSettingsEntry> settings, string label,
+            CVRAdvancedSettingsEntry mine = null)
         {
-            string stem = System.Text.RegularExpressions.Regex.Replace(label, "[^a-zA-Z0-9_]+", "");
+            // Words joined without spaces, each capitalised: "Chest ring"
+            // becomes ChestRing rather than Chestring.
+            var words = System.Text.RegularExpressions.Regex.Split(label ?? "", "[^a-zA-Z0-9_]+")
+                .Where(w => w.Length > 0)
+                .Select(w => char.ToUpperInvariant(w[0]) + w.Substring(1));
+            string stem = string.Concat(words);
             if (string.IsNullOrEmpty(stem)) stem = "YAPS";
             string name = stem;
-            for (int n = 2; settings.Any(e => e != null && e.machineName == name); n++) name = stem + n;
+            for (int n = 2; settings.Any(e => e != null && e != mine && e.machineName == name); n++) name = stem + n;
             return name;
         }
 

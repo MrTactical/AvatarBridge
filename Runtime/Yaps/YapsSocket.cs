@@ -57,6 +57,15 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
+        // What the last build called this socket's reactions layer and its
+        // depth parameter. Names follow the bone, so they move when the
+        // socket does; without a record of the old ones a rebuild would
+        // leave the old layer behind and Remove would miss it.
+        [HideInInspector]
+        public string builtLayer;
+        [HideInInspector]
+        public string builtParameter;
+
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.
         [NonSerialized]
