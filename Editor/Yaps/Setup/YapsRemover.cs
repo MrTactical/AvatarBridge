@@ -269,14 +269,16 @@ namespace AvatarBridge
                 {
                     if (!layer.name.StartsWith("YAPS ") || !layer.name.EndsWith(" reactions") || liveLayers.Contains(layer.name)) continue;
                     string socketName = layer.name.Substring(5, layer.name.Length - 5 - 10);
-                    string parameter = "#YAPS/" + Sanitise(socketName) + "/Depth";
-                    RemoveLayer(new List<AnimatorController> { controller }, layer.name, parameter);
+                    var one = new List<AnimatorController> { controller };
+                    // The synced name this build writes, and the local one older builds did.
+                    RemoveLayer(one, layer.name, "YAPS/" + Machine(socketName) + "/Depth");
+                    RemoveLayer(one, layer.name, "#YAPS/" + Sanitise(socketName) + "/Depth");
                     done.Add($"layer \"{layer.name}\" in \"{controller.name}\": its socket is gone");
                 }
                 // Depth parameters no layer reads.
                 foreach (var p in controller.parameters.ToList())
                 {
-                    if (!p.name.StartsWith("#YAPS/") || !p.name.EndsWith("/Depth")) continue;
+                    if (!(p.name.StartsWith("YAPS/") || p.name.StartsWith("#YAPS/")) || !p.name.EndsWith("/Depth")) continue;
                     if (ParameterUsed(controller, p.name)) continue;
                     Undo.RegisterCompleteObjectUndo(controller, "Clean up YAPS leftovers");
                     controller.RemoveParameter(p);
@@ -572,6 +574,13 @@ namespace AvatarBridge
         {
             foreach (char c in System.IO.Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
             return s;
+        }
+
+        // The parameter-safe form the reactions use.
+        static string Machine(string s)
+        {
+            string clean = System.Text.RegularExpressions.Regex.Replace(s ?? "", "[^A-Za-z0-9_-]+", "");
+            return string.IsNullOrEmpty(clean) ? "Socket" : clean;
         }
     }
 }

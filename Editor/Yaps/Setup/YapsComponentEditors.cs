@@ -599,7 +599,9 @@ namespace AvatarBridge
                     $"\"{current.name}\" is not a mesh of the socket's own, so Build drives these shapes through a contact: " +
                     "a depth trigger on the socket reads a plug's tip pointer and a layer in your animator plays the " +
                     "stages from it. Works with TPS, SPS and YAPS plugs; a DPS light-only plug has no pointer. " +
-                    $"Free: every client computes contacts itself. A contact cannot know a plug's length, so depth 1 " +
+                    "ChilloutVR computes this contact on the wearer's machine only, so the depth is a synced " +
+                    "parameter — 32 of the avatar's 3200 sync bits — and without it nobody but the wearer would " +
+                    $"see the shapes move. A contact cannot know a plug's length, so depth 1 " +
                     $"is {reach:0.00} m in ({reachFrom}); the depths below are fractions of that.", HelpBoxMessageType.Info));
             }
             opens.Body.Add(meshPopup);

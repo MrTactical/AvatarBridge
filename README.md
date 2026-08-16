@@ -649,9 +649,10 @@ had and SPS dropped — so it reacts to a DPS plug that has never heard of this 
 shader measures depth from its mesh's own origin, which for a body is the avatar's root, so that
 route only opens right on a mesh whose origin is the socket.) **A socket whose shapes are on the
 body mesh gets them through a contact instead**: a depth trigger on the socket reads the plug's
-tip and a layer in your own animator plays the stages from it, which costs no sync because every
-client computes contacts itself. Either way, reactions the author already built are kept and made
-local.
+tip and a layer in your own animator plays the stages from it. That depth is a synced parameter,
+32 of the avatar's 3200 bits per socket: ChilloutVR computes a trigger's contact on the wearer's
+machine alone, so without it nobody else would see the shapes move. Either way, reactions the
+author already built are kept and made local.
 
 **It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
 — its hierarchy, its menu labels, its report — but the things *other people's* content reads are
@@ -844,7 +845,7 @@ sockets by their marker lights until then).
   **Test depth** moves them from a slider without any plug at all.
 - **Not in Play mode.** ChilloutVR's triggers and contacts are the game's, not Unity's, so a
   socket whose shapes go through a contact does nothing in editor Play mode — drive its
-  `#YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
+  `YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
   work, or test it in game. Preview and Test depth work outside Play mode, which is where to look.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
   debug view (on the material's YAPS panel) colours the plug by what found the socket — black
@@ -1982,10 +1983,18 @@ depth trigger on the socket that reads a plug's tip pointer, and a layer in your
 plays the stages from it. If it does nothing in game, check three things. **It only works with a
 plug that carries a tip pointer** — TPS, SPS and YAPS plugs do; a DPS light-only plug has nothing
 to read. **It is the game's contact, not Unity's**, so it does nothing in editor Play mode; use
-Preview or Test depth on the socket instead, or drive `#YAPS/<socket>/Depth` by hand in the
+Preview or Test depth on the socket instead, or drive `YAPS/<socket>/Depth` by hand in the
 Animator window. And **the depth is measured in metres, not plug lengths** — a contact cannot know
 a visiting plug's length, so the socket's *Full depth (m)* stands for it; at 0 it takes the longest
 baked plug on the avatar, and if your stages open too early or too late, that field is the dial.
+
+**Only the wearer sees it move, nobody else does.** Rebuild the socket on a current release. Depth
+was a `#`-local parameter in an early build, which was wrong: ChilloutVR creates a trigger's
+receiver as local-only and its task writes the *local* player's animator, so the contact is
+computed on the wearer's machine alone and a local parameter never leaves it. It is a synced
+parameter now, 32 bits, and the build reports the avatar's sync usage — if the avatar is at the
+3200-bit cap the client will not register the parameter, and the shapes go still for everyone but
+the wearer again.
 
 ### YAPS: a menu toggle the tool added is greyed out in the CCK's tester, or shows a red (!)
 
