@@ -412,10 +412,11 @@ namespace AvatarBridge
             if (renderer == null || stages.Count == 0) return null;
             if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
                 return $"✗ {socket.name}: its mesh has no blendshapes";
+            // A mesh that is not the socket, the body as a rule: the shader
+            // cannot open it, a contact can. The reactions live in the
+            // animator, driven by a depth trigger on the socket.
             if (!MeshIsTheSocket(renderer, socket.transform))
-                return $"✗ {socket.name}: the shapes need a mesh whose origin is this socket. " +
-                       $"\"{renderer.name}\" sits {Vector3.Distance(renderer.transform.position, socket.transform.position):0.##} m away; " +
-                       "a body mesh cannot open this way, only a mesh of the socket's own.";
+                return YapsSocketReactions.Build(socket);
 
             var mats = renderer.sharedMaterials;
             if (mats == null || mats.Length == 0 || mats[0] == null) return $"✗ {socket.name}: its mesh has no material";

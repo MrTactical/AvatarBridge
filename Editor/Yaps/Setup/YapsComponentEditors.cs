@@ -375,11 +375,11 @@ namespace AvatarBridge
             // Shapes.
             var opens = new BridgeElements.Card("Opens as a plug goes in");
             opens.Body.Add(BridgeElements.Hint(
-                "For a socket with a mesh of its own, origin at the entrance: pick that mesh, then up " +
-                "to sixteen of its shapes, several per depth if you like. The entry opens as the plug arrives; each later one starts " +
-                "deeper. Depths are fractions of the plug's length, and they stack. Baked by " +
-                "\"Bake every plug and verify\". A body mesh cannot open this way; its reactions " +
-                "stay with the animator."));
+                "Pick the mesh whose shapes should open (usually the body), then up to sixteen of its " +
+                "shapes, several per depth if you like. The entry opens as the plug arrives; each later " +
+                "one starts deeper. Depths are fractions of the plug's length, and they stack. Built by " +
+                "\"Bake every plug and verify\": a mesh of the socket's own opens in its shader; any other " +
+                "mesh opens through a contact on the socket and a layer in your animator."));
 
             var renderers = avatarRoot != null
                 ? avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -404,8 +404,10 @@ namespace AvatarBridge
             if (current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform))
             {
                 opens.Body.Add(new HelpBox(
-                    $"\"{current.name}\" does not sit at this socket, so its shapes cannot be baked here. " +
-                    "The shader deform needs a mesh whose origin is the socket.", HelpBoxMessageType.Warning));
+                    $"\"{current.name}\" is not a mesh of the socket's own, so Build drives these shapes through a contact: " +
+                    "a depth trigger on the socket reads a plug's tip pointer and a layer in your animator plays the " +
+                    "stages from it. Works with TPS, SPS and YAPS plugs; a DPS light-only plug has no pointer. " +
+                    "Free: every client computes contacts itself.", HelpBoxMessageType.Info));
             }
             opens.Body.Add(meshPopup);
 
