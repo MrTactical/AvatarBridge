@@ -738,8 +738,9 @@ namespace AvatarBridge
                     if (!shapesBuilt)
                     {
                         opens.Body.Add(new HelpBox(
-                            "Not built yet: these shapes do nothing in game until the socket is built. Build it here, " +
-                            "or run \"Bake every plug and verify\" in YAPS Setup, which builds every plug and socket at once.",
+                            "Not built yet: these shapes do nothing in game until the socket is built. Placing and testing " +
+                            "need no build. Build this one here to try it, but the last step before an upload is still " +
+                            "\"Bake every plug and verify\" in YAPS Setup: it builds every plug and socket at once and checks the lot.",
                             HelpBoxMessageType.Warning));
                         opens.Body.Add(new BridgeElements.PrimaryButton("Build this socket", () =>
                         {
