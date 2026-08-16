@@ -643,12 +643,15 @@ with which of them it came from, so a feature you know from one of them is under
 
 **A converted plug bends into a socket and threads it along its axis** — arriving straight rather
 than aiming at a point, easing in as it approaches, relaxing when pulled away. **A converted
-socket with a mesh of its own opens around a plug**: the entry and up to three depths, staged,
-driven straight from the shader — the socket-side deform DPS had and SPS dropped — so it reacts to
-a DPS plug that has never heard of this tool. A socket on the body mesh keeps what its author
-built instead: the shapes a contact drives, made local. (The socket shader measures depth from its
-mesh's own origin, which for a body is the avatar's root, so it only opens right on a mesh whose
-origin is the socket.)
+socket with a mesh of its own opens around a plug**: the entry and up to fifteen further depths,
+staged, several allowed at one depth, driven straight from the shader — the socket-side deform DPS
+had and SPS dropped — so it reacts to a DPS plug that has never heard of this tool. (The socket
+shader measures depth from its mesh's own origin, which for a body is the avatar's root, so that
+route only opens right on a mesh whose origin is the socket.) **A socket whose shapes are on the
+body mesh gets them through a contact instead**: a depth trigger on the socket reads the plug's
+tip and a layer in your own animator plays the stages from it, which costs no sync because every
+client computes contacts itself. Either way, reactions the author already built are kept and made
+local.
 
 **It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
 — its hierarchy, its menu labels, its report — but the things *other people's* content reads are
@@ -710,18 +713,28 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
 
 *Tools ▸ YAPS ▸ Setup.* Three steps, like the converter's:
 
-1. **Pick your avatar or prop.** Drag it into the box.
+1. **Pick your avatar or prop.** Drag it into the box — or anything under it: a bone, a mesh, a
+   socket. The tool takes the avatar or prop above whatever you dropped and says so, and the list
+   below always covers the whole thing, so a second socket left on a bone you already used shows
+   up instead of hiding under the object you happened to pick.
 2. **What it has, and what to add.** One row per plug or socket the scan found — which systems can
-   read it, whether it has an axis, what it lacks. **customise** takes you to its inspector;
-   **preview** bends a plug toward it in the scene view; a DPS, TPS or SPS row offers **upgrade to
-   YAPS**. Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
+   read it, whether it has an axis, what it lacks, and a warning when two sockets sit on the same
+   spot. **customise** takes you to its inspector; **preview** bends a plug toward it in the scene
+   view; **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**.
+   Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
    Hierarchy, or in a `YAPS/` folder on the avatar) and **Make selected mesh a plug** — or, with a
    *bone* selected, **Make a plug from bone**, which bakes the skinned mesh that bone drives from
-   that bone down, on the material slot weighted to it. A line under the buttons says what the
-   Hierarchy selection is, and a box above says what to do next.
+   that bone down, on the material slot weighted to it. Where a new socket or plug goes is the
+   Hierarchy selection, and a line under the buttons says what that is. Under *Tidy*, **Clean up
+   leftovers** sweeps an avatar for what a hand-deleted socket left behind: an animator layer with
+   no socket, a depth parameter nothing reads, a menu toggle aiming at nothing.
 3. **Build.** Bakes every plug — measuring the mesh, patching the material's own shader, writing
-   the knobs, announcing it to every socket family — and rebuilds each socket's markers. Safe to
-   run again; it edits, not stacks. On an avatar with DPS, TPS or SPS on it, Build is the upgrade.
+   the knobs, wiring its size animations, announcing it to every socket family — and builds each
+   socket: markers, shapes, and a menu toggle for anything the avatar cannot already switch off.
+   Safe to run again; it edits, not stacks. On an avatar with DPS, TPS or SPS on it, Build is the
+   upgrade. **This is the last step before an upload.** Placing and testing need no build, and a
+   socket's own inspector has a *Build this socket* for a single change on a finished avatar, but
+   only this button does the lot and checks it.
 
 **Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
@@ -746,11 +759,18 @@ and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z th
 should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
-**YAPS Socket** (the component the prefabs carry) — hole or ring; for a socket with a mesh of its
-own (origin at the entrance), that mesh and up to four of its shapes picked from a dropdown and
-staged by depth on a range slider, baked by Build; **Preview** — with a test plug the tool drops
-in front of the socket when the scene has none; and, once baked, the socket-side shape knobs.
-*Advanced* holds the marker lights and *Rebuild markers*.
+**YAPS Socket** (the component the prefabs carry) — hole or ring; the mesh whose shapes should
+open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
+depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens
+in its shader; any other mesh, the body as a rule, opens through a contact — the card says which,
+and for the contact route a **Full depth (m)** field says how far in counts as fully open, since a
+contact cannot know a visiting plug's length (left at 0 it takes the longest baked plug on the
+avatar). **Test depth** moves those shapes on the mesh in the editor so you can see the stages
+without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
+baked plug in the scene toward the socket — with a test plug the tool drops in front of it when
+the scene has none — and while it runs, the plug's own tip drives the shapes the way the game
+will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
+markers* and **Remove this socket**.
 
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
@@ -758,7 +778,7 @@ socket · Out of a socket · Motion inside a socket · The bend toward a socket 
 How sockets find it*. Every knob wears the system it came from — DPS purple, TPS teal, SPS
 orange, YAPS green — and a **Show** filter at the top keeps only one system's knobs. Knobs write
 straight to the plug's material; the material's own YAPS panel writes back; one set of values,
-two doors. **Bake** is at the bottom. **A plain (unskinned) mesh bends around its object's origin
+two doors. **Bake** and **Remove this plug** are at the bottom. **A plain (unskinned) mesh bends around its object's origin
 along +Z** — pivot at the base, shaft along +Z (in Blender: origin at the base, shaft along +Y
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
@@ -772,6 +792,24 @@ The **Animate it** card on each component lists the names. Size is wired for you
 or hyper toggle that scales the plug's root bone, or moves one of its baked blendshapes, gets a
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
 weights), so the deform is the size the mesh is drawn at.
+
+**A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
+vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
+Advanced Settings entry — **off by default** — and writes its layer and parameter straight into
+the animator the avatar already wears. It does not press *Create Animator* for you and does not
+copy your base controller or replace your override controller; the CCK's own generator, run later,
+sees the parameter already driven and skips the entry as it is meant to. Anything the avatar
+already toggles is left alone: an entry aiming at it or a parent, an entry's own clips, or any
+clip in any of the avatar's controllers that hides the object or its renderer. If an earlier build
+added a toggle that turns out to be unnecessary, the next one removes it.
+
+**Taking things out again.** Every plug and socket has **Remove** — on its row in the window, and
+in its own inspector. It takes the thing out entire: the objects the tool made, its animator layer
+and parameter, its menu entry, the size wiring in your clips, and the bake, putting the material
+it replaced back in its slot. A dialog lists exactly what will go first, and it is one undo step.
+The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
+at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
+what it left.
 
 **The material panel.** A patched material's YAPS block is grouped and named the same way as the
 component, and hands everything else to the shader's own editor — a Poiyomi material keeps
@@ -801,7 +839,12 @@ sockets by their marker lights until then).
 
 - **In the editor**: select a socket, click Preview, move it around the plug. Every knob on the
   plug shows live. Wriggle and pumping are time-driven; the scene view repaints while a plug is
-  selected so they move.
+  selected so they move. A socket's shapes follow the preview plug's tip while it runs, and
+  **Test depth** moves them from a slider without any plug at all.
+- **Not in Play mode.** ChilloutVR's triggers and contacts are the game's, not Unity's, so a
+  socket whose shapes go through a contact does nothing in editor Play mode — drive its
+  `#YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
+  work, or test it in game. Preview and Test depth work outside Play mode, which is where to look.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
   debug view (on the material's YAPS panel) colours the plug by what found the socket — black
   nobody, green the contact channel, yellow a marker light — which is the first thing to look at
@@ -970,7 +1013,7 @@ can drift from what a conversion does.
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles — doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
-| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the root's animator controller and advanced settings. This one edits the controller asset the avatar uses |
+| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the root's animator controller and advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. This one edits the controller asset the avatar uses |
 | **Store description** | Writes the [description](#store-description) from what the avatar has and types it into the upload page when that window is open |
 | **Merge animators** | Any sources into a target: every layer and parameter deep-copied, layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. Written to a copy beside the target by default; sources are never edited |
 
@@ -1271,6 +1314,7 @@ Find your symptom:
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays--and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs--and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all--for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing--i-dont) · [rapid flicker](#an-animation-flickers-rapidly--often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
+| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [plug left alone](#yaps-the-plug-was-left-alone-the-first-bones-above-the-plug-object-belong-to-the-body) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) |
 | **Uploading** | [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles — `'ImageDownloader' does not contain a definition for 'GetImage'`
@@ -1862,6 +1906,9 @@ Work down the list; the first that fits is usually it.
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
   alone, and that channel is built for converted avatars; a plug built with the YAPS tool reads
   lights only until the avatar channel lands. The report and the tool both say which a plug has.
+- **Is the socket in front of the plug?** A socket has to be roughly ahead of the base to engage —
+  dead ahead fully, about seventy degrees off fading, beside and behind not at all. That gate is
+  what stops a plug folding back on itself to reach a socket beside its own root.
 - **The plug bends but too little or too much:** *The bend toward a socket* and *Inside a socket*
   on the plug component are the knobs; the material panel has the same ones. Squeeze and bulge
   are as authored on the source avatar.
@@ -1928,11 +1975,25 @@ Everything else in those stacks, the sounds and particles, plays for everyone ei
 
 ### YAPS: a socket on the body mesh does not open around a plug
 
-By design. The socket shader measures depth from its mesh's own origin, and a body mesh's origin
-is the avatar's root, so it cannot open right; the converter leaves such a socket the reactions its
-author built (the shapes a contact drives, made local) and says so. A socket with a mesh of its
-own, origin at the entrance, gets the shader deform, and the YAPS Socket component's shape rows
-bake onto exactly such a mesh.
+Not through the shader, which measures depth from the mesh's own origin — a body's origin is the
+avatar's root, so that route cannot open right. Build gives such a socket a contact instead: a
+depth trigger on the socket that reads a plug's tip pointer, and a layer in your own animator that
+plays the stages from it. If it does nothing in game, check three things. **It only works with a
+plug that carries a tip pointer** — TPS, SPS and YAPS plugs do; a DPS light-only plug has nothing
+to read. **It is the game's contact, not Unity's**, so it does nothing in editor Play mode; use
+Preview or Test depth on the socket instead, or drive `#YAPS/<socket>/Depth` by hand in the
+Animator window. And **the depth is measured in metres, not plug lengths** — a contact cannot know
+a visiting plug's length, so the socket's *Full depth (m)* stands for it; at 0 it takes the longest
+baked plug on the avatar, and if your stages open too early or too late, that field is the dial.
+
+### YAPS: a menu toggle the tool added is greyed out in the CCK's tester, or shows a red (!)
+
+The entry is in the Advanced Settings list but the animator has no parameter of that name. The CCK
+writes one per entry only when you press *Create Animator*; the toolkit writes its own entries'
+layers straight into the animator the avatar wears, so this means a build has not run since the
+entry appeared. Press **Bake every plug and verify** once — it reports the layer and parameter it
+wrote — or *Create Animator* on the CVRAvatar, which does the same for every entry at the cost of
+regenerating the controller.
 
 ## Reporting a bug
 
