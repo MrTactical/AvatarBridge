@@ -763,6 +763,16 @@ along +Z** — pivot at the base, shaft along +Z (in Blender: origin at the base
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
 
+**Every knob is animatable.** The knobs are material properties on the plug's (or socket's) mesh,
+so the avatar's own animator can drive them like any material property: in the Animation window
+pick the mesh, add *Skinned Mesh Renderer ▸ Material ▸ `_YAPS_<name>`*, key it, and put the clip
+in a blend tree on whatever slider you like. An erectness slider, say, takes `_YAPS_Curvature`
+toward 0 and `_YAPS_EntranceStiffness` up as it rises; a "soft" toggle drops `_YAPS_IdleLength`.
+The **Animate it** card on each component lists the names. Size is wired for you: a size slider
+or hyper toggle that scales the plug's root bone, or moves one of its baked blendshapes, gets a
+matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
+weights), so the deform is the size the mesh is drawn at.
+
 **The material panel.** A patched material's YAPS block is grouped and named the same way as the
 component, and hands everything else to the shader's own editor — a Poiyomi material keeps
 Poiyomi's panel entire.

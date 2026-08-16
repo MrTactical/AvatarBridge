@@ -147,6 +147,23 @@ namespace AvatarBridge
             }
         }
 
+        // The material properties an animation may drive, by the name the
+        // Animation window wants after "Material.".
+        public const string AnimatablePlugProperties =
+            "_YAPS_Enabled  (deform on, 0 or 1)\n" +
+            "_YAPS_Curvature, _YAPS_ReCurvature, _YAPS_EntranceStiffness  (shape at rest)\n" +
+            "_YAPS_Squeeze, _YAPS_SqueezeDistance, _YAPS_Bulge, _YAPS_BulgeDistance  (inside a socket)\n" +
+            "_YAPS_IdleLength, _YAPS_IdleWidth, _YAPS_WriggleStrength, _YAPS_WriggleSpeed  (out of a socket)\n" +
+            "_YAPS_PumpStrength, _YAPS_PumpSpeed, _YAPS_PumpWidth  (motion inside a socket)\n" +
+            "_YAPS_BezierSmoothness, _YAPS_BezierStart, _YAPS_SmoothStart, _YAPS_MinimumSocketDistance  (the bend)\n" +
+            "_YAPS_TaperStart, _YAPS_TaperEnd, _YAPS_Overrun  (past the opening)\n" +
+            "_YAPS_BakeScale, _YAPS_BakeGirth  (the plug's size, wired at Bake from bone scale)\n" +
+            "_YAPS_ShapeWeights .. _YAPS_ShapeWeights4  (its baked blendshapes, wired at Bake)";
+
+        public const string AnimatableSocketProperties =
+            "_YAPS_SocketPower  (shape strength, 0 is off)\n" +
+            "_YAPS_SocketShapeStart, _YAPS_SocketShapeFade  (four stages each, x y z w)";
+
         public static Button Button(string text, System.Action act)
         {
             var b = new UnityEngine.UIElements.Button(act) { text = text };
@@ -200,6 +217,31 @@ namespace AvatarBridge
                 foreach (var m in r.sharedMaterials)
                     if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
             return n;
+        }
+
+        // The first baked plug in the scene, as a frame: base and forward.
+        // The markers object sits on the measured frame; the plug's own
+        // transform is the fallback for a plug made without one.
+        public static bool FirstBakedPlugFrame(out Vector3 origin, out Vector3 forward, out Vector3 up, out float length)
+        {
+            origin = Vector3.zero; forward = Vector3.forward; up = Vector3.up; length = 0.25f;
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            {
+                var r = plug.Target;
+                if (r == null) continue;
+                var mat = r.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake")
+                    && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0);
+                if (mat == null) continue;
+                var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
+                origin = frame.position; forward = frame.forward; up = frame.up;
+                length = mat.HasProperty("_YAPS_Length") ? Mathf.Max(mat.GetFloat("_YAPS_Length"), 0.05f) : 0.25f;
+                if (!plug.transform.Find("YAPS Markers") && r is SkinnedMeshRenderer && plug.rootBone != null)
+                {
+                    origin = plug.rootBone.position; forward = plug.rootBone.forward; up = plug.rootBone.up;
+                }
+                return true;
+            }
+            return false;
         }
 
         // A test plug in front of the socket, engaged but not swallowed.
@@ -516,6 +558,18 @@ namespace AvatarBridge
             }
 
             // Advanced.
+            // The socket-side knobs are material properties too.
+            if (bakedMat != null)
+            {
+                var animate = new BridgeElements.Card("Animate it", null, false, null, 0.9f);
+                animate.Body.Add(BridgeElements.Hint(
+                    "The socket's shape knobs are material properties on its mesh, so an animation can drive " +
+                    "them: in the Animation window pick the mesh, add Skinned Mesh Renderer ▸ Material ▸ a " +
+                    "name below, and key it."));
+                animate.Body.Add(new TextField { value = YapsInspectorStyle.AnimatableSocketProperties, multiline = true, isReadOnly = true });
+                body.Add(animate);
+            }
+
             var advanced = new BridgeElements.Card("Advanced");
             advanced.Body.Add(YapsInspectorStyle.Field(lightsProp, type.GetField("emitLights"), "Emit marker lights"));
             advanced.Body.Add(BridgeElements.Row(
@@ -761,6 +815,18 @@ namespace AvatarBridge
             }));
             bake.Body.Add(BridgeElements.Row(YapsInspectorStyle.Button("Open YAPS Setup", YapsSetupWindow.Open)));
             body.Add(bake);
+
+            // Every knob is a material property, so every knob is animatable
+            // from the avatar's own animator; the names are what to record.
+            var animate = new BridgeElements.Card("Animate it", null, false, null, 0.9f);
+            animate.Body.Add(BridgeElements.Hint(
+                "Every knob above is a material property on this plug's mesh, so an animation can drive " +
+                "it: in the Animation window pick the mesh, add Skinned Mesh Renderer (or Mesh Renderer) " +
+                "▸ Material ▸ one of the names below, and key it. An erectness slider, say, takes " +
+                "Curvature toward 0 and Entrance stiffness up. Size sliders and hyper toggles that scale " +
+                "the bone or a blendshape are wired for you at Bake."));
+            animate.Body.Add(new TextField { value = YapsInspectorStyle.AnimatablePlugProperties, multiline = true, isReadOnly = true });
+            body.Add(animate);
 
             _root.Bind(serializedObject);
 

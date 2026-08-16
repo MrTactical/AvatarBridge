@@ -640,11 +640,22 @@ namespace AvatarBridge
 
             if (atCamera)
             {
-                var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
-                if (cam != null)
+                // Beside a baked plug when there is one: just past its tip,
+                // a little above the axis, entrance facing the base, so the
+                // plug bends into it at once. Else in front of the camera.
+                if (YapsPreview.FirstBakedPlugFrame(out var origin, out var forward, out var up, out float length))
                 {
-                    go.transform.position = cam.transform.position + cam.transform.forward * 0.6f;
-                    go.transform.rotation = Quaternion.LookRotation(-cam.transform.forward);
+                    go.transform.position = origin + forward * (length * 0.85f) + up * (length * 0.35f);
+                    go.transform.rotation = Quaternion.LookRotation(-forward, up);
+                }
+                else
+                {
+                    var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
+                    if (cam != null)
+                    {
+                        go.transform.position = cam.transform.position + cam.transform.forward * 0.6f;
+                        go.transform.rotation = Quaternion.LookRotation(-cam.transform.forward);
+                    }
                 }
             }
             else
