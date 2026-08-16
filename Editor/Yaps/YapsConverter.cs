@@ -1,6 +1,6 @@
 // YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
 // something ChilloutVR can run. Inspired by VRCFury's SPS; no SPS
-// code is used, see Tools/SpsSpike/LICENSE-POSTURE.md.
+// code is used, see docs/YAPS-CLEAN-ROOM.md.
 // VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket"
 // per socket, with contact senders and two protocol lights. Its
 // screen-space atlas transport is VRChat-only and is deleted.

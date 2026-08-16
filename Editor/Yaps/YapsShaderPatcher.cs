@@ -1,16 +1,16 @@
 // Phase 1b. Puts the YAPS deform into an avatar's own body shader.
 //
 // Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// This patches the plug material's CURRENT shader — the same class of
-// input their patcher takes — and injects our own clean-room deform. No
-// SPS code is read or emitted. See Tools/SpsSpike/LICENSE-POSTURE.md.
+// This patches the plug material's CURRENT shader, the same class of
+// input their patcher takes, and injects a clean-room deform. No
+// SPS code is read or emitted. See docs/YAPS-CLEAN-ROOM.md.
 //
 // ---------------------------------------------------------------------
 // WHAT IT DOES TO A SHADER
 // ---------------------------------------------------------------------
 //
-//   1. Clones the whole source unit — the .shader and every .cginc it
-//      pulls in — into the conversion output. Originals are never edited.
+//   1. Clones the whole source unit, the .shader and every .cginc it
+//      pulls in, into the conversion output. Originals are never edited.
 //   2. Adds the YAPS properties to Properties{}, so the material and the
 //      animator have something to write to.
 //   3. In EVERY pass that has a vertex stage, inlines the YAPS includes
@@ -227,7 +227,7 @@ namespace AvatarBridge
         // panel entire; a Standard user keeps Standard's.
         //
         // The original editor's class name is carried in the DESCRIPTION of
-        // a hidden float property — a shader property is the only place a
+        // a hidden float property, a shader property is the only place a
         // string can ride in a shader that the material can read back.
         static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile)
         {
@@ -264,8 +264,8 @@ namespace AvatarBridge
         // Modify the vertex function IN PLACE rather than wrapping it.
         //
         // The first attempt built a wrapper and renamed the pragma, which
-        // needed the signature to be one simple parameter. Poiyomi — by a
-        // distance the most common avatar shader — declares its vertex
+        // needed the signature to be one simple parameter. Poiyomi, by a
+        // distance the most common avatar shader, declares its vertex
         // stage across five lines with a preprocessor conditional choosing
         // between two input types:
         //
@@ -326,7 +326,7 @@ namespace AvatarBridge
                     // own vertShadowCaster lives in its CGIncludes, not in
                     // the shader's source unit, so there is nothing of ours
                     // to edit. Losing the whole deform to avoid a shadow
-                    // that does not follow the bend is the wrong trade — the
+                    // that does not follow the bend is the wrong trade, the
                     // shadow is cosmetic, the deform is the feature.
                     if (IsShadowCasterPass(shaderFile.Text, block.Index))
                     {
@@ -352,7 +352,7 @@ namespace AvatarBridge
             // Look inside THIS program block first. A flattened shader
             // repeats its whole vertex function per pass, and searching the
             // file from the start would hand every pass the same first copy
-            // — patching it once per pass, at offsets computed before the
+            //, patching it once per pass, at offsets computed before the
             // previous edits, which shreds the preprocessor and reports as
             // an undeclared 'endif'.
             ShaderSpiPatcher.SourceFile file = unit[0];
@@ -404,7 +404,7 @@ namespace AvatarBridge
             // Strip preprocessor lines before reading identifiers. Poiyomi's
             // parameter list ENDS with "#endif", and taking the last
             // identifier from the raw text duly named the parameter "endif",
-            // emitting `endif.vertex.xyz` — which the compiler reported, with
+            // emitting `endif.vertex.xyz`, which the compiler reported, with
             // some justification, as an undeclared identifier 'endif'.
             string cleaned = Regex.Replace(parameters, @"^[ \t]*#.*$", "", RegexOptions.Multiline);
 
@@ -466,7 +466,7 @@ namespace AvatarBridge
                 : "    float3 yapsTangent = float3(1,0,0);");
             // BOTH ends, unconditionally, and this is deliberate.
             //
-            // Each guards itself on its own enable — a plug has
+            // Each guards itself on its own enable, a plug has
             // _YAPS_Enabled and a socket has _YAPS_SocketPower, and both
             // default to a value that returns immediately. So a material is
             // whichever end its properties say it is, decided at conversion
@@ -518,7 +518,7 @@ namespace AvatarBridge
             List<ShaderSpiPatcher.SourceFile> unit, string structName, int depth = 0)
         {
             // The optional ": Base" matters. A struct can inherit, and then
-            // POSITION lives in the parent rather than here — reading only
+            // POSITION lives in the parent rather than here, reading only
             // the body reports a vertex input with no vertex in it.
             var file = ShaderSpiPatcher.FindIn(unit,
                 $@"struct\s+{Regex.Escape(structName)}\s*(?::\s*(\w+)\s*)?\{{",
@@ -576,7 +576,7 @@ namespace AvatarBridge
         // Scoped by the END of the previous program block rather than by
         // looking back for the word "Pass". A flattened shader has its
         // includes inlined, and names like CGI_PoiPassShadow contain "Pass"
-        // — so the backward search landed inside the previous pass's code
+        //, so the backward search landed inside the previous pass's code
         // and read the wrong tag, or none. Whatever sits between one
         // ENDCG and the next CGPROGRAM is exactly this pass's declaration.
         static bool PassTagIs(string text, int programIndex, string lightMode)
@@ -609,12 +609,12 @@ namespace AvatarBridge
             }
 
             // Dependency order, since inlining removes the include guards'
-            // ability to reorder anything for us.
+            // ability to reorder anything.
             //
             // The socket include comes along on every patch, plug or
             // socket. It costs a few unused functions in a shader that will
             // not call them, and it means one emitted body serves both ends
-            // — against keeping two divergent inline lists in step, which
+            //, against keeping two divergent inline lists in step, which
             // is the drift that has cost the most time on this feature.
             string[] names =
             {
@@ -682,7 +682,7 @@ namespace AvatarBridge
             }
 
             // Resolve each include against the file it appears in, not
-            // against the spelling it was first seen under — the same file
+            // against the spelling it was first seen under, the same file
             // is often referred to two different ways.
             var byPath = new Dictionary<string, ShaderSpiPatcher.SourceFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in unit)

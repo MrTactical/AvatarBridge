@@ -1,11 +1,11 @@
 // VRCFury patches the plug's shader with SPS during its own bake. That
-// patched shader is VRChat-only, and our patcher correctly refuses to
-// touch a shader that already carries it — so if the bake ran normally we
-// would have no clean input to work from.
+// patched shader is VRChat-only, and the patcher correctly refuses to
+// touch a shader that already carries it, so a normal bake would leave
+// no clean input to work from.
 //
 // Turning the plug's own SPS flag off before the bake solves it. The bake
-// probe (Tools/SpsSpike/SpsBakeProbe.cs) measured exactly what that costs:
-// nothing we need. The plug and socket objects, all 24 protocol lights and
+// probe measured exactly what that costs:
+// nothing needed. The plug and socket objects, all 24 protocol lights and
 // all 119 contacts still appear; only VRCFury's own bake texture is lost,
 // which is what YapsBaker replaces.
 //
@@ -26,7 +26,7 @@ namespace AvatarBridge
 
         // The author's own per-plug settings, read off the component while
         // it still exists. The bake destroys it, so anything not captured
-        // here is lost and quietly replaced by a default — which is what
+        // here is lost and quietly replaced by a default, which is what
         // happened to overrun: VRCFury lets an author say whether the tip
         // may travel past the socket, and every converted plug was getting
         // "yes" regardless of what they chose.

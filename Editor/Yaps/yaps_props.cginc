@@ -1,8 +1,8 @@
-// YAPS — Yet Another Penetration System, for ChilloutVR.
+// YAPS, Yet Another Penetration System, for ChilloutVR.
 // Property block, injected into the patched shader's Properties{}.
 //
 // Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// No SPS code is used here; see Tools/SpsSpike/LICENSE-POSTURE.md.
+// No SPS code is used here; see docs/YAPS-CLEAN-ROOM.md.
 #ifndef YAPS_PROPS_INCLUDED
 #define YAPS_PROPS_INCLUDED
 
@@ -21,20 +21,20 @@ float _YAPS_Enabled;       // master gate / apply fraction, 0..1
 float _YAPS_Length;        // plug length in its own local space
 float _YAPS_Overrun;       // may the tip travel past the socket
 // Always 1 now. The baker measures its own frame from the mesh and writes
-// in renderer units, so there is no scale to undo — kept because a shipped
+// in renderer units, so there is no scale to undo, kept because a shipped
 // material carries it and removing a property a material references is a
 // bigger change than leaving one that reads 1.
 float _YAPS_BakeScale;
 
 // Where the plug's own frame comes from.
-//   0  the renderer's transform — correct when the plug is its own object
-//   1  recovered from the vertex — required on a skinned mesh, where the
+//   0  the renderer's transform, correct when the plug is its own object
+//   1  recovered from the vertex, required on a skinned mesh, where the
 //      renderer sits at the avatar root and a bone carries the plug
 float _YAPS_FrameFromVertex;
 
 // --- the socket, written by the discrete channel ---------------------
 // A CVRMaterialDriver task writes these every frame from animator
-// parameters, so they are identical on every camera and every viewer —
+// parameters, so they are identical on every camera and every viewer , 
 // which is the whole reason position lives here rather than in lights.
 // The editor harness writes the same four, which is why the deform can
 // be developed without uploading anything.
@@ -67,7 +67,7 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 
 // Which sockets belong to this plug's OWN avatar, so it can ignore them.
 //
-// A light carries a position and nothing else — no identity, no owner — so
+// A light carries a position and nothing else, no identity, no owner, so
 // a plug cannot otherwise tell its wearer's own socket from a stranger's.
 // On an avatar carrying both, its own sockets are permanently in reach and
 // permanently nearest, so it spends its life bent into its wearer's hip.
@@ -82,8 +82,8 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 //
 // It used to be a digit stamped into the range's fourth decimal, compared
 // against the same digit here. That was built on precision nobody had
-// measured — the spike verified the SECOND decimal survives, and the range
-// is reconstructed as 5·rsqrt(atten) rather than read — and it showed as
+// measured, the spike verified the SECOND decimal survives, and the range
+// is reconstructed as 5·rsqrt(atten) rather than read, and it showed as
 // sockets that worked or did not depending on which digit their range
 // happened to land on.
 float _YAPS_SelfTag;
@@ -112,7 +112,7 @@ float _YAPS_Squeeze;
 float _YAPS_SqueezeDistance;
 
 // The swell just SHORT of the opening, where flesh piles up rather than
-// going through. Never on the far side — that would be the shaft growing
+// going through. Never on the far side, that would be the shaft growing
 // inside whatever it entered.
 float _YAPS_Bulge;
 float _YAPS_BulgeDistance;
@@ -167,14 +167,14 @@ float _YAPS_SmoothStart;
 // fold into a hairpin trying to reach a point behind its own root.
 float _YAPS_MinimumSocketDistance;
 //
-// TPS's BUFFERED DEPTH — the deform following the socket with a lag, so a
-// thrust has weight — is deliberately NOT a uniform here. A vertex shader
+// TPS's BUFFERED DEPTH, the deform following the socket with a lag, so a
+// thrust has weight, is deliberately NOT a uniform here. A vertex shader
 // has no memory between frames, so a lag cannot live in it honestly. It
 // already exists in the right place: the channel's smoothing layer moves
 // the received value at most StepSize per frame, and that step is the
 // buffer. The converter exposes it as "socket follow" and writes it into
 // the layer's constant. Lights and legacy content have no channel and no
-// lag, which is also honest — a DPS plug never had one either.
+// lag, which is also honest, a DPS plug never had one either.
 
 // --- which sockets this plug will answer, from SPS ---------------------
 //
@@ -186,7 +186,7 @@ float _YAPS_MinimumSocketDistance;
 // sockets carrying it are answered. Zero means "no filter" on both.
 //
 // Marker lights carry no tag, so a light-only socket cannot be filtered
-// and is always answered — the filter only bites where the channel
+// and is always answered, the filter only bites where the channel
 // speaks, which is where a tag exists to compare.
 float _YAPS_TagInclude;
 float _YAPS_TagExclude;
@@ -198,7 +198,7 @@ float _YAPS_TagExclude;
 // mirrors the animation driving each slider onto these instead.
 //
 // Eight, in two float4s. These are the shapes that change the PLUG's own
-// rest mesh — length, girth, shape variants — and not the bulges a socket
+// rest mesh, length, girth, shape variants, and not the bulges a socket
 // plays when something arrives, which are ordinary animation driven by
 // depth and have no limit at all.
 float _YAPS_ShapeCount;

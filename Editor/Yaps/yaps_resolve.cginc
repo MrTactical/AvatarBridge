@@ -1,7 +1,7 @@
 // YAPS socket resolution, for ChilloutVR.
 //
-// Where the socket comes from. The deform does not care — it takes a
-// frame and bends toward it — so all the platform-specific awkwardness
+// Where the socket comes from. The deform does not care, it takes a
+// frame and bends toward it, so all the platform-specific awkwardness
 // lives here.
 //
 // ---------------------------------------------------------------------
@@ -11,7 +11,7 @@
 // Spike testing settled this the hard way, so the reasoning is worth
 // keeping next to the code.
 //
-// ENGAGEMENT is decided by the discrete channel ALONE — contacts, through
+// ENGAGEMENT is decided by the discrete channel ALONE, contacts, through
 // animator parameters, through CVRMaterialDriver, into material vectors.
 // It is never derived from whether a light happens to be visible. This is
 // the single most important rule here: Unity fills the vertex light slots
@@ -34,8 +34,8 @@
 //      close range deliberately: the per-camera problem only expresses
 //      itself at distance, because a light sitting centimetres from the
 //      plug is inside any frustum that is drawing the plug at all.
-//   3. CVR's own per-player position globals as the floor. Approximate —
-//      hip position with no rotation anywhere in the API — but set with
+//   3. CVR's own per-player position globals as the floor. Approximate , 
+//      hip position with no rotation anywhere in the API, but set with
 //      SetGlobalVectorArray, so identical in every pass, every eye and
 //      every camera, and refreshed each frame from the same interpolated
 //      pose the remote avatar is rendered from. It cannot disagree with
@@ -64,7 +64,7 @@ struct YapsSocket
     float engaged;
     float isHole;
     // Who decided this answer: 0 nobody, 1 the contact channel, 2 a marker
-    // light. Diagnostic, not behaviour — it exists because a plug bending
+    // light. Diagnostic, not behaviour, it exists because a plug bending
     // near a socket does not say WHO bent it, and a stray light reads
     // exactly like a working channel until the two are coloured apart. A
     // day was lost to precisely that.
@@ -79,35 +79,35 @@ struct YapsSocket
 //
 // The stock DPS ordering puts fronts at 0.45 and roots at 0.41, and since
 // Unity ranks vertex lights by range, every front outranks its own root
-// and evicts it — with twelve sockets the four slots filled with fronts,
-// which are a direction with no origin. So we author our own ordering,
+// and evicts it, with twelve sockets the four slots filled with fronts,
+// which are a direction with no origin. So YAPS authors its own ordering,
 // root above front.
 //
 // Picking the digits is more constrained than it looks. Legacy already
-// speaks for almost all of them — 1 and 3 hole, 2 and 4 ring, 5 and 6
-// front, 8 and 9 plug tip — and the decoder only ever looks at the second
+// speaks for almost all of them, 1 and 3 hole, 2 and 4 ring, 5 and 6
+// front, 8 and 9 plug tip, and the decoder only ever looks at the second
 // decimal, so 0.31 reads as a hole exactly like 0.41 does. That leaves
-// precisely two free digits, 0 and 7, and we need root above front:
+// precisely two free digits, 0 and 7, and root must sit above front:
 //
 //     root  0.4706   digit 7
 //     front 0.4006   digit 0
 //
-// A first attempt used 0.4106 for the front, which is digit 1 — legacy's
-// hole root. Both of our lights then decoded as roots, no front was ever
+// A first attempt used 0.4106 for the front, which is digit 1, legacy's
+// hole root. Both YAPS lights then decoded as roots, no front was ever
 // paired, and the socket had a position but no axis: the plug tracked the
 // socket around but ignored its rotation entirely.
 //
 // The legacy values are still DECODED, so a plug still reacts to the DPS
-// content already on the platform. Legacy plugs will not react to OUR
-// sockets, since 7 and 0 mean nothing to them — the price of roots that
+// content already on the platform. Legacy plugs will not react to YAPS
+// sockets, since 7 and 0 mean nothing to them, the price of roots that
 // win their slots, and the reason emitting a legacy set as well is a
 // separate opt-in.
 
 // A root is a root however it was authored, but the legacy digits also say
 // what KIND of socket it is, and that is worth keeping: a hole closes
-// around the plug and stops it, a ring lets it pass straight through. Our
-// own encoding cannot say — 0 and 7 were the only free digits and both are
-// spent — so for converted sockets the kind travels on the contact channel
+// around the plug and stops it, a ring lets it pass straight through. The
+// YAPS encoding cannot say, 0 and 7 were the only free digits and both are
+// spent, so for converted sockets the kind travels on the contact channel
 // instead. Whoever resolved the position decides the kind.
 #define YAPS_LIGHT_NONE  0
 #define YAPS_LIGHT_ROOT  1   // a root, kind unknown
@@ -136,19 +136,19 @@ inline float3 YapsLightPosition(uint slot)
 // ChilloutVR publishes every player's hip position to every shader, so the
 // question can simply be asked: find the player nearest the plug, find the
 // player nearest the light, and see whether they are the same person. No
-// identity is transmitted and nothing is spent — the answer was already
+// identity is transmitted and nothing is spent, the answer was already
 // sitting in a global array.
 //
 // It is a judgement rather than a fact, and it is built to fail SAFE: it
 // returns "not mine" whenever it cannot tell. Discarding a light that was
 // somebody else's costs a socket that should have worked; keeping one that
-// was our own costs a plug bent into its wearer, which the deform recovers
+// was its own costs a plug bent into its wearer, which the deform recovers
 // from as soon as anything better resolves. Doubt therefore keeps the light.
 bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 {
     // No early-out for a lone player. Alone in an instance the wearer IS
     // the only body, and the inboard test below is exactly what separates
-    // their own socket from a prop they are holding — bailing out here with
+    // their own socket from a prop they are holding, bailing out here with
     // "same body" would blank every socket in the world for anyone testing
     // by themselves.
     int count = min((int) round(CVRGlobalParams1.y), 255);
@@ -171,7 +171,7 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
     }
 
     // Nothing resolved: claim nothing, so a light is never discarded on the
-    // strength of an answer we do not have.
+    // strength of an answer that is not there.
     if (nearPlug < 0 || nearLight < 0)
     {
         return false;
@@ -181,7 +181,7 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
         return false;   // somebody else's body; plainly not ours
     }
 
-    // Same body — but so is a prop held against your own hip, and skipping
+    // Same body, but so is a prop held against your own hip, and skipping
     // those would make the whole test kit invisible to its own owner.
     //
     // What separates them is that a real socket on this body sits INBOARD
@@ -200,13 +200,13 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 //
 // Harder than the plug side, and this is honest about the limit. Same
 // nearest-player is necessary but not sufficient: a stranger's plug that
-// is inside this socket is ALSO nearest this hip — that is what inside
+// is inside this socket is ALSO nearest this hip, that is what inside
 // means. What separates the two is where the BASE is. The wearer's plug
 // base is at their crotch, a fixed short distance from their hip that does
 // not change; a stranger's base, with the tip inside, is a plug length out
 // on their side of the pair. So a base nearer this hip than the socket
 // itself is ours; a base further out is theirs. Both bodies close together
-// makes this a near thing, and doubt keeps the plug (returns false) —
+// makes this a near thing, and doubt keeps the plug (returns false) , 
 // a stranger's plug wrongly ignored is a missed effect, the wearer's plug
 // wrongly kept is a socket that never closes.
 bool YapsSocketOwnPlug(float3 socketWorld, uint slot)
@@ -253,8 +253,8 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
     // uniform. The fourth decimal does not come back reliably.
     //
     // It showed as a socket that worked or did not depending on which digit
-    // its range happened to land on. A prop authored at 0.4206 — fourth
-    // decimal 6 — was being skipped by a plug whose tag was 3, because the
+    // its range happened to land on. A prop authored at 0.4206, fourth
+    // decimal 6, was being skipped by a plug whose tag was 3, because the
     // number arriving in the shader was nearer 0.4203.
     //
     // So the digit is gone. _YAPS_SelfTag is now only a flag: zero or more
@@ -271,8 +271,8 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
     if (digit == 7) return YAPS_LIGHT_ROOT;
     if (digit == 0) return YAPS_LIGHT_FRONT;
 
-    // Legacy DPS, so a plug reacts to content already on the platform —
-    // and legacy is more specific than we can be, saying hole or ring in
+    // Legacy DPS, so a plug reacts to content already on the platform , 
+    // and legacy is more specific than YAPS can be, saying hole or ring in
     // the digit itself.
     if (digit == 1 || digit == 3) return YAPS_LIGHT_HOLE;
     if (digit == 2 || digit == 4) return YAPS_LIGHT_RING;
@@ -283,7 +283,7 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
 }
 
 // Nearest root to the plug, with its front partner if one arrived. Unity
-// may hand us a root without its front, so an unpaired root still yields a
+// may hand over a root without its front, so an unpaired root still yields a
 // position and simply leaves the axis to the caller.
 bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, out float3 forward,
                          out float holeHint)
@@ -337,8 +337,8 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
 //
 // The plug bends only toward a socket it can resolve: a contact channel
 // written by a socket, a marker light emitted by a socket. Nothing else. A
-// body position is not a socket — nobody authored it and nothing on the
-// wearer's side switches it off — so it is not a target here, and a plug
+// body position is not a socket, nobody authored it and nothing on the
+// wearer's side switches it off, so it is not a target here, and a plug
 // with no socket in range stays exactly as it was.
 //
 // The one thing the player positions ARE still read for is YapsSameBodyAs
@@ -358,7 +358,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
 
     // TAG FILTER, from SPS. The channel may carry the socket's tag as a
     // small integer in the flags' z. A plug that refuses that tag, or
-    // requires a different one, ignores the socket outright — engagement
+    // requires a different one, ignores the socket outright, engagement
     // goes to zero and the light refinement below has nothing to sharpen.
     // Zero on either knob means no filter; a socket carrying no tag (0)
     // is only ever refused by a REQUIRE, never by an exclude, since there
@@ -392,7 +392,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // wire is the gap between two bodies already touching, which barely
     // moves, rather than a world position that changes every time either
     // of them walks. A centre reading is a real reading, not silence, so
-    // engagement decides whether anything arrived — the zero test above
+    // engagement decides whether anything arrived, the zero test above
     // cannot.
     if (_YAPS_ChannelSpace > 0.5)
     {
@@ -404,13 +404,13 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
                                      + plugForward * offset.z;
 
         // The channel's engagement is a PROXIMITY reading taken across the
-        // whole trigger sphere, and that sphere is 1.75 plug lengths — so
+        // whole trigger sphere, and that sphere is 1.75 plug lengths, so
         // with the socket at the tip it reads about 0.4, where the light
         // path reads 1, and the plug bends roughly half as far for exactly
         // the same arrangement.
         //
-        // So keep it as the thing it is good at — a gate, meaning something
-        // is in range and the reconstruction below is real — and take the
+        // So keep it as the thing it is good at, a gate, meaning something
+        // is in range and the reconstruction below is real, and take the
         // curve itself from the position, by the same formula the light
         // path uses. Two routes to the same socket then cannot disagree
         // about how far in it is, which they have no business doing.
@@ -424,7 +424,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
             // worse. A trigger reporting "in range" while its position axes
             // still sit at their default puts the socket in the CORNER of
             // the box, three plug lengths out, and engagement correctly
-            // collapses to zero — but the position it computed on the way
+            // collapses to zero, but the position it computed on the way
             // there is what the light refinement below gets tested against.
             // Left saying "found", a half-delivered channel therefore
             // rejects the very light that would have rescued it, and the
@@ -438,7 +438,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // Which way the socket FACES, from the second point it already
         // publishes. Without this the channel hands over a bare point, the
         // deform can only aim at it, and the plug reaches the socket
-        // instead of threading it — visibly worse than the light path,
+        // instead of threading it, visibly worse than the light path,
         // which gets a root and a front and therefore an axis.
         //
         // Believed only when it is PLAUSIBLE. Both ecosystems put the
@@ -474,8 +474,8 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // light has named a socket, nothing has, and the plug stays as it is.
     // See "what the player globals are NOT for" above.
 
-    // Refinement: a protocol light close to where we already believe the
-    // socket to be. It only sharpens the position — it can never switch
+    // Refinement: a protocol light close to where the resolver already believes the
+    // socket to be. It only sharpens the position, it can never switch
     // the deform on or off, because light visibility is per camera and
     // engagement must not be.
     //
@@ -493,7 +493,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // get to nominate a DIFFERENT one, and it used to: any lit root inside
     // the envelope replaced the channel's position outright. A contact-only
     // socket therefore appeared broken whenever a lit socket was anywhere
-    // nearby — the channel engaged on the one being used, and the position
+    // nearby, the channel engaged on the one being used, and the position
     // came from the one carrying lights. Blue and orange are the sockets
     // this ruins, because they emit no light of their own to win it back.
     //
@@ -513,7 +513,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.position = lightPosition;
         found = true;
         // A light that only SHARPENED the channel's answer leaves the tier
-        // saying channel — the channel engaged it, the light polished it.
+        // saying channel, the channel engaged it, the light polished it.
         // A light standing in for a silent channel owns the answer.
         if (!channelFound)
         {
@@ -521,7 +521,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         }
         // Whoever resolved the position decides the kind. A legacy light
         // states outright whether it is a hole or a ring, and it is
-        // describing the very socket we are now aiming at — which the
+        // describing the very socket now being aimed at, which the
         // channel's flag may not be, since the channel reports whatever
         // last entered the trigger box.
         if (lightHoleHint >= 0)
@@ -535,7 +535,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     }
 
     // Legacy content has no contacts to engage from. ChilloutVR's existing
-    // DPS sockets — on avatars and on spawned props alike — announce
+    // DPS sockets, on avatars and on spawned props alike, announce
     // themselves with marker lights and nothing else, so a plug that
     // insisted on the contact channel would never react to any of it. That
     // is most of the platform's existing content, and refusing it is worse
@@ -544,7 +544,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // The compromise: engage on distance to a light-resolved root, but only
     // once nothing else has engaged, and only within about a plug length.
     // Engagement decided from a light is engagement decided per camera,
-    // which is the thing this file otherwise refuses to do — bounded here
+    // which is the thing this file otherwise refuses to do, bounded here
     // because the divergence is a range effect. A light sitting centimetres
     // from the plug is inside any frustum already drawing the plug; one
     // across the room is not, and that is where mirrors and the direct view
@@ -552,7 +552,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     if (socket.engaged <= 0 && litRoot)
     {
         // Measured against the TIP, not the root. The gap is from the
-        // plug's base, and the tip is already a whole length out — so a
+        // plug's base, and the tip is already a whole length out, so a
         // window of 0.9 to 1.3 lengths only ever engaged a socket within a
         // few centimetres of the tip, and standing just outside it gave
         // nothing at all while moving back and forth flickered in and out

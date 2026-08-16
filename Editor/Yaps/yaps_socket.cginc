@@ -1,4 +1,4 @@
-// YAPS — the SOCKET side. A socket that reacts to what has gone into it,
+// YAPS, the SOCKET side. A socket that reacts to what has gone into it,
 // in the vertex shader, without spending a single synced parameter.
 //
 // ---------------------------------------------------------------------
@@ -65,7 +65,7 @@ float _YAPS_SocketDepth;
 // their meshes around.
 //
 // KNOWN LIMIT, and it bites the converter rather than a prop. Staging here
-// is POSITIONAL — shape 0 is the entry, shape 3 the deepest — but the
+// is POSITIONAL, shape 0 is the entry, shape 3 the deepest, but the
 // baker picks shapes by how far they move a mesh and keeps them in that
 // order. Ties hold their mesh order, so a set of evenly sized shapes comes
 // through correctly, and the test tube's four do. A socket whose entry
@@ -147,7 +147,7 @@ float YapsPlugDepth(float3 socketWorld)
 // The deform. Baked shape deltas, staged by depth.
 //
 // Note what is NOT here: no bezier, no frame recovery, no walk. A socket
-// does not follow anything — it opens. All the geometry was decided by
+// does not follow anything, it opens. All the geometry was decided by
 // whoever authored the blendshapes; this only chooses how much of each to
 // apply and when.
 void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 tangent,
@@ -174,7 +174,7 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
         float fade = max(_YAPS_SocketShapeFade[s], 0.0001);
 
         // CUMULATIVE, as DPS is: once a shape has arrived it stays, and
-        // going deeper stacks the next one on top. Not a travelling band —
+        // going deeper stacks the next one on top. Not a travelling band , 
         // a tube being filled progressively is what this describes, and a
         // band would empty the part already occupied.
         //

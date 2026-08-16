@@ -641,9 +641,12 @@ with which of them it came from, so a feature you know from one of them is under
 
 **A converted plug bends into a socket and threads it along its axis** — arriving straight rather
 than aiming at a point, easing in as it approaches, relaxing when pulled away. **A converted
-socket opens around a plug**: the entry and up to three depths, staged, driven straight from the
-shader — the socket-side deform DPS had and SPS dropped — so it reacts to a DPS plug that has never
-heard of this tool.
+socket with a mesh of its own opens around a plug**: the entry and up to three depths, staged,
+driven straight from the shader — the socket-side deform DPS had and SPS dropped — so it reacts to
+a DPS plug that has never heard of this tool. A socket on the body mesh keeps what its author
+built instead: the shapes a contact drives, made local. (The socket shader measures depth from its
+mesh's own origin, which for a body is the avatar's root, so it only opens right on a mesh whose
+origin is the socket.)
 
 **It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
 — its hierarchy, its menu labels, its report — but the things *other people's* content reads are
@@ -731,7 +734,9 @@ and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup wi
 Theft* on (a channel value is written by whoever's socket the prop met, and that write would hand
 the prop to them), a collider to grab by sized from the bake, and — for a baked plug — the synced
 contact channel: eight values, one trigger each, that reach every viewer, not just the ones whose
-client draws the marker lights. **Verify prop** before each upload; the CCK's own inspector can
+client draws the marker lights. A prop with an animator controller of its own keeps it and gains
+the channel's layers; one without gets a channel controller. Run it again after a re-bake; it
+replaces its own work, not yours. **Verify prop** before each upload; the CCK's own inspector can
 blank a channel value's parameter name if the Spawnable is left open, and Verify puts it back.
 
 **Universal socket prefabs** — *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
@@ -739,19 +744,22 @@ and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z th
 should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
-**YAPS Socket** (the component the prefabs carry) — hole or ring; a tag; the mesh whose
-blendshapes should open, with up to four of its shapes picked from a dropdown and staged by depth
-on a range slider; **Preview** — with a test plug the tool drops in front of the socket when the
-scene has none; and, once baked, the socket-side shape knobs. *Advanced* holds the marker lights
-and *Rebuild markers*.
+**YAPS Socket** (the component the prefabs carry) — hole or ring; for a socket with a mesh of its
+own (origin at the entrance), that mesh and up to four of its shapes picked from a dropdown and
+staged by depth on a range slider, baked by Build; **Preview** — with a test plug the tool drops
+in front of the socket when the scene has none; and, once baked, the socket-side shape knobs.
+*Advanced* holds the marker lights and *Rebuild markers*.
 
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
 socket · Out of a socket · Motion inside a socket · The bend toward a socket · Past the opening ·
-Which sockets it answers · How sockets find it*. Every knob wears the system it came from — DPS
-purple, TPS teal, SPS orange, YAPS green — and a **Show** filter at the top keeps only one
-system's knobs. Knobs write straight to the plug's material; the material's own YAPS panel writes
-back; one set of values, two doors. **Bake** is at the bottom.
+How sockets find it*. Every knob wears the system it came from — DPS purple, TPS teal, SPS
+orange, YAPS green — and a **Show** filter at the top keeps only one system's knobs. Knobs write
+straight to the plug's material; the material's own YAPS panel writes back; one set of values,
+two doors. **Bake** is at the bottom. **A plain (unskinned) mesh bends around its object's origin
+along +Z** — pivot at the base, shaft along +Z (in Blender: origin at the base, shaft along +Y
+before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
+and needs neither.
 
 **The material panel.** A patched material's YAPS block is grouped and named the same way as the
 component, and hands everything else to the shader's own editor — a Poiyomi material keeps
@@ -945,7 +953,7 @@ can drift from what a conversion does.
 | card | does |
 |---|---|
 | **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, cloth with no root bones |
-| **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them — see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye) |
+| **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them — see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Materials an animation swaps in are not followed here, because that would mean editing your clips; the converter does follow them, on its own copies |
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles — doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
@@ -1860,6 +1868,29 @@ Built means a plug can find it — a marker light or a root pointer beneath the 
 means the material carries `_YAPS_Bake`. On an avatar converted before 4.0 the components were not
 left behind; the window offers **make editable** on each row (or **Build**, which does them all),
 and the socket or plug then reads as it should. Reconverting on the current release does the same.
+
+### YAPS: "the plug measured most of the avatar's height, so it was left alone"
+
+The bake could not tell the plug's vertices from the rest of the mesh, so it took everything: no
+bone chain of its own sits beneath the plug object. Put the SPS Plug component (or the YAPS Plug's
+*Root Bone*) on the plug's root bone, or on an empty under it, and convert or bake again. A plug
+mesh that is its own object is found by that object; a plug that is part of the body needs the
+bone.
+
+### YAPS: a plain-mesh plug jumps or turns the moment a socket engages it
+
+A plain (unskinned) mesh bends around its object's origin along +Z, whatever the vertices say. The
+bake warns when the mesh's shaft is not along +Z or its base is not at the origin. Set the pivot
+at the base and point +Z along the shaft — in Blender, origin at the base and the shaft along +Y
+before export — then bake again. A skinned mesh is measured from its bones and needs neither.
+
+### YAPS: a socket on the body mesh does not open around a plug
+
+By design. The socket shader measures depth from its mesh's own origin, and a body mesh's origin
+is the avatar's root, so it cannot open right; the converter leaves such a socket the reactions its
+author built (the shapes a contact drives, made local) and says so. A socket with a mesh of its
+own, origin at the entrance, gets the shader deform, and the YAPS Socket component's shape rows
+bake onto exactly such a mesh.
 
 ## Reporting a bug
 

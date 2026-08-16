@@ -1,8 +1,8 @@
 // What an existing DPS, TPS or SPS setup already SAYS about itself, and
 // how each of those statements becomes a YAPS one.
 //
-// Somebody who tuned a penetrator in another system made decisions — how
-// stiff its base is, how much it squeezes, how far its idle shrink goes —
+// Somebody who tuned a penetrator in another system made decisions, how
+// stiff its base is, how much it squeezes, how far its idle shrink goes , 
 // and those decisions are sitting on the material as floats. Upgrading
 // that setup to YAPS without reading them would hand the user a plug that
 // looks nothing like the one they built. So every value that has a
@@ -34,8 +34,8 @@
 // the user discovering it.
 //
 // Nothing here touches a mesh or a shader. It reads floats off a material
-// and returns floats for another. The measuring — length and frame from
-// the mesh, shapes from the blendshapes — is YapsBaker's, and where the
+// and returns floats for another. The measuring, length and frame from
+// the mesh, shapes from the blendshapes, is YapsBaker's, and where the
 // author's stated length and the measured one disagree, the mesh wins and
 // the disagreement is reported.
 #if CVR_CCK_EXISTS
@@ -62,7 +62,7 @@ namespace AvatarBridge
         }
 
         // Which system authored this material, if any. Decided from the
-        // properties the material actually HAS, not the shader's name —
+        // properties the material actually HAS, not the shader's name , 
         // Poiyomi hosts TPS inside its own shader, and a locked Poiyomi
         // renames the shader per material.
         public static Origin Detect(Material material, out Part part)
@@ -108,7 +108,7 @@ namespace AvatarBridge
         // `plugLength` and `plugRadius` are the MEASURED ones from the bake,
         // in metres. DPS states several of its knobs in metres and YAPS
         // states them as fractions of the plug, so the conversion needs the
-        // plug's real size — and the mesh is the truth about that, not the
+        // plug's real size, and the mesh is the truth about that, not the
         // number the author typed into _Length.
         public static List<Carried> Carry(Material source, Material target,
             List<string> unmapped, float plugLength = 0f, float plugRadius = 0f)
@@ -137,7 +137,7 @@ namespace AvatarBridge
         //
         // So _Squeeze is an ABSOLUTE RADIUS IN METRES the shaft is clamped to
         // at the opening (not a fraction), and _BulgePower is a FRACTION OF
-        // RADIUS added (Raliv's default 0.00272 is a 0.3% swell — genuinely
+        // RADIUS added (Raliv's default 0.00272 is a 0.3% swell, genuinely
         // tiny). A first draft here scaled the bulge by a hundred and read
         // the squeeze as 0..1; both would have handed a DPS user a plug
         // nothing like the one they tuned.
@@ -193,7 +193,7 @@ namespace AvatarBridge
             // DPS stages: an entry-open duration and three (depth, duration)
             // pairs. Ours: four (start, fade) pairs where stage 0 is the
             // entry. DPS depths are in metres past the socket; ours are
-            // fractions of the PLUG's length, which a socket does not know —
+            // fractions of the PLUG's length, which a socket does not know , 
             // so they are carried as metres relative to a 0.3 m reference and
             // the socket-side deform reads them against the plug it meets.
             // Close enough that the staging order and proportions survive;
@@ -269,7 +269,7 @@ namespace AvatarBridge
         {
             Direct(s, t, "_SPS_Overrun", "_YAPS_Overrun", carried);
             // Everything else SPS carries is either the bake (redone from
-            // the mesh) or transport (identity, tags — the channel's job).
+            // the mesh) or transport (identity, tags, the channel's job).
         }
 
         // --- helpers ---------------------------------------------------------

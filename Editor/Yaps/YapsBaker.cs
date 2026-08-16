@@ -1,5 +1,5 @@
 // Bakes a plug mesh into the texture the deform reads. Format from
-// SPS's documented layout, not its code; see Tools/SpsSpike/LICENSE-POSTURE.md.
+// SPS's documented layout, not its code; see docs/YAPS-CLEAN-ROOM.md.
 // Each vertex is stored in the plug root's frame without its scale, in
 // renderer units, placed through bone x bindpose. The active weight is
 // the vertex's skin weight on the plug's bone chain; it feathers the base.
@@ -174,7 +174,7 @@ namespace AvatarBridge
             AssetDatabase.CreateAsset(texture, path);
 
             // The deform throws vertices well outside the rest pose, and
-            // Unity culls on the mesh's own bounds — so a plug that bends
+            // Unity culls on the mesh's own bounds, so a plug that bends
             // toward someone can vanish mid-bend precisely when it matters.
             ExtendBounds(renderer, mesh, length);
 
@@ -222,8 +222,8 @@ namespace AvatarBridge
 
         // How much of this renderer belongs to that plug, without baking
         // anything. Nothing on a baked avatar says which renderer carries
-        // a plug — VRCFury's component is gone by then and the flag that
-        // would have left a bake texture behind is deliberately off — so
+        // a plug, VRCFury's component is gone by then and the flag that
+        // would have left a bake texture behind is deliberately off, so
         // the answer is measured: the renderer with the most vertices
         // weighted to the plug's bone chain is the one wearing it.
         public static int CountPlugVertices(Renderer renderer, Transform plugRoot)
@@ -337,7 +337,7 @@ namespace AvatarBridge
             if (plugBones.Count == 0)
             {
                 // The plug object is very often hung off a bone rather than
-                // being one — VRCFury's own baked plug sits as a child of
+                // being one, VRCFury's own baked plug sits as a child of
                 // the bone that carries it. Climb to the first real bone
                 // above it and take that subtree instead of baking nothing.
                 for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
@@ -368,7 +368,7 @@ namespace AvatarBridge
 
         // Both the origin AND the axis come from the mesh, because neither
         // can be taken from the object VRCFury leaves behind once its own
-        // SPS step is suppressed — measured on a real avatar, that object's
+        // SPS step is suppressed, measured on a real avatar, that object's
         // rotation pointed across the plug and its position sat a quarter
         // of a metre back up the body, so a plug 0.427 m long baked first at
         // 0.667 and then at 0.693.
@@ -460,7 +460,7 @@ namespace AvatarBridge
         }
 
         // One entry per shape that actually moves the plug, holding a delta
-        // position, normal and tangent per vertex — nine floats, in the
+        // position, normal and tangent per vertex, nine floats, in the
         // same plug frame as the base block.
         //
         // Shapes that leave the plug alone are skipped rather than stored
@@ -545,15 +545,15 @@ namespace AvatarBridge
             // Which shapes to keep when more than sixteen exist is a
             // question about cost, and the biggest movers are the right
             // answer. What ORDER to write them in is a question about
-            // meaning: a socket stages its shapes by INDEX — shape 0 is the
-            // entry, shape 3 the deepest — so a socket whose entry shape
+            // meaning: a socket stages its shapes by INDEX, shape 0 is the
+            // entry, shape 3 the deepest, so a socket whose entry shape
             // moved furthest would open at full depth and close as the plug
             // went in.
             //
             // Sorting once by movement answered the cost question and
             // silently gave a wrong answer to the meaning one. Doing both,
             // in that order, costs nothing and removes the hazard for good
-            // — including for a socket sharing its mesh with a plug, where
+            //, including for a socket sharing its mesh with a plug, where
             // one bake has to serve both ends and could not have been
             // ordered two ways.
             var chosen = scored
@@ -701,7 +701,7 @@ namespace AvatarBridge
             if (renderer is SkinnedMeshRenderer skin)
             {
                 // The cheapest correct answer for a skinned mesh, and it
-                // also spares us guessing how far a bend can travel.
+                // also spares guessing how far a bend can travel.
                 skin.updateWhenOffscreen = true;
                 return;
             }

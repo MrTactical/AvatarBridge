@@ -5,7 +5,7 @@
 // shader with the deform patched into it, and Poiyomi's unlock button goes
 // back to the shader it was locked FROM. That is the original, which has no
 // deform. So unlocking to change a colour silently removes the deform, and
-// re-locking does not bring it back — there was no way back at all except
+// re-locking does not bring it back, there was no way back at all except
 // converting the whole avatar again.
 //
 // Now there is. Unlock, edit, re-lock, run this. The patch is applied to
@@ -13,7 +13,7 @@
 // feature and every property the user set survives it.
 //
 // The awkward part is the VALUES. A material's _YAPS_ properties only exist
-// while its shader declares them, and the unlocked Poiyomi shader does not —
+// while its shader declares them, and the unlocked Poiyomi shader does not , 
 // so by the time this runs, material.HasProperty says no and GetTexture
 // returns nothing. They are not gone though: Unity keeps them in the
 // material's serialized property lists, orphaned but intact. So they are
@@ -120,7 +120,7 @@ namespace AvatarBridge
         // Read from the SERIALIZED lists, not through the material. A
         // property whose shader does not declare it is invisible to
         // HasProperty and GetFloat, which is precisely the state an
-        // unlocked material is in — but Unity still has the values, sitting
+        // unlocked material is in, but Unity still has the values, sitting
         // in m_SavedProperties with nothing to apply them to.
         static Values Capture(Material material)
         {
