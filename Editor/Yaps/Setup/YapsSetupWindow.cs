@@ -77,7 +77,7 @@ namespace AvatarBridge
             // Rebuilt with the mode so the active tab's tint follows.
             _tabs.Clear();
             _tabs.Add(BridgeElements.Tabs(
-                new[] { "Set up an avatar or prop", "Test props" },
+                new[] { "Set up an avatar or prop", "Test it" },
                 new[] { "d_Avatar Icon", "d_PlayButton" },
                 (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
             _pages.Clear();
@@ -213,41 +213,48 @@ namespace AvatarBridge
 
         void BuildTestPage()
         {
-            var what = new BridgeElements.Card("Test props", null, null, 1, 0f);
+            var what = new BridgeElements.Card("Test it here", null, null, 1, 0f);
             what.Body.Add(BridgeElements.Hint(
-                "Ready-made things to try YAPS with, here in the editor and in game. A test plug is a " +
-                "capsule baked through the exact path your own mesh takes, so building it proves the " +
-                "path; a test socket is the universal prefab. Drop them in, tick Preview on the socket, " +
-                "and the plug bends toward it in the scene view."));
+                "See a plug bend before you upload. Drop a test hole or ring in front of the scene " +
+                "camera and every baked plug in the scene bends toward it, live, while you move it. " +
+                "No plug yet? Drop a test plug too. Nothing here ships: the test objects are yours to " +
+                "delete, and Preview writes nothing to the avatar."));
             _pages.Add(what);
 
-            var make = new BridgeElements.Card("Make", null, null, 2, 0.5f);
+            var make = new BridgeElements.Card("Drop a test socket", null, null, 2, 0.5f);
             make.Body.Add(BridgeElements.Row(
-                Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug()),
-                Btn("Test hole", () => AddSocket(YapsSocket.SocketKind.Hole, atCamera: true)),
-                Btn("Test ring", () => AddSocket(YapsSocket.SocketKind.Ring, atCamera: true))));
+                Btn("Test hole (previews)", () => TestSocket(YapsSocket.SocketKind.Hole)),
+                Btn("Test ring (previews)", () => TestSocket(YapsSocket.SocketKind.Ring)),
+                Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug())));
             make.Body.Add(BridgeElements.Hint(
-                "Each lands in front of the scene camera. The plug wears YAPS Simple Lit — the plain " +
-                "shader the toolkit falls back to when a mesh's own cannot be patched — baked and " +
-                "announced like any plug. Select the hole or ring and click Preview, then move it around " +
-                "the plug."));
-            make.Body.Add(BridgeElements.Row(Btn("Make the selected test object a prop", () => MakeProp(Selection.activeGameObject))));
-            make.Body.Add(BridgeElements.Hint("Select the test plug or socket at its top object first. Upload the result as a prop from the CCK."));
-            make.Body.Add(BridgeElements.SubHeading("Prefabs"));
-            make.Body.Add(BridgeElements.Row(Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs)));
-            make.Body.Add(BridgeElements.Hint(
-                "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs — drag one under a bone on any " +
-                "avatar and it works for every plug on the platform."));
+                "The socket lands in front of the camera with Preview already on: select it and move " +
+                "it around the plug. A test plug is a capsule baked through the exact path your own " +
+                "mesh takes, on YAPS Simple Lit. Stop Preview on the socket, or delete it, when done."));
             _pages.Add(make);
 
-            var game = new BridgeElements.Card("In game", null, false, null, 1f);
-            game.Body.Add(BridgeElements.Hint(
-                "To try a test plug and socket in ChilloutVR, put each on its own CVR Spawnable and " +
-                "upload them as props. A prop needs a collider to be grabbable, and Disallow Theft on " +
-                "the plug so a socket switching on cannot pull it out of someone's hand. As props they " +
-                "find each other by marker lights; the synced contact channel between props — the " +
-                "part that reaches remote viewers — is the toolkit's next piece."));
-            _pages.Add(game);
+            var props = new BridgeElements.Card("Props and prefabs", null, false, null, 1f);
+            props.Body.Add(BridgeElements.Row(Btn("Make the selected test object a prop", () => MakeProp(Selection.activeGameObject))));
+            props.Body.Add(BridgeElements.Hint(
+                "Select the test plug or socket at its top object first. It gets a CVR Spawnable, a " +
+                "pickup with theft off, a collider and, for a plug, the synced contact channel; upload " +
+                "it from the CCK and try it with a second person. As props they find each other by " +
+                "marker lights and, plug to socket, by the channel."));
+            props.Body.Add(BridgeElements.SubHeading("Prefabs"));
+            props.Body.Add(BridgeElements.Row(Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs)));
+            props.Body.Add(BridgeElements.Hint(
+                "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
+                "avatar and every plug on the platform reads it."));
+            _pages.Add(props);
+        }
+
+        // A test socket in front of the camera, previewing at once: every
+        // baked plug in the scene bends toward it, and a test plug is
+        // dropped when there is none.
+        void TestSocket(YapsSocket.SocketKind kind)
+        {
+            var socket = AddSocket(kind, atCamera: true);
+            if (socket == null) return;
+            YapsPreview.Set(socket, true);
         }
 
         // --- behaviour -----------------------------------------------------------

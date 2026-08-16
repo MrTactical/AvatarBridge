@@ -778,9 +778,10 @@ icon, plus pointer spheres and cloth wires, and all of it buries a socket. One s
 window hides those while you place sockets and puts back exactly what it found. An editor
 preference; nothing on the avatar changes.
 
-**Test props** (the window's second tab) — a test plug and a test hole or ring, dropped in front
-of the scene camera; select the socket and click Preview. **Make the selected test object a prop**
-does the rest; upload each from the CCK and try them with a second person.
+**Test it** (the window's second tab) — drop a test hole or ring in front of the scene camera and it
+arrives with Preview on: every baked plug in the scene bends toward it while you move it. A test
+plug too, if the scene has none. **Make the selected test object a prop** does the rest; upload each
+from the CCK and try them with a second person.
 
 **What the tool does not do yet, and says so:** the synced contact channel on an *avatar's own*
 controller for a plug built with the tool (a converted avatar has one; a native plug reads
