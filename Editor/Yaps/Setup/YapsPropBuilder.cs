@@ -139,6 +139,17 @@ namespace AvatarBridge
                 spawnable.useAdditionalValues = true;
                 repaired++;
             }
+
+            // The grab. The client reads a pickup's collider off the pickup's
+            // own object, so one on a child leaves a prop nobody can hold.
+            var pickup = root.GetComponent<CVRPickupObject>();
+            if (pickup != null && root.GetComponent<Collider>() == null)
+            {
+                broken++;
+                o.Notes.Add("Nothing can grab this prop: its pickup has no collider on the same object " +
+                            "(an early build put one on a \"YAPS Grab\" child, which the game does not read). " +
+                            "Make it a prop again.");
+            }
             if (repaired > 0) EditorUtility.SetDirty(spawnable);
             o.Ok = broken == 0;
             o.Message = broken == 0
@@ -154,24 +165,35 @@ namespace AvatarBridge
             return r.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Length"));
         }
 
-        // A capsule along the plug's frame, or a box round the renderers.
+        // The collider a hand grabs by, and it has to be on the ROOT: the
+        // client reads its pickup's collider with TryGetComponent, on the
+        // pickup's own object, and a pickup with none can never be picked
+        // up. It is not a trigger either — a prop nobody can rest on the
+        // floor is half a prop, and the contact hosts carry their own
+        // trigger shapes.
+        //
+        // A capsule along the plug when the plug's frame lines up with the
+        // root, since a capsule has a direction but no rotation; a box
+        // round the renderers otherwise.
         static void AddCollider(GameObject root, YapsPlug plug, Outcome o)
         {
+            // Whatever an earlier build left, wherever it left it.
+            var old = root.transform.Find("YAPS Grab");
+            if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+            foreach (var c in root.GetComponents<Collider>()) Undo.DestroyObjectImmediate(c);
+
             var frame = plug != null ? (plug.transform.Find("YAPS Markers") ?? plug.transform) : null;
             var material = plug != null ? BakedMaterial(plug) : null;
-            if (frame != null && material != null)
+            if (frame != null && material != null
+                && Quaternion.Angle(frame.rotation, root.transform.rotation) < 5f)
             {
-                var host = new GameObject("YAPS Grab");
-                host.transform.SetParent(root.transform, false);
-                host.transform.SetPositionAndRotation(frame.position, frame.rotation);
                 float length = material.GetFloat("_YAPS_Length");
-                var capsule = host.AddComponent<CapsuleCollider>();
-                capsule.isTrigger = true;
+                var capsule = Undo.AddComponent<CapsuleCollider>(root);
+                capsule.isTrigger = false;
                 capsule.direction = 2;
                 capsule.height = length;
                 capsule.radius = Mathf.Max(0.02f, length * 0.12f);
-                capsule.center = new Vector3(0, 0, length * 0.5f);
-                Undo.RegisterCreatedObjectUndo(host, "YAPS grab collider");
+                capsule.center = root.transform.InverseTransformPoint(frame.position + frame.forward * (length * 0.5f));
                 return;
             }
             var renderers = root.GetComponentsInChildren<Renderer>(true);
@@ -179,7 +201,7 @@ namespace AvatarBridge
             var bounds = renderers[0].bounds;
             foreach (var r in renderers) bounds.Encapsulate(r.bounds);
             var box = Undo.AddComponent<BoxCollider>(root);
-            box.isTrigger = true;
+            box.isTrigger = false;
             box.center = root.transform.InverseTransformPoint(bounds.center);
             box.size = Vector3.Scale(bounds.size, new Vector3(
                 1f / Mathf.Max(root.transform.lossyScale.x, 1e-4f),
