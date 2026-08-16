@@ -1,34 +1,6 @@
 // What a DPS, TPS or SPS setup says about itself, and how each value
 // becomes a YAPS one. One table, read by the converter and the toolkit
 // alike, so an author's tuning survives whichever door it came in by.
-//
-// Read from the systems' own materials and property blocks, not memory:
-//
-//   Raliv DPS penetrator  _Length _Squeeze _SqueezeDist _BulgePower
-//                         _BulgeOffset _EntranceStiffness _Curvature
-//                         _ReCurvature _Wriggle _WriggleSpeed
-//   Raliv DPS orifice     _EntryOpenDuration _Shape{1,2,3}Depth
-//                         _Shape{1,2,3}Duration _BlendshapePower
-//   Thry TPS              _TPS_PenetratorLength _TPS_Squeeze
-//                         _TPS_SqueezeDistance _TPS_Buldge
-//                         _TPS_BuldgeDistance _TPS_IdleSkrinkLength
-//                         _TPS_IdleSkrinkWidth _TPS_PumpingSpeed
-//                         _TPS_PumpingStrength _TPS_PumpingWidth
-//                         _TPS_BezierSmoothness _TPS_BezierStart
-//                         _TPS_SmoothStart _TPS_MinimumOrificeDistance
-//                         _TPS_BufferedDepth _TPS_BufferedStrength
-//   VRCFury SPS           _SPS_Length _SPS_Overrun
-//
-// The scales differ and the mapping says how. Where a knob has no
-// counterpart it is listed as such rather than silently dropped, so the
-// report can say "your TPS idle gravity did not come across" instead of
-// the user discovering it.
-//
-// Nothing here touches a mesh or a shader. It reads floats off a material
-// and returns floats for another. The measuring, length and frame from
-// the mesh, shapes from the blendshapes, is YapsBaker's, and where the
-// author's stated length and the measured one disagree, the mesh wins and
-// the disagreement is reported.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
