@@ -111,6 +111,42 @@ rather than to luck.
 
 ---
 
+## Marker lights are a broadcast, and the room is listening
+
+Added 2026-08-17, after a user reported their controllers vibrating whenever they came within
+two metres of a converted avatar. Everything here was learned from source, and it changes what a
+socket is allowed to be.
+
+**A marker light is the only thing an avatar does that reaches into someone else's.** Its range
+is a message — every decoder reads `range % 0.1` and matches 0.01 hole, 0.02 ring, 0.05 front,
+0.09 plug tip — and anything on the platform may listen. Raliv's shader matches within 0.005; a
+toy mod reading the same protocol in C# matches within 0.001. VRChat authors +0.0006, inside
+both, which is why a stock converted avatar drove a stranger's toy across a room. YAPS authors
++0.003, which DPS reads and that mod does not.
+
+**Toy integration cannot be made safe from the socket side, and that is not our bug.** The mod
+computes reach as `1 - distance / giver.Length`, and estimates `Length` from whichever renderer
+sits first under the avatar root rather than reading the length DPS states in the tip light's
+intensity. A socket is only ever the target of somebody else's number. So:
+
+- **plug side, one day: yes.** A plug can declare its own length honestly, by giving the tracker
+  light a sibling whose mesh states the measured length. The mod climbs to the first renderer
+  under the light, so an inactive one on the marker object is enough, and then it engages within
+  a plug length rather than a room. That is a switch that risks only the wearer.
+- **socket side: never.** Any "let toy mods read my sockets" control hands strangers the right
+  to decide how far away they can reach you.
+
+Both are moot if [ddakebono/CVRGoesBrrr#2](https://github.com/ddakebono/CVRGoesBrrr/pull/2)
+merges, since it bounds the estimate with the stated length. Old builds stay broken either way,
+so the quiet offset remains the default long after any merge.
+
+**A tempting idea that does not work: shrinking the ranges.** Since only `range % 0.1` is read,
+0.0106 decodes exactly like 0.4106 and reaches a fortieth as far. It would ease vertex-slot
+pressure — but Unity ranks the four per-object light slots BY RANGE, so a tiny light is the
+first evicted by every stock DPS avatar in the room. It would work alone and fail in company,
+which is the opposite of what a compatibility feature needs. Worth keeping only as a "YAPS talks
+to YAPS and nothing else" mode, where our own decoder sets the rules.
+
 ## Two constraints worth remembering before designing anything
 
 **ChilloutVR runs an avatar's triggers on the wearer's machine alone.** Anything
