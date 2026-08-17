@@ -82,6 +82,51 @@ a skipped pass and a run pass produce the same output.
 
 ---
 
+## GoGoLoco's poses, through ChilloutVR's own front door
+
+The most visible thing a converted avatar loses. GoGo is stripped because its layers assert body
+poses while ChilloutVR's locomotion is asserting them too, and two writers on one body is the
+bicycle pose everybody has seen. Merging it harder does not help; the fight is the problem.
+
+**ChilloutVR already has the door.** The CCK ships a full set of override slots, and the client
+plays them from its own state machine, so nothing competes:
+
+| slots | what they would hold | where it shows up |
+|---|---|---|
+| `Emote1`–`Emote8` | the popular poses, one each | the quick-menu emote wheel |
+| `ToggleDefault`, `ToggleState1`–`7` | stances meant to be held | the toggle list |
+| `LocSitting` | the avatar's sit pose | automatically, in chairs |
+| `LocCrouch* / LocProne* / LocFlying / LocSwimming*` | stance art | CVR's own states |
+| `LocIdle / LocWalking* / LocRunning*` | already done, by LocomotionGrafter | — |
+
+**And the client names the menu from the clip.** `AvatarAnimatorManager.FindLegacyEmotesAndToggles`
+switches on the ORIGINAL slot name and takes the OVERRIDE clip's name as the label:
+
+```csharp
+case "Emote1": _legacyOverrideEmoteNames[0] = originalOverride.Value.name;
+case "ToggleDefault": _legacyToggleNames[0] = originalOverride.Value.name;
+```
+
+So a clip named "Sit Cross-Legged" in `Emote1` is what the wearer reads in the wheel. No AAS
+entry, no parameter, no sync bits, and it works on every avatar this tool converts today,
+because grafting CVR's locomotion is what puts those slots on the controller in the first place.
+
+**Three constraints that shape the feature:**
+
+1. **Sixteen, not fifty.** Eight emotes and eight toggles. GoGo ships far more, plus puppet-style
+   fine positioning with no equivalent here. This carries the popular poses, not the system.
+2. **Names are load-bearing twice.** A clip whose name contains "Emote", or matches the stock
+   eight (Wave, Bow, Die, Backflip, Point, Sad, Salute, Dance), makes the client mute both hand
+   layers while it plays. The harvested names must be sanitised even though they are also the
+   labels the wearer sees.
+3. **An emote ends when you move.** Right for a dance, wrong for a sit somebody wants to hold:
+   those belong in the toggle slots, which is also how to tell the two apart when harvesting.
+
+**Order to build it in:** identify GoGo's pose clips and classify each as held or momentary;
+fill the toggle slots from the held ones and the emote slots from the rest, best-known first;
+sanitise the names; write the override controller. Report what landed where and what did not
+fit, because "which of my poses survived" is the first question anyone will ask.
+
 ## The animator merger: make the invisible visible
 
 Ten thousand lines, the most fragile thing in the package, and the place where a bug is
