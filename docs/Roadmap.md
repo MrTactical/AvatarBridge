@@ -201,6 +201,51 @@ first evicted by every stock DPS avatar in the room. It would work alone and fai
 which is the opposite of what a compatibility feature needs. Worth keeping only as a "YAPS talks
 to YAPS and nothing else" mode, where our own decoder sets the rules.
 
+## The WASM route, and what it would make of all this
+
+Read from Joe's client on 2026-08-17. **His install is the `public-scripting` beta**, and the
+bridge's initialiser sits behind `#if WASM_SCRIPTING_ENABLED`, which a ChilloutVR dev confirmed is
+defined only on that branch. So none of this is in stable, and nothing here can be built yet.
+Written down because it changes what YAPS 5 should aim at.
+
+**What a script actually gets.** Not the thin, movement-shaped API the `CVR_*` binding names
+suggest. Underneath is a generated binder, `WasmBinder.Links.UnityEngine`, mapping **107 Unity
+types** including `Material`, `MaterialPropertyBlock`, `Renderer`, `SkinnedMeshRenderer`,
+`Shader` and `Transform`. `MaterialLink` alone exports **276 functions**, `SetFloat`, `SetVector`
+and `SetTexture` among them. Plus `CVR_Avatar_GetAllAvatars`, avatar root transforms, and a
+`Networking` binding set that is not the AAS budget.
+
+**And the permission model is the right shape.** Reading a transform has no access check;
+*writing* one, and every material setter, demands `CVRScriptScopeContext.Self`. A script may look
+at everything in the instance and touch only its own avatar.
+
+That is the entire YAPS resolver, in ordinary code:
+
+| fought today | under a script |
+|---|---|
+| contacts, 512 overlapping pairs a frame for the whole instance | read transforms directly |
+| marker lights, four vertex slots a mesh | write the material directly |
+| the socket's kind encoded in a light's RANGE, two free digits | any data, any shape |
+| one socket per plug | a list, arc ranges, portals, whatever the code says |
+| 3200 AAS bits | its own networking |
+
+**The backwards-compatibility prize is bigger than the feature.** A script does not need anyone
+else to cooperate: it can walk another avatar's hierarchy and read their sockets *whatever
+protocol they speak* — Raliv's lights, TPS and SPS pointers, YAPS markers — because it reads the
+components rather than waiting for Unity to hand it four light slots or for a contact pair to
+survive the budget. Everything on the platform becomes findable, including content that will
+never be converted and whose authors are long gone. That is what "force everything over to YAPS"
+can actually mean: not converting other people's avatars, but understanding them.
+
+**It stays a tier, not a replacement.** Our sockets must keep emitting lights and pointers, since
+that is the only way somebody else's plug finds us, and a script cannot run on stable or for a
+wearer who refuses it. So: script when it is there, contacts next, lights last, which is the
+tiering the resolver already has.
+
+**Unknowns to settle before building:** whether the scripting-branch CCK ships the authoring
+components at all, what approving a script costs a wearer socially, whether open read access
+survives to release, and what a per-frame resolver costs in a full instance.
+
 ## Two constraints worth remembering before designing anything
 
 **ChilloutVR runs an avatar's triggers on the wearer's machine alone.** Anything
