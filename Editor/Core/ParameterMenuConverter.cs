@@ -329,7 +329,7 @@ namespace AvatarBridge
             // synced so their FX can read them, but a menu control for one is worse than
             // useless: the game overwrites it every frame, so the control does nothing while
             // still occupying menu space and sync budget.
-            if (AnimatorMerger.IsGameDrivenParameter(p.name))
+            if (CvrParameterNames.IsGameDriven(p.name))
             {
                 ctx.Report.Skipped(Category, p.name,
                     "No menu control created — ChilloutVR drives this parameter itself, so the avatar's " +

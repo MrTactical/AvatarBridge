@@ -607,7 +607,10 @@ namespace AvatarBridge.Regression
             // CorpusSettings diffs every digest at once, correctly:
             // every conversion changed meaning.
             sb.Append("[settings]\n");
+            // Instance fields only. A const is a public static literal, so it
+            // lands here too and reads as a setting nobody can set.
             foreach (var f in typeof(BridgeSettings).GetFields()
+                         .Where(f => !f.IsLiteral && !f.IsStatic)
                          .OrderBy(f => f.Name, StringComparer.Ordinal))
             {
                 sb.Append("  ").Append(f.Name).Append('=').Append(f.GetValue(s)).Append('\n');
@@ -697,6 +700,28 @@ namespace AvatarBridge.Regression
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
             foreach (var g in counts) sb.Append("  ").Append(g.Count().ToString("D3")).Append("  ").Append(g.Key).Append('\n');
             sb.Append('\n');
+
+            // Marker lights, by range. The range IS the protocol: it says hole,
+            // ring, front or plug tip, and every decoder on the platform reads
+            // it, including ones outside the game. A digest that only counted
+            // Light components would not have noticed the day these moved.
+            var marks = target.GetComponentsInChildren<Light>(true)
+                .Where(l => l != null && l.type == LightType.Point
+                            && l.color.maxColorComponent < 0.02f
+                            && l.range > 0.05f && l.range < 0.5f)
+                .Select(l => l.range.ToString("0.0000", CultureInfo.InvariantCulture))
+                .GroupBy(r => r)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .ToList();
+            if (marks.Count > 0)
+            {
+                sb.Append("[marker lights]\n");
+                foreach (var g in marks)
+                {
+                    sb.Append("  ").Append(g.Count().ToString("D3")).Append("  range ").Append(g.Key).Append('\n');
+                }
+                sb.Append('\n');
+            }
         }
 
         // MagicaCloth is reached by NAME rather than by a compile-time reference, so this block

@@ -1141,7 +1141,7 @@ namespace AvatarBridge
         {
             string bare = name.TrimStart('#');
 #if VRC_SDK_VRCSDK3
-            if (AnimatorMerger.IsGameDrivenParameter(bare))
+            if (CvrParameterNames.IsGameDriven(bare))
             {
                 return true;
             }

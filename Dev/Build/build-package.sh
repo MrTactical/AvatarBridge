@@ -65,7 +65,8 @@ guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
 YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher ShaderFixRecipes \
 AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths AvatarDescription \
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \
-FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages"
+FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
+CvrParameterNames GestureMap"
 # Conversion passes: VRChat-only, and dead weight in a ChilloutVR project.
 YAPS_SKIP="YapsConverter YapsBakePrep YapsRename YapsReapply"
 

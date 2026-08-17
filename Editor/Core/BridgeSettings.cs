@@ -144,12 +144,12 @@ namespace AvatarBridge
         public int maxLightEmittingSockets = DefaultMaxLightEmittingSockets;
         // The toolkit builds sockets outside a conversion and caps them the
         // same way, so the number lives here once.
-        public const int DefaultMaxLightEmittingSockets = 2;
+        internal const int DefaultMaxLightEmittingSockets = 2;
         // How far the smoothed channel value may move per frame. Lower is a
         // heavier plug. Only the channel is buffered.
         [Range(0.01f, 0.5f)]
         public float yapsSocketFollow = DefaultSocketFollow;
-        public const float DefaultSocketFollow = 0.05f;
+        internal const float DefaultSocketFollow = 0.05f;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";
