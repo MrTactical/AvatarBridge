@@ -16,8 +16,10 @@ namespace AvatarBridge
         public const string OutputRoot = "Assets/YAPS/Generated";
         const string MarkersName = "YAPS Markers";
 
-        // DPS's tracker: range 0.49, intensity = length, at the base.
-        public const float TrackerRange = 0.49f;
+        // DPS's tracker: digit 9, intensity = length, at the base. Offset
+        // the same way the socket ranges are, so a toy mod reading the
+        // protocol in C# does not answer this plug either.
+        public const float TrackerRange = 0.4930f;
 
         public class Outcome
         {
@@ -432,6 +434,8 @@ namespace AvatarBridge
             string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>());
             if (renamed != null) lines.Add($"✓ {renamed}");
             YapsSocketBuilder.Build(socket);
+            string capped = YapsSocketBuilder.LightCapNote(socket);
+            if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
             var avatar = socket.GetComponentInParent<CVRAvatar>();

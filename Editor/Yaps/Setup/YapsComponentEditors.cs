@@ -928,6 +928,10 @@ namespace AvatarBridge
 
             var advanced = new BridgeElements.Card("Advanced");
             advanced.Body.Add(YapsInspectorStyle.Field(lightsProp, type.GetField("emitLights"), "Emit marker lights"));
+            // The box is ticked and the socket still has none. Say why here,
+            // where it was ticked, rather than only in the build log.
+            string capped = YapsSocketBuilder.LightCapNote(socket);
+            if (capped != null) advanced.Body.Add(new HelpBox(char.ToUpper(capped[0]) + capped.Substring(1), HelpBoxMessageType.Info));
             advanced.Body.Add(BridgeElements.Row(
                 YapsInspectorStyle.Button(built ? "Rebuild markers" : "Build markers", () =>
                 {

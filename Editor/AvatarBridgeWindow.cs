@@ -954,6 +954,7 @@ namespace AvatarBridge
                     HelpBoxMessageType.Warning));
             }
 
+
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",
                 "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +

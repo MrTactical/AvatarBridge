@@ -48,8 +48,10 @@ namespace AvatarBridge.Yaps
         public float depthReach = 0f;
 
         [Tooltip("Emit the marker lights that let plugs with no contacts (Raliv DPS, and any " +
-                 "converted plug with no sync budget) find this socket. Costs nothing; only turn " +
-                 "off on an avatar with many sockets, where the toolkit wires them to a menu instead.")]
+                 "converted plug with no sync budget) find this socket. A mesh gets four vertex " +
+                 "light slots, a socket needs two and a plug's tracker takes one, so only the " +
+                 "first socket or two carry lights; past that a plug sees roots without fronts " +
+                 "and cannot enter any of them. The rest are found by contact, which has no limit.")]
         public bool emitLights = true;
 
         // The material the socket bake replaced on its own mesh, so Remove

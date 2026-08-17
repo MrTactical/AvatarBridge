@@ -4,7 +4,7 @@
 // A contact write bypasses the outbound buffer, so a trigger drives a
 // "#" local and a CVRAnimatorDriver copies it into the synced twin.
 // Drivers read animated fields, so each value costs a two-motion tree.
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+#if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -26,34 +26,69 @@ namespace AvatarBridge
         // responding past 1.6 lengths.
         const float BoxLengths = 1.75f;
 
+        // The avatar the channel is being built on. A conversion fills this
+        // from its context; the toolkit fills it from an avatar sitting in
+        // the scene. Both then walk the same code, so a socket built by hand
+        // is found the same way a converted one is.
+        public class Site
+        {
+            public GameObject Target;
+            public Animator Animator;
+            public AnimatorController Controller;
+            public BridgeReport Report;
+            public List<BridgeContext.YapsPlug> Plugs = new List<BridgeContext.YapsPlug>();
+            public float Follow = 0.05f;
+            // A conversion keeps these so later passes do not rename or
+            // localise what the channel just wired. Nothing else needs them.
+            public ICollection<string> PreserveParameters = new List<string>();
+            public ICollection<string> ContactParameters = new List<string>();
+            public System.Func<Transform, string> PathIn;
+        }
+
         public static void Run(BridgeContext ctx)
         {
-            if (!ctx.Settings.convertYapsSystems || ctx.YapsPlugs.Count == 0
-                || ctx.MergedController == null)
+            if (!ctx.Settings.convertYapsSystems) return;
+            Run(new Site
+            {
+                Target = ctx.Target,
+                Animator = ctx.TargetAnimator,
+                Controller = ctx.MergedController,
+                Report = ctx.Report,
+                Plugs = ctx.YapsPlugs,
+                Follow = ctx.Settings.yapsSocketFollow,
+                PreserveParameters = ctx.PreserveParameters,
+                ContactParameters = ctx.ContactParameters,
+                PathIn = ctx.PathInTarget,
+            });
+        }
+
+        public static void Run(Site site)
+        {
+            if (site == null || site.Plugs.Count == 0 || site.Controller == null)
             {
                 return;
             }
 
-            var plugs = ctx.YapsPlugs.Take(MaxPlugs).ToList();
-            if (ctx.YapsPlugs.Count > MaxPlugs)
+            var plugs = site.Plugs.Take(MaxPlugs).ToList();
+            if (site.Plugs.Count > MaxPlugs)
             {
-                ctx.Report.Warning(Category,
+                site.Report.Warning(Category,
                     $"Only the first {MaxPlugs} plug(s) are wired to the socket channel",
-                    $"This avatar has {ctx.YapsPlugs.Count}. ChilloutVR's material driver carries " +
+                    $"This avatar has {site.Plugs.Count}. ChilloutVR's material driver carries " +
                     "sixteen driver tasks and each plug needs two, plus five synced floats. " +
                     "The rest keep their mesh and their shader and simply never engage.");
             }
 
-            var materialDriver = ctx.Target.AddComponent<CVRMaterialDriver>();
-            var drivers = new DriverPool(ctx);
-            var animator = ctx.TargetAnimator;
+            var materialDriver = site.Target.AddComponent<CVRMaterialDriver>();
+            var drivers = new DriverPool(site);
+            var animator = site.Animator;
 
             int taskIndex = 0;
             int wired = 0;
             foreach (var plug in plugs)
             {
                 int index = plugs.IndexOf(plug);
-                if (BuildForPlug(ctx, plug, index, materialDriver, drivers, animator, ref taskIndex))
+                if (BuildForPlug(site, plug, index, materialDriver, drivers, animator, ref taskIndex))
                 {
                     wired++;
                 }
@@ -69,14 +104,14 @@ namespace AvatarBridge
 
             // A layer built after the controller became an asset must embed
             // itself, or it serializes with a null state machine, silently.
-            var hollow = ctx.MergedController.layers
+            var hollow = site.Controller.layers
                 .Where(l => l.name.StartsWith("YAPS")
                             && (l.stateMachine == null || l.stateMachine.states.Length == 0))
                 .Select(l => l.name)
                 .ToList();
             if (hollow.Count > 0)
             {
-                ctx.Report.Warning(Category,
+                site.Report.Warning(Category,
                     $"{hollow.Count} channel layer(s) came out empty",
                     "The penetration system's own animator layers did not survive being saved, so " +
                     "the values they carry stay at zero and contact-driven sockets will do nothing. " +
@@ -84,7 +119,7 @@ namespace AvatarBridge
                     $"repo, quoting: {string.Join(", ", hollow)}.");
             }
 
-            ctx.Report.Converted(Category,
+            site.Report.Converted(Category,
                 $"Wired {wired} plug(s) to the socket channel",
                 $"{taskIndex} value(s): where the socket sits relative to the plug, " +
                 "and how engaged it is. Contact triggers on the plug measure it on your own machine " +
@@ -101,15 +136,15 @@ namespace AvatarBridge
         class DriverPool
         {
             const int Slots = 16;
-            readonly BridgeContext _ctx;
+            readonly Site _site;
             readonly List<GameObject> _hosts = new List<GameObject>();
             CVRAnimatorDriver _current;
             string _path = "";
 
-            public DriverPool(BridgeContext ctx)
+            public DriverPool(Site site)
             {
-                _ctx = ctx;
-                _current = ctx.Target.AddComponent<CVRAnimatorDriver>();
+                _site = site;
+                _current = site.Target.AddComponent<CVRAnimatorDriver>();
             }
 
             public string Take(Animator animator, string parameter, out string field)
@@ -117,10 +152,10 @@ namespace AvatarBridge
                 if (_current.animators.Count >= Slots)
                 {
                     var host = new GameObject($"YAPS Driver {_hosts.Count + 2}");
-                    host.transform.SetParent(_ctx.Target.transform, false);
+                    host.transform.SetParent(_site.Target.transform, false);
                     _hosts.Add(host);
                     _current = host.AddComponent<CVRAnimatorDriver>();
-                    _path = _ctx.PathInTarget(host.transform);
+                    _path = _site.PathIn(host.transform);
                 }
                 int slot = _current.animators.Count;
                 _current.animators.Add(animator);
@@ -132,7 +167,7 @@ namespace AvatarBridge
 
             public void Discard()
             {
-                Object.DestroyImmediate(_ctx.Target.GetComponent<CVRAnimatorDriver>());
+                Object.DestroyImmediate(_site.Target.GetComponent<CVRAnimatorDriver>());
                 foreach (var host in _hosts)
                 {
                     Object.DestroyImmediate(host);
@@ -140,7 +175,7 @@ namespace AvatarBridge
             }
         }
 
-        static bool BuildForPlug(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+        static bool BuildForPlug(Site site, BridgeContext.YapsPlug plug, int index,
             CVRMaterialDriver materialDriver, DriverPool drivers, Animator animator,
             ref int taskIndex)
         {
@@ -149,7 +184,7 @@ namespace AvatarBridge
 
             // Sync slots run out silently, so ask before spending. One float
             // of slack: the CCK inspector counts the budget more harshly than the client.
-            int spare = SpareSyncFloats(ctx);
+            int spare = SpareSyncFloats(site);
             // Orientation is bought last and dropped first: without it the
             // plug reaches the socket rather than threading it.
             bool carryOrientation = spare >= 9;   // the offset tier, and three more
@@ -164,7 +199,7 @@ namespace AvatarBridge
             {
                 // Not a failure: the light path resolves position and
                 // engages on its own within about a plug length.
-                ctx.Report.Warning(Category,
+                site.Report.Warning(Category,
                     "No sync budget left for the socket channel — marker lights only",
                     $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
                     $"has {spare * 32} to spare, so adding even one more float would push it over and " +
@@ -178,7 +213,7 @@ namespace AvatarBridge
 
             if (!carryOffset)
             {
-                ctx.Report.Warning(Category,
+                site.Report.Warning(Category,
                     "Only room for engagement in the sync budget, not the socket's position",
                     $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
                     $"has room for {spare} more float(s); the full channel needs four per plug. So it " +
@@ -198,18 +233,18 @@ namespace AvatarBridge
                 }
                 : new (string, CVRAdvancedAvatarSettingsTrigger.SampleDirection)[0];
 
-            BuildEngagementTrigger(ctx, plug, index, box);
+            BuildEngagementTrigger(site, plug, index, box);
 
             for (int a = 0; a < axes.Length; a++)
             {
                 var (axis, direction) = axes[a];
-                AddAxisTrigger(ctx, plug, index, box, axis, direction, SocketPointerTypes, "");
+                AddAxisTrigger(site, plug, index, box, axis, direction, SocketPointerTypes, "");
 
                 // The same axes again on the socket's second point; the
                 // difference is the socket's facing.
                 if (carryOrientation)
                 {
-                    AddAxisTrigger(ctx, plug, index, box, axis, direction, FrontPointerTypes, "F");
+                    AddAxisTrigger(site, plug, index, box, axis, direction, FrontPointerTypes, "F");
                 }
             }
 
@@ -272,21 +307,21 @@ namespace AvatarBridge
             {
                 string local = Local(index, axis);
                 string synced = Synced(index, axis);
-                Declare(ctx, local);
-                Declare(ctx, synced);
-                ctx.ContactParameters.Add(local);
-                ctx.PreserveParameters.Add(synced);
+                Declare(site, local);
+                Declare(site, synced);
+                site.ContactParameters.Add(local);
+                site.PreserveParameters.Add(synced);
 
                 // Publish: the "#" local into the synced twin.
                 string driverPath = drivers.Take(animator, synced, out string driverField);
-                AddDriverLayer(ctx, $"YAPS{index}{axis} publish", local,
+                AddDriverLayer(site, $"YAPS{index}{axis} publish", local,
                     driverPath, typeof(CVRAnimatorDriver), driverField);
 
                 // Consume: the synced value into the material, on every client.
                 // Read the smoothed name so a remote viewer follows the value.
                 var smoothLayers = new HashSet<string>();
-                string source = Smoothed(ctx, synced, smoothLayers);
-                AddDriverLayer(ctx, $"YAPS{index}{axis} apply", source,
+                string source = Smoothed(site, synced, smoothLayers);
+                AddDriverLayer(site, $"YAPS{index}{axis} apply", source,
                     "", typeof(CVRMaterialDriver), field);
                 taskIndex++;
             }
@@ -295,7 +330,7 @@ namespace AvatarBridge
 
         // Its own object: axis triggers exist only with sync budget, and
         // engagement must work either way.
-        static void BuildEngagementTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+        static void BuildEngagementTrigger(Site site, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
             var host = TriggerHost($"YAPS Channel {index} E", plug);
@@ -314,7 +349,7 @@ namespace AvatarBridge
                 minValue = 0f,
                 maxValue = 1f,
             });
-            AddHoleTrigger(ctx, plug, index, box);
+            AddHoleTrigger(site, plug, index, box);
             // Nothing writes a stay task after the sender leaves; reset on exit.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
@@ -326,7 +361,7 @@ namespace AvatarBridge
 
         // A hole closes around the plug; a ring lets it pass. The socket's
         // pointer tag says which, so a second trigger raises a flag for holes.
-        static void AddHoleTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+        static void AddHoleTrigger(Site site, BridgeContext.YapsPlug plug, int index,
             Vector3 box)
         {
             var host = TriggerHost($"YAPS Channel {index} H", plug);
@@ -361,7 +396,7 @@ namespace AvatarBridge
 
         // Synced parameters arrive stepped, so every client eases toward the
         // received value. The "#" smoothed name is derived and costs no sync bits.
-        static string Smoothed(BridgeContext ctx, string synced, HashSet<string> layerNames)
+        static string Smoothed(Site site, string synced, HashSet<string> layerNames)
         {
             var template = AvatarScalerInjector.LoadController();
             if (template == null)
@@ -371,7 +406,7 @@ namespace AvatarBridge
 
             string output = "#" + synced + "sm";
             var copier = new AnimatorDeepCopier();
-            var layers = ctx.MergedController.layers.ToList();
+            var layers = site.Controller.layers.ToList();
             // Every parameter this layer writes, old name to new. Clip
             // bindings are not parameter references; renaming references misses them.
             var renames = new Dictionary<string, string>();
@@ -405,19 +440,19 @@ namespace AvatarBridge
                     // Carry the template's defaults; declared bare they come
                     // out 0. StepSize is the socket follow setting.
                     float value = parameter.name.EndsWith("StepSize", System.StringComparison.Ordinal)
-                        ? ctx.Settings.yapsSocketFollow
+                        ? site.Follow
                         : parameter.defaultFloat;
-                    Declare(ctx, mine, parameter.type, value);
+                    Declare(site, mine, parameter.type, value);
                     renames[parameter.name] = mine;
                 }
                 // The clips bind these parameters as Animator properties;
                 // renaming references leaves those bindings on the template names.
-                RebindMachine(clone.stateMachine, renames, ctx,
+                RebindMachine(clone.stateMachine, renames, site,
                     new Dictionary<AnimationClip, AnimationClip>());
 
                 // The controller is already an asset here, so the clone must
                 // embed itself or it serializes with a null state machine.
-                AnimatorAssetSaver.EmbedLayer(clone, ctx.MergedController);
+                AnimatorAssetSaver.EmbedLayer(clone, site.Controller);
 
                 layers.Add(clone);
                 layerNames.Add(clone.name);
@@ -426,8 +461,8 @@ namespace AvatarBridge
             {
                 return synced;
             }
-            ctx.MergedController.layers = layers.ToArray();
-            Declare(ctx, output);
+            site.Controller.layers = layers.ToArray();
+            Declare(site, output);
             return output;
         }
 
@@ -435,10 +470,10 @@ namespace AvatarBridge
         // float, "#" names and triggers free, past the cap never replicates.
         const int AasBitBudget = 3200;
 
-        static int SpareSyncFloats(BridgeContext ctx)
+        static int SpareSyncFloats(Site site)
         {
             int used = 0;
-            foreach (var parameter in ctx.MergedController.parameters)
+            foreach (var parameter in site.Controller.parameters)
             {
                 if (parameter.name.StartsWith("#")
                     || parameter.type == AnimatorControllerParameterType.Trigger)
@@ -474,7 +509,7 @@ namespace AvatarBridge
 
         // A two-motion blend tree: the driver's field is an animated float,
         // so blending 0 and 1 clips makes the field track the parameter.
-        static void AddDriverLayer(BridgeContext ctx, string name, string parameter,
+        static void AddDriverLayer(Site site, string name, string parameter,
             string path, System.Type component, string field)
         {
             var tree = new BlendTree
@@ -503,11 +538,11 @@ namespace AvatarBridge
             // Built in memory on a saved controller. The walk embeds the
             // machine, the state, the tree and the clips; a hand-written
             // list once missed the state and the layer played nothing.
-            AnimatorAssetSaver.EmbedLayer(layer, ctx.MergedController);
+            AnimatorAssetSaver.EmbedLayer(layer, site.Controller);
 
-            var layers = ctx.MergedController.layers.ToList();
+            var layers = site.Controller.layers.ToList();
             layers.Add(layer);
-            ctx.MergedController.layers = layers.ToArray();
+            site.Controller.layers = layers.ToArray();
         }
 
         static AnimationClip FieldClip(string name, string path, System.Type component,
@@ -520,7 +555,7 @@ namespace AvatarBridge
 
         // One box for one axis, one family of pointers. Called twice per
         // axis: the socket's root, then its second point.
-        static void AddAxisTrigger(BridgeContext ctx, BridgeContext.YapsPlug plug, int index,
+        static void AddAxisTrigger(Site site, BridgeContext.YapsPlug plug, int index,
             Vector3 box, string axis, CVRAdvancedAvatarSettingsTrigger.SampleDirection direction,
             string[] types, string prefix)
         {
@@ -559,7 +594,7 @@ namespace AvatarBridge
 
         // Point every clip in a cloned layer at the renamed parameters.
         static void RebindMachine(AnimatorStateMachine machine, Dictionary<string, string> renames,
-            BridgeContext ctx, Dictionary<AnimationClip, AnimationClip> cache)
+            Site site, Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (machine == null)
             {
@@ -567,22 +602,22 @@ namespace AvatarBridge
             }
             foreach (var child in machine.states)
             {
-                child.state.motion = RebindMotion(child.state.motion, renames, ctx, cache);
+                child.state.motion = RebindMotion(child.state.motion, renames, site, cache);
             }
             foreach (var child in machine.stateMachines)
             {
-                RebindMachine(child.stateMachine, renames, ctx, cache);
+                RebindMachine(child.stateMachine, renames, site, cache);
             }
         }
 
         static Motion RebindMotion(Motion motion, Dictionary<string, string> renames,
-            BridgeContext ctx, Dictionary<AnimationClip, AnimationClip> cache)
+            Site site, Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (motion is AnimationClip clip)
             {
                 if (!cache.TryGetValue(clip, out var bound))
                 {
-                    bound = RebindClip(clip, renames, ctx);
+                    bound = RebindClip(clip, renames, site);
                     cache[clip] = bound;
                 }
                 return bound;
@@ -594,7 +629,7 @@ namespace AvatarBridge
                 var children = tree.children;
                 for (int i = 0; i < children.Length; i++)
                 {
-                    children[i].motion = RebindMotion(children[i].motion, renames, ctx, cache);
+                    children[i].motion = RebindMotion(children[i].motion, renames, site, cache);
                 }
                 tree.children = children;
             }
@@ -604,7 +639,7 @@ namespace AvatarBridge
         // A copy, never the original: these clips live in the scaler package
         // and are shared by every converted avatar.
         static AnimationClip RebindClip(AnimationClip source, Dictionary<string, string> renames,
-            BridgeContext ctx)
+            Site site)
         {
             var clip = new AnimationClip { name = source.name, frameRate = source.frameRate };
             foreach (var binding in AnimationUtility.GetCurveBindings(source))
@@ -618,32 +653,32 @@ namespace AvatarBridge
                 }
                 AnimationUtility.SetEditorCurve(clip, bound, curve);
             }
-            if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(ctx.MergedController)))
+            if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(site.Controller)))
             {
                 clip.hideFlags = HideFlags.HideInHierarchy;
-                AssetDatabase.AddObjectToAsset(clip, ctx.MergedController);
+                AssetDatabase.AddObjectToAsset(clip, site.Controller);
             }
             return clip;
         }
 
         // Defaults matter for template clones: "One" ships at 1, "StepSize"
         // at 0.05, and bare declarations arrive as 0. AddParameter cannot set one.
-        static void Declare(BridgeContext ctx, string name,
+        static void Declare(Site site, string name,
             AnimatorControllerParameterType type = AnimatorControllerParameterType.Float,
             float defaultFloat = 0f)
         {
-            if (ctx.MergedController.parameters.Any(p => p.name == name))
+            if (site.Controller.parameters.Any(p => p.name == name))
             {
                 return;
             }
-            var parameters = ctx.MergedController.parameters.ToList();
+            var parameters = site.Controller.parameters.ToList();
             parameters.Add(new AnimatorControllerParameter
             {
                 name = name,
                 type = type,
                 defaultFloat = defaultFloat,
             });
-            ctx.MergedController.parameters = parameters.ToArray();
+            site.Controller.parameters = parameters.ToArray();
         }
     }
 }

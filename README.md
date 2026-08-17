@@ -814,6 +814,26 @@ the shader the project has today, otherwise a plug built on the spot. While it r
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
+**Only two sockets carry marker lights**, the same cap a conversion applies. Unity gives a mesh
+four vertex light slots, refills them every frame from the ranges in reach, and a socket takes
+two — and those slots are shared with every avatar standing near you, not just your own. An
+avatar lighting up a dozen sockets makes the winners change frame to frame for everyone in
+range, which shows up on other people as a light-reading plug twitching in and out.
+**The ranges sit in the quiet part of the band.** A marker light says what it is through its
+range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
+plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
+protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why a stock
+converted avatar sets off a bystander's toy and their controllers from across the room. YAPS
+authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
+on 0.001 never sees it. Nothing to configure, and no cost to compatibility.
+
+Holes take the places first, then rings; the build log names which two kept them, and the
+socket's own *Advanced* card says so where you ticked the box. Nothing stops engaging: a plug
+decides *which* socket has it from the contact channel, never from a light, and the lights only
+sharpen its position at contact range. What a socket without them loses is old DPS plugs, which
+carry lights and nothing else, and which could not have found a third lit socket reliably in the
+first place. Untick **Emit marker lights** on a socket to hand its place to another.
+
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
 socket · Out of a socket · Motion inside a socket · The bend toward a socket · Past the opening ·
@@ -881,9 +901,14 @@ arrives with Preview on: every baked plug in the scene bends toward it while you
 plug** drops one of those too. **Make the selected test object a prop** does the rest; upload each
 from the CCK and try them with a second person.
 
-**What the tool does not do yet, and says so:** the synced contact channel on an *avatar's own*
-controller for a plug built with the tool (a converted avatar has one; a native plug reads
-sockets by their marker lights until then).
+**The contact channel is built either way.** Build wires it onto the avatar's own controller for
+every baked plug, the same builder a conversion runs, so a socket you placed by hand is found the
+way a converted one is: contacts first, marker lights second. That matters because the lights are
+a shared resource — four vertex light slots, refilled every frame, shared with every avatar near
+you — so an avatar that turns its lights off keeps working, and one that keeps them on is
+sharpening a position it already knows rather than depending on them. Build replaces its own
+wiring each time rather than stacking, and leaves any driver of yours that isn't the channel's
+alone.
 
 ### Testing it
 

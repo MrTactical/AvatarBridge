@@ -18,12 +18,6 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // The two second-decimal digits DPS never claimed. DPS uses 1,3
-        // hole, 2,4 ring, 5,6 front, 8,9 plug tip. Decoders read only the
-        // second decimal; the fourth does not survive the attenuation uniform.
-        const float RootRange = 0.4700f;
-        const float FrontRange = 0.4000f;
-
         static readonly string[] AtlasJunk = { "SpsResolver", "SpsScreenMarker", "SpsAtlas" };
 
         public static void Run(BridgeContext ctx)
@@ -577,7 +571,7 @@ namespace AvatarBridge
                 }
             }
 
-            int roots = 0, fronts = 0, left = 0, legacy = 0;
+            int roots = 0, fronts = 0, left = 0;
             foreach (var socket in emitting)
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
@@ -587,25 +581,18 @@ namespace AvatarBridge
                     // DPS plug has lights and nothing else.
                     if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
                     {
-                        // Legacy mode leaves the range exactly as baked
-                        // (0.4106, 0.4206, 0.4506), trailing digits included.
-                        if (!ctx.Settings.emitLegacySocketLights)
-                        {
-                            light.range = RootRange;
-                        }
+                        // The digit is kept, so DPS content still reads the
+                        // socket; the offset moves off VRCFury's +0.0006,
+                        // which sits inside the window a toy mod matches on.
+                        // See YapsSocketBuilder for the arithmetic.
+                        light.range = digit == 1 || digit == 3
+                            ? YapsSocketBuilder.HoleRange : YapsSocketBuilder.RingRange;
                         roots++;
-                        legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
                     else if (digit == 5 || digit == 6)
                     {
-                        // A DPS decoder gates on a range window around 0.4;
-                        // a front outside it is invisible to legacy plugs.
-                        if (!ctx.Settings.emitLegacySocketLights)
-                        {
-                            light.range = FrontRange;
-                        }
+                        light.range = YapsSocketBuilder.FrontRange;
                         fronts++;
-                        legacy += ctx.Settings.emitLegacySocketLights ? 1 : 0;
                     }
                     else
                     {
@@ -626,9 +613,8 @@ namespace AvatarBridge
             {
                 return;
             }
-            bool legacyMode = ctx.Settings.emitLegacySocketLights;
             ctx.Report.Converted(Category,
-                    (legacyMode ? "Retuned " : "Re-ranged ") + $"{roots + fronts} socket marker light(s)" +
+                    $"Retuned {roots + fronts} socket marker light(s)" +
                     (woken > 0 ? $", and switched {woken} socket object(s) back on" : ""),
                 (woken > 0
                     ? "VRCFury bakes every socket object INACTIVE and lets its own enable service " +
@@ -640,22 +626,15 @@ namespace AvatarBridge
                 $"{roots} root, {fronts} front. A socket says where it is by the RANGE of a black " +
                 "vertex light, and Unity gives the four light slots to the largest ranges it can " +
                 "see." +
-                (legacyMode
-                    ? " The ranges are left exactly as VRChat baked them; the lights are set black at " +
-                      "intensity 1, vertex mode, no shadows, which is what a decoder reads."
-                    : " VRChat's ordering puts each socket's front above its own root, so on an " +
-                      "avatar with several sockets the slots fill with fronts — a direction with no " +
-                      "origin. Reversing the two makes roots win their slots.") +
-                (legacy > 0
-                    ? " These sockets speak LEGACY, so every DPS plug already on ChilloutVR can " +
-                      "see them, which is most of the content there is, and from any direction " +
-                      "rather than only from the front, because they carry a root AND a front " +
-                      "the way DPS expects. A root on its own is a position with no axis, and a " +
-                      "plug reading one falls back to a fixed direction and engages from one " +
-                      "side only."
-                    : " These sockets use our own ordering, which wins the light slots cleanly " +
-                      "but is unreadable to DPS content — they will be invisible to every plug " +
-                      "except another converted one.") +
+                " The lights are black at intensity 1, vertex mode, no shadows, which is what a " +
+                "decoder reads, and they keep VRChat's digits so every DPS plug already on " +
+                "ChilloutVR can see them, from any direction rather than only from the front, " +
+                "because they carry a root AND a front the way DPS expects." +
+                " What changes is the fourth decimal: VRChat bakes +0.0006, and a toy mod reading " +
+                "the same protocol matches anything within 0.001, so a stock converted avatar sets " +
+                "off a bystander's toy and their controllers from across a room. These are written " +
+                "at +0.003 instead, outside that window and well inside the 0.005 a plug's shader " +
+                "allows, so DPS content reads them and a mod does not answer them." +
                 (wired > 0
                     ? $" {wired} socket(s) had their lights wired to the menu entry that already " +
                       "turns them on and off, which until now did nothing to the lights at all — " +
