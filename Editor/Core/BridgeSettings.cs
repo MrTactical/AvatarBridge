@@ -139,15 +139,17 @@ namespace AvatarBridge
         // Keep each socket's depth parameter synced, so the author's own
         // depth reactions play for the room. Two per socket, 32 bits each.
         public bool syncSocketDepthForOthers = false;
-        // Encode socket markers the way existing DPS content reads them.
-        public bool emitLegacySocketLights = true;
         // How many sockets may carry marker lights. A mesh gets four vertex
         // light slots and a socket takes two. Holes first, then rings.
-        public int maxLightEmittingSockets = 2;
+        public int maxLightEmittingSockets = DefaultMaxLightEmittingSockets;
+        // The toolkit builds sockets outside a conversion and caps them the
+        // same way, so the number lives here once.
+        internal const int DefaultMaxLightEmittingSockets = 2;
         // How far the smoothed channel value may move per frame. Lower is a
         // heavier plug. Only the channel is buffered.
         [Range(0.01f, 0.5f)]
-        public float yapsSocketFollow = 0.05f;
+        public float yapsSocketFollow = DefaultSocketFollow;
+        internal const float DefaultSocketFollow = 0.05f;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

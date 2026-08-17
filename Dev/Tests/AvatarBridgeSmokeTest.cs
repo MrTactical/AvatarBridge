@@ -173,14 +173,27 @@ namespace AvatarBridge.Regression
                 var o = YapsNativeBuilder.Bake(plugRoot.GetComponent<YapsPlug>());
                 Check(o.Ok, "re-bake ok: " + o.Message);
             });
+            // A fresh prop is grabbable by anyone and finds sockets by their
+            // lights. The channel is the separate choice below: it is what
+            // lets a socket's owner write the prop's values, and therefore
+            // what takes it out of someone's hand.
             Step("YAPS > Make selected object a prop", () =>
             {
                 var o = YapsPropBuilder.MakeProp(plugRoot);
                 Check(o.Ok, o.Message);
                 var sp = plugRoot.GetComponent<CVRSpawnable>();
+                Check(sp != null, "a spawnable");
+                Check(sp.syncValues.Count == 0, "no channel until it is asked for");
+                Check(plugRoot.GetComponent<CVRPickupObject>()?.disallowTheft == false, "theft allowed");
+                // On the ROOT: CVRPickupObject cannot see a child's collider.
+                Check(plugRoot.GetComponent<Collider>() != null, "a collider on the root to grab");
+            });
+            Step("YAPS > Add the synced channel", () =>
+            {
+                var o = YapsPropBuilder.AddChannel(plugRoot);
+                Check(o.Ok, o.Message);
+                var sp = plugRoot.GetComponent<CVRSpawnable>();
                 Check(sp != null && sp.useAdditionalValues && sp.syncValues.Count == 8, "8 synced values");
-                Check(plugRoot.GetComponent<CVRPickupObject>()?.disallowTheft == true, "theft disallowed");
-                Check(plugRoot.GetComponentInChildren<Collider>(true) != null, "a collider to grab");
                 Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 8, "8 triggers, one per host");
                 var controller = plugRoot.GetComponent<Animator>().runtimeAnimatorController as AnimatorController;
                 Check(controller != null && controller.layers.Length == 8, "8 layers");
@@ -194,6 +207,15 @@ namespace AvatarBridge.Regression
                 var o = YapsPropBuilder.Verify(plugRoot);
                 Check(o.Ok, o.Message);
                 Check(sp.syncValues[0].animatorParameterName == "E", "name restored");
+            });
+            Step("YAPS > Drop the contact channel", () =>
+            {
+                var o = YapsPropBuilder.DropChannel(plugRoot);
+                Check(o.Ok, o.Message);
+                var sp = plugRoot.GetComponent<CVRSpawnable>();
+                Check(sp.syncValues.Count == 0, "the synced values are gone");
+                Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 0, "and their triggers");
+                Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") < 0.5f, "channel space off");
             });
 
             // --- make a plug from a bone (skinned mesh) --------------------------

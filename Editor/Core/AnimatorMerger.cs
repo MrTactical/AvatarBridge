@@ -29,51 +29,15 @@ namespace AvatarBridge
             "Assets/ABI.CCK/Animations/AvatarAnimator.controller"                // CCK 3.x
         };
 
-        // VRChat parameter -> ChilloutVR core parameter.
-        // GestureLeftWeight/RightWeight stay unrenamed.
-        // A CVRParameterStream feeds them instead.
-        static readonly Dictionary<string, string> ParameterRenameMap = new Dictionary<string, string>
-        {
-            { "Viseme", "VisemeIdx" },
-            { "Voice", "VisemeLoudness" },
-            { "Seated", "Sitting" },
-            { "InStation", "Sitting" },
-            { "IsOnFriendsList", "IsFriend" }
-        };
-
-        // Parameters ChilloutVR drives itself; these must never be renamed or prefixed.
-        internal static readonly HashSet<string> CvrCoreParameters = new HashSet<string>
-        {
-            "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
-            "GestureLeft", "GestureRight", "GestureLeftIdx", "GestureRightIdx",
-            "Toggle", "Sitting", "Crouching", "Prone", "Flying", "Swimming",
-            "IsLocal", "DistanceTo", "VisemeIdx", "VisemeLoudness", "IsFriend",
-            "VelocityX", "VelocityY", "VelocityZ", "AFK"
-        };
-
-        // Fed from the game by a CVRParameterStream.
-        // Never "#" prefixed. The stream runs on the wearer's copy only,
-        // so sync is the sole path to other clients.
-        static readonly HashSet<string> StreamFedParameters = new HashSet<string>
-        {
-            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
-            "Upright", "TrackingType", "EyeHeightAsMeters"
-            // The rest of the scale family is derived locally from
-            // EyeHeightAsMeters by FeedScaleParameters. Cheaper than sync.
-        };
+        // The names live in CvrParameterNames. The diagnostics and the menu
+        // pass ask the same questions, and the toolkit ships without this
+        // file; these stay as the merger's own way of saying them.
+        static Dictionary<string, string> ParameterRenameMap => CvrParameterNames.RenameMap;
+        internal static HashSet<string> CvrCoreParameters => CvrParameterNames.Core;
+        static HashSet<string> StreamFedParameters => CvrParameterNames.StreamFed;
 
         internal static bool IsGameDrivenParameter(string vrcParameterName)
-        {
-            if (string.IsNullOrEmpty(vrcParameterName))
-            {
-                return false;
-            }
-            string bare = vrcParameterName.TrimStart('#');
-            string mapped = ParameterRenameMap.TryGetValue(bare, out var renamed) ? renamed : bare;
-            return CvrCoreParameters.Contains(mapped)
-                   || StreamFedParameters.Contains(bare)
-                   || GestureMap.GestureWeightParameters.Contains(bare);
-        }
+            => CvrParameterNames.IsGameDriven(vrcParameterName);
 
         // CVR drives these non-zero at runtime.
         // Matching defaults avoids startup glitches.

@@ -288,13 +288,12 @@ namespace AvatarBridge
             var markers = plug.transform.Find("YAPS Markers");
             var frame = markers ?? plug.transform;
             origin = frame.position; forward = frame.forward; up = frame.up;
-            length = mat.HasProperty("_YAPS_Length") ? Mathf.Max(mat.GetFloat("_YAPS_Length"), 0.05f) : 0.25f;
+            // The frame is in the scene, so the length has to be in metres.
+            length = Mathf.Max(YapsNativeBuilder.WorldLength(r, mat), 0.05f);
             if (markers == null && r is SkinnedMeshRenderer && plug.rootBone != null)
             {
                 origin = plug.rootBone.position; forward = plug.rootBone.forward; up = plug.rootBone.up;
             }
-            // The bake scale stretches the shaft; the tip goes with it.
-            if (mat.HasProperty("_YAPS_BakeScale")) length *= Mathf.Max(mat.GetFloat("_YAPS_BakeScale"), 0.01f);
             return true;
         }
 
@@ -929,6 +928,10 @@ namespace AvatarBridge
 
             var advanced = new BridgeElements.Card("Advanced");
             advanced.Body.Add(YapsInspectorStyle.Field(lightsProp, type.GetField("emitLights"), "Emit marker lights"));
+            // The box is ticked and the socket still has none. Say why here,
+            // where it was ticked, rather than only in the build log.
+            string capped = YapsSocketBuilder.LightCapNote(socket);
+            if (capped != null) advanced.Body.Add(new HelpBox(char.ToUpper(capped[0]) + capped.Substring(1), HelpBoxMessageType.Info));
             advanced.Body.Add(BridgeElements.Row(
                 YapsInspectorStyle.Button(built ? "Rebuild markers" : "Build markers", () =>
                 {
@@ -1011,9 +1014,11 @@ namespace AvatarBridge
             colour.a = selected ? 1f : 0.7f;
 
             Vector3 c = t.position, f = t.forward, u = t.up;
-            // Fixed world size, scaled with the avatar.
-            float scale = Mathf.Max(0.05f, (t.lossyScale.x + t.lossyScale.y + t.lossyScale.z) / 3f);
-            float r = 0.05f * scale;
+            // Five centimetres, the size of the thing it marks, and never
+            // smaller than the view can show. A bone's lossyScale is the
+            // mesh's unit conversion, not the avatar's size, so it plays
+            // no part here.
+            float r = Mathf.Max(0.05f, HandleUtility.GetHandleSize(c) * 0.06f);
             float thick = selected ? 4f : 3f;
 
             Handles.color = colour;
@@ -1257,27 +1262,35 @@ namespace AvatarBridge
             var colour = YapsInspectorStyle.PlugColour; colour.a = selected ? 1f : 0.7f;
             Handles.color = colour;
 
+            // Handles draw in world metres, so the length has to be in them
+            // too. A rig whose mesh is modelled small and scaled up by its
+            // bones has a large lossyScale and a perfectly ordinary plug.
             float length = 0f;
             if (renderer != null)
                 foreach (var m in renderer.sharedMaterials)
-                    if (m != null && m.HasProperty("_YAPS_Length")) { length = m.GetFloat("_YAPS_Length"); break; }
+                    if (m != null && m.HasProperty("_YAPS_Length"))
+                    {
+                        length = YapsNativeBuilder.WorldLength(renderer, m);
+                        break;
+                    }
 
             // The markers object is the frame when built.
             var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
             Vector3 b = frame.position, f = frame.forward;
             float thick = selected ? 4f : 3f;
-            float scale = Mathf.Max(0.05f, (frame.lossyScale.x + frame.lossyScale.y + frame.lossyScale.z) / 3f);
 
             if (length <= 0f)
             {
-                Handles.DrawDottedLine(b, b + f * 0.3f * scale, 5f);
+                // Nothing measured yet, so the stub is sized to the view.
+                float stub = HandleUtility.GetHandleSize(b) * 0.3f;
+                Handles.DrawDottedLine(b, b + f * stub, 5f);
                 var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
-                Handles.Label(b + f * 0.3f * scale, "plug — not baked", label);
+                Handles.Label(b + f * stub, "plug — not baked", label);
                 return;
             }
-            Vector3 tip = b + f * length * scale;
+            Vector3 tip = b + f * length;
             // True length along the axis, a ring at the base, an arrow at the tip.
-            float r = 0.035f * scale;
+            float r = length * 0.04f;
             Handles.DrawLine(b, tip, thick);
             Handles.DrawWireDisc(b, f, r, thick);
             Handles.ConeHandleCap(0, tip, Quaternion.LookRotation(f), r * 1.2f, EventType.Repaint);

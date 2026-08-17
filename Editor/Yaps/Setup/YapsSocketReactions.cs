@@ -107,9 +107,7 @@ namespace AvatarBridge
                     // A socket's own mesh carries a bake too, with the deform off and a power.
                     if (m.HasProperty("_YAPS_SocketPower") && m.GetFloat("_YAPS_SocketPower") > 0f
                         && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") <= 0f) continue;
-                    float length = m.GetFloat("_YAPS_Length");
-                    if (m.HasProperty("_YAPS_BakeScale")) length *= Mathf.Max(m.GetFloat("_YAPS_BakeScale"), 0.01f);
-                    longest = Mathf.Max(longest, length);
+                    longest = Mathf.Max(longest, YapsNativeBuilder.WorldLength(r, m));
                 }
             }
             return longest;

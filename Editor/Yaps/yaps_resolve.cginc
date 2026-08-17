@@ -11,10 +11,13 @@
 // Spike testing settled this the hard way, so the reasoning is worth
 // keeping next to the code.
 //
-// ENGAGEMENT is decided by the discrete channel ALONE, contacts, through
-// animator parameters, through CVRMaterialDriver, into material vectors.
-// It is never derived from whether a light happens to be visible. This is
-// the single most important rule here: Unity fills the vertex light slots
+// ENGAGEMENT is decided by the discrete channel wherever there is one:
+// contacts, through animator parameters, through CVRMaterialDriver, into
+// material vectors. A light engages only where no channel reached the
+// plug at all, close in and as a last resort, because a socket with no
+// channel would otherwise be findable by nothing (see LIGHT FALLBACK at
+// the end of this file). Prefer the channel for this reason: Unity fills
+// the vertex light slots
 // PER CAMERA, and ChilloutVR's mirrors additionally zero the pixel light
 // count while they render, so anything decided from light presence
 // differs between the mirror, the third-person camera and the direct
@@ -536,6 +539,8 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         }
     }
 
+    // LIGHT FALLBACK, the exception the header points at.
+    //
     // Legacy content has no contacts to engage from. ChilloutVR's existing
     // DPS sockets, on avatars and on spawned props alike, announce
     // themselves with marker lights and nothing else, so a plug that

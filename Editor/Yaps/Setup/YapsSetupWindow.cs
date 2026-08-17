@@ -738,6 +738,9 @@ namespace AvatarBridge
                 socketsBuilt++;
                 lines.AddRange(YapsNativeBuilder.BuildSocket(s));
             }
+            // Last, and once: the channel reads the frames the bakes just
+            // measured, and it replaces its own wiring rather than stacking.
+            lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>()));
             Rescan();
             string headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
                               $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";

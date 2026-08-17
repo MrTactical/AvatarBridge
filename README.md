@@ -202,6 +202,22 @@ still converts.
 
 ## Installation
 
+### If you only want YAPS and the Toolkit
+
+Neither needs VRChat, its SDK, or any of the list below. Take **`YAPS-<version>.unitypackage`**
+from [Releases](https://github.com/MrTactical/AvatarBridge/releases) instead of the full one:
+
+1. **Unity 2022.3.22f1**, any project.
+2. **ChilloutVR CCK 4** — the `.unitypackage` from
+   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/).
+3. **`YAPS-<version>.unitypackage`**, under `Assets`.
+
+It installs to `Assets/AvatarBridge` because these tools share a codebase with the converter, so
+installing the full package later just adds the converter beside them — nothing is duplicated,
+and it works in either order. The converter itself is not in this package.
+
+### The full converter
+
 **Everything on the VRChat side comes from the [Creator Companion](https://vcc.docs.vrchat.com/) —
 including the project itself.** The SDK ships only as a VPM package, and VPM packages install only
 into projects VCC manages, so a Unity project you make by hand has no supported way to get one.
@@ -814,6 +830,26 @@ the shader the project has today, otherwise a plug built on the spot. While it r
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
+**Only two sockets carry marker lights**, the same cap a conversion applies. Unity gives a mesh
+four vertex light slots, refills them every frame from the ranges in reach, and a socket takes
+two — and those slots are shared with every avatar standing near you, not just your own. An
+avatar lighting up a dozen sockets makes the winners change frame to frame for everyone in
+range, which shows up on other people as a light-reading plug twitching in and out.
+**The ranges sit in the quiet part of the band.** A marker light says what it is through its
+range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
+plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
+protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why a stock
+converted avatar sets off a bystander's toy and their controllers from across the room. YAPS
+authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
+on 0.001 never sees it. Nothing to configure, and no cost to compatibility.
+
+Holes take the places first, then rings; the build log names which two kept them, and the
+socket's own *Advanced* card says so where you ticked the box. Nothing stops engaging: a plug
+decides *which* socket has it from the contact channel, never from a light, and the lights only
+sharpen its position at contact range. What a socket without them loses is old DPS plugs, which
+carry lights and nothing else, and which could not have found a third lit socket reliably in the
+first place. Untick **Emit marker lights** on a socket to hand its place to another.
+
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
 socket · Out of a socket · Motion inside a socket · The bend toward a socket · Past the opening ·
@@ -881,9 +917,14 @@ arrives with Preview on: every baked plug in the scene bends toward it while you
 plug** drops one of those too. **Make the selected test object a prop** does the rest; upload each
 from the CCK and try them with a second person.
 
-**What the tool does not do yet, and says so:** the synced contact channel on an *avatar's own*
-controller for a plug built with the tool (a converted avatar has one; a native plug reads
-sockets by their marker lights until then).
+**The contact channel is built either way.** Build wires it onto the avatar's own controller for
+every baked plug, the same builder a conversion runs, so a socket you placed by hand is found the
+way a converted one is: contacts first, marker lights second. That matters because the lights are
+a shared resource — four vertex light slots, refilled every frame, shared with every avatar near
+you — so an avatar that turns its lights off keeps working, and one that keeps them on is
+sharpening a position it already knows rather than depending on them. Build replaces its own
+wiring each time rather than stacking, and leaves any driver of yours that isn't the channel's
+alone.
 
 ### Testing it
 
@@ -1055,6 +1096,9 @@ line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-
 **any** ChilloutVR avatar or prop — VRChat history or not, YAPS or not. Pick the object, press the
 button, read the rows. Same look, same report style, same code as the converter, so nothing here
 can drift from what a conversion does.
+
+This and YAPS also ship on their own, as `YAPS-<version>.unitypackage`, for ChilloutVR projects
+with no VRChat SDK and no interest in a converter — see [Installation](#installation).
 
 | card | does |
 |---|---|
@@ -2011,10 +2055,29 @@ tools written for VRChat), and OGB will find it. The haptics parameters this too
 by default, so they arrive as `#OGB/…`, which OGB's *automatic* plug and socket detection skips.
 Three ways to the toy, cheapest first:
 
-- **Manual links, free.** OGB's own *avatar parameter* links (Output links → add link) read a
-  parameter by its exact name, `#` and all. The report's Diagnostics section lists every
-  `#OGB/…` name on the converted avatar; add a link per name you want driving a device. Costs
-  no sync, works today.
+- **Manual links, free.** OGB's own *avatar parameter* links read a parameter by its exact name,
+  `#` and all, so nothing needs syncing. Costs no sync, works today. Step by step:
+
+  1. **Launch ChilloutVR with `--osc-query-prefix=VRChat-Client`.** In Steam: right-click the
+     game ▸ Properties ▸ Launch Options, paste it there. Without this, OGB never finds the game
+     at all, whichever route you take.
+  2. **Turn OSC on in ChilloutVR's settings** and wear the converted avatar, so the game
+     publishes its parameters.
+  3. **Open `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/` and find the entry
+     *"N OGB haptics parameter(s), local and free"*. It lists every name in full, one per line,
+     `#OGB/Pen/…` and `#OGB/Orf/…`.
+  4. **In OSCGoesBrrr, add one link per device**: *Outputs* ▸ add ▸ **Avatar parameter**, then
+     paste a name exactly as the report prints it, including the leading `#`. Nothing else needs
+     changing.
+  5. **Which names to pick.** A plug's are under `#OGB/Pen/…`, a socket's under `#OGB/Orf/…`,
+     and the useful ones end in `PenSelf` / `PenOthers` (something entering it) and `TouchSelf` /
+     `TouchOthers` (something brushing it). Link the ones matching how you want the toy driven,
+     and leave the rest.
+
+  If the toy stays silent after that, the parameter is the thing to check first: OGB's own
+  parameter monitor should show the value moving as you're touched. If it never moves, the name
+  is mistyped or the `#` was dropped; if it moves and the toy doesn't, the fault is in the
+  device link rather than the avatar.
 - **Keep OGB haptics synced for OSC toys**, under *Manual options ▸ Opt-ins*. Automatic detection
   works with no setup, at 32 sync bits each, about nine per plug and per socket: one plug and
   three sockets is roughly 1,150 bits, and a socket-heavy avatar goes over the 3200-bit cap on
@@ -2058,7 +2121,8 @@ regenerating the controller.
 ## Reporting a bug
 
 Hit **Report an issue** in the AvatarBridge window — it opens a pre-filled GitHub issue with your
-versions and detected packages already in it.
+versions and detected packages already in it. A bug somebody hit while wearing an avatar comes
+before anything on the [roadmap](docs/Roadmap.md), which is where the larger ideas live.
 
 Two things make a report solvable immediately:
 

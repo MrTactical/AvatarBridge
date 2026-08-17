@@ -13,10 +13,22 @@ namespace AvatarBridge
 {
     public static class YapsSocketBuilder
     {
-        // VRCFury's exact values, emitted byte for byte.
-        public const float HoleRange = 0.4106f;
-        public const float RingRange = 0.4206f;
-        public const float FrontRange = 0.4506f;
+        // DPS's digits, offset into the quiet part of the band.
+        //
+        // A decoder reads range % 0.1 and compares it to 0.01 hole, 0.02
+        // ring, 0.05 front, 0.09 plug tip. Raliv's shader accepts anything
+        // within 0.005 of those; toy mods reading the same protocol in C#
+        // accept 0.001 (CVRGoesBrrr, verified against its source). VRCFury
+        // authors +0.0006, inside both, so its sockets drive a bystander's
+        // toy and their controllers from across a room.
+        //
+        // +0.003 is outside the mod's window and half of Raliv's, so DPS
+        // content still reads the socket and a toy mod does not answer it.
+        // The shader reconstructs range from an attenuation uniform and
+        // loses about 0.0005 doing it, which this clears twice over.
+        public const float HoleRange = 0.4130f;
+        public const float RingRange = 0.4230f;
+        public const float FrontRange = 0.4530f;
         public const float FrontOffset = 0.01f;
 
         const string LightsName = "YAPS Lights";
@@ -153,6 +165,64 @@ namespace AvatarBridge
 
         // --- the build ---------------------------------------------------
 
+        // Unity gives a mesh four vertex light slots, refills them every
+        // frame from the ranges in reach, and a socket takes two. Every lit
+        // socket therefore competes for those slots on every avatar standing
+        // near it, not just its own, and a crowd of them makes the winners
+        // change frame to frame. The converter caps a converted avatar at
+        // two; a socket built here is capped the same way. Holes first, then
+        // rings, then hierarchy order, so a rebuild keeps the same two.
+        public static bool WithinLightCap(YapsSocket socket)
+        {
+            if (socket == null) return false;
+            var lit = Lit(socket);
+            return lit.IndexOf(socket) < Places(socket);
+        }
+
+        // Four slots, two to a socket, and a plug's tracker light takes one
+        // of the four before any socket does. Two sockets and a plug is over
+        // the budget already, which is how an avatar with only two sockets
+        // still made the slots churn.
+        static int Places(YapsSocket socket)
+        {
+            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var root = avatar != null ? avatar.transform : socket.transform.root;
+            int trackers = root.GetComponentsInChildren<YapsPlug>(true)
+                .Count(p => p != null && p.emitTipLight);
+            int places = (4 - Mathf.Min(trackers, 2)) / 2;
+            return Mathf.Clamp(places, 1, BridgeSettings.DefaultMaxLightEmittingSockets);
+        }
+
+        // The sockets asking for lights on this avatar, in the order they
+        // get them.
+        static System.Collections.Generic.List<YapsSocket> Lit(YapsSocket socket)
+        {
+            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var root = avatar != null ? avatar.transform : socket.transform.root;
+            return root.GetComponentsInChildren<YapsSocket>(true)
+                .Where(s => s != null && s.emitLights)
+                .OrderBy(s => s.kind == YapsSocket.SocketKind.Hole ? 0 : 1)
+                .ThenBy(s => AnimationUtility.CalculateTransformPath(s.transform, root))
+                .ToList();
+        }
+
+        // What Build tells the user when it withheld a socket's lights.
+        public static string LightCapNote(YapsSocket socket)
+        {
+            if (socket == null || !socket.emitLights || WithinLightCap(socket)) return null;
+            int places = Places(socket);
+            var kept = Lit(socket).Take(places).Select(s => s.name);
+            return "marker lights left off: this avatar already has " +
+                   $"{places} socket(s) carrying them ({string.Join(", ", kept)}). A mesh gets " +
+                   "four vertex light slots, a socket needs two of them and a plug's tracker " +
+                   "takes one, and Unity fills the slots by range. Past that a plug sees four " +
+                   "roots and no fronts, or four fronts and no roots, and neither is a socket " +
+                   "it can enter: measured in game as an approach angle that flipped sides and " +
+                   "worked from neither. Plugs built by this toolkit find sockets through " +
+                   "contacts and do not need the lights; only old DPS plugs do. Untick \"Emit " +
+                   "marker lights\" on a socket to hand its place to another.";
+        }
+
         // Lights and pointers as children, replacing what it built before.
         public static void Build(YapsSocket socket)
         {
@@ -169,8 +239,11 @@ namespace AvatarBridge
                 if (l.transform.IsChildOf(t) && Owned(l.transform, t)) continue;
                 if (!YapsScanner.IsProtocolLight(l)) continue;
                 int d = YapsScanner.LightDigit(l);
-                if (d >= 1 && d <= 4) hasRootLight = true;
-                if (d == 5 || d == 6) hasFrontLight = true;
+                // 1 to 4 legacy roots, 7 the YAPS root; 5 and 6 legacy
+                // fronts, 0 the YAPS front. A rebuild that did not know the
+                // YAPS digits would add a second pair beside them.
+                if ((d >= 1 && d <= 4) || d == 7) hasRootLight = true;
+                if (d == 5 || d == 6 || d == 0) hasFrontLight = true;
             }
             foreach (var p in t.GetComponentsInChildren<CVRPointer>(true))
             {
@@ -180,7 +253,7 @@ namespace AvatarBridge
 
             Replace(t, LightsName, lights =>
             {
-                if (!socket.emitLights) return;
+                if (!socket.emitLights || !WithinLightCap(socket)) return;
                 if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
                 if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
             });

@@ -16,8 +16,10 @@ namespace AvatarBridge
         public const string OutputRoot = "Assets/YAPS/Generated";
         const string MarkersName = "YAPS Markers";
 
-        // DPS's tracker: range 0.49, intensity = length, at the base.
-        public const float TrackerRange = 0.49f;
+        // DPS's tracker: digit 9, intensity = length, at the base. Offset
+        // the same way the socket ranges are, so a toy mod reading the
+        // protocol in C# does not answer this plug either.
+        public const float TrackerRange = 0.4930f;
 
         public class Outcome
         {
@@ -256,6 +258,23 @@ namespace AvatarBridge
             return m;
         }
 
+        // A baked plug's length in world metres. The material holds it in
+        // the units the bake measured it in: metres already off a skinned
+        // mesh, the object's own units off a plain one, which is why the
+        // number on the material cannot be drawn in the scene as it stands.
+        public static float WorldLength(Renderer renderer, Material m)
+        {
+            if (m == null || !m.HasProperty("_YAPS_Length")) return 0f;
+            float length = m.GetFloat("_YAPS_Length");
+            // A size animation stretches the shaft; the tip goes with it.
+            if (m.HasProperty("_YAPS_BakeScale")) length *= Mathf.Max(m.GetFloat("_YAPS_BakeScale"), 0.01f);
+            bool skinned = m.HasProperty("_YAPS_FrameFromVertex")
+                ? m.GetFloat("_YAPS_FrameFromVertex") > 0.5f
+                : renderer is SkinnedMeshRenderer s && s.bones != null && s.bones.Length > 0;
+            if (!skinned && renderer != null) length *= Mathf.Abs(renderer.transform.lossyScale.z);
+            return length;
+        }
+
         // Every YapsPlug wearing this material takes the values back.
         public static void SyncPlugsFrom(Material m)
         {
@@ -415,6 +434,8 @@ namespace AvatarBridge
             string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>());
             if (renamed != null) lines.Add($"✓ {renamed}");
             YapsSocketBuilder.Build(socket);
+            string capped = YapsSocketBuilder.LightCapNote(socket);
+            if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
             var avatar = socket.GetComponentInParent<CVRAvatar>();
