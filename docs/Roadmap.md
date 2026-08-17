@@ -99,6 +99,15 @@ plays them from its own state machine, so nothing competes:
 | `LocCrouch* / LocProne* / LocFlying / LocSwimming*` | stance art | CVR's own states |
 | `LocIdle / LocWalking* / LocRunning*` | already done, by LocomotionGrafter | — |
 
+Locomotion stays with the grafter, and the reason is measured rather than preferred: the CCK
+reuses eleven clips, every one of them a Right variant (`LocWalkingStrafeRight`,
+`LocRunningStrafeRight*`, `LocCrouchRight`, `LocProneRight`), at both the left and right
+positions with the tree mirroring them. An override is one clip per ASSET, so it would put a
+mirrored right strafe on the left and throw away the author's real left clip; the grafter
+matches by POSITION and keeps it. Overrides would also mean the avatar has to run an override
+controller, which the CCK's "Create Controller" regenerates, so a user pressing that button
+would wipe their locomotion.
+
 **And the client names the menu from the clip.** `AvatarAnimatorManager.FindLegacyEmotesAndToggles`
 switches on the ORIGINAL slot name and takes the OVERRIDE clip's name as the label:
 
