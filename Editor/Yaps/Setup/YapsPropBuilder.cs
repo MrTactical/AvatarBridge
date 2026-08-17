@@ -271,6 +271,15 @@ namespace AvatarBridge
             var spawnable = root.GetComponent<CVRSpawnable>();
             if (spawnable != null)
                 spawnable.syncValues.RemoveAll(v => Channel.Any(c => c.Value == v.name));
+            // The material still says its socket arrives in channel space,
+            // and nothing writes it any more. Say what is true.
+            var dropped = root.GetComponentInChildren<YapsPlug>(true);
+            var droppedMaterial = dropped != null ? BakedMaterial(dropped) : null;
+            if (droppedMaterial != null)
+            {
+                droppedMaterial.SetFloat("_YAPS_ChannelSpace", 0f);
+                EditorUtility.SetDirty(droppedMaterial);
+            }
             // The channel's layers and parameters, wherever they went.
             var animator = root.GetComponent<Animator>();
             var controller = animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
