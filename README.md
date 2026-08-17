@@ -202,6 +202,22 @@ still converts.
 
 ## Installation
 
+### If you only want YAPS and the Toolkit
+
+Neither needs VRChat, its SDK, or any of the list below. Take **`YAPS-<version>.unitypackage`**
+from [Releases](https://github.com/MrTactical/AvatarBridge/releases) instead of the full one:
+
+1. **Unity 2022.3.22f1**, any project.
+2. **ChilloutVR CCK 4** — the `.unitypackage` from
+   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/).
+3. **`YAPS-<version>.unitypackage`**, under `Assets`.
+
+It installs to `Assets/AvatarBridge` because these tools share a codebase with the converter, so
+installing the full package later just adds the converter beside them — nothing is duplicated,
+and it works in either order. The converter itself is not in this package.
+
+### The full converter
+
 **Everything on the VRChat side comes from the [Creator Companion](https://vcc.docs.vrchat.com/) —
 including the project itself.** The SDK ships only as a VPM package, and VPM packages install only
 into projects VCC manages, so a Unity project you make by hand has no supported way to get one.
@@ -1080,6 +1096,9 @@ line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-
 **any** ChilloutVR avatar or prop — VRChat history or not, YAPS or not. Pick the object, press the
 button, read the rows. Same look, same report style, same code as the converter, so nothing here
 can drift from what a conversion does.
+
+This and YAPS also ship on their own, as `YAPS-<version>.unitypackage`, for ChilloutVR projects
+with no VRChat SDK and no interest in a converter — see [Installation](#installation).
 
 | card | does |
 |---|---|
