@@ -242,9 +242,16 @@ that is the only way somebody else's plug finds us, and a script cannot run on s
 wearer who refuses it. So: script when it is there, contacts next, lights last, which is the
 tiering the resolver already has.
 
-**Unknowns to settle before building:** whether the scripting-branch CCK ships the authoring
-components at all, what approving a script costs a wearer socially, whether open read access
-survives to release, and what a per-frame resolver costs in a full instance.
+**The authoring half exists.** An experimental CCK with WASM components is in closed testing,
+handed to a chosen few. So this is moving rather than hypothetical, and Joe already runs the
+scripting branch, which means the day that CCK reaches him a prototype is possible the same
+week: one plug, one socket, a resolver that reads transforms and writes `_YAPS_SocketPos`, and
+the answer to whether any of the rest is worth designing.
+
+**Unknowns to settle before building:** what approving a script costs a wearer socially, whether
+open read access survives to release, what a per-frame resolver costs in a full instance, and
+whether a scripted avatar can still be found by everyone else's plugs (it must: the lights and
+pointers stay either way).
 
 ## Two constraints worth remembering before designing anything
 
