@@ -323,6 +323,19 @@ namespace AvatarBridge
                 if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
+            // The contact channel, when no plug on this avatar is baked any
+            // more. Its hosts sit under the plug, and its layers and
+            // parameters are named for the plug's index, so nothing else
+            // sweeps them: a plug removed by hand leaves all three behind.
+            if (avatar != null && !plugs.Any(p => p != null && p.Target != null && BakedSlots(p.Target).Any()))
+            {
+                int cleared = YapsNativeChannel.Clear(avatar);
+                if (cleared > 0)
+                {
+                    done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
+                }
+            }
+
             // The toolkit's objects with nothing of the toolkit's above them.
             foreach (var t in top.GetComponentsInChildren<Transform>(true).ToList())
             {

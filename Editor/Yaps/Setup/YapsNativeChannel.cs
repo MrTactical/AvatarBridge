@@ -105,6 +105,31 @@ namespace AvatarBridge
             return found;
         }
 
+        // Clean up leftovers asks for this when a plug has gone by hand:
+        // the hosts, the drivers, the layers and the parameters, wherever
+        // the avatar keeps its controller. Returns how much it took.
+        public static int Clear(CVRAvatar avatar)
+        {
+            if (avatar == null) return 0;
+            var animator = avatar.GetComponent<Animator>();
+            var controller = YapsSocketReactions.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            int before = Count(avatar, controller);
+            Clear(avatar, controller);
+            return before - Count(avatar, controller);
+        }
+
+        static int Count(CVRAvatar avatar, AnimatorController controller)
+        {
+            int n = avatar.GetComponentsInChildren<Transform>(true)
+                .Count(t => t != null && (t.name.StartsWith("YAPS Channel ") || t.name.StartsWith("YAPS Driver ")));
+            if (controller != null)
+            {
+                n += controller.layers.Count(l => Mine.IsMatch(l.name));
+                n += controller.parameters.Count(p => Mine.IsMatch(p.name));
+            }
+            return n;
+        }
+
         // What a previous build wired, and nothing else. Drivers are only
         // taken when everything they carry is the channel's own: an avatar
         // may have drivers of its own and they are not ours to delete.
@@ -138,6 +163,8 @@ namespace AvatarBridge
                 }
             }
 
+            // Sweep reaches here with no controller when the avatar has none.
+            if (controller == null) return;
             var layers = controller.layers.Where(l => !Mine.IsMatch(l.name)).ToArray();
             if (layers.Length != controller.layers.Length) controller.layers = layers;
             foreach (var p in controller.parameters.Where(p => Mine.IsMatch(p.name)).ToList())

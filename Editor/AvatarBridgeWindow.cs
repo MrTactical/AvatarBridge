@@ -912,12 +912,36 @@ namespace AvatarBridge
                 "Off unless you switch them on, and each says what it costs."));
 
             optIns.Add(BridgeElements.SubHeading("OSC toys"));
+            optIns.Add(BridgeElements.Bind("Keep the OGB / PCS haptics contacts",
+                "The touch, frot and penetration contacts a VRChat avatar carries for toy apps. Off, " +
+                "they are removed with their triggers; YAPS keeps its own two per plug either way, so " +
+                "plugs and sockets work exactly the same. On, they are kept and cost nothing in sync " +
+                "bits — but each one is a CONTACT, and ChilloutVR budgets 512 overlapping pairs per " +
+                "frame for the whole instance, not per avatar. A converted avatar can carry over a " +
+                "hundred, so two people close together can spend the room's budget, and everything " +
+                "past it is dropped: sockets stop engaging and plugs stop bending, for bystanders " +
+                "too. Worth it only if you drive a toy from these parameters.",
+                settings.keepHapticsContacts,
+                v => { settings.keepHapticsContacts = v; ScheduleRebuild(); }));
+            if (settings.keepHapticsContacts)
+            {
+                optIns.Add(new HelpBox(
+                    "This is the setting to blame if contacts get unreliable in a busy or intimate " +
+                    "instance. The report says how many this avatar carries.",
+                    HelpBoxMessageType.Warning));
+            }
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
                 "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
                 "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
                 "report lists the names to paste. On, they stay synced and automatic detection works " +
                 "with no setup, at 32 sync bits each. Needs Penetration on Convert to YAPS.",
                 settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
+            if (settings.syncHapticsForOsc && !settings.keepHapticsContacts)
+            {
+                optIns.Add(new HelpBox(
+                    "There are no haptics parameters to sync unless the contacts above are kept. " +
+                    "This does nothing on its own.", HelpBoxMessageType.Warning));
+            }
             if (settings.syncHapticsForOsc)
             {
                 optIns.Add(new HelpBox(

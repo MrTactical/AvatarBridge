@@ -133,8 +133,15 @@ namespace AvatarBridge
         public bool stripSpsSystems = true;
         // Convert DPS, TPS and SPS into YAPS instead of stripping them.
         public bool convertYapsSystems = true;
+        // Keep VRChat's OGB/PCS/Wholesome haptics contacts. Off: they are
+        // stripped with their triggers. Each is a contact, and ChilloutVR
+        // budgets 512 overlapping pairs per frame for the whole instance,
+        // so a hundred of them per avatar is what breaks contacts in a
+        // crowd. Only worth it to drive a toy from them.
+        public bool keepHapticsContacts = false;
         // Keep the OGB haptics parameters synced instead of local, so OSC
         // toy apps see them under their VRChat names. 32 sync bits each.
+        // Needs keepHapticsContacts.
         public bool syncHapticsForOsc = false;
         // Keep each socket's depth parameter synced, so the author's own
         // depth reactions play for the room. Two per socket, 32 bits each.

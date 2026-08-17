@@ -423,6 +423,16 @@ namespace AvatarBridge
             return Vector3.Distance(renderer.transform.position, socket.position) < 0.03f;
         }
 
+        // A socket's own baked material, told from a plug's: the socket bake
+        // switches the deform off and writes a power, the plug bake does the
+        // opposite. Both carry _YAPS_Bake, so the texture alone says nothing.
+        static bool IsSocketMaterial(Material m)
+        {
+            return m != null
+                   && m.HasProperty("_YAPS_SocketPower") && m.GetFloat("_YAPS_SocketPower") > 0f
+                   && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") <= 0f;
+        }
+
         // Everything Build does for one socket: its markers, its shapes,
         // and a menu toggle when nothing switches it. What the window does
         // per socket, and what the inspector's own button does.
@@ -487,10 +497,23 @@ namespace AvatarBridge
             if (result.Shapes.Count == 0) return $"✗ {socket.name}: none of the named shapes exist on \"{renderer.name}\"";
 
             var source = mats[0];
+            // A material carries ONE bake. If this mesh's material is a plug's,
+            // baking the socket into it replaces the plug's vertex data with the
+            // socket's and the plug stops deforming, which is what happens when
+            // a ring is placed on the mesh the plug is part of. Drive the shapes
+            // by contact instead: same reactions, nobody's bake overwritten.
+            if (source.HasProperty("_YAPS_Bake") && !IsSocketMaterial(source))
+            {
+                string byContact = YapsSocketReactions.Build(socket);
+                return (byContact ?? $"✓ {socket.name}") +
+                       " (its mesh is a plug's, and a material holds one bake, so its shapes " +
+                       "are driven by a depth contact rather than the socket shader)";
+            }
+
             Material material;
             if (source.HasProperty("_YAPS_Bake"))
             {
-                // Already YAPS, ours to refresh; a plug's material keeps its plug half.
+                // Ours to refresh: a socket's own material, baked before.
                 material = source;
                 var previous = material.GetTexture("_YAPS_Bake");
                 material.SetTexture("_YAPS_Bake", result.Bake);

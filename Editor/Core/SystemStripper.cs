@@ -34,6 +34,16 @@ namespace AvatarBridge
         // SPS audio add-on are contact-driven too: kept and made local like OGB.
         static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS", "pcs/", "WH_" };
 
+        // The haptics stacks, told apart from the rest because each one is a
+        // CONTACT and ChilloutVR budgets contacts globally: ContactLimits
+        // .MaxPairsPerFrame is 512 overlapping pairs for the whole instance,
+        // and CollectPairsJob drops the rest silently. One converted avatar
+        // routinely carries a hundred of these, so two of them in one place
+        // can spend the room's budget and stop everyone's contacts, YAPS's
+        // own included. Local costs no sync bits; it was never free.
+        static readonly string[] HapticsParamPrefixes = { "OGB", "pcs/", "WH_" };
+        static readonly string[] HapticsPointerTypePrefixes = { "OGB", "PCS" };
+
         static readonly string[] OtherSpsParamPrefixes =
         {
             "VF77_", "VF23_", "VRCF_WSD"
@@ -176,6 +186,16 @@ namespace AvatarBridge
                     // The layers that play a socket's reactions stay, since
                     // their parameters now do.
                     layerHints.AddRange(OtherSpsLayerHints);
+                    if (!ctx.Settings.keepHapticsContacts)
+                    {
+                        // Stripped, not localised: a local contact still takes
+                        // its place in the instance's pair budget, and the
+                        // touch and frot stacks are most of what an avatar
+                        // spends. Their triggers go with their parameters,
+                        // through RemoveOrphanedCvrComponents below.
+                        paramPrefixes.AddRange(HapticsParamPrefixes);
+                        ReportHapticsRemoved(ctx);
+                    }
                     // OGB's haptics stay synced only on request: an OSC toy
                     // app reads them by their VRChat name, and a local
                     // parameter's "#" hides them. Their sync cost is the
@@ -901,6 +921,30 @@ namespace AvatarBridge
             return depth;
         }
 
+        // Counted before the strip, since the strip is what removes them.
+        static void ReportHapticsRemoved(BridgeContext ctx)
+        {
+            int contacts = ctx.Target.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true)
+                .Count(t => t != null && t.enterTasks.Select(k => k.settingName)
+                    .Concat(t.exitTasks.Select(k => k.settingName))
+                    .Concat(t.stayTasks.Select(k => k.settingName))
+                    .Where(n => !string.IsNullOrEmpty(n))
+                    .Any(n => HapticsParamPrefixes.Any(p =>
+                        n.TrimStart('#').StartsWith(p, StringComparison.OrdinalIgnoreCase))));
+            if (contacts == 0) return;
+            ctx.Report.Converted(Category,
+                $"Removed {contacts} haptics contact(s): OGB, PCS and Wholesome",
+                "The touch, frot and penetration stacks VRChat avatars carry for OSC toy apps. " +
+                "They cost no sync bits in ChilloutVR, which is why they used to be kept, but they " +
+                "are CONTACTS, and contacts are budgeted for the whole instance rather than per " +
+                "avatar: 512 overlapping pairs per frame, and everything past that is dropped " +
+                "silently. One converted avatar can carry over a hundred, so two people close " +
+                "together spend the room's budget and every contact in it starts failing — sockets " +
+                "stop engaging and plugs stop bending, for bystanders too. YAPS needs two of these " +
+                "per plug and keeps them. Tick \"Keep the OGB/PCS haptics contacts\" if you drive a " +
+                "toy from them and would rather pay that price.");
+        }
+
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)
         {
             // A converted socket's pointer is the thing a plug looks for,
@@ -908,6 +952,12 @@ namespace AvatarBridge
             var pointerPrefixes = KeepingPenetration(ctx)
                 ? OtherSpsPointerTypePrefixes
                 : OtherSpsPointerTypePrefixes.Concat(YapsPointerTypePrefixes).ToArray();
+            // The haptics pointers are contacts too, and nothing else looks
+            // for them: a plug finds a socket by TPS_/SPSLL_, never by OGB.
+            if (KeepingPenetration(ctx) && !ctx.Settings.keepHapticsContacts)
+            {
+                pointerPrefixes = pointerPrefixes.Concat(HapticsPointerTypePrefixes).ToArray();
+            }
             int removed = 0;
             foreach (var pointer in ctx.Target.GetComponentsInChildren<CVRPointer>(true))
             {
