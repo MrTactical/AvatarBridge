@@ -301,11 +301,15 @@ defines.
 
 **GoGo Loco is stripped by default** (toggleable). CVR has its own locomotion, and GoGo's layers
 fight it while eating ~15 synced parameters. The VRChat haptics and sound stacks that ride with
-penetration (OGB, PCS, Wholesome) come across under *Convert to YAPS*: their contacts become
-triggers driving local parameters, so they cost nothing of the sync budget — and, like every
-contact-driven parameter in ChilloutVR, they play on the wearer's machine rather than the whole
-room. Their menu entries stay synced, since those are yours to set. Under *Remove* they go with
-the rest.
+penetration (OGB, PCS, Wholesome) are **stripped by default**, with their triggers, under every
+*Penetration* choice. They cost nothing of the sync budget, which is why they used to be kept —
+but each one is a *contact*, and ChilloutVR budgets contacts for the whole instance rather than
+per avatar: 512 overlapping pairs a frame, and everything past that is dropped without a word. A
+converted avatar carried over a hundred of them, so two people close together could spend the
+room's budget and stop every contact in it, including the ones YAPS needs and other people's.
+Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and would
+rather pay that price. YAPS keeps its own two per plug either way, so plugs and sockets are
+unaffected.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -672,8 +676,9 @@ route only opens right on a mesh whose origin is the socket.) **A socket whose s
 body mesh gets them through a contact instead**: a depth trigger on the socket reads the plug's
 tip and a layer in your own animator plays the stages from it. That depth is a synced parameter,
 32 of the avatar's 3200 bits per socket: ChilloutVR computes a trigger's contact on the wearer's
-machine alone, so without it nobody else would see the shapes move. Either way, reactions the
-author already built are kept and made local.
+machine alone, so without it nobody else would see the shapes move. Either way, the depth
+reactions the author already built are kept: it is the OGB and PCS *haptics* contacts beside them
+that are stripped, and they drive toys rather than shapes.
 
 **It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
 — its hierarchy, its menu labels, its report — but the things *other people's* content reads are
@@ -1192,7 +1197,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking` — self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar — smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
-| **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. *Convert* also carries the OGB, PCS and Wholesome haptics and sound stacks across as local, contact-driven parameters (free in ChilloutVR); *Remove* strips DPS/TPS/SPS and those stacks with them. *Leave as VRChat built it* touches nothing, and functions nowhere |
+| **Penetration (DPS, TPS, SPS)** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR — a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance — a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have — dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept — see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
