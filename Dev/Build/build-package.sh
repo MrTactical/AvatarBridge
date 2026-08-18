@@ -116,6 +116,10 @@ while IFS= read -r -d '' path; do
     .*) continue ;;                      # repo plumbing
     *.unitypackage|*.unitypackage.superseded-*|*.meta) continue ;;   # prior builds; metas ride with their asset
   esac
+  # Anything git ignores is not part of the package: probe output lands in
+  # the repo root by design, and a build must not stop for it, let alone
+  # ship it. survey.md was the one that found this.
+  if git check-ignore -q -- "$rel" 2>/dev/null; then continue; fi
   meta="$rel.meta"
   if [ ! -f "$meta" ]; then
     echo "  !! no .meta for $rel: Unity has not imported it yet" >&2

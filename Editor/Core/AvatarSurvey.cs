@@ -672,8 +672,8 @@ namespace AvatarBridge
         }
 
         // The conversion report's section: the counts in the open, the full
-        // listing folded, because an avatar like Abbess has a thousand
-        // contested bindings and nobody reads a thousand lines.
+        // listing folded, because a complex avatar has a thousand contested
+        // bindings and nobody reads a thousand lines.
         public static string Markdown(Model model)
         {
             var sb = new StringBuilder();
