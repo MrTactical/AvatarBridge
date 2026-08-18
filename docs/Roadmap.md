@@ -242,6 +242,33 @@ that is the only way somebody else's plug finds us, and a script cannot run on s
 wearer who refuses it. So: script when it is there, contacts next, lights last, which is the
 tiering the resolver already has.
 
+### What YAPS becomes with a script
+
+Three features, in the order they are worth building.
+
+**Bones, not vertices.** A script may write `Transform.position` on its own avatar, and that is
+the whole of what YAPS does today expressed as ordinary code: pose a bone chain toward the socket
+rather than displace vertices in a shader. Everything the vertex path fights disappears with it.
+No shader patching, so a plug works on a shader that refuses to be patched and on whatever
+Poiyomi does next. No bake texture, which is megabytes of VRAM per plug and the reason a re-bake
+is needed after every update. Correct shadows and depth, because the mesh really is where it
+looks. Cloth and colliders can interact with it. And a bone chain is what most plugs already have.
+
+**A shader fallback, kept forever.** A plug modelled as a single rigid mesh with no bone chain
+cannot be posed, and neither can a plug on a client with no script. So the vertex deform stays as
+the floor, and the rule is the same shape as the socket resolver's: **bones if the mesh has them
+and the script runs, the shader otherwise.** The toolkit already knows which it is: the bake
+records `_YAPS_FrameFromVertex`, and the survey knows a mesh's bone chain.
+
+**A detector for everything already out there.** A script can walk any avatar in the instance and
+read its sockets whatever protocol they speak, because it reads components rather than waiting
+for a light slot or a contact pair. Old Raliv DPS lights, TPS and SPS pointers, YAPS markers, all
+of it, with no cost to the four vertex slots and none to the 512-pair budget. Content whose
+authors left the platform years ago becomes usable, and that is worth more than any new feature.
+
+**Access.** ChilloutVR gates the scripting CCK; it is requested by emailing team.chilloutvr.net.
+Nothing here can start before that arrives.
+
 **The authoring half exists.** An experimental CCK with WASM components is in closed testing,
 handed to a chosen few. So this is moving rather than hypothetical, and Joe already runs the
 scripting branch, which means the day that CCK reaches him a prototype is possible the same

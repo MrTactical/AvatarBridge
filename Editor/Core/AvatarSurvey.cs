@@ -317,14 +317,19 @@ namespace AvatarBridge
                 string bone = null;
                 if (r is SkinnedMeshRenderer skin)
                 {
-                    var bones = UsedBones(skin);
-                    if (bones.Count != 1) { Reject(model, "skinned to more than one bone"); continue; }
-                    int index = bones.First();
-                    if (skin.bones == null || index < 0 || index >= skin.bones.Length)
-                    {
-                        Reject(model, "bone list does not match the weights"); continue;
-                    }
-                    bone = skin.bones[index] != null ? skin.bones[index].name : null;
+                    // One bone, or one chain. A thing held in a hand is
+                    // weighted to the hand AND its fingers, which is still
+                    // extractable: attach at the root of the chain and lose
+                    // the articulation. Bones on separate limbs are clothing.
+                    var used = UsedBones(skin)
+                        .Where(i => skin.bones != null && i >= 0 && i < skin.bones.Length && skin.bones[i] != null)
+                        .Select(i => skin.bones[i])
+                        .ToList();
+                    if (used.Count == 0) { Reject(model, "bone list does not match the weights"); continue; }
+                    var chainRoot = ChainRoot(used);
+                    if (chainRoot == null) { Reject(model, $"skinned across {used.Count} bones on different parts of the rig"); continue; }
+                    if (used.Count > 8) { Reject(model, $"skinned to {used.Count} bones, too much of the rig to lift out"); continue; }
+                    bone = used.Count == 1 ? chainRoot.name : $"{chainRoot.name} (chain of {used.Count})";
                     if (mesh.blendShapeCount > 0) { Reject(model, "has blendshapes, so it is fitted to this body"); continue; }
                 }
                 else
@@ -409,6 +414,18 @@ namespace AvatarBridge
             return filter != null ? filter.sharedMesh : null;
         }
 
+        // The one bone every other used bone hangs off, or null when they
+        // sit on separate branches: a shirt reaching both arms has no root
+        // short of the spine, and lifting that out is lifting out the body.
+        static Transform ChainRoot(List<Transform> used)
+        {
+            foreach (var candidate in used)
+            {
+                if (used.All(b => b == candidate || b.IsChildOf(candidate))) return candidate;
+            }
+            return null;
+        }
+
         static SortedSet<int> UsedBones(SkinnedMeshRenderer skin)
         {
             var used = new SortedSet<int>();
@@ -420,7 +437,7 @@ namespace AvatarBridge
                 if (w.weight1 > 0.001f) used.Add(w.boneIndex1);
                 if (w.weight2 > 0.001f) used.Add(w.boneIndex2);
                 if (w.weight3 > 0.001f) used.Add(w.boneIndex3);
-                if (used.Count > 1) break;
+                if (used.Count > 24) break;   // past any prop; the caller rejects on count anyway
             }
             return used;
         }
