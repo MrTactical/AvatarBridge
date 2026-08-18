@@ -210,7 +210,7 @@ namespace AvatarBridge.Regression
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(p => !string.IsNullOrEmpty(p) && p.StartsWith("Assets/", StringComparison.Ordinal))
                 .Where(p => !excluded.Any(x => p.Replace('\\', '/').Contains(x)))
-                .OrderBy(p => p, StringComparer.Ordinal)
+                .OrderBy(p => p, StableSampleOrder.Instance)
                 .ToArray();
         }
 
@@ -463,11 +463,11 @@ namespace AvatarBridge.Regression
             }
             sb.Append($"params={r.Parameters} responded={r.Responded} stuck={r.Stuck?.Count ?? 0} " +
                       $"refused={r.Refused?.Count ?? 0} invalid={(r.Invalid ? 1 : 0)}\n");
-            foreach (var name in (r.Stuck ?? new List<string>()).OrderBy(n => n, StringComparer.Ordinal))
+            foreach (var name in (r.Stuck ?? new List<string>()).OrderBy(n => n, StableSampleOrder.Instance))
             {
                 sb.Append("  stuck ").Append(name).Append('\n');
             }
-            foreach (var name in (r.Refused ?? new List<string>()).OrderBy(n => n, StringComparer.Ordinal))
+            foreach (var name in (r.Refused ?? new List<string>()).OrderBy(n => n, StableSampleOrder.Instance))
             {
                 sb.Append("  refused ").Append(name).Append('\n');
             }
@@ -498,6 +498,14 @@ namespace AvatarBridge.Regression
             return found.ToList();
         }
 
+        // Redacts the ids VRCFury assigns fresh on every bake.
+        //
+        // Everything ORDERED in this digest sorts by StableSampleOrder, which
+        // strips the same ids to build its key. Sorting on the raw text and
+        // redacting afterwards is the bug that was here: Fury renumbers, the
+        // order changes, and the digest shows identical-looking lines in new
+        // places. It cost a full read of the contacts block to find out that
+        // nothing had changed.
         static string Stable(string s)
         {
             if (string.IsNullOrEmpty(s))
@@ -611,7 +619,7 @@ namespace AvatarBridge.Regression
             // lands here too and reads as a setting nobody can set.
             foreach (var f in typeof(BridgeSettings).GetFields()
                          .Where(f => !f.IsLiteral && !f.IsStatic)
-                         .OrderBy(f => f.Name, StringComparer.Ordinal))
+                         .OrderBy(f => f.Name, StableSampleOrder.Instance))
             {
                 sb.Append("  ").Append(f.Name).Append('=').Append(f.GetValue(s)).Append('\n');
             }
@@ -638,7 +646,7 @@ namespace AvatarBridge.Regression
             var notable = report.Entries
                 .Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning)
                 .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
-                .OrderBy(s => s, StringComparer.Ordinal);
+                .OrderBy(s => s, StableSampleOrder.Instance);
             foreach (var line in notable) sb.Append(line).Append('\n');
             sb.Append('\n');
         }
@@ -675,7 +683,7 @@ namespace AvatarBridge.Regression
             // Sorted by machineName: the list order is menu order, which is worth seeing, but it
             // is also the single noisiest thing in the whole digest because any pass that appends
             // an entry shifts everything after it. Order changes show up as a separate line.
-            foreach (var e in entries.OrderBy(x => x.machineName, StringComparer.Ordinal))
+            foreach (var e in entries.OrderBy(x => x.machineName, StableSampleOrder.Instance))
             {
                 sb.Append("  ").Append(e.machineName)
                   .Append(" | ").Append(e.type)
@@ -697,7 +705,7 @@ namespace AvatarBridge.Regression
                          || n.StartsWith("MagicaCloth", StringComparison.Ordinal)
                          || n.StartsWith("VRC.", StringComparison.Ordinal))
                 .GroupBy(n => n)
-                .OrderBy(g => g.Key, StringComparer.Ordinal);
+                .OrderBy(g => g.Key, StableSampleOrder.Instance);
             foreach (var g in counts) sb.Append("  ").Append(g.Count().ToString("D3")).Append("  ").Append(g.Key).Append('\n');
             sb.Append('\n');
 
@@ -711,7 +719,7 @@ namespace AvatarBridge.Regression
                             && l.range > 0.05f && l.range < 0.5f)
                 .Select(l => l.range.ToString("0.0000", CultureInfo.InvariantCulture))
                 .GroupBy(r => r)
-                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StableSampleOrder.Instance)
                 .ToList();
             if (marks.Count > 0)
             {
@@ -737,7 +745,7 @@ namespace AvatarBridge.Regression
 
             var cloths = target.GetComponentsInChildren<Component>(true)
                 .Where(c => c != null && c.GetType().FullName == MagicaClothType)
-                .OrderBy(c => HierarchyPath(target, c), StringComparer.Ordinal)
+                .OrderBy(c => HierarchyPath(target, c), StableSampleOrder.Instance)
                 .ToList();
 
             // Component-enabled and object-active are counted SEPARATELY because they are
@@ -825,12 +833,12 @@ namespace AvatarBridge.Regression
             foreach (var trigger in target.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
             {
                 string path = HierarchyPath(target, trigger);
-                foreach (string parameter in TriggerParameters(trigger).OrderBy(p => p, StringComparer.Ordinal))
+                foreach (string parameter in TriggerParameters(trigger).OrderBy(p => p, StableSampleOrder.Instance))
                 {
                     Record(path, "trigger", parameter);
                 }
             }
-            contacts.Sort(StringComparer.Ordinal);
+            contacts.Sort(StableSampleOrder.Instance);
 
             sb.Append($"contacts={contacts.Count} local={local} bridged={carried} ")
               .Append($"streamed={streamed} bridgeLayers={bridged.Count}\n");
@@ -934,7 +942,7 @@ namespace AvatarBridge.Regression
             // the two can disagree, and the serialized value is what
             // the prefab saves. Disagreements print both.
             sb.Append("[animators]\n");
-            foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StringComparer.Ordinal))
+            foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StableSampleOrder.Instance))
             {
                 var serialized = new SerializedObject(a)
                     .FindProperty("m_Controller").objectReferenceValue as RuntimeAnimatorController;
@@ -966,7 +974,7 @@ namespace AvatarBridge.Regression
                     sb.Append("[overrides] ").Append(ovr.name).Append('\n');
                     var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
                     ovr.GetOverrides(pairs);
-                    foreach (var p in pairs.OrderBy(p => Stable(p.Key != null ? p.Key.name : ""), StringComparer.Ordinal))
+                    foreach (var p in pairs.OrderBy(p => Stable(p.Key != null ? p.Key.name : ""), StableSampleOrder.Instance))
                     {
                         sb.Append("  ").Append(p.Key != null ? p.Key.name : "<null>")
                           .Append(" -> ").Append(p.Value != null ? p.Value.name : "<unchanged>").Append('\n');
@@ -988,7 +996,7 @@ namespace AvatarBridge.Regression
             sb.Append("[controller] ").Append(ac.name).Append('\n');
 
             sb.Append("  parameters:\n");
-            foreach (var p in ac.parameters.OrderBy(p => Stable(p.name), StringComparer.Ordinal))
+            foreach (var p in ac.parameters.OrderBy(p => Stable(p.name), StableSampleOrder.Instance))
             {
                 string def;
                 switch (p.type)
@@ -1027,7 +1035,7 @@ namespace AvatarBridge.Regression
             // AnyState transitions first and separately: this is where the self-restart bugs
             // lived, so canTransitionToSelf gets its own visible field on every line.
             foreach (var t in sm.anyStateTransitions
-                         .OrderBy(t => Dest(t), StringComparer.Ordinal)
+                         .OrderBy(t => Dest(t), StableSampleOrder.Instance)
                          .ThenBy(t => Conds(t), StringComparer.Ordinal))
             {
                 sb.Append(indent).Append("any -> ").Append(Dest(t))
@@ -1038,7 +1046,7 @@ namespace AvatarBridge.Regression
 
             // States sorted by name. Unity's array order is creation
             // order, and a diff of that tells you nothing.
-            foreach (var cs in sm.states.OrderBy(s => s.state.name, StringComparer.Ordinal))
+            foreach (var cs in sm.states.OrderBy(s => s.state.name, StableSampleOrder.Instance))
             {
                 var st = cs.state;
                 sb.Append(indent).Append("state ").Append(prefix).Append(st.name)
@@ -1061,13 +1069,13 @@ namespace AvatarBridge.Regression
                         var writes = DriverTargets(b);
                         return writes.Count > 0 ? $"{name}(writes {string.Join("/", writes)})" : name;
                     })
-                    .OrderBy(n => n, StringComparer.Ordinal)
+                    .OrderBy(n => n, StableSampleOrder.Instance)
                     .ToList();
                 if (behaviours.Count > 0)
                     sb.Append(indent).Append("  behaviours: ").Append(string.Join(",", behaviours)).Append('\n');
 
                 foreach (var t in st.transitions
-                             .OrderBy(t => Dest(t), StringComparer.Ordinal)
+                             .OrderBy(t => Dest(t), StableSampleOrder.Instance)
                              .ThenBy(t => Conds(t), StringComparer.Ordinal))
                 {
                     sb.Append(indent).Append("  -> ").Append(Dest(t))
@@ -1077,7 +1085,7 @@ namespace AvatarBridge.Regression
             }
 
             // Sub-state machines, recursed so a graft nested one level down is still described.
-            foreach (var child in sm.stateMachines.OrderBy(c => c.stateMachine.name, StringComparer.Ordinal))
+            foreach (var child in sm.stateMachines.OrderBy(c => c.stateMachine.name, StableSampleOrder.Instance))
             {
                 sb.Append(indent).Append("submachine ").Append(child.stateMachine.name).Append('\n');
                 AppendStateMachine(sb, child.stateMachine, indent + "  ", prefix + child.stateMachine.name + "/");
@@ -1111,7 +1119,7 @@ namespace AvatarBridge.Regression
             if (t.conditions == null || t.conditions.Length == 0) return "[]";
             var parts = t.conditions
                 .Select(c => $"{c.parameter} {c.mode} {F(c.threshold)}")
-                .OrderBy(s => s, StringComparer.Ordinal);
+                .OrderBy(s => s, StableSampleOrder.Instance);
             return "[" + string.Join(" && ", parts) + "]";
         }
 
