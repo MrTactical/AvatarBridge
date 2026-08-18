@@ -867,6 +867,16 @@ along +Z** — pivot at the base, shaft along +Z (in Blender: origin at the base
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
 
+**The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
+Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the
+component at upload. That is why neither has an on/off checkbox in the inspector — there is
+nothing to switch off. The Animation window will still offer you the `Enabled` field, because
+Unity puts one on every component, and animating it does nothing whatsoever. **To switch a plug's
+deform on and off, animate the material property `_YAPS_Enabled` on its renderer instead**: 0 off,
+1 on, anything between fades it, so a slider drives it directly. It stops the bending rather than
+hiding the mesh — toggle the object for that — and because animated material properties live in
+the renderer's property block, the material inspector keeps showing whatever was baked.
+
 **Every knob is animatable.** The knobs are material properties on the plug's (or socket's) mesh,
 so the avatar's own animator can drive them like any material property: in the Animation window
 pick the mesh, add *Skinned Mesh Renderer ▸ Material ▸ `_YAPS_<name>`*, key it, and put the clip

@@ -149,6 +149,30 @@ namespace AvatarBridge
 
         // The material properties an animation may drive, by the name the
         // Animation window wants after "Material.".
+        // Why this component has no enable checkbox, and what to animate
+        // instead. Reported by a user who animated the component's own
+        // enabled field off a slider and got nothing, which is exactly what
+        // that does: the field is serialised on every Behaviour whether or
+        // not it means anything, and this one does not.
+        public const string InertComponentNote =
+            "This component is setup data, not something running in game. It has no on/off checkbox " +
+            "because there is nothing to switch off: ChilloutVR strips it at upload, and everything it " +
+            "describes is baked into the material. Animating its \"Enabled\" field in the Animation " +
+            "window does nothing at all — the field is there because Unity puts one on every component.";
+
+        public const string PlugSwitchNote =
+            "To turn the deform on and off, animate the MATERIAL property _YAPS_Enabled on this plug's " +
+            "renderer: 0 is off, 1 is on, and anything between fades it, so a slider drives it directly. " +
+            "It stops the bending, it does not hide the mesh — toggle the object for that. The animated " +
+            "value lives in the renderer's property block, so the material inspector keeps showing what " +
+            "was baked.";
+
+        public const string SocketSwitchNote =
+            "_YAPS_SocketPower on this socket's renderer animates how much its own mesh reshapes around " +
+            "a plug, and 0 stops that. It does NOT stop plugs finding the socket: they find it through " +
+            "the contact channel and the marker light, so switching the socket off means switching off " +
+            "the object those sit under, the way any other toggle does.";
+
         public const string AnimatablePlugProperties =
             "_YAPS_Enabled  (deform on, 0 or 1)\n" +
             "_YAPS_Curvature, _YAPS_ReCurvature, _YAPS_EntranceStiffness  (shape at rest)\n" +
@@ -584,6 +608,7 @@ namespace AvatarBridge
             _root.Add(BridgeElements.Banner((hole ? "Hole" : "Ring") + "  ·  " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built — no plug can find it yet",
                 built ? "YAPS" : "not built"));
+            _root.Add(BridgeElements.Hint(YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.SocketSwitchNote));
 
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
@@ -1109,6 +1134,7 @@ namespace AvatarBridge
                 renderer == null ? "no renderer — pick the mesh that bends"
                 : isBaked ? $"baked  ·  {len:0.###} m  ·  {baked[0].name}" : "not baked yet — set it up, then Bake",
                 isBaked ? "YAPS" : "not baked"));
+            _root.Add(BridgeElements.Hint(YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.PlugSwitchNote));
 
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
@@ -1207,9 +1233,11 @@ namespace AvatarBridge
             animate.Body.Add(BridgeElements.Hint(
                 "Every knob above is a material property on this plug's mesh, so an animation can drive " +
                 "it: in the Animation window pick the mesh, add Skinned Mesh Renderer (or Mesh Renderer) " +
-                "▸ Material ▸ one of the names below, and key it. An erectness slider, say, takes " +
-                "Curvature toward 0 and Entrance stiffness up. Size sliders and hyper toggles that scale " +
-                "the bone or a blendshape are wired for you at Bake."));
+                "▸ Material ▸ one of the names below, and key it. The first one is the on/off: " +
+                "_YAPS_Enabled. Animate THAT rather than this component's own Enabled field, which is " +
+                "inert. An erectness slider, say, takes Curvature toward 0 and Entrance stiffness up. " +
+                "Size sliders and hyper toggles that scale the bone or a blendshape are wired for you " +
+                "at Bake."));
             animate.Body.Add(new TextField { value = YapsInspectorStyle.AnimatablePlugProperties, multiline = true, isReadOnly = true });
             body.Add(animate);
 
