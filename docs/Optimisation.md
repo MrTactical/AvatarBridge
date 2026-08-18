@@ -157,6 +157,27 @@ from the controller. "Nothing appeared to happen" is not, and an avatar like Abb
 where it would do damage. The sweep's job is to rank what a human looks at first, and the report
 should say WHY something looks dead: overridden by a driver, behind a wait, or genuinely unread.
 
+### Built 2026-08-18, in the Toolkit
+
+`Editor/Toolkit/FreeWins.cs`, reached from the **Free wins** card. Toolkit first because the
+converter already removes both of these on the way through — Abbess converts with zero empty
+layers and zero unused parameters — so the avatars that carry them are the native ones the
+Toolkit exists for. It writes a tidied COPY of the controller and repoints the avatar at it.
+
+**The placeholder clips are NOT removed, and this list was wrong to call them a free win.** Unity
+crashes when it builds a playable graph containing an empty motion slot, which is the only reason
+`FillEmptyMotionSlots` writes them. They are reported instead, because what they really mean is
+that a motion the author intended never arrived. Abbess carries 99.
+
+Two guards, both learned the hard way in `Dev/Probes/FreeWinsProbe.cs`:
+
+- A parameter the GAME writes is kept even when nothing on the avatar touches it, and said so in
+  the report. `CvrParameterNames.IsGameDriven` decides, so the list stays in one place.
+- The avatar runs an override controller WRAPPING the base. Assigning the tidied controller to the
+  Animator would throw that override away with every clip mapping in it, so the swap happens one
+  level down. The probe now asserts the shared override still points where it did, because the
+  first version of the probe edited that shared asset and then deleted what it pointed at.
+
 ## Phase 2 — capped resources
 
 Contacts are the only thing here with a hard platform limit and silent failure past it. 28

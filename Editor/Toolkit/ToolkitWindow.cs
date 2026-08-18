@@ -58,6 +58,7 @@ namespace AvatarBridge
             var tools = new BridgeElements.Card("Tools", null, null, 2, 0.5f);
             tools.Body.Add(Check());
             tools.Body.Add(Weigh());
+            tools.Body.Add(Tidy());
             tools.Body.Add(Stereo());
             tools.Body.Add(Face());
             tools.Body.Add(Audio());
@@ -158,6 +159,32 @@ namespace AvatarBridge
                 AvatarWeight.Fill(report, AvatarWeight.Measure(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar)));
                 return report;
             }, "Nothing on it is worth changing.");
+
+        VisualElement Tidy() => Tool("Free wins",
+            "Removes only what is provably inert: layers with no states, and parameters no clip writes, no " +
+            "transition reads, no driver, menu control or contact names. Decided by reading the controller, " +
+            "never by flipping something and watching — an individual toggle a preset overrides looks dead " +
+            "and is not. Written to a copy of the controller; your original is not edited.",
+            "Tidy it", () =>
+            {
+                var report = new BridgeReport();
+                var ctx = Context(report);
+                if (ctx.CvrAvatar == null)
+                {
+                    report.Approximated("Free wins", "No CVRAvatar on the root", "Add one and this can read it.");
+                    return report;
+                }
+                var plan = FreeWins.Find(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar));
+                if (!plan.Any)
+                {
+                    FreeWins.Fill(report, plan, 0, 0, null);
+                    return report;
+                }
+                FreeWins.Apply(ctx.CvrAvatar, plan,
+                    AssetDatabase.GenerateUniqueAssetPath(ctx.OutputDir + "/" + _target.name + " tidied.controller"),
+                    report);
+                return report;
+            }, "Nothing on it is provably inert. That is the good outcome.");
 
         VisualElement Stereo() => Tool("Stereo shaders",
             "ChilloutVR renders single-pass instanced; a shader that never opted in draws into one eye in VR. " +
