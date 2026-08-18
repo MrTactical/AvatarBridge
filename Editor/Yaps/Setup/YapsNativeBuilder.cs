@@ -200,6 +200,19 @@ namespace AvatarBridge
                     result.MovingShapes, missed)
                 : 0;
 
+            // Somebody animating the component's own checkbox meant the
+            // deform, so give them the deform.
+            int switched = YapsCurveMirror.MirrorEnabled(clips,
+                AnimationUtility.CalculateTransformPath(plug.transform, animator.transform), typeof(YapsPlug),
+                rendererPath, renderer.GetType(), "_YAPS_Enabled");
+            if (switched > 0)
+            {
+                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
+                            "nothing in game: ChilloutVR strips the component. A matching curve on the " +
+                            "material's _YAPS_Enabled was written beside each, so the animation now " +
+                            "switches the deform the way it was meant to.");
+            }
+
             int scaled = 0;
             var chainRoot = plug.rootBone;
             if (chainRoot != null)
@@ -211,9 +224,12 @@ namespace AvatarBridge
                 scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), along);
             }
 
-            if (shapes + scaled > 0)
+            if (shapes + scaled + switched > 0)
             {
                 AssetDatabase.SaveAssets();
+            }
+            if (shapes + scaled > 0)
+            {
                 o.Notes.Add($"Wired the plug's size into {shapes + scaled} of the avatar's own clip(s)" +
                             (shapes > 0 ? $": {shapes} shape curve(s)" : "") +
                             (scaled > 0 ? $"{(shapes > 0 ? "," : ":")} {scaled} bone scale curve(s)" : "") +

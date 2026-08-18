@@ -877,6 +877,18 @@ deform on and off, animate the material property `_YAPS_Enabled` on its renderer
 hiding the mesh — toggle the object for that — and because animated material properties live in
 the renderer's property block, the material inspector keeps showing whatever was baked.
 
+If you animated the component before reading any of that, **Bake fixes it for you**: it finds
+curves on a plug component's `Enabled` field in your own clips and writes the matching
+`_YAPS_Enabled` curve on the renderer beside each, then says how many it did. Your curve is left
+alone, a clip that already drives the material itself is never overwritten, and Remove strips the
+added curves with the rest of the wiring. It happens at Bake, so animate first and bake after —
+or bake again.
+
+Sockets have no equivalent, on purpose. There is no single switch for one: `_YAPS_SocketPower`
+only changes how much the socket's own mesh reshapes, while what makes a socket *findable* is its
+contact channel and marker light. Mirroring a socket's checkbox onto `SocketPower` would look
+like it worked while plugs kept homing in on it. Switch the object off instead.
+
 **Every knob is animatable.** The knobs are material properties on the plug's (or socket's) mesh,
 so the avatar's own animator can drive them like any material property: in the Animation window
 pick the mesh, add *Skinned Mesh Renderer ▸ Material ▸ `_YAPS_<name>`*, key it, and put the clip

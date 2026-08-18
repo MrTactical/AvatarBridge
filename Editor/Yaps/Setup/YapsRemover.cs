@@ -19,6 +19,9 @@ namespace AvatarBridge
         // The material curves Bake writes into the avatar's own clips.
         static readonly string[] WiredProperties =
         {
+            // Written beside a curve on the component's own Enabled field,
+            // which is inert, so it goes when the rest of YAPS does.
+            "material._YAPS_Enabled",
             "material._YAPS_BakeScale", "material._YAPS_BakeGirth",
             "material._YAPS_ShapeWeights.x", "material._YAPS_ShapeWeights.y", "material._YAPS_ShapeWeights.z", "material._YAPS_ShapeWeights.w",
             "material._YAPS_ShapeWeights2.x", "material._YAPS_ShapeWeights2.y", "material._YAPS_ShapeWeights2.z", "material._YAPS_ShapeWeights2.w",

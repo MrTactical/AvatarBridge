@@ -165,6 +165,56 @@ namespace AvatarBridge
             return written;
         }
 
+        // A curve on the COMPONENT's own Enabled field, mirrored onto the
+        // material property that actually does the work.
+        //
+        // Animating the component is the obvious thing to reach for and it
+        // can never work: ChilloutVR strips the component at upload, and the
+        // deform lives in the material. Rather than let that fail silently,
+        // the bake writes the curve people meant to write. The original is
+        // left where it is: it is the user's clip, and a field bound to a
+        // component that is not there costs nothing.
+        public static int MirrorEnabled(IEnumerable<AnimationClip> clips, string componentPath, Type componentType,
+            string rendererPath, Type rendererType, string property)
+        {
+            string target = "material." + property;
+            int written = 0;
+            foreach (var clip in clips)
+            {
+                if (clip == null)
+                {
+                    continue;
+                }
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                AnimationCurve source = null;
+                bool alreadyDriven = false;
+                foreach (var b in bindings)
+                {
+                    if (b.type == componentType && b.path == componentPath
+                        && b.propertyName == "m_Enabled")
+                    {
+                        source = AnimationUtility.GetEditorCurve(clip, b);
+                    }
+                    else if (b.path == rendererPath && b.propertyName == target)
+                    {
+                        alreadyDriven = true;
+                    }
+                }
+                // Somebody who already drives the material means it; never
+                // overwrite that with a guess taken from the component.
+                if (source == null || alreadyDriven)
+                {
+                    continue;
+                }
+                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                {
+                    path = rendererPath, type = rendererType, propertyName = target,
+                }, new AnimationCurve(source.keys));
+                written++;
+            }
+            return written;
+        }
+
         // Every clip an animator plays, once each.
         public static IEnumerable<AnimationClip> ClipsOf(RuntimeAnimatorController controller)
         {
