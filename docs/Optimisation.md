@@ -38,9 +38,14 @@ mesh. It has every business telling them the mesh is 400k triangles.
 One card, in the converter's report and in the ChilloutVR Toolkit, so it works on avatars that
 were never converted. Each number is shown against the platform limit it spends.
 
-**Textures.** Count, total VRAM (`Profiler.GetRuntimeMemorySizeLong`, which knows what each format
-actually costs), download size, and a table: resolution, format, crunched or not, mip settings,
-and which materials use it. Most heavy avatars are heavy here and nowhere else.
+**Textures.** Count, total VRAM, download size, and a table: resolution, format, crunched or not,
+mip settings, and which materials use it. Most heavy avatars are heavy here and nowhere else.
+
+VRAM is computed from the graphics format and the mip chain, NOT from `Profiler.
+GetRuntimeMemorySizeLong`. That was the obvious source and it is wrong for this: in the editor
+every texture also keeps a copy on the CPU side, so it answers exactly twice the truth for all of
+them, which is worse than a rough number because it looks exact. Crunch does not reduce this
+figure either — it shrinks the download and unpacks to plain DXT on upload.
 
 **Meshes.** Renderers, triangles, submeshes, bones, skinned against static, blendshape count and
 how many of those are ever animated.
@@ -58,6 +63,30 @@ for the whole instance.
 
 **The rest.** Audio sources against the cap of 100. Lights, marker and real, against four vertex
 slots a mesh. Particle systems and their maximums.
+
+### The card judges, it does not only count
+
+Built 2026-08-18 in `Editor/Core/AvatarWeight.cs`. A "what to fix" section, ranked by the memory
+each line gives back, then the advice that has no figure attached. It is blunt on purpose: a
+number nobody acts on is a number wasted.
+
+The texture rule is Phase 3's density calculation, brought forward because judging without it is
+guesswork. Per material it sums world-space triangle area and UV area, applies the material's
+tiling, takes the HIGHEST density among the materials using a texture, and reports the power of
+two that meets the target. `TargetDensity` is 2000 texels per metre and the floor on any advice is
+256: below that the map is looked at from ten centimetres away in VR and the memory saved is not
+worth the argument. Twelve worst are named, the tail is one line with its total.
+
+Read/Write Enabled on a texture is called out on its own — it doubles the cost for a readback
+nothing on an avatar performs. Non-readable MESHES are read anyway; that flag only bars access at
+runtime, and the editor holds the source data regardless.
+
+Everything else is a threshold: contacts over 96 against the instance's 512, cloth over 24, tris
+over 250k, unanimated blendshapes over 64, and a materials-to-shaders count that reveals per
+material locked shader copies.
+
+Measured against Abbess: 333.3 MB of texture across 229 maps, 93.4 MB of it recoverable without
+anything visible changing.
 
 ## The survey — what the sweep becomes
 
