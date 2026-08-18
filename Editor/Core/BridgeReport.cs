@@ -70,6 +70,8 @@ namespace AvatarBridge
 
         public string WeightCard;
 
+        public string SurveyCard;
+
         [System.NonSerialized] public GameObject ConvertedRoot;
 
         public void Add(ReportStatus status, string category, string subject, string detail = "")
@@ -140,6 +142,14 @@ namespace AvatarBridge
                     }
                     sb.AppendLine();
                 }
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(SurveyCard))
+            {
+                sb.AppendLine("## What this avatar does");
+                sb.AppendLine();
+                sb.Append(SurveyCard);
                 sb.AppendLine();
             }
 

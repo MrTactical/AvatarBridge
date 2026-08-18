@@ -86,7 +86,7 @@ namespace AvatarBridge
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeDiagnostics.Run(ctx, ctx.MergedController);
-                WeighAvatar(ctx);
+                ReadAvatar(ctx);
                 ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
@@ -496,20 +496,28 @@ namespace AvatarBridge
                 "from, usually a VRCFury or Modular Avatar bake that errored partway.");
         }
 
-        // Measured on the converted avatar, so the numbers are the ones
+        // Read from the converted avatar, so both cards describe the ones
         // ChilloutVR will actually be charged. Never allowed to take a
         // finished conversion down: a card is worth less than the avatar.
-        static void WeighAvatar(BridgeContext ctx)
+        static void ReadAvatar(BridgeContext ctx)
         {
-            if (!ctx.Settings.weighAvatar || ctx.CvrAvatar == null) return;
+            if (ctx.CvrAvatar == null) return;
+            if (!ctx.Settings.weighAvatar && !ctx.Settings.surveyAvatar) return;
             try
             {
+                // One reading serves both: the weight card asks the survey
+                // which blendshapes anything animates and which renderers
+                // nothing can switch on.
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
-                ctx.Report.WeightCard = AvatarWeight.Markdown(AvatarWeight.Measure(ctx.CvrAvatar, survey));
+                if (ctx.Settings.surveyAvatar) ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);
+                if (ctx.Settings.weighAvatar)
+                {
+                    ctx.Report.WeightCard = AvatarWeight.Markdown(AvatarWeight.Measure(ctx.CvrAvatar, survey));
+                }
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AvatarBridge] Could not weigh the avatar: {e.Message}");
+                Debug.LogWarning($"[AvatarBridge] Could not read the avatar for its report: {e.Message}");
             }
         }
 

@@ -708,6 +708,12 @@ namespace AvatarBridge
                 "instance, triangles, cloth solvers, shader copies. It reads and reports, and " +
                 "changes nothing on the avatar.",
                 settings.weighAvatar, v => settings.weighAvatar = v));
+            b.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
+                "Adds a section to the report naming what the avatar can and cannot do: features its " +
+                "author built and never wired to anything, things two layers both animate where the " +
+                "higher one quietly wins, parameters that lost their driver in the conversion, and " +
+                "objects that could come off as ChilloutVR props. Reads only.",
+                settings.surveyAvatar, v => settings.surveyAvatar = v));
 
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);

@@ -625,6 +625,116 @@ namespace AvatarBridge
             return null;
         }
 
+        // What each finding is called where somebody who did not build the
+        // avatar has to read it. The model's own names are for the model.
+        static string Headline(string kind, int count)
+        {
+            switch (kind)
+            {
+                case "unreachable feature":
+                    return $"{count} feature(s) nothing can switch on";
+                case "stopped working when converted":
+                    return $"{count} parameter(s) lost whatever used to drive them";
+                case "neutralised by a setting":
+                    return $"{count} parameter(s) frozen on purpose by a conversion setting";
+                case "contested binding":
+                    return $"{count} thing(s) more than one layer animates, where the higher layer quietly wins";
+                case "control that does nothing":
+                    return $"{count} menu control(s) nothing reads";
+                case "control with no parameter":
+                    return $"{count} menu control(s) naming a parameter the controller does not have";
+                case "unused parameter":
+                    return $"{count} parameter(s) nothing reads or writes";
+                case "frozen parameter":
+                    return $"{count} parameter(s) read but never written";
+                case "write-only parameter":
+                    return $"{count} parameter(s) written and never read";
+                case "empty layer":
+                    return $"{count} layer(s) with no states";
+                default:
+                    return $"{count} × {kind}";
+            }
+        }
+
+        // The order a reader cares about, not the order they happen to be
+        // in: something nobody can reach beats something merely untidy.
+        static readonly string[] Order =
+        {
+            "unreachable feature", "stopped working when converted", "control that does nothing",
+            "control with no parameter", "contested binding", "neutralised by a setting",
+            "unused parameter", "frozen parameter", "write-only parameter", "empty layer",
+        };
+
+        static int Rank(string kind)
+        {
+            int i = System.Array.IndexOf(Order, kind);
+            return i < 0 ? Order.Length : i;
+        }
+
+        // The conversion report's section: the counts in the open, the full
+        // listing folded, because an avatar like Abbess has a thousand
+        // contested bindings and nobody reads a thousand lines.
+        public static string Markdown(Model model)
+        {
+            var sb = new StringBuilder();
+            sb.Append(model.Parameters.Count).Append(" parameters (")
+              .Append(model.Parameters.Count(p => p.Synced)).Append(" synced), ")
+              .Append(model.Layers.Count).Append(" layers, ")
+              .Append(model.Controls.Count).Append(" menu controls.\n\n");
+
+            foreach (var group in model.Findings.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
+            {
+                sb.Append("- **").Append(Headline(group.Key, group.Count())).Append("** — ")
+                  .Append(string.Join(", ", group.Take(4).Select(f => f.Subject)));
+                if (group.Count() > 4) sb.Append(", and ").Append(group.Count() - 4).Append(" more");
+                sb.Append('\n');
+            }
+
+            if (model.Props.Count > 0)
+            {
+                sb.Append("- **").Append(model.Props.Count)
+                  .Append(" object(s) could come off as props** — ")
+                  .Append(string.Join(", ", model.Props.Select(p => $"\"{p.Control}\"")))
+                  .Append(". Each rides one bone chain, is switched by one control, and carries its own " +
+                          "mesh and textures, so ChilloutVR could hold it as a prop instead of the avatar " +
+                          "carrying it everywhere.\n");
+            }
+
+            sb.Append("\n<details>\n<summary>Everything the survey read</summary>\n\n```\n");
+            sb.Append(Report(model));
+            sb.Append("```\n</details>\n");
+            return sb.ToString();
+        }
+
+        // The Toolkit shows rows, so one row per kind rather than per
+        // finding: twelve hundred rows is not a report, it is a wall.
+        public static void Fill(BridgeReport report, Model model)
+        {
+            report.Add(ReportStatus.Converted, "Survey", "Read",
+                $"{model.Parameters.Count} parameters ({model.Parameters.Count(p => p.Synced)} synced), " +
+                $"{model.Layers.Count} layers, {model.Controls.Count} menu controls.");
+
+            foreach (var group in model.Findings.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
+            {
+                bool loud = group.Key == "unreachable feature"
+                            || group.Key == "stopped working when converted"
+                            || group.Key == "control that does nothing"
+                            || group.Key == "control with no parameter";
+                string detail = string.Join(", ", group.Take(8).Select(f => f.Subject));
+                if (group.Count() > 8) detail += $", and {group.Count() - 8} more";
+                var first = group.First();
+                report.Add(loud ? ReportStatus.Warning : ReportStatus.Approximated, "Survey",
+                    Headline(group.Key, group.Count()), detail + ". " + first.Detail);
+            }
+
+            foreach (var p in model.Props.OrderByDescending(p => p.TextureBytes))
+            {
+                report.Add(ReportStatus.Approximated, "Survey", $"\"{p.Control}\" could come off as a prop",
+                    $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {p.Materials} material(s), " +
+                    $"{(p.TextureBytes / 1048576f):0.0} MB of textures nothing else uses.");
+            }
+        }
+
         public static string Report(Model model)
         {
             var sb = new StringBuilder();

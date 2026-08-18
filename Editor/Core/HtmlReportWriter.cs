@@ -131,6 +131,14 @@ namespace AvatarBridge
             }
             sb.Append("</section>");
 
+            // ------------------------------------------------------------------ survey ----
+            if (!string.IsNullOrEmpty(report.SurveyCard))
+            {
+                sb.Append("<section><h2>What this avatar does</h2><div class=\"appx\">");
+                AppendMiniMarkdown(sb, report.SurveyCard);
+                sb.Append("</div></section>");
+            }
+
             // ------------------------------------------------------------------ weight ----
             if (!string.IsNullOrEmpty(report.WeightCard))
             {

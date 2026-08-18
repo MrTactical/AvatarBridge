@@ -132,6 +132,11 @@ namespace AvatarBridge
         // budget, triangles, cloth, locked shader copies. Reads only, and
         // changes nothing it finds.
         public bool weighAvatar = true;
+        // Read the animator, the menu and the components into one model and
+        // report what the avatar can and cannot do: features nothing can
+        // reach, bindings two layers fight over, what lost its driver in the
+        // conversion. Reads only.
+        public bool surveyAvatar = true;
         public bool stripGogoLoco = true;
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.

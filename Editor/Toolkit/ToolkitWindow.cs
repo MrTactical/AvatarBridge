@@ -57,6 +57,7 @@ namespace AvatarBridge
 
             var tools = new BridgeElements.Card("Tools", null, null, 2, 0.5f);
             tools.Body.Add(Check());
+            tools.Body.Add(Survey());
             tools.Body.Add(Weigh());
             tools.Body.Add(Tidy());
             tools.Body.Add(Stereo());
@@ -140,6 +141,25 @@ namespace AvatarBridge
                 }
                 return report;
             }, "Nothing to report. That is the good outcome.");
+
+        VisualElement Survey() => Tool("What this avatar does",
+            "Reads the animator, the menu and the components into one model and names what the avatar can " +
+            "and cannot do: features its author built and never wired to anything, things two layers both " +
+            "animate where the higher one quietly wins, menu controls nothing reads, and objects that " +
+            "could come off as ChilloutVR props. It answers by reading, so a toggle a preset overrides is " +
+            "never mistaken for a dead one. Reads only.",
+            "Survey it", () =>
+            {
+                var report = new BridgeReport();
+                var ctx = Context(report);
+                if (ctx.CvrAvatar == null)
+                {
+                    report.Approximated("Survey", "No CVRAvatar on the root", "Add one and this can read it.");
+                    return report;
+                }
+                AvatarSurvey.Fill(report, AvatarSurvey.Build(ctx.CvrAvatar));
+                return report;
+            }, "Nothing worth naming: everything it has is reachable and nothing collides.");
 
         VisualElement Weigh() => Tool("What this avatar costs",
             "Texture memory measured against the surface each map actually covers, so a 2K texture on a " +
