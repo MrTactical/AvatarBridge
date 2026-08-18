@@ -57,6 +57,7 @@ namespace AvatarBridge
 
             var tools = new BridgeElements.Card("Tools", null, null, 2, 0.5f);
             tools.Body.Add(Check());
+            tools.Body.Add(Weigh());
             tools.Body.Add(Stereo());
             tools.Body.Add(Face());
             tools.Body.Add(Audio());
@@ -138,6 +139,25 @@ namespace AvatarBridge
                 }
                 return report;
             }, "Nothing to report. That is the good outcome.");
+
+        VisualElement Weigh() => Tool("What this avatar costs",
+            "Texture memory measured against the surface each map actually covers, so a 2K texture on a " +
+            "fingernail is named as one. Also contacts against the 512 overlapping pairs ChilloutVR gives the " +
+            "whole instance, triangles, cloth solvers, blendshapes nothing animates, and materials each " +
+            "carrying their own locked shader. Reads only, and says what to change rather than changing it.",
+            "Weigh it", () =>
+            {
+                var report = new BridgeReport();
+                var ctx = Context(report);
+                if (ctx.CvrAvatar == null)
+                {
+                    report.Approximated("Weight", "No CVRAvatar on the root",
+                        "Add one, or use the converter, and this can measure what the game will be charged.");
+                    return report;
+                }
+                AvatarWeight.Fill(report, AvatarWeight.Measure(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar)));
+                return report;
+            }, "Nothing on it is worth changing.");
 
         VisualElement Stereo() => Tool("Stereo shaders",
             "ChilloutVR renders single-pass instanced; a shader that never opted in draws into one eye in VR. " +

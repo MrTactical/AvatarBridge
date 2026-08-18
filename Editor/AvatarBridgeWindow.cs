@@ -702,6 +702,13 @@ namespace AvatarBridge
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
 
+            b.Add(BridgeElements.Bind("Say what this avatar costs (recommended)",
+                "Adds a section to the report: texture memory measured against the surface it " +
+                "actually covers, contacts against the 512 pairs ChilloutVR gives the whole " +
+                "instance, triangles, cloth solvers, shader copies. It reads and reports, and " +
+                "changes nothing on the avatar.",
+                settings.weighAvatar, v => settings.weighAvatar = v));
+
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);
             // Baking, cleanup, toggle rebuilding and masking always

@@ -558,6 +558,51 @@ namespace AvatarBridge
             return sb.ToString();
         }
 
+        // The conversion report's section. The advice is in the open; the
+        // full card folds away, because a reader who wants every texture
+        // will open it and one who does not should still see the sentence
+        // that matters.
+        public static string Markdown(Report r)
+        {
+            var sb = new StringBuilder();
+            sb.Append(Summary(r)).Append("\n\n");
+            if (r.Callouts.Count > 0)
+            {
+                foreach (var c in r.Callouts)
+                {
+                    sb.Append("- ");
+                    if (c.Bytes > 0) sb.Append("**").Append(Mb(c.Bytes)).Append("** — ");
+                    sb.Append(c.Text).Append('\n');
+                }
+                sb.Append('\n');
+            }
+            sb.Append("<details>\n<summary>Everything measured</summary>\n\n```\n");
+            sb.Append(Text(r));
+            sb.Append("```\n</details>\n");
+            return sb.ToString();
+        }
+
+        public static string Summary(Report r)
+        {
+            long saved = r.Callouts.Sum(c => c.Bytes);
+            string head = $"{Mb(r.TextureBytes)} of texture across {r.Textures.Count} maps, " +
+                          $"{r.Triangles:N0} triangles, {r.Pointers + r.Triggers} contacts.";
+            return saved > 0
+                ? head + $" **{Mb(saved)} of that comes off with nothing visible changing.**"
+                : head + " Nothing here is worth changing.";
+        }
+
+        // The Toolkit shows findings as report rows rather than a document.
+        public static void Fill(BridgeReport report, Report weight)
+        {
+            report.Add(ReportStatus.Converted, "Weight", "Measured", Summary(weight));
+            foreach (var c in weight.Callouts)
+            {
+                report.Add(ReportStatus.Warning, "Weight",
+                    c.Bytes > 0 ? Mb(c.Bytes) + " to reclaim" : "Costs you", c.Text);
+            }
+        }
+
         static string Mb(long bytes) => (bytes / 1048576f).ToString("0.0") + " MB";
     }
 }

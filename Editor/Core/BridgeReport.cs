@@ -68,6 +68,8 @@ namespace AvatarBridge
 
         public string Appendix;
 
+        public string WeightCard;
+
         [System.NonSerialized] public GameObject ConvertedRoot;
 
         public void Add(ReportStatus status, string category, string subject, string detail = "")
@@ -138,6 +140,14 @@ namespace AvatarBridge
                     }
                     sb.AppendLine();
                 }
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(WeightCard))
+            {
+                sb.AppendLine("## What this avatar costs");
+                sb.AppendLine();
+                sb.Append(WeightCard);
                 sb.AppendLine();
             }
 

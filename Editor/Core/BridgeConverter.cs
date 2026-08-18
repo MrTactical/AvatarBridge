@@ -86,6 +86,7 @@ namespace AvatarBridge
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeDiagnostics.Run(ctx, ctx.MergedController);
+                WeighAvatar(ctx);
                 ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
                 WriteReportFile(ctx);
                 EditorUtility.SetDirty(ctx.CvrAvatar);
@@ -493,6 +494,23 @@ namespace AvatarBridge
                 "the broken references are still in that controller, so fix them and convert " +
                 "again before uploading — see the unresolvable-asset error for where they came " +
                 "from, usually a VRCFury or Modular Avatar bake that errored partway.");
+        }
+
+        // Measured on the converted avatar, so the numbers are the ones
+        // ChilloutVR will actually be charged. Never allowed to take a
+        // finished conversion down: a card is worth less than the avatar.
+        static void WeighAvatar(BridgeContext ctx)
+        {
+            if (!ctx.Settings.weighAvatar || ctx.CvrAvatar == null) return;
+            try
+            {
+                var survey = AvatarSurvey.Build(ctx.CvrAvatar);
+                ctx.Report.WeightCard = AvatarWeight.Markdown(AvatarWeight.Measure(ctx.CvrAvatar, survey));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AvatarBridge] Could not weigh the avatar: {e.Message}");
+            }
         }
 
         static void WriteReportFile(BridgeContext ctx)

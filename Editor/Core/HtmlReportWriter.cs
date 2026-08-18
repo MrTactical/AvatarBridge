@@ -131,6 +131,14 @@ namespace AvatarBridge
             }
             sb.Append("</section>");
 
+            // ------------------------------------------------------------------ weight ----
+            if (!string.IsNullOrEmpty(report.WeightCard))
+            {
+                sb.Append("<section><h2>What this avatar costs</h2><div class=\"appx\">");
+                AppendMiniMarkdown(sb, report.WeightCard);
+                sb.Append("</div></section>");
+            }
+
             // ---------------------------------------------------------------- appendix ----
             if (!string.IsNullOrEmpty(report.Appendix))
             {

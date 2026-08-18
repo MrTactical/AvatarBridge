@@ -85,6 +85,7 @@ mid-2026:
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | — |
 | Custom locomotion, fall, sit and flight animations carried into CVR's own locomotion | ✅ | — |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | — |
+| What the avatar costs, measured and named: texture memory against the surface it covers, contacts against the instance's budget | ✅ | — |
 | A play-mode tester that drives the converted avatar the way the game does | ✅ | — |
 | Store description generated and typed into the upload page | ✅ | — |
 
@@ -1108,6 +1109,7 @@ with no VRChat SDK and no interest in a converter — see [Installation](#instal
 | card | does |
 |---|---|
 | **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, cloth with no root bones |
+| **What this avatar costs** | Reads only. Measures texture memory against the surface each map actually covers, so a 2K texture on a fingernail is named as one and told what size it should be. Also contacts against the 512 overlapping pairs ChilloutVR gives the whole instance, triangles, cloth solvers, blendshapes nothing animates, and materials each carrying their own locked shader copy. Says what to change; changes nothing |
 | **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them — see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Materials an animation swaps in are not followed here, because that would mean editing your clips; the converter does follow them, on its own copies |
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles — doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |

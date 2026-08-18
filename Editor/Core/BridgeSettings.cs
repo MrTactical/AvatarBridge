@@ -127,6 +127,11 @@ namespace AvatarBridge
         [Header("VRChat-only system stripping")]
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
+        // Measure the converted avatar and say what to fix: texture memory
+        // against the surface it covers, contacts against the instance's
+        // budget, triangles, cloth, locked shader copies. Reads only, and
+        // changes nothing it finds.
+        public bool weighAvatar = true;
         public bool stripGogoLoco = true;
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
