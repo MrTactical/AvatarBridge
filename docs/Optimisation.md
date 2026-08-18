@@ -59,6 +59,47 @@ for the whole instance.
 **The rest.** Audio sources against the cap of 100. Lights, marker and real, against four vertex
 slots a mesh. Particle systems and their maximums.
 
+## The survey — what the sweep becomes
+
+The toggle sweep drives every parameter and watches what moves. That is the *verifier*, and it is
+only half a tool: it can tell you something did not appear to happen, and never why. The other
+half is a model of the avatar read straight out of the controller, the menu and the components,
+and it is what Phase 1, the weight card and half the roadmap have all been quietly waiting for.
+
+**What the model holds:**
+
+- **Every parameter** — type, default, synced or local, and both directions: who WRITES it (clips,
+  drivers, triggers, parameter streams, the menu, the game itself) and who READS it (transitions,
+  blend trees, drivers).
+- **Every layer** — mask, weight, blend mode, default state, the bindings its clips actually
+  touch, and its timing: exit times, wait states, what a sequence is waiting for.
+- **Every control** — toggles, sliders, dropdowns with their named options, joysticks, colours —
+  and the parameter each one drives.
+- **The graph joining them**: control to parameter to layer to binding to object, followed either
+  way. A preset stops being mysterious the moment you can see one int driving twelve bools.
+
+**What it can then say that nothing today can:**
+
+- **Hidden features.** A parameter that drives real bindings but has no control on the menu. The
+  author built it, never wired it, and the new owner has no idea their avatar can do it. This is
+  the most valuable output and nothing on the platform does it.
+- **Dead controls.** A menu entry whose parameter nothing reads: it will always look broken.
+- **Conflicts.** Two layers writing one binding, in order, with the winner named. Half the toggle
+  bugs this project has ever fixed were this.
+- **Subordination.** "This toggle does nothing while that preset is active" — the Abbess case,
+  stated instead of guessed.
+- **Unreachable states**, and transition conditions that can never be true.
+- **Plain words for every control**: *Hoodie switches 3 objects and 2 blendshapes.* That sentence
+  is what a new owner actually wants, and it is derivable from the bindings.
+
+**The sweep becomes the check on the model, not the source of truth.** The model predicts what a
+parameter should change; the sweep moves it and looks. Where the two disagree, that disagreement
+is itself a finding worth printing, because it means something is driving the avatar that reading
+it did not reveal.
+
+This absorbs four roadmap items — the conflict map, the weight audit, state-machine reachability,
+and "explain a parameter" — into one pass. They were always the same tool seen from four angles.
+
 ## Phase 1 — the free wins
 
 Nothing behavioural, everything provable, all of it already detectable:
@@ -150,10 +191,13 @@ source project. Anything whose result cannot be undone by deleting the output fo
 
 1. **The card.** It makes every later decision visible before anything changes, and it lets the
    numbers be checked against avatars already known to be heavy.
-2. **Textures.** The biggest real win at the lowest risk, and the one users feel immediately.
-3. **Free wins.** Provable, no behaviour change, but they need the card to be believable.
-4. **Contacts, then physics.** Both want a spike before a setting.
-5. **Atlas candidates.** Last, and only as a report.
+2. **The survey.** Everything after this leans on it, and its hidden-features output is worth
+   shipping on its own merits, whatever happens to the rest of this document.
+3. **Textures.** The biggest real win at the lowest risk, and the one users feel immediately.
+4. **Free wins.** Provable, no behaviour change, but they need the survey to be safe and the card
+   to be believable.
+5. **Contacts, then physics.** Both want a spike before a setting.
+6. **Atlas candidates.** Last, and only as a report.
 
 This is a feature cycle. It leaves the bug-fix-only posture held since 3.7.4 deliberately, and
 the standing rules still apply inside it: docs move with the change, the corpus runs before any
