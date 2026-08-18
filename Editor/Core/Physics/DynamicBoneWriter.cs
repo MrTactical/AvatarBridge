@@ -22,6 +22,7 @@ namespace AvatarBridge
     public static class DynamicBoneWriter
     {
         const string Category = "PhysBones -> DynamicBone";
+        public const string CollectionName = "DynamicBone Phys";
 
         // Tunable feel constants.
         public static float ElasticityScale = 0.2f;
@@ -32,20 +33,31 @@ namespace AvatarBridge
         public static void Write(BridgeContext ctx, PhysBoneChainData data,
             Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase> colliderCache)
         {
-            var db = data.SourceGameObject.AddComponent<DynamicBone>();
+            // Collected under one object beside the avatar, the way the cloth
+            // writer does it. m_Root is what a DynamicBone simulates, so
+            // where the component itself lives does not matter to it.
+            //
+            // One object PER CHAIN, not one shared object: an animation
+            // binding names a path and a component TYPE, so two DynamicBones
+            // on the same GameObject could not be toggled apart.
+            var home = MagicaClothWriter.CollectionUnder(ctx, CollectionName);
+            var holder = new GameObject(MagicaClothWriter.UniqueChildName(home, "DynamicBone_" + data.Root.name));
+            holder.transform.SetParent(home, false);
+            var db = holder.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
-            // Same GameObject as the source PhysBone, so animations that toggle the OBJECT keep
-            // working untouched; animations that toggled the PhysBone COMPONENT are re-wired to
-            // this component by AnimatorMerger via this registration.
+            // An object toggle no longer carries this for free; the animator
+            // pass re-wires both object and component toggles onto the
+            // component through the registration below.
             ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
             {
                 Source = data.SourceGameObject,
-                Host = data.SourceGameObject,
+                Host = holder,
                 Physics = db,
                 Root = data.Root
             });
-            // The DynamicBone lives on the source object, so an object toggle
-            // already carries it. Only a disabled source component disables it.
+            // Created active with the off state on the component, so a
+            // toggle can switch it back on: a component enabled on an
+            // inactive object never runs.
             if (!data.ComponentEnabled)
             {
                 db.enabled = false;

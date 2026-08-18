@@ -585,6 +585,15 @@ back on a supported footing.
 avatars are built entirely around that — a pump handle, a leash, a lever, anything a stranger is
 meant to pull. Converted, those chains still hang and swing, but nobody can hold them.
 
+**Where the converted physics lives.** Every cloth goes on its own object under a single
+`MagicaCloth Phys` object on the avatar root (`DynamicBone Phys` on that path), rather than beside
+whatever object held the source PhysBone — which scattered them the length of the armature. A
+cloth simulates the root bones it is given wherever the component itself sits, and one collection
+object is MagicaCloth2's own idiom. Because a holder no longer lives inside the outfit it belongs
+to, it no longer switches off by inheriting that object's toggle: the converter writes the stop
+explicitly instead, including into the other options of a dropdown, and only where nothing still
+visible rides those bones.
+
 [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) adds grabbing back,
 and AvatarBridge already targets it: converted cloths are named after the PhysBone's parameter so
 the mod's `_IsGrabbed` and `_Angle` drive your existing grab-reactive logic, and those parameters

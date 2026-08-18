@@ -8230,6 +8230,7 @@ namespace AvatarBridge
             // shared-rider test.
             var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
             var offSafe = new Dictionary<EditorCurveBinding, bool>();
+            var chainByTarget = new Dictionary<EditorCurveBinding, BridgeContext.ConvertedPhysicsChain>();
             var physicslessStyles = new HashSet<Transform>();
             // Chains left running when their style hides, because a mesh outside the toggled
             // object rides them. Named in the report so "this cloth never stops" is explained
@@ -8276,7 +8277,7 @@ namespace AvatarBridge
                             || renderer.transform.IsChildOf(chainRoot);
                         if (!rides && renderer is SkinnedMeshRenderer skinned)
                         {
-                            foreach (var bone in skinned.bones)
+                            foreach (var bone in WeightedBones(skinned))
                             {
                                 if (bone != null && (bone == chainRoot || bone.IsChildOf(chainRoot)))
                                 {
@@ -8460,6 +8461,9 @@ namespace AvatarBridge
                                 chain.Physics.GetType(), "m_Enabled");
                             physBoneRetargeted = true;
                         }
+                        // Which chain a binding belongs to, so a later pass
+                        // can ask what rides it.
+                        chainByTarget[target] = chain;
                         bool alreadyDriven = false;
                         foreach (var have in existing)
                         {
@@ -8687,6 +8691,44 @@ namespace AvatarBridge
             // Bindings the finished controller already switches off. A
             // synthetic stop is for one nothing takes back; on a paired
             // chain it would leave both halves disabled.
+            // Does THIS state hide everything that rides the chain?
+            //
+            // The global test asks whether anything outside the toggled
+            // object rides those bones, and on a dropdown the answer is
+            // usually yes and usually irrelevant: what rides them is another
+            // hairstyle, which this option hides as well. So the question is
+            // asked again per state, against what the state's own clip
+            // switches off. Nothing visible left riding, nothing to keep the
+            // solver running for.
+            bool HidesEveryRider(EditorCurveBinding target, AnimationClip clip)
+            {
+                if (!chainByTarget.TryGetValue(target, out var chain)) return false;
+                var hidden = new List<string>();
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") continue;
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    if (curve != null && !CurveActivates(curve)) hidden.Add(binding.path);
+                }
+                if (hidden.Count == 0) return false;
+
+                foreach (var rider in RidersOf(chain))
+                {
+                    string path = AnimationUtility.CalculateTransformPath(rider, root);
+                    bool covered = false;
+                    foreach (string off in hidden)
+                    {
+                        if (path == off || path.StartsWith(off + "/", StringComparison.Ordinal))
+                        {
+                            covered = true;
+                            break;
+                        }
+                    }
+                    if (!covered) return false;
+                }
+                return true;
+            }
+
             var alreadySwitchedOff = new HashSet<EditorCurveBinding>();
             foreach (var pair in rewired)
             {
@@ -8722,12 +8764,24 @@ namespace AvatarBridge
                         }
                     }
                 });
-                activatedHere.RemoveWhere(b => !offSafe.TryGetValue(b, out bool ok) || !ok
-                                               || alreadySwitchedOff.Contains(b));
-                // Two-state layers only, like the empty-state filler.
-                // On a bigger machine the other states are unrelated,
-                // not the off half of a toggle.
-                if (activatedHere.Count == 0 || states.Count != 2)
+                bool selector = IsSelector(layer, states);
+                // A binding refused by the shared-rider test is kept for a
+                // selector, and proved per state below: the thing riding
+                // those bones is often just ANOTHER option of the same
+                // dropdown, which that state hides too.
+                activatedHere.RemoveWhere(b => alreadySwitchedOff.Contains(b)
+                                               || (!selector && (!offSafe.TryGetValue(b, out bool ok) || !ok)));
+                // Two states is the plain toggle. A SELECTOR is the other
+                // shape that qualifies: a dropdown whose states are all
+                // entered from AnyState on one parameter's value, so they
+                // are mutually exclusive by construction and each one IS
+                // the off half of the others.
+                //
+                // Anything else is left alone for the reason this used to
+                // stop at two: on a general machine the other states are
+                // unrelated, and a stop written into them would switch off
+                // physics they know nothing about.
+                if (activatedHere.Count == 0 || (states.Count != 2 && !selector))
                 {
                     continue;
                 }
@@ -8750,6 +8804,13 @@ namespace AvatarBridge
                         if (drives.Contains(target))
                         {
                             continue;   // this state says its own piece already
+                        }
+                        // Refused globally: stop it here only when this very
+                        // state hides everything that rides those bones.
+                        if ((!offSafe.TryGetValue(target, out bool globallySafe) || !globallySafe)
+                            && !HidesEveryRider(target, clip))
+                        {
+                            continue;
                         }
                         if (!perLayer.TryGetValue(clip, out var owned))
                         {
@@ -10107,6 +10168,96 @@ namespace AvatarBridge
         {
             _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
             _noMuscleMask = _fingersOnlyMask = _noFingersMask = null;
+            // Keyed by renderer, and a converted avatar's renderers are new
+            // objects each run: a corpus run would otherwise hold every
+            // renderer of every avatar it has converted.
+            WeightedBonesCache.Clear();
+        }
+
+        // The bones a mesh is ACTUALLY weighted to.
+        //
+        // Not skinned.bones, which is the skeleton the renderer was bound
+        // against: a body mesh routinely lists every bone on the avatar,
+        // hair strands included, at zero weight. Reading that array as
+        // "this mesh needs those bones moving" makes every body mesh a
+        // rider on every chain, and the shared-rider test then refuses to
+        // stop any physics at all. That is what kept five hair solvers
+        // running after the hairstyle was switched away.
+        static readonly Dictionary<SkinnedMeshRenderer, List<Transform>> WeightedBonesCache =
+            new Dictionary<SkinnedMeshRenderer, List<Transform>>();
+
+        static List<Transform> WeightedBones(SkinnedMeshRenderer skinned)
+        {
+            if (WeightedBonesCache.TryGetValue(skinned, out var known))
+            {
+                return known;
+            }
+            var bones = new List<Transform>();
+            var mesh = skinned.sharedMesh;
+            var bound = skinned.bones;
+            if (mesh != null && bound != null && bound.Length > 0)
+            {
+                var used = new HashSet<int>();
+                // GetAllBoneWeights, not mesh.boneWeights: the legacy view
+                // keeps four influences per vertex, and dropping the rest
+                // could call a real rider unridden, which is the dangerous
+                // direction of this test to be wrong in.
+                var weights = mesh.GetAllBoneWeights();
+                for (int i = 0; i < weights.Length; i++)
+                {
+                    if (weights[i].weight > 0f) used.Add(weights[i].boneIndex);
+                }
+                foreach (int index in used)
+                {
+                    if (index >= 0 && index < bound.Length && bound[index] != null) bones.Add(bound[index]);
+                }
+            }
+            WeightedBonesCache[skinned] = bones;
+            return bones;
+        }
+
+        // A dropdown: every state reached from AnyState, every one of those
+        // transitions testing the SAME parameter. One value is live at a
+        // time, so what one option switches on the others must switch off.
+        //
+        // Deliberately strict. Requiring every state to be covered, and one
+        // parameter across the whole layer, is what keeps an ordinary
+        // machine — sequences, wait states, anything with its own flow —
+        // from being mistaken for a set of alternatives.
+        static bool IsSelector(AnimatorControllerLayer layer, List<AnimatorState> states)
+        {
+            if (states.Count < 2) return false;
+
+            string parameter = null;
+            var reached = new HashSet<AnimatorState>();
+            bool any = false;
+
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                foreach (var transition in machine.anyStateTransitions)
+                {
+                    if (transition == null || transition.destinationState == null) continue;
+                    any = true;
+                    if (transition.conditions == null || transition.conditions.Length == 0)
+                    {
+                        parameter = "";   // unconditional: not a selection
+                        continue;
+                    }
+                    foreach (var condition in transition.conditions)
+                    {
+                        if (parameter == null) parameter = condition.parameter;
+                        else if (parameter != condition.parameter) parameter = "";
+                    }
+                    reached.Add(transition.destinationState);
+                }
+            });
+
+            if (!any || string.IsNullOrEmpty(parameter)) return false;
+            foreach (var state in states)
+            {
+                if (!reached.Contains(state)) return false;
+            }
+            return true;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)

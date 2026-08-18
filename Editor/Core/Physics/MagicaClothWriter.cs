@@ -31,9 +31,9 @@ namespace AvatarBridge
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
             }
-            // The holder goes under the PhysBone component's own parent, never
-            // loose at the root. Placed before any clip is aimed at it.
-            var home = HolderHome(ctx, data);
+            // All holders together under one object. Placed before any clip
+            // is aimed at it, so the animator pass computes the real path.
+            var home = HolderHome(ctx);
             // Sibling-unique, because animation paths address children by name: an avatar with
             // four hairstyles produces several chains rooted at a bone called "Hair_root", and
             // two holders both named "MagicaCloth_Hair_root" mean every animation curve aimed at
@@ -312,22 +312,38 @@ namespace AvatarBridge
         // so the path is mapped across; if the mapping fails (the object was
         // stripped, or is the root itself) the avatar root is the fallback,
         // which is exactly where holders always went before.
-        static Transform HolderHome(BridgeContext ctx, PhysBoneChainData data)
+        public const string CollectionName = "MagicaCloth Phys";
+
+        // One place for all of them, directly under the avatar.
+        //
+        // They used to go beside whatever object held the source PhysBone,
+        // which scattered them the length of the armature and buried them
+        // among the bones they drive. Nothing needs them there: a
+        // MagicaCloth simulates the root bones it is given wherever the
+        // component itself lives, and one collection object is
+        // MagicaCloth2's own idiom.
+        //
+        // What the old placement bought was inheritance — a holder inside an
+        // outfit that gets switched off went off with it, for free. That is
+        // paid for explicitly now: holders are created active with the off
+        // state on the component's own enabled flag, and RewirePhysicsToggles
+        // asserts the stop. It has to assert ALL of them, which is what the
+        // selector case in that pass exists for: the first attempt at this
+        // move shipped nothing, because a hairstyle dropdown left five strand
+        // solvers running on hidden hair.
+        public static Transform HolderHome(BridgeContext ctx) => CollectionUnder(ctx, CollectionName);
+
+        internal static Transform CollectionUnder(BridgeContext ctx, string name)
         {
             var target = ctx.Target.transform;
-            // The chain data was read from the target itself, so its
-            // objects are already target-side. Mapping them through the
-            // source descriptor only works when the two are one object.
-            var home = data.SourceGameObject != null ? data.SourceGameObject.transform : null;
-            if (home == null || home == target || !home.IsChildOf(target)) return target;
-            // A component on the chain's own bone: the holder goes beside it,
-            // not inside the chain it drives.
-            var chainRoot = data.Root;
-            bool onChain = chainRoot != null && (home == chainRoot || home.IsChildOf(chainRoot));
-            return onChain ? (home.parent != null ? home.parent : target) : home;
+            var home = target.Find(name);
+            if (home != null) return home;
+            var made = new GameObject(name);
+            made.transform.SetParent(target, false);
+            return made.transform;
         }
 
-        static string UniqueChildName(Transform parent, string name)
+        internal static string UniqueChildName(Transform parent, string name)
         {
             if (parent.Find(name) == null)
             {
