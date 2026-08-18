@@ -28,7 +28,9 @@ namespace AvatarBridge.Regression
                 Debug.LogError("[Survey] select an avatar with a CVRAvatar on it");
                 return;
             }
-            Debug.Log(AvatarSurvey.Report(AvatarSurvey.Build(avatar)));
+            var model = AvatarSurvey.Build(avatar);
+            Debug.Log(AvatarSurvey.Report(model));
+            Debug.Log(AvatarWeight.Text(AvatarWeight.Measure(avatar, model)));
         }
 
         public static void RunBatch()
@@ -56,7 +58,9 @@ namespace AvatarBridge.Regression
             if (avatars.Count == 0) sb.Append("no CVRAvatar in ").Append(scene).Append('\n');
             foreach (var avatar in avatars)
             {
-                sb.Append(AvatarSurvey.Report(AvatarSurvey.Build(avatar))).Append('\n');
+                var model = AvatarSurvey.Build(avatar);
+                sb.Append(AvatarSurvey.Report(model)).Append('\n');
+                sb.Append(AvatarWeight.Text(AvatarWeight.Measure(avatar, model))).Append('\n');
             }
             string repo = Environment.GetEnvironmentVariable("AVATARBRIDGE_REPO") ?? ".";
             string path = Path.Combine(repo, "survey.md");
