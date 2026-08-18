@@ -63,10 +63,29 @@ slots a mesh. Particle systems and their maximums.
 
 Nothing behavioural, everything provable, all of it already detectable:
 
-- parameters and layers the sweep shows do nothing, listed with a way to remove them
 - layers with zero states
 - the placeholder clips generated for empty motion slots, one corpus avatar carries 75
-- parameters no layer reads, which the sweep already reports as refused
+- parameters nothing reads and nothing writes, proven by reading the controller
+
+**The sweep is a hint, never the criterion.** It flips a parameter and watches for an observable
+change, and there are three ordinary designs it reads as dead when they are not. Abbess carries
+259 driver behaviours and 232 timed transitions, two of them parked at `exit=True@100`:
+
+- **A preset overrides the individual toggle.** One synced int expands through drivers into a
+  dozen local bools, which is how an avatar buys twelve toggles for eight bits and guarantees a
+  coherent outfit. Toggle one of those while the preset asserts its own value and nothing moves.
+  Subordinated, not dead.
+- **A wait state defers the effect.** A driver fires on state entry, so sequencing anything needs
+  a state that waits; the effect lands after the sweep has already looked. The same idiom
+  debounces a toggle and lets a blend settle before the next write.
+- **The parameter is internal.** Individual toggles are often local names driven only by a preset,
+  so they never appear in the menu and look invisible from outside.
+
+So removal is decided by STATIC analysis: no clip writes it, no transition reads it, no driver
+writes it, no menu entry names it, no trigger or parameter stream touches it. That is provable
+from the controller. "Nothing appeared to happen" is not, and an avatar like Abbess is exactly
+where it would do damage. The sweep's job is to rank what a human looks at first, and the report
+should say WHY something looks dead: overridden by a driver, behind a wait, or genuinely unread.
 
 ## Phase 2 — capped resources
 
