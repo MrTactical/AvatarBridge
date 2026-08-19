@@ -185,6 +185,27 @@ pointers an avatar is four a socket: SPS root, SPS front, TPS root, TPS norm. Tw
 answering with a spike rather than an argument: whether every plug family needs its own pair, and
 whether pointers should be capped the way marker lights now are.
 
+### Measured 2026-08-19: the first question is answered
+
+The weight card breaks pointers down by family. One corpus avatar carries **174 pointers across
+40 families**, and the shape is not 28:
+
+```
+SPSLL_Socket_Front 14   SPSLL_Socket_Front_SelfNotOnHips 10
+SPSLL_Socket_Root  14   SPSLL_Socket_Root_SelfNotOnHips  10
+SPSLL_Socket_Ring  10   SPSLL_Socket_Ring_SelfNotOnHips   8
+TPS_Orf_Root       14   TPS_Orf_Root_SelfNotOnHips       10
+TPS_Orf_Norm       14   TPS_Orf_Norm_SelfNotOnHips       10
+```
+
+One socket, described five times over for five decoders, then doubled for a self-exclusion rule:
+**58 of the 174 are `_SelfNotOnHips` duplicates** of a pointer the avatar already carries.
+
+So no, every family does not need its own pair. What remains to decide is which of them any
+ChilloutVR-side consumer actually reads, since YAPS resolves through its own channel and marker
+lights. A family nothing reads is pure budget. That is the second question, and it wants the
+same treatment: measure who reads, then cap.
+
 ## Phase 3 — textures, by density rather than by guess
 
 The metric is **texel density**: how many texture pixels land on how much real surface.
@@ -216,12 +237,19 @@ compression shrinks the download and not the memory, and people conflate the two
 
 ## Phase 4 — physics
 
+**Measurement built 2026-08-19.** The card counts simulated TRANSFORMS, not components: one
+corpus avatar runs 164 solvers over 1,070 of them. Merging and collider pruning are still
+unbuilt.
+
 18 cloth solvers an avatar at 90 Hz is the largest silent CPU cost in a converted avatar. Chains
 that share a preset and a bone parent can merge; colliders that cannot reach any particle can go;
 the toe and finger skips already exist as settings. Wants measurement first: particles, not
 component count, is the number that matters.
 
 ## Phase 5 — report only
+
+**Built 2026-08-19.** Atlas candidates are named on the card: materials sharing a shader that
+nothing animates apart, checked against object-reference swaps and material property curves.
 
 Meshes, materials, draw calls, blendshapes, and **atlas candidates**: sets of materials sharing a
 shader, never animated separately, that would merge cleanly.
