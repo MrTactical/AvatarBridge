@@ -28,6 +28,8 @@ namespace AvatarBridge
             public int From;
             public int To;
             public long Bytes;
+            // Uncompressed is four bytes a pixel. Compressing costs one.
+            public bool Compress;
         }
 
         public class Plan
@@ -54,18 +56,26 @@ namespace AvatarBridge
 
             foreach (var t in weight.Textures)
             {
-                if (t.Suggested <= 0 || t.Texture == null) continue;
-                int longest = Mathf.Max(t.Width, t.Height);
-                if (t.Suggested >= longest) continue;
-
-                float shrink = (float)t.Suggested / longest;
-                long saved = t.Bytes - (long)(t.Bytes * shrink * shrink);
-                if (saved < 262144) continue;   // a quarter meg is not worth a line
-
+                if (t.Texture == null) continue;
                 string path = AssetDatabase.GetAssetPath(t.Texture);
                 if (string.IsNullOrEmpty(path)) continue;
                 if (!(AssetImporter.GetAtPath(path) is TextureImporter importer)) continue;
-                if (importer.maxTextureSize <= t.Suggested) continue;
+
+                int longest = Mathf.Max(t.Width, t.Height);
+                bool resize = t.Suggested > 0 && t.Suggested < longest && importer.maxTextureSize > t.Suggested;
+                bool compress = !t.Compressed
+                                && importer.textureCompression == TextureImporterCompression.Uncompressed;
+
+                long saved = 0;
+                if (resize)
+                {
+                    float shrink = (float)t.Suggested / longest;
+                    saved = t.Bytes - (long)(t.Bytes * shrink * shrink);
+                }
+                // Uncompressed is four bytes a pixel against BC7's one, and
+                // the two compound: resize first, then a quarter of that.
+                if (compress) saved += (resize ? (long)(t.Bytes * 0.25f) : t.Bytes) * 3 / 4;
+                if (saved < 262144) continue;   // a quarter meg is not worth a line
 
                 // The importer setting is global to the texture.
                 // A texture others use is left alone.
@@ -77,7 +87,8 @@ namespace AvatarBridge
 
                 plan.Textures.Add(new Shrink
                 {
-                    Path = path, Name = t.Name, From = importer.maxTextureSize, To = t.Suggested, Bytes = saved,
+                    Path = path, Name = t.Name, Bytes = saved, Compress = compress,
+                    From = importer.maxTextureSize, To = resize ? t.Suggested : importer.maxTextureSize,
                 });
             }
 
@@ -101,8 +112,9 @@ namespace AvatarBridge
                 foreach (var t in plan.Textures)
                 {
                     if (!(AssetImporter.GetAtPath(t.Path) is TextureImporter importer)) continue;
-                    undo.Add($"{importer.maxTextureSize}\t{t.Path}");
+                    undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}\t{t.Path}");
                     importer.maxTextureSize = t.To;
+                    if (t.Compress) importer.textureCompression = TextureImporterCompression.Compressed;
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
                     done++;
@@ -116,8 +128,11 @@ namespace AvatarBridge
             if (done > 0)
             {
                 WriteUndo(outputDir, undo);
-                report.Converted(Category, $"{done} texture(s) resized, {Mb(plan.Bytes)} off the graphics card",
-                    string.Join(", ", plan.Textures.Take(8).Select(t => $"{t.Name} {t.From}→{t.To}")) +
+                report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
+                    string.Join(", ", plan.Textures.Take(8).Select(t =>
+                        t.From != t.To
+                            ? $"{t.Name} {t.From}→{t.To}{(t.Compress ? " and compressed" : "")}"
+                            : $"{t.Name} compressed")) +
                     (plan.Textures.Count > 8 ? $", and {plan.Textures.Count - 8} more" : "") +
                     ". Import settings only — no texture file was edited, every one of these is a field in the " +
                     "inspector to put back, and \"Put the textures back\" here does the same thing.");
@@ -157,9 +172,15 @@ namespace AvatarBridge
                 foreach (string line in File.ReadAllLines(path))
                 {
                     var parts = line.Split('\t');
-                    if (parts.Length != 2 || !int.TryParse(parts[0], out int size)) continue;
-                    if (!(AssetImporter.GetAtPath(parts[1]) is TextureImporter importer)) continue;
+                    // Two fields is the older record: size and path only.
+                    if (parts.Length < 2 || !int.TryParse(parts[0], out int size)) continue;
+                    string asset = parts[parts.Length - 1];
+                    if (!(AssetImporter.GetAtPath(asset) is TextureImporter importer)) continue;
                     importer.maxTextureSize = size;
+                    if (parts.Length >= 3 && int.TryParse(parts[1], out int compression))
+                    {
+                        importer.textureCompression = (TextureImporterCompression)compression;
+                    }
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
                     done++;

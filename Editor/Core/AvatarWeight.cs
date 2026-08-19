@@ -78,8 +78,12 @@ namespace AvatarBridge
             public int MarkerLights;
             public int Cloth;
             public int ClothColliders;
+            public int ClothParticles;
             public int Pointers;
             public int Triggers;
+            public readonly List<string> Atlas = new List<string>();
+            public readonly SortedDictionary<string, int> ContactFamilies =
+                new SortedDictionary<string, int>(System.StringComparer.Ordinal);
 
             public long DeadBytes;
             public readonly List<string> Dead = new List<string>();
@@ -197,6 +201,8 @@ namespace AvatarBridge
             report.Triggers = avatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true).Length;
 
             CountCloth(avatar, report);
+            FindAtlasCandidates(avatar, materials, report);
+            CountContactFamilies(avatar, report);
             Judge(report);
             return report;
         }
@@ -271,10 +277,26 @@ namespace AvatarBridge
                           "sight of you. Unlock, or lock once and share.", 2);
             }
 
-            if (r.Cloth > 24)
+            if (r.ClothParticles > 900)
             {
-                Add(r, 0, $"{r.Cloth} cloth solvers running at 90 Hz. This is the largest cost on the card that " +
-                          "never shows up as a number anybody quotes.", 2);
+                Add(r, 0, $"{r.Cloth} cloth solvers simulating {r.ClothParticles:N0} transforms at 90 Hz. The " +
+                          "transform count is the cost, not the component count, and this is the largest one " +
+                          "on the card that never shows up as a number anybody quotes.", 2);
+            }
+
+            if (r.ContactFamilies.Count > 1 && r.Pointers > 24)
+            {
+                Add(r, 0, $"{r.Pointers} pointers across {r.ContactFamilies.Count} families: " +
+                          string.Join(", ", r.ContactFamilies.Select(f => $"{f.Value} {f.Key}")) +
+                          ". Each family carries its own pair per socket, and the instance shares 512 " +
+                          "overlapping pairs a frame.", 2);
+            }
+
+            if (r.Atlas.Count > 0)
+            {
+                Add(r, 0, $"{r.Atlas.Count} set(s) of materials share a shader and are never animated apart: " +
+                          string.Join(", ", r.Atlas) + ". One texture each would cut draw calls. Reported only, " +
+                          "because merging them rewrites UVs and breaks per-slot material animation.", 2);
             }
 
             if (r.Triangles > 250000)
@@ -416,10 +438,93 @@ namespace AvatarBridge
             {
                 if (c == null) continue;
                 string name = c.GetType().Name;
-                if (name == "MagicaCloth") report.Cloth++;
+                if (name == "MagicaCloth" || name == "DynamicBone")
+                {
+                    report.Cloth++;
+                    report.ClothParticles += ParticlesUnder(c);
+                }
                 else if (name.StartsWith("Magica", System.StringComparison.Ordinal) && name.EndsWith("Collider", System.StringComparison.Ordinal)) report.ClothColliders++;
-                else if (name == "DynamicBone") report.Cloth++;
                 else if (name == "DynamicBoneCollider") report.ClothColliders++;
+            }
+        }
+
+        // Simulated transforms, which is the number that costs, not the
+        // component count. Read by reflection: both solvers are optional
+        // packages, and each names its roots differently.
+        static int ParticlesUnder(MonoBehaviour solver)
+        {
+            var roots = new List<Transform>();
+            var type = solver.GetType();
+
+            var db = type.GetField("m_Root");
+            if (db != null && db.GetValue(solver) is Transform single) roots.Add(single);
+
+            var many = type.GetField("m_Roots");
+            if (many != null && many.GetValue(solver) is IEnumerable<Transform> list) roots.AddRange(list);
+
+            if (roots.Count == 0)
+            {
+                // MagicaCloth keeps its roots inside SerializeData.
+                var data = type.GetProperty("SerializeData")?.GetValue(solver);
+                var field = data?.GetType().GetField("rootBones");
+                if (field?.GetValue(data) is IEnumerable<Transform> magica) roots.AddRange(magica);
+            }
+
+            int count = 0;
+            foreach (var root in roots)
+            {
+                if (root != null) count += root.GetComponentsInChildren<Transform>(true).Length;
+            }
+            return count;
+        }
+
+        // Materials that could share one texture, if anybody ever wrote the
+        // pass: same shader, and nothing animates them apart.
+        //
+        // Named only. Atlasing rewrites UVs and merges materials, which
+        // breaks every per-slot material property a converted avatar has.
+        static void FindAtlasCandidates(CVRAvatar avatar, HashSet<Material> materials, Report report)
+        {
+            var animated = new HashSet<string>(System.StringComparer.Ordinal);
+            var animator = avatar.GetComponent<Animator>();
+            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            if (controller != null)
+            {
+                foreach (var clip in controller.animationClips)
+                {
+                    if (clip == null) continue;
+                    foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    {
+                        foreach (var key in AnimationUtility.GetObjectReferenceCurve(clip, b))
+                        {
+                            if (key.value is Material m && m != null) animated.Add(m.name);
+                        }
+                    }
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.propertyName.StartsWith("material.", System.StringComparison.Ordinal)) animated.Add(b.path);
+                    }
+                }
+            }
+
+            foreach (var group in materials.Where(m => m != null && m.shader != null)
+                         .GroupBy(m => m.shader.name)
+                         .Where(g => g.Count() > 1))
+            {
+                var still = group.Where(m => !animated.Contains(m.name)).ToList();
+                if (still.Count > 1) report.Atlas.Add($"{still.Count} on {group.Key}");
+            }
+        }
+
+        // Pointers by family, which is what the 512-pair budget is spent on.
+        static void CountContactFamilies(CVRAvatar avatar, Report report)
+        {
+            foreach (var p in avatar.GetComponentsInChildren<CVRPointer>(true))
+            {
+                if (p == null) continue;
+                string family = string.IsNullOrEmpty(p.type) ? "(no type)" : p.type.Split('/')[0];
+                report.ContactFamilies.TryGetValue(family, out int n);
+                report.ContactFamilies[family] = n + 1;
             }
         }
 
@@ -525,7 +630,19 @@ namespace AvatarBridge
             sb.Append("contacts   ").Append(r.Pointers + r.Triggers)
               .Append(" (").Append(r.Pointers).Append(" pointers, ").Append(r.Triggers)
               .Append(" triggers) against 512 overlapping pairs a frame for the whole instance\n");
-            sb.Append("physics    ").Append(r.Cloth).Append(" cloth, ").Append(r.ClothColliders).Append(" colliders\n");
+            sb.Append("physics    ").Append(r.Cloth).Append(" cloth simulating ")
+              .Append(r.ClothParticles.ToString("N0")).Append(" transforms, ")
+              .Append(r.ClothColliders).Append(" colliders\n");
+            if (r.ContactFamilies.Count > 0)
+            {
+                sb.Append("pointers   ")
+                  .Append(string.Join(", ", r.ContactFamilies.Select(f => $"{f.Value} {f.Key}"))).Append('\n');
+            }
+            if (r.Atlas.Count > 0)
+            {
+                sb.Append("atlas      ").Append(string.Join(", ", r.Atlas))
+                  .Append(" could share a texture, if anything ever merged them\n");
+            }
             sb.Append("audio      ").Append(r.AudioSources).Append(" of ChilloutVR's 100\n");
             sb.Append("lights     ").Append(r.Lights).Append(" (").Append(r.MarkerLights)
               .Append(" YAPS markers) against four vertex slots a mesh\n");
