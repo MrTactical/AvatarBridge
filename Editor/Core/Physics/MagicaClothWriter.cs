@@ -314,23 +314,12 @@ namespace AvatarBridge
         // which is exactly where holders always went before.
         public const string CollectionName = "MagicaCloth Phys";
 
-        // One place for all of them, directly under the avatar.
+        // One object for all of them, under the avatar.
         //
-        // They used to go beside whatever object held the source PhysBone,
-        // which scattered them the length of the armature and buried them
-        // among the bones they drive. Nothing needs them there: a
-        // MagicaCloth simulates the root bones it is given wherever the
-        // component itself lives, and one collection object is
-        // MagicaCloth2's own idiom.
+        // A cloth simulates the roots it is given wherever it sits.
         //
-        // What the old placement bought was inheritance — a holder inside an
-        // outfit that gets switched off went off with it, for free. That is
-        // paid for explicitly now: holders are created active with the off
-        // state on the component's own enabled flag, and RewirePhysicsToggles
-        // asserts the stop. It has to assert ALL of them, which is what the
-        // selector case in that pass exists for: the first attempt at this
-        // move shipped nothing, because a hairstyle dropdown left five strand
-        // solvers running on hidden hair.
+        // Holders no longer inherit an outfit's toggle, so the off state
+        // rides the component and RewirePhysicsToggles asserts every stop.
         public static Transform HolderHome(BridgeContext ctx) => CollectionUnder(ctx, CollectionName);
 
         internal static Transform CollectionUnder(BridgeContext ctx, string name)

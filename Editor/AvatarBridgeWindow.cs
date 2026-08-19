@@ -27,6 +27,11 @@ namespace AvatarBridge
         }
 
 #if CVR_CCK_EXISTS
+        // Handed over by the convert and setup flows, so the last step of
+        // one is the first step of the next.
+        [SerializeField] GameObject toolsTarget;
+        [SerializeField] GameObject toolsSource;
+
         // The tools tab exists either way: none of the Toolkit's cards need
         // the VRChat SDK, and a project without it is exactly who they are
         // for. Rebuilt each time rather than kept, so it always reads the
@@ -206,7 +211,7 @@ namespace AvatarBridge
                 "Everything here reads or edits an avatar that is already set up for ChilloutVR, " +
                 "converted or not. The same cards are in Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit " +
                 "if you would rather have them in their own window."));
-            toolkit = new ToolkitPanel();
+            toolkit = new ToolkitPanel(toolsTarget, true, toolsSource);
             toolkit.Mount(body);
         }
 
@@ -300,10 +305,8 @@ namespace AvatarBridge
             button.SetEnabled(avatar != null);
             parent.Add(button);
 
-            // The only two settings that do not change what gets built: they
-            // decide what you are TOLD. They sat among forty that do, inside
-            // a card that ships collapsed, and a user went looking for them
-            // and could not find them. Reading belongs with reading.
+            // The two settings that change nothing, only what you are told.
+            // They belong with Analyse, not among the forty that build.
             parent.Add(BridgeElements.SubHeading("What the report tells you"));
             AddReadingOptions(parent);
 
@@ -1171,6 +1174,13 @@ namespace AvatarBridge
                 () =>
                 {
                     lastReport = CvrSetup.Run(setupAvatar, settings);
+                    // So the setup flow ends where the convert flow does:
+                    // with somewhere to go. Setup works on the object it was
+                    // given unless it cloned, and Selection is what it leaves
+                    // pointing at the result either way.
+                    lastReport.ConvertedRoot = Selection.activeGameObject != null
+                        && Selection.activeGameObject.GetComponent<ABI.CCK.Components.CVRAvatar>() != null
+                        ? Selection.activeGameObject : setupAvatar;
                     reportFilter = null;
                     ScheduleRebuild();
                 });
@@ -1351,6 +1361,64 @@ namespace AvatarBridge
             return button;
         }
 
+        // The end of the flow: pick, analyse, tweak, convert, optimise.
+        // Hands the avatar to the tools rather than acting here.
+        void BuildSlimButton(VisualElement parent)
+        {
+            var root = lastReport != null ? lastReport.ConvertedRoot : null;
+            var cvr = root != null ? root.GetComponent<ABI.CCK.Components.CVRAvatar>() : null;
+            if (cvr == null) return;
+
+            long saved = SavingFor(cvr);
+            parent.Add(BridgeElements.Hint(saved > 0
+                ? $"It converted, and it is heavier than it needs to be: about " +
+                  $"{(saved / 1048576f):0.0} MB of texture comes off with nothing visible changing. " +
+                  "The tools can do it in one press, and put it back the same way."
+                : "Nothing here is obviously wasteful. The tools can still show you what it costs and what " +
+                  "it does, on this avatar or any other."));
+
+            // The same size as Convert, so it reads as the next step rather
+            // than as one option among the row of links below it. Solid CVR
+            // orange: the crossing is done, and this is the far side.
+            parent.Add(new BridgeElements.PrimaryButton(
+                saved > 0 ? $"Make it lighter  —  {(saved / 1048576f):0.0} MB to reclaim" : "Optimise this avatar",
+                () =>
+                {
+                    toolsTarget = root;
+                toolsSource = SourceObject();
+                    mode = Mode.Tools;
+                    ScheduleRebuild();
+                },
+                BridgeTheme.CvrOrange));
+        }
+
+        // What "Make it lighter" would reclaim, for the offer on the button.
+        // Measured once per report rather than per redraw: a survey and a
+        // weight reading of a big avatar is real work, and this runs inside
+        // a UI rebuild.
+        long SavingFor(ABI.CCK.Components.CVRAvatar cvr)
+        {
+            if (_savingFor == cvr) return _saving;
+            var survey = AvatarSurvey.Build(cvr);
+            var plan = AvatarSlimmer.Find(cvr, survey, AvatarWeight.Measure(cvr, survey), SourceObject());
+            _savingFor = cvr;
+            _saving = plan.Bytes;
+            return _saving;
+        }
+
+        ABI.CCK.Components.CVRAvatar _savingFor;
+        long _saving;
+
+        // The avatar this conversion came from, whose materials point at the
+        // same textures and are not somebody else's.
+        GameObject SourceObject()
+        {
+#if VRC_SDK_VRCSDK3
+            if (avatar != null) return avatar.gameObject;
+#endif
+            return setupAvatar;
+        }
+
         void BuildReport(VisualElement parent)
         {
             if (lastReport == null)
@@ -1367,6 +1435,8 @@ namespace AvatarBridge
                 errors > 0 ? HelpBoxMessageType.Error
                 : warnings > 0 ? HelpBoxMessageType.Warning
                 : HelpBoxMessageType.Info));
+
+            BuildSlimButton(parent);
 
             var chips = new VisualElement();
             chips.AddToClassList("ab-row");

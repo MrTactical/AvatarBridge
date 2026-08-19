@@ -22,16 +22,11 @@ namespace AvatarBridge
         public string Detail;
     }
 
-    // Orders report samples so the SAME example is shown every time the same avatar converts.
+    // Orders report samples so the same example shows every run.
     //
-    // Report details usually show a handful of entries out of many ("e.g. these six of 172"),
-    // taken from a SortedSet so the choice is at least ordered. That is not enough on its own:
-    // VRCFury stamps its generated objects with a component id. "[VF397] Assjob"; and it
-    // assigns those ids fresh on every bake. Sorting on the raw string therefore reorders the
-    // set whenever Fury renumbers, and a different example surfaces although nothing about the
-    // avatar changed. The regression harness redacts "[VF397]" to "[VF#]" before comparing, so
-    // the digest shows two identical-looking lines naming different paths; a diff that costs a
-    // reader real attention and means nothing. It happened twice in one day.
+    // VRCFury stamps generated objects with an id, "[VF397] Assjob", and
+    // assigns it fresh on every bake. Sorting raw text therefore reorders
+    // whenever Fury renumbers, though nothing about the avatar changed.
     //
     // So ordering ignores those ids: two strings differing only by a Fury number sort as equal
     // text and fall back to a plain comparison, which keeps the set stable and total.

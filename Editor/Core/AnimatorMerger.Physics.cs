@@ -1,12 +1,8 @@
-// The physics half of the animator merge: making an avatar's own toggles
-// switch the cloth that replaced its PhysBones.
+// The physics half of the animator merge: an avatar's own toggles
+// switching the cloth that replaced its PhysBones.
 //
-// Split out of AnimatorMerger.cs, which had grown to ten thousand lines and
-// held this among nine other concerns. A partial class, so nothing about
-// access or signatures changes: the same private helpers, the same file
-// boundary Unity compiles into one type. Moving it cost nothing and the
-// three attempts it took to fix the dropdown case cost real time, much of
-// it spent finding where to stand.
+// A partial class of AnimatorMerger. Same access, same signatures, one
+// compiled type.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -114,16 +110,12 @@ namespace AvatarBridge
                 return riders;
             }
 
-            // The toggled object owns the chain outright: the simulated
-            // BONES live inside it, not just the component that drove them.
+            // The toggled object owns the chain: the simulated bones live
+            // inside it, not just the component that drove them.
             //
-            // Then who is weighted to them does not matter. A body mesh is
-            // weighted to the bones of anything grafted onto the body, and
-            // stays visible while the toggle hides the geometry that rides
-            // them, so the rider test refuses a stop that is plainly right.
-            // The rider test is for the other shape entirely: a garment that
-            // rides bones living elsewhere, where stopping the chain would
-            // freeze physics another visible mesh still needs.
+            // Who is weighted to them then does not matter. A body mesh is
+            // weighted to anything grafted onto the body and stays visible
+            // while the toggle hides the geometry.
             bool ChainOwnedBy(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
             {
                 var chainRoot = chain.Root != null ? chain.Root
@@ -528,15 +520,10 @@ namespace AvatarBridge
             // Bindings the finished controller already switches off. A
             // synthetic stop is for one nothing takes back; on a paired
             // chain it would leave both halves disabled.
-            // Does THIS state hide everything that rides the chain?
+            // Does this state hide everything that rides the chain?
             //
-            // The global test asks whether anything outside the toggled
-            // object rides those bones, and on a dropdown the answer is
-            // usually yes and usually irrelevant: what rides them is another
-            // hairstyle, which this option hides as well. So the question is
-            // asked again per state, against what the state's own clip
-            // switches off. Nothing visible left riding, nothing to keep the
-            // solver running for.
+            // On a dropdown the other rider is usually another option, which
+            // this state hides too. So the question is asked per state.
             bool HidesEveryRider(EditorCurveBinding target, AnimationClip clip)
             {
                 if (!chainByTarget.TryGetValue(target, out var chain)) return false;
@@ -725,15 +712,10 @@ namespace AvatarBridge
             }
         }
 
-        // The bones a mesh is ACTUALLY weighted to.
+        // The bones a mesh is actually weighted to.
         //
-        // Not skinned.bones, which is the skeleton the renderer was bound
-        // against: a body mesh routinely lists every bone on the avatar,
-        // hair strands included, at zero weight. Reading that array as
-        // "this mesh needs those bones moving" makes every body mesh a
-        // rider on every chain, and the shared-rider test then refuses to
-        // stop any physics at all. That is what kept five hair solvers
-        // running after the hairstyle was switched away.
+        // Not skinned.bones. That is the skeleton it was bound against, and
+        // a body mesh lists every bone on the avatar at zero weight.
         static readonly Dictionary<SkinnedMeshRenderer, List<Transform>> WeightedBonesCache =
             new Dictionary<SkinnedMeshRenderer, List<Transform>>();
 
@@ -767,14 +749,11 @@ namespace AvatarBridge
             return bones;
         }
 
-        // A dropdown: every state reached from AnyState, every one of those
-        // transitions testing the SAME parameter. One value is live at a
-        // time, so what one option switches on the others must switch off.
+        // A dropdown: every state reached from AnyState, all testing the
+        // same parameter. One value is live, so the others are its off half.
         //
-        // Deliberately strict. Requiring every state to be covered, and one
-        // parameter across the whole layer, is what keeps an ordinary
-        // machine — sequences, wait states, anything with its own flow —
-        // from being mistaken for a set of alternatives.
+        // Strict on purpose. Full coverage and a single parameter keep a
+        // sequence or a wait state from passing as a set of alternatives.
         static bool IsSelector(AnimatorControllerLayer layer, List<AnimatorState> states)
         {
             if (states.Count < 2) return false;

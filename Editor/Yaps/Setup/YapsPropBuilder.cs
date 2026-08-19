@@ -328,7 +328,7 @@ namespace AvatarBridge
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
             // The trigger tasks index the value list, so each value's slot
-            // is the one it was given, not its place in our own list.
+            // is the one it was given, not its place in the list.
             spawnable.useAdditionalValues = true;
             var slot = new Dictionary<string, int>();
             foreach (var (value, _) in Channel)

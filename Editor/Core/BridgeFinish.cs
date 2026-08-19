@@ -1,14 +1,7 @@
-// How a run ends, once, for both of them.
+// How a run ends, for a conversion and for a native setup.
 //
-// A conversion and a native setup do entirely different work and then finish
-// identically: validate what was built, read the avatar for the report, write
-// the store description, write the report, save. That tail existed twice, and
-// twice this week a change to it had to be made in both places — the second
-// time by copying a method verbatim, which is what prompted this file.
-//
-// What stays behind: the converter's diagnostics and HTML report. Both are
-// guarded on the VRChat SDK, so a file that ships in the standalone YAPS
-// package cannot call them. The converter passes them in instead.
+// Both do different work and finish the same way: validate, read the
+// avatar for its cards, write the description, write the report, save.
 #if CVR_CCK_EXISTS
 using System;
 using System.IO;

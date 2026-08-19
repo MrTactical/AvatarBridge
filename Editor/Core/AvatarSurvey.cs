@@ -614,6 +614,29 @@ namespace AvatarBridge
             return found.ToList();
         }
 
+        // A name nobody chose and nobody can act on.
+        //
+        // GoGo Loco's parameters, this tool's scaffolding, what the game
+        // writes, what a PhysBone used to write. Normal, and not findings.
+        static readonly System.Text.RegularExpressions.Regex Scaffolding =
+            new System.Text.RegularExpressions.Regex(
+                @"^#?(Go/|AB_Ready_|YAPS\d|VF\d+_|VF_\d+_)|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        static bool Internal(string name) =>
+            !string.IsNullOrEmpty(name)
+            && (Scaffolding.IsMatch(name) || CvrParameterNames.IsGameDriven(name));
+
+        // Findings a person can act on: something of theirs is broken or
+        // unreachable, and the name is one they would recognise.
+        static readonly HashSet<string> Actionable = new HashSet<string>
+        {
+            "unreachable feature", "control that does nothing", "control with no parameter",
+            "stopped working when converted", "unused parameter", "empty layer",
+        };
+
+        static bool WorthTelling(Finding f) => Actionable.Contains(f.Kind) && !Internal(f.Subject);
+
         // What each finding is called where somebody who did not build the
         // avatar has to read it. The model's own names are for the model.
         static string Headline(string kind, int count)
@@ -671,12 +694,20 @@ namespace AvatarBridge
               .Append(model.Layers.Count).Append(" layers, ")
               .Append(model.Controls.Count).Append(" menu controls.\n\n");
 
-            foreach (var group in model.Findings.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
+            var worth = model.Findings.Where(WorthTelling).ToList();
+            foreach (var group in worth.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
             {
                 sb.Append("- **").Append(Headline(group.Key, group.Count())).Append("** — ")
                   .Append(string.Join(", ", group.Take(4).Select(f => f.Subject)));
                 if (group.Count() > 4) sb.Append(", and ").Append(group.Count() - 4).Append(" more");
                 sb.Append('\n');
+            }
+            int quiet = model.Findings.Count - worth.Count;
+            if (quiet > 0)
+            {
+                sb.Append("- ").Append(quiet).Append(" more finding(s) about names nobody chose — GoGo Loco's ")
+                  .Append("parameters, this tool's own scaffolding, what ChilloutVR writes and nothing reads, ")
+                  .Append("the grab and stretch parameters a PhysBone used to write. Listed in full below.\n");
             }
 
             if (model.Props.Count > 0)
@@ -703,7 +734,10 @@ namespace AvatarBridge
                 $"{model.Parameters.Count} parameters ({model.Parameters.Count(p => p.Synced)} synced), " +
                 $"{model.Layers.Count} layers, {model.Controls.Count} menu controls.");
 
-            foreach (var group in model.Findings.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
+            var worth = model.Findings.Where(WorthTelling).ToList();
+            int quiet = model.Findings.Count - worth.Count;
+
+            foreach (var group in worth.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
             {
                 bool loud = group.Key == "unreachable feature"
                             || group.Key == "stopped working when converted"
@@ -721,6 +755,15 @@ namespace AvatarBridge
                 report.Add(ReportStatus.Approximated, "Survey", $"\"{p.Control}\" could come off as a prop",
                     $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {p.Materials} material(s), " +
                     $"{(p.TextureBytes / 1048576f):0.0} MB of textures nothing else uses.");
+            }
+
+            if (quiet > 0)
+            {
+                report.Add(ReportStatus.Converted, "Survey", $"{quiet} more finding(s) not worth your time",
+                    "Names nobody chose and nothing anybody can act on: GoGo Loco's own parameters, the " +
+                    "scaffolding this tool generates, the ones ChilloutVR writes and no layer reads, the grab " +
+                    "and stretch parameters a PhysBone used to write. They are all in the report file if you " +
+                    "ever want them.");
             }
         }
 

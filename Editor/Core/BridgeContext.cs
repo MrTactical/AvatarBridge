@@ -167,11 +167,8 @@ namespace AvatarBridge
         // first, then a greedy longest-name walk.
         // What a controller really is, through any overrides.
         //
-        // An avatar normally runs an AnimatorOverrideController wrapping the
-        // base, and almost everything that wants to read layers or parameters
-        // wants the base. This existed three times over — in the survey, in
-        // the free-wins pass and in the YAPS socket reactions — with two of
-        // them guarded against a cycle and one not.
+        // An avatar runs an override controller wrapping the base, and
+        // anything reading layers or parameters wants the base.
         public static UnityEditor.Animations.AnimatorController Underlying(RuntimeAnimatorController runtime)
         {
             for (int guard = 0; runtime != null && guard < 8; guard++)

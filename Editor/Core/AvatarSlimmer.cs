@@ -1,14 +1,10 @@
-// One button: make this avatar lighter, and say exactly what changed.
+// Makes an avatar lighter, and reports what changed.
 //
-// Everything else in the tool measures and advises. This is the first pass
-// that acts on its own advice, so it is deliberately narrow: it does only
-// what the weight card can prove is free, and only to textures this avatar
+// Only what the weight card proves is free. Only textures this avatar
 // alone uses.
 //
-// Textures shrink through the IMPORTER, not by editing anything. Setting
-// maxTextureSize leaves the source file untouched, costs no disk, and is one
-// field in the inspector to put back — and the old value is written to a file
-// beside the avatar so putting it back is a button here too.
+// Textures shrink through the importer. maxTextureSize leaves the source
+// file alone and costs no disk. Old sizes are recorded so Revert works.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -43,12 +39,17 @@ namespace AvatarBridge
             public bool Any => Textures.Count > 0 || (Wins != null && Wins.Any);
         }
 
-        public static Plan Find(CVRAvatar avatar, AvatarSurvey.Model survey, AvatarWeight.Report weight)
+        // `alsoMine` is the avatar this one was converted from.
+        // Conversion copies patched materials, so the source keeps its own
+        // set pointing at the same textures. Those are not a stranger's.
+        public static Plan Find(CVRAvatar avatar, AvatarSurvey.Model survey, AvatarWeight.Report weight,
+            GameObject alsoMine = null)
         {
             var plan = new Plan();
             if (avatar == null || weight == null) return plan;
 
             var mine = OwnMaterials(avatar);
+            if (alsoMine != null) mine.UnionWith(MaterialsOn(alsoMine));
             var elsewhere = MaterialsUsingTexturesOutside(mine);
 
             foreach (var t in weight.Textures)
@@ -66,9 +67,8 @@ namespace AvatarBridge
                 if (!(AssetImporter.GetAtPath(path) is TextureImporter importer)) continue;
                 if (importer.maxTextureSize <= t.Suggested) continue;
 
-                // Somebody else's avatar may want it at full size. The
-                // importer setting is global to the texture, so a texture
-                // that is not ours alone is left exactly as it is.
+                // The importer setting is global to the texture.
+                // A texture others use is left alone.
                 if (elsewhere.Contains(t.Texture))
                 {
                     plan.Shared.Add(t.Name);
@@ -193,25 +193,51 @@ namespace AvatarBridge
 
         // ---- who else uses it ---------------------------------------------
 
-        static HashSet<Material> OwnMaterials(CVRAvatar avatar)
+        // Every material this avatar can wear, animated swaps included.
+        //
+        // A swap lives in a clip as an object-reference curve, not in any
+        // renderer's sharedMaterials. Renderers alone miss outfit variants.
+        static HashSet<Material> MaterialsOn(GameObject root)
         {
-            var mine = new HashSet<Material>();
-            foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
+            var found = new HashSet<Material>();
+            if (root == null) return found;
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
                 foreach (var m in r.sharedMaterials)
                 {
-                    if (m != null) mine.Add(m);
+                    if (m != null) found.Add(m);
+                }
+            }
+            return found;
+        }
+
+        static HashSet<Material> OwnMaterials(CVRAvatar avatar)
+        {
+            var mine = MaterialsOn(avatar.gameObject);
+
+            var animator = avatar.GetComponent<Animator>();
+            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            if (controller == null) return mine;
+
+            foreach (var clip in controller.animationClips)
+            {
+                if (clip == null) continue;
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null) continue;
+                    foreach (var key in keys)
+                    {
+                        if (key.value is Material m) mine.Add(m);
+                    }
                 }
             }
             return mine;
         }
 
-        // Every texture reachable from a material this avatar does NOT use.
-        //
-        // One pass over the project's materials, which is the only place a
-        // texture is referenced from in practice. A material nobody has
-        // applied still counts: it exists to be applied.
+        // Textures reachable from materials this avatar does not use.
+        // One pass over the project. Unapplied materials still count.
         static HashSet<Texture> MaterialsUsingTexturesOutside(HashSet<Material> mine)
         {
             var outside = new HashSet<Texture>();

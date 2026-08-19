@@ -19,7 +19,20 @@ namespace AvatarBridge
     // nobody could navigate; the cards were never the problem.
     public sealed class ToolkitPanel
     {
-        public ToolkitPanel(GameObject target = null) { _target = target; }
+        public ToolkitPanel(GameObject target = null, bool embedded = false, GameObject convertedFrom = null)
+        {
+            _target = target;
+            _embedded = embedded;
+            _convertedFrom = convertedFrom;
+        }
+
+        readonly bool _embedded;
+
+        // The avatar this one was converted from, when the window handed it
+        // over. Conversion copies the materials it patches, so the source
+        // keeps its own set pointing at the same textures; treating those as
+        // a stranger's is what kept a converted avatar's eyes at full size.
+        readonly GameObject _convertedFrom;
 
         // Mounts into a container the host owns. The banner belongs to the
         // window, not to the panel: a tab already sits under one.
@@ -44,14 +57,17 @@ namespace AvatarBridge
         {
             _pages.Clear();
 
-            var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, 1, 0f);
+            // No step numbers here. The converter and the setup flow ARE
+            // sequences; this is a menu, and numbering it says you are not
+            // finished until you have merged some animators.
+            var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, null, 0f);
             var picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
             picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; Build(); });
             pick.Body.Add(picker);
             if (_target == null) pick.Body.Add(BridgeElements.Hint("Drag the avatar or prop here from the Hierarchy. Every card below acts on it."));
             _pages.Add(pick);
 
-            var tools = new BridgeElements.Card("Tools", null, null, 2, 0.5f);
+            var tools = new BridgeElements.Card("Tools", null, null, null, 0.5f);
             tools.Body.Add(Check());
             tools.Body.Add(Survey());
             tools.Body.Add(Weigh());
@@ -66,14 +82,24 @@ namespace AvatarBridge
 
             _pages.Add(MergeAnimators());
 
+            // Mounted as a tab of the converter's own window, "AvatarBridge"
+            // would be a link to where you already are.
             var more = new BridgeElements.Card("Also in this package", null, false, null, 1f);
-            more.Body.Add(BridgeElements.Hint(
-                "AvatarBridge converts a VRChat avatar to ChilloutVR. YAPS adds, tunes or upgrades penetration " +
-                "on any avatar or prop. CCK Animator Tester drives an avatar the way the game does, in Play mode."));
-            more.Body.Add(BridgeElements.Row(
-                BridgeElements.Link("AvatarBridge", () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")),
-                BridgeElements.Link("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")),
-                BridgeElements.Link("CCK Animator Tester", () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester"))));
+            more.Body.Add(BridgeElements.Hint(_embedded
+                ? "YAPS adds, tunes or upgrades penetration on any avatar or prop. CCK Animator Tester drives " +
+                  "an avatar the way the game does, in Play mode."
+                : "AvatarBridge converts a VRChat avatar to ChilloutVR. YAPS adds, tunes or upgrades penetration " +
+                  "on any avatar or prop. CCK Animator Tester drives an avatar the way the game does, in Play mode."));
+            var links = new List<VisualElement>();
+            if (!_embedded)
+            {
+                links.Add(BridgeElements.Link("AvatarBridge",
+                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")));
+            }
+            links.Add(BridgeElements.Link("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")));
+            links.Add(BridgeElements.Link("CCK Animator Tester",
+                () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester")));
+            more.Body.Add(BridgeElements.Row(links.ToArray()));
             _pages.Add(more);
 
             var footer = new VisualElement();
@@ -95,7 +121,10 @@ namespace AvatarBridge
                 Report = report,
                 Target = _target,
                 CvrAvatar = _target != null ? _target.GetComponent<CVRAvatar>() : null,
-                MergedController = animator != null ? animator.runtimeAnimatorController as AnimatorController : null,
+                // Underlying, not a cast: an avatar runs an override
+                // controller wrapping the base, so a cast reads null and
+                // every animator check quietly skips itself.
+                MergedController = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null),
                 OutputDir = _target != null ? OutputRoot + "/" + _target.name : OutputRoot,
                 Standalone = true,
             };
@@ -209,7 +238,7 @@ namespace AvatarBridge
                 }
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
                 var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
-                AvatarSlimmer.Apply(ctx.CvrAvatar, AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight),
+                AvatarSlimmer.Apply(ctx.CvrAvatar, AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom),
                     ctx.OutputDir, report);
                 return report;
             });
@@ -336,7 +365,7 @@ namespace AvatarBridge
         // Merge animators: any controllers, not tied to the picked object.
         VisualElement MergeAnimators()
         {
-            var card = new BridgeElements.Card("Merge animators", null, null, 3, 1f);
+            var card = new BridgeElements.Card("Merge animators", null, null, null, 1f);
             card.Body.Add(BridgeElements.Hint(
                 "Every layer and parameter of the sources goes into the target, deep-copied, layers after the " +
                 "target's own. Same-named layers are renamed; a parameter present in both with different types " +

@@ -161,21 +161,39 @@ namespace AvatarBridge
         {
             readonly Label _label;
 
-            public PrimaryButton(string text, Action onClick)
+            // `solid` paints one colour instead of the bridge gradient. The
+            // gradient means "this is the crossing"; a solid button of the
+            // same size means "and this is where you go next", which is a
+            // different sentence and should not look like the same one.
+            public PrimaryButton(string text, Action onClick, Color? solid = null)
             {
                 AddToClassList("ab-primary");
-                style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient());
+                if (solid.HasValue)
+                {
+                    style.backgroundColor = solid.Value;
+                    RegisterCallback<MouseEnterEvent>(_ =>
+                        style.backgroundColor = Lift(solid.Value));
+                    RegisterCallback<MouseLeaveEvent>(_ =>
+                        style.backgroundColor = solid.Value);
+                }
+                else
+                {
+                    style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient());
+                    RegisterCallback<MouseEnterEvent>(_ =>
+                        style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient(true)));
+                    RegisterCallback<MouseLeaveEvent>(_ =>
+                        style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient()));
+                }
                 _label = new Label(text);
                 Add(_label);
 
                 // A disabled VisualElement stops receiving events, so SetEnabled is the guard;
                 // the class only supplies the look, since a bare element has no disabled styling.
                 RegisterCallback<MouseDownEvent>(e => { if (e.button == 0) onClick(); });
-                RegisterCallback<MouseEnterEvent>(_ =>
-                    style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient(true)));
-                RegisterCallback<MouseLeaveEvent>(_ =>
-                    style.backgroundImage = new StyleBackground(BridgeTheme.BridgeGradient()));
             }
+
+            static Color Lift(Color c) => new Color(
+                Mathf.Clamp01(c.r * 1.12f), Mathf.Clamp01(c.g * 1.12f), Mathf.Clamp01(c.b * 1.12f), c.a);
 
             public void SetLabel(string text) => _label.text = text;
 
