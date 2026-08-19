@@ -65,6 +65,13 @@ namespace AvatarBridge
                     "Source PhysBone component was disabled; DynamicBone created disabled. Component " +
                     "toggles are re-wired by the animator pass.");
             }
+            else if (!data.InitiallyActive)
+            {
+                db.enabled = false;
+                ctx.Report.Approximated(Category, data.Root.name,
+                    "Style was inactive at conversion; DynamicBone created disabled. Its toggle is " +
+                    "re-wired to switch this chain on — see the Animator section of this report.");
+            }
 
             db.m_Elasticity = Mathf.Clamp01(data.Pull) * ElasticityScale;
             if (PhysBoneChainData.HasCurve(data.PullCurve))
