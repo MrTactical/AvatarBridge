@@ -82,6 +82,8 @@ namespace AvatarBridge
             public int Pointers;
             public int Triggers;
             public readonly List<string> Atlas = new List<string>();
+            public readonly SortedDictionary<string, int> ClothParents =
+                new SortedDictionary<string, int>(System.StringComparer.Ordinal);
             public readonly SortedDictionary<string, int> ContactFamilies =
                 new SortedDictionary<string, int>(System.StringComparer.Ordinal);
 
@@ -292,6 +294,14 @@ namespace AvatarBridge
                           "overlapping pairs a frame.", 2);
             }
 
+            var crowded = r.ClothParents.Where(p => p.Value > 3).ToList();
+            if (crowded.Count > 0)
+            {
+                Add(r, 0, string.Join("; ", crowded.Select(p => $"{p.Value} solvers under \"{p.Key}\"")) +
+                          ". One solver can hold many root bones, so these could merge — unless a toggle " +
+                          "switches them apart, which is what to check before doing it.", 2);
+            }
+
             if (r.Atlas.Count > 0)
             {
                 Add(r, 0, $"{r.Atlas.Count} set(s) of materials share a shader and are never animated apart: " +
@@ -442,6 +452,14 @@ namespace AvatarBridge
                 {
                     report.Cloth++;
                     report.ClothParticles += ParticlesUnder(c);
+                    // Solvers whose chains hang off one parent are the
+                    // merge candidates: one solver could hold every root.
+                    var parent = c.transform.parent;
+                    if (parent != null)
+                    {
+                        report.ClothParents.TryGetValue(parent.name, out int n);
+                        report.ClothParents[parent.name] = n + 1;
+                    }
                 }
                 else if (name.StartsWith("Magica", System.StringComparison.Ordinal) && name.EndsWith("Collider", System.StringComparison.Ordinal)) report.ClothColliders++;
                 else if (name == "DynamicBoneCollider") report.ClothColliders++;

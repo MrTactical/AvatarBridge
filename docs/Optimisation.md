@@ -238,8 +238,18 @@ compression shrinks the download and not the memory, and people conflate the two
 ## Phase 4 — physics
 
 **Measurement built 2026-08-19.** The card counts simulated TRANSFORMS, not components: one
-corpus avatar runs 164 solvers over 1,070 of them. Merging and collider pruning are still
-unbuilt.
+corpus avatar runs 164 solvers over 1,070 of them.
+
+**Collider pruning is off the table, and the plan was wrong to list it.** "Colliders that cannot
+reach any particle can go" assumes a collider only serves the cloth on its own avatar. It does
+not: MagicaCloth colliders are used against REMOTE players' cloth, so a collider in no local
+cloth's list is what lets somebody else's hair collide with this body. There is no local
+evidence that can prove one unused, and deleting one breaks something that only appears with
+another person in the room.
+
+Merging is reported, not performed: solvers crowded under one parent are named, since one solver
+can hold many roots. A toggle that switches them apart is what makes a merge wrong, and that is
+the thing to check first.
 
 18 cloth solvers an avatar at 90 Hz is the largest silent CPU cost in a converted avatar. Chains
 that share a preset and a bone parent can merge; colliders that cannot reach any particle can go;
