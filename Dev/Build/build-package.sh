@@ -87,6 +87,56 @@ yaps_files() {
   done
 }
 
+# Would the YAPS package compile on its own?
+#
+# It ships a hand-written subset of Editor/Core and the whole of
+# Editor/Toolkit, so a card added to the Toolkit can reach a Core type the
+# list has never heard of. The package then fails on import with CS0246
+# while the full package is perfectly fine, which is exactly how 4.1.0 and
+# 4.1.1 shipped broken for anyone installing YAPS on its own.
+#
+# Comments are stripped first, because half of Core is named in prose and
+# every one of those would be a false alarm. Only namespace-level public and
+# internal types count, so a private nested enum that happens to share a name
+# with somebody's field is not one either.
+#
+# This is a closure check, not a compiler: it catches a shipped file
+# referencing a type that stayed behind. For the real thing, compile the
+# package's own file list against the CCK with no VRChat SDK defined — and
+# use MonoBleedingEdge/bin/mono.exe with lib/mono/4.5/csc.exe, since the
+# Roslyn csc under lib/mono/msbuild fails to start and prints no "error CS"
+# lines, which reads as a clean compile.
+strip_comments() { sed 's://.*::' "$1" | awk '/\/\*/{b=1} !b{print} /\*\//{b=0}'; }
+
+check_yaps_closure() { # $1 = newline-delimited list of shipped paths
+  local shipped="$1" bad=0 t s
+  for f in Editor/Core/*.cs; do
+    grep -qxF "$f" "$shipped" && continue
+    # A Core file with no namespace-level type is ordinary, and grep says so
+    # by exiting 1. Under `set -e` with pipefail that would end the build.
+    { grep -ohE "^    (public|internal)( static| sealed| abstract| partial)* (class|struct|enum|interface) [A-Z][A-Za-z0-9_]*" "$f" || true; } \
+      | awk '{print $NF}'
+  done | sort -u > "$STAGE/absent.txt"
+
+  while IFS= read -r t; do
+    while IFS= read -r s; do
+      case "$s" in *.cs) ;; *) continue ;; esac
+      if strip_comments "$s" | grep -qE "\b$t\b"; then
+        echo "  !! \"$t\" is used by $s but its file is not in the YAPS package" >&2
+        bad=1
+        break
+      fi
+    done < "$shipped"
+  done < "$STAGE/absent.txt"
+
+  if [ "$bad" -ne 0 ]; then
+    echo "ABORT: the YAPS package would not compile on its own." >&2
+    echo "       Add the missing file(s) to YAPS_CORE, or keep the reference out of what YAPS ships." >&2
+    exit 1
+  fi
+  echo "  yaps closure: every Core type the package uses travels with it"
+}
+
 emit() { # $1=guid  $2=pathname  $3=meta  $4=asset(optional)
   mkdir -p "$STAGE/$1"
   cp "$3" "$STAGE/$1/asset.meta"
@@ -110,6 +160,14 @@ printf '%s' "Assets/AvatarBridge" > "$STAGE/$ROOT_GUID/pathname"
 
 count=0 missing=0
 cd "$REPO"
+
+# Built once: the closure check reads the same list the packer walks, so the
+# two can never disagree about what ships.
+if [ "$MODE" = "yaps" ]; then
+  yaps_files > "$STAGE/yaps.list"
+  tr '\0' '\n' < "$STAGE/yaps.list" > "$STAGE/yaps.txt"
+  check_yaps_closure "$STAGE/yaps.txt"
+fi
 while IFS= read -r -d '' path; do
   rel="${path#./}"
   case "$rel" in
@@ -139,7 +197,7 @@ while IFS= read -r -d '' path; do
     emit "$g" "Assets/AvatarBridge/$rel" "$meta" "$src"
   fi
   count=$((count+1))
-done < <(if [ "$MODE" = "yaps" ]; then yaps_files; else
+done < <(if [ "$MODE" = "yaps" ]; then cat "$STAGE/yaps.list"; else
   find . -mindepth 1 \
     \( -name '.*' \
        -o -path './docs' \
