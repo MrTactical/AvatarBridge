@@ -96,7 +96,7 @@ namespace AvatarBridge
             model.Avatar = avatar.name;
 
             var animator = avatar.GetComponent<Animator>();
-            var controller = Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
             if (controller == null) return model;
 
             foreach (var p in controller.parameters)
@@ -612,17 +612,6 @@ namespace AvatarBridge
                 }
             }
             return found.ToList();
-        }
-
-        static AnimatorController Underlying(RuntimeAnimatorController runtime)
-        {
-            for (int guard = 0; runtime != null && guard < 8; guard++)
-            {
-                if (runtime is AnimatorController controller) return controller;
-                if (runtime is AnimatorOverrideController over) { runtime = over.runtimeAnimatorController; continue; }
-                break;
-            }
-            return null;
         }
 
         // What each finding is called where somebody who did not build the

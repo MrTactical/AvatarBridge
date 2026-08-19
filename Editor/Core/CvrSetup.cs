@@ -52,11 +52,7 @@ namespace AvatarBridge
                 AvatarScalerInjector.Inject(controller, ctx);
                 SaveController(ctx, controller);
 
-                BridgeDiagnostics.Run(ctx, ctx.MergedController);
-                ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
-                WriteReportFile(ctx);
-                EditorUtility.SetDirty(ctx.CvrAvatar);
-                AssetDatabase.SaveAssets();
+                BridgeFinish.Run(ctx, "SetupReport.md", "Setup report");
                 Selection.activeGameObject = ctx.Target;
 
                 report.Converted(Category, "Finished",
@@ -388,16 +384,6 @@ namespace AvatarBridge
 
             Directory.CreateDirectory(Path.GetFullPath(Path.Combine(Application.dataPath, "..", ctx.OutputDir)));
             AssetDatabase.Refresh();
-        }
-
-        static void WriteReportFile(BridgeContext ctx)
-        {
-            string path = ctx.OutputDir + "/SetupReport.md";
-            string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
-            File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name));
-            AssetDatabase.ImportAsset(path);
-            ctx.Report.SavedReportPath = path;
-            Debug.Log($"[AvatarBridge] Setup report written to {path}");
         }
 
         static string SanitizeFileName(string name)

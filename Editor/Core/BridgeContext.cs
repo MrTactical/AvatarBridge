@@ -165,6 +165,24 @@ namespace AvatarBridge
         // Resolves a path the way the animator does: whole path against each
         // object, so a name containing a slash still matches. Plain Find
         // first, then a greedy longest-name walk.
+        // What a controller really is, through any overrides.
+        //
+        // An avatar normally runs an AnimatorOverrideController wrapping the
+        // base, and almost everything that wants to read layers or parameters
+        // wants the base. This existed three times over — in the survey, in
+        // the free-wins pass and in the YAPS socket reactions — with two of
+        // them guarded against a cycle and one not.
+        public static UnityEditor.Animations.AnimatorController Underlying(RuntimeAnimatorController runtime)
+        {
+            for (int guard = 0; runtime != null && guard < 8; guard++)
+            {
+                if (runtime is UnityEditor.Animations.AnimatorController controller) return controller;
+                if (runtime is AnimatorOverrideController over) { runtime = over.runtimeAnimatorController; continue; }
+                break;
+            }
+            return null;
+        }
+
         public static Transform FindByAnimationPath(Transform root, string path)
         {
             if (root == null)

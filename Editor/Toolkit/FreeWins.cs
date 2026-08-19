@@ -48,7 +48,7 @@ namespace AvatarBridge
         {
             var plan = new Plan();
             var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
-            plan.Controller = Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            plan.Controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
             if (plan.Controller == null) return plan;
 
             var named = MenuNames(avatar);
@@ -263,17 +263,6 @@ namespace AvatarBridge
                 if (entry != null && !string.IsNullOrEmpty(entry.machineName)) names.Add(entry.machineName);
             }
             return names;
-        }
-
-        static AnimatorController Underlying(RuntimeAnimatorController runtime)
-        {
-            for (int guard = 0; runtime != null && guard < 8; guard++)
-            {
-                if (runtime is AnimatorController controller) return controller;
-                if (runtime is AnimatorOverrideController over) { runtime = over.runtimeAnimatorController; continue; }
-                break;
-            }
-            return null;
         }
     }
 }

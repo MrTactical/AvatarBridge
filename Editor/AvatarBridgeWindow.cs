@@ -702,18 +702,7 @@ namespace AvatarBridge
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
 
-            b.Add(BridgeElements.Bind("Say what this avatar costs (recommended)",
-                "Adds a section to the report: texture memory measured against the surface it " +
-                "actually covers, contacts against the 512 pairs ChilloutVR gives the whole " +
-                "instance, triangles, cloth solvers, shader copies. It reads and reports, and " +
-                "changes nothing on the avatar.",
-                settings.weighAvatar, v => settings.weighAvatar = v));
-            b.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
-                "Adds a section to the report naming what the avatar can and cannot do: features its " +
-                "author built and never wired to anything, things two layers both animate where the " +
-                "higher one quietly wins, parameters that lost their driver in the conversion, and " +
-                "objects that could come off as ChilloutVR props. Reads only.",
-                settings.surveyAvatar, v => settings.surveyAvatar = v));
+            AddReadingOptions(b);
 
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);
@@ -1165,11 +1154,31 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------- shared sections ----
 
+        // The two that only ever READ. Shared by both flows: an avatar built
+        // for ChilloutVR has as much to learn about itself as a converted
+        // one, and the setup report is the same report.
+        void AddReadingOptions(VisualElement parent)
+        {
+            parent.Add(BridgeElements.Bind("Say what this avatar costs (recommended)",
+                "Adds a section to the report: texture memory measured against the surface it " +
+                "actually covers, contacts against the 512 pairs ChilloutVR gives the whole " +
+                "instance, triangles, cloth solvers, shader copies. It reads and reports, and " +
+                "changes nothing on the avatar.",
+                settings.weighAvatar, v => settings.weighAvatar = v));
+            parent.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
+                "Adds a section to the report naming what the avatar can and cannot do: features its " +
+                "author built and never wired to anything, things two layers both animate where the " +
+                "higher one quietly wins, parameters nothing can reach, and objects that could come " +
+                "off as ChilloutVR props. Reads only.",
+                settings.surveyAvatar, v => settings.surveyAvatar = v));
+        }
+
         void AddCommonGeneralOptions(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Work on a clone (recommended)",
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
+            AddReadingOptions(parent);
 
             var output = new TextField("Output folder")
             {

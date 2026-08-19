@@ -59,13 +59,6 @@ namespace AvatarBridge
             }
         }
 
-        // What a controller really is, through any overrides.
-        public static AnimatorController Underlying(RuntimeAnimatorController controller)
-        {
-            while (controller is AnimatorOverrideController over) controller = over.runtimeAnimatorController;
-            return controller as AnimatorController;
-        }
-
         // A YAPS depth parameter by shape, whoever wrote it: this build's
         // synced form, the local one older builds used, or a hand edit of
         // either.
@@ -133,9 +126,9 @@ namespace AvatarBridge
             var animator = socket.GetComponentInParent<Animator>();
             // Through any override: it wraps a controller rather than being one.
             var based = avatar != null && avatar.avatarSettings != null
-                ? Underlying(avatar.avatarSettings.baseController) : null;
+                ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
             if (based != null) list.Add(based);
-            var own = animator != null ? Underlying(animator.runtimeAnimatorController) : null;
+            var own = animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null;
             if (own != null && !list.Contains(own)) list.Add(own);
             return list;
         }
@@ -172,8 +165,8 @@ namespace AvatarBridge
             var animator = socket.GetComponentInParent<Animator>();
             if (avatar == null || animator == null)
                 return $"✗ {socket.name}: the shapes need a CVRAvatar and an Animator above the socket";
-            var controller = (avatar.avatarSettings != null ? Underlying(avatar.avatarSettings.baseController) : null)
-                             ?? Underlying(animator.runtimeAnimatorController);
+            var controller = (avatar.avatarSettings != null ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
+                             ?? BridgeContext.Underlying(animator.runtimeAnimatorController);
             if (controller == null)
                 return $"✗ {socket.name}: the avatar has no animator controller to put the reactions in";
             string controllerPath = AssetDatabase.GetAssetPath(controller);
@@ -303,7 +296,7 @@ namespace AvatarBridge
             // An override controller wraps the base, so a layer added to
             // the base is already playing through it. Only a genuinely
             // different controller needs saying.
-            if (Underlying(animator.runtimeAnimatorController) != controller)
+            if (BridgeContext.Underlying(animator.runtimeAnimatorController) != controller)
                 note += "; the Animator plays a different controller, so press Create Animator on the CVRAvatar for it to pick the layer up";
             return note;
         }

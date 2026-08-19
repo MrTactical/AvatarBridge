@@ -30,7 +30,7 @@ namespace AvatarBridge
             if (avatar == null) return lines;
 
             var animator = avatar.GetComponent<Animator>();
-            var controller = YapsSocketReactions.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
             if (animator == null || controller == null)
             {
                 lines.Add("✗ the channel needs an Animator with a controller on the avatar");
@@ -112,7 +112,7 @@ namespace AvatarBridge
         {
             if (avatar == null) return 0;
             var animator = avatar.GetComponent<Animator>();
-            var controller = YapsSocketReactions.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
             int before = Count(avatar, controller);
             Clear(avatar, controller);
             return before - Count(avatar, controller);

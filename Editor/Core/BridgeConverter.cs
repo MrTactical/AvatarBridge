@@ -85,12 +85,15 @@ namespace AvatarBridge
                 ReportSyncUsage(ctx);
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
-                BridgeDiagnostics.Run(ctx, ctx.MergedController);
-                ReadAvatar(ctx);
-                ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
-                WriteReportFile(ctx);
-                EditorUtility.SetDirty(ctx.CvrAvatar);
-                AssetDatabase.SaveAssets();
+                // The shared tail. The diagnostics and the web report are
+                // VRChat-guarded, so they arrive as the extra step.
+                BridgeFinish.Run(ctx, "ConversionReport.md", "Report", c =>
+                {
+                    DiagnosticsWriter.Write(c);
+                    // The web report renders the same entries drawn.
+                    // Written last so it can show everything.
+                    HtmlReportWriter.Write(c);
+                });
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
                 // The window resolves report subjects against this to offer "Show". Selection
@@ -494,55 +497,6 @@ namespace AvatarBridge
                 "the broken references are still in that controller, so fix them and convert " +
                 "again before uploading — see the unresolvable-asset error for where they came " +
                 "from, usually a VRCFury or Modular Avatar bake that errored partway.");
-        }
-
-        // Read from the converted avatar, so both cards describe the ones
-        // ChilloutVR will actually be charged. Never allowed to take a
-        // finished conversion down: a card is worth less than the avatar.
-        static void ReadAvatar(BridgeContext ctx)
-        {
-            if (ctx.CvrAvatar == null) return;
-            if (!ctx.Settings.weighAvatar && !ctx.Settings.surveyAvatar) return;
-            try
-            {
-                // One reading serves both: the weight card asks the survey
-                // which blendshapes anything animates and which renderers
-                // nothing can switch on.
-                var survey = AvatarSurvey.Build(ctx.CvrAvatar);
-                if (ctx.Settings.surveyAvatar) ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);
-                if (ctx.Settings.weighAvatar)
-                {
-                    ctx.Report.WeightCard = AvatarWeight.Markdown(AvatarWeight.Measure(ctx.CvrAvatar, survey));
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AvatarBridge] Could not read the avatar for its report: {e.Message}");
-            }
-        }
-
-        static void WriteReportFile(BridgeContext ctx)
-        {
-            string path = ctx.OutputDir + "/ConversionReport.md";
-            string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
-            File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name));
-            AssetDatabase.ImportAsset(path);
-            ctx.Report.SavedReportPath = path;
-            Debug.Log($"[AvatarBridge] Report written to {path}");
-
-            // Never allowed to take the conversion down with it: the report is the deliverable,
-            // diagnostics are a bonus, and a crash here would lose both.
-            try
-            {
-                DiagnosticsWriter.Write(ctx);
-                // The web report renders the same entries drawn.
-                // Written last so it can show everything.
-                HtmlReportWriter.Write(ctx);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AvatarBridge] Diagnostics could not be written: {e}");
-            }
         }
     }
 }

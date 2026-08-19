@@ -66,7 +66,7 @@ YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher ShaderFixR
 AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths AvatarDescription \
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \
 FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
-CvrParameterNames GestureMap AvatarSurvey AvatarWeight"
+CvrParameterNames GestureMap AvatarSurvey AvatarWeight BridgeFinish"
 # Conversion passes: VRChat-only, and dead weight in a ChilloutVR project.
 YAPS_SKIP="YapsConverter YapsBakePrep YapsRename YapsReapply"
 
