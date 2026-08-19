@@ -266,14 +266,25 @@ for a light slot or a contact pair. Old Raliv DPS lights, TPS and SPS pointers, 
 of it, with no cost to the four vertex slots and none to the 512-pair budget. Content whose
 authors left the platform years ago becomes usable, and that is worth more than any new feature.
 
-**Access.** ChilloutVR gates the scripting CCK; it is requested by emailing team.chilloutvr.net.
-Nothing here can start before that arrives.
+**Access: asked, and declined, 2026-08-19.** ChilloutVR gates the scripting CCK. The request was
+made and the answer was no, for reasons that matter more than the refusal:
 
-**The authoring half exists.** An experimental CCK with WASM components is in closed testing,
-handed to a chosen few. So this is moving rather than hypothetical, and Joe already runs the
-scripting branch, which means the day that CCK reaches him a prototype is possible the same
-week: one plug, one socket, a resolver that reads transforms and writes `_YAPS_SocketPos`, and
-the answer to whether any of the rest is worth designing.
+- **They are building WORLD scripting.** Avatar and prop scripting is not what they are working
+  on, so feedback on it is not useful to them yet. Everything below is designed against an
+  implementation that does not exist and may not for a long time.
+- **They asked that AI tools not be used to analyse their scripting implementation.** Joining the
+  testing group means agreeing to that. It is their call and worth respecting past the letter of
+  it: no AI-assisted digging into the scripting side, and nothing here waits on doing so.
+
+**So this waits for public release rather than for an invitation.** When scripting ships to
+everyone, writing against a documented API is ordinary work and none of the above applies. Until
+then this section is a design sketch, not a plan, and nothing else in the project depends on it.
+
+**The authoring half exists.** An experimental CCK with WASM components is in closed testing.
+So this is moving rather than hypothetical, and Joe already runs the scripting branch, which
+means the week it reaches everybody a prototype is possible: one plug, one socket, a resolver
+that reads transforms and writes `_YAPS_SocketPos`, and the answer to whether any of the rest is
+worth designing.
 
 **Unknowns to settle before building:** what approving a script costs a wearer socially, whether
 open read access survives to release, what a per-frame resolver costs in a full instance, and

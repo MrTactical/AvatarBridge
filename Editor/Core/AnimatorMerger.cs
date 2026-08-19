@@ -8296,6 +8296,23 @@ namespace AvatarBridge
                 return riders;
             }
 
+            // The toggled object owns the chain outright: the simulated
+            // BONES live inside it, not just the component that drove them.
+            //
+            // Then who is weighted to them does not matter. A body mesh is
+            // weighted to the bones of anything grafted onto the body, and
+            // stays visible while the toggle hides the geometry that rides
+            // them, so the rider test refuses a stop that is plainly right.
+            // The rider test is for the other shape entirely: a garment that
+            // rides bones living elsewhere, where stopping the chain would
+            // freeze physics another visible mesh still needs.
+            bool ChainOwnedBy(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
+            {
+                var chainRoot = chain.Root != null ? chain.Root
+                    : chain.Source != null ? chain.Source.transform : null;
+                return chainRoot != null && (chainRoot == animated || chainRoot.IsChildOf(animated));
+            }
+
             // True when a mesh outside the toggled object rides this
             // chain. Something still visible needs those bones moving,
             // so the cloth must not stop with the object.
@@ -8489,7 +8506,8 @@ namespace AvatarBridge
                             // so cloth switched on runs forever. Only a
                             // container deactivation needs the proof that
                             // nothing visible still rides these bones.
-                            if (source != animated && ChainSharedOutside(chain, animated))
+                            if (source != animated && !ChainOwnedBy(chain, animated)
+                                && ChainSharedOutside(chain, animated))
                             {
                                 sharedChains.Add(chain.Source.name);
                                 offSafe[target] = false;
@@ -8505,7 +8523,8 @@ namespace AvatarBridge
                             // Both kinds of toggle count. A component
                             // curve only matches its own chain and is
                             // always safe to stop.
-                            bool safe = source == animated || !ChainSharedOutside(chain, animated);
+                            bool safe = source == animated || ChainOwnedBy(chain, animated)
+                                        || !ChainSharedOutside(chain, animated);
                             if (!safe)
                             {
                                 sharedChains.Add(chain.Source.name);
