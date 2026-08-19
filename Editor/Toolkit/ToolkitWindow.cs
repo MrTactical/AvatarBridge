@@ -13,14 +13,23 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    public class ToolkitWindow : EditorWindow
+    // The Toolkit's cards, as a panel rather than a window, so the main
+    // window can host the same ones as a tab. Four windows all shaped "pick
+    // an avatar, choose something, press a button" was the arrangement
+    // nobody could navigate; the cards were never the problem.
+    public sealed class ToolkitPanel
     {
-        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit")]
-        public static void Open()
+        public ToolkitPanel(GameObject target = null) { _target = target; }
+
+        // Mounts into a container the host owns. The banner belongs to the
+        // window, not to the panel: a tab already sits under one.
+        public VisualElement Mount(VisualElement parent)
         {
-            var w = GetWindow<ToolkitWindow>();
-            w.titleContent = new GUIContent("Toolkit");
-            w.minSize = new Vector2(440, 520);
+            _pages = new ScrollView();
+            _pages.AddToClassList("ab-scroll");
+            parent.Add(_pages);
+            Build();
+            return _pages;
         }
 
         const string OutputRoot = "Assets/AvatarBridgeOutput";
@@ -30,19 +39,6 @@ namespace AvatarBridge
         readonly List<AnimatorController> _mergeSources = new List<AnimatorController>();
         bool _mergeIntoCopy = true;
         VisualElement _pages;
-
-        void CreateGUI()
-        {
-            var root = rootVisualElement;
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null) root.styleSheets.Add(sheet);
-            BridgeTheme.ApplySkin(root);
-            root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any avatar or prop", BridgeDefines.Version));
-            _pages = new ScrollView();
-            _pages.AddToClassList("ab-scroll");
-            root.Add(_pages);
-            Build();
-        }
 
         void Build()
         {
@@ -380,6 +376,31 @@ namespace AvatarBridge
                 into.Add(BridgeElements.ReportRow(e.Status.ToString(), e.Subject, e.Detail, colour, alt));
                 alt = !alt;
             }
+        }
+    }
+
+    // The Toolkit on its own, for anyone who wants it in its own window. The
+    // main window carries the same panel as a tab; this is the same cards,
+    // not a second implementation.
+    public class ToolkitWindow : EditorWindow
+    {
+        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit")]
+        public static void Open()
+        {
+            var w = GetWindow<ToolkitWindow>();
+            w.titleContent = new GUIContent("Toolkit");
+            w.minSize = new Vector2(440, 520);
+        }
+
+        void CreateGUI()
+        {
+            var root = rootVisualElement;
+            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
+            if (sheet != null) root.styleSheets.Add(sheet);
+            BridgeTheme.ApplySkin(root);
+            root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any avatar or prop",
+                BridgeDefines.Version));
+            new ToolkitPanel().Mount(root);
         }
     }
 }

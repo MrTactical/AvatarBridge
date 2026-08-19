@@ -1130,7 +1130,8 @@ line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-
 
 ## ChilloutVR Toolkit
 
-*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit.* The converter's own passes, one card each, run on
+*The **Tools** tab of the main window, or Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit for the same
+cards in a window of their own.* The converter's own passes, one card each, run on
 **any** ChilloutVR avatar or prop — VRChat history or not, YAPS or not. Pick the object, press the
 button, read the rows. Same look, same report style, same code as the converter, so nothing here
 can drift from what a conversion does.

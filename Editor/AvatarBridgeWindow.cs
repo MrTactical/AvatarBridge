@@ -27,12 +27,20 @@ namespace AvatarBridge
         }
 
 #if CVR_CCK_EXISTS
+        // The tools tab exists either way: none of the Toolkit's cards need
+        // the VRChat SDK, and a project without it is exactly who they are
+        // for. Rebuilt each time rather than kept, so it always reads the
+        // scene as it is now.
+        ToolkitPanel toolkit;
 #if VRC_SDK_VRCSDK3
-        // Mode only exists when there's a choice to make: without the VRChat SDK the
-        // window is Setup-only, so there's nothing to switch between.
-        enum Mode { Convert, Setup }
+        // Convert only exists when the VRChat SDK does: without it there is
+        // nothing to convert FROM.
+        enum Mode { Convert, Setup, Tools }
         [SerializeField] Mode mode = Mode.Convert;
         [SerializeField] VRCAvatarDescriptor avatar;
+#else
+        enum Mode { Setup, Tools }
+        [SerializeField] Mode mode = Mode.Setup;
 #endif
         [SerializeField] GameObject setupAvatar;
 
@@ -156,14 +164,18 @@ namespace AvatarBridge
 #if VRC_SDK_VRCSDK3
             tabs.Clear();
             tabs.Add(BridgeElements.Tabs(
-                new[] { "Convert a VRChat avatar", "Set up any avatar" },
-                new[] { "Avatar Icon", "Settings" },
+                new[] { "Convert a VRChat avatar", "Set up any avatar", "Tools" },
+                new[] { "Avatar Icon", "Settings", "CustomTool" },
                 (int)mode,
                 index => { mode = (Mode)index; ScheduleRebuild(); }));
 
             if (mode == Mode.Convert)
             {
                 BuildConvertFlow();
+            }
+            else if (mode == Mode.Tools)
+            {
+                BuildToolsFlow();
             }
             else
             {
@@ -175,9 +187,27 @@ namespace AvatarBridge
                 "installed, so that's unavailable here (a VRChat avatar's components can't be read without it).\n\n" +
                 "Setup mode below still works: it does the ChilloutVR-side setup on any humanoid.",
                 HelpBoxMessageType.Info));
-            BuildSetupFlow();
+            tabs.Clear();
+            tabs.Add(BridgeElements.Tabs(
+                new[] { "Set up any avatar", "Tools" },
+                new[] { "Settings", "CustomTool" },
+                (int)mode,
+                index => { mode = (Mode)index; ScheduleRebuild(); }));
+            if (mode == Mode.Tools) BuildToolsFlow(); else BuildSetupFlow();
 #endif
             body.Add(Footer(lastReport != null));
+        }
+
+        // ------------------------------------------------------------- tools flow ----
+
+        void BuildToolsFlow()
+        {
+            body.Add(BridgeElements.Hint(
+                "Everything here reads or edits an avatar that is already set up for ChilloutVR, " +
+                "converted or not. The same cards are in Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit " +
+                "if you would rather have them in their own window."));
+            toolkit = new ToolkitPanel();
+            toolkit.Mount(body);
         }
 
         // ----------------------------------------------------------- convert flow ----
@@ -269,6 +299,13 @@ namespace AvatarBridge
                 () => { Reanalyse(); ScheduleRebuild(); });
             button.SetEnabled(avatar != null);
             parent.Add(button);
+
+            // The only two settings that do not change what gets built: they
+            // decide what you are TOLD. They sat among forty that do, inside
+            // a card that ships collapsed, and a user went looking for them
+            // and could not find them. Reading belongs with reading.
+            parent.Add(BridgeElements.SubHeading("What the report tells you"));
+            AddReadingOptions(parent);
 
             if (avatar == null)
             {
@@ -702,8 +739,6 @@ namespace AvatarBridge
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
 
-            AddReadingOptions(b);
-
             b.Add(BridgeElements.SubHeading("Face tracking"));
             AddFaceTrackingOptions(b);
             // Baking, cleanup, toggle rebuilding and masking always
@@ -1113,6 +1148,10 @@ namespace AvatarBridge
 
             var choose = new BridgeElements.Card("Choose what gets set up", null, null, 2, 0.5f);
             choose.Body.Add(BridgeElements.Hint("Viewpoint, visemes and blink are always detected and wired."));
+            // Where the converter puts them: what the report TELLS you, kept
+            // apart from what gets built.
+            choose.Body.Add(BridgeElements.SubHeading("What the report tells you"));
+            AddReadingOptions(choose.Body);
             BuildFaceTrackingCard(choose.Body);
             BuildExtrasCard(choose.Body);
 
@@ -1178,7 +1217,6 @@ namespace AvatarBridge
             parent.Add(BridgeElements.Bind("Work on a clone (recommended)",
                 "The original avatar object stays untouched and gets deactivated.",
                 settings.cloneAvatar, v => settings.cloneAvatar = v));
-            AddReadingOptions(parent);
 
             var output = new TextField("Output folder")
             {

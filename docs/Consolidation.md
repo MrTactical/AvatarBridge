@@ -95,6 +95,31 @@ actually produced rather than trusting an empty error list.
 - **Do not do 1 and 4 in the same change.** One moves user-visible things, the other moves code.
   Mixing them means a corpus diff nobody can read.
 
+## Done, 2026-08-19
+
+7, 5, 3, 4, 1 and 2, in that order, each compiled before the next started.
+
+- **7** — the packer refuses to build a YAPS package whose closure is open, naming the file and
+  the type. Reintroducing the 4.1.1 bug now aborts the build.
+- **5** — `Underlying` lives in `BridgeContext` alone. Three copies existed and two of them
+  guarded against a cycle while the third looped unbounded.
+- **3** — `BridgeFinish.Run` is the ending both flows share. Setup gained the survey and weight
+  cards by getting the same ending; it still has no HTML report, because `DiagnosticsWriter` and
+  `HtmlReportWriter` are guarded on the VRChat SDK for reasons nobody remembers. Worth its own
+  change.
+- **4** — the physics rewiring is `AnimatorMerger.Physics.cs`, 816 lines of a partial class.
+  The original is down to 9,607 from 10,398. A move, not a rewrite: same access, same signatures.
+- **1** — the Toolkit is a **panel**, mounted by its own window and by the main window's new
+  **Tools** tab. Same cards, one implementation. The tab exists without the VRChat SDK, which is
+  exactly who it is for.
+- **2** — the two reading settings sit under *Analyse this avatar* in both flows, under "What the
+  report tells you".
+
+**6 was not done, on purpose.** Its intent — separate what changes the avatar from what only
+reads it — is what 2 delivered, in the place a user actually looks. What remains of it is an
+attribute system serving two fields, which is the "turns into a rewrite" this document warned
+about. Worth revisiting only if a third reading-only setting appears.
+
 ## Order
 
 3, 5 and 4 first — they are invisible to users and the corpus proves them outright. Then 2, which
