@@ -31,6 +31,7 @@ namespace AvatarBridge
         // one is the first step of the next.
         [SerializeField] GameObject toolsTarget;
         [SerializeField] GameObject toolsSource;
+        [SerializeField] string settingFilter = "";
 
         // The tools tab exists either way: none of the Toolkit's cards need
         // the VRChat SDK, and a project without it is exactly who they are
@@ -731,6 +732,17 @@ namespace AvatarBridge
                 showAutomated, null, 0f, open => { showAutomated = open; ScheduleRebuild(); });
             var b = card.Body;
 
+            // Forty-odd settings under six headings, in a card that ships
+            // collapsed. Grouping alone does not make one findable.
+            var find = new TextField("Find a setting") { value = settingFilter };
+            find.AddToClassList("ab-field");
+            find.RegisterValueChangedCallback(e =>
+            {
+                settingFilter = e.newValue;
+                BridgeElements.Filter(b, settingFilter);
+            });
+            b.Add(find);
+
             b.Add(new HelpBox(
                 "These are decided by the avatar itself, and \"Analyse this avatar\" sets them to " +
                 "match it. You don't need to touch anything in here — changing one means overriding " +
@@ -911,6 +923,9 @@ namespace AvatarBridge
                 settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
             AddBlinkToggle(b);
 
+            // Survives a rebuild: the box keeps its text, so the card must
+            // come back filtered to match it.
+            BridgeElements.Filter(b, settingFilter);
             parent.Add(card);
         }
 

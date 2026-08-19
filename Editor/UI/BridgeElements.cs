@@ -316,6 +316,45 @@ namespace AvatarBridge
             return row;
         }
 
+        // Hides everything in a card that does not match, and any heading
+        // left with nothing under it. A setting matches on its label or its
+        // explanation: people look for what a setting does, not its name.
+        public static void Filter(VisualElement card, string query)
+        {
+            bool all = string.IsNullOrWhiteSpace(query);
+            query = all ? "" : query.Trim().ToLowerInvariant();
+
+            Label heading = null;
+            bool headingUsed = false;
+            foreach (var child in card.Children())
+            {
+                if (child is Label sub && sub.ClassListContains("ab-sub"))
+                {
+                    if (heading != null) heading.style.display = headingUsed ? DisplayStyle.Flex : DisplayStyle.None;
+                    heading = sub;
+                    headingUsed = false;
+                    continue;
+                }
+
+                bool show = all || Describes(child).Contains(query);
+                child.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+                if (show) headingUsed = true;
+            }
+            if (heading != null) heading.style.display = headingUsed ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        static string Describes(VisualElement element)
+        {
+            var text = new System.Text.StringBuilder();
+            if (!string.IsNullOrEmpty(element.tooltip)) text.Append(element.tooltip).Append(' ');
+            foreach (var label in element.Query<Label>().Build())
+            {
+                text.Append(label.text).Append(' ');
+            }
+            if (element is Toggle toggle) text.Append(toggle.label).Append(' ');
+            return text.ToString().ToLowerInvariant();
+        }
+
         public static Label SubHeading(string text)
         {
             var label = new Label(text.ToUpperInvariant());
