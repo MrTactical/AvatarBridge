@@ -472,10 +472,9 @@ namespace AvatarBridge
 
             string body = File.ReadAllText(Path.GetFullPath(Path.Combine(Application.dataPath, "..", path)));
             var counts = new Dictionary<string, int>();
-            // Shares AnimatorMerger's reference matcher deliberately. When these two disagreed,
-            // the report said an avatar's controller was fine while the crash guard refused to
-            // assign it; two answers to one question, from two copies of the same scan.
-            foreach (string guid in AnimatorMerger.ReferencedGuids(body))
+            // One matcher, shared. When two disagreed, the report called a
+            // controller fine while the crash guard refused to assign it.
+            foreach (string guid in BridgeContext.ReferencedGuids(body))
             {
                 counts[guid] = counts.TryGetValue(guid, out int n) ? n + 1 : 1;
             }

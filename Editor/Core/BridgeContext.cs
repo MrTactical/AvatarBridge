@@ -165,6 +165,20 @@ namespace AvatarBridge
         // Resolves a path the way the animator does: whole path against each
         // object, so a name containing a slash still matches. Plain Find
         // first, then a greedy longest-name walk.
+        // Every asset a serialised file points at.
+        //
+        // One matcher, because two once disagreed: the report called a
+        // controller fine while the crash guard refused to assign it.
+        public static IEnumerable<string> ReferencedGuids(string yaml)
+        {
+            foreach (System.Text.RegularExpressions.Match match in
+                     System.Text.RegularExpressions.Regex.Matches(
+                         yaml, @"\{fileID:\s*-?\d+,\s*guid:\s*([0-9a-f]{32}),\s*type:\s*-?\d+\}"))
+            {
+                yield return match.Groups[1].Value;
+            }
+        }
+
         // What a controller really is, through any overrides.
         //
         // An avatar runs an override controller wrapping the base, and

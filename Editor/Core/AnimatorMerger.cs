@@ -714,15 +714,6 @@ namespace AvatarBridge
             return ctx.PathInTarget(anchor);
         }
 
-        internal static IEnumerable<string> ReferencedGuids(string yaml)
-        {
-            foreach (Match match in Regex.Matches(
-                         yaml, @"\{fileID:\s*-?\d+,\s*guid:\s*([0-9a-f]{32}),\s*type:\s*-?\d+\}"))
-            {
-                yield return match.Groups[1].Value;
-            }
-        }
-
         internal static bool ControllerWouldCrashUnity(RuntimeAnimatorController controller)
         {
             try
@@ -744,7 +735,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    foreach (string guid in ReferencedGuids(File.ReadAllText(absolute)))
+                    foreach (string guid in BridgeContext.ReferencedGuids(File.ReadAllText(absolute)))
                     {
                         if (string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(guid)))
                         {
