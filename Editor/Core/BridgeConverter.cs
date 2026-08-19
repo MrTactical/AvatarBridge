@@ -85,15 +85,7 @@ namespace AvatarBridge
                 ReportSyncUsage(ctx);
                 SaveConvertedPrefab(ctx);
                 // Last, so it validates and describes the avatar as it will actually ship.
-                // The shared tail. The diagnostics and the web report are
-                // VRChat-guarded, so they arrive as the extra step.
-                BridgeFinish.Run(ctx, "ConversionReport.md", "Report", c =>
-                {
-                    DiagnosticsWriter.Write(c);
-                    // The web report renders the same entries drawn.
-                    // Written last so it can show everything.
-                    HtmlReportWriter.Write(c);
-                });
+                BridgeFinish.Run(ctx, "ConversionReport.md", "Report");
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
                 // The window resolves report subjects against this to offer "Show". Selection

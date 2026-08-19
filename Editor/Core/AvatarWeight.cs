@@ -565,7 +565,7 @@ namespace AvatarBridge
         public static string Markdown(Report r)
         {
             var sb = new StringBuilder();
-            sb.Append(Summary(r)).Append("\n\n");
+            sb.Append(Summary(r, true)).Append("\n\n");
             if (r.Callouts.Count > 0)
             {
                 foreach (var c in r.Callouts)
@@ -582,14 +582,17 @@ namespace AvatarBridge
             return sb.ToString();
         }
 
-        public static string Summary(Report r)
+        // `markdown` decides whether the sentence that matters is emphasised
+        // or plain. The window draws report rows as text, so asterisks meant
+        // for a document showed up in the inspector as asterisks.
+        public static string Summary(Report r, bool markdown = false)
         {
             long saved = r.Callouts.Sum(c => c.Bytes);
             string head = $"{Mb(r.TextureBytes)} of texture across {r.Textures.Count} maps, " +
                           $"{r.Triangles:N0} triangles, {r.Pointers + r.Triggers} contacts.";
-            return saved > 0
-                ? head + $" **{Mb(saved)} of that comes off with nothing visible changing.**"
-                : head + " Nothing here is worth changing.";
+            if (saved <= 0) return head + " Nothing here is worth changing.";
+            string point = $"{Mb(saved)} of that comes off with nothing visible changing.";
+            return markdown ? head + $" **{point}**" : head + " " + point;
         }
 
         // The Toolkit shows findings as report rows rather than a document.

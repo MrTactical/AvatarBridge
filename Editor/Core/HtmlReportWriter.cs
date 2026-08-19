@@ -1,4 +1,4 @@
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+#if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -39,8 +39,11 @@ namespace AvatarBridge
     {
         public static readonly StableSampleOrder Instance = new StableSampleOrder();
 
+        // VRCFury's per-bake numbers, and the GUIDs some tools stamp into an
+        // object name, which change on every bake for the same reason.
         static readonly System.Text.RegularExpressions.Regex FuryIds =
-            new System.Text.RegularExpressions.Regex(@"\[VF\d+\]|\bVF\d+_|VF_\d+_",
+            new System.Text.RegularExpressions.Regex(
+                @"\[VF\d+\]|\bVF\d+_|VF_\d+_|\$[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
                 System.Text.RegularExpressions.RegexOptions.Compiled);
 
         public static string Key(string value) =>

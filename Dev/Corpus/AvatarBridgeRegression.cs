@@ -512,6 +512,11 @@ namespace AvatarBridge.Regression
             {
                 return s;
             }
+            // A GUID stamped into an object name, fresh on every bake, the
+            // way VRCFury's numbers are. Eight contact paths on one avatar
+            // carried one and diffed on every run for it.
+            s = System.Text.RegularExpressions.Regex.Replace(
+                s, @"\$[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "$#");
             s = System.Text.RegularExpressions.Regex.Replace(s, @"VF_\d+_", "VF_#_");
             s = System.Text.RegularExpressions.Regex.Replace(s, @"\[VF\d+\]", "[VF#]");
             s = System.Text.RegularExpressions.Regex.Replace(s, @"\bVF\d+_", "VF#_");

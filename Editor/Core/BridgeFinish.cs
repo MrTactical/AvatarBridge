@@ -19,15 +19,12 @@ namespace AvatarBridge
 {
     public static class BridgeFinish
     {
-        // `extras` runs after the markdown report exists and is allowed to
-        // fail: the report is the deliverable, anything else is a bonus, and
-        // a crash there would lose both.
-        public static void Run(BridgeContext ctx, string reportName, string label, Action<BridgeContext> extras = null)
+        public static void Run(BridgeContext ctx, string reportName, string label)
         {
             BridgeDiagnostics.Run(ctx, ctx.MergedController);
             ReadAvatar(ctx);
             ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
-            WriteReport(ctx, reportName, label, extras);
+            WriteReport(ctx, reportName, label);
             EditorUtility.SetDirty(ctx.CvrAvatar);
             AssetDatabase.SaveAssets();
         }
@@ -44,10 +41,20 @@ namespace AvatarBridge
             try
             {
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
-                if (ctx.Settings.surveyAvatar) ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);
+                if (ctx.Settings.surveyAvatar)
+                {
+                    ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);
+                    // Also as rows. The cards are sections of a file, and a
+                    // file is not where anybody looks after pressing Convert:
+                    // the window shows entries, so findings that exist only
+                    // in the markdown are findings nobody sees.
+                    AvatarSurvey.Fill(ctx.Report, survey);
+                }
                 if (ctx.Settings.weighAvatar)
                 {
-                    ctx.Report.WeightCard = AvatarWeight.Markdown(AvatarWeight.Measure(ctx.CvrAvatar, survey));
+                    var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
+                    ctx.Report.WeightCard = AvatarWeight.Markdown(weight);
+                    AvatarWeight.Fill(ctx.Report, weight);
                 }
             }
             catch (Exception e)
@@ -56,7 +63,7 @@ namespace AvatarBridge
             }
         }
 
-        static void WriteReport(BridgeContext ctx, string reportName, string label, Action<BridgeContext> extras)
+        static void WriteReport(BridgeContext ctx, string reportName, string label)
         {
             string path = ctx.OutputDir + "/" + reportName;
             string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
@@ -65,10 +72,16 @@ namespace AvatarBridge
             ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] {label} written to {path}");
 
-            if (extras == null) return;
+            // Never allowed to take a finished avatar down: the markdown is
+            // the deliverable, these two are a bonus, and a crash here would
+            // lose both. Both used to be guarded on the VRChat SDK, which is
+            // why a native setup never got them; neither needs it.
             try
             {
-                extras(ctx);
+                DiagnosticsWriter.Write(ctx);
+                // The web report renders the same entries drawn. Written last
+                // so it can show everything, the two cards included.
+                HtmlReportWriter.Write(ctx);
             }
             catch (Exception e)
             {

@@ -101,7 +101,8 @@ namespace AvatarBridge
             };
         }
 
-        VisualElement Tool(string title, string blurb, string button, System.Func<BridgeReport> run, string whenEmpty)
+        VisualElement Tool(string title, string blurb, string button, System.Func<BridgeReport> run, string whenEmpty,
+            string second = null, System.Func<BridgeReport> runSecond = null)
         {
             var box = new VisualElement();
             box.Add(BridgeElements.SubHeading(title));
@@ -110,12 +111,27 @@ namespace AvatarBridge
             var b = new Button(() =>
             {
                 if (_target == null) return;
-                var report = run();
-                ShowReport(rows, report, whenEmpty);
+                ShowReport(rows, run(), whenEmpty);
             }) { text = button };
             b.AddToClassList("ab-btn");
             b.SetEnabled(_target != null);
-            box.Add(BridgeElements.Row(b));
+
+            if (second == null)
+            {
+                box.Add(BridgeElements.Row(b));
+            }
+            else
+            {
+                var b2 = new Button(() =>
+                {
+                    if (_target == null) return;
+                    ShowReport(rows, runSecond(), whenEmpty);
+                    Build();   // sizes changed, so the reading behind it did too
+                }) { text = second };
+                b2.AddToClassList("ab-btn");
+                b2.SetEnabled(_target != null);
+                box.Add(BridgeElements.Row(b, b2));
+            }
             box.Add(rows);
             return box;
         }
@@ -174,7 +190,29 @@ namespace AvatarBridge
                 }
                 AvatarWeight.Fill(report, AvatarWeight.Measure(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar)));
                 return report;
-            }, "Nothing on it is worth changing.");
+            }, "Nothing on it is worth changing.",
+            AvatarSlimmer.CanRevert(OutputRoot + "/" + (_target != null ? _target.name : ""))
+                ? "Put the textures back" : "Fix it",
+            () =>
+            {
+                var report = new BridgeReport();
+                var ctx = Context(report);
+                if (ctx.CvrAvatar == null)
+                {
+                    report.Approximated("Slim down", "No CVRAvatar on the root", "Add one and this can act.");
+                    return report;
+                }
+                if (AvatarSlimmer.CanRevert(ctx.OutputDir))
+                {
+                    AvatarSlimmer.Revert(ctx.OutputDir, report);
+                    return report;
+                }
+                var survey = AvatarSurvey.Build(ctx.CvrAvatar);
+                var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
+                AvatarSlimmer.Apply(ctx.CvrAvatar, AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight),
+                    ctx.OutputDir, report);
+                return report;
+            });
 
         VisualElement Tidy() => Tool("Free wins",
             "Removes only what is provably inert: layers with no states, and parameters no clip writes, no " +
