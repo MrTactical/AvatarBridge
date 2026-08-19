@@ -30,6 +30,10 @@ namespace AvatarBridge
             public long Bytes;
             // Uncompressed is four bytes a pixel. Compressing costs one.
             public bool Compress;
+            // BC4 for one channel repeated, BC1 for alpha that is never used.
+            // Both are 4 bits a pixel where BC7 and DXT5 are 8.
+            public TextureImporterFormat? Format;
+            public string Why;
         }
 
         public class Plan
@@ -67,14 +71,40 @@ namespace AvatarBridge
                                 && importer.textureCompression == TextureImporterCompression.Uncompressed;
 
                 long saved = 0;
+                long after = t.Bytes;
                 if (resize)
                 {
                     float shrink = (float)t.Suggested / longest;
-                    saved = t.Bytes - (long)(t.Bytes * shrink * shrink);
+                    after = (long)(t.Bytes * shrink * shrink);
+                    saved = t.Bytes - after;
                 }
-                // Uncompressed is four bytes a pixel against BC7's one, and
-                // the two compound: resize first, then a quarter of that.
-                if (compress) saved += (resize ? (long)(t.Bytes * 0.25f) : t.Bytes) * 3 / 4;
+                // Uncompressed is four bytes a pixel against BC7's one.
+                if (compress)
+                {
+                    saved += after * 3 / 4;
+                    after /= 4;
+                }
+
+                // Half again, where the content does not need eight bits.
+                TextureImporterFormat? format = null;
+                string why = null;
+                if (t.Compressed && importer.textureType == TextureImporterType.Default
+                    && Content(path, out bool greyscale, out bool opaque))
+                {
+                    if (greyscale)
+                    {
+                        format = TextureImporterFormat.BC4;
+                        why = "one channel repeated three times";
+                    }
+                    else if (opaque)
+                    {
+                        format = TextureImporterFormat.DXT1;
+                        why = "an alpha channel that is white everywhere";
+                    }
+                    if (format.HasValue && CurrentFormat(importer) == format.Value) format = null;
+                    if (format.HasValue) saved += after / 2;
+                }
+
                 if (saved < 262144) continue;   // a quarter meg is not worth a line
 
                 // The importer setting is global to the texture.
@@ -88,6 +118,7 @@ namespace AvatarBridge
                 plan.Textures.Add(new Shrink
                 {
                     Path = path, Name = t.Name, Bytes = saved, Compress = compress,
+                    Format = format, Why = why,
                     From = importer.maxTextureSize, To = resize ? t.Suggested : importer.maxTextureSize,
                 });
             }
@@ -112,9 +143,11 @@ namespace AvatarBridge
                 foreach (var t in plan.Textures)
                 {
                     if (!(AssetImporter.GetAtPath(t.Path) is TextureImporter importer)) continue;
-                    undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}\t{t.Path}");
+                    undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}" +
+                             $"\t{(int)CurrentFormat(importer)}\t{t.Path}");
                     importer.maxTextureSize = t.To;
                     if (t.Compress) importer.textureCompression = TextureImporterCompression.Compressed;
+                    if (t.Format.HasValue) SetFormat(importer, t.Format.Value);
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
                     done++;
@@ -129,11 +162,8 @@ namespace AvatarBridge
             {
                 WriteUndo(outputDir, undo);
                 report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
-                    string.Join(", ", plan.Textures.Take(8).Select(t =>
-                        t.From != t.To
-                            ? $"{t.Name} {t.From}→{t.To}{(t.Compress ? " and compressed" : "")}"
-                            : $"{t.Name} compressed")) +
-                    (plan.Textures.Count > 8 ? $", and {plan.Textures.Count - 8} more" : "") +
+                    string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
+                    (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
                     ". Import settings only — no texture file was edited, every one of these is a field in the " +
                     "inspector to put back, and \"Put the textures back\" here does the same thing.");
             }
@@ -172,7 +202,7 @@ namespace AvatarBridge
                 foreach (string line in File.ReadAllLines(path))
                 {
                     var parts = line.Split('\t');
-                    // Two fields is the older record: size and path only.
+                    // Older records carry fewer fields; the path is last.
                     if (parts.Length < 2 || !int.TryParse(parts[0], out int size)) continue;
                     string asset = parts[parts.Length - 1];
                     if (!(AssetImporter.GetAtPath(asset) is TextureImporter importer)) continue;
@@ -180,6 +210,13 @@ namespace AvatarBridge
                     if (parts.Length >= 3 && int.TryParse(parts[1], out int compression))
                     {
                         importer.textureCompression = (TextureImporterCompression)compression;
+                    }
+                    if (parts.Length >= 4 && int.TryParse(parts[2], out int format))
+                    {
+                        var settings = importer.GetDefaultPlatformTextureSettings();
+                        settings.format = (TextureImporterFormat)format;
+                        settings.overridden = format >= 0;
+                        importer.SetPlatformTextureSettings(settings);
                     }
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
@@ -218,6 +255,79 @@ namespace AvatarBridge
         //
         // A swap lives in a clip as an object-reference curve, not in any
         // renderer's sharedMaterials. Renderers alone miss outfit variants.
+        // What a texture actually contains, from its own file.
+        //
+        // Automatic picks a format from the CHANNELS a source has, not from
+        // what is in them. A mask whose three colour channels are identical
+        // is one channel stored three times, and an alpha channel that is
+        // white everywhere is a channel stored for nothing. Both are 8 bits
+        // a pixel where 4 would do.
+        //
+        // Read through LoadImage rather than GetPixels: a shipped texture is
+        // not readable, and this needs no reimport to find out. PNG and JPG
+        // only, which is nearly all of them; anything else is left alone.
+        // What was done to one texture, and why, in the report's own words.
+        static string Describe(Shrink t)
+        {
+            var parts = new List<string>();
+            if (t.From != t.To) parts.Add($"{t.From} to {t.To}");
+            if (t.Compress) parts.Add("compressed");
+            if (t.Format.HasValue) parts.Add($"{t.Format.Value} because it is {t.Why}");
+            return $"{t.Name}: {string.Join(", ", parts)}";
+        }
+
+        // The default platform's format. Automatic reads as -1, which is the
+        // value Revert writes back to hand the choice to Unity again.
+        static TextureImporterFormat CurrentFormat(TextureImporter importer) =>
+            importer.GetDefaultPlatformTextureSettings().format;
+
+        static void SetFormat(TextureImporter importer, TextureImporterFormat format)
+        {
+            var settings = importer.GetDefaultPlatformTextureSettings();
+            settings.format = format;
+            settings.overridden = true;
+            importer.SetPlatformTextureSettings(settings);
+        }
+
+        static bool Content(string path, out bool greyscale, out bool opaque)
+        {
+            greyscale = opaque = false;
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension != ".png" && extension != ".jpg" && extension != ".jpeg") return false;
+
+            var probe = new Texture2D(2, 2);
+            try
+            {
+                if (!probe.LoadImage(File.ReadAllBytes(path))) return false;
+                var pixels = probe.GetPixels32();
+                if (pixels.Length == 0) return false;
+
+                // Every 97th pixel: a prime stride walks rows and columns
+                // instead of sampling one edge, and 4096 samples is plenty
+                // to find a single coloured pixel.
+                int stride = Mathf.Max(1, pixels.Length / 4096);
+                greyscale = true;
+                opaque = true;
+                for (int i = 0; i < pixels.Length; i += stride)
+                {
+                    var p = pixels[i];
+                    if (p.a < 250) opaque = false;
+                    if (Mathf.Abs(p.r - p.g) > 2 || Mathf.Abs(p.g - p.b) > 2) greyscale = false;
+                    if (!greyscale && !opaque) break;
+                }
+                greyscale &= opaque;   // a mask with real alpha is not one channel
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(probe);
+            }
+        }
+
         static HashSet<Material> MaterialsOn(GameObject root)
         {
             var found = new HashSet<Material>();
