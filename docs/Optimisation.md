@@ -208,6 +208,20 @@ same treatment: measure who reads, then cap.
 
 ## Phase 3 — textures, by density rather than by guess
 
+**Built 2026-08-19, and it acts.** `AvatarSlimmer` resizes by the density below, compresses what
+is uncompressed, and picks a format from what a texture HOLDS: BC4 where three colour channels
+are identical and linear, DXT1 where an alpha channel is white everywhere. Import settings only,
+recorded so Revert restores every original.
+
+Three things only real avatars taught it, all of them about who owns a texture:
+
+- a material reached only through an ANIMATION is still this avatar's, so outfit variants stop
+  reading as somebody else's
+- the avatar this one was converted FROM keeps its own copies of the same textures, and those are
+  not a stranger's either
+- block formats live on the platform override, never on the Default tab, and a format that will
+  not take is put back silently rather than left shouting in the inspector
+
 The metric is **texel density**: how many texture pixels land on how much real surface.
 
 For each material slot, sum the world-space area of the triangles using it and the UV area they

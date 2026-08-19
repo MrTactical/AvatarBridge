@@ -759,8 +759,11 @@ namespace AvatarBridge.Regression
         {
             sb.Append("[physics]\n");
 
+            // Both solvers, or a DynamicBone run reports nothing about the
+            // physics it exists to test.
             var cloths = target.GetComponentsInChildren<Component>(true)
-                .Where(c => c != null && c.GetType().FullName == MagicaClothType)
+                .Where(c => c != null
+                            && (c.GetType().FullName == MagicaClothType || c.GetType().Name == "DynamicBone"))
                 .OrderBy(c => HierarchyPath(target, c), StableSampleOrder.Instance)
                 .ToList();
 
@@ -907,6 +910,13 @@ namespace AvatarBridge.Regression
 
         static string ClothRoots(Component cloth)
         {
+            // DynamicBone simulates one root, held in a field of its own.
+            if (cloth.GetType().Name == "DynamicBone")
+            {
+                var root = cloth.GetType().GetField("m_Root")?.GetValue(cloth) as Transform;
+                return root != null ? root.name : "<none>";
+            }
+
             var data = cloth.GetType().GetProperty("SerializeData")?.GetValue(cloth);
             var roots = data?.GetType().GetField("rootBones")?.GetValue(data)
                 as System.Collections.IEnumerable;
