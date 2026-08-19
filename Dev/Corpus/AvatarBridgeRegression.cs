@@ -55,6 +55,12 @@ namespace AvatarBridge.Regression
                 // is stable — and sharing a folder would have each
                 // overwrite the other's reference.
                 string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
+                // The fallback solver is a different avatar at the end of the
+                // run, so its digests never share a folder with the default.
+                if (Environment.GetEnvironmentVariable("AVATARBRIDGE_PHYSICS") == "DynamicBone")
+                {
+                    suffix += "/DynamicBone";
+                }
                 return repo.Replace('\\', '/').TrimEnd('/') + suffix;
             }
         }
@@ -583,7 +589,12 @@ namespace AvatarBridge.Regression
             preserveParameterSyncState = true,
             exposeMenulessSyncedParameters = true,
 
-            physicsTarget = PhysicsTarget.MagicaCloth2,
+            // AVATARBRIDGE_PHYSICS=DynamicBone runs the fallback solver, which
+            // the corpus otherwise never exercises. Digests land in their own
+            // folder, so the two profiles never compare against each other.
+            physicsTarget = Environment.GetEnvironmentVariable("AVATARBRIDGE_PHYSICS") == "DynamicBone"
+                ? PhysicsTarget.DynamicBone
+                : PhysicsTarget.MagicaCloth2,
             deleteConvertedPhysBones = true,
             grabbyBonesSupport = true,
             useMagicaPresets = true,

@@ -91,10 +91,13 @@ namespace AvatarBridge
                 if (t.Compressed && importer.textureType == TextureImporterType.Default
                     && Content(path, out bool greyscale, out bool opaque))
                 {
-                    if (greyscale)
+                    // BC4 holds one linear channel. Unity refuses it on an
+                    // sRGB texture, so only data maps qualify however grey
+                    // a colour map happens to look.
+                    if (greyscale && !importer.sRGBTexture)
                     {
                         format = TextureImporterFormat.BC4;
-                        why = "one channel repeated three times";
+                        why = "one linear channel repeated three times";
                     }
                     else if (opaque)
                     {
@@ -136,7 +139,7 @@ namespace AvatarBridge
             }
 
             var undo = new List<string>();
-            int done = 0;
+            int done = 0, refused = 0;
             try
             {
                 AssetDatabase.StartAssetEditing();
@@ -145,11 +148,24 @@ namespace AvatarBridge
                     if (!(AssetImporter.GetAtPath(t.Path) is TextureImporter importer)) continue;
                     undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}" +
                              $"\t{(int)CurrentFormat(importer)}\t{t.Path}");
+                    var before = CurrentFormat(importer);
                     importer.maxTextureSize = t.To;
                     if (t.Compress) importer.textureCompression = TextureImporterCompression.Compressed;
                     if (t.Format.HasValue) SetFormat(importer, t.Format.Value);
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
+
+                    // A format the platform will not take leaves the texture
+                    // broken and the inspector shouting. Put it back rather
+                    // than leave somebody to find out.
+                    if (t.Format.HasValue && !Took(t.Path, t.Format.Value))
+                    {
+                        SetFormat(importer, before);
+                        importer.SaveAndReimport();
+                        t.Format = null;
+                        t.Why = null;
+                        refused++;
+                    }
                     done++;
                 }
             }
@@ -165,7 +181,11 @@ namespace AvatarBridge
                     string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
                     (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
                     ". Import settings only — no texture file was edited, every one of these is a field in the " +
-                    "inspector to put back, and \"Put the textures back\" here does the same thing.");
+                    "inspector to put back, and \"Put the textures back\" here does the same thing." +
+                    (refused > 0
+                        ? $" {refused} of them would not take the format this platform was asked for and were " +
+                          "put back to what they had, so only their size and compression changed."
+                        : ""));
             }
 
             foreach (string name in plan.Shared)
@@ -213,10 +233,7 @@ namespace AvatarBridge
                     }
                     if (parts.Length >= 4 && int.TryParse(parts[2], out int format))
                     {
-                        var settings = importer.GetDefaultPlatformTextureSettings();
-                        settings.format = (TextureImporterFormat)format;
-                        settings.overridden = format >= 0;
-                        importer.SetPlatformTextureSettings(settings);
+                        SetFormat(importer, (TextureImporterFormat)format);
                     }
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
@@ -276,16 +293,44 @@ namespace AvatarBridge
             return $"{t.Name}: {string.Join(", ", parts)}";
         }
 
-        // The default platform's format. Automatic reads as -1, which is the
-        // value Revert writes back to hand the choice to Unity again.
-        static TextureImporterFormat CurrentFormat(TextureImporter importer) =>
-            importer.GetDefaultPlatformTextureSettings().format;
+        // Did the reimport actually produce the format asked for?
+        //
+        // Unity reports an incompatible choice through the inspector and
+        // carries on with something else, so the importer still claims the
+        // value it was given. What the texture IS is the honest answer.
+        static bool Took(string path, TextureImporterFormat wanted)
+        {
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (texture == null) return true;
+            switch (wanted)
+            {
+                case TextureImporterFormat.BC4: return texture.format == TextureFormat.BC4;
+                case TextureImporterFormat.DXT1: return texture.format == TextureFormat.DXT1;
+                default: return true;
+            }
+        }
+
+        // Block formats live on the PLATFORM tab, not the Default one.
+        //
+        // The Default tab offers RGBA32, RGB24 and friends: formats that mean
+        // something everywhere. DXT1 and BC4 are what a desktop GPU wants, so
+        // they are only valid as a Standalone override, and setting them on
+        // the default settings is refused with an error per texture.
+        const string Platform = "Standalone";
+
+        static TextureImporterFormat CurrentFormat(TextureImporter importer)
+        {
+            var settings = importer.GetPlatformTextureSettings(Platform);
+            return settings.overridden ? settings.format : TextureImporterFormat.Automatic;
+        }
 
         static void SetFormat(TextureImporter importer, TextureImporterFormat format)
         {
-            var settings = importer.GetDefaultPlatformTextureSettings();
+            var settings = importer.GetPlatformTextureSettings(Platform);
             settings.format = format;
-            settings.overridden = true;
+            // Automatic hands the choice back to Unity, which is an override
+            // switched off rather than a value written.
+            settings.overridden = format != TextureImporterFormat.Automatic;
             importer.SetPlatformTextureSettings(settings);
         }
 

@@ -736,6 +736,7 @@ namespace AvatarBridge
             // collapsed. Grouping alone does not make one findable.
             var find = new TextField("Find a setting") { value = settingFilter };
             find.AddToClassList("ab-field");
+            find.AddToClassList("ab-keep");
             find.RegisterValueChangedCallback(e =>
             {
                 settingFilter = e.newValue;

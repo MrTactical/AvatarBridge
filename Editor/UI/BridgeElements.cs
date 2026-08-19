@@ -328,6 +328,9 @@ namespace AvatarBridge
             bool headingUsed = false;
             foreach (var child in card.Children())
             {
+                // The box being typed into lives in the card it filters.
+                if (child.ClassListContains("ab-keep")) continue;
+
                 if (child is Label sub && sub.ClassListContains("ab-sub"))
                 {
                     if (heading != null) heading.style.display = headingUsed ? DisplayStyle.Flex : DisplayStyle.None;
