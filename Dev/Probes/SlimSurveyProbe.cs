@@ -26,6 +26,8 @@ namespace AvatarBridge.Regression
             public long Saving;
             public long Download;
             public long DownloadSaving;
+            public long Strip;
+            public long StripDownload;
             public int Resized;
             public int Reformatted;
             public int Shared;
@@ -71,6 +73,8 @@ namespace AvatarBridge.Regression
                         DownloadSaving = plan.Textures
                             .Where(p => byName.TryGetValue(p.Name, out var u) && !u.Crunched)
                             .Sum(p => p.Bytes),
+                        Strip = plan.StripBytes,
+                        StripDownload = weight.DeadDownloadBytes,
                         Resized = plan.Textures.Count(t => t.From != t.To),
                         Reformatted = plan.Textures.Count(t => t.Format.HasValue),
                         Shared = plan.Shared.Count,
@@ -90,21 +94,27 @@ namespace AvatarBridge.Regression
             sb.Append("# What the texture optimiser would reclaim\n\n");
             sb.Append(rows.Count).Append(" converted avatars.\n\n");
             sb.Append("On the card: ").Append(Mb(rows.Sum(r => r.Texture))).Append(" to ")
-              .Append(Mb(rows.Sum(r => r.Texture - r.Saving))).Append('\n');
+              .Append(Mb(rows.Sum(r => r.Texture - r.Saving - r.Strip))).Append('\n');
             sb.Append("To download: ~").Append(Mb(rows.Sum(r => r.Download))).Append(" to ~")
-              .Append(Mb(rows.Sum(r => r.Download - r.DownloadSaving))).Append('\n');
+              .Append(Mb(rows.Sum(r => r.Download - r.DownloadSaving - r.StripDownload))).Append('\n');
+            sb.Append("Of which stripped, from meshes nothing can show: ")
+              .Append(Mb(rows.Sum(r => r.Strip))).Append(" on the card, ~")
+              .Append(Mb(rows.Sum(r => r.StripDownload))).Append(" to download\n");
             sb.Append("\nDownload is an estimate: the packed size of a crunched texture, the card size\n")
               .Append("of everything else. The CCK settles the real number at upload.\n\n");
 
-            sb.Append("| avatar | card before | card after | download before | download after | resized | reformatted | shared |\n");
-            sb.Append("|---|---|---|---|---|---|---|---|\n");
-            foreach (var r in rows.OrderByDescending(r => r.Saving))
+            sb.Append("| avatar | card before | card after | saved | download before | download after | ")
+              .Append("stripped | resized | reformatted | shared |\n");
+            sb.Append("|---|---|---|---|---|---|---|---|---|---|\n");
+            foreach (var r in rows.OrderByDescending(r => r.Saving + r.Strip))
             {
                 sb.Append("| ").Append(r.Avatar)
                   .Append(" | ").Append(Mb(r.Texture))
-                  .Append(" | ").Append(Mb(r.Texture - r.Saving))
+                  .Append(" | ").Append(Mb(r.Texture - r.Saving - r.Strip))
+                  .Append(" | ").Append(Mb(r.Saving + r.Strip))
                   .Append(" | ~").Append(Mb(r.Download))
-                  .Append(" | ~").Append(Mb(r.Download - r.DownloadSaving))
+                  .Append(" | ~").Append(Mb(r.Download - r.DownloadSaving - r.StripDownload))
+                  .Append(" | ").Append(Mb(r.Strip))
                   .Append(" | ").Append(r.Resized)
                   .Append(" | ").Append(r.Reformatted)
                   .Append(" | ").Append(r.Shared)

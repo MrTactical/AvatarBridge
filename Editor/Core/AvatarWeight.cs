@@ -96,6 +96,7 @@ namespace AvatarBridge
                 new SortedDictionary<string, int>(System.StringComparer.Ordinal);
 
             public long DeadBytes;
+            public long DeadDownloadBytes;
             public readonly List<string> Dead = new List<string>();
             // Dead, but everything it draws is drawn by something visible
             // too. Stripping frees the mesh and the draw call, no texture.
@@ -218,11 +219,16 @@ namespace AvatarBridge
                                                          && TexturesOf(m).Any(t => !liveTextures.Contains(t)));
                 if (!frees) report.DeadFreesNothing.Add(path);
             }
-            report.DeadBytes = deadMaterials
+            var deadTextures = deadMaterials
                 .SelectMany(TexturesOf)
                 .Distinct()
                 .Where(t => !liveTextures.Contains(t) && textures.ContainsKey(t))
-                .Sum(t => textures[t].Bytes);
+                .ToList();
+            report.DeadBytes = deadTextures.Sum(t => textures[t].Bytes);
+            // Nothing references them once the renderer goes, so they leave
+            // the download too, at the packed size where crunch applies.
+            report.DeadDownloadBytes = deadTextures.Sum(t => textures[t].Crunched
+                ? textures[t].DiskBytes : textures[t].Bytes);
 
             report.AudioSources = avatar.GetComponentsInChildren<AudioSource>(true).Length;
             var particles = avatar.GetComponentsInChildren<ParticleSystem>(true);
