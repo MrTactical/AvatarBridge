@@ -49,6 +49,19 @@ VRCFury's solver and their setups vary wildly.
 Everything here comes from the same observation: the expensive bugs are the ones nobody can
 see in the editor, and every one this month was found by a person wearing the avatar.
 
+**A bench, so "optimised" stops being a claim.** Spawn the avatar N times in a fixed scene,
+let it settle, sample frame timings over a few hundred frames, and report CPU and GPU
+milliseconds. The absolute number means nothing; the delta between two runs on one machine
+means everything, and nothing in the project can currently produce one.
+
+It would settle questions the tool answers by assertion today. Does Free wins cost less to
+run or only read tidier? Do 164 cloth solvers over 1,070 transforms actually hurt? The texture
+pass is the interesting case, because the honest expectation is **~0 ms**: shrinking a map
+buys memory and load, not frame time, and a bench that reports zero there is doing its job.
+
+Belongs with the twin below: both exist so a bug or a cost shows up in the editor rather than
+in somebody's instance.
+
 **A remote twin.** The strongest idea on this page. Spawn a second copy of the converted
 avatar beside the first, driven *only* by parameters that actually sync, and let the tester
 walk between them. Every wearer-only bug becomes visible in the editor: the socket shapes

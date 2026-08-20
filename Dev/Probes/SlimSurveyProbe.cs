@@ -24,12 +24,11 @@ namespace AvatarBridge.Regression
             public string Avatar;
             public long Texture;
             public long Saving;
-            public int Textures;
+            public long Download;
+            public long DownloadSaving;
             public int Resized;
-            public int Compressed;
             public int Reformatted;
             public int Shared;
-            public double Share => Texture > 0 ? (double)Saving / Texture : 0;
         }
 
         public static void RunBatch()
@@ -58,14 +57,21 @@ namespace AvatarBridge.Regression
                     var weight = AvatarWeight.Measure(avatar, survey);
                     var plan = AvatarSlimmer.Find(avatar, survey, weight);
 
+                    var byName = new Dictionary<string, AvatarWeight.TextureUse>(StringComparer.Ordinal);
+                    foreach (var use in weight.Textures) byName[use.Name] = use;
+
                     rows.Add(new Row
                     {
                         Avatar = asset.name,
                         Texture = weight.TextureBytes,
                         Saving = plan.Bytes,
-                        Textures = weight.Textures.Count,
+                        Download = weight.DownloadBytes,
+                        // A crunched texture already downloads small, so
+                        // shrinking it gives the card back, not the wire.
+                        DownloadSaving = plan.Textures
+                            .Where(p => byName.TryGetValue(p.Name, out var u) && !u.Crunched)
+                            .Sum(p => p.Bytes),
                         Resized = plan.Textures.Count(t => t.From != t.To),
-                        Compressed = plan.Textures.Count(t => t.Compress),
                         Reformatted = plan.Textures.Count(t => t.Format.HasValue),
                         Shared = plan.Shared.Count,
                     });
@@ -82,21 +88,24 @@ namespace AvatarBridge.Regression
 
             var sb = new System.Text.StringBuilder();
             sb.Append("# What the texture optimiser would reclaim\n\n");
-            sb.Append(rows.Count).Append(" converted avatars, ")
-              .Append(Mb(rows.Sum(r => r.Texture))).Append(" of texture between them, ")
-              .Append(Mb(rows.Sum(r => r.Saving))).Append(" reclaimable\n\n");
+            sb.Append(rows.Count).Append(" converted avatars.\n\n");
+            sb.Append("On the card: ").Append(Mb(rows.Sum(r => r.Texture))).Append(" to ")
+              .Append(Mb(rows.Sum(r => r.Texture - r.Saving))).Append('\n');
+            sb.Append("To download: ~").Append(Mb(rows.Sum(r => r.Download))).Append(" to ~")
+              .Append(Mb(rows.Sum(r => r.Download - r.DownloadSaving))).Append('\n');
+            sb.Append("\nDownload is an estimate: the packed size of a crunched texture, the card size\n")
+              .Append("of everything else. The CCK settles the real number at upload.\n\n");
 
-            sb.Append("## by how much comes off\n\n");
-            sb.Append("| avatar | texture | reclaimable | share | resized | compressed | reformatted | shared |\n");
+            sb.Append("| avatar | card before | card after | download before | download after | resized | reformatted | shared |\n");
             sb.Append("|---|---|---|---|---|---|---|---|\n");
             foreach (var r in rows.OrderByDescending(r => r.Saving))
             {
                 sb.Append("| ").Append(r.Avatar)
                   .Append(" | ").Append(Mb(r.Texture))
-                  .Append(" | ").Append(Mb(r.Saving))
-                  .Append(" | ").Append((r.Share * 100).ToString("0")).Append("%")
+                  .Append(" | ").Append(Mb(r.Texture - r.Saving))
+                  .Append(" | ~").Append(Mb(r.Download))
+                  .Append(" | ~").Append(Mb(r.Download - r.DownloadSaving))
                   .Append(" | ").Append(r.Resized)
-                  .Append(" | ").Append(r.Compressed)
                   .Append(" | ").Append(r.Reformatted)
                   .Append(" | ").Append(r.Shared)
                   .Append(" |\n");

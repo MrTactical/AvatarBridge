@@ -37,6 +37,10 @@ namespace AvatarBridge
             public bool Readable;
             public bool Compressed;
             public long Bytes;
+            // The source file. Only used to estimate what a CRUNCHED texture
+            // costs to download, since crunch is the one thing that breaks
+            // the tie between card size and download size.
+            public long DiskBytes;
             public int Materials;
 
             // Highest density among the materials using it, never the
@@ -76,6 +80,7 @@ namespace AvatarBridge
             public int MaxParticles;
             public int Lights;
             public int MarkerLights;
+            public long DownloadBytes;
             public int Cloth;
             public int ClothColliders;
             public int ClothParticles;
@@ -186,6 +191,10 @@ namespace AvatarBridge
             report.Materials = materials.Count;
             report.Textures.AddRange(textures.Values.OrderByDescending(t => t.Bytes));
             report.TextureBytes = report.Textures.Sum(t => t.Bytes);
+            // A crunched texture downloads at its packed size and still
+            // costs full size on the card, so the two figures only agree
+            // where crunch is absent.
+            report.DownloadBytes = report.Textures.Sum(t => t.Crunched ? t.DiskBytes : t.Bytes);
             report.DeadBytes = deadMaterials
                 .SelectMany(TexturesOf)
                 .Distinct()
@@ -302,12 +311,11 @@ namespace AvatarBridge
             // crunch separates the two: a crunched texture downloads small
             // and still costs its full size on the card. So this speaks
             // where the figure alone settles it.
-            long crunched = r.Textures.Where(t => t.Crunched).Sum(t => t.Bytes);
-            if (r.TextureBytes > 100L * 1048576 && crunched * 4 < r.TextureBytes)
+            if (r.DownloadBytes > 100L * 1048576)
             {
-                Add(r, 0, $"{Mb(r.TextureBytes)} of texture, almost none of it crunched. ChilloutVR's default " +
-                          "download limit is 100 MB, and people who keep that default never see an avatar past " +
-                          "it. The upload size is not this number, but it is not far off it either.", 2);
+                Add(r, 0, $"About {Mb(r.DownloadBytes)} of texture to download, against a default limit of " +
+                          "100 MB. People who keep that default never see an avatar past it, and nothing tells " +
+                          "them why. An estimate: the CCK settles the real figure at upload.", 2);
             }
 
             var crowded = r.ClothParents.Where(p => p.Value > 3).ToList();
@@ -580,6 +588,7 @@ namespace AvatarBridge
                 Height = tex.height,
                 Materials = 1,
                 Bytes = GpuBytes(tex),
+                DiskBytes = DiskSize(tex),
                 Compressed = tex.graphicsFormat != GraphicsFormat.None
                              && GraphicsFormatUtility.IsCompressedFormat(tex.graphicsFormat),
                 Format = tex is Texture2D t ? t.format.ToString() : tex.GetType().Name,
@@ -631,6 +640,14 @@ namespace AvatarBridge
             return (long)wide * tall * block;
         }
 
+        static long DiskSize(Texture tex)
+        {
+            string path = AssetDatabase.GetAssetPath(tex);
+            if (string.IsNullOrEmpty(path)) return 0;
+            var file = new System.IO.FileInfo(System.IO.Path.GetFullPath(path));
+            return file.Exists ? file.Length : 0;
+        }
+
         static Mesh MeshOf(Renderer r)
         {
             if (r is SkinnedMeshRenderer skin) return skin.sharedMesh;
@@ -655,9 +672,11 @@ namespace AvatarBridge
             var sb = new StringBuilder();
             sb.Append("# Weight of ").Append(r.Avatar).Append('\n');
             sb.Append("textures   ").Append(r.Textures.Count).Append(", ")
-              .Append(Mb(r.TextureBytes)).Append(" on the graphics card")
-              .Append(r.TextureBytes > 100L * 1048576
-                  ? "  (ChilloutVR's default download limit is 100 MB)" : "").Append('\n');
+              .Append(Mb(r.TextureBytes)).Append(" on the graphics card\n");
+            sb.Append("download   ~").Append(Mb(r.DownloadBytes))
+              .Append(" of that is texture to download, give or take what the CCK's build does")
+              .Append(r.DownloadBytes > 100L * 1048576 ? "  (the default limit is 100 MB)" : "")
+              .Append('\n');
             sb.Append("meshes     ").Append(r.Renderers).Append(" renderers (").Append(r.Skinned).Append(" skinned), ")
               .Append(r.Triangles.ToString("N0")).Append(" tris, ").Append(r.SubMeshes).Append(" submeshes, ")
               .Append(r.Bones).Append(" bones\n");
