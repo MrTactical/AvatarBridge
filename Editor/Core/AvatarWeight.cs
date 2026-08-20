@@ -97,6 +97,9 @@ namespace AvatarBridge
 
             public long DeadBytes;
             public readonly List<string> Dead = new List<string>();
+            // Dead, but everything it draws is drawn by something visible
+            // too. Stripping frees the mesh and the draw call, no texture.
+            public readonly List<string> DeadFreesNothing = new List<string>();
             public readonly List<Callout> Callouts = new List<Callout>();
         }
 
@@ -125,7 +128,11 @@ namespace AvatarBridge
             var areas = new Dictionary<Material, Area>();
             var meshCache = new Dictionary<Mesh, MeshData>();
             var switched = SwitchedPaths(survey);
+            // Kept apart until every renderer has been read. Adding and
+            // removing as they go makes the answer depend on which renderer
+            // the loop reaches last.
             var deadMaterials = new HashSet<Material>();
+            var liveMaterials = new HashSet<Material>();
 
             // Blendshapes only count as live when something animates them.
             var animated = new HashSet<string>();
@@ -177,7 +184,7 @@ namespace AvatarBridge
                 {
                     if (m == null) continue;
                     if (dead) deadMaterials.Add(m);
-                    else deadMaterials.Remove(m);
+                    else liveMaterials.Add(m);
                     if (!materials.Add(m)) continue;
                     if (m.shader != null) report.Shaders.Add(m.shader.name);
                     foreach (var tex in TexturesOf(m))
@@ -198,10 +205,23 @@ namespace AvatarBridge
             // costs full size on the card, so the two figures only agree
             // where crunch is absent.
             report.DownloadBytes = report.Textures.Sum(t => t.Crunched ? t.DiskBytes : t.Bytes);
+            // Only what nothing visible is still using. A texture a live
+            // renderer shares costs the same whether the dead one goes or
+            // not, and a texture behind two dead renderers counts once.
+            deadMaterials.ExceptWith(liveMaterials);
+            var liveTextures = new HashSet<Texture>(liveMaterials.SelectMany(TexturesOf));
+            foreach (var r2 in renderers)
+            {
+                string path = AnimationUtility.CalculateTransformPath(r2.transform, avatar.transform);
+                if (!report.Dead.Contains(path)) continue;
+                bool frees = r2.sharedMaterials.Any(m => m != null && deadMaterials.Contains(m)
+                                                         && TexturesOf(m).Any(t => !liveTextures.Contains(t)));
+                if (!frees) report.DeadFreesNothing.Add(path);
+            }
             report.DeadBytes = deadMaterials
                 .SelectMany(TexturesOf)
                 .Distinct()
-                .Where(textures.ContainsKey)
+                .Where(t => !liveTextures.Contains(t) && textures.ContainsKey(t))
                 .Sum(t => textures[t].Bytes);
 
             report.AudioSources = avatar.GetComponentsInChildren<AudioSource>(true).Length;
@@ -272,11 +292,21 @@ namespace AvatarBridge
                               "back. Untick it in the importer.");
             }
 
-            if (r.DeadBytes > 1048576)
+            int costly = r.Dead.Count - r.DeadFreesNothing.Count;
+            if (r.DeadBytes > 1048576 && costly > 0)
             {
-                Add(r, r.DeadBytes, $"{r.Dead.Count} renderer(s) are switched off and nothing in the animator can " +
+                Add(r, r.DeadBytes, $"{costly} renderer(s) are switched off and nothing in the animator can " +
                                     "switch them on, so their textures are downloaded and never seen. Either wire " +
-                                    "them to a toggle or delete them.");
+                                    "them to a toggle or strip them.");
+            }
+
+            // Worth saying even at nothing reclaimed. The textures are shared
+            // so none come back, and the mesh is still skinned every frame.
+            if (r.DeadFreesNothing.Count > 0)
+            {
+                Add(r, 0, $"{r.DeadFreesNothing.Count} more renderer(s) are switched off with nothing to switch " +
+                          "them on. Their textures are shared with something visible, so none of that comes back, " +
+                          "but the mesh is still carried and still skinned every frame.");
             }
 
             int contacts = r.Pointers + r.Triggers;

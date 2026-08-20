@@ -1418,7 +1418,7 @@ namespace AvatarBridge
             var survey = AvatarSurvey.Build(cvr);
             var plan = AvatarSlimmer.Find(cvr, survey, AvatarWeight.Measure(cvr, survey), SourceObject());
             _savingFor = cvr;
-            _saving = plan.Bytes;
+            _saving = plan.Bytes + plan.StripBytes;
             return _saving;
         }
 

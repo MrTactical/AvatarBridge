@@ -39,16 +39,21 @@ namespace AvatarBridge
         {
             public readonly List<Shrink> Textures = new List<Shrink>();
             public readonly List<string> Shared = new List<string>();
+            // Renderers no clip can switch on. The component goes, the
+            // object stays: bones, contacts and constraints parented under
+            // it are the usual casualty of removing the object itself.
+            public readonly List<string> Strip = new List<string>();
+            public long StripBytes;
             public FreeWins.Plan Wins;
             public long Bytes => Textures.Sum(t => t.Bytes);
-            public bool Any => Textures.Count > 0 || (Wins != null && Wins.Any);
+            public bool Any => Textures.Count > 0 || Strip.Count > 0 || (Wins != null && Wins.Any);
         }
 
         // `alsoMine` is the avatar this one was converted from.
         // Conversion copies patched materials, so the source keeps its own
         // set pointing at the same textures. Those are not a stranger's.
         public static Plan Find(CVRAvatar avatar, AvatarSurvey.Model survey, AvatarWeight.Report weight,
-            GameObject alsoMine = null, bool inspectContent = true)
+            GameObject alsoMine = null, bool inspectContent = true, bool stripDead = true)
         {
             var plan = new Plan();
             if (avatar == null || weight == null) return plan;
@@ -134,6 +139,15 @@ namespace AvatarBridge
                 });
             }
 
+            // Off in the scene with nothing able to switch it on. Checked
+            // across the corpus against a walk of every clip, override
+            // controllers included, before it was ever allowed to act.
+            if (stripDead)
+            {
+                plan.Strip.AddRange(weight.Dead);
+                plan.StripBytes = weight.DeadBytes;
+            }
+
             if (survey != null) plan.Wins = FreeWins.Find(avatar, survey);
             return plan;
         }
@@ -194,6 +208,8 @@ namespace AvatarBridge
                           "put back to what they had, so only their size changed."
                         : ""));
             }
+
+            StripDead(avatar, plan, report);
 
             foreach (string name in plan.Shared)
             {
@@ -305,6 +321,43 @@ namespace AvatarBridge
         // Unity reports an incompatible choice through the inspector and
         // carries on with something else, so the importer still claims the
         // value it was given. What the texture IS is the honest answer.
+        // The component only. Taking the object would take whatever hangs
+        // off it, and a hidden mesh doubling as a bone parent or a contact
+        // anchor is exactly the shape that breaks.
+        //
+        // Undo.DestroyObjectImmediate rather than a written undo file: the
+        // editor rebuilds the whole component, and "Put the textures back"
+        // has nothing to say about geometry.
+        static int StripDead(CVRAvatar avatar, Plan plan, BridgeReport report)
+        {
+            if (plan.Strip.Count == 0) return 0;
+
+            var gone = new List<string>();
+            foreach (string path in plan.Strip)
+            {
+                var found = BridgeContext.FindByAnimationPath(avatar.transform, path);
+                if (found == null) continue;
+                var renderer = found.GetComponent<Renderer>();
+                if (renderer == null) continue;
+
+                // A MeshRenderer draws what the filter beside it holds, and
+                // the filter alone draws nothing once the renderer is gone.
+                var filter = renderer is MeshRenderer ? found.GetComponent<MeshFilter>() : null;
+                Undo.DestroyObjectImmediate(renderer);
+                if (filter != null) Undo.DestroyObjectImmediate(filter);
+                gone.Add(path);
+            }
+
+            if (gone.Count == 0) return 0;
+
+            report.Converted(Category, $"{gone.Count} hidden renderer(s) stripped, {Mb(plan.StripBytes)} off the card",
+                string.Join("; ", gone.Take(6)) + (gone.Count > 6 ? $"; and {gone.Count - 6} more" : "") +
+                ". Every one was switched off with nothing in any clip able to switch it on, so none of them " +
+                "could ever be seen. The objects are still there, only the renderer is gone, so anything " +
+                "parented to them still works. Ctrl+Z puts them back.");
+            return gone.Count;
+        }
+
         static bool Took(string path, TextureImporterFormat wanted)
         {
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);

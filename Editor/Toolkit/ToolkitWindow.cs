@@ -132,11 +132,13 @@ namespace AvatarBridge
 
         VisualElement Tool(string title, string blurb, string button, System.Func<BridgeReport> run, string whenEmpty,
             string second = null, System.Func<BridgeReport> runSecond = null,
-            string third = null, System.Func<BridgeReport> runThird = null)
+            string third = null, System.Func<BridgeReport> runThird = null,
+            VisualElement option = null)
         {
             var box = new VisualElement();
             box.Add(BridgeElements.SubHeading(title));
             box.Add(BridgeElements.Hint(blurb));
+            if (option != null) box.Add(option);
             var rows = new VisualElement();
             var b = new Button(() =>
             {
@@ -233,7 +235,8 @@ namespace AvatarBridge
                 }
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
                 var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
-                AvatarSlimmer.Apply(ctx.CvrAvatar, AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom),
+                AvatarSlimmer.Apply(ctx.CvrAvatar,
+                    AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom, true, _stripHidden),
                     ctx.OutputDir, report);
                 return report;
             },
@@ -247,7 +250,26 @@ namespace AvatarBridge
                 var report = new BridgeReport();
                 AvatarSlimmer.Revert(Context(report).OutputDir, report);
                 return report;
-            });
+            },
+            StripOption());
+
+        // Editing someone's own avatar, not a converted copy, so this one
+        // is worth being able to refuse. The renderer goes and the object
+        // stays; Ctrl+Z brings it back either way.
+        bool _stripHidden = true;
+
+        VisualElement StripOption()
+        {
+            var toggle = new Toggle("Also remove meshes nothing can show") { value = _stripHidden };
+            toggle.RegisterValueChangedCallback(e => _stripHidden = e.newValue);
+            toggle.AddToClassList("ab-keep");
+            var wrap = new VisualElement();
+            wrap.Add(toggle);
+            wrap.Add(BridgeElements.Hint(
+                "A renderer switched off with nothing in any clip able to switch it on is downloaded and never " +
+                "seen. Untick this to leave them alone and change textures only."));
+            return wrap;
+        }
 
         VisualElement Tidy() => Tool("Free wins",
             "Removes only what is provably inert: layers with no states, and parameters no clip writes, no " +

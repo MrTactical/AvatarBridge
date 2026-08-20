@@ -136,6 +136,27 @@ Nothing behavioural, everything provable, all of it already detectable:
 - layers with zero states
 - the placeholder clips generated for empty motion slots, one corpus avatar carries 75
 - parameters nothing reads and nothing writes, proven by reading the controller
+- renderers switched off with nothing in any clip able to switch them on
+
+That last one deletes geometry, so it was checked before it was allowed to act.
+`DeadRendererProbe` walks the clips itself rather than trusting the survey: every animator in
+the hierarchy, an override controller's own swapped-in clips included, blend trees and sub
+machines recursed, and every ancestor path counted as a switch. Across 77 converted avatars,
+106 renderers were called dead and **none** of them turned out to be reachable.
+
+The component goes and the object stays. Taking the object would take whatever hangs off it,
+and a hidden mesh doubling as a bone parent or a contact anchor is exactly the shape that
+breaks. `Undo.DestroyObjectImmediate` does the removing, so Ctrl+Z rebuilds it.
+
+Mandatory on a conversion, where the source avatar is untouched either way. In the toolkit it
+is a tickbox, on by default: that path edits somebody's own avatar rather than a copy.
+
+**Count what comes back, not what is switched off.** A dead renderer whose textures something
+visible also draws frees the mesh and the draw call and not one byte of texture. Of 106, eleven
+were in exactly that position, and an earlier version of the reading billed them anyway: it
+added and removed materials from one set as it walked the renderers, so a shared material
+counted as dead or not depending purely on which renderer the loop reached last. Frenni
+Fazclaire was quoted 16.0 MB that way. The real figure was 0.0 MB.
 
 **The sweep is a hint, never the criterion.** It flips a parameter and watches for an observable
 change, and there are three ordinary designs it reads as dead when they are not. Abbess carries
