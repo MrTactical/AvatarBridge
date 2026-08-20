@@ -686,6 +686,7 @@ namespace AvatarBridge.Regression
 
             AppendAas(sb, avatar);
             AppendComponents(sb, target);
+            AppendHiddenMeshes(sb, avatar);
             AppendPhysics(sb, avatar, target);
             AppendControllers(sb, avatar, target);
         }
@@ -746,6 +747,34 @@ namespace AvatarBridge.Regression
                 }
                 sb.Append('\n');
             }
+        }
+
+        // The optimiser strips these, so the digest carries the check rather than a probe I have
+        // to remember to run. `reachable` is the one that matters and belongs at zero: it counts
+        // renderers called dead that some clip can switch on after all, read from the clips
+        // themselves instead of from the survey the call was made with. Anything above zero is a
+        // renderer the optimiser would take off a working avatar.
+        static void AppendHiddenMeshes(StringBuilder sb, CVRAvatar avatar)
+        {
+            var survey = AvatarSurvey.Build(avatar);
+            var weight = AvatarWeight.Measure(avatar, survey);
+            if (weight.Dead.Count == 0) return;
+
+            var switched = DeadRendererProbe.SwitchedByAnyClip(avatar, out int clips);
+            int reachable = weight.Dead.Count(p => DeadRendererProbe.Reachable(p, switched));
+
+            sb.Append("[hidden meshes]\n");
+            sb.Append($"dead={weight.Dead.Count} freesNothing={weight.DeadFreesNothing.Count} ")
+              .Append($"reclaim={(weight.DeadBytes / 1048576f).ToString("0.0", CultureInfo.InvariantCulture)}MB ")
+              .Append($"clips={clips} reachable={reachable}\n");
+            foreach (string path in weight.Dead.OrderBy(p => p, StableSampleOrder.Instance))
+            {
+                sb.Append("  ").Append(path)
+                  .Append(weight.DeadFreesNothing.Contains(path) ? "  (frees nothing)" : "")
+                  .Append(DeadRendererProbe.Reachable(path, switched) ? "  REACHABLE" : "")
+                  .Append('\n');
+            }
+            sb.Append('\n');
         }
 
         // MagicaCloth is reached by NAME rather than by a compile-time reference, so this block

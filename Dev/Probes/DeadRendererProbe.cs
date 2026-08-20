@@ -85,23 +85,8 @@ namespace AvatarBridge.Regression
             row.DeadBytes = weight.DeadBytes;
             if (row.Dead == 0) return row;
 
-            var clips = new HashSet<AnimationClip>();
-            foreach (var animator in avatar.GetComponentsInChildren<Animator>(true))
-            {
-                CollectClips(animator.runtimeAnimatorController, clips);
-            }
-            row.Clips = clips.Count;
-
-            // Every path any clip can switch, by its own reading of the
-            // clips rather than the survey's.
-            var switched = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var clip in clips)
-            {
-                foreach (var b in AnimationUtility.GetCurveBindings(clip))
-                {
-                    if (b.propertyName == "m_IsActive" || b.propertyName == "m_Enabled") switched.Add(b.path);
-                }
-            }
+            var switched = SwitchedByAnyClip(avatar, out int clipCount);
+            row.Clips = clipCount;
 
             // Which materials a renderer that stays visible is still using.
             // Deleting a dead renderer gives back nothing they share.
@@ -138,9 +123,33 @@ namespace AvatarBridge.Regression
             return row;
         }
 
+        // Every path any clip can switch, read from the clips themselves
+        // rather than from the survey. The corpus digest calls this too, so
+        // the check and the thing it checks never drift apart.
+        public static HashSet<string> SwitchedByAnyClip(CVRAvatar avatar, out int clipCount)
+        {
+            var clips = new HashSet<AnimationClip>();
+            foreach (var animator in avatar.GetComponentsInChildren<Animator>(true))
+            {
+                CollectClips(animator.runtimeAnimatorController, clips);
+            }
+            clipCount = clips.Count;
+
+            var switched = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var clip in clips)
+            {
+                if (clip == null) continue;
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (b.propertyName == "m_IsActive" || b.propertyName == "m_Enabled") switched.Add(b.path);
+                }
+            }
+            return switched;
+        }
+
         // The path itself or any ancestor. Switching a parent object on
         // brings everything under it back.
-        static bool Reachable(string path, HashSet<string> switched)
+        public static bool Reachable(string path, HashSet<string> switched)
         {
             if (switched.Contains(path)) return true;
             for (int cut = path.LastIndexOf('/'); cut > 0; cut = path.LastIndexOf('/', cut - 1))
