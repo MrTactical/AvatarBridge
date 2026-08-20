@@ -79,7 +79,9 @@ namespace AvatarBridge
                 // Half again, where the content does not need eight bits.
                 TextureImporterFormat? format = null;
                 string why = null;
-                if (inspectContent && t.Compressed && importer.textureType == TextureImporterType.Default
+                // A data texture is never touched. Its pixels are numbers a
+                // shader reads back exactly, and a lossy format ruins them.
+                if (inspectContent && !t.Data && importer.textureType == TextureImporterType.Default
                     && Content(path, out bool greyscale, out bool opaque))
                 {
                     // BC4 holds one linear channel. Unity refuses it on an
@@ -95,8 +97,23 @@ namespace AvatarBridge
                         format = TextureImporterFormat.DXT1;
                         why = "an alpha channel that is white everywhere";
                     }
+                    else if (!t.Compressed)
+                    {
+                        // Four bytes a pixel, and an alpha that earns its
+                        // keep. DXT5 holds the alpha and costs one byte.
+                        format = TextureImporterFormat.DXT5;
+                        why = "four bytes a pixel, uncompressed";
+                    }
                     if (format.HasValue && CurrentFormat(importer) == format.Value) format = null;
-                    if (format.HasValue) saved += after / 2;
+                    if (format.HasValue)
+                    {
+                        // What a pixel costs now against what it would cost.
+                        // The mip chain is in both, so it cancels.
+                        float bits = t.Bytes * 8f / Mathf.Max(1, t.Width * t.Height);
+                        float wanted = format == TextureImporterFormat.DXT5 ? 8f : 4f;
+                        if (wanted < bits) saved += (long)(after * (1f - wanted / bits));
+                        else format = null;
+                    }
                 }
 
                 if (saved < 262144) continue;   // a quarter meg is not worth a line
@@ -296,6 +313,7 @@ namespace AvatarBridge
             {
                 case TextureImporterFormat.BC4: return texture.format == TextureFormat.BC4;
                 case TextureImporterFormat.DXT1: return texture.format == TextureFormat.DXT1;
+                case TextureImporterFormat.DXT5: return texture.format == TextureFormat.DXT5;
                 default: return true;
             }
         }

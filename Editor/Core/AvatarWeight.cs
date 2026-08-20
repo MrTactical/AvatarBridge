@@ -36,6 +36,9 @@ namespace AvatarBridge
             public bool Crunched;
             public bool Readable;
             public bool Compressed;
+            // Point filtered with no mips means a shader reads exact values,
+            // not colour. Compressing one rewrites the numbers.
+            public bool Data;
             public long Bytes;
             // The source file. Only used to estimate what a CRUNCHED texture
             // costs to download, since crunch is the one thing that breaks
@@ -249,7 +252,9 @@ namespace AvatarBridge
                                                "listed under heaviest textures with their density.", 1);
             }
 
-            var uncompressed = r.Textures.Where(t => !t.Compressed && t.Bytes > 1048576).ToList();
+            // Data textures are left out. A YAPS bake packs float bytes into
+            // one, and the shader rebuilds the float from the exact pixel.
+            var uncompressed = r.Textures.Where(t => !t.Compressed && !t.Data && t.Bytes > 1048576).ToList();
             foreach (var t in uncompressed)
             {
                 // BC7 is a byte a pixel; anything uncompressed is four.
@@ -591,6 +596,8 @@ namespace AvatarBridge
                 DiskBytes = DiskSize(tex),
                 Compressed = tex.graphicsFormat != GraphicsFormat.None
                              && GraphicsFormatUtility.IsCompressedFormat(tex.graphicsFormat),
+                Data = tex.filterMode == FilterMode.Point
+                       && (!(tex is Texture2D mips) || mips.mipmapCount <= 1),
                 Format = tex is Texture2D t ? t.format.ToString() : tex.GetType().Name,
             };
             string path = AssetDatabase.GetAssetPath(tex);

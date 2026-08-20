@@ -73,8 +73,10 @@ namespace AvatarBridge
         bool showAdvanced;
 
         VisualElement body;
-#if VRC_SDK_VRCSDK3
+        // Both paths tab: with the VRChat SDK to pick a mode, without it
+        // to reach setup and the toolkit.
         VisualElement tabs;
+#if VRC_SDK_VRCSDK3
         BridgeElements.PrimaryButton primary;
 #endif
 
@@ -136,12 +138,10 @@ namespace AvatarBridge
             root.Add(BridgeElements.Banner("AvatarBridge",
                 "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version));
 
-#if VRC_SDK_VRCSDK3
             // Held rather than added directly: the active tab is styled, so it has to be rebuilt
             // when the mode changes or the highlight goes stale on the tab you just left.
             tabs = new VisualElement();
             root.Add(tabs);
-#endif
 
             var scroll = new ScrollView();
             scroll.AddToClassList("ab-scroll");
