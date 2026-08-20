@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
                 string verdict;
 
                 if (plan.Textures.Any(p => p.Name == t.Name)) verdict = "IN PLAN";
-                else if (plan.Shared.Contains(t.Name)) verdict = "SHARED with a material outside this avatar";
+                else if (plan.Shared.TryGetValue(t.Name, out string user)) verdict = $"SHARED, {user} uses it too";
                 else if (importer == null) verdict = $"no TextureImporter ({System.IO.Path.GetExtension(path)})";
                 else if (t.Data) verdict = "data texture, left alone";
                 else if (t.Suggested <= 0) verdict = "no suggestion (no measured surface)";

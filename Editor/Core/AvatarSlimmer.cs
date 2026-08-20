@@ -38,7 +38,10 @@ namespace AvatarBridge
         public class Plan
         {
             public readonly List<Shrink> Textures = new List<Shrink>();
-            public readonly List<string> Shared = new List<string>();
+            // Texture name to the material asset outside this avatar that
+            // keeps it where it is.
+            public readonly Dictionary<string, string> Shared =
+                new Dictionary<string, string>(System.StringComparer.Ordinal);
             // Renderers no clip can switch on. The component goes, the
             // object stays: bones, contacts and constraints parented under
             // it are the usual casualty of removing the object itself.
@@ -125,9 +128,9 @@ namespace AvatarBridge
 
                 // The importer setting is global to the texture.
                 // A texture others use is left alone.
-                if (elsewhere.Contains(t.Texture))
+                if (elsewhere.TryGetValue(t.Texture, out string user))
                 {
-                    plan.Shared.Add(t.Name);
+                    plan.Shared[t.Name] = user;
                     continue;
                 }
 
@@ -215,11 +218,11 @@ namespace AvatarBridge
 
             StripDead(avatar, plan, report);
 
-            foreach (string name in plan.Shared)
+            foreach (var left in plan.Shared)
             {
-                report.Approximated(Category, $"\"{name}\" left alone",
-                    "Something outside this avatar uses it, and the size lives on the texture rather than on " +
-                    "the avatar, so shrinking it here would shrink it there too.");
+                report.Approximated(Category, $"\"{left.Key}\" left alone",
+                    $"{left.Value} uses it too, and the size lives on the texture rather than on the " +
+                    "avatar, so shrinking it here would shrink it there.");
             }
 
             if (plan.Wins != null && plan.Wins.Any)
@@ -487,12 +490,13 @@ namespace AvatarBridge
 
         // Textures reachable from materials this avatar does not use.
         // One pass over the project. Unapplied materials still count.
-        static HashSet<Texture> MaterialsUsingTexturesOutside(HashSet<Material> mine)
+        static Dictionary<Texture, string> MaterialsUsingTexturesOutside(HashSet<Material> mine)
         {
-            var outside = new HashSet<Texture>();
+            var outside = new Dictionary<Texture, string>();
             foreach (string guid in AssetDatabase.FindAssets("t:Material"))
             {
-                var material = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
                 if (material == null || mine.Contains(material)) continue;
                 var shader = material.shader;
                 if (shader == null) continue;
@@ -501,7 +505,9 @@ namespace AvatarBridge
                 {
                     if (ShaderUtil.GetPropertyType(shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
                     var tex = material.GetTexture(ShaderUtil.GetPropertyName(shader, i));
-                    if (tex != null) outside.Add(tex);
+                    // The first one found is enough to name. Listing every
+                    // material using a common texture is a wall, not an answer.
+                    if (tex != null && !outside.ContainsKey(tex)) outside[tex] = assetPath;
                 }
             }
             return outside;

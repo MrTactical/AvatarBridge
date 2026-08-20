@@ -57,6 +57,7 @@ namespace AvatarBridge
         {
             public long Bytes;      // what taking the advice gives back
             public int Rank;        // named saving, then the tail, then advice without a figure
+            public string Subject;  // the texture it is about, where it is about one
             public string Text;
         }
 
@@ -102,6 +103,9 @@ namespace AvatarBridge
             // too. Stripping frees the mesh and the draw call, no texture.
             public readonly List<string> DeadFreesNothing = new List<string>();
             public readonly List<Callout> Callouts = new List<Callout>();
+            // Texture name to the material asset standing in the way.
+            public readonly Dictionary<string, string> LeftAlone =
+                new Dictionary<string, string>(System.StringComparer.Ordinal);
         }
 
         class Area
@@ -269,7 +273,7 @@ namespace AvatarBridge
                 var t = pair.Key;
                 Add(r, pair.Value, $"\"{t.Name}\" is {t.Width}x{t.Height} across {t.WorldArea:0.###} m2 of surface. " +
                                    $"That is {t.Density:N0} texels per metre where {TargetDensity:N0} is ample. " +
-                                   $"{t.Suggested}x{t.Suggested} is the same picture.");
+                                   $"{t.Suggested}x{t.Suggested} is the same picture.", 0, t.Name);
             }
             if (oversized.Count > Named)
             {
@@ -286,7 +290,7 @@ namespace AvatarBridge
                 // BC7 is a byte a pixel; anything uncompressed is four.
                 long saved = t.Bytes - t.Bytes / 4;
                 Add(r, saved, $"\"{t.Name}\" is {t.Format}, four bytes a pixel, uncompressed. " +
-                              "Compressing it costs nothing anybody will see.");
+                              "Compressing it costs nothing anybody will see.", 0, t.Name);
             }
 
             var readable = r.Textures.Where(t => t.Readable).ToList();
@@ -390,8 +394,17 @@ namespace AvatarBridge
             r.Callouts.Sort((a, b) => a.Rank != b.Rank ? a.Rank.CompareTo(b.Rank) : b.Bytes.CompareTo(a.Bytes));
         }
 
-        static void Add(Report r, long bytes, string text, int rank = 0)
-            => r.Callouts.Add(new Callout { Bytes = bytes, Text = text, Rank = rank });
+        static void Add(Report r, long bytes, string text, int rank = 0, string subject = null)
+            => r.Callouts.Add(new Callout { Bytes = bytes, Text = text, Rank = rank, Subject = subject });
+
+        // What the optimiser has decided it will not touch, and who is in the
+        // way. Advice nothing will ever act on should say so rather than
+        // repeat itself every time the card is drawn.
+        public static void NoteLeftAlone(Report r, IEnumerable<KeyValuePair<string, string>> shared)
+        {
+            if (r == null || shared == null) return;
+            foreach (var pair in shared) r.LeftAlone[pair.Key] = pair.Value;
+        }
 
         // ---- density ------------------------------------------------------
 
@@ -816,6 +829,15 @@ namespace AvatarBridge
             report.Add(ReportStatus.Converted, "Weight", "Measured", Summary(weight));
             foreach (var c in weight.Callouts)
             {
+                // Advice the optimiser has already refused stops being advice.
+                if (c.Subject != null && weight.LeftAlone.TryGetValue(c.Subject, out string user))
+                {
+                    report.Add(ReportStatus.Approximated, "Weight", $"\"{c.Subject}\" left alone", c.Text +
+                        $" Left alone though: {user} uses it too, and the size lives on the texture rather " +
+                        "than on the avatar, so shrinking it here would shrink it there. Fix it will not " +
+                        "touch this one.");
+                    continue;
+                }
                 report.Add(ReportStatus.Warning, "Weight",
                     c.Bytes > 0 ? Mb(c.Bytes) + " to reclaim" : "Costs you", c.Text);
             }

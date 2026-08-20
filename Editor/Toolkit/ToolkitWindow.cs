@@ -220,7 +220,13 @@ namespace AvatarBridge
                         "Add one, or use the converter, and this can measure what the game will be charged.");
                     return report;
                 }
-                AvatarWeight.Fill(report, AvatarWeight.Measure(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar)));
+                var read = AvatarSurvey.Build(ctx.CvrAvatar);
+                var measured = AvatarWeight.Measure(ctx.CvrAvatar, read);
+                // The plan as well, so the card can say which advice Fix it
+                // has already refused rather than repeating it every time.
+                var would = AvatarSlimmer.Find(ctx.CvrAvatar, read, measured, _convertedFrom, true, _stripHidden);
+                AvatarWeight.NoteLeftAlone(measured, would.Shared);
+                AvatarWeight.Fill(report, measured);
                 return report;
             }, "Nothing on it is worth changing.",
             "Fix it",
