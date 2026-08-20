@@ -33,6 +33,20 @@ Someone who dislikes the result deletes a folder; they do not restore their text
 **Report what cannot safely be automated.** A converter has no business decimating somebody else's
 mesh. It has every business telling them the mesh is 400k triangles.
 
+## Where this actually runs
+
+One place: the ChilloutVR Toolkit, on the "What this avatar costs" card. "Weigh it" reads, "Fix
+it" acts, "Put the textures back" undoes the import settings.
+
+Converting does NOT optimise on its own. It measures, and the converter's report ends with a
+button offering the figure it found — "Make it lighter — 34.2 MB to reclaim" — which hands the
+converted avatar to the toolkit. So a conversion always tells you the number, and pressing
+something is what changes anything.
+
+Which means the toolkit is the whole of it, and it has to stand on its own: it works on avatars
+that were never converted, and on machines with no VRChat SDK installed at all.
+`Dev/Build/compile-check.sh` builds the assembly both ways for that reason.
+
 ## Phase 0 — the weight card
 
 One card, in the converter's report and in the ChilloutVR Toolkit, so it works on avatars that
@@ -148,8 +162,9 @@ The component goes and the object stays. Taking the object would take whatever h
 and a hidden mesh doubling as a bone parent or a contact anchor is exactly the shape that
 breaks. `Undo.DestroyObjectImmediate` does the removing, so Ctrl+Z rebuilds it.
 
-Mandatory on a conversion, where the source avatar is untouched either way. In the toolkit it
-is a tickbox, on by default: that path edits somebody's own avatar rather than a copy.
+In the toolkit it is a tickbox, on by default, sitting on the same card as "Fix it": that path
+edits somebody's own avatar rather than a copy, so it is worth being able to refuse. Ctrl+Z
+brings a stripped renderer back either way.
 
 **Count what comes back, not what is switched off.** A dead renderer whose textures something
 visible also draws frees the mesh and the draw call and not one byte of texture. Of 106, eleven
