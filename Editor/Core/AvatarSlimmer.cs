@@ -168,11 +168,15 @@ namespace AvatarBridge
                 foreach (var t in plan.Textures)
                 {
                     if (!(AssetImporter.GetAtPath(t.Path) is TextureImporter importer)) continue;
+                    var platform = importer.GetPlatformTextureSettings(Platform);
                     undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}" +
-                             $"\t{(int)CurrentFormat(importer)}\t{t.Path}");
+                             $"\t{(int)CurrentFormat(importer)}\t{platform.maxTextureSize}\t{t.Path}");
                     var before = CurrentFormat(importer);
                     importer.maxTextureSize = t.To;
-                    if (t.Format.HasValue) SetFormat(importer, t.Format.Value);
+                    if (t.Format.HasValue) SetFormat(importer, t.Format.Value, t.To);
+                    // An override already on would otherwise keep its own size
+                    // and the resize would go nowhere.
+                    else if (platform.overridden) SetFormat(importer, before, t.To);
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
 
@@ -181,7 +185,7 @@ namespace AvatarBridge
                     // than leave somebody to find out.
                     if (t.Format.HasValue && !Took(t.Path, t.Format.Value))
                     {
-                        SetFormat(importer, before);
+                        SetFormat(importer, before, platform.maxTextureSize);
                         importer.SaveAndReimport();
                         t.Format = null;
                         t.Why = null;
@@ -256,7 +260,10 @@ namespace AvatarBridge
                     }
                     if (parts.Length >= 4 && int.TryParse(parts[2], out int format))
                     {
-                        SetFormat(importer, (TextureImporterFormat)format);
+                        // Records written before the override carried a size
+                        // end at the path here, which will not parse.
+                        int overrideSize = parts.Length >= 5 && int.TryParse(parts[3], out int o) ? o : -1;
+                        SetFormat(importer, (TextureImporterFormat)format, overrideSize);
                     }
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
@@ -385,10 +392,15 @@ namespace AvatarBridge
             return settings.overridden ? settings.format : TextureImporterFormat.Automatic;
         }
 
-        static void SetFormat(TextureImporter importer, TextureImporterFormat format)
+        // The override carries its OWN maximum size, and Unity reads that one
+        // rather than the default tab's for as long as the override is on.
+        // Writing a format without the size leaves a resize that was recorded,
+        // reported and never applied.
+        static void SetFormat(TextureImporter importer, TextureImporterFormat format, int maxSize = -1)
         {
             var settings = importer.GetPlatformTextureSettings(Platform);
             settings.format = format;
+            if (maxSize > 0) settings.maxTextureSize = maxSize;
             // Automatic hands the choice back to Unity, which is an override
             // switched off rather than a value written.
             settings.overridden = format != TextureImporterFormat.Automatic;
