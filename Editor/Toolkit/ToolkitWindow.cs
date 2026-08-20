@@ -131,7 +131,8 @@ namespace AvatarBridge
         }
 
         VisualElement Tool(string title, string blurb, string button, System.Func<BridgeReport> run, string whenEmpty,
-            string second = null, System.Func<BridgeReport> runSecond = null)
+            string second = null, System.Func<BridgeReport> runSecond = null,
+            string third = null, System.Func<BridgeReport> runThird = null)
         {
             var box = new VisualElement();
             box.Add(BridgeElements.SubHeading(title));
@@ -145,22 +146,22 @@ namespace AvatarBridge
             b.AddToClassList("ab-btn");
             b.SetEnabled(_target != null);
 
-            if (second == null)
+            var buttons = new List<VisualElement> { b };
+            foreach (var extra in new[] { (second, runSecond), (third, runThird) })
             {
-                box.Add(BridgeElements.Row(b));
-            }
-            else
-            {
-                var b2 = new Button(() =>
+                if (extra.Item1 == null) continue;
+                var action = extra.Item2;
+                var more = new Button(() =>
                 {
                     if (_target == null) return;
-                    ShowReport(rows, runSecond(), whenEmpty);
+                    ShowReport(rows, action(), whenEmpty);
                     Build();   // sizes changed, so the reading behind it did too
-                }) { text = second };
-                b2.AddToClassList("ab-btn");
-                b2.SetEnabled(_target != null);
-                box.Add(BridgeElements.Row(b, b2));
+                }) { text = extra.Item1 };
+                more.AddToClassList("ab-btn");
+                more.SetEnabled(_target != null);
+                buttons.Add(more);
             }
+            box.Add(BridgeElements.Row(buttons.ToArray()));
             box.Add(rows);
             return box;
         }
@@ -220,8 +221,7 @@ namespace AvatarBridge
                 AvatarWeight.Fill(report, AvatarWeight.Measure(ctx.CvrAvatar, AvatarSurvey.Build(ctx.CvrAvatar)));
                 return report;
             }, "Nothing on it is worth changing.",
-            AvatarSlimmer.CanRevert(OutputRoot + "/" + (_target != null ? _target.name : ""))
-                ? "Put the textures back" : "Fix it",
+            "Fix it",
             () =>
             {
                 var report = new BridgeReport();
@@ -231,15 +231,21 @@ namespace AvatarBridge
                     report.Approximated("Slim down", "No CVRAvatar on the root", "Add one and this can act.");
                     return report;
                 }
-                if (AvatarSlimmer.CanRevert(ctx.OutputDir))
-                {
-                    AvatarSlimmer.Revert(ctx.OutputDir, report);
-                    return report;
-                }
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
                 var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
                 AvatarSlimmer.Apply(ctx.CvrAvatar, AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom),
                     ctx.OutputDir, report);
+                return report;
+            },
+            // Its own button, not a mode the other one falls into. Import
+            // settings outlive the conversion that changed them, so a record
+            // can be waiting from a run days ago.
+            AvatarSlimmer.CanRevert(OutputRoot + "/" + (_target != null ? _target.name : ""))
+                ? "Put the textures back" : null,
+            () =>
+            {
+                var report = new BridgeReport();
+                AvatarSlimmer.Revert(Context(report).OutputDir, report);
                 return report;
             });
 

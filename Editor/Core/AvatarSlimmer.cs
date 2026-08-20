@@ -3,8 +3,9 @@
 // Only what the weight card proves is free. Only textures this avatar
 // alone uses.
 //
-// Textures shrink through the importer. maxTextureSize leaves the source
-// file alone and costs no disk. Old sizes are recorded so Revert works.
+// Size and format only, through the importer. Compression is left as the
+// author set it. The source file is never edited and old settings are
+// recorded, so Revert restores them.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -28,8 +29,6 @@ namespace AvatarBridge
             public int From;
             public int To;
             public long Bytes;
-            // Uncompressed is four bytes a pixel. Compressing costs one.
-            public bool Compress;
             // BC4 for one channel repeated, BC1 for alpha that is never used.
             // Both are 4 bits a pixel where BC7 and DXT5 are 8.
             public TextureImporterFormat? Format;
@@ -49,7 +48,7 @@ namespace AvatarBridge
         // Conversion copies patched materials, so the source keeps its own
         // set pointing at the same textures. Those are not a stranger's.
         public static Plan Find(CVRAvatar avatar, AvatarSurvey.Model survey, AvatarWeight.Report weight,
-            GameObject alsoMine = null)
+            GameObject alsoMine = null, bool inspectContent = true)
         {
             var plan = new Plan();
             if (avatar == null || weight == null) return plan;
@@ -67,8 +66,6 @@ namespace AvatarBridge
 
                 int longest = Mathf.Max(t.Width, t.Height);
                 bool resize = t.Suggested > 0 && t.Suggested < longest && importer.maxTextureSize > t.Suggested;
-                bool compress = !t.Compressed
-                                && importer.textureCompression == TextureImporterCompression.Uncompressed;
 
                 long saved = 0;
                 long after = t.Bytes;
@@ -78,17 +75,11 @@ namespace AvatarBridge
                     after = (long)(t.Bytes * shrink * shrink);
                     saved = t.Bytes - after;
                 }
-                // Uncompressed is four bytes a pixel against BC7's one.
-                if (compress)
-                {
-                    saved += after * 3 / 4;
-                    after /= 4;
-                }
 
                 // Half again, where the content does not need eight bits.
                 TextureImporterFormat? format = null;
                 string why = null;
-                if (t.Compressed && importer.textureType == TextureImporterType.Default
+                if (inspectContent && t.Compressed && importer.textureType == TextureImporterType.Default
                     && Content(path, out bool greyscale, out bool opaque))
                 {
                     // BC4 holds one linear channel. Unity refuses it on an
@@ -120,7 +111,7 @@ namespace AvatarBridge
 
                 plan.Textures.Add(new Shrink
                 {
-                    Path = path, Name = t.Name, Bytes = saved, Compress = compress,
+                    Path = path, Name = t.Name, Bytes = saved,
                     Format = format, Why = why,
                     From = importer.maxTextureSize, To = resize ? t.Suggested : importer.maxTextureSize,
                 });
@@ -150,7 +141,6 @@ namespace AvatarBridge
                              $"\t{(int)CurrentFormat(importer)}\t{t.Path}");
                     var before = CurrentFormat(importer);
                     importer.maxTextureSize = t.To;
-                    if (t.Compress) importer.textureCompression = TextureImporterCompression.Compressed;
                     if (t.Format.HasValue) SetFormat(importer, t.Format.Value);
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
@@ -184,7 +174,7 @@ namespace AvatarBridge
                     "inspector to put back, and \"Put the textures back\" here does the same thing." +
                     (refused > 0
                         ? $" {refused} of them would not take the format this platform was asked for and were " +
-                          "put back to what they had, so only their size and compression changed."
+                          "put back to what they had, so only their size changed."
                         : ""));
             }
 
@@ -288,7 +278,7 @@ namespace AvatarBridge
         {
             var parts = new List<string>();
             if (t.From != t.To) parts.Add($"{t.From} to {t.To}");
-            if (t.Compress) parts.Add("compressed");
+
             if (t.Format.HasValue) parts.Add($"{t.Format.Value} because it is {t.Why}");
             return $"{t.Name}: {string.Join(", ", parts)}";
         }
