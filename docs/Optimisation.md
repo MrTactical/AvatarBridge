@@ -235,12 +235,32 @@ TPS_Orf_Norm       14   TPS_Orf_Norm_SelfNotOnHips       10
 ```
 
 One socket, described five times over for five decoders, then doubled for a self-exclusion rule:
-**58 of the 174 are `_SelfNotOnHips` duplicates** of a pointer the avatar already carries.
+**58 of the 174 carry a `_SelfNotOnHips` twin** beside the pointer the avatar already has.
 
-So no, every family does not need its own pair. What remains to decide is which of them any
-ChilloutVR-side consumer actually reads, since YAPS resolves through its own channel and marker
-lights. A family nothing reads is pure budget. That is the second question, and it wants the
-same treatment: measure who reads, then cap.
+**The twins are NOT duplicates, and collapsing them is off the table.** That was the plan here,
+and the corpus refused it. `[pointer families]` in the digest counts `twinOnly`: triggers that
+accept the twin and NOT the base. On the five pointer-heaviest avatars it is never zero —
+Obsidian 4, Abbess 6, Deathclaw 4, Umbreon 4, Sally 4 — and the listeners are always the same
+shape:
+
+```
+TWIN ONLY  TPS_Pen_Penetrating_SelfNotOnHips on CVRTrigger_VF80_Pussy/Self/Contact/Tip
+TWIN ONLY  TPS_Pen_Root_SelfNotOnHips        on CVRTrigger_VF80_Anal/Self/Contact/Root
+```
+
+A socket's own `Self` trigger listens for the twin ALONE, because the twin IS the self channel.
+The base tag says "a plug is here" and the twin says "a plug is here and the hip rule does not
+apply", which is exactly what an avatar needs to accept its own plug. Collapse the pair and self
+interaction stops working, on every avatar that has any. Sally is a stock SPS avatar carrying no
+edits, so this is the shipped shape rather than one author's quirk.
+
+What is left of the idea is per avatar, not global: `twinOnly=0` means nothing on THAT avatar
+reads a twin alone, and only then could its 45-odd twin pointers be collapsed. The digest proves
+it per avatar, and so far nothing has qualified.
+
+The other question stands: which families any ChilloutVR-side consumer actually reads, since YAPS
+resolves through its own channel and marker lights. A family nothing reads is pure budget. That
+one still wants the same treatment: measure who reads, then cap.
 
 ## Phase 3 — textures, by density rather than by guess
 

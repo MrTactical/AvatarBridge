@@ -687,6 +687,7 @@ namespace AvatarBridge.Regression
             AppendAas(sb, avatar);
             AppendComponents(sb, target);
             AppendHiddenMeshes(sb, avatar);
+            AppendPointerFamilies(sb, avatar);
             AppendPhysics(sb, avatar, target);
             AppendControllers(sb, avatar, target);
         }
@@ -774,6 +775,34 @@ namespace AvatarBridge.Regression
                   .Append(DeadRendererProbe.Reachable(path, switched) ? "  REACHABLE" : "")
                   .Append('\n');
             }
+            sb.Append('\n');
+        }
+
+        // A socket describes itself twice, once plainly and once as a _SelfNotOnHips twin, and
+        // each pointer is a contact against the instance's 512 pairs. Collapsing the pair would
+        // halve that, and `twinOnly` is what forbids it: a trigger accepting the twin WITHOUT
+        // the base is one that collapsing would silence. It belongs at zero, like `reachable`.
+        static void AppendPointerFamilies(StringBuilder sb, CVRAvatar avatar)
+        {
+            var f = PointerFamilyProbe.Read(avatar);
+            if (f.Total == 0) return;
+
+            sb.Append("[pointer families]\n");
+            sb.Append($"pointers={f.Total} families={f.Emitted.Count} twinPairs={f.TwinPairs} ")
+              .Append($"twinPointers={f.TwinPointers} twinOnly={f.TwinOnly.Count}\n");
+
+            // Twins only. The full family list is the contact census already
+            // in [components], and repeating it here is churn.
+            foreach (var pair in f.Emitted.Where(p =>
+                         p.Key.EndsWith(PointerFamilyProbe.Twin, StringComparison.Ordinal))
+                     .OrderBy(p => p.Key, StableSampleOrder.Instance))
+            {
+                f.Listened.TryGetValue(pair.Key, out int heard);
+                sb.Append("  ").Append(pair.Value.ToString("D3")).Append("  ")
+                  .Append(heard > 0 ? $"heard by {heard}" : "heard by nothing").Append("  ")
+                  .Append(pair.Key).Append('\n');
+            }
+            foreach (string one in f.TwinOnly) sb.Append("  TWIN ONLY  ").Append(one).Append('\n');
             sb.Append('\n');
         }
 
