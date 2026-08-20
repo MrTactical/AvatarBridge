@@ -294,6 +294,22 @@ namespace AvatarBridge
                           "overlapping pairs a frame.", 2);
             }
 
+            // ChilloutVR downloads an avatar only if it fits the viewer's
+            // limit, and the default is 100 MB. Past it most of the room sees
+            // a robot instead, with nothing said to anybody.
+            //
+            // The upload size is the CCK's to measure, not this tool's, and
+            // crunch separates the two: a crunched texture downloads small
+            // and still costs its full size on the card. So this speaks
+            // where the figure alone settles it.
+            long crunched = r.Textures.Where(t => t.Crunched).Sum(t => t.Bytes);
+            if (r.TextureBytes > 100L * 1048576 && crunched * 4 < r.TextureBytes)
+            {
+                Add(r, 0, $"{Mb(r.TextureBytes)} of texture, almost none of it crunched. ChilloutVR's default " +
+                          "download limit is 100 MB, and people who keep that default never see an avatar past " +
+                          "it. The upload size is not this number, but it is not far off it either.", 2);
+            }
+
             var crowded = r.ClothParents.Where(p => p.Value > 3).ToList();
             if (crowded.Count > 0)
             {
@@ -639,7 +655,9 @@ namespace AvatarBridge
             var sb = new StringBuilder();
             sb.Append("# Weight of ").Append(r.Avatar).Append('\n');
             sb.Append("textures   ").Append(r.Textures.Count).Append(", ")
-              .Append(Mb(r.TextureBytes)).Append(" on the graphics card\n");
+              .Append(Mb(r.TextureBytes)).Append(" on the graphics card")
+              .Append(r.TextureBytes > 100L * 1048576
+                  ? "  (ChilloutVR's default download limit is 100 MB)" : "").Append('\n');
             sb.Append("meshes     ").Append(r.Renderers).Append(" renderers (").Append(r.Skinned).Append(" skinned), ")
               .Append(r.Triangles.ToString("N0")).Append(" tris, ").Append(r.SubMeshes).Append(" submeshes, ")
               .Append(r.Bones).Append(" bones\n");
