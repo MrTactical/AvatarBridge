@@ -451,6 +451,18 @@ namespace AvatarBridge
             // with no converted chain gets a synthesized MagicaCloth.
             // Done here because only the animator knows what is toggled.
             // The new chain registers itself for phase 2 wiring.
+            // Asked for, and this target cannot do it. Said out loud rather
+            // than left as a setting that quietly does nothing.
+            if (ctx.Settings.addPhysicsToRiggedStyles
+                && ctx.Settings.physicsTarget != PhysicsTarget.MagicaCloth2)
+            {
+                ctx.Report.Skipped("Physics", "\"Add physics to toggled rigs that have none\" did nothing",
+                    "It synthesizes a MagicaCloth, and this avatar was converted to " +
+                    $"{ctx.Settings.physicsTarget}. Toggled styles carrying a rig but no PhysBone stay " +
+                    "rigid here, exactly as they were in VRChat. Convert to MagicaCloth2 if you want " +
+                    "them to move.");
+            }
+
             if (ctx.Settings.addPhysicsToRiggedStyles
                 && ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {

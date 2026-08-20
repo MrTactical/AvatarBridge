@@ -712,7 +712,8 @@ namespace AvatarBridge
                     "container carries its own bone rig and mesh but NO PhysBone — rigid in " +
                     "VRChat, whether by intent or oversight. This synthesizes a MagicaCloth for " +
                     "such rigs, preset chosen by the chain classifier, wired to the style's " +
-                    "toggle. Off by default because it invents physics the author never made, " +
+                    "toggle, so it needs the MagicaCloth2 target and does nothing under DynamicBone. " +
+                    "Off by default because it invents physics the author never made, " +
                     "and some rigged props are rigid on purpose. The report names every rig " +
                     "this would apply to either way.",
                     settings.addPhysicsToRiggedStyles, v => settings.addPhysicsToRiggedStyles = v));
