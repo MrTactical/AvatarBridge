@@ -59,6 +59,21 @@ run or only read tidier? Do 164 cloth solvers over 1,070 transforms actually hur
 pass is the interesting case, because the honest expectation is **~0 ms**: shrinking a map
 buys memory and load, not frame time, and a bench that reports zero there is doing its job.
 
+**It has to answer in VR terms, or it answers the wrong question.** Almost everyone wearing
+these avatars is in a headset, and the two halves of the cost scale differently:
+
+- **CPU transfers nearly one to one.** Cloth, contacts, animator evaluation and skinning run
+  once a frame however many eyes are drawn. What changes is the budget: 90 Hz allows 11.1 ms
+  against a desktop 60 Hz frame's 16.7, so the same 2 ms of cloth is 12% of one and 18% of the
+  other. Report the share, not the milliseconds.
+- **GPU transfers not at all.** Stereo roughly doubles it and per-eye resolution dwarfs an
+  editor viewport, so a bench rendering into the game view reports a number nobody will
+  experience. Render single-pass instanced, which is what ChilloutVR uses, at real per-eye
+  resolution.
+
+And it wants calibrating once against a real session in a headset, because play mode has no
+compositor and no reprojection. Measure one avatar both ways, keep the ratio, apply it.
+
 Belongs with the twin below: both exist so a bug or a cost shows up in the editor rather than
 in somebody's instance.
 
