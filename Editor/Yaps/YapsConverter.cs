@@ -540,37 +540,6 @@ namespace AvatarBridge
                 }
             }
 
-            // Waking Fury's second head switches its MESH on too, and in
-            // ChilloutVR that mesh is redundant: the game hides your own head
-            // in first person by itself, which is the whole reason the copy
-            // exists in VRChat. Left on it renders for everyone, on top of
-            // the real head. The object stays — the socket hangs off it —
-            // and only what it drew goes.
-            int undrawn = 0;
-            foreach (var socket in socketRoots)
-            {
-                for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
-                {
-                    if (!at.name.StartsWith("vrcfAlwaysVisibleHead", System.StringComparison.Ordinal)) continue;
-                    foreach (var renderer in at.GetComponents<Renderer>())
-                    {
-                        if (renderer == null) continue;
-                        UnityEngine.Object.DestroyImmediate(renderer);
-                        undrawn++;
-                    }
-                    break;
-                }
-            }
-            if (undrawn > 0)
-            {
-                ctx.Report.Converted(Category, $"{undrawn} duplicate head mesh(es) removed",
-                    "VRCFury adds a second head so you can see your own in VRChat, and a socket " +
-                    "baked onto it needs that object switched on. ChilloutVR hides your head in " +
-                    "first person itself, so the copy would only draw a second head over the real " +
-                    "one for everybody else. The object stays and the socket with it; the mesh it " +
-                    "drew is gone.");
-            }
-
             int wired = 0;
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
