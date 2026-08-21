@@ -727,6 +727,13 @@ silently going over. An avatar with no budget at all still works through the lig
 bends only toward a socket it can resolve** — a contact its author placed, a light its wearer
 switched on from their menu; with neither in range it stays exactly as it is.
 
+**Your own plug into your own socket** goes through a separate channel. Every socket tag has a
+`_SelfNotOnHips` twin beside it, and a socket's own self trigger listens for the twin ALONE — the
+bare tag is what everyone ELSE reads. A socket carrying only the bare tag works perfectly for
+other people and does nothing for the person wearing it. Sockets built before 4.2.0 are in exactly
+that state: **rebuild them** from *Tools ▸ YAPS ▸ Setup* and the twin is written in, along with
+current marker light ranges if the socket came from an older prefab.
+
 **What other people see.** The wearer's own machine works out where the socket is, and a driver
 publishes it so everyone else sees the same bend. Marker lights are read independently by each
 viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
