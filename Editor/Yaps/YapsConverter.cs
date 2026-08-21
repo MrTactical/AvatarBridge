@@ -493,7 +493,19 @@ namespace AvatarBridge
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
-                    for (var at = light.transform; at != null && at != socket.parent;
+                    // Past the socket too, while the object above it is one
+                    // VRCFury made. "vrcfAlwaysVisibleHead" is the case that
+                    // matters: Fury generates a second head, leaves it OFF,
+                    // and lets its own service switch it on. A socket baked
+                    // onto that head is switched off with it, forever, once
+                    // the service is deleted — no contacts, no lights, no
+                    // gizmo, and nothing to see anywhere saying why.
+                    //
+                    // An object the AUTHOR named still stops the climb. An
+                    // outfit toggled off is a decision; Fury's plumbing is not.
+                    for (var at = light.transform;
+                         at != null && at != ctx.Target.transform
+                         && (at.IsChildOf(socket) || at == socket || FuryMade(at));
                          at = at.parent)
                     {
                         if (!at.gameObject.activeSelf)
@@ -794,6 +806,12 @@ namespace AvatarBridge
         }
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
+
+        // An object VRCFury generated rather than one the author placed.
+        // Fury stamps its own with "[VF123] " or a "vrcf" prefix.
+        static bool FuryMade(Transform t)
+            => t != null && (t.name.StartsWith("vrcf", System.StringComparison.Ordinal)
+                             || t.name.StartsWith("[VF", System.StringComparison.Ordinal));
 
         // Socket deform. A shape driven by both animator and shader applies
         // twice, so with no published depth (-1) the shader reads a tracker light.
