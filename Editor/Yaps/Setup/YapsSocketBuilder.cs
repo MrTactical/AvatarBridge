@@ -31,6 +31,10 @@ namespace AvatarBridge
         public const float FrontRange = 0.4530f;
         public const float FrontOffset = 0.01f;
 
+        // The self channel. A socket's own Self trigger listens for this
+        // suffix alone, so a tag without its twin is remote-only.
+        const string Twin = "_SelfNotOnHips";
+
         const string LightsName = "YAPS Lights";
         const string PointersName = "YAPS Pointers";
         const string PrefabFolder = "Assets/YAPS/Prefabs";
@@ -262,10 +266,37 @@ namespace AvatarBridge
             {
                 string spsRoot = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Ring";
                 bool anySpsRoot = havePointers.Any(k => k.StartsWith("SPSLL_Socket_Root") || k.StartsWith("SPSLL_Socket_Hole") || k.StartsWith("SPSLL_Socket_Ring"));
-                if (!anySpsRoot) Pointer(pointers, "SPS Root", spsRoot, Vector3.zero);
-                if (!havePointers.Any(k => k.StartsWith("SPSLL_Socket_Front"))) Pointer(pointers, "SPS Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
-                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Root"))) Pointer(pointers, "TPS Root", "TPS_Orf_Root", Vector3.zero);
-                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Norm"))) Pointer(pointers, "TPS Norm", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
+                // Each tag twice: the bare one and its _SelfNotOnHips twin.
+                //
+                // The twin is not a duplicate, it is the SELF channel. A
+                // socket's own Self trigger listens for the twin ALONE, so a
+                // socket carrying only the bare tag answers everybody else
+                // and is dead to the person wearing it. Measured that way on
+                // a built socket: worked remotely, nothing locally.
+                //
+                // YapsPropBuilder has always emitted both. Sockets did not.
+                if (!anySpsRoot)
+                {
+                    Pointer(pointers, "SPS Root", spsRoot, Vector3.zero);
+                    Pointer(pointers, "SPS Root Self", spsRoot + Twin, Vector3.zero);
+                }
+                if (!havePointers.Any(k => k.StartsWith("SPSLL_Socket_Front")))
+                {
+                    Pointer(pointers, "SPS Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
+                    Pointer(pointers, "SPS Front Self", "SPSLL_Socket_Front" + Twin,
+                        new Vector3(0, 0, FrontOffset));
+                }
+                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Root")))
+                {
+                    Pointer(pointers, "TPS Root", "TPS_Orf_Root", Vector3.zero);
+                    Pointer(pointers, "TPS Root Self", "TPS_Orf_Root" + Twin, Vector3.zero);
+                }
+                if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Norm")))
+                {
+                    Pointer(pointers, "TPS Norm", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
+                    Pointer(pointers, "TPS Norm Self", "TPS_Orf_Norm" + Twin,
+                        new Vector3(0, 0, FrontOffset));
+                }
             });
         }
 
