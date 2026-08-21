@@ -522,6 +522,37 @@ namespace AvatarBridge
                 }
             }
 
+            // Waking Fury's second head switches its MESH on too, and in
+            // ChilloutVR that mesh is redundant: the game hides your own head
+            // in first person by itself, which is the whole reason the copy
+            // exists in VRChat. Left on it renders for everyone, on top of
+            // the real head. The object stays — the socket hangs off it —
+            // and only what it drew goes.
+            int undrawn = 0;
+            foreach (var socket in socketRoots)
+            {
+                for (var at = socket; at != null && at != ctx.Target.transform; at = at.parent)
+                {
+                    if (!at.name.StartsWith("vrcfAlwaysVisibleHead", System.StringComparison.Ordinal)) continue;
+                    foreach (var renderer in at.GetComponents<Renderer>())
+                    {
+                        if (renderer == null) continue;
+                        UnityEngine.Object.DestroyImmediate(renderer);
+                        undrawn++;
+                    }
+                    break;
+                }
+            }
+            if (undrawn > 0)
+            {
+                ctx.Report.Converted(Category, $"{undrawn} duplicate head mesh(es) removed",
+                    "VRCFury adds a second head so you can see your own in VRChat, and a socket " +
+                    "baked onto it needs that object switched on. ChilloutVR hides your head in " +
+                    "first person itself, so the copy would only draw a second head over the real " +
+                    "one for everybody else. The object stays and the socket with it; the mesh it " +
+                    "drew is gone.");
+            }
+
             int wired = 0;
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
@@ -807,6 +838,20 @@ namespace AvatarBridge
 
         static int Digit(float range) => Mathf.RoundToInt(range % 0.1f * 100f);
 
+        // A socket nothing can find: no pointer carrying a socket tag and no
+        // marker light. One with either is finished as far as a plug cares.
+        static bool Unfinished(Transform socket)
+        {
+            if (socket == null) return false;
+            bool tagged = socket.GetComponentsInChildren<CVRPointer>(true)
+                .Any(p => p != null && !string.IsNullOrEmpty(p.type)
+                          && (p.type.StartsWith("SPSLL_Socket", System.StringComparison.Ordinal)
+                              || p.type.StartsWith("TPS_Orf", System.StringComparison.Ordinal)));
+            bool lit = socket.GetComponentsInChildren<Light>(true)
+                .Any(l => l != null && Digit(l.range) >= 1 && Digit(l.range) <= 6);
+            return !tagged && !lit;
+        }
+
         // An object VRCFury generated rather than one the author placed.
         // Fury stamps its own with "[VF123] " or a "vrcf" prefix.
         static bool FuryMade(Transform t)
@@ -960,21 +1005,21 @@ namespace AvatarBridge
                     "Everything else about them is untouched and they still work as sockets — " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
-            if (socketRoots.Count > 0)
+            // Only the ones that really are short of something. Conversion
+            // finishes a socket that arrived complete, and saying "open the
+            // YAPS tool" about those sends people to a window that offers to
+            // remove the halves it just found, which is worse than silence.
+            var unfinished = socketRoots.Where(Unfinished).ToList();
+            if (unfinished.Count > 0)
             {
-                // Conversion carries a socket across; it does not finish one.
-                // A user reported a converted mouth socket with no gizmo that
-                // did nothing in game, and nothing anywhere told them a step
-                // was left. The plug bakes here and the socket does not, so
-                // saying so is the difference between working and not.
                 ctx.Report.Approximated(Category,
-                    $"{socketRoots.Count} socket(s) still need finishing in the YAPS tool",
-                    "Converting moves a socket over — its contacts, its marker lights and the " +
-                    "reactions its author animated. It does not BUILD one. Open Tools > YAPS > " +
-                    "Setup, drop this converted avatar in, and press Build: that is what gives a " +
-                    "socket its gizmo in the scene and makes it answer a plug in game. Until then " +
-                    "the socket is carried but not finished, which looks like nothing happening " +
-                    "at all.");
+                    $"{unfinished.Count} socket(s) arrived without markers",
+                    "These carry no pointers and no marker lights, so no plug can find them. " +
+                    "Converting moves a socket over; it does not invent one that was never " +
+                    "built. Open Tools > YAPS > Setup, drop this avatar in and press Build to " +
+                    "finish them: " +
+                    string.Join(", ", unfinished.Take(5).Select(s => ctx.PathInTarget(s))) +
+                    (unfinished.Count > 5 ? ", …" : "") + ".");
             }
         }
 

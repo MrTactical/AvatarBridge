@@ -228,12 +228,28 @@ namespace AvatarBridge
         // --- ownership -----------------------------------------------------
 
         // The object that is the socket, walking up from a marker.
+        // "[VF564] BakedSpsSocket" -> "BakedSpsSocket".
+        public static string StripFuryId(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !name.StartsWith("[VF", System.StringComparison.Ordinal))
+            {
+                return name;
+            }
+            int close = name.IndexOf(']');
+            return close < 0 ? name : name.Substring(close + 1).TrimStart();
+        }
+
         static Transform SocketOwner(Transform marker, Transform root)
         {
             // Inclusive of the root; the scan target may be the socket.
             for (var at = marker; at != null; at = at.parent)
             {
-                string n = at.name;
+                // VRCFury stamps its own objects "[VF564] BakedSpsSocket",
+                // so a StartsWith check misses every baked socket and the
+                // heuristic below answers instead — a different ancestor for
+                // the lights than for the pointers, which reads as two
+                // sockets on one spot and invites deleting a working half.
+                string n = StripFuryId(at.name);
                 if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket")) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
                 if (at == root) break;
