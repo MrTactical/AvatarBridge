@@ -6,6 +6,77 @@ follows exists because a real failure pointed at it.
 
 ---
 
+## Nothing VRCFury switched off stays off by accident
+
+**The single highest-value thing on this list, because it is not a feature — it is a class of
+bug that has already cost two users and five sittings.**
+
+VRCFury bakes a thing switched OFF and leaves one of its own runtime services to switch it back
+on. Conversion deletes that service, because the service is VRChat plumbing. The thing then
+stays off for good, and there is nothing anywhere saying so: it looks exactly like a feature
+that does not work.
+
+Every instance found so far, each by somebody wearing an avatar in game rather than by any check
+this tool has:
+
+| what Fury switched off | what was meant to switch it on | how it presented |
+|---|---|---|
+| socket branches | the SPS enable service | socket does nothing |
+| `Original Object` under a baked socket | the same service | socket does nothing |
+| `vrcfAlwaysVisibleHead`, and a socket baked onto it | Fury's own head service | socket does nothing |
+| socket RECEIVERS (`PenSelfNewRoot`, `PenOthersNewTip`) | `OverlappingContactsFixService` | pointers live in game, no bend |
+| socket exclusivity, merged at weight 0 | VRChat's Action playable | sockets animated off, nothing turns them on |
+
+Five different objects, one mechanism, fixed one at a time over three evenings. That is the
+wrong shape of work.
+
+**The rule that covers all of them:** anything Fury left switched off, that NOTHING in the
+animator can ever switch on, is stuck rather than chosen — switch it on. It is the same question
+the hidden-mesh pass already answers across 84 avatars ("can anything turn this on?"), pointed at
+Fury's residue instead of at renderers.
+
+What it would have to get right:
+
+- **A toggle still owns what it can switch.** An outfit the author left off is a decision, not
+  residue. The switchable check already draws that line and is proven.
+- **A layer at weight 0 owns nothing.** Socket exclusivity animates sockets off and can never
+  animate them on, so its curves are residue too — the check has to read layer weight, not just
+  whether a curve exists.
+- **Fury disables some things on purpose.** Unknown how many; the corpus decides. If the pass
+  wakes something that should have stayed dark, that shows up as an avatar wearing clothing it
+  should not.
+
+What it is NOT: removing Fury's output. After a bake, the generated objects ARE the avatar's
+features — the toggles, the clothing, `BakedSpsSocket` itself. Deleting those deletes what the
+user paid for. The target is the DEPENDENCY on Fury's runtime, not the things Fury built.
+
+Cost: a day, plus a full corpus, plus an avatar with an always-visible head added to the corpus —
+there are zero of those in 84 and it is a common Fury feature, which is why this class kept
+reaching users instead of the regression run.
+
+---
+
+## The preview tells the truth about the game
+
+The setup window's preview bends a plug toward a socket by reading transforms. The GAME needs the
+socket's pointers, marker lights and receivers switched on. So a socket can preview perfectly and
+do nothing in game, and it did: pointers visible in CVR's own debug view, no bend, and the tool
+saying the socket was fine throughout.
+
+4.2.0 makes the window HONEST — each socket row says which of the three is dark and what it
+costs. That closes the lie. It does not close the gap.
+
+The gap worth closing is a preview that resolves a socket the way the game does: pointer and
+trigger overlap by geometry, the enabled and active state of both, the depth it would publish,
+the parameters it would drive. Then "it previews" and "it works" are the same sentence, and this
+entire class of report — works in editor, dead in game — stops existing.
+
+Wants measuring first: how much of CVR's contact resolution has to be reproduced before the
+answer is trustworthy. A preview that is right most of the time is worse than one that is
+honest about being a preview.
+
+---
+
 ## YAPS 5: the plug follows a path, not a point
 
 Today `yaps_resolve.cginc` holds exactly one socket — one position, one forward, one
