@@ -6,55 +6,72 @@ follows exists because a real failure pointed at it.
 
 ---
 
-## Nothing VRCFury switched off stays off by accident
+## Read it, strip it, rebuild it in YAPS
 
-**The single highest-value thing on this list, because it is not a feature — it is a class of
-bug that has already cost two users and five sittings.**
+**The single highest-value thing on this list. Not a feature: it removes the seam every
+penetration bug of the last three sittings came out of.**
 
-VRCFury bakes a thing switched OFF and leaves one of its own runtime services to switch it back
-on. Conversion deletes that service, because the service is VRChat plumbing. The thing then
-stays off for good, and there is nothing anywhere saying so: it looks exactly like a feature
-that does not work.
+Conversion currently keeps VRCFury's baked rig and adapts it in place. So an avatar ends up with
+a socket that is *Fury's socket, retuned* — while the YAPS tool builds a different thing entirely
+from the same description. Two shapes, one name, and every difference between them is somewhere
+a bug can live. All of these did:
 
-Every instance found so far, each by somebody wearing an avatar in game rather than by any check
-this tool has:
+| what was wrong | where it lived |
+|---|---|
+| no `_SelfNotOnHips` twins | tool-built sockets only |
+| socket parked on `vrcfAlwaysVisibleHead`, switched off | converted only |
+| `Original Object` switched off between them | converted only |
+| receivers switched off by `OverlappingContactsFixService` | converted only |
+| socket exclusivity merged at weight 0, animating sockets off | converted only |
+| every socket's lights defaulting to lit, 22 fighting for 4 slots | converted only |
 
-| what Fury switched off | what was meant to switch it on | how it presented |
-|---|---|---|
-| socket branches | the SPS enable service | socket does nothing |
-| `Original Object` under a baked socket | the same service | socket does nothing |
-| `vrcfAlwaysVisibleHead`, and a socket baked onto it | Fury's own head service | socket does nothing |
-| socket RECEIVERS (`PenSelfNewRoot`, `PenOthersNewTip`) | `OverlappingContactsFixService` | pointers live in game, no bend |
-| socket exclusivity, merged at weight 0 | VRChat's Action playable | sockets animated off, nothing turns them on |
+Five of six are things a native socket cannot have. Each was found by somebody wearing an avatar
+in game, none by any check here, and each fix was a patch on Fury's scaffolding rather than a
+removal of it.
 
-Five different objects, one mechanism, fixed one at a time over three evenings. That is the
-wrong shape of work.
+**The plan: stop adapting, start rebuilding.**
 
-**The rule that covers all of them:** anything Fury left switched off, that NOTHING in the
-animator can ever switch on, is stuck rather than chosen — switch it on. It is the same question
-the hidden-mesh pass already answers across 84 avatars ("can anything turn this on?"), pointed at
-Fury's residue instead of at renderers.
+1. **Read** every DPS, TPS and SPS socket and plug: transform, kind, the mesh it deforms, the
+   shapes it stages, the radius measured from that mesh, the toggle that owns it.
+2. **Strip** the legacy rig completely — no baked objects, no services, no exclusivity layers,
+   nothing of Fury's left to switch off.
+3. **Rebuild** through the same code the YAPS tool uses, at the transforms that were read.
+4. **Repoint** the author's reaction layers onto the rebuilt socket's depth parameter.
 
-What it would have to get right:
+Then a converted socket IS a native socket. Odessa becomes a valid test for every avatar, the
+scanner and the preview see one shape, and this whole table stops being possible.
 
-- **A toggle still owns what it can switch.** An outfit the author left off is a decision, not
-  residue. The switchable check already draws that line and is proven.
-- **A layer at weight 0 owns nothing.** Socket exclusivity animates sockets off and can never
-  animate them on, so its curves are residue too — the check has to read layer weight, not just
-  whether a curve exists.
-- **Fury disables some things on purpose.** Unknown how many; the corpus decides. If the pass
-  wakes something that should have stayed dark, that shows up as an avatar wearing clothing it
-  should not.
+Two thirds of the machinery already exists: plugs are re-baked today rather than adapted, and the
+toggles are rebuilt by Bake and Verify, which was the objection that looked hardest until Joe
+pointed out it is already solved.
 
-What it is NOT: removing Fury's output. After a bake, the generated objects ARE the avatar's
-features — the toggles, the clothing, `BakedSpsSocket` itself. Deleting those deletes what the
-user paid for. The target is the DEPENDENCY on Fury's runtime, not the things Fury built.
+**Step 4 is the one the spike found, and it is not optional.** The two paths do not name the depth
+parameter alike:
 
-Cost: a day, plus a full corpus, plus an avatar with an always-visible head added to the corpus —
-there are zero of those in 84 and it is a common Fury feature, which is why this class kept
-reaching users instead of the regression run.
+| | how depth is named |
+|---|---|
+| native, `YapsSocketReactions` | `YAPS/<label>/Depth` |
+| converted | Fury's own layers, e.g. `[FX] [VF80] Pussy - Depth Animations - 2 - Action` |
+
+The converter never calls `YapsSocketReactions`; it keeps Fury's layers and makes them local. So
+a socket rebuilt natively publishes one name while the author's clips read another, and every
+reaction goes silent. Measured across the corpus: **72 depth-animation layer mentions, 6 empty**,
+so roughly sixty-six carry real animation an author built. Not droppable.
+
+The repoint itself is a known job — `AnimatorMerger` already renames parameter references across
+a whole controller. The trap it must avoid is the one that has bitten here before: **renaming a
+layer's parameter references never touches its clips.** The clips animate blendshapes and stay
+exactly as they are; only the layer's read of the depth value moves. Backwards, that silences a
+channel or resizes a mesh.
+
+**Then a corpus, and an avatar with an always-visible head added to it.** There are zero of those
+in 84, which is exactly why this class kept reaching users instead of the regression run.
+
+*Supersedes the earlier entry here, which proposed waking everything Fury left switched off. That
+treats the symptom. There is no residue to wake if there is no residue.*
 
 ---
+
 
 ## The preview tells the truth about the game
 
