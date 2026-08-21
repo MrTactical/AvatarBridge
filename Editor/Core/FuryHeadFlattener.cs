@@ -55,6 +55,18 @@ namespace AvatarBridge
             {
                 if (copy == null || copy == head || head.IsChildOf(copy)) continue;
 
+                // Only while the real head still has a mesh of its own. The
+                // copy is redundant because ChilloutVR hides yours natively —
+                // but if a setup MOVED the head mesh here instead of copying
+                // it, deleting this takes the avatar's face with it.
+                if (!HeadStillHasAMesh(ctx, head, copy))
+                {
+                    ctx.Report.Approximated(Category, "Always-visible head kept",
+                        "It carries the only head mesh this avatar has, so it is not a spare copy " +
+                        "and removing it would take the face. Left exactly as found.");
+                    continue;
+                }
+
                 // Children first, and by index rather than by iterating the
                 // live collection: reparenting mutates it as you walk.
                 foreach (var child in copy.Cast<Transform>().ToList())
@@ -85,6 +97,18 @@ namespace AvatarBridge
                 "was off with it and stayed off. It now sits on the head bone it belonged on, at " +
                 $"the same place in the world, with {repointed} animation curve(s) repointed to " +
                 "follow.");
+        }
+
+        // Is a mesh weighted to the head bone somewhere OUTSIDE this copy?
+        static bool HeadStillHasAMesh(BridgeContext ctx, Transform head, Transform copy)
+        {
+            foreach (var skin in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (skin == null || skin.bones == null) continue;
+                if (skin.transform.IsChildOf(copy)) continue;
+                if (skin.bones.Any(b => b != null && (b == head || b.IsChildOf(head)))) return true;
+            }
+            return false;
         }
 
         // Curves addressing the old paths, moved to the new ones. A rename to
