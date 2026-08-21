@@ -69,7 +69,7 @@ namespace AvatarBridge
                 return;
             }
 
-            foreach (var tag in sender.collisionTags.Distinct())
+            foreach (var tag in WithSelfTwins(sender.collisionTags.Distinct()).ToList())
             {
                 var contactObject = CreateContactObject(AnchorOf(sender), "CVRPointer_" + tag,
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
@@ -1117,6 +1117,36 @@ namespace AvatarBridge
                 created++;
             }
             return created;
+        }
+
+        // Every penetration tag with its _SelfNotOnHips twin beside it.
+        //
+        // That suffix is the SELF channel, not a second name for the same
+        // thing: a socket's own trigger listens for the twin ALONE, so a tag
+        // carried without it answers everyone except the person wearing the
+        // avatar. Most sources ship both and are passed through unchanged;
+        // one that ships only the bare tag would convert into a socket that
+        // works for the room and not for its owner, which is the same bug
+        // the YAPS socket builder had.
+        //
+        // Only the penetration families. A Finger or Hand tag has no self
+        // channel and inventing one would cost contacts for nothing.
+        static IEnumerable<string> WithSelfTwins(IEnumerable<string> tags)
+        {
+            const string twin = "_SelfNotOnHips";
+            var all = tags.ToList();
+            var known = new HashSet<string>(all, System.StringComparer.Ordinal);
+            foreach (var tag in all)
+            {
+                yield return tag;
+                if (tag.EndsWith(twin, System.StringComparison.Ordinal)) continue;
+                if (!tag.StartsWith("TPS_", System.StringComparison.Ordinal)
+                    && !tag.StartsWith("SPSLL_", System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (known.Add(tag + twin)) yield return tag + twin;
+            }
         }
 
         static string PathOf(BridgeContext ctx, Transform t) => ctx.PathInTarget(t);
