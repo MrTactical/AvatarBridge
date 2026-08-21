@@ -206,10 +206,12 @@ namespace AvatarBridge
 #if AVATARBRIDGE_MAGICA
                     var magicaColliderCache = new Dictionary<VRCPhysBoneCollider, MagicaCloth2.ColliderComponent>();
                     var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
+                    var skinnedM = SkinnedBones(ctx);
                     foreach (var pb in physBones)
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain))
+                        if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain)
+                            || SkipSquishOnlyChain(ctx, chain) || SkipHelperRigChain(ctx, chain, skinnedM))
                         {
                             continue;
                         }
@@ -233,10 +235,12 @@ namespace AvatarBridge
                 case PhysicsTarget.DynamicBone:
 #if AVATARBRIDGE_DYNBONE
                     var dbColliderCache = new Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase>();
+                    var skinnedD = SkinnedBones(ctx);
                     foreach (var pb in physBones)
                     {
                         var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain))
+                        if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain)
+                            || SkipSquishOnlyChain(ctx, dbChain) || SkipHelperRigChain(ctx, dbChain, skinnedD))
                         {
                             continue;
                         }
@@ -302,6 +306,83 @@ namespace AvatarBridge
                 "by someone pulling that chain so its contact reaches a receiver, then without the " +
                 "mod the contact never fires and the whole feature is inert, with nothing visibly " +
                 "wrong anywhere.");
+        }
+
+        // Every bone any skinned mesh actually uses. Built once per run.
+        static HashSet<Transform> SkinnedBones(BridgeContext ctx)
+        {
+            var used = new HashSet<Transform>();
+            foreach (var skin in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (skin == null || skin.bones == null) continue;
+                foreach (var b in skin.bones)
+                {
+                    if (b != null) used.Add(b);
+                }
+            }
+            return used;
+        }
+
+        // A chain that moves nothing on its own: no mesh is weighted to any
+        // bone in it. Rigs like cake PB are built this way — a cascade of
+        // helper bones, each stage doing one job and feeding the next, with
+        // constraints copying the composed result onto the avatar's real
+        // bones.
+        //
+        // Converting each stage separately does not reproduce that. The
+        // cascade stops composing and the constraints faithfully copy a
+        // dozen solvers fighting, which lands on the mesh as deformation.
+        // The chain is recorded so a later pass, once constraints exist, can
+        // put ONE chain on the real bone it was driving.
+        static bool SkipHelperRigChain(BridgeContext ctx, PhysBoneChainData chain, HashSet<Transform> skinned)
+        {
+            if (chain.Root == null) return false;
+            foreach (var t in chain.Root.GetComponentsInChildren<Transform>(true))
+            {
+                if (skinned.Contains(t)) return false;
+            }
+
+            ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
+                "No mesh is skinned to any bone in this chain, so it moves nothing itself — it is one " +
+                "stage of a helper rig that drives the avatar's real bones through constraints. Stages " +
+                "like these compose in VRChat and cannot be reproduced by simulating each separately. " +
+                "A later pass puts one chain on the bone this was driving.");
+            ctx.HelperRigChains.Add(new BridgeContext.HelperRigChain
+            {
+                Root = chain.Root,
+                Bones = chain.Root.GetComponentsInChildren<Transform>(true).ToList(),
+                Pull = chain.Pull,
+                Spring = chain.Spring,
+                Stiffness = chain.Stiffness,
+                Gravity = chain.Gravity,
+                Immobile = chain.Immobile,
+                Name = chain.Root.name,
+            });
+            return true;
+        }
+
+        // A chain whose only motion was stretch and squish. Neither solver can
+        // lengthen a bone, so converting one builds a chain that SWINGS where
+        // the author asked for scale, and bones meant to stay put wander.
+        //
+        // Cake PB is the common case: its Squish chains are pull 1, spring 0,
+        // stiffness 0, max squish 1, and the squish itself is driven by the
+        // animator, which converts fine on its own. Chains with real spring or
+        // stiffness are left alone; they lose the squish and keep the swing
+        // they were also doing.
+        static bool SkipSquishOnlyChain(BridgeContext ctx, PhysBoneChainData chain)
+        {
+            if (chain.Root == null) return false;
+            if (chain.MaxStretch <= 0f && chain.MaxSquish <= 0f) return false;
+            if (chain.Spring > 0.01f || chain.Stiffness > 0.01f) return false;
+
+            ctx.Report.Skipped(Category, chain.Root.name,
+                $"Stretch and squish were all this chain did (max stretch {chain.MaxStretch:0.##}, max squish " +
+                $"{chain.MaxSquish:0.##}, spring {chain.Spring:0.##}, stiffness {chain.Stiffness:0.##}), and " +
+                "neither solver can lengthen a bone. Converting it would give these bones a swing the author " +
+                "never asked for, on top of whatever drives the scale. No cloth was made for it, so the " +
+                "animator keeps driving it exactly as before.");
+            return true;
         }
 
         static bool SkipConstraintDrivenChain(BridgeContext ctx, PhysBoneChainData chain)

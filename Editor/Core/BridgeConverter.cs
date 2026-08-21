@@ -135,6 +135,9 @@ namespace AvatarBridge
                     // and transforms have stopped moving; this pass
                     // reads live world poses.
                     Pass("Constraint scale relays", ConstraintScaleRelay.Run),
+                    // After the constraints, because the relays reading from a
+                    // dead helper rig do not exist until now.
+                    Pass("Helper rig cleanup", HelperRigCleanup.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
                     Pass("YAPS penetration system", YapsConverter.Run),

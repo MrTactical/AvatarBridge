@@ -38,6 +38,22 @@ namespace AvatarBridge
         public System.Collections.Generic.List<ConvertedPhysicsChain> ConvertedPhysicsChains =
             new System.Collections.Generic.List<ConvertedPhysicsChain>();
 
+        // A chain on bones no mesh is skinned to: a helper rig that drives
+        // the avatar's real bones through constraints rather than moving
+        // anything itself. Recorded when physics skips it, because the
+        // constraints that say WHICH real bone it drives do not exist until
+        // several passes later.
+        public class HelperRigChain
+        {
+            public Transform Root;                  // the helper chain's root
+            public System.Collections.Generic.List<Transform> Bones;
+            public float Pull, Spring, Stiffness, Gravity, Immobile;
+            public string Name;
+        }
+
+        public System.Collections.Generic.List<HelperRigChain> HelperRigChains =
+            new System.Collections.Generic.List<HelperRigChain>();
+
 #if VRC_SDK_VRCSDK3
         public VRCAvatarDescriptor SourceDescriptor;
 #endif
