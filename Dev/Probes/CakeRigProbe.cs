@@ -35,6 +35,11 @@ namespace AvatarBridge.Regression
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
 
+            // Before anything rig-specific, because the useful question after
+            // a deletion is whether it broke a reference, and by then the rig
+            // is gone.
+            Dangling(instance);
+
             var rig = instance.GetComponentsInChildren<Transform>(true)
                 .FirstOrDefault(t => t.name == rigName);
             if (rig == null)
@@ -97,6 +102,36 @@ namespace AvatarBridge.Regression
                 }
             }
 
+            // What deleting the rig would cost, and what it would break.
+            int total = instance.GetComponentsInChildren<Transform>(true).Length;
+            Debug.Log($"[Cake] rig is {underRig.Count} of {total} transform(s) on this avatar");
+
+            // A collider inside the rig handed to a chain that SURVIVED is
+            // the one thing that makes deleting unsafe.
+            int borrowed = 0;
+            foreach (var t in instance.GetComponentsInChildren<Transform>(true))
+            {
+                foreach (var c in t.GetComponents<Component>())
+                {
+                    if (c == null || c.GetType().Name != "MagicaCloth") continue;
+                    var sdata = c.GetType().GetProperty("SerializeData")?.GetValue(c);
+                    var list = sdata?.GetType().GetField("colliderCollisionConstraint")?.GetValue(sdata);
+                    var cols = list?.GetType().GetField("colliderList")?.GetValue(list)
+                        as System.Collections.IEnumerable;
+                    if (cols == null) continue;
+                    foreach (var o in cols)
+                    {
+                        var col = o as Component;
+                        if (col == null || !underRig.Contains(col.transform)) continue;
+                        Debug.Log($"[Cake] BORROWED  {t.name} uses collider \"{col.name}\" inside the rig");
+                        borrowed++;
+                    }
+                }
+            }
+            Debug.Log(borrowed == 0
+                ? "[Cake] no surviving cloth borrows a collider from the rig - safe to delete"
+                : $"[Cake] {borrowed} collider reference(s) into the rig would break");
+
             // Does anything ANIMATE a bone in the rig? A relay whose source
             // is animated still carries something once the rig's physics is
             // gone; one whose source is inert just copies a dead pose.
@@ -157,6 +192,33 @@ namespace AvatarBridge.Regression
             {
                 if (o is Transform t) yield return t;
             }
+        }
+
+        // A collider deleted while a surviving cloth still referenced it
+        // leaves a null in that cloth's list. This is what catches a deletion
+        // having quietly broken collision.
+        static void Dangling(GameObject instance)
+        {
+            int dangling = 0, held = 0;
+            foreach (var c in instance.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null || c.GetType().Name != "MagicaCloth") continue;
+                var sdata = c.GetType().GetProperty("SerializeData")?.GetValue(c);
+                var cc = sdata?.GetType().GetField("colliderCollisionConstraint")?.GetValue(sdata);
+                var cols = cc?.GetType().GetField("colliderList")?.GetValue(cc)
+                    as System.Collections.IEnumerable;
+                if (cols == null) continue;
+                foreach (var o in cols)
+                {
+                    held++;
+                    if (o == null || (o is UnityEngine.Object u && u == null))
+                    {
+                        Debug.Log($"[Cake] DANGLING collider reference on \"{c.name}\"");
+                        dangling++;
+                    }
+                }
+            }
+            Debug.Log($"[Cake] {held} collider reference(s) across cloths, {dangling} dangling");
         }
 
         static string Path(Transform t, Transform root)
