@@ -574,7 +574,7 @@ namespace AvatarBridge
                 }
             }
 
-            int wired = 0;
+            int wired = 0, lit = 0;
             var unwired = new List<Transform>();
             foreach (var socket in socketRoots)
             {
@@ -602,8 +602,10 @@ namespace AvatarBridge
                     }
                 }
                 string toggle = ToggleFor(ctx, socket);
-                if (toggle != null && paths.Count > 0 && AddLightToggle(ctx, toggle, paths))
+                bool startLit = lit < Mathf.Max(1, ctx.Settings.maxLightEmittingSockets);
+                if (toggle != null && paths.Count > 0 && AddLightToggle(ctx, toggle, paths, startLit))
                 {
+                    if (startLit) lit++;
                     wired++;
                 }
                 else
@@ -779,7 +781,7 @@ namespace AvatarBridge
         }
 
         // Two states, not a blend tree: m_IsActive is a switch.
-        static bool AddLightToggle(BridgeContext ctx, string parameter, List<string> lightPaths)
+        static bool AddLightToggle(BridgeContext ctx, string parameter, List<string> lightPaths, bool startLit)
         {
             var controller = ctx.MergedController;
             var declared = controller.parameters.FirstOrDefault(p => p.name == parameter);
@@ -805,15 +807,23 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(off, controller);
             }
 
-            // Default On. If the parameter never arrives the sockets stay
-            // lit and contending, rather than all going dark.
+            // Default On only while there is room. A mesh gets four vertex
+            // light slots and a socket takes two, so an avatar that lights
+            // every socket at once hands the plug four FRONT lights (range
+            // 0.453, the largest it can see) and no roots, which is not a
+            // socket anything can enter. Eleven sockets defaulting to lit is
+            // twenty-two lights fighting over four places.
+            //
+            // Past the cap they start dark and their own menu entry lights
+            // them, which is what the entry is for. An avatar with one socket
+            // behaves exactly as before.
             var onState = machine.AddState("On");
             onState.writeDefaultValues = false;
             onState.motion = on;
             var offState = machine.AddState("Off");
             offState.writeDefaultValues = false;
             offState.motion = off;
-            machine.defaultState = onState;
+            machine.defaultState = startLit ? onState : offState;
 
             var toOn = offState.AddTransition(onState);
             var toOff = onState.AddTransition(offState);
