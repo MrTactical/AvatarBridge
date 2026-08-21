@@ -488,27 +488,45 @@ namespace AvatarBridge
             // enable service, which is deleted. Wake from each light up to
             // the baked socket, and no further: what sits above it is the
             // author's, on or off as they left it.
+            // Every object path a clip can switch on or off. An object in
+            // here is the menu's to control; one that is not, and is off, is
+            // off for good.
+            var switchable = new HashSet<string>(System.StringComparer.Ordinal);
+            if (ctx.MergedController != null)
+            {
+                foreach (var clip in ctx.MergedController.animationClips)
+                {
+                    if (clip == null) continue;
+                    foreach (var b in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.propertyName == "m_IsActive") switchable.Add(b.path);
+                    }
+                }
+            }
+
             int woken = 0;
             foreach (var socket in socketRoots)
             {
                 foreach (var light in socket.GetComponentsInChildren<Light>(true))
                 {
-                    // Past the socket too, while the object above it is one
-                    // VRCFury made. "vrcfAlwaysVisibleHead" is the case that
-                    // matters: Fury generates a second head, leaves it OFF,
-                    // and lets its own service switch it on. A socket baked
-                    // onto that head is switched off with it, forever, once
-                    // the service is deleted — no contacts, no lights, no
-                    // gizmo, and nothing to see anywhere saying why.
+                    // All the way to the avatar root, waking anything STUCK
+                    // off and leaving anything a toggle controls alone.
                     //
-                    // An object the AUTHOR named still stops the climb. An
-                    // outfit toggled off is a decision; Fury's plumbing is not.
-                    for (var at = light.transform;
-                         at != null && at != ctx.Target.transform
-                         && (at.IsChildOf(socket) || at == socket || FuryMade(at));
+                    // Everything above a baked socket is off: Fury switches
+                    // the socket branch off, its own second head off, and
+                    // "Original Object" off, and leaves its enable service to
+                    // sort it out. That service is deleted here. Stopping at
+                    // the socket, or at the first object Fury did not name,
+                    // leaves a link in that chain off and the socket dark —
+                    // which is two evenings of a user's time so far.
+                    //
+                    // An outfit the author toggled off is different: a clip
+                    // can switch it, so the menu still owns it and it is left
+                    // exactly as found. Only what NOTHING can switch is woken.
+                    for (var at = light.transform; at != null && at != ctx.Target.transform;
                          at = at.parent)
                     {
-                        if (!at.gameObject.activeSelf)
+                        if (!at.gameObject.activeSelf && !switchable.Contains(ctx.PathInTarget(at)))
                         {
                             at.gameObject.SetActive(true);
                             woken++;
@@ -851,12 +869,6 @@ namespace AvatarBridge
                 .Any(l => l != null && Digit(l.range) >= 1 && Digit(l.range) <= 6);
             return !tagged && !lit;
         }
-
-        // An object VRCFury generated rather than one the author placed.
-        // Fury stamps its own with "[VF123] " or a "vrcf" prefix.
-        static bool FuryMade(Transform t)
-            => t != null && (t.name.StartsWith("vrcf", System.StringComparison.Ordinal)
-                             || t.name.StartsWith("[VF", System.StringComparison.Ordinal));
 
         // Socket deform. A shape driven by both animator and shader applies
         // twice, so with no published depth (-1) the shader reads a tracker light.
