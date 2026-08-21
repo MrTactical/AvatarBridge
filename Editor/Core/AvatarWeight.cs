@@ -367,8 +367,10 @@ namespace AvatarBridge
             if (crowded.Count > 0)
             {
                 Add(r, 0, string.Join("; ", crowded.Select(p => $"{p.Value} solvers under \"{p.Key}\"")) +
-                          ". One solver can hold many root bones, so these could merge — unless a toggle " +
-                          "switches them apart, which is what to check before doing it.", 2);
+                          ". Named for the count, not as something to fix. Merging them would simulate the " +
+                          "same transforms under fewer components, so it buys the solver overhead and " +
+                          "nothing else, and one solver holds ONE set of settings for every bone it " +
+                          "carries — chains tuned apart would be retuned to whichever won.", 2);
             }
 
             if (r.Atlas.Count > 0)

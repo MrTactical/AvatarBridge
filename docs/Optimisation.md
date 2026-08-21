@@ -317,14 +317,31 @@ cloth's list is what lets somebody else's hair collide with this body. There is 
 evidence that can prove one unused, and deleting one breaks something that only appears with
 another person in the room.
 
-Merging is reported, not performed: solvers crowded under one parent are named, since one solver
-can hold many roots. A toggle that switches them apart is what makes a merge wrong, and that is
-the thing to check first.
+**Merging is off the table too, and the measurement is why.** `ClothMergeProbe` counted the
+ceiling across the corpus on both gates a merge needs: nothing switching two solvers apart, and
+settings that already agree. **1189 MagicaCloth solvers, 203 mergeable — 17%.** Settings is the
+tighter gate in **73 of 73** crowded parents; the toggle gate, the one this plan said to check
+first, never binds at all. Aeromorph is the shape of it: 10 solvers under a single toggle state,
+7 distinct settings groups, 3 merges available.
 
-18 cloth solvers an avatar at 90 Hz is the largest silent CPU cost in a converted avatar. Chains
-that share a preset and a bone parent can merge; colliders that cannot reach any particle can go;
-the toe and finger skips already exist as settings. Wants measurement first: particles, not
-component count, is the number that matters.
+The cause is our own conversion doing the right thing. Each solver is tuned from its source
+PhysBone individually, particle radius included, measured per chain from the mesh it moves —
+Lanacan's report shows `0.02 → 0.021` off a 10,676-vertex sample. Chains measured individually
+do not fingerprint alike, so they cannot share one settings block.
+
+And 17% of the solver COUNT is not 17% of the cost. This section already said the number that
+matters is particles, and merging two solvers simulates exactly the same transforms under one
+component: it buys the per-solver overhead and nothing else. Against that, a wrong merge retunes
+a chain to whichever settings won — hair that moves like a skirt, no error, found in game. The
+probe's own fingerprint skips properties whose path contains `root` or `collider`, so a genuine
+tuning field named that way would make two different chains look identical; every error in that
+list runs toward merging things that should not merge.
+
+Small gain on a constant, silent failure, and a gate that would need hardening before it could be
+trusted. Reported, not recommended, and the card says so rather than inviting anyone to do it by
+hand.
+
+What is left in this phase is the toe and finger skips, which already exist as settings.
 
 ## Phase 5 — report only
 
