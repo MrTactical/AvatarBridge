@@ -942,6 +942,22 @@ namespace AvatarBridge
                     "Everything else about them is untouched and they still work as sockets — " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
+            if (socketRoots.Count > 0)
+            {
+                // Conversion carries a socket across; it does not finish one.
+                // A user reported a converted mouth socket with no gizmo that
+                // did nothing in game, and nothing anywhere told them a step
+                // was left. The plug bakes here and the socket does not, so
+                // saying so is the difference between working and not.
+                ctx.Report.Approximated(Category,
+                    $"{socketRoots.Count} socket(s) still need finishing in the YAPS tool",
+                    "Converting moves a socket over — its contacts, its marker lights and the " +
+                    "reactions its author animated. It does not BUILD one. Open Tools > YAPS > " +
+                    "Setup, drop this converted avatar in, and press Build: that is what gives a " +
+                    "socket its gizmo in the scene and makes it answer a plug in game. Until then " +
+                    "the socket is carried but not finished, which looks like nothing happening " +
+                    "at all.");
+            }
         }
 
         // The renderer wearing this socket's mesh, usually a parent: authors

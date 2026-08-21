@@ -142,8 +142,10 @@ actually running.
 - **Penetration comes across working** — DPS, TPS and SPS become
   [YAPS](#yaps--penetration-that-works-in-chilloutvr): the plug bends into sockets and sockets
   open, in game, for everyone, with the author's tuning carried over — and it reads and is read by
-  every system already on the platform. The **YAPS tool** (*Tools ▸ YAPS ▸ Setup*) sets it up on
-  any ChilloutVR avatar or prop, VRChat history or not.
+  every system already on the platform. **Converting carries the sockets over; finish them in the
+  YAPS tool** (*Tools ▸ YAPS ▸ Setup*, drop the converted avatar in, Build) — that is what gives a
+  socket its gizmo in the scene and makes it answer a plug in game. The same tool sets penetration
+  up on any ChilloutVR avatar or prop, VRChat history or not.
 - **Sync budget freed** — GoGo Loco removed, and the haptics stacks kept but made local, so their
   contacts cost nothing of ChilloutVR's 3200 bits instead of most of them.
 - **Face tracking, your way** — native `CVRFaceTracking`, a bundled rig with eye tracking wired
