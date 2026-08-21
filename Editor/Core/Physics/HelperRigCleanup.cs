@@ -127,7 +127,7 @@ namespace AvatarBridge
             foreach (var top in tops)
             {
                 if (top == null) continue;
-                if (Borrowed(ctx, top))
+                if (Borrowed(ctx, top) || CarriesContacts(top))
                 {
                     kept++;
                     continue;
@@ -151,9 +151,9 @@ namespace AvatarBridge
             if (kept > 0)
             {
                 ctx.Report.Approximated(Category, kept + " helper rig(s) left in place",
-                    "A cloth that survived conversion borrows a collider from inside them, so deleting " +
-                    "would have left that chain with a null collider and no collision, which nobody would " +
-                    "notice until their hair went through their shoulder. The rig is inert either way.");
+                    "Either a cloth that survived borrows a collider from inside them, or they carry contacts an " +
+                    "avatar still needs. Deleting would have left a chain with no collision, or a trigger " +
+                    "nobody can touch any more. The rig is inert either way; the transforms are the price.");
             }
             Report(ctx, dropped, removedBones, removedCurves, where);
         }
@@ -162,6 +162,17 @@ namespace AvatarBridge
         // anything under it deforms a mesh.
         static bool MovesMesh(Transform t, HashSet<Transform> skinned)
             => t.GetComponentsInChildren<Transform>(true).Any(skinned.Contains);
+
+        // Contacts living inside the rig. Cake PB keeps its squish triggers
+        // in there, and the corpus caught this: BHFBunny went from five
+        // contacts to none, CowBotSFW from two to none. The rig's physics is
+        // dead but a trigger in it is still what a hand touches, so the whole
+        // rig stays rather than lose them. Transforms are cheaper than a
+        // feature that silently stops responding.
+        static bool CarriesContacts(Transform top)
+            => top.GetComponentsInChildren<ABI.CCK.Components.CVRPointer>(true).Any(c => c != null)
+               || top.GetComponentsInChildren<ABI.CCK.Components.CVRAdvancedAvatarSettingsTrigger>(true)
+                   .Any(c => c != null);
 
         // Does any cloth OUTSIDE this rig reference a collider inside it?
         // Collider auto-assign hands a chain whatever it could swing into,
