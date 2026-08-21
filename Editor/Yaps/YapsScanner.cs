@@ -355,6 +355,35 @@ namespace AvatarBridge
 
             if (!f.HasAxis) f.Notes.Add("no axis — plugs will aim at it rather than thread it");
             if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights — DPS plugs and light-only plugs cannot see it");
+
+            // Switched off is the difference between the preview and the
+            // game. The preview reads transforms and bends a plug whatever
+            // state anything is in; the game needs these components live.
+            // A socket that previews perfectly and does nothing in game is
+            // this, and it cost two people three evenings to find.
+            int darkPointers = f.Pointers.Count(p => p != null
+                && (!p.enabled || !p.gameObject.activeInHierarchy));
+            if (darkPointers > 0)
+            {
+                f.Notes.Add($"{darkPointers} of its pointers are switched off — nothing can find it in " +
+                            "game, however well it previews");
+            }
+            int darkLights = f.Lights.Count(l => l != null
+                && (!l.enabled || !l.gameObject.activeInHierarchy));
+            if (darkLights > 0)
+            {
+                f.Notes.Add($"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+            }
+            if (f.Root != null)
+            {
+                int deaf = f.Root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true)
+                    .Count(t => t != null && (!t.enabled || !t.gameObject.activeInHierarchy));
+                if (deaf > 0)
+                {
+                    f.Notes.Add($"{deaf} of its receivers are switched off — it says where it is and " +
+                                "never notices a plug arrive, which previews fine and does nothing in game");
+                }
+            }
         }
 
         static float StatedLength(Material m, YapsLegacyMap.Origin origin, Renderer renderer = null)
