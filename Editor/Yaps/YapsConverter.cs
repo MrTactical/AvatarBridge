@@ -504,6 +504,40 @@ namespace AvatarBridge
                 }
             }
 
+            // Everything UNDER a socket, not just the branch its lights sit
+            // on. A socket broadcasts through pointers and LISTENS through
+            // receivers, and Fury's OverlappingContactsFixService switches
+            // every receiver off and turns the right ones back on itself.
+            // That service is deleted here, so the listeners stay off: the
+            // socket says where it is and never notices a plug arrive, which
+            // reads in game as a socket that does nothing at all.
+            int listeners = 0;
+            foreach (var socket in socketRoots)
+            {
+                foreach (var t in socket.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.gameObject.activeSelf || switchable.Contains(ctx.PathInTarget(t))) continue;
+                    t.gameObject.SetActive(true);
+                    listeners++;
+                }
+                foreach (var trigger in socket
+                             .GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
+                {
+                    if (trigger == null || trigger.enabled) continue;
+                    trigger.enabled = true;
+                    listeners++;
+                }
+            }
+            if (listeners > 0)
+            {
+                ctx.Report.Converted(Category, $"{listeners} socket listener(s) switched back on",
+                    "VRCFury switches every contact receiver off and lets its own overlap service " +
+                    "turn the right ones back on; that service is deleted here. Left as baked, a " +
+                    "socket broadcasts where it is and never notices a plug arriving — the pointers " +
+                    "show up in game and nothing happens. Anything a menu toggle owns was left " +
+                    "alone.");
+            }
+
             int woken = 0;
             foreach (var socket in socketRoots)
             {
