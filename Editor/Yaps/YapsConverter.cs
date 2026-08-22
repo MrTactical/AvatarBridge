@@ -492,18 +492,9 @@ namespace AvatarBridge
         // and is left alone.
         static void WireSocketToggles(BridgeContext ctx, List<Transform> socketRoots)
         {
-            var switchable = new HashSet<string>(StringComparer.Ordinal);
-            if (ctx.MergedController != null)
-            {
-                foreach (var clip in ctx.MergedController.animationClips)
-                {
-                    if (clip == null) continue;
-                    foreach (var b in UnityEditor.AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (b.propertyName == "m_IsActive") switchable.Add(b.path);
-                    }
-                }
-            }
+            // Only layers that can assert count as owning a path; Fury's
+            // weight-zero exclusivity layers do not.
+            var switchable = YapsSocketRebuilder.Switchable(ctx);
 
             int wired = 0;
             var unwired = new List<string>();

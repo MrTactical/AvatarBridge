@@ -101,18 +101,7 @@ namespace AvatarBridge
         // it keys off the socket itself.
         public static void Wake(BridgeContext ctx, List<Transform> socketRoots)
         {
-            var switchable = new HashSet<string>(StringComparer.Ordinal);
-            if (ctx.MergedController != null)
-            {
-                foreach (var clip in ctx.MergedController.animationClips)
-                {
-                    if (clip == null) continue;
-                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (b.propertyName == "m_IsActive") switchable.Add(b.path);
-                    }
-                }
-            }
+            var switchable = Switchable(ctx);
 
             int woken = 0;
             foreach (var socket in socketRoots)
@@ -145,6 +134,57 @@ namespace AvatarBridge
             }
         }
 
+        // Every object path a clip can switch — counting only layers that
+        // can actually assert. Fury merges its socket exclusivity at
+        // weight zero, and a path animated ONLY by a dead layer is not
+        // controllable by anything; treating it as menu-owned left sockets
+        // dark, which is the exact bug the rebuild exists to end. The
+        // first layer always runs regardless of its stated weight.
+        public static HashSet<string> Switchable(BridgeContext ctx)
+        {
+            var paths = new HashSet<string>(StringComparer.Ordinal);
+            if (ctx.MergedController == null) return paths;
+            var layers = ctx.MergedController.layers;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (i > 0 && layers[i].defaultWeight <= 0f) continue;
+                if (layers[i].stateMachine == null) continue;
+                foreach (var clip in ClipsOf(layers[i].stateMachine))
+                {
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.propertyName == "m_IsActive") paths.Add(b.path);
+                    }
+                }
+            }
+            return paths;
+        }
+
+        static IEnumerable<AnimationClip> ClipsOf(AnimatorStateMachine machine)
+        {
+            foreach (var s in machine.states)
+            {
+                foreach (var clip in ClipsOf(s.state.motion)) yield return clip;
+            }
+            foreach (var child in machine.stateMachines)
+            {
+                foreach (var clip in ClipsOf(child.stateMachine)) yield return clip;
+            }
+        }
+
+        static IEnumerable<AnimationClip> ClipsOf(Motion motion)
+        {
+            if (motion is AnimationClip clip)
+            {
+                yield return clip;
+            }
+            else if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children)
+                    foreach (var deeper in ClipsOf(child.motion)) yield return deeper;
+            }
+        }
+
         static bool ListensForTips(CVRAdvancedAvatarSettingsTrigger t)
         {
             return t != null && t.allowedTypes != null
@@ -170,11 +210,18 @@ namespace AvatarBridge
                 spec.Pointers++;
                 RemoveHost(p.transform, root, p);
             }
-            foreach (var t in root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true).ToList())
+            // Only a channel that can be repointed is stripped. Several
+            // parameters cannot collapse to one without changing what
+            // plays when, so those sockets keep their triggers and their
+            // layers exactly as authored.
+            if (spec.DepthParams.Count <= 1)
             {
-                if (!ListensForTips(t)) continue;
-                spec.Triggers++;
-                RemoveHost(t.transform, root, t);
+                foreach (var t in root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true).ToList())
+                {
+                    if (!ListensForTips(t)) continue;
+                    spec.Triggers++;
+                    RemoveHost(t.transform, root, t);
+                }
             }
             // Fury's WorldSpace plumbing: constraints that pinned the
             // stripped lights. Below the root only — a constraint ON the
@@ -233,8 +280,12 @@ namespace AvatarBridge
             // half still carry default fields hands out too many slots.
             foreach (var pair in specs)
             {
-                var socket = pair.Key != null ? pair.Key.GetComponent<YapsSocket>() : null;
-                if (socket == null) continue;   // the bake path reported its own failure
+                if (pair.Key == null) continue;
+                var socket = pair.Key.GetComponent<YapsSocket>();
+                // A failed bake reported itself, but the socket was already
+                // stripped, and lights and pointers need no bake. Rebuild
+                // the rig anyway or the failure costs more than it used to.
+                if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
             }
