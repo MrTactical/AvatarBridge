@@ -173,9 +173,9 @@ namespace AvatarBridge
         // frame from the ranges in reach, and a socket takes two. Every lit
         // socket therefore competes for those slots on every avatar standing
         // near it, not just its own, and a crowd of them makes the winners
-        // change frame to frame. The converter caps a converted avatar at
-        // two; a socket built here is capped the same way. Holes first, then
-        // rings, then hierarchy order, so a rebuild keeps the same two.
+        // change frame to frame. The converter caps a converted avatar the
+        // same way a socket built here is capped. Holes first, then rings,
+        // then hierarchy order, so a rebuild keeps the same ones.
         public static bool WithinLightCap(YapsSocket socket)
         {
             if (socket == null) return false;
@@ -183,17 +183,23 @@ namespace AvatarBridge
             return lit.IndexOf(socket) < Places(socket);
         }
 
-        // Four slots, two to a socket, and a plug's tracker light takes one
-        // of the four before any socket does. Two sockets and a plug is over
-        // the budget already, which is how an avatar with only two sockets
-        // still made the slots churn.
+        // Four slots, two to a socket, and a tracker light takes one of the
+        // four before any socket does. The tracker that matters is rarely on
+        // this avatar: it belongs to the prop or the partner entering the
+        // socket, and there is no way to count those at build time. So the
+        // budget always reserves one slot for a tracker it cannot see.
+        //
+        // Getting this wrong is what broke holes and left rings working. The
+        // tracker outranks every marker at 0.4930, a front is 0.4530 and a
+        // ring root 0.4230, so with two sockets lit the fifth candidate is
+        // always the hole root at 0.4130 and Unity drops exactly that one.
         static int Places(YapsSocket socket)
         {
             var avatar = socket.GetComponentInParent<CVRAvatar>();
             var root = avatar != null ? avatar.transform : socket.transform.root;
             int trackers = root.GetComponentsInChildren<YapsPlug>(true)
                 .Count(p => p != null && p.emitTipLight);
-            int places = (4 - Mathf.Min(trackers, 2)) / 2;
+            int places = (4 - Mathf.Clamp(trackers, 1, 2)) / 2;
             return Mathf.Clamp(places, 1, BridgeSettings.DefaultMaxLightEmittingSockets);
         }
 
@@ -218,13 +224,16 @@ namespace AvatarBridge
             var kept = Lit(socket).Take(places).Select(s => s.name);
             return "marker lights left off: this avatar already has " +
                    $"{places} socket(s) carrying them ({string.Join(", ", kept)}). A mesh gets " +
-                   "four vertex light slots, a socket needs two of them and a plug's tracker " +
-                   "takes one, and Unity fills the slots by range. Past that a plug sees four " +
-                   "roots and no fronts, or four fronts and no roots, and neither is a socket " +
-                   "it can enter: measured in game as an approach angle that flipped sides and " +
-                   "worked from neither. Plugs built by this toolkit find sockets through " +
-                   "contacts and do not need the lights; only old DPS plugs do. Untick \"Emit " +
-                   "marker lights\" on a socket to hand its place to another.";
+                   "four vertex light slots, a socket needs two of them, and the tracker light " +
+                   "of whatever enters the socket takes a third. That tracker is usually on a " +
+                   "prop or on the other person, so it cannot be counted here and a slot is " +
+                   "always held back for it. Unity fills the slots by range and the hole root " +
+                   "is the lowest range in the protocol, so it is the first thing dropped: an " +
+                   "avatar over the budget loses its holes while its rings keep working. Past " +
+                   "that a plug sees roots with no fronts, or fronts with no roots, and " +
+                   "neither is a socket it can enter. Plugs built by this toolkit find sockets " +
+                   "through contacts and do not need the lights; only old DPS plugs do. Untick " +
+                   "\"Emit marker lights\" on a socket to hand its place to another.";
         }
 
         // Lights and pointers as children, replacing what it built before.

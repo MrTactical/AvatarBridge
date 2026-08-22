@@ -161,7 +161,13 @@ namespace AvatarBridge
         public int maxLightEmittingSockets = DefaultMaxLightEmittingSockets;
         // The toolkit builds sockets outside a conversion and caps them the
         // same way, so the number lives here once.
-        internal const int DefaultMaxLightEmittingSockets = 2;
+        //
+        // One, not two. The third slot belongs to the tracker light of the
+        // prop or partner entering the socket, which lives on content this
+        // avatar cannot see at build time. Two lit sockets plus that tracker
+        // is five lights for four slots, and Unity drops the lowest range,
+        // which is always the hole root. Raising this brings that back.
+        internal const int DefaultMaxLightEmittingSockets = 1;
         // How far the smoothed channel value may move per frame. Lower is a
         // heavier plug. Only the channel is buffered.
         [Range(0.01f, 0.5f)]

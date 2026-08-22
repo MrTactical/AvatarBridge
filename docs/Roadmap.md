@@ -116,10 +116,18 @@ sender touched it last, so two plugs fight over the depth instead of the deepest
 Socket-side, no extra sync, and it can ship on its own.
 
 **What the platform gives and charges for.** Unity hands a mesh four vertex-light slots and a
-socket takes two, so the light path carries exactly two sockets for free — a portal pair is
-two sockets, so the headline case can cost nothing. The contact channel is where bits get
-expensive: eight values per socket, 96–288 bits per plug by tier, doubled by a second socket.
-Give socket two its own lower tier (engagement and position, orientation dropped first).
+socket takes two — but the third slot is spoken for by the tracker light of whatever enters the
+socket, and that tracker lives on a prop or on the other person, so it can never be counted at
+build time. **The light path therefore carries exactly ONE socket, not two.** Two lit sockets
+plus a tracker is five lights for four slots, and Unity fills by range, so the casualty is
+always the lowest range in the protocol: the hole root at 0.4130, behind a ring root at 0.4230
+and two fronts at 0.4530, with the tracker on top at 0.4930. An avatar over the budget loses its
+holes and keeps its rings, which is exactly how this reached us. A portal pair costs two sockets
+and so cannot ride the light path at all; it needs contacts or a script.
+
+The contact channel is where bits get expensive: eight values per socket, 96–288 bits per plug
+by tier, doubled by a second socket. Give socket two its own lower tier (engagement and
+position, orientation dropped first).
 
 Socket depth stays one synced parameter per socket. That is deliberate: sharing a slot
 between sockets assumes one is engaged at a time, which is exactly the assumption
