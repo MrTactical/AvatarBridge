@@ -96,6 +96,10 @@ honest about being a preview.
 
 ## YAPS 5: the plug follows a path, not a point
 
+*The other half of YAPS 5 — how a plug FINDS a socket — lives in `YAPS5.md`, which gathers every
+transport, every measured limit, and the order they get built in. This section is what the plug
+does once found.*
+
 Today `yaps_resolve.cginc` holds exactly one socket — one position, one forward, one
 engagement, chosen as the single best candidate. Give it an **ordered list of sockets with
 arc-length ranges** and three of the four things on the wishlist fall out of one change:
