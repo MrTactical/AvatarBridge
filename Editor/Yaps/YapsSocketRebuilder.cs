@@ -62,7 +62,7 @@ namespace AvatarBridge
                 }
                 foreach (var t in root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
                 {
-                    if (!ListensForTips(t)) continue;
+                    if (!ListensForTips(t) || IsHaptics(t)) continue;
                     foreach (var task in t.stayTasks)
                     {
                         if (!string.IsNullOrEmpty(task.settingName) && !spec.DepthParams.Contains(task.settingName))
@@ -191,6 +191,23 @@ namespace AvatarBridge
                 && t.allowedTypes.Any(a => TipTypes.Contains(a));
         }
 
+        // OGB and its kin read plug tips too, so a haptics receiver the
+        // user chose to keep looks exactly like a depth trigger to the
+        // tip filter. Its parameters say what it is. Kept in step with
+        // SystemStripper.HapticsParamPrefixes, which cannot be referenced
+        // here: the stripper only exists when the VRChat SDK does.
+        static readonly string[] HapticsPrefixes = { "OGB", "pcs/", "WH_" };
+
+        static bool IsHaptics(CVRAdvancedAvatarSettingsTrigger t)
+        {
+            IEnumerable<string> names = t.stayTasks.Select(s => s.settingName)
+                .Concat(t.enterTasks.Select(s => s.settingName))
+                .Concat(t.exitTasks.Select(s => s.settingName));
+            return names.Any(n => n != null && HapticsPrefixes
+                .Any(p => n.StartsWith(p, StringComparison.Ordinal)
+                          || n.StartsWith("#" + p, StringComparison.Ordinal)));
+        }
+
         // Fury's rig off the subtree: protocol lights, socket-role
         // pointers, and the depth triggers whose parameters were just
         // recorded. The renderer, the root and anything user-made stay.
@@ -218,7 +235,7 @@ namespace AvatarBridge
             {
                 foreach (var t in root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true).ToList())
                 {
-                    if (!ListensForTips(t)) continue;
+                    if (!ListensForTips(t) || IsHaptics(t)) continue;
                     spec.Triggers++;
                     RemoveHost(t.transform, root, t);
                 }
@@ -339,6 +356,12 @@ namespace AvatarBridge
                         .Replace("/Depth", n.ToString() + "/Depth");
                 }
                 taken.Add(wanted);
+                // The sync choice is the wearer's setting, same as before
+                // the rebuild: local and free by default, synced at 32
+                // bits a socket when they ask the room to see the shapes.
+                // The setting worked by matching Fury's names, which the
+                // repoint erases, so it is honored here by the prefix.
+                if (!ctx.Settings.syncSocketDepthForOthers) wanted = "#" + wanted;
                 string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController, wanted);
                 if (spec.DepthParams.Count == 1)
                 {

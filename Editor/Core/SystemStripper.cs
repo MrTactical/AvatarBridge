@@ -41,6 +41,7 @@ namespace AvatarBridge
         // routinely carries a hundred of these, so two of them in one place
         // can spend the room's budget and stop everyone's contacts, YAPS's
         // own included. Local costs no sync bits; it was never free.
+        // YapsSocketRebuilder carries a copy: it compiles without the VRChat SDK.
         static readonly string[] HapticsParamPrefixes = { "OGB", "pcs/", "WH_" };
         static readonly string[] HapticsPointerTypePrefixes = { "OGB", "PCS" };
 
