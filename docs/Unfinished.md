@@ -27,8 +27,6 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
   socket that deforms. Both classes reached users precisely because the corpus could not.
 - **Pointer capping**: whether pointers should be capped the way marker lights now are — raised
   in the optimisation work (see `archive/Optimisation.md`), never decided.
-- **Regression evidence for testers**: the HTML report from the renovation plan — a digest a
-  tester can read — was agreed and never started.
 - **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
   which was skipped on purpose.
 
