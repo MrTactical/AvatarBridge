@@ -360,6 +360,17 @@ namespace AvatarBridge.Regression
                 return changes.Count;
             }
 
+            // The run as a page a tester can read, beside the digests.
+            try
+            {
+                string page = RegressionReport.Write(BaselineDir, CurrentDir, Root + "/report.html", label);
+                sb.AppendLine($"  report: {page}");
+            }
+            catch (Exception e)
+            {
+                sb.AppendLine($"  report failed: {e.GetType().Name}: {e.Message}");
+            }
+
             Debug.Log(sb.ToString());
             return changes.Count;
         }
