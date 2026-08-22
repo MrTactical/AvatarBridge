@@ -61,14 +61,21 @@ namespace AvatarBridge
         // --- names ------------------------------------------------------------
         // Named after the bone, so a menu of a dozen sockets reads.
 
-        static readonly string[] DefaultSocketNames = { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket" };
+        static readonly string[] DefaultSocketNames =
+            { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket", "BakedSpsSocket" };
 
         // The bone a socket or plug hangs from: its parent, through a YAPS
-        // folder, and nothing when that is the avatar itself.
+        // folder and through VRCFury's wrappers, and nothing when that is
+        // the avatar itself. A converted socket sits in
+        // "[VF80] Blowjob/Original Object/BakedSpsSocket", and a label
+        // built from a wrapper told the wearer nothing about which hole
+        // their menu was pointing at.
         public static string BoneOf(Transform t, CVRAvatar avatar)
         {
             var at = t != null ? t.parent : null;
-            while (at != null && (at.name == "YAPS" || at.name == "YAPS Sockets")) at = at.parent;
+            while (at != null && (at.name == "YAPS" || at.name == "YAPS Sockets"
+                   || at.name == "Original Object" || DefaultSocketNames.Contains(at.name)))
+                at = at.parent;
             if (at == null) return null;
             if (avatar != null && at == avatar.transform) return null;
             if (at.parent == null) return null;
@@ -78,12 +85,18 @@ namespace AvatarBridge
         public static string LabelFor(YapsSocket socket)
         {
             if (socket == null) return "YAPS socket";
-            string bone = BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>());
+            // Fury's numbering is noise; "Blowjob" is the author's word
+            // for it and the one the wearer knows.
+            string bone = YapsScanner.StripFuryId(
+                BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>()));
             string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
-            if (bone == null) return socket.name;
+            // The kind is always said: a menu row the wearer cannot tell
+            // hole from ring by is a menu row they have to test in game.
+            if (string.IsNullOrEmpty(bone)) return $"{socket.name} ({kind})";
             if (DefaultSocketNames.Contains(socket.name)) return $"{bone} {kind}";
-            // A name that already says where it is says it once.
-            return socket.name.Contains(bone) ? socket.name : $"{socket.name} ({bone})";
+            return socket.name.Contains(bone)
+                ? $"{socket.name} ({kind})"
+                : $"{socket.name} ({bone} {kind})";
         }
 
         // The default-named socket object renamed after its bone, so the
@@ -92,6 +105,10 @@ namespace AvatarBridge
         public static string RenameToLabel(YapsSocket socket, CVRAvatar avatar)
         {
             if (socket == null || !DefaultSocketNames.Contains(socket.name)) return null;
+            // Never a converted socket: the conversion's clips - the
+            // lighthouse, the wired toggles - animate paths through it,
+            // and ToggledBy only sees clips that switch the object itself.
+            if (socket.name == "BakedSpsSocket") return null;
             string label = LabelFor(socket);
             if (label == socket.name) return null;
             if (ToggledBy(socket.gameObject, avatar) != null) return null;
