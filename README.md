@@ -2059,11 +2059,13 @@ Work down the list; the first that fits is usually it.
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*: black means nothing found the socket, green the contact channel did, yellow a marker light
   did. Black with a socket right there means neither transport reached the plug.
-- **Is the socket lit?** On a converted avatar each socket's marker lights are wired to the menu
-  toggle that names it, so a socket you haven't switched on emits nothing a DPS-style plug can
-  read. Switch it on. Unity gives a mesh **four** vertex-light slots and a socket takes two, so with
-  several sockets lit at once a plug sees the two nearest its bounds — a hand-held prop at the
-  wrist can lose the Handjob pair to a lit torso socket. Try the socket alone.
+- **Is the socket on, and is it the lit one?** On a converted avatar the menu toggle that names
+  a socket switches the whole socket — lights, pointers and depth trigger together — so a socket
+  you haven't switched on says nothing on any channel. Switch it on. And only **one** socket
+  carries marker lights at all (holes first): Unity gives a mesh four vertex-light slots, a
+  socket takes two, and the tracker of whatever enters takes a third, so a second lit socket
+  is what used to break holes while rings kept working. A DPS-style plug can only find the
+  socket that carries them; everything else is contact-channel only.
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
   alone. A converted avatar has that channel; a plug built with the YAPS tool reads lights only,
   and a prop has one only if you added it. The report and the tool both say which a plug has.

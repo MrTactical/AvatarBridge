@@ -11,12 +11,17 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
-1. **The rebuild** (first section below) — the trunk everything else hangs off. The
-   authority-gate test that used to sit above it ran 2026-08-22 and DISPROVED the gate: props
-   work cross-avatar, both clients, partner on stable — see `YAPS5.md`. Nothing blocks this now.
-2. **4.2.0 is HELD, decided 2026-08-22** — the version is bumped and the notes drafted, but its
-   YAPS is not worth shipping as it stands. It waits for the rebuild, or at least for the socket
-   fixes to be verified in game, and the light-budget fix rides with it whenever that is.
+1. **Verify the rebuild** — the code is COMPLETE (2026-08-22, see the first section below), and
+   zero avatars have been through it. In order: the running corpus finishes and settles its
+   baseline, the rebuild deploys, a NEW full corpus runs, then in game on a real converted
+   socket avatar. The digest diff on socket avatars will be large on purpose; the reading work
+   is checking it is the SAME shape on all of them and that non-socket avatars did not move.
+2. **The lighthouse spike** — one moving marker pair per avatar instead of one per socket
+   (`YAPS5.md`, candidate 1). Sequenced after the rebuild because it changes socket
+   construction; the rebuild is done, so this is next. First question: does the avatar
+   whitelist pass `ParentConstraint`.
+3. **4.2.0 is HELD, decided 2026-08-22** — it waits for the rebuild to verify; the light-budget
+   fix and the rebuild ride out together when the corpus and an in-game test say so.
 
 ## Loose ends, small but real
 
@@ -57,7 +62,7 @@ Five of six are things a native socket cannot have. Each was found by somebody w
 in game, none by any check here, and each fix was a patch on Fury's scaffolding rather than a
 removal of it.
 
-**The plan: stop adapting, start rebuilding.**
+**What the conversion now does — built 2026-08-22, in `YapsSocketRebuilder.cs`:**
 
 1. **Read** every DPS, TPS and SPS socket and plug: transform, kind, the mesh it deforms, the
    shapes it stages, the radius measured from that mesh, the toggle that owns it.
