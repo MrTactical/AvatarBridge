@@ -56,6 +56,7 @@ namespace AvatarBridge
             ConvertSockets(ctx, socketRoots);
             YapsSocketRebuilder.Finish(ctx, rebuild);
             WireSocketToggles(ctx, socketRoots);
+            YapsSocketRebuilder.Lighthouse(ctx);
 
             if (socketRoots.Count > 0)
             {
@@ -678,18 +679,6 @@ namespace AvatarBridge
 
         // A socket nothing can find: no pointer carrying a socket tag and no
         // marker light. One with either is finished as far as a plug cares.
-        static bool Unfinished(Transform socket)
-        {
-            if (socket == null) return false;
-            bool tagged = socket.GetComponentsInChildren<CVRPointer>(true)
-                .Any(p => p != null && !string.IsNullOrEmpty(p.type)
-                          && (p.type.StartsWith("SPSLL_Socket", System.StringComparison.Ordinal)
-                              || p.type.StartsWith("TPS_Orf", System.StringComparison.Ordinal)));
-            bool lit = socket.GetComponentsInChildren<Light>(true)
-                .Any(l => l != null && Digit(l.range) >= 1 && Digit(l.range) <= 6);
-            return !tagged && !lit;
-        }
-
         // Socket deform. A shape driven by both animator and shader applies
         // twice, so with no published depth (-1) the shader reads a tracker light.
         static void ConvertSockets(BridgeContext ctx, List<Transform> socketRoots)
@@ -836,22 +825,6 @@ namespace AvatarBridge
                     $"{failures.Count} socket(s) could not be given a deform",
                     "Everything else about them is untouched and they still work as sockets — " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
-            }
-            // Only the ones that really are short of something. Conversion
-            // finishes a socket that arrived complete, and saying "open the
-            // YAPS tool" about those sends people to a window that offers to
-            // remove the halves it just found, which is worse than silence.
-            var unfinished = socketRoots.Where(Unfinished).ToList();
-            if (unfinished.Count > 0)
-            {
-                ctx.Report.Approximated(Category,
-                    $"{unfinished.Count} socket(s) arrived without markers",
-                    "These carry no pointers and no marker lights, so no plug can find them. " +
-                    "Converting moves a socket over; it does not invent one that was never " +
-                    "built. Open Tools > YAPS > Setup, drop this avatar in and press Build to " +
-                    "finish them: " +
-                    string.Join(", ", unfinished.Take(5).Select(s => ctx.PathInTarget(s))) +
-                    (unfinished.Count > 5 ? ", …" : "") + ".");
             }
         }
 

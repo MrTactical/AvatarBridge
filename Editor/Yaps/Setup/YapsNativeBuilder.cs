@@ -472,10 +472,12 @@ namespace AvatarBridge
             var controller = (avatar != null && avatar.avatarSettings != null
                     ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
                 ?? (animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null);
-            string lighthouse = YapsLighthouse.Build(avatar, controller);
-            if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) lines.Add(menu);
+            // After the toggle layers: the lighthouse asserts the chosen
+            // socket on, and a layer wins by coming later.
+            string lighthouse = YapsLighthouse.Build(avatar, controller);
+            if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             return lines;
         }
 

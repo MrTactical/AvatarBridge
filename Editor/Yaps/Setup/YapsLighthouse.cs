@@ -44,7 +44,10 @@ namespace AvatarBridge
                 return removed ? "lighthouse removed: one socket needs no chooser" : null;
             }
 
-            var labels = new List<string>();
+            // Row 0 is Off: nothing lit until the wearer chooses. A default
+            // that lit the first hole left toys working at a socket the
+            // wearer had not switched on and failing at the one they had.
+            var labels = new List<string> { OffLabel };
             foreach (var s in sockets)
             {
                 string label = YapsToggles.LabelFor(s);
@@ -61,9 +64,11 @@ namespace AvatarBridge
             }
             RemoveLayer(controller);
             AddLayer(avatar, controller, sockets);
-            return $"lighthouse: {sockets.Count} sockets on one menu, \"{labels[0]}\" lit first " +
-                   "(the selector parameter syncs, 32 bits)";
+            return $"lighthouse: {sockets.Count} sockets on one menu, Off until chosen " +
+                   "(choosing one lights it and switches it on; the selector syncs, 32 bits)";
         }
+
+        const string OffLabel = "Off";
 
         static void EnsureEntry(CVRAvatar avatar, List<string> labels)
         {
@@ -137,14 +142,20 @@ namespace AvatarBridge
             return removed;
         }
 
-        // One state per socket; its clip enables that socket's pair and
-        // disables every other. Any-state transitions on the selector, so
-        // the order the wearer clicks in never matters.
+        // State 0 is Off: every pair dark, no socket touched. State i
+        // enables socket i's pair, disables every other pair, and switches
+        // socket i itself ON — the one thing a DPS toy needs is then one
+        // choice. Other sockets' active state is left to their own
+        // toggles; only the chosen one is asserted. Any-state transitions
+        // on the selector, so the order the wearer clicks in never matters.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, List<YapsSocket> sockets)
         {
-            var paths = sockets
+            var pairPaths = sockets
                 .Select(s => AnimationUtility.CalculateTransformPath(
                     s.transform.Find(YapsSocketBuilder.LightsName), avatar.transform))
+                .ToList();
+            var socketPaths = sockets
+                .Select(s => AnimationUtility.CalculateTransformPath(s.transform, avatar.transform))
                 .ToList();
 
             var machine = new AnimatorStateMachine
@@ -158,19 +169,25 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(machine, controller);
             }
 
-            for (int i = 0; i < sockets.Count; i++)
+            for (int i = 0; i <= sockets.Count; i++)
             {
-                var clip = new AnimationClip { name = $"YAPS lighthouse {i}" };
-                for (int p = 0; p < paths.Count; p++)
+                int chosen = i - 1;   // -1 is Off
+                var clip = new AnimationClip { name = chosen < 0 ? "YAPS lighthouse off" : $"YAPS lighthouse {chosen}" };
+                for (int p = 0; p < pairPaths.Count; p++)
                 {
-                    clip.SetCurve(paths[p], typeof(GameObject), "m_IsActive",
-                        AnimationCurve.Constant(0f, 1f / 60f, p == i ? 1f : 0f));
+                    clip.SetCurve(pairPaths[p], typeof(GameObject), "m_IsActive",
+                        AnimationCurve.Constant(0f, 1f / 60f, p == chosen ? 1f : 0f));
+                }
+                if (chosen >= 0)
+                {
+                    clip.SetCurve(socketPaths[chosen], typeof(GameObject), "m_IsActive",
+                        AnimationCurve.Constant(0f, 1f / 60f, 1f));
                 }
                 if (!string.IsNullOrEmpty(assetPath))
                 {
                     AssetDatabase.AddObjectToAsset(clip, controller);
                 }
-                var state = machine.AddState($"Socket {i}");
+                var state = machine.AddState(chosen < 0 ? "Off" : $"Socket {chosen}");
                 state.writeDefaultValues = false;
                 state.motion = clip;
                 if (i == 0) machine.defaultState = state;

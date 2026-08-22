@@ -875,6 +875,14 @@ are shared with every avatar standing near you, not just your own. An avatar lig
 sockets makes the winners change frame to frame for everyone in range — and the first casualty
 is always the hole, whose root light has the lowest range in the protocol, which reads in game
 as "holes broken, rings fine".
+
+**The lighthouse.** With two or more lit-capable sockets, every one carries its pair and a
+**Marker lights** dropdown in the menu decides which single pair is on. It starts on **Off**:
+nothing is lit until the wearer chooses. Choosing a socket lights it *and switches it on*, so
+for a DPS or TPS toy the dropdown is the whole job — no second toggle to remember. Modern
+content never needs it: YAPS plugs and props find every socket through contacts, which have no
+four-slot limit. Old toys are the only readers of the lights, and one socket at a time was
+always their ceiling; the dropdown just hands the choice to the wearer instead of to Unity.
 **The ranges sit in the quiet part of the band.** A marker light says what it is through its
 range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
 plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
@@ -2059,13 +2067,13 @@ Work down the list; the first that fits is usually it.
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*: black means nothing found the socket, green the contact channel did, yellow a marker light
   did. Black with a socket right there means neither transport reached the plug.
-- **Is the socket on, and is it the lit one?** On a converted avatar the menu toggle that names
-  a socket switches the whole socket — lights, pointers and depth trigger together — so a socket
-  you haven't switched on says nothing on any channel. Switch it on. And only **one** socket
-  carries marker lights at all (holes first): Unity gives a mesh four vertex-light slots, a
-  socket takes two, and the tracker of whatever enters takes a third, so a second lit socket
-  is what used to break holes while rings kept working. A DPS-style plug can only find the
-  socket that carries them; everything else is contact-channel only.
+- **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
+  their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
+  vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
+  a second lit socket is what used to break holes while rings kept working. The dropdown starts
+  on **Off**; choosing a socket lights it and switches it on, whatever its own toggle says. A
+  socket you have switched on but not chosen here is visible in the hierarchy and dark to every
+  old toy — that exact picture has been reported as "it does nothing".
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
   alone. A converted avatar has that channel; a plug built with the YAPS tool reads lights only,
   and a prop has one only if you added it. The report and the tool both say which a plug has.

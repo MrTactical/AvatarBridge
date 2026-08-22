@@ -363,6 +363,9 @@ namespace AvatarBridge
                 // repoint erases, so it is honored here by the prefix.
                 if (!ctx.Settings.syncSocketDepthForOthers) wanted = "#" + wanted;
                 string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController, wanted);
+                // Trigger-written, so nothing in the controller reads it unless
+                // the repoint happened, and the orphan prune would take it.
+                ctx.ContactParameters.Add(parameter);
                 if (spec.DepthParams.Count == 1)
                 {
                     if (RenameParameterEverywhere(ctx.MergedController, spec.DepthParams[0], parameter))
@@ -378,19 +381,6 @@ namespace AvatarBridge
 
             RemoveExclusivityLayers(ctx);
 
-            string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
-            if (lighthouse != null && rebuilt > 0)
-            {
-                ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
-                    "Every lit-capable socket carries its marker pair, exactly one pair is " +
-                    "enabled, and a menu dropdown moves it. A disabled light never competes " +
-                    "for Unity's four vertex-light slots, so this is what makes several " +
-                    "DPS-findable sockets on one avatar work at all — before it, a second " +
-                    "lit socket evicted the hole's root light and holes broke while rings " +
-                    "kept working. The selector parameter syncs (32 bits) so everyone sees " +
-                    "the same socket lit.");
-            }
-
             if (rebuilt > 0)
             {
                 ctx.Report.Converted(Category,
@@ -404,6 +394,27 @@ namespace AvatarBridge
                         : "") +
                     (left.Count > 0 ? string.Join("; ", left) + ". " : ""));
             }
+        }
+
+        // LAST of everything that writes a socket's active state. The
+        // lighthouse asserts the chosen socket ON as well as lit, and a
+        // layer wins by coming later, so it has to follow the wired
+        // toggles. A user on a converted avatar switched the mouth on
+        // from Fury's toggle, saw it in the hierarchy, and held a DPS
+        // prop to a dark pair the dropdown still had at the anus.
+        public static void Lighthouse(BridgeContext ctx)
+        {
+            string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
+            if (lighthouse == null) return;
+            ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
+                "Every lit-capable socket carries its marker pair and the \"Marker lights\" " +
+                "dropdown lights exactly one — and switches that socket on, so choosing it " +
+                "is the whole job for a DPS or TPS toy. It starts on Off: nothing is lit " +
+                "until the wearer says so. A disabled light never competes for Unity's four " +
+                "vertex-light slots, which is what makes several DPS-findable sockets on one " +
+                "avatar work at all; before this, a second lit socket evicted the hole's root " +
+                "light and holes broke while rings kept working. The selector syncs (32 bits) " +
+                "so everyone sees the same socket lit.");
         }
 
         // Fury's socket exclusivity merges at weight zero, and ChilloutVR
