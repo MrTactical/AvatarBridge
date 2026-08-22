@@ -23,8 +23,8 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Loose ends, small but real
 
-- **Two missing corpus classes**: zero of 84 avatars carry an always-visible head, zero carry a
-  socket that deforms. Both classes reached users precisely because the corpus could not.
+- **Corpus classes: CLOSED 2026-08-22** — Fixture_DeformSocket and Fixture_HeadTransplant are in
+  the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.
 - **Pointer capping**: whether pointers should be capped the way marker lights now are — raised
   in the optimisation work (see `archive/Optimisation.md`), never decided.
 - **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
