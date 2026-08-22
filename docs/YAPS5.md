@@ -99,7 +99,9 @@ Open before building: does the avatar whitelist pass `ParentConstraint`, and doe
 evaluation order beat the light-position read (contacts run post-constraint; lights are read at
 render, so both should be fine — verify, not assume).
 
-### 2. Light colour as data — proposed, spike-sized
+### 2. Light colour as data — demoted 2026-08-22
+n*Demoted the day the gate test passed: its consumer was YAPS light-readers, and contacts are now
+proven, so lights are legacy-only — and legacy plugs cannot read colour. Kept for the record.*
 
 A vertex light hands the shader `unity_LightColor` beside position and range. The markers are
 black on purpose (zero INTENSITY kills a light, black does not), so three channels per light sit
@@ -146,6 +148,6 @@ already script-first, contacts next, lights last.
 1. ~~Reserve the tracker's light slot~~ — **done**, `b82e9d0`.
 2. ~~The two-person authority-gate test~~ — done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
 3. Lighthouse spike: `ParentConstraint` through the whitelist, pair on one test avatar.
-4. Light-colour spike: does a coloured marker survive upload and decode.
+4. Light colour: shelved — its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
 5. Corpus, with the two missing avatar classes added (an always-visible head, a deforming
    socket) before any of this ships.
