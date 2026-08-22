@@ -306,10 +306,11 @@ namespace AvatarBridge
         // The channel without the generated reaction layer: trigger plus
         // parameter. For rebuilt conversions, where the reactions are the
         // author's own layers and only the wire is ours.
-        public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller)
+        public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller,
+            string parameter = null)
         {
             if (socket == null) return null;
-            string parameter = Parameter(socket);
+            if (string.IsNullOrEmpty(parameter)) parameter = Parameter(socket);
             EnsureTrigger(socket, parameter);
             if (controller != null && !controller.parameters.Any(p => p.name == parameter))
             {

@@ -235,6 +235,28 @@ namespace AvatarBridge
             PruneEmpty(root);
         }
 
+        // Fury's rig off a converted plug, before the fresh announce: its
+        // tracker light would sit beside the new one, doubling the Raliv
+        // signal and taking a second vertex slot, and its pointers win the
+        // announce's dedupe over fresh ones on the measured frame. Only a
+        // plug that converted is stripped; a failed one keeps what works.
+        public static void StripPlugRig(Transform plugRoot)
+        {
+            if (plugRoot == null) return;
+            foreach (var l in plugRoot.GetComponentsInChildren<Light>(true).Where(YapsScanner.IsProtocolLight).ToList())
+            {
+                RemoveHost(l.transform, plugRoot, l);
+            }
+            foreach (var p in plugRoot.GetComponentsInChildren<CVRPointer>(true).ToList())
+            {
+                if (p == null || p.type == null) continue;
+                if (!p.type.StartsWith("TPS_Pen_", StringComparison.Ordinal)
+                    && !p.type.StartsWith("SPSLL_Pen_", StringComparison.Ordinal)) continue;
+                RemoveHost(p.transform, plugRoot, p);
+            }
+            PruneEmpty(plugRoot);
+        }
+
         // The component's object when nothing else lives there, otherwise
         // just the component. The root itself is never removed.
         static void RemoveHost(Transform host, Transform root, Component doomed)
@@ -292,6 +314,7 @@ namespace AvatarBridge
 
             int rebuilt = 0, repointed = 0;
             var left = new List<string>();
+            var taken = new HashSet<string>(StringComparer.Ordinal);
             foreach (var pair in specs)
             {
                 var root = pair.Key;
@@ -306,7 +329,17 @@ namespace AvatarBridge
                 YapsSocketBuilder.Build(socket);
                 rebuilt++;
 
-                string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController);
+                // Two same-kind sockets on one bone share a label; sharing
+                // a parameter as well would hand both reactions to whichever
+                // socket a plug touched last.
+                string wanted = YapsSocketReactions.Parameter(socket);
+                for (int n = 2; taken.Contains(wanted); n++)
+                {
+                    wanted = YapsSocketReactions.Parameter(socket)
+                        .Replace("/Depth", n.ToString() + "/Depth");
+                }
+                taken.Add(wanted);
+                string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController, wanted);
                 if (spec.DepthParams.Count == 1)
                 {
                     if (RenameParameterEverywhere(ctx.MergedController, spec.DepthParams[0], parameter))
@@ -320,6 +353,8 @@ namespace AvatarBridge
                 }
             }
 
+            RemoveExclusivityLayers(ctx);
+
             if (rebuilt > 0)
             {
                 ctx.Report.Converted(Category,
@@ -332,6 +367,35 @@ namespace AvatarBridge
                           "rebuilt channel, so the author's animations play from the new trigger. "
                         : "") +
                     (left.Count > 0 ? string.Join("; ", left) + ". " : ""));
+            }
+        }
+
+        // Fury's socket exclusivity merges at weight zero, and ChilloutVR
+        // has no runtime layer-weight control, so the layers can never
+        // assert: pure residue, and residue this table of bugs grew in.
+        // Only the exact Fury naming at exactly zero weight is removed.
+        static void RemoveExclusivityLayers(BridgeContext ctx)
+        {
+            var controller = ctx.MergedController;
+            if (controller == null) return;
+            int removed = 0;
+            for (int i = controller.layers.Length - 1; i >= 0; i--)
+            {
+                var layer = controller.layers[i];
+                if (layer.defaultWeight > 0f) continue;
+                if (!layer.name.Contains("Exclusivity")) continue;
+                if (!layer.name.Contains("SPS") && !layer.name.Contains("VF")) continue;
+                controller.RemoveLayer(i);
+                removed++;
+            }
+            if (removed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{removed} dead exclusivity layer(s) removed",
+                    "VRCFury's socket exclusivity merges at weight zero and ChilloutVR has no " +
+                    "runtime layer-weight control, so these could never assert — but their clips " +
+                    "made the sockets they switch off look menu-owned to every check that walks " +
+                    "the controller. The rebuilt sockets have their own toggles.");
             }
         }
 

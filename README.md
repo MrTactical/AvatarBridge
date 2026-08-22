@@ -694,14 +694,25 @@ machine alone, so without it nobody else would see the shapes move. Either way, 
 reactions the author already built are kept: it is the OGB and PCS *haptics* contacts beside them
 that are stripped, and they drive toys rather than shapes.
 
-**It speaks the other systems on purpose.** A converted avatar reads as YAPS where you look at it
-— its hierarchy, its menu labels, its report — but the things *other people's* content reads are
-left exactly as they were: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest)
-and the marker light ranges. Those aren't names, they're the wire. So a converted plug finds DPS,
+**A converted socket IS a native socket.** The conversion does not keep VRCFury's baked rig and
+retune it; it reads the socket's kind and placement off that rig, strips the rig entirely —
+lights, pointers, depth triggers, the constraint plumbing — and rebuilds it with the same code
+the YAPS tool runs. So there is one kind of socket, whichever way it was made: fresh marker
+lights within the light budget, every contact tag with its self twin, a depth trigger writing a
+synced parameter, and the author's own depth reactions repointed onto it. VRCFury's socket menu
+toggles, which drove a screen-space system that does not survive the trip, are wired to the
+rebuilt sockets, so the menu means what it says. A socket whose reactions read several depth
+parameters is the one exception: collapsing those to one would change what plays when, so it
+keeps its original triggers and layers exactly as authored, and the report says so.
+
+**It speaks the other systems on purpose.** The rebuilt rig emits the same wire other people's
+content reads: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest) and the
+marker light ranges, byte for byte at VRCFury's own values. So a converted plug finds DPS,
 TPS and SPS sockets; DPS, TPS and SPS plugs find a converted socket; someone wearing an avatar
 built for another platform's system works with yours, both ways, without either side knowing this
-tool exists. Parameter names are left alone for a second reason: ChilloutVR restores a saved
-profile by parameter name, so renaming one would quietly stop your saved settings from loading.
+tool exists. Parameter names elsewhere on the avatar are left alone for a second reason:
+ChilloutVR restores a saved profile by parameter name, so renaming one would quietly stop your
+saved settings from loading.
 
 **The author's tuning carries across.** Curvature, squeeze, idle shrink and the rest are read off
 the DPS/TPS/SPS material by each system's own definition and written onto the YAPS one; anything
@@ -856,11 +867,14 @@ the shader the project has today, otherwise a plug built on the spot. While it r
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
-**Only two sockets carry marker lights**, the same cap a conversion applies. Unity gives a mesh
+**One socket carries marker lights**, the same cap a conversion applies. Unity gives a mesh
 four vertex light slots, refills them every frame from the ranges in reach, and a socket takes
-two — and those slots are shared with every avatar standing near you, not just your own. An
-avatar lighting up a dozen sockets makes the winners change frame to frame for everyone in
-range, which shows up on other people as a light-reading plug twitching in and out.
+two — and the tracker light of whatever *enters* the socket takes a third, from a prop or the
+other person, so it can never be counted from here and a slot is always held for it. Those slots
+are shared with every avatar standing near you, not just your own. An avatar lighting up a dozen
+sockets makes the winners change frame to frame for everyone in range — and the first casualty
+is always the hole, whose root light has the lowest range in the protocol, which reads in game
+as "holes broken, rings fine".
 **The ranges sit in the quiet part of the band.** A marker light says what it is through its
 range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
 plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
@@ -869,7 +883,7 @@ converted avatar sets off a bystander's toy and their controllers from across th
 authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
 on 0.001 never sees it. Nothing to configure, and no cost to compatibility.
 
-Holes take the places first, then rings; the build log names which two kept them, and the
+Holes take the places first, then rings; the build log names which kept them, and the
 socket's own *Advanced* card says so where you ticked the box. Nothing stops engaging: a plug
 decides *which* socket has it from the contact channel, never from a light, and the lights only
 sharpen its position at contact range. What a socket without them loses is old DPS plugs, which

@@ -253,6 +253,9 @@ namespace AvatarBridge
 
             // The same markers the toolkit builds for a native plug, on the
             // measured frame: DPS tracker light, TPS and SPS pointers.
+            // Fury's own rig goes first, or its tracker doubles the fresh
+            // one and its pointers win the announce's dedupe.
+            YapsSocketRebuilder.StripPlugRig(plugRoot);
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
                 result.Length, result.Radius, tipLight: true, pointers: true);
 
