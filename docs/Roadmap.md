@@ -325,6 +325,65 @@ first evicted by every stock DPS avatar in the room. It would work alone and fai
 which is the opposite of what a compatibility feature needs. Worth keeping only as a "YAPS talks
 to YAPS and nothing else" mode, where our own decoder sets the rules.
 
+---
+
+## Two walls the transports hit, and whether a shader goes round them
+
+Read out of the client 2026-08-22 while costing a contact-based replacement for the marker-light
+channel. Both of these are platform behaviour, not our code, and both bound what any redesign can
+achieve.
+
+**A prop can only be driven by your own avatar.** Every contact write into a `CVRSpawnable` value
+goes through `TriggerToContact.HasProbableAuthorityToApplySync`. It allows a sender that is
+another prop (if either is synced by you), a sender that is *your own* avatar, or the world. There
+is **no branch for another player's avatar**, so a remote sender falls through and returns false
+and the value is silently never written. This is very likely a client bug rather than policy: the
+prop branch falls back to `IsSyncedByMe()`, and that fallback is simply missing for avatar
+senders, so even the prop's own syncer is refused. It predicts the split we have been chasing —
+avatar-to-avatar works (the gate only runs for spawnable triggers), old DPS props work (lights,
+never this path), YAPS props work on your own sockets and never on someone else's. **Test before
+building anything around it, and report it upstream if it holds.**
+
+**512 overlapping contact pairs, instance-wide.** `CollectPairsJob` caps `pairs` at 512 and re-adds
+*previous* pairs first, so an established interaction is sticky and cannot be evicted, but in a
+saturated instance a new one may never register — "works once I am in it, will not start in a
+crowd". The broadphase itself is brute force over every sender for every receiver, but Burst and
+parallel with a squared-distance test, so it is sub-millisecond and not the constraint. Rejections
+on tags, `contentType` and owner happen *before* a pair is written, so **tags are the lever on the
+512, not volume count.**
+
+### So: is there shader magic?
+
+Two routes, and the cheap one is much more interesting than the famous one.
+
+**The light colour is free, and nobody is using it.** A vertex light hands the shader
+`unity_LightColor` alongside its position and range. Our markers are black with non-zero intensity
+(zero intensity drops a light from the per-object list entirely), so three channels per light are
+sitting unused. If a root light's colour carried the socket's axis, a YAPS-native socket would
+need **one** light instead of two — and with the tracker holding a slot, that is three sockets in
+the budget instead of one. Legacy plugs still need the root+front pair, so this is a YAPS-native
+mode alongside the compatibility pair, not a replacement. Cheap to spike, and the open questions
+are small: whether CVR's asset filter clamps light colour or intensity on avatars, and how much
+precision survives the intensity multiply.
+
+**The screen-space atlas is real, and we would write it better than SPS — but do not build it
+yet.** Sockets render a small quad encoding their world position into a reserved screen region;
+the plug samples it back through a named GrabPass. It is the only channel that dodges *both* walls
+above: no light slots, no contact pairs, no parameters, so no authority gate and no sync bits, and
+no cap on socket count. And the reason SPS's does not survive conversion is one we could simply
+not have — theirs is written for VRChat's double-wide, ours would be instanced-native from the
+first line (`UNITY_DECLARE_SCREENSPACE_TEXTURE`, the same family the shader patcher already
+applies). Against it: a named GrabPass is a real per-frame cost; the atlas quads must escape
+frustum culling; and the unsolved one is **cell collisions between avatars**, because two avatars
+cannot negotiate which screen cell they own without scripting, and a collision is a wrong socket
+position rather than a missing one. It also reintroduces the screen dependency that made the
+contact route attractive in the first place.
+
+**Order of work:** the light-slot fix first (done), then test the authority gate, then spike light
+colour. The atlas stays designed and unbuilt until something forces it.
+
+---
+
 ## The WASM route, and what it would make of all this
 
 Read from Joe's client on 2026-08-17. **His install is the `public-scripting` beta**, and the
