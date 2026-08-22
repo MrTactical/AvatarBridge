@@ -62,12 +62,13 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Kept the depth reactions on {socketRoots.Count} socket(s)",
                     "The animations a socket plays as a plug arrives — bulges, winces, whatever " +
-                    "its author built — are kept and made local rather than thrown away. In " +
-                    "VRChat each of those costs a synced parameter, which is why keeping them " +
-                    "the naive way took one avatar to its entire sync budget. In ChilloutVR a " +
-                    "contact is computed by every client independently, so a local parameter " +
-                    "reaches everyone and costs nothing at all. There is no limit on how many " +
-                    "shapes a socket drives this way.");
+                    "its author built — are kept and pointed at the rebuilt socket's own depth " +
+                    "trigger. ChilloutVR runs that trigger on the wearer's machine alone, so by " +
+                    "default the parameter is local: free against the sync budget, and the " +
+                    "shapes play for you. \"Show the avatar's OWN depth animations to other " +
+                    "players\" syncs it at 32 bits a socket so the room sees them too. A socket " +
+                    "with its own mesh is different: its deform runs in its shader, which every " +
+                    "client draws for itself, visible to everyone with nothing to sync.");
             }
 
             if (plugRoots.Count > 0 && ctx.YapsPlugs.Count == 0)
