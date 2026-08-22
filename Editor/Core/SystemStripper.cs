@@ -218,9 +218,9 @@ namespace AvatarBridge
                             "You asked for it: each socket's depth parameter stays synced, so the " +
                             "bulges and winces its author animated play for everyone rather than the " +
                             "wearer alone. ChilloutVR runs an avatar's triggers on the wearer's machine " +
-                            "only, which is why the choice exists. Two parameters per socket at 32 bits " +
-                            "each against a cap of 3200: six sockets is about 384. The sync budget entry " +
-                            "below says where this avatar landed; over the cap, nothing on it syncs.");
+                            "only, which is why the choice exists. One parameter per rebuilt socket at " +
+                            "32 bits against a cap of 3200: six sockets is about 192. The sync budget " +
+                            "entry below says where this avatar landed; over the cap, nothing on it syncs.");
                     }
                     if (ctx.Settings.syncHapticsForOsc)
                     {

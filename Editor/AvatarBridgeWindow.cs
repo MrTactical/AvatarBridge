@@ -1018,20 +1018,20 @@ namespace AvatarBridge
 
             optIns.Add(BridgeElements.SubHeading("Penetration"));
             optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
-                "Not YAPS's socket shapes: those already play for everyone, on a synced parameter, with " +
-                "nothing to switch on. This is the bulges and winces the avatar's author animated in " +
-                "VRChat, which ride on VRCFury's own depth parameters. ChilloutVR runs an avatar's " +
-                "triggers on the wearer's machine alone, so off, those are local: free, and only you see " +
-                "them. On, they sync and the room sees them too, at 32 bits for each of the two " +
-                "parameters a socket carries. Needs Penetration on Convert to YAPS.",
+                "Not the socket deform: a socket with its own mesh opens through its shader, which every " +
+                "client runs itself, visible to the room for free. This is the bulges and winces the " +
+                "author animated on the body mesh, which play from each rebuilt socket's depth parameter. " +
+                "ChilloutVR runs an avatar's triggers on the wearer's machine alone, so off, that " +
+                "parameter is local: free, and only you see the shapes. On, it syncs and the room sees " +
+                "them too, at 32 bits a socket. Needs Penetration on Convert to YAPS.",
                 settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
             if (settings.syncSocketDepthForOthers)
             {
                 optIns.Add(new HelpBox(
-                    "Two parameters per socket at 32 of ChilloutVR's 3200 sync bits each: six sockets is " +
-                    "about 384 bits. The report's sync budget entry says where this avatar landed, and " +
-                    "over the cap nothing on it syncs at all. YAPS's own socket shapes sync either way; " +
-                    "this is for the reactions the avatar's author animated.",
+                    "One depth parameter per socket at 32 of ChilloutVR's 3200 sync bits: six sockets " +
+                    "is about 192 bits. The report's sync budget entry says where this avatar landed, " +
+                    "and over the cap nothing on it syncs at all. A socket that kept several depth " +
+                    "parameters as authored pays for each of them.",
                     HelpBoxMessageType.Warning));
             }
 
