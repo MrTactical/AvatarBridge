@@ -68,7 +68,7 @@ AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetec
 FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
 CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter"
 # Conversion passes: VRChat-only, and dead weight in a ChilloutVR project.
-YAPS_SKIP="YapsConverter YapsBakePrep YapsRename YapsReapply"
+YAPS_SKIP="YapsConverter YapsBakePrep YapsRename YapsReapply YapsSocketRebuilder"
 
 yaps_files() {
   {
