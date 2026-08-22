@@ -222,18 +222,15 @@ namespace AvatarBridge
             if (socket == null || !socket.emitLights || WithinLightCap(socket)) return null;
             int places = Places(socket);
             var kept = Lit(socket).Take(places).Select(s => s.name);
-            return "marker lights left off: this avatar already has " +
-                   $"{places} socket(s) carrying them ({string.Join(", ", kept)}). A mesh gets " +
-                   "four vertex light slots, a socket needs two of them, and the tracker light " +
-                   "of whatever enters the socket takes a third. That tracker is usually on a " +
-                   "prop or on the other person, so it cannot be counted here and a slot is " +
-                   "always held back for it. Unity fills the slots by range and the hole root " +
-                   "is the lowest range in the protocol, so it is the first thing dropped: an " +
-                   "avatar over the budget loses its holes while its rings keep working. Past " +
-                   "that a plug sees roots with no fronts, or fronts with no roots, and " +
-                   "neither is a socket it can enter. Plugs built by this toolkit find sockets " +
-                   "through contacts and do not need the lights; only old DPS plugs do. Untick " +
-                   "\"Emit marker lights\" on a socket to hand its place to another.";
+            return "marker lights start dark: " +
+                   $"{places} socket(s) start lit ({string.Join(", ", kept)}) and this one waits " +
+                   "on the lighthouse — the \"Marker lights\" menu entry lights any one socket " +
+                   "and darkens the rest. A mesh gets four vertex light slots, a socket needs " +
+                   "two, and the tracker light of whatever enters takes a third, so a second " +
+                   "lit socket used to evict the hole's root and break it while rings kept " +
+                   "working. A dark pair costs nothing: a disabled light never enters Unity's " +
+                   "ranking. Plugs built by this toolkit find sockets through contacts and do " +
+                   "not need the lights; only old DPS plugs do.";
         }
 
         // Lights and pointers as children, replacing what it built before.

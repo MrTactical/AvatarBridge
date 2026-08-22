@@ -164,6 +164,15 @@ namespace AvatarBridge
                 done.Add($"the component on \"{name}\" and the toolkit's objects under it");
             }
 
+            // The lighthouse without this socket: fewer rows, or gone
+            // entirely when one socket needs no chooser.
+            if (avatar != null)
+            {
+                var controller = controllers.FirstOrDefault();
+                string lighthouse = controller != null ? YapsLighthouse.Build(avatar, controller) : null;
+                if (lighthouse != null) done.Add(lighthouse);
+            }
+
             Undo.CollapseUndoOperations(group);
             return $"Removed socket \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";
         }

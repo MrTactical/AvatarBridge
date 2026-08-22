@@ -372,7 +372,16 @@ namespace AvatarBridge
                 && (!l.enabled || !l.gameObject.activeInHierarchy));
             if (darkLights > 0)
             {
-                f.Notes.Add($"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+                // Dark on purpose under the lighthouse: pairs wait on the
+                // menu, one lit at a time. Only a socket dark with no
+                // lighthouse to light it is a problem.
+                var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>() : null;
+                bool lighthouse = avatar != null && avatar.avatarSettings != null
+                    && avatar.avatarSettings.settings != null
+                    && avatar.avatarSettings.settings.Any(e => e != null && e.machineName == "YAPS/Lighthouse");
+                f.Notes.Add(lighthouse
+                    ? $"{darkLights} of its marker lights wait on the lighthouse — the \"Marker lights\" menu lights one socket at a time"
+                    : $"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
             }
             if (f.Root != null)
             {
