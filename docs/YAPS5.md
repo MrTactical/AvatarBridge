@@ -84,7 +84,7 @@ avatar-side problem — pointers missing, dark, or mistyped — never a client r
 
 In the order they are worth doing, cheapest and least disruptive first.
 
-### 1. The lighthouse — proposed
+### 1. The lighthouse — BUILT 2026-08-22, without the constraint
 
 One marker pair per avatar instead of one per socket. Root and front lights ride a
 `ParentConstraint` with every socket as a source; animating the source weights snaps the pair
@@ -99,9 +99,10 @@ pair and cannot tell the difference — that is the point.
 - YAPS-to-YAPS can drive it automatically: plug's sender trips the socket's receiver, the synced
   parameter moves the lighthouse. Legacy props fall back to the menu.
 
-Open before building: does the avatar whitelist pass `ParentConstraint`, and does constraint
-evaluation order beat the light-position read (contacts run post-constraint; lights are read at
-render, so both should be fine — verify, not assume).
+Built without `ParentConstraint`, which dissolved both open questions: a DISABLED light never
+enters Unity's ranking, so every socket keeps its own pair on its own bone and a selector layer
+enables exactly one. A "Marker lights" dropdown (Int, synced, 32 bits) moves it; one socket
+means no chooser. `YapsLighthouse.cs`, called by both the conversion and the tool.
 
 ### 2. Light colour as data — demoted 2026-08-22
 n*Demoted the day the gate test passed: its consumer was YAPS light-readers, and contacts are now
@@ -152,7 +153,7 @@ already script-first, contacts next, lights last.
 1. ~~Reserve the tracker's light slot~~ — **done**, `b82e9d0`.
 2. ~~The two-person authority-gate test~~ — done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
 3. ~~The socket rebuild~~ — **built 2026-08-22**, awaiting corpus and in-game verification.
-4. Lighthouse spike: `ParentConstraint` through the whitelist, pair on one test avatar.
+4. ~~Lighthouse~~ — **built 2026-08-22** without the constraint: per-socket pairs, one enabled, dropdown selector.
 5. Light colour: shelved — its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
 6. Corpus, with the two missing avatar classes added (an always-visible head, a deforming
    socket) before any of this ships.

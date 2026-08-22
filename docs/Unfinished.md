@@ -16,10 +16,8 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
    baseline, the rebuild deploys, a NEW full corpus runs, then in game on a real converted
    socket avatar. The digest diff on socket avatars will be large on purpose; the reading work
    is checking it is the SAME shape on all of them and that non-socket avatars did not move.
-2. **The lighthouse spike** — one moving marker pair per avatar instead of one per socket
-   (`YAPS5.md`, candidate 1). Sequenced after the rebuild because it changes socket
-   construction; the rebuild is done, so this is next. First question: does the avatar
-   whitelist pass `ParentConstraint`.
+2. **The lighthouse** — BUILT 2026-08-22, without the constraint: per-socket pairs, one
+   enabled, a synced dropdown moving it. Rides the same verification as the rebuild.
 3. **4.2.0 is HELD, decided 2026-08-22** — it waits for the rebuild to verify; the light-budget
    fix and the rebuild ride out together when the corpus and an in-game test say so.
 
