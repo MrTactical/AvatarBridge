@@ -65,13 +65,14 @@ synced parameter. Six floats is ~6% of the 3200-bit cap.
 right one, and the default when no Collider sits on the trigger's object. Sphere: WORLD axes, no
 rotation — unusable on anything that turns. A stray Collider silently changes the shape.
 
-**The prop authority gate.** Every contact write into a spawnable passes
-`HasProbableAuthorityToApplySync`, which has branches for props, the world, and YOUR OWN avatar —
-and none for another player's avatar, so a remote sender is silently refused. Predicts: a YAPS
-prop works against your own sockets and never against anyone else's, while legacy props (lights,
-not contacts) and avatar-to-avatar (not a spawnable) are untouched. Likely a client bug — the
-`IsSyncedByMe()` fallback exists for prop senders and is simply missing for avatar ones. Read
-from the public-scripting beta; **needs the two-person test, then a report upstream if it holds.**
+**Prop writes are the toucher's job — tested, works.** `HasProbableAuthorityToApplySync` has
+branches for prop senders, the world, and your OWN avatar, and none for another player's avatar.
+That is not a wall, it is the wearer-only rule extended to props: the toucher's client passes the
+own-avatar branch, applies the write, and the value networks to everyone from there — each client
+handles only its own avatar's touches, so nothing double-writes. Proven in game 2026-08-22 with
+the same shared avatar on both wearers: the prop bent for the partner's sockets on both screens,
+partner on stable, spawner on beta. Consequence: a prop that ignores someone's sockets has an
+avatar-side problem — pointers missing, dark, or mistyped — never a client refusal.
 
 ---
 
@@ -114,8 +115,8 @@ how much precision survives the intensity multiply.
 The native tier already works avatar-to-avatar and is the most information-dense channel
 available without scripting. What this plan changes is posture, not machinery:
 
-- Treat the authority gate as the known reason props fail cross-avatar. Test, report, and do not
-  spend another evening patching our side for a refusal that happens in the client.
+- Cross-avatar prop writes are proven working, so a silent prop means a silent SENDER: audit the
+  avatar's pointers before touching the prop.
 - Audit every receiver for the box/sphere trap: no Collider on trigger objects, ever.
 - Keep tags tight so rejected pairs stay off the 512.
 
@@ -143,7 +144,7 @@ already script-first, contacts next, lights last.
 ## Order of work
 
 1. ~~Reserve the tracker's light slot~~ — **done**, `b82e9d0`.
-2. The two-person authority-gate test; upstream report if confirmed.
+2. ~~The two-person authority-gate test~~ — done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
 3. Lighthouse spike: `ParentConstraint` through the whitelist, pair on one test avatar.
 4. Light-colour spike: does a coloured marker survive upload and decode.
 5. Corpus, with the two missing avatar classes added (an always-visible head, a deforming

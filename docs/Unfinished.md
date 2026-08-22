@@ -11,11 +11,10 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
-1. **The two-person authority-gate test** — thirty minutes in game, needs one other person.
-   Decides whether YAPS props can ever work against someone else's sockets (`YAPS5.md`, wall
-   two). If confirmed, report it to ABI and stop patching our side for it.
-2. **The rebuild** (first section below) — the trunk everything else hangs off.
-3. **4.2.0 is HELD, decided 2026-08-22** — the version is bumped and the notes drafted, but its
+1. **The rebuild** (first section below) — the trunk everything else hangs off. The
+   authority-gate test that used to sit above it ran 2026-08-22 and DISPROVED the gate: props
+   work cross-avatar, both clients, partner on stable — see `YAPS5.md`. Nothing blocks this now.
+2. **4.2.0 is HELD, decided 2026-08-22** — the version is bumped and the notes drafted, but its
    YAPS is not worth shipping as it stands. It waits for the rebuild, or at least for the socket
    fixes to be verified in game, and the light-budget fix rides with it whenever that is.
 
@@ -367,7 +366,7 @@ to YAPS and nothing else" mode, where our own decoder sets the rules.
 ---
 
 ## Two walls the transports hit, and whether a shader goes round them
-*Status: in progress. The light-slot fix landed; the authority-gate test is next up.*
+*Status: the light-slot fix landed, and the authority-gate wall is DISPROVEN in game 2026-08-22 — cross-avatar prop writes work, see `YAPS5.md`. The 512-pair cap stands.*
 
 Read out of the client 2026-08-22 while costing a contact-based replacement for the marker-light
 channel. Both of these are platform behaviour, not our code, and both bound what any redesign can
@@ -419,7 +418,7 @@ cannot negotiate which screen cell they own without scripting, and a collision i
 position rather than a missing one. It also reintroduces the screen dependency that made the
 contact route attractive in the first place.
 
-**Order of work:** the light-slot fix first (done), then test the authority gate, then spike light
+**Order of work:** the light-slot fix first (done), the gate test (done, disproven), then spike light
 colour. The atlas stays designed and unbuilt until something forces it.
 
 ---
