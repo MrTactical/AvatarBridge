@@ -303,6 +303,21 @@ namespace AvatarBridge
 
         // A box behind the socket plane, one reach deep, read by Set From
         // Position on Z: 0 at the plane, 1 a reach in.
+        // The channel without the generated reaction layer: trigger plus
+        // parameter. For rebuilt conversions, where the reactions are the
+        // author's own layers and only the wire is ours.
+        public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller)
+        {
+            if (socket == null) return null;
+            string parameter = Parameter(socket);
+            EnsureTrigger(socket, parameter);
+            if (controller != null && !controller.parameters.Any(p => p.name == parameter))
+            {
+                controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
+            }
+            return parameter;
+        }
+
         static void EnsureTrigger(YapsSocket socket, string parameter)
         {
             TriggerBox(socket, out var offset, out var size);

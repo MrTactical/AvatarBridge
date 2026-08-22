@@ -38,7 +38,11 @@ namespace AvatarBridge
             RemoveAtlasJunk(ctx);
             // Sockets on this avatar: its own plugs check ownership first.
             float selfFlag = socketRoots.Count > 0 ? 1f : -1f;
-            ReRangeSocketLights(ctx, socketRoots);
+
+            // The rebuild reads kind and channel off Fury's rig, then strips
+            // it, so everything after here works on a bare socket.
+            var rebuild = YapsSocketRebuilder.ReadAndStrip(ctx, socketRoots);
+            YapsSocketRebuilder.Wake(ctx, socketRoots);
 
             foreach (var plugRoot in plugRoots)
             {
@@ -50,6 +54,8 @@ namespace AvatarBridge
             }
 
             ConvertSockets(ctx, socketRoots);
+            YapsSocketRebuilder.Finish(ctx, rebuild);
+            WireSocketToggles(ctx, socketRoots);
 
             if (socketRoots.Count > 0)
             {
@@ -479,19 +485,14 @@ namespace AvatarBridge
 
         // --- the sockets -----------------------------------------------
 
-        static void ReRangeSocketLights(BridgeContext ctx, List<Transform> socketRoots)
+        // The author's menu entry, wired to the rebuilt socket. Fury's
+        // toggle drove the deleted atlas; pointing it at the socket object
+        // makes the menu mean what it says without adding a second entry.
+        // A socket some clip already switches is the author's to control
+        // and is left alone.
+        static void WireSocketToggles(BridgeContext ctx, List<Transform> socketRoots)
         {
-            // Four vertex light slots, two lights per socket. Sockets with a
-            // menu toggle get their lights wired to it; the rest are capped.
-
-            // VRCFury bakes every socket branch inactive and relies on SPS's
-            // enable service, which is deleted. Wake from each light up to
-            // the baked socket, and no further: what sits above it is the
-            // author's, on or off as they left it.
-            // Every object path a clip can switch on or off. An object in
-            // here is the menu's to control; one that is not, and is off, is
-            // off for good.
-            var switchable = new HashSet<string>(System.StringComparer.Ordinal);
+            var switchable = new HashSet<string>(StringComparer.Ordinal);
             if (ctx.MergedController != null)
             {
                 foreach (var clip in ctx.MergedController.animationClips)
@@ -504,226 +505,37 @@ namespace AvatarBridge
                 }
             }
 
-            // Everything UNDER a socket, not just the branch its lights sit
-            // on. A socket broadcasts through pointers and LISTENS through
-            // receivers, and Fury's OverlappingContactsFixService switches
-            // every receiver off and turns the right ones back on itself.
-            // That service is deleted here, so the listeners stay off: the
-            // socket says where it is and never notices a plug arrive, which
-            // reads in game as a socket that does nothing at all.
-            int listeners = 0;
+            int wired = 0;
+            var unwired = new List<string>();
             foreach (var socket in socketRoots)
             {
-                foreach (var t in socket.GetComponentsInChildren<Transform>(true))
-                {
-                    if (t.gameObject.activeSelf || switchable.Contains(ctx.PathInTarget(t))) continue;
-                    t.gameObject.SetActive(true);
-                    listeners++;
-                }
-                foreach (var trigger in socket
-                             .GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
-                {
-                    if (trigger == null || trigger.enabled) continue;
-                    trigger.enabled = true;
-                    listeners++;
-                }
-            }
-            if (listeners > 0)
-            {
-                ctx.Report.Converted(Category, $"{listeners} socket listener(s) switched back on",
-                    "VRCFury switches every contact receiver off and lets its own overlap service " +
-                    "turn the right ones back on; that service is deleted here. Left as baked, a " +
-                    "socket broadcasts where it is and never notices a plug arriving — the pointers " +
-                    "show up in game and nothing happens. Anything a menu toggle owns was left " +
-                    "alone.");
-            }
-
-            int woken = 0;
-            foreach (var socket in socketRoots)
-            {
-                foreach (var light in socket.GetComponentsInChildren<Light>(true))
-                {
-                    // All the way to the avatar root, waking anything STUCK
-                    // off and leaving anything a toggle controls alone.
-                    //
-                    // Everything above a baked socket is off: Fury switches
-                    // the socket branch off, its own second head off, and
-                    // "Original Object" off, and leaves its enable service to
-                    // sort it out. That service is deleted here. Stopping at
-                    // the socket, or at the first object Fury did not name,
-                    // leaves a link in that chain off and the socket dark —
-                    // which is two evenings of a user's time so far.
-                    //
-                    // An outfit the author toggled off is different: a clip
-                    // can switch it, so the menu still owns it and it is left
-                    // exactly as found. Only what NOTHING can switch is woken.
-                    for (var at = light.transform; at != null && at != ctx.Target.transform;
-                         at = at.parent)
-                    {
-                        if (!at.gameObject.activeSelf && !switchable.Contains(ctx.PathInTarget(at)))
-                        {
-                            at.gameObject.SetActive(true);
-                            woken++;
-                        }
-                    }
-                    if (!light.enabled)
-                    {
-                        light.enabled = true;
-                        woken++;
-                    }
-                }
-            }
-
-            int wired = 0, lit = 0;
-            var unwired = new List<Transform>();
-            foreach (var socket in socketRoots)
-            {
-                // Every object from the light up to the socket. VRCFury
-                // switches the whole branch off, so the layer asserts the chain.
-                var paths = new List<string>();
-                foreach (var light in socket.GetComponentsInChildren<Light>(true))
-                {
-                    if (Digit(light.range) < 1 || Digit(light.range) > 6)
-                    {
-                        continue;
-                    }
-                    for (var at = light.transform; at != null && at != ctx.Target.transform;
-                         at = at.parent)
-                    {
-                        string path = ctx.PathInTarget(at);
-                        if (!paths.Contains(path))
-                        {
-                            paths.Add(path);
-                        }
-                        if (at == socket)
-                        {
-                            break;   // stop at the socket; above it is the body
-                        }
-                    }
-                }
+                if (socket == null) continue;
+                string path = ctx.PathInTarget(socket);
+                if (switchable.Contains(path)) continue;
                 string toggle = ToggleFor(ctx, socket);
-                bool startLit = lit < Mathf.Max(1, ctx.Settings.maxLightEmittingSockets);
-                if (toggle != null && paths.Count > 0 && AddLightToggle(ctx, toggle, paths, startLit))
+                if (toggle != null && AddLightToggle(ctx, toggle, new List<string> { path }, startLit: true))
                 {
-                    if (startLit) lit++;
                     wired++;
                 }
                 else
                 {
-                    unwired.Add(socket);
+                    unwired.Add(socket.name);
                 }
             }
-
-            // Sockets with no toggle are capped, holes first.
-            var emitting = socketRoots
-                .Where(s => !unwired.Contains(s))
-                .Concat(unwired.OrderBy(SocketRank)
-                    .Take(Mathf.Max(1, ctx.Settings.maxLightEmittingSockets)))
-                .ToList();
-            int darkened = 0;
-            foreach (var socket in socketRoots)
+            if (wired > 0)
             {
-                if (emitting.Contains(socket))
-                {
-                    continue;
-                }
-                foreach (var light in socket.GetComponentsInChildren<Light>(true))
-                {
-                    if (Digit(light.range) >= 1 && Digit(light.range) <= 6)
-                    {
-                        UnityEngine.Object.DestroyImmediate(light);
-                        darkened++;
-                    }
-                }
+                ctx.Report.Converted(Category, $"{wired} socket menu toggle(s) wired to their sockets",
+                    "VRCFury's socket toggles drove its deleted atlas, so the menu looked right and " +
+                    "did nothing. Each is now wired to its whole socket — lights, pointers and depth " +
+                    "trigger together — so \"one socket at a time\" is the wearer's choice again.");
             }
-
-            int roots = 0, fronts = 0, left = 0;
-            foreach (var socket in emitting)
+            if (unwired.Count > 0)
             {
-                foreach (var light in socket.GetComponentsInChildren<Light>(true))
-                {
-                    int digit = Digit(light.range);
-                    // One encoding or the other. Legacy wins the lights: a
-                    // DPS plug has lights and nothing else.
-                    if (digit == 1 || digit == 2 || digit == 3 || digit == 4)
-                    {
-                        // The digit is kept, so DPS content still reads the
-                        // socket; the offset moves off VRCFury's +0.0006,
-                        // which sits inside the window a toy mod matches on.
-                        // See YapsSocketBuilder for the arithmetic.
-                        light.range = digit == 1 || digit == 3
-                            ? YapsSocketBuilder.HoleRange : YapsSocketBuilder.RingRange;
-                        roots++;
-                    }
-                    else if (digit == 5 || digit == 6)
-                    {
-                        light.range = YapsSocketBuilder.FrontRange;
-                        fronts++;
-                    }
-                    else
-                    {
-                        left++;
-                        continue;
-                    }
-                    // Black at intensity 1: zero intensity drops the light from
-                    // the per-object list. Vertex mode skips the safety light budget.
-                    light.color = Color.black;
-                    light.intensity = 1f;
-                    light.bounceIntensity = 0f;
-                    light.shadows = LightShadows.None;
-                    light.renderMode = LightRenderMode.ForceVertex;
-                }
+                ctx.Report.Approximated(Category,
+                    $"{unwired.Count} socket(s) have no menu toggle and stay on",
+                    string.Join(", ", unwired) + ". No menu entry matched them, so they are " +
+                    "always active. The marker light budget still caps how many carry lights.");
             }
-
-            if (roots + fronts == 0)
-            {
-                return;
-            }
-            ctx.Report.Converted(Category,
-                    $"Retuned {roots + fronts} socket marker light(s)" +
-                    (woken > 0 ? $", and switched {woken} socket object(s) back on" : ""),
-                (woken > 0
-                    ? "VRCFury bakes every socket object INACTIVE and lets its own enable service " +
-                      "switch them on; that service is part of the transport this tool deletes, so " +
-                      "on a converted avatar the sockets never came on and their marker lights " +
-                      "never emitted anything at all. They are switched on at conversion now, and " +
-                      "the menu decides which stay lit from there. "
-                    : "") +
-                $"{roots} root, {fronts} front. A socket says where it is by the RANGE of a black " +
-                "vertex light, and Unity gives the four light slots to the largest ranges it can " +
-                "see." +
-                " The lights are black at intensity 1, vertex mode, no shadows, which is what a " +
-                "decoder reads, and they keep VRChat's digits so every DPS plug already on " +
-                "ChilloutVR can see them, from any direction rather than only from the front, " +
-                "because they carry a root AND a front the way DPS expects." +
-                " What changes is the fourth decimal: VRChat bakes +0.0006, and a toy mod reading " +
-                "the same protocol matches anything within 0.001, so a stock converted avatar sets " +
-                "off a bystander's toy and their controllers from across a room. These are written " +
-                "at +0.003 instead, outside that window and well inside the 0.005 a plug's shader " +
-                "allows, so DPS content reads them and a mod does not answer them." +
-                (wired > 0
-                    ? $" {wired} socket(s) had their lights wired to the menu entry that already " +
-                      "turns them on and off, which until now did nothing to the lights at all — " +
-                      "VRChat's socket menu selects which socket a screen atlas publishes, and " +
-                      "that atlas is the part of its transport this tool deletes. So an avatar set " +
-                      "to \"one socket at a time\" was still emitting every light it had. Now the " +
-                      "menu means what it says, and four vertex light slots are enough for " +
-                      "whatever you have switched on."
-                    : "") +
-                (darkened > 0
-                    ? $" {darkened} marker light(s) on {socketRoots.Count - emitting.Count} other " +
-                      "socket(s) were removed. Unity gives a mesh four vertex light slots and this " +
-                      "protocol needs two per socket, so a dozen sockets means a plug sees four of " +
-                      "whichever light ranks higher — four roots with no fronts, or four fronts " +
-                      "with no roots, and neither of those is a socket. Measured in game as a " +
-                      "legacy plug whose working approach angle flipped to the opposite side when " +
-                      "the ranking changed, and was unreliable in both. Those sockets still work " +
-                      "for a converted plug, which finds them by contact and only refines with " +
-                      "light; what they lose is being findable by DPS content, which has nothing " +
-                      "else. Raise the limit if you would rather have more of them lit and accept " +
-                      "that none of them resolve cleanly."
-                    : "") +
-                (left > 0 ? $" {left} other marker light(s) left exactly as they were." : ""));
         }
 
         // The menu entry that toggles this socket. VRCFury's toggle drove
