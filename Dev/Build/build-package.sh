@@ -5,6 +5,8 @@
 # Usage:
 #   build-package.sh            public build -> AvatarBridge-<version>-public.unitypackage
 #   build-package.sh --dev      dev build    -> AvatarBridge-<version>-dev.unitypackage
+#   build-package.sh --test TAG test build   -> AvatarBridge-<version>-test-TAG.unitypackage
+#                               public contents, for select testers; a tag is spent once built
 #
 # Both modes are labelled. Never infer contents from a missing suffix.
 # Packages built before 2026-08-01 have no suffix and are all public.
@@ -22,6 +24,11 @@ trap 'rm -rf "$STAGE"' EXIT
 MODE="public"
 if [ "${1:-}" = "--dev" ]; then MODE="dev"; fi
 if [ "${1:-}" = "--yaps" ]; then MODE="yaps"; fi
+TAG=""
+if [ "${1:-}" = "--test" ]; then
+  MODE="test"; TAG="${2:-}"
+  if [ -z "$TAG" ]; then echo "--test needs a tag, e.g. --test rebuild" >&2; exit 1; fi
+fi
 
 VERSION="$(sed -n 's/.*public const string Version = "\(.*\)".*/\1/p' "$REPO/Editor/BridgeDefines.cs")"
 if [ -z "$VERSION" ]; then echo "could not read Version from BridgeDefines.cs" >&2; exit 1; fi
@@ -29,6 +36,8 @@ if [ "$MODE" = "dev" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-dev.unitypackage"
 elif [ "$MODE" = "yaps" ]; then
   OUT="$REPO/YAPS-$VERSION.unitypackage"
+elif [ "$MODE" = "test" ]; then
+  OUT="$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage"
 else
   OUT="$REPO/AvatarBridge-$VERSION-public.unitypackage"
 fi
@@ -41,6 +50,7 @@ case "$MODE" in
   public) taken_names=("$REPO/AvatarBridge-$VERSION.unitypackage" \
                        "$REPO/AvatarBridge-$VERSION-public.unitypackage") ;;
   yaps)   taken_names=("$REPO/YAPS-$VERSION.unitypackage") ;;
+  test)   taken_names=("$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage") ;;
   dev)    taken_names=() ;;   # a dev build may be rebuilt over itself; it never ships
 esac
 for taken in ${taken_names+"${taken_names[@]}"}; do
