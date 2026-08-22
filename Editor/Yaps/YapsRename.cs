@@ -68,7 +68,7 @@ namespace AvatarBridge
                 }
                 foreach (var (from, to) in Names)
                 {
-                    if (transform.name != from)
+                    if (YapsScanner.StripFuryId(transform.name) != from)
                     {
                         continue;
                     }

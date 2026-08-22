@@ -1217,9 +1217,12 @@ namespace AvatarBridge
 
         // StartsWith, not Contains: the first-person exclusion object is
         // named "FPRExclusion_BakedSpsSocket" and is not a socket.
+        // Through Fury's ID prefix: ArmatureLink moves a socket to the head
+        // and renames it "[VF724] BakedSpsSocket", and one of those stayed
+        // Fury's for a whole day because this matched the raw name.
         static List<Transform> Named(BridgeContext ctx, string needle) =>
             ctx.Target.GetComponentsInChildren<Transform>(true)
-                .Where(t => t != null && t.name.StartsWith(needle, System.StringComparison.Ordinal))
+                .Where(t => t != null && YapsScanner.StripFuryId(t.name).StartsWith(needle, System.StringComparison.Ordinal))
                 .ToList();
     }
 }

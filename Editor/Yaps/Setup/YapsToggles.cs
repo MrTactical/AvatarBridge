@@ -74,7 +74,7 @@ namespace AvatarBridge
         {
             var at = t != null ? t.parent : null;
             while (at != null && (at.name == "YAPS" || at.name == "YAPS Sockets"
-                   || at.name == "Original Object" || DefaultSocketNames.Contains(at.name)))
+                   || at.name == "Original Object" || DefaultSocketNames.Contains(YapsScanner.StripFuryId(at.name))))
                 at = at.parent;
             if (at == null) return null;
             if (avatar != null && at == avatar.transform) return null;
@@ -93,7 +93,7 @@ namespace AvatarBridge
             // The kind is always said: a menu row the wearer cannot tell
             // hole from ring by is a menu row they have to test in game.
             if (string.IsNullOrEmpty(bone)) return $"{socket.name} ({kind})";
-            if (DefaultSocketNames.Contains(socket.name)) return $"{bone} {kind}";
+            if (DefaultSocketNames.Contains(YapsScanner.StripFuryId(socket.name))) return $"{bone} {kind}";
             return socket.name.Contains(bone)
                 ? $"{socket.name} ({kind})"
                 : $"{socket.name} ({bone} {kind})";
@@ -104,11 +104,11 @@ namespace AvatarBridge
         // animates it by path, and when the user has named it themselves.
         public static string RenameToLabel(YapsSocket socket, CVRAvatar avatar)
         {
-            if (socket == null || !DefaultSocketNames.Contains(socket.name)) return null;
+            if (socket == null || !DefaultSocketNames.Contains(YapsScanner.StripFuryId(socket.name))) return null;
             // Never a converted socket: the conversion's clips - the
             // lighthouse, the wired toggles - animate paths through it,
             // and ToggledBy only sees clips that switch the object itself.
-            if (socket.name == "BakedSpsSocket") return null;
+            if (YapsScanner.StripFuryId(socket.name) == "BakedSpsSocket") return null;
             string label = LabelFor(socket);
             if (label == socket.name) return null;
             if (ToggledBy(socket.gameObject, avatar) != null) return null;
