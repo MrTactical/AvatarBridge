@@ -374,10 +374,10 @@ namespace AvatarBridge
                 {
                     if (!have.Contains(type)) YapsSocketBuilder.Pointer(m, name, type, at);
                 }
-                Add("Tip", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
-                Add("Tip 2", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
-                Add("Root", "TPS_Pen_Root", Vector3.zero);
-                Add("Root 2", "SPSLL_Pen_Root", Vector3.zero);
+                Add("Tip (for older sockets)", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
+                Add("Tip", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
+                Add("Root (for older sockets)", "TPS_Pen_Root", Vector3.zero);
+                Add("Root", "SPSLL_Pen_Root", Vector3.zero);
                 Add("Width", "TPS_Pen_Width", new Vector3(Mathf.Max(radius, 0.005f), 0, 0));
             }
             if (m.childCount == 0) { Object.DestroyImmediate(go); return null; }

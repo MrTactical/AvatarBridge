@@ -299,13 +299,13 @@ namespace AvatarBridge
                 }
                 if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Root")))
                 {
-                    Pointer(pointers, "Socket Root 2", "TPS_Orf_Root", Vector3.zero);
-                    Pointer(pointers, "Socket Root 2 Self", "TPS_Orf_Root" + Twin, Vector3.zero);
+                    Pointer(pointers, "Socket Root (for older plugs)", "TPS_Orf_Root", Vector3.zero);
+                    Pointer(pointers, "Socket Root Self (for older plugs)", "TPS_Orf_Root" + Twin, Vector3.zero);
                 }
                 if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Norm")))
                 {
-                    Pointer(pointers, "Socket Front 2", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
-                    Pointer(pointers, "Socket Front 2 Self", "TPS_Orf_Norm" + Twin,
+                    Pointer(pointers, "Socket Front (for older plugs)", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
+                    Pointer(pointers, "Socket Front Self (for older plugs)", "TPS_Orf_Norm" + Twin,
                         new Vector3(0, 0, FrontOffset));
                 }
             });
