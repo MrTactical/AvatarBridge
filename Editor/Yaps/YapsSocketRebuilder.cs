@@ -176,6 +176,15 @@ namespace AvatarBridge
                 spec.Triggers++;
                 RemoveHost(t.transform, root, t);
             }
+            // Fury's WorldSpace plumbing: constraints that pinned the
+            // stripped lights. Below the root only — a constraint ON the
+            // root is what places the socket itself and stays.
+            foreach (var c in root.GetComponentsInChildren<UnityEngine.Animations.IConstraint>(true).ToList())
+            {
+                var component = c as Component;
+                if (component == null || component.transform == root) continue;
+                RemoveHost(component.transform, root, component);
+            }
             PruneEmpty(root);
         }
 

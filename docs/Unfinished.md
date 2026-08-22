@@ -34,7 +34,7 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 ---
 
 ## Read it, strip it, rebuild it in YAPS
-*Status: planned, spike done. The repoint step is proven necessary; a user's native rebuild by hand is the live dry run.*
+*Status: BUILT 2026-08-22, not yet corpused. Read, strip, wake, rebuild, repoint and menu wiring are all in `YapsSocketRebuilder.cs`; sockets with several depth parameters keep them as authored. Waits for the running corpus to finish, then a socket-avatar subset.*
 
 **The single highest-value thing on this list. Not a feature: it removes the seam every
 penetration bug of the last three sittings came out of.**
