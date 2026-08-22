@@ -15,13 +15,12 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
    Decides whether YAPS props can ever work against someone else's sockets (`YAPS5.md`, wall
    two). If confirmed, report it to ABI and stop patching our side for it.
 2. **The rebuild** (first section below) — the trunk everything else hangs off.
-3. **Ship 4.2.0** — version is bumped, notes drafted, the light-budget fix should ride in it.
+3. **4.2.0 is HELD, decided 2026-08-22** — the version is bumped and the notes drafted, but its
+   YAPS is not worth shipping as it stands. It waits for the rebuild, or at least for the socket
+   fixes to be verified in game, and the light-budget fix rides with it whenever that is.
 
 ## Loose ends, small but real
 
-- **Toggle-sweep reader**: the corpus digest records `[sweep] params= responded= stuck= refused=
-  invalid=` per avatar and nothing reads or reports it. Write the reader; a regression in a
-  toggle should fail a run, not decorate it.
 - **Two missing corpus classes**: zero of 84 avatars carry an always-visible head, zero carry a
   socket that deforms. Both classes reached users precisely because the corpus could not.
 - **Pointer capping**: whether pointers should be capped the way marker lights now are — raised

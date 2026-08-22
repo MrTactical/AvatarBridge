@@ -264,6 +264,7 @@ namespace AvatarBridge.Regression
 
             var changes = new List<string>();
             var missing = new List<string>();
+            var sweep = new SweepTally();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int ran = 0, failed = 0;
             bool cancelled = false;
@@ -319,9 +320,10 @@ namespace AvatarBridge.Regression
                     File.WriteAllText(Path.Combine(CurrentDir, file), digest);
 
                     string baseline = Path.Combine(BaselineDir, file);
-                    if (!File.Exists(baseline)) { missing.Add(name); continue; }
+                    if (!File.Exists(baseline)) { missing.Add(name); TallySweep(sweep, name, digest, null); continue; }
                     string before = File.ReadAllText(baseline);
                     if (before != digest) changes.Add($"{name}  ({DiffSummary(before, digest)})");
+                    TallySweep(sweep, name, digest, before);
                 }
             }
             finally
@@ -343,6 +345,7 @@ namespace AvatarBridge.Regression
                 foreach (var c in changes) sb.AppendLine("    " + c);
                 sb.AppendLine($"  compare: {CurrentDir} vs {BaselineDir}");
             }
+            AppendSweepReport(sb, sweep);
 
             if (cancelled)
             {
@@ -359,6 +362,87 @@ namespace AvatarBridge.Regression
 
             Debug.Log(sb.ToString());
             return changes.Count;
+        }
+
+        // The digest has carried a [sweep] block since the sweep shipped,
+        // and nothing read it back: an avatar whose baseline already had
+        // stuck toggles passed silently forever. This reads it. Totals for
+        // the run, a name for anything newly stuck or refused, and a line
+        // for the old failures the baseline is still carrying.
+        class SweepTally
+        {
+            public int Swept, Params, Responded, Stuck, Refused, Invalid, Unswept;
+            public readonly List<string> Worse = new List<string>();
+            public readonly List<string> Carrying = new List<string>();
+        }
+
+        static void TallySweep(SweepTally tally, string name, string digest, string baseline)
+        {
+            if (!ParseSweep(digest, out var now, out var names)) { tally.Unswept++; return; }
+            tally.Swept++;
+            tally.Params += now[0];
+            tally.Responded += now[1];
+            tally.Stuck += now[2];
+            tally.Refused += now[3];
+            tally.Invalid += now[4];
+
+            int[] was = null;
+            var old = new HashSet<string>();
+            if (baseline != null && ParseSweep(baseline, out was, out var oldNames)) old.UnionWith(oldNames);
+
+            var fresh = names.Where(n => !old.Contains(n)).ToList();
+            if (now[4] != 0 && (was == null || was[4] == 0)) fresh.Add("invalid");
+            if (fresh.Count > 0) tally.Worse.Add($"{name}  +{string.Join("  +", fresh)}");
+            else if (names.Count > 0 || now[4] != 0) tally.Carrying.Add($"{name} ({names.Count + now[4]})");
+        }
+
+        // The counts from the summary line, then the named stuck and
+        // refused lines under it. Positional: the writer's field order
+        // is fixed.
+        static bool ParseSweep(string digest, out int[] counts, out List<string> names)
+        {
+            counts = null;
+            names = new List<string>();
+            int at = digest.IndexOf("[sweep] params=", StringComparison.Ordinal);
+            if (at < 0) return false;
+            var lines = digest.Substring(at).Split('\n');
+            var read = new int[5];
+            int got = 0;
+            foreach (var part in lines[0].Split(' '))
+            {
+                int eq = part.IndexOf('=');
+                if (eq < 0 || got >= 5) continue;
+                if (int.TryParse(part.Substring(eq + 1), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out int v))
+                    read[got++] = v;
+            }
+            if (got != 5) return false;
+            counts = read;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (lines[i].StartsWith("  stuck ", StringComparison.Ordinal) ||
+                    lines[i].StartsWith("  refused ", StringComparison.Ordinal))
+                    names.Add(lines[i].Trim());
+                else break;
+            }
+            return true;
+        }
+
+        static void AppendSweepReport(StringBuilder sb, SweepTally sweep)
+        {
+            if (sweep.Swept == 0 && sweep.Unswept == 0) return;
+            sb.AppendLine($"  [sweep] {sweep.Swept} swept: {sweep.Params} params, " +
+                          $"{sweep.Responded} responded, {sweep.Stuck} stuck, " +
+                          $"{sweep.Refused} refused, {sweep.Invalid} invalid" +
+                          (sweep.Unswept > 0 ? $", {sweep.Unswept} not swept" : ""));
+            if (sweep.Worse.Count > 0)
+            {
+                sb.AppendLine($"  [sweep] WORSE than baseline ({sweep.Worse.Count}):");
+                foreach (var w in sweep.Worse) sb.AppendLine("    " + w);
+            }
+            if (sweep.Carrying.Count > 0)
+                sb.AppendLine($"  [sweep] carrying old failures ({sweep.Carrying.Count}): " +
+                              string.Join(", ", sweep.Carrying));
         }
 
         static string DiffSummary(string before, string after)
