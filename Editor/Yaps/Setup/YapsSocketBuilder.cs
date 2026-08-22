@@ -35,7 +35,7 @@ namespace AvatarBridge
         // suffix alone, so a tag without its twin is remote-only.
         const string Twin = "_SelfNotOnHips";
 
-        const string LightsName = "YAPS Lights";
+        public const string LightsName = "YAPS Lights";
         const string PointersName = "YAPS Pointers";
         const string PrefabFolder = "Assets/YAPS/Prefabs";
         public const string PlugPropPrefabPath = PrefabFolder + "/YAPS Plug Prop.prefab";
@@ -205,7 +205,7 @@ namespace AvatarBridge
 
         // The sockets asking for lights on this avatar, in the order they
         // get them.
-        static System.Collections.Generic.List<YapsSocket> Lit(YapsSocket socket)
+        public static System.Collections.Generic.List<YapsSocket> Lit(YapsSocket socket)
         {
             var avatar = socket.GetComponentInParent<CVRAvatar>();
             var root = avatar != null ? avatar.transform : socket.transform.root;
@@ -266,9 +266,14 @@ namespace AvatarBridge
 
             Replace(t, LightsName, lights =>
             {
-                if (!socket.emitLights || !WithinLightCap(socket)) return;
+                if (!socket.emitLights) return;
+                // Every lit-capable socket CARRIES its pair; only the one
+                // within the cap starts enabled. A disabled light never
+                // enters Unity's per-mesh ranking, so the rest cost
+                // nothing until the lighthouse menu hands them the slot.
                 if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
                 if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
+                lights.gameObject.SetActive(WithinLightCap(socket));
             });
 
             Replace(t, PointersName, pointers =>

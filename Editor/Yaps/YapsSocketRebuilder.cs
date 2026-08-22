@@ -355,6 +355,19 @@ namespace AvatarBridge
 
             RemoveExclusivityLayers(ctx);
 
+            string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
+            if (lighthouse != null && rebuilt > 0)
+            {
+                ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
+                    "Every lit-capable socket carries its marker pair, exactly one pair is " +
+                    "enabled, and a menu dropdown moves it. A disabled light never competes " +
+                    "for Unity's four vertex-light slots, so this is what makes several " +
+                    "DPS-findable sockets on one avatar work at all — before it, a second " +
+                    "lit socket evicted the hole's root light and holes broke while rings " +
+                    "kept working. The selector parameter syncs (32 bits) so everyone sees " +
+                    "the same socket lit.");
+            }
+
             if (rebuilt > 0)
             {
                 ctx.Report.Converted(Category,
