@@ -1,7 +1,7 @@
 # Consolidation — the tool's own optimisation pass
 
 Written 2026-08-19, after the 4.1.1 release, from a complaint that is correct: the thing has grown
-by accretion and it shows. `docs/Optimisation.md` is about making avatars cheaper. This is about
+by accretion and it shows. `docs/archive/Optimisation.md` is about making avatars cheaper. This is about
 making the project cheaper to use and to change.
 
 Everything below is measured, not felt.

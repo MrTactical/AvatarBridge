@@ -3,7 +3,7 @@
 How a plug finds a socket is the whole system; everything else is presentation. This gathers
 every route that exists, every route proposed, and every measured limit, from a month of in-game
 failures and two nights reading the client. The feature wishlist (paths, portals, multi-socket)
-stays in `Roadmap.md` — those ride on whatever transport wins here.
+stays in `Unfinished.md` — those ride on whatever transport wins here.
 
 Status words used below: **shipped** (in the package), **built** (in the code, unreleased),
 **proposed** (designed, not started), **postponed** (designed, deliberately not built),

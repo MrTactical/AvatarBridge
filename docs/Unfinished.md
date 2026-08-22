@@ -1,12 +1,42 @@
-# Where this could go next
+# Unfinished
 
-Written the day 4.0.2 shipped. Nothing here is promised, and the standing rule still
-outranks all of it: a bug somebody hits while wearing an avatar comes first. Most of what
-follows exists because a real failure pointed at it.
+The single list. Every open piece of work lives here and nowhere else. Check this document
+before starting on a new idea, in case something similar is already on it, and whenever the
+question is "what's next" or "what do we have to do". An item leaves this file by shipping, or
+by a decision recorded in `archive/`. The standing rule still outranks everything on it: a bug
+somebody hits while wearing an avatar comes first.
+
+Transport facts and their build order live in `YAPS5.md`; solver maths in `SolverCalibration.md`;
+what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in `archive/`.
+
+## Next up
+
+1. **The two-person authority-gate test** — thirty minutes in game, needs one other person.
+   Decides whether YAPS props can ever work against someone else's sockets (`YAPS5.md`, wall
+   two). If confirmed, report it to ABI and stop patching our side for it.
+2. **The rebuild** (first section below) — the trunk everything else hangs off.
+3. **Ship 4.2.0** — version is bumped, notes drafted, the light-budget fix should ride in it.
+
+## Loose ends, small but real
+
+- **Toggle-sweep reader**: the corpus digest records `[sweep] params= responded= stuck= refused=
+  invalid=` per avatar and nothing reads or reports it. Write the reader; a regression in a
+  toggle should fail a run, not decorate it.
+- **Two missing corpus classes**: zero of 84 avatars carry an always-visible head, zero carry a
+  socket that deforms. Both classes reached users precisely because the corpus could not.
+- **Pointer capping**: whether pointers should be capped the way marker lights now are — raised
+  in the optimisation work (see `archive/Optimisation.md`), never decided.
+- **Regression evidence for testers**: the HTML report from the renovation plan — a digest a
+  tester can read — was agreed and never started.
+- **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
+  which was skipped on purpose.
+
+---
 
 ---
 
 ## Read it, strip it, rebuild it in YAPS
+*Status: planned, spike done. The repoint step is proven necessary; a user's native rebuild by hand is the live dry run.*
 
 **The single highest-value thing on this list. Not a feature: it removes the seam every
 penetration bug of the last three sittings came out of.**
@@ -74,6 +104,7 @@ treats the symptom. There is no residue to wake if there is no residue.*
 
 
 ## The preview tells the truth about the game
+*Status: partial. The honest window shipped with 4.2.0's work; the game-accurate resolver is unstarted.*
 
 The setup window's preview bends a plug toward a socket by reading transforms. The GAME needs the
 socket's pointers, marker lights and receivers switched on. So a socket can preview perfectly and
@@ -95,6 +126,7 @@ honest about being a preview.
 ---
 
 ## YAPS 5: the plug follows a path, not a point
+*Status: planned, unstarted.*
 
 *The other half of YAPS 5 — how a plug FINDS a socket — lives in `YAPS5.md`, which gathers every
 transport, every measured limit, and the order they get built in. This section is what the plug
@@ -145,6 +177,7 @@ VRCFury's solver and their setups vary wildly.
 ---
 
 ## The converter: prove it before the instance does
+*Status: planned, unstarted.*
 
 Everything here comes from the same observation: the expensive bugs are the ones nobody can
 see in the editor, and every one this month was found by a person wearing the avatar.
@@ -211,6 +244,7 @@ a skipped pass and a run pass produce the same output.
 ---
 
 ## GoGoLoco's poses, through ChilloutVR's own front door
+*Status: planned, unstarted.*
 
 The most visible thing a converted avatar loses. GoGo is stripped because its layers assert body
 poses while ChilloutVR's locomotion is asserting them too, and two writers on one body is the
@@ -265,6 +299,7 @@ sanitise the names; write the override controller. Report what landed where and 
 fit, because "which of my poses survived" is the first question anyone will ask.
 
 ## The animator merger: make the invisible visible
+*Status: planned, unstarted.*
 
 Ten thousand lines, the most fragile thing in the package, and the place where a bug is
 hardest to see because nothing throws — the avatar simply behaves slightly wrongly.
@@ -294,6 +329,7 @@ rather than to luck.
 ---
 
 ## Marker lights are a broadcast, and the room is listening
+*Status: reference — measured facts, kept for design work; the distilled limits are in `YAPS5.md`.*
 
 Added 2026-08-17, after a user reported their controllers vibrating whenever they came within
 two metres of a converted avatar. Everything here was learned from source, and it changes what a
@@ -332,6 +368,7 @@ to YAPS and nothing else" mode, where our own decoder sets the rules.
 ---
 
 ## Two walls the transports hit, and whether a shader goes round them
+*Status: in progress. The light-slot fix landed; the authority-gate test is next up.*
 
 Read out of the client 2026-08-22 while costing a contact-based replacement for the marker-light
 channel. Both of these are platform behaviour, not our code, and both bound what any redesign can
@@ -389,6 +426,7 @@ colour. The atlas stays designed and unbuilt until something forces it.
 ---
 
 ## The WASM route, and what it would make of all this
+*Status: blocked — access declined 2026-08-19.*
 
 Read from Joe's client on 2026-08-17. **His install is the `public-scripting` beta**, and the
 bridge's initialiser sits behind `#if WASM_SCRIPTING_ENABLED`, which a ChilloutVR dev confirmed is
