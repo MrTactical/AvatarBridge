@@ -288,24 +288,24 @@ namespace AvatarBridge
                 // YapsPropBuilder has always emitted both. Sockets did not.
                 if (!anySpsRoot)
                 {
-                    Pointer(pointers, "SPS Root", spsRoot, Vector3.zero);
-                    Pointer(pointers, "SPS Root Self", spsRoot + Twin, Vector3.zero);
+                    Pointer(pointers, "Socket Root", spsRoot, Vector3.zero);
+                    Pointer(pointers, "Socket Root Self", spsRoot + Twin, Vector3.zero);
                 }
                 if (!havePointers.Any(k => k.StartsWith("SPSLL_Socket_Front")))
                 {
-                    Pointer(pointers, "SPS Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
-                    Pointer(pointers, "SPS Front Self", "SPSLL_Socket_Front" + Twin,
+                    Pointer(pointers, "Socket Front", "SPSLL_Socket_Front", new Vector3(0, 0, FrontOffset));
+                    Pointer(pointers, "Socket Front Self", "SPSLL_Socket_Front" + Twin,
                         new Vector3(0, 0, FrontOffset));
                 }
                 if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Root")))
                 {
-                    Pointer(pointers, "TPS Root", "TPS_Orf_Root", Vector3.zero);
-                    Pointer(pointers, "TPS Root Self", "TPS_Orf_Root" + Twin, Vector3.zero);
+                    Pointer(pointers, "Socket Root 2", "TPS_Orf_Root", Vector3.zero);
+                    Pointer(pointers, "Socket Root 2 Self", "TPS_Orf_Root" + Twin, Vector3.zero);
                 }
                 if (!havePointers.Any(k => k.StartsWith("TPS_Orf_Norm")))
                 {
-                    Pointer(pointers, "TPS Norm", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
-                    Pointer(pointers, "TPS Norm Self", "TPS_Orf_Norm" + Twin,
+                    Pointer(pointers, "Socket Front 2", "TPS_Orf_Norm", new Vector3(0, 0, FrontOffset));
+                    Pointer(pointers, "Socket Front 2 Self", "TPS_Orf_Norm" + Twin,
                         new Vector3(0, 0, FrontOffset));
                 }
             });
