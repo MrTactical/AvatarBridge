@@ -228,6 +228,17 @@ namespace AvatarBridge
         // channel, and the author's layers pointed at it.
         public static void Finish(BridgeContext ctx, Dictionary<Transform, Spec> specs)
         {
+            // Fields first, on every socket, then the builds: the light
+            // cap ranks a socket against ALL of them, so building while
+            // half still carry default fields hands out too many slots.
+            foreach (var pair in specs)
+            {
+                var socket = pair.Key != null ? pair.Key.GetComponent<YapsSocket>() : null;
+                if (socket == null) continue;   // the bake path reported its own failure
+                socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
+                socket.emitLights = pair.Value.EmitLights;
+            }
+
             int rebuilt = 0, repointed = 0;
             var left = new List<string>();
             foreach (var pair in specs)
@@ -236,10 +247,8 @@ namespace AvatarBridge
                 var spec = pair.Value;
                 if (root == null) continue;
                 var socket = root.GetComponent<YapsSocket>();
-                if (socket == null) continue;   // the bake path reported its own failure
+                if (socket == null) continue;
 
-                socket.kind = spec.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
-                socket.emitLights = spec.EmitLights;
                 // No rename: the author's clips may bind paths through this
                 // object, and a renamed path is a silenced channel. The
                 // label, and so the depth parameter, derives from the bone.
