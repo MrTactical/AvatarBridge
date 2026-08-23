@@ -11,15 +11,17 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
-1. **Verify the rebuild** — the code is COMPLETE (2026-08-22, see the first section below), and
-   zero avatars have been through it. In order: the running corpus finishes and settles its
-   baseline, the rebuild deploys, a NEW full corpus runs, then in game on a real converted
-   socket avatar. The digest diff on socket avatars will be large on purpose; the reading work
-   is checking it is the SAME shape on all of them and that non-socket avatars did not move.
-2. **The lighthouse** — BUILT 2026-08-22, without the constraint: per-socket pairs, one
-   enabled, a synced dropdown moving it. Rides the same verification as the rebuild.
-3. **4.2.0 is HELD, decided 2026-08-22** — it waits for the rebuild to verify; the light-budget
-   fix and the rebuild ride out together when the corpus and an in-game test say so.
+*4.3.0 shipped 2026-08-23: the rebuild, the lighthouse and the light budget, after corpus runs 385,
+386 and 387 passed and a tester confirmed a rebuilt mouth socket with a DPS prop in game. The
+hold on 4.2.0 ended there; that number was spent on a tester build and never released.*
+
+1. **Watch the 4.3.0 reports.** The classes that reached users before are in the corpus now, but
+   the first week of a release is its real corpus. A report wearing a `test-rebuild` build is
+   pre-release; ask for the file name.
+2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
+   prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
+   digests.
+3. **Pointer capping** — the open question below, now the only socket work not done.
 
 ## Loose ends, small but real
 
@@ -35,12 +37,12 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 ---
 
 ## Read it, strip it, rebuild it in YAPS
-*Status: COMPLETE 2026-08-22, awaiting verification. Sockets: read, strip, wake, rebuild, repoint, menu wiring, dead exclusivity layers removed, label collisions deduped. Plugs: Fury rig stripped before the fresh announce. Multi-depth-parameter sockets keep their triggers as authored. Verify: corpus, then a socket-avatar subset, then in game.*
+*Status: SHIPPED in 4.3.0 (2026-08-23). Corpus 385/386/387 same-shape and clean; a tester confirmed a rebuilt mouth socket with a DPS prop in game. Kept here as the record of what the conversion does; the table below is history.*
 
 **The single highest-value thing on this list. Not a feature: it removes the seam every
 penetration bug of the last three sittings came out of.**
 
-Conversion currently keeps VRCFury's baked rig and adapts it in place. So an avatar ends up with
+Conversion used to keep VRCFury's baked rig and adapt it in place. So an avatar ended up with
 a socket that is *Fury's socket, retuned* — while the YAPS tool builds a different thing entirely
 from the same description. Two shapes, one name, and every difference between them is somewhere
 a bug can live. All of these did:
@@ -103,14 +105,14 @@ treats the symptom. There is no residue to wake if there is no residue.*
 
 
 ## The preview tells the truth about the game
-*Status: partial. The honest window shipped with 4.2.0's work; the game-accurate resolver is unstarted.*
+*Status: partial. The honest window shipped in 4.3.0; the game-accurate resolver is unstarted.*
 
 The setup window's preview bends a plug toward a socket by reading transforms. The GAME needs the
 socket's pointers, marker lights and receivers switched on. So a socket can preview perfectly and
 do nothing in game, and it did: pointers visible in CVR's own debug view, no bend, and the tool
 saying the socket was fine throughout.
 
-4.2.0 makes the window HONEST — each socket row says which of the three is dark and what it
+4.3.0 makes the window HONEST — each socket row says which of the three is dark and what it
 costs. That closes the lie. It does not close the gap.
 
 The gap worth closing is a preview that resolves a socket the way the game does: pointer and

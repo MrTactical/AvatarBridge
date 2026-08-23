@@ -86,7 +86,7 @@ In the order they are worth doing, cheapest and least disruptive first.
 
 ### 1. The lighthouse — BUILT 2026-08-22, without the constraint
 
-One marker pair per avatar instead of one per socket. Root and front lights ride a
+As first sketched: one marker pair per avatar instead of one per socket. Root and front lights ride a
 `ParentConstraint` with every socket as a source; animating the source weights snaps the pair
 onto whichever socket is active, tracking its bone. Legacy plugs see a completely standard DPS
 pair and cannot tell the difference — that is the point.
@@ -101,11 +101,12 @@ pair and cannot tell the difference — that is the point.
 
 Built without `ParentConstraint`, which dissolved both open questions: a DISABLED light never
 enters Unity's ranking, so every socket keeps its own pair on its own bone and a selector layer
-enables exactly one. A "Marker lights" dropdown (Int, synced, 32 bits) moves it; one socket
-means no chooser. `YapsLighthouse.cs`, called by both the conversion and the tool.
+enables exactly one. A "Marker lights" dropdown (Int, synced, 32 bits) moves it, starts on Off,
+and choosing a socket switches that socket on as well as lit — the dropdown is the one control an
+old toy needs. One socket means no chooser. `YapsLighthouse.cs`, called by both the conversion and the tool.
 
 ### 2. Light colour as data — demoted 2026-08-22
-n*Demoted the day the gate test passed: its consumer was YAPS light-readers, and contacts are now
+*Demoted the day the gate test passed: its consumer was YAPS light-readers, and contacts are now
 proven, so lights are legacy-only — and legacy plugs cannot read colour. Kept for the record.*
 
 A vertex light hands the shader `unity_LightColor` beside position and range. The markers are

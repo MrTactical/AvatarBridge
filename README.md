@@ -741,9 +741,10 @@ switched on from their menu; with neither in range it stays exactly as it is.
 **Your own plug into your own socket** goes through a separate channel. Every socket tag has a
 `_SelfNotOnHips` twin beside it, and a socket's own self trigger listens for the twin ALONE — the
 bare tag is what everyone ELSE reads. A socket carrying only the bare tag works perfectly for
-other people and does nothing for the person wearing it. Sockets built before 4.2.0 are in exactly
-that state: **rebuild them** from *Tools ▸ YAPS ▸ Setup* and the twin is written in, along with
-current marker light ranges if the socket came from an older prefab.
+other people and does nothing for the person wearing it. Sockets built with the YAPS tool before
+4.3.0 are in exactly that state: **rebuild them** from *Tools ▸ YAPS ▸ Setup* and the twin is
+written in, along with current marker light ranges if the socket came from an older prefab. A
+conversion rebuilds every socket from scratch, so converted avatars get the twins by default.
 
 **What other people see.** The wearer's own machine works out where the socket is, and a driver
 publishes it so everyone else sees the same bend. Marker lights are read independently by each
@@ -762,12 +763,12 @@ the cap without penetration still fits with it on.
 ⚠️ **What that costs, and how to buy it back.** ChilloutVR computes a trigger's contact on the
 *wearer's* machine alone — the client makes an avatar trigger's receiver local-only and its task
 writes the local player's animator — so a local parameter never leaves that machine, and the
-author's depth reactions play for the wearer and nobody watching. **Show socket depth reactions to
-other players**, under *Manual options ▸ Opt-ins*, syncs them instead: 32 bits for each of the two
-parameters a socket carries, so six sockets is about 384 of the 3200. Off by default because a
-socket-heavy avatar can spend a tenth of its budget on it. [YAPS's own socket shapes](#the-yaps-tool)
-take the other side of that trade already — their depth is a synced parameter precisely so the room
-sees them move.
+author's depth reactions play for the wearer and nobody watching. **Show the avatar's OWN depth
+animations to other players**, under *Manual options ▸ Opt-ins*, syncs them instead: one depth
+parameter per rebuilt socket at 32 bits, so six sockets is about 192 of the 3200. Off by default
+because a socket-heavy avatar can spend a slice of its budget on it. A socket with a mesh of its
+own takes the other side of that trade already: its deform runs in the shader, which every client
+draws for itself, so the room sees it move with nothing synced.
 
 **Auto socket mode** — VRCFury's, ported whole and steadied: it picks the nearest enrolled socket
 and stays there instead of flickering between neighbours. Only sockets whose author ticked *Auto*
@@ -1240,7 +1241,7 @@ settle. Leaving all of them alone converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
-| **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits for each of the two parameters a socket carries — six sockets is about 384 of 3200. Needs *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket — one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder — you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
