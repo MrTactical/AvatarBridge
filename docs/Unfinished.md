@@ -160,10 +160,25 @@ float depth = YapsPlugDepth(socketWorld);
 avatar root, so the shader looks for a plug down at the hips and finds nothing. Hence
 `MeshIsTheSocket`, which is just `distance(renderer.position, socket.position) < 0.03f`.
 
-**Changing it is low risk.** `socketWorld` feeds `YapsPlugDepth` and NOTHING else — the deform
-itself is baked shape deltas blended by weight, with no frame recovery and no walk. So this cannot
-distort geometry; it can only change where we look for a plug. The frame-packing worry that makes
-this file dangerous belongs to the PLUG deform, not this one.
+**It cannot distort geometry.** The deform is baked shape deltas blended by weight, with no frame
+recovery and no walk, and `depth <= 0` returns before any of it. Get `socketWorld` wrong and the
+socket simply does not open. The frame-packing worry that makes this file dangerous belongs to the
+PLUG deform, not this one. There is a second net as well: `_YAPS_SocketDepth` overrides the
+computed depth whenever it is >= 0 (`yaps_socket.cginc:147`), so the animator channel still wins
+where it is driven.
+
+**But it is not only where we look for a plug — corrected 2026-08-23.** `socketWorld` reaches
+further down than the depth maths:
+
+```
+YapsSocketDeform  ->  YapsPlugDepth  ->  YapsFindPlug  ->  YapsSocketOwnPlug   (yaps_resolve.cginc:215)
+```
+
+`YapsSocketOwnPlug` measures `socketWorld` against EVERY player's hip to decide whose plug to
+ignore. So the value also answers "whose socket is this". On a body mesh it sits at the avatar
+root, right beside the wearer's own hip, and the self filter passes by accident. Move it to the
+real socket and that stops being free: a socket out on a hand, near somebody else, can resolve to
+THEIR hip. Any candidate has to be checked against the hand case, not just the jaw case.
 
 **The hard part is not the line, it is what to put in it.** Candidates:
 
@@ -177,6 +192,9 @@ this file dangerous belongs to the PLUG deform, not this one.
 3. **The vertex's own world position.** Tracks skinning perfectly and costs nothing, but depth
    then varies across the shape by a few centimetres out of the reach — a gradient where the
    stages want one uniform weight. May be invisible on a bulge and visible on a staged sequence.
+   Worse since the ownership finding above: one position per VERTEX means the nearest hip is
+   resolved per vertex too, so vertices can disagree about whose plug it is. Candidates 1 and 2
+   keep one position for the whole socket and stay coherent.
 
 None is free of a catch, which is why this is a spike and not a patch. Worth it: it would move
 every body-mesh socket onto the free path and retire the sync tickbox for most avatars.
