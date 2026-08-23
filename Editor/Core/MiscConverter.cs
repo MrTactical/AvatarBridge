@@ -620,10 +620,23 @@ namespace AvatarBridge
 
         static void StripCamerasAndListeners(BridgeContext ctx, string category)
         {
-            int cameras = 0, listeners = 0;
+            int cameras = 0, listeners = 0, kept = 0;
             foreach (var cam in ctx.Target.GetComponentsInChildren<Camera>(true))
             {
                 if (cam == null) continue;
+                // ChilloutVR's own rule, from SharedFilter.ProcessCamera: a
+                // camera with no target texture is destroyed, one that
+                // renders into a RenderTexture is KEPT and depth-clamped,
+                // and the filter hands it a per-instance copy of the
+                // texture. Stripping those took a supported feature off
+                // people's avatars — a mirror, a screen, or the camera an
+                // effect blits through to reach a texture parser.
+                if (cam.targetTexture != null)
+                {
+                    cam.depth = Mathf.Clamp(cam.depth, 1f, 99f);
+                    kept++;
+                    continue;
+                }
                 var flare = cam.GetComponent<FlareLayer>();
                 if (flare != null) Object.DestroyImmediate(flare);
                 Object.DestroyImmediate(cam);
@@ -639,8 +652,20 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(category,
                     $"Removed {cameras} camera(s) and {listeners} audio listener(s)",
-                    "ChilloutVR's asset filter crashes on avatar cameras (blocking the whole avatar); " +
-                    "avatars shouldn't carry a Camera or AudioListener. The GameObjects were kept.");
+                    "A camera that renders to the screen paints over everyone's view and ChilloutVR " +
+                    "destroys it on load; an audio listener on an avatar hijacks where the game " +
+                    "thinks your ears are. The GameObjects were kept." +
+                    (kept > 0
+                        ? $" {kept} camera(s) rendering into a RenderTexture were KEPT — ChilloutVR " +
+                          "supports those and gives each one its own copy of the texture, so a " +
+                          "screen, a mirror or an effect reading a texture still works."
+                        : ""));
+            }
+            else if (kept > 0)
+            {
+                ctx.Report.Converted(category, $"{kept} render-texture camera(s) kept",
+                    "ChilloutVR supports a camera that renders into a RenderTexture and hands each " +
+                    "copy of the avatar its own texture. Only screen-rendering cameras are removed.");
             }
         }
 

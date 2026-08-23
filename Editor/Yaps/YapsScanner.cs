@@ -361,16 +361,26 @@ namespace AvatarBridge
             // state anything is in; the game needs these components live.
             // A socket that previews perfectly and does nothing in game is
             // this, and it cost two people three evenings to find.
+            // A socket switched off at its own root is the wearer using the
+            // toggle, not a fault. Saying "nothing can find it" about a
+            // socket somebody turned off on purpose sends them hunting a
+            // bug they made themselves.
+            bool socketItselfOff = f.Root != null && !f.Root.gameObject.activeInHierarchy;
             int darkPointers = f.Pointers.Count(p => p != null
                 && (!p.enabled || !p.gameObject.activeInHierarchy));
-            if (darkPointers > 0)
+            if (socketItselfOff)
+            {
+                f.Notes.Add("switched off — everything under it is dark until it is switched back on, " +
+                            "which is what its menu toggle does in game");
+            }
+            else if (darkPointers > 0)
             {
                 f.Notes.Add($"{darkPointers} of its pointers are switched off — nothing can find it in " +
                             "game, however well it previews");
             }
             int darkLights = f.Lights.Count(l => l != null
                 && (!l.enabled || !l.gameObject.activeInHierarchy));
-            if (darkLights > 0)
+            if (darkLights > 0 && !socketItselfOff)
             {
                 // Dark on purpose under the lighthouse: pairs wait on the
                 // menu, one lit at a time. Only a socket dark with no
@@ -387,7 +397,7 @@ namespace AvatarBridge
             {
                 int deaf = f.Root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true)
                     .Count(t => t != null && (!t.enabled || !t.gameObject.activeInHierarchy));
-                if (deaf > 0)
+                if (deaf > 0 && !socketItselfOff)
                 {
                     f.Notes.Add($"{deaf} of its receivers are switched off — it says where it is and " +
                                 "never notices a plug arrive, which previews fine and does nothing in game");
