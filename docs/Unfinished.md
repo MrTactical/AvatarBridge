@@ -43,7 +43,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 penetration bug of the last three sittings came out of.**
 
 Conversion used to keep VRCFury's baked rig and adapt it in place. So an avatar ended up with
-a socket that is *Fury's socket, retuned* — while the YAPS tool builds a different thing entirely
+a socket that was *Fury's socket, retuned* — while the YAPS tool built a different thing entirely
 from the same description. Two shapes, one name, and every difference between them is somewhere
 a bug can live. All of these did:
 
@@ -67,7 +67,8 @@ removal of it.
 2. **Strip** the legacy rig completely — no baked objects, no services, no exclusivity layers,
    nothing of Fury's left to switch off.
 3. **Rebuild** through the same code the YAPS tool uses, at the transforms that were read.
-4. **Repoint** the author's reaction layers onto the rebuilt socket's depth parameter.
+4. **Repoint** the author's reaction layers onto the rebuilt socket's depth parameter — when the
+   socket read exactly one; several are kept as authored, and the report says so.
 
 Then a converted socket IS a native socket. Odessa becomes a valid test for every avatar, the
 scanner and the preview see one shape, and this whole table stops being possible.
@@ -76,17 +77,17 @@ Two thirds of the machinery already exists: plugs are re-baked today rather than
 toggles are rebuilt by Bake and Verify, which was the objection that looked hardest until Joe
 pointed out it is already solved.
 
-**Step 4 is the one the spike found, and it is not optional.** The two paths do not name the depth
-parameter alike:
+**Step 4 was the one the spike found, and it was not optional.** Before the rebuild the two paths
+did not name the depth parameter alike:
 
 | | how depth is named |
 |---|---|
 | native, `YapsSocketReactions` | `YAPS/<label>/Depth` |
 | converted | Fury's own layers, e.g. `[FX] [VF80] Pussy - Depth Animations - 2 - Action` |
 
-The converter never calls `YapsSocketReactions`; it keeps Fury's layers and makes them local. So
-a socket rebuilt natively publishes one name while the author's clips read another, and every
-reaction goes silent. Measured across the corpus: **72 depth-animation layer mentions, 6 empty**,
+The converter never called `YapsSocketReactions`; it kept Fury's layers and made them local. So
+a socket rebuilt natively would have published one name while the author's clips read another,
+and every reaction would have gone silent. Measured across the corpus: **72 depth-animation layer mentions, 6 empty**,
 so roughly sixty-six carry real animation an author built. Not droppable.
 
 The repoint itself is a known job — `AnimatorMerger` already renames parameter references across
@@ -95,8 +96,9 @@ layer's parameter references never touches its clips.** The clips animate blends
 exactly as they are; only the layer's read of the depth value moves. Backwards, that silences a
 channel or resizes a mesh.
 
-**Then a corpus, and an avatar with an always-visible head added to it.** There are zero of those
-in 84, which is exactly why this class kept reaching users instead of the regression run.
+**Then a corpus, and an avatar with an always-visible head added to it.** There were zero of
+those in 84 — which is exactly why this class kept reaching users — until Fixture_HeadTransplant
+and Fixture_DeformSocket joined the corpus on 2026-08-22.
 
 *Supersedes the earlier entry here, which proposed waking everything Fury left switched off. That
 treats the symptom. There is no residue to wake if there is no residue.*
@@ -166,14 +168,15 @@ The contact channel is where bits get expensive: eight values per socket, 96–2
 by tier, doubled by a second socket. Give socket two its own lower tier (engagement and
 position, orientation dropped first).
 
-Socket depth stays one synced parameter per socket. That is deliberate: sharing a slot
+Socket depth stays one parameter per socket, local by default and synced at the wearer's
+choice. That is deliberate: sharing a slot
 between sockets assumes one is engaged at a time, which is exactly the assumption
 multi-socket and portal exist to break.
 
 **Order to build it in:** deepest-plug-wins first (small, self-contained), then the socket
-list with socket two on lights, then portal and duplicate as ranges on top, then the
-converter repointing an author's reactions onto YAPS's own depth — last, because it deletes
-VRCFury's solver and their setups vary wildly.
+list with socket two on contacts (the light path carries one socket, see above), then portal and
+duplicate as ranges on top. The converter repointing an author's reactions onto YAPS's own
+depth, once last on this list, shipped in 4.3.0 with the rebuild.
 
 ---
 

@@ -84,7 +84,7 @@ avatar-side problem — pointers missing, dark, or mistyped — never a client r
 
 In the order they are worth doing, cheapest and least disruptive first.
 
-### 1. The lighthouse — BUILT 2026-08-22, without the constraint
+### 1. The lighthouse — SHIPPED in 4.3.0, without the constraint
 
 As first sketched: one marker pair per avatar instead of one per socket. Root and front lights ride a
 `ParentConstraint` with every socket as a source; animating the source weights snaps the pair
@@ -153,8 +153,8 @@ already script-first, contacts next, lights last.
 
 1. ~~Reserve the tracker's light slot~~ — **done**, `b82e9d0`.
 2. ~~The two-person authority-gate test~~ — done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
-3. ~~The socket rebuild~~ — **built 2026-08-22**, awaiting corpus and in-game verification.
+3. ~~The socket rebuild~~ — **shipped in 4.3.0** (2026-08-23): corpus 385/386/387 clean, a tester's rebuilt mouth socket working with a DPS prop in game.
 4. ~~Lighthouse~~ — **built 2026-08-22** without the constraint: per-socket pairs, one enabled, dropdown selector.
 5. Light colour: shelved — its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
-6. Corpus, with the two missing avatar classes added (an always-visible head, a deforming
-   socket) before any of this ships.
+6. ~~Corpus, with the two missing avatar classes added~~ — done: Fixture_DeformSocket and
+   Fixture_HeadTransplant are in the corpus and its baseline, and gated 4.3.0.

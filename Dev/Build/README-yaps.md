@@ -13,7 +13,7 @@ content that is already out there, not only with itself.
   `YAPS Ring` prefabs, and *Create a plug prop prefab* writes a spawnable plug you can upload as
   a prop on its own.
 
-**The ChilloutVR Toolkit** (*Tools ▸ ChilloutVR Toolkit*) is a set of utilities that work on any
+**The ChilloutVR Toolkit** (*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit*) is a set of utilities that work on any
 ChilloutVR avatar: merging animator controllers, tidying an avatar before upload, adding face
 tracking, and reporting what an avatar actually contains.
 

@@ -688,18 +688,20 @@ had and SPS dropped — so it reacts to a DPS plug that has never heard of this 
 shader measures depth from its mesh's own origin, which for a body is the avatar's root, so that
 route only opens right on a mesh whose origin is the socket.) **A socket whose shapes are on the
 body mesh gets them through a contact instead**: a depth trigger on the socket reads the plug's
-tip and a layer in your own animator plays the stages from it. That depth is a synced parameter,
-32 of the avatar's 3200 bits per socket: ChilloutVR computes a trigger's contact on the wearer's
-machine alone, so without it nobody else would see the shapes move. Either way, the depth
-reactions the author already built are kept: it is the OGB and PCS *haptics* contacts beside them
-that are stripped, and they drive toys rather than shapes.
+tip and a layer in your own animator plays the stages from it. That depth parameter is local by
+default — ChilloutVR computes a trigger's contact on the wearer's machine alone, so only you see
+the shapes move — and *Show the avatar's OWN depth animations to other players* syncs it at 32 of
+the avatar's 3200 bits per socket so the room sees them too. Either way, the depth reactions the
+author already built are kept. The OGB and PCS *haptics* contacts beside them drive toys rather
+than shapes and go unless *Keep haptics contacts* is ticked.
 
 **A converted socket IS a native socket.** The conversion does not keep VRCFury's baked rig and
 retune it; it reads the socket's kind and placement off that rig, strips the rig entirely —
 lights, pointers, depth triggers, the constraint plumbing — and rebuilds it with the same code
 the YAPS tool runs. So there is one kind of socket, whichever way it was made: fresh marker
 lights within the light budget, every contact tag with its self twin, a depth trigger writing a
-synced parameter, and the author's own depth reactions repointed onto it. VRCFury's socket menu
+parameter (local by default, synced at your say-so), and the author's own depth reactions
+repointed onto it. VRCFury's socket menu
 toggles, which drove a screen-space system that does not survive the trip, are wired to the
 rebuilt sockets, so the menu means what it says. A socket whose reactions read several depth
 parameters is the one exception: collapsing those to one would change what plays when, so it
@@ -707,7 +709,8 @@ keeps its original triggers and layers exactly as authored, and the report says 
 
 **It speaks the other systems on purpose.** The rebuilt rig emits the same wire other people's
 content reads: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest) and the
-marker light ranges, byte for byte at VRCFury's own values. So a converted plug finds DPS,
+marker light ranges, the same protocol digits every decoder reads (at YAPS's own +0.003 offset, see
+the tool section for why). So a converted plug finds DPS,
 TPS and SPS sockets; DPS, TPS and SPS plugs find a converted socket; someone wearing an avatar
 built for another platform's system works with yours, both ways, without either side knowing this
 tool exists. Parameter names elsewhere on the avatar are left alone for a second reason:
@@ -868,7 +871,8 @@ the shader the project has today, otherwise a plug built on the spot. While it r
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
-**One socket carries marker lights**, the same cap a conversion applies. Unity gives a mesh
+**One socket is lit at a time**, the same rule a conversion applies; every lit-capable socket
+carries its pair, dark until chosen. Unity gives a mesh
 four vertex light slots, refills them every frame from the ranges in reach, and a socket takes
 two — and the tracker light of whatever *enters* the socket takes a third, from a prop or the
 other person, so it can never be counted from here and a slot is always held for it. Those slots
@@ -887,17 +891,17 @@ always their ceiling; the dropdown just hands the choice to the wearer instead o
 **The ranges sit in the quiet part of the band.** A marker light says what it is through its
 range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
 plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
-protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why a stock
-converted avatar sets off a bystander's toy and their controllers from across the room. YAPS
+protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why an unconverted
+VRChat avatar sets off a bystander's toy and their controllers from across the room. YAPS
 authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
 on 0.001 never sees it. Nothing to configure, and no cost to compatibility.
 
-Holes take the places first, then rings; the build log names which kept them, and the
-socket's own *Advanced* card says so where you ticked the box. Nothing stops engaging: a plug
-decides *which* socket has it from the contact channel, never from a light, and the lights only
-sharpen its position at contact range. What a socket without them loses is old DPS plugs, which
-carry lights and nothing else, and which could not have found a third lit socket reliably in the
-first place. Untick **Emit marker lights** on a socket to hand its place to another.
+Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
+dropdown lights any one of them on demand, switching that socket on as it does. Nothing stops
+engaging: a plug decides *which* socket has it from the contact channel, never from a light, and
+the lights only sharpen its position at contact range. What a dark socket loses is old DPS plugs,
+which carry lights and nothing else — until the dropdown points at it. Untick **Emit marker
+lights** on a socket to keep it out of the dropdown entirely.
 
 **YAPS Plug** — the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
@@ -942,12 +946,14 @@ or hyper toggle that scales the plug's root bone, or moves one of its baked blen
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
 weights), so the deform is the size the mesh is drawn at.
 
-**Everything is named after the bone it hangs from.** An avatar can carry a dozen sockets, and a
+**Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
 menu entry, its parameter, the reactions layer, the row in the window and the socket's own object
-in the Hierarchy all read `Chest ring`, `hand ring`, `cock plug`. A socket you have named yourself
-keeps that name and gains the bone in brackets; the object is renamed only while nothing animates
-it by path. Moving a socket to another bone renames all of it on the next Build, rather than
+in the Hierarchy all carry the kind — `Chest ring`, `Head hole`, `cock plug` — and a converted
+socket takes the author's own word for it, VRCFury's numbering stripped: `Blowjob hole`,
+`Handjob Left ring`. A socket you have named yourself keeps that name and gains the kind, and
+the bone when the name does not say it; the object is renamed only while nothing animates it by
+path. Moving a socket to another bone renames all of it on the next Build, rather than
 leaving a second copy behind.
 
 **A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
