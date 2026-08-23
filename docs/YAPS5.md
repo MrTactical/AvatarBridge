@@ -128,7 +128,43 @@ available without scripting. What this plan changes is posture, not machinery:
 - Audit every receiver for the box/sphere trap: no Collider on trigger objects, ever.
 - Keep tags tight so rejected pairs stay off the 512.
 
-### 4. The screen-space atlas — postponed, deliberately
+### 4. The GPU bridge: blit or camera, then a texture parser — PROPOSED, 2026-08-23
+
+**A per-client compute channel that ends in component properties, with no scripting and no sync.**
+Found by asking why PlapPlapForAll works for everyone when contacts are wearer-only.
+
+- `CVRBlitter` runs a material from one RenderTexture into another (or several) every frame, on
+  the main camera's pre-render. A full GPU pass, no camera needed. `CVRBlitterController` beside
+  it. Both shipped CCK components.
+- A camera rendering into a RenderTexture also survives: `SharedFilter.ProcessCamera` destroys one
+  with `targetTexture == null` and KEEPS the rest, clamping `depth` to 1..99;
+  `HandleRenderTextureForCamera` swaps the texture for a per-instance copy so two people wearing
+  the avatar do not collide. No culling mask forced, no camera cap. A camera route also gets real
+  scene geometry and per-object vertex lights, which a blit cannot see.
+- `CVRTexturePropertyParser` reads one pixel, one channel, remaps `minValue`..`maxValue`, and
+  writes it into a component. `CVRTexturePropertyParserTask` resolves the target by REFLECTION —
+  `GetField` then `GetProperty`, public instance only — so it reaches any public field or property.
+- `CVRShaderGlobals.SetGlobalTexture` publishes a RenderTexture globally, so a shader elsewhere on
+  the avatar can sample the result without a parser at all.
+
+**What it can drive:** `AudioSource.volume`/`.pitch`/`.enabled`, `Light.intensity`/`.range`,
+`Transform.localPosition`/`.localScale`, and anything else exposed as a field or property.
+
+**What it cannot:** animator parameters (behind `SetFloat`) and blendshape weights (behind
+`SetBlendShapeWeight`). Both are methods; reflection here only does fields and properties. This is
+a hard limit, not a gap in our reading.
+
+**So: sound is solved and costs nothing.** A socket's audio can be computed on every listener's own
+GPU and played locally — no synced parameter, no contact pair, no marker-light tolerance, nothing
+to install. That beats the addon route on every axis: PCS and Wholesome each ship their own contact
+receivers, which spend from the instance-wide 512-pair budget AND are forced local here, so their
+sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: we cannot
+redistribute Noachi's or Dismay's clips.
+
+Untested: whether it survives an upload, and what a per-frame blit or camera actually costs. Steps
+are local Play mode, then upload, then a second client.
+
+### 5. The screen-space atlas — postponed, deliberately
 
 Sockets render encoded quads into a reserved screen region; plugs sample it back through a named
 GrabPass. The only channel that dodges the light slots, the pair cap, the sync bits AND the
@@ -140,7 +176,7 @@ screen cells**, and a cell collision yields a WRONG socket position rather than 
 Wrong-but-confident is the worst failure mode this system can have. Stays designed, stays
 parked, until either scripting lands or a cell scheme that fails safe is found.
 
-### 5. Scripting — blocked
+### 6. Scripting — blocked
 
 The endgame: read any avatar's sockets whatever protocol they speak, no slots, no pairs, no
 bits. Access was requested and declined 2026-08-19 (world scripting is their focus). Everything

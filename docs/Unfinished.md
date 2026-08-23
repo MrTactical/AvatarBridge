@@ -21,7 +21,11 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
    prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
    digests.
-3. **Pointer capping** — the open question below, now the only socket work not done.
+3. **The body-mesh fallback** (section below) — a spike, and the biggest remaining sync cost:
+   one line in `yaps_socket.cginc` is why a body-mesh socket needs the animator at all.
+4. **The GPU bridge** (`YAPS5.md`, candidate 4) — blit or RT camera into a texture parser gives
+   per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
+5. **Pointer capping** — the open question below.
 
 ## Loose ends, small but real
 
@@ -133,6 +137,55 @@ entire class of report — works in editor, dead in game — stops existing.
 Wants measuring first: how much of CVR's contact resolution has to be reproduced before the
 answer is trustworthy. A preview that is right most of the time is worse than one that is
 honest about being a preview.
+
+---
+
+## The body-mesh fallback is our line, not ChilloutVR's
+
+*Opened 2026-08-23. Not a transport — a limit we imposed on ourselves that costs sync bits.*
+
+A socket whose shapes live on the BODY mesh cannot use the shader deform, so its reactions go
+through the animator: a depth trigger, a parameter, a layer. That parameter is wearer-only unless
+synced, which is the 32-bits-a-socket tickbox. A socket with its own mesh pays none of that — its
+deform runs in the shader, on every client, free.
+
+The whole difference is one line, `yaps_socket.cginc`:
+
+```hlsl
+float3 socketWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+float depth = YapsPlugDepth(socketWorld);
+```
+
+**The socket's position is taken as the mesh's object origin.** For a body mesh that pivot is the
+avatar root, so the shader looks for a plug down at the hips and finds nothing. Hence
+`MeshIsTheSocket`, which is just `distance(renderer.position, socket.position) < 0.03f`.
+
+**Changing it is low risk.** `socketWorld` feeds `YapsPlugDepth` and NOTHING else — the deform
+itself is baked shape deltas blended by weight, with no frame recovery and no walk. So this cannot
+distort geometry; it can only change where we look for a plug. The frame-packing worry that makes
+this file dangerous belongs to the PLUG deform, not this one.
+
+**The hard part is not the line, it is what to put in it.** Candidates:
+
+1. **A baked offset**, `_YAPS_SocketOrigin` in the renderer's local space, set at bake time from
+   the socket's transform. Correct whenever the socket does not move relative to the renderer —
+   and wrong the moment a bone does, since a body mesh's transform is the avatar root while the
+   socket rides a bone. Fine for a chest, wrong for a jaw.
+2. **The socket's own marker light.** It sits exactly at the socket and tracks its bone for free,
+   and the shader already reads lights. But the lighthouse lights one socket at a time, so this
+   only works for the lit one.
+3. **The vertex's own world position.** Tracks skinning perfectly and costs nothing, but depth
+   then varies across the shape by a few centimetres out of the reach — a gradient where the
+   stages want one uniform weight. May be invisible on a bulge and visible on a staged sequence.
+
+None is free of a catch, which is why this is a spike and not a patch. Worth it: it would move
+every body-mesh socket onto the free path and retire the sync tickbox for most avatars.
+
+**Also on the same axis:** the GPU bridge (`YAPS5.md`, candidate 4) can write
+`Transform.localPosition` and `localScale` per client for nothing. So a reaction rigged to BONES
+rather than blendshapes is already free today. Not retrofittable onto an author's existing shapes,
+but it is what YAPS should prefer for anything it builds itself. Blendshape weights are behind
+`SetBlendShapeWeight`, a method, and no reflection-based trick reaches them.
 
 ---
 
