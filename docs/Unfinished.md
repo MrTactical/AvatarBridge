@@ -29,6 +29,14 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
   the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.
 - **Pointer capping**: whether pointers should be capped the way marker lights now are — raised
   in the optimisation work (see `archive/Optimisation.md`), never decided.
+- **DPS range offset, ON ICE 2026-08-23** — the +0.003 offset makes YAPS sockets and plugs
+  invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
+  `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and our 0.4130/0.4230/0.4530/
+  0.4930 all land on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it is
+  one choice for both. **Parked until CVRGoesBrrr is fixed or rejected** — if that mod stops
+  reading strangers' lights without consent, or the modding group turns it down, the reason for
+  the offset is gone and exact VRCFury ranges (0.4106/0.4206/0.4506/0.4906) restore every mod at
+  once. The alternative, if it drags: a wearer-facing setting defaulting to today's behaviour.
 - **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
   which was skipped on purpose.
 

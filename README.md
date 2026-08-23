@@ -894,7 +894,11 @@ plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods readin
 protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why an unconverted
 VRChat avatar sets off a bystander's toy and their controllers from across the room. YAPS
 authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
-on 0.001 never sees it. Nothing to configure, and no cost to compatibility.
+on 0.001 never sees it. Nothing to configure — but it does have a cost, and it is worth naming.
+Mods read at that tighter tolerance whatever they do with the result, so the ones that add sound
+effects to a detected DPS setup cannot see a YAPS socket either. There is no range that separates
+a mod which plays a noise on your listener's machine from one which drives a stranger's hardware,
+so this is one choice for both.
 
 Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
 dropdown lights any one of them on demand, switching that socket on as it does. Nothing stops
