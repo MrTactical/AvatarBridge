@@ -247,6 +247,37 @@ against the hand, and a hand in somebody's lap can claim their hip and ignore th
 Fixing that needs an owner anchor baked for dedicated meshes too, which changes shipped
 sockets and wants its own test pass. Parked, noted here so it is not rediscovered.
 
+### Built and measured 2026-08-24 — and the sync saving is NOT there
+
+The split is written: `_YAPS_SocketOrigin` in `yaps_socket.cginc`, baked by `BakeSocket`,
+defaulting to zero so a dedicated socket mesh is bit-for-bit unchanged. Subset run of the 19
+socketed avatars plus a no-socket control came back 20/20 identical, so nothing regressed.
+Tested by hand on a real body-mesh socket (Sootie, "Pussy hole" on `Base`, two staged shapes):
+
+- **The bake is right.** `_YAPS_SocketOrigin` came out (0, -0.0197, 0.6863) — the socket's true
+  pelvis position in the mesh's own space, X on the midline. `_YAPS_SocketPower` 1,
+  `_YAPS_SocketDepth` -1.
+- **The deform is right.** Driving `_YAPS_SocketDepth` by hand opens both shapes in order.
+- **The socket never sees the plug.** With the light channel as the only depth source it stays
+  shut. Probed the generated shader directly, with every filter removed and no distance gate,
+  forcing depth to 1 on the mere existence of ANY vertex light in ANY of the four slots: still
+  nothing. `unity_4LightAtten0` is zero on that renderer.
+
+Vertex lights are not broken in general — the PLUG bends in the same scene, and that needs a
+plug mesh to read a socket's markers. The difference is the renderer: a small prop mesh gets its
+four slots, a 34k-vertex skinned body gets none. Unity ranks a renderer's candidate vertex
+lights by influence, and a marker light is BLACK, so it brings no luminance to rank with.
+
+**So the prize this section was chasing does not exist.** The reason to move a body-mesh socket
+onto the shader was to retire the 32-bit synced depth parameter; the shader can only compute
+depth from a light it never receives. The contact route is not a fallback for body meshes, it is
+the only route, and the tickbox stays. The opposite of what was assumed when this was opened.
+
+What the work still buys, and why it is kept: a socket is no longer measured from the wrong
+point when its mesh is not its own, and `_YAPS_SocketOrigin` is the correct foundation for the
+dedicated-mesh ownership fix parked above. Do not reopen this as a sync-saving idea without
+first re-measuring the light delivery — that is the thing that killed it.
+
 **Also on the same axis:** the GPU bridge (`YAPS5.md`, candidate 4) can write
 `Transform.localPosition` and `localScale` per client for nothing. So a reaction rigged to BONES
 rather than blendshapes is already free today. Not retrofittable onto an author's existing shapes,

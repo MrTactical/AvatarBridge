@@ -59,6 +59,13 @@
 // that HAS contacts use them and one that does not fall back to lights.
 float _YAPS_SocketDepth;
 
+// The socket's position in the mesh's local space. Zero for a dedicated
+// socket mesh, whose origin IS the socket; set at bake time for a body
+// mesh, whose origin is the avatar root. Depth is measured from here.
+// Ownership is not: the whose-plug question stays on the mesh origin,
+// which for a body mesh is the root beside the wearer's own hip.
+float4 _YAPS_SocketOrigin;
+
 // Where each shape starts and how far it takes to arrive, in fractions of
 // the plug's length. Up to sixteen, each with its own depth, so several can
 // open together; the toolkit bakes the socket's named shapes in the order
@@ -87,8 +94,11 @@ float YapsSocketStageFade(uint s)
 float _YAPS_SocketPower;
 
 // A plug's tracker light: black, vertex-only, second decimal 8 or 9.
-// Returns false when nothing in the four slots is one.
-bool YapsFindPlug(float3 socketWorld, out float3 plugAt, out float plugLength)
+// Returns false when nothing in the four slots is one. Distance is
+// measured from the socket; whose-plug is judged from the owner anchor,
+// because a socket on a hand can sit in somebody else's lap while its
+// wearer's root stays put.
+bool YapsFindPlug(float3 socketAt, float3 ownerAnchor, out float3 plugAt, out float plugLength)
 {
     plugAt = 0;
     plugLength = 0;
@@ -110,10 +120,10 @@ bool YapsFindPlug(float3 socketWorld, out float3 plugAt, out float plugLength)
         // converted avatar carrying both has its plug's tracker a hand's
         // width from its own socket, permanently within a plug length, and
         // without this the socket read as always full.
-        if (YapsSocketOwnPlug(socketWorld, i)) continue;
+        if (YapsSocketOwnPlug(ownerAnchor, i)) continue;
 
         float3 at = YapsLightPosition(i);
-        float away = distance(at, socketWorld);
+        float away = distance(at, socketAt);
         if (away >= nearest) continue;
 
         nearest = away;
@@ -128,16 +138,16 @@ bool YapsFindPlug(float3 socketWorld, out float3 plugAt, out float plugLength)
 
 // How far the shaft has travelled past this socket, as a fraction of its
 // own length. Zero when nothing has arrived.
-float YapsPlugDepth(float3 socketWorld)
+float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 {
     float depth = 0;
 
     float3 plugAt;
     float plugLength;
-    if (YapsFindPlug(socketWorld, plugAt, plugLength) && plugLength > 0.0001)
+    if (YapsFindPlug(socketAt, ownerAnchor, plugAt, plugLength) && plugLength > 0.0001)
     {
         // Raliv's formula, and the reason the light has to be at the base.
-        float through = plugLength - distance(socketWorld, plugAt);
+        float through = plugLength - distance(socketAt, plugAt);
         depth = saturate(through / plugLength);
     }
 
@@ -166,8 +176,12 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
     if (vertexId >= total || shapeCount == 0) return;
 
-    float3 socketWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
-    float depth = YapsPlugDepth(socketWorld);
+    // Two positions, two questions. The mesh origin answers whose socket
+    // this is; the baked offset answers where it is. On a dedicated socket
+    // mesh the offset is zero and they are the same point.
+    float3 ownerAnchor = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 socketAt = mul(unity_ObjectToWorld, float4(_YAPS_SocketOrigin.xyz, 1)).xyz;
+    float depth = YapsPlugDepth(socketAt, ownerAnchor);
     if (depth <= 0) return;
 
     // Same block layout the plug bake uses, so one baker serves both:

@@ -328,7 +328,7 @@ namespace AvatarBridge
             // For shapes on another mesh the game measures depth in reaches,
             // so the test plug is one reach long: all the way in reads 1.
             bool contact = socket.renderer != null && socket.shapes.Count > 0
-                           && !YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
+                           && YapsNativeBuilder.ShapesByContact(socket);
             float length = contact ? YapsSocketReactions.ReachOf(socket) : 0.25f;
 
             // The prop prefab when there is one: it is baked on the shader
@@ -490,7 +490,7 @@ namespace AvatarBridge
 
         public static float DepthFromPlugs(YapsSocket socket)
         {
-            bool own = YapsNativeBuilder.MeshIsTheSocket(socket.renderer, socket.transform);
+            bool own = !YapsNativeBuilder.ShapesByContact(socket);
             float best = -1f;
             var at = socket.transform;
             YapsSocketReactions.TriggerBox(socket, out var offset, out var size);
@@ -668,7 +668,18 @@ namespace AvatarBridge
                 ReactionsChanged(socket);
                 RebuildLater();
             });
-            bool contactRoute = current != null && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform);
+            bool contactRoute = current != null && YapsNativeBuilder.ShapesByContact(socket);
+            bool bodyShader = current != null && !contactRoute
+                              && !YapsNativeBuilder.MeshIsTheSocket(current, socket.transform);
+            if (bodyShader)
+            {
+                opens.Body.Add(new HelpBox(
+                    $"\"{current.name}\" is not a mesh of the socket's own, but Build can bake these shapes into " +
+                    "its material anyway: depth is measured from the socket's baked position, read from a plug's " +
+                    "tracker light. Every client computes it locally, so it works against DPS plugs and costs no " +
+                    "sync bits. A socket already built onto the animator stays there until its layer is removed.",
+                    HelpBoxMessageType.Info));
+            }
             if (contactRoute)
             {
                 float reach = YapsSocketReactions.ReachOf(socket);

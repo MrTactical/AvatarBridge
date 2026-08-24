@@ -83,6 +83,7 @@ namespace AvatarBridge
         [Header(YAPS socket)]
         _YAPS_SocketPower (""YAPS socket power"", Range(0,1)) = 0
         _YAPS_SocketDepth (""YAPS socket depth (-1 none)"", Range(-1,1)) = -1
+        _YAPS_SocketOrigin (""YAPS socket origin, mesh local"", Vector) = (0,0,0,0)
         _YAPS_SocketShapeStart (""YAPS socket shape starts 0-3"", Vector) = (0, 0.25, 0.5, 0.75)
         _YAPS_SocketShapeStart2 (""YAPS socket shape starts 4-7"", Vector) = (0, 0, 0, 0)
         _YAPS_SocketShapeStart3 (""YAPS socket shape starts 8-11"", Vector) = (0, 0, 0, 0)

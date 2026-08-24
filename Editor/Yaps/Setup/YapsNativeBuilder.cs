@@ -430,13 +430,38 @@ namespace AvatarBridge
 
         // --- the socket's shapes ------------------------------------------------
         //
-        // The socket shader measures depth from its mesh's own origin, so
-        // only a mesh whose origin is the socket can open right. A body
-        // mesh keeps whatever the animator does with its shapes.
+        // Whether the mesh's own origin IS the socket, a dedicated socket
+        // mesh as a rule. Depth no longer needs this, it measures from the
+        // baked _YAPS_SocketOrigin; what still hangs on it is which
+        // fallbacks a bake may take, since a body mesh must never have its
+        // material swapped or another socket's bake replaced.
         public static bool MeshIsTheSocket(Renderer renderer, Transform socket)
         {
             if (renderer == null || socket == null) return false;
             return Vector3.Distance(renderer.transform.position, socket.position) < 0.03f;
+        }
+
+        // The route Build takes for this socket's shapes: the animator when
+        // its reactions layer is already built or another socket holds the
+        // mesh's one bake, the shader otherwise. The editors ask this too,
+        // so what the inspector says is what Build does.
+        public static bool ShapesByContact(YapsSocket socket)
+        {
+            if (socket == null || socket.renderer == null) return false;
+            if (MeshIsTheSocket(socket.renderer, socket.transform)) return false;
+            return YapsSocketReactions.Exists(socket) || AnotherSocketBaked(socket, socket.renderer);
+        }
+
+        // A different socket already baked into this renderer's material.
+        // One material carries one bake and one origin, so the second
+        // socket on a mesh takes the animator instead of replacing it.
+        static bool AnotherSocketBaked(YapsSocket socket, Renderer renderer)
+        {
+            foreach (var s in socket.transform.root.GetComponentsInChildren<YapsSocket>(true))
+            {
+                if (s != socket && s.renderer == renderer && s.bakedFrom != null) return true;
+            }
+            return false;
         }
 
         // A socket's own baked material, told from a plug's: the socket bake
@@ -503,11 +528,23 @@ namespace AvatarBridge
             if (renderer == null || stages.Count == 0) return null;
             if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
                 return $"✗ {socket.name}: its mesh has no blendshapes";
-            // A mesh that is not the socket, the body as a rule: the shader
-            // cannot open it, a contact can. The reactions live in the
-            // animator, driven by a depth trigger on the socket.
-            if (!MeshIsTheSocket(renderer, socket.transform))
+            // A body mesh can open too, now that depth measures from the
+            // baked socket origin rather than the mesh pivot. Two cases
+            // still take the animator: a socket whose reactions layer is
+            // already built, because bake and reactions drive the same
+            // shapes and together apply them twice, and a second socket on
+            // a mesh another one baked. Remove the built layer and build
+            // again to move a socket across.
+            bool own = MeshIsTheSocket(renderer, socket.transform);
+            if (!own && YapsSocketReactions.Exists(socket))
                 return YapsSocketReactions.Build(socket);
+            if (!own && AnotherSocketBaked(socket, renderer))
+            {
+                string reacted = YapsSocketReactions.Build(socket);
+                return (reacted ?? $"✓ {socket.name}") +
+                       " (another socket baked this mesh, and a material holds one bake, so its " +
+                       "shapes are driven by a depth contact instead)";
+            }
 
             var mats = renderer.sharedMaterials;
             if (mats == null || mats.Length == 0 || mats[0] == null) return $"✗ {socket.name}: its mesh has no material";
@@ -550,6 +587,15 @@ namespace AvatarBridge
             else
             {
                 var shader = YapsShaderPatcher.Patch(source, dir, report, out string refusal, out _);
+                if (shader == null && !own)
+                {
+                    // Swapping a BODY to SimpleLit would repaint the whole
+                    // avatar to rescue one socket. The animator route costs
+                    // sync bits but changes nothing anyone can see.
+                    string reacted = YapsSocketReactions.Build(socket);
+                    return (reacted ?? $"✓ {socket.name}") +
+                           $" (its mesh's shader could not be patched: {refusal})";
+                }
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
@@ -567,6 +613,11 @@ namespace AvatarBridge
             WriteStages(material, stages.Select(s => (s.startsAt, s.fadeOver)).ToList());
             material.SetFloat("_YAPS_SocketPower", socket.shapePower);
             material.SetFloat("_YAPS_SocketDepth", -1f);
+            // Where the socket sits in the mesh's own space. Depth measures
+            // from here; ownership stays on the mesh origin. Near zero for a
+            // dedicated socket mesh, the socket's real seat on a body.
+            material.SetVector("_YAPS_SocketOrigin",
+                renderer.transform.InverseTransformPoint(socket.transform.position));
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
         }

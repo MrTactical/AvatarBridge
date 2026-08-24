@@ -202,36 +202,43 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 // moment the plug grew a tracker.
 //
 // Harder than the plug side, and this is honest about the limit. Same
+// The anchor is where the WEARER is, not where the socket is. The two
+// differ on purpose: a hand socket can sit in somebody else's lap, and
+// judged from there the nearest hip is theirs and their plug reads as
+// their own and gets ignored, which is the one plug it exists for. The
+// caller passes its mesh origin, which for a body mesh is the avatar
+// root beside the wearer's hip.
+//
 // nearest-player is necessary but not sufficient: a stranger's plug that
 // is inside this socket is ALSO nearest this hip, that is what inside
 // means. What separates the two is where the BASE is. The wearer's plug
 // base is at their crotch, a fixed short distance from their hip that does
 // not change; a stranger's base, with the tip inside, is a plug length out
-// on their side of the pair. So a base nearer this hip than the socket
-// itself is ours; a base further out is theirs. Both bodies close together
-// makes this a near thing, and doubt keeps the plug (returns false) , 
+// on their side of the pair. So a base nearer this hip than the anchor
+// is ours; a base further out is theirs. Both bodies close together
+// makes this a near thing, and doubt keeps the plug (returns false) ,
 // a stranger's plug wrongly ignored is a missed effect, the wearer's plug
 // wrongly kept is a socket that never closes.
-bool YapsSocketOwnPlug(float3 socketWorld, uint slot)
+bool YapsSocketOwnPlug(float3 ownerAnchor, uint slot)
 {
     int count = min((int) round(CVRGlobalParams1.y), 255);
     float3 lightAt = YapsLightPosition(slot);
-    int nearSocket = -1, nearLight = -1;
-    float bestSocket = 1e9, bestLight = 1e9;
+    int nearAnchor = -1, nearLight = -1;
+    float bestAnchor = 1e9, bestLight = 1e9;
 
     [loop]
     for (int i = 0; i < count; i++)
     {
         float3 hip = _CVR_PlayerHipPositions[i].xyz;
         if (dot(hip, hip) < 1e-6) continue;
-        float toSocket = dot(hip - socketWorld, hip - socketWorld);
-        if (toSocket < bestSocket) { bestSocket = toSocket; nearSocket = i; }
+        float toAnchor = dot(hip - ownerAnchor, hip - ownerAnchor);
+        if (toAnchor < bestAnchor) { bestAnchor = toAnchor; nearAnchor = i; }
         float toLight = dot(hip - lightAt, hip - lightAt);
         if (toLight < bestLight) { bestLight = toLight; nearLight = i; }
     }
-    if (nearSocket < 0 || nearLight < 0) return false;
-    if (nearSocket != nearLight) return false;
-    return bestLight < bestSocket;
+    if (nearAnchor < 0 || nearLight < 0) return false;
+    if (nearAnchor != nearLight) return false;
+    return bestLight < bestAnchor;
 }
 
 int YapsClassifyLight(uint slot, float3 plugOrigin)
