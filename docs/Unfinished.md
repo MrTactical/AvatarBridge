@@ -57,6 +57,19 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ## Loose ends, small but real
 
+- **A rebuild refreshes the shader now, not just the bake — FIXED 2026-08-24.** Every shader-level
+  fix used to reach nobody who had already converted. `BakeSocket` and `Bake` took a refresh
+  branch whenever the material carried `_YAPS_Bake` and never called `Patch` again, and the patch
+  was named `Hash(sourcePath + Revision + unit.Count)` — a hand-written `Revision` constant that
+  did not move when the emitted code did. Found by adding a property and watching it never arrive:
+  the material's shader had nine copies of a property added that morning and none of one added
+  that evening, because the morning's landed on a FIRST patch and the evening's needed a second.
+  The constant was forgotten twice in one day, which is the argument against constants like it.
+  Now the name hashes the emitted source itself (`EmittedVersion`), so it moves exactly when the
+  code moves, and both bake paths compare the material's shader against `CurrentNameFor(bakedFrom)`
+  and re-patch when it has fallen behind. A material keeps its values across a shader swap, and a
+  property the old code never had arrives at its declared default, which the bake then sets.
+
 - **Corpus classes: CLOSED 2026-08-22** — Fixture_DeformSocket and Fixture_HeadTransplant are in
   the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.
 - **Pointer capping: CLOSED 2026-08-24, declined with the measurement.** Two questions, both

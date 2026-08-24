@@ -25,9 +25,16 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Bumped when the emitted code changes, so a stale cached patch is
-        // never reused for new code.
-        const string Revision = "16";
+        // What the emitted code IS, rather than a number somebody has to
+        // remember to change when it moves. A constant like that was here
+        // and was forgotten twice in one day: a property was added to the
+        // block below and every already-patched shader went on without it,
+        // silently, because the name it hashes to had not moved.
+        //
+        // Hashing the source itself means the shader's name changes exactly
+        // when its contents do, which is the only rule that cannot be
+        // forgotten.
+        static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock);
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -94,6 +101,35 @@ namespace AvatarBridge
         _YAPS_SocketShapeFade3 (""YAPS socket shape fades 8-11"", Vector) = (0.3, 0.3, 0.3, 0.3)
         _YAPS_SocketShapeFade4 (""YAPS socket shape fades 12-15"", Vector) = (0.3, 0.3, 0.3, 0.3)
 ";
+
+        // The name the patch of `original` would carry if it were made now.
+        // Null when the question cannot be answered, which callers must read
+        // as "leave it alone" rather than "it is stale".
+        //
+        // This is what lets a rebuild notice that the tool has moved on
+        // since a material was patched. Without it a shader fix reaches
+        // nobody who already converted: their bake refreshes, their shader
+        // does not, and the two disagree in silence.
+        public static string CurrentNameFor(Material original)
+        {
+            if (original == null || original.shader == null) return null;
+            string sourcePath = ShaderSpiPatcher.SourcePathOf(original.shader);
+            if (string.IsNullOrEmpty(sourcePath)) return null;
+            var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
+            if (unit.Count == 0) return null;
+            string yaps = LoadYapsSource(out _);
+            if (yaps == null) return null;
+            return "Hidden/YAPS/" + Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
+        }
+
+        // Whether a patched material is carrying code this version no
+        // longer emits. False whenever it cannot be told.
+        public static bool IsStale(Material patched, Material original)
+        {
+            if (patched == null || patched.shader == null) return false;
+            string want = CurrentNameFor(original);
+            return want != null && patched.shader.name != want;
+        }
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
             out string refusal, out int skippedShadowPasses, bool allowSps = false)
@@ -182,7 +218,7 @@ namespace AvatarBridge
                 return null;
             }
 
-            string hash = Hash(sourcePath + Revision + unit.Count);
+            string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
             string newName = "Hidden/YAPS/" + hash;
             shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
                 "Shader \"" + newName + "\"");

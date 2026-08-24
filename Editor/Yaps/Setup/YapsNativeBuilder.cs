@@ -121,6 +121,14 @@ namespace AvatarBridge
                 // Re-bake: refresh everything the bake measured, and drop
                 // the texture it replaces so a session of re-bakes does
                 // not leave one twelve-megabyte asset per click behind.
+                // The shader too, when this version emits something the
+                // patch on it predates.
+                if (plug.bakedFrom != null && YapsShaderPatcher.IsStale(patched, plug.bakedFrom))
+                {
+                    var current = YapsShaderPatcher.Patch(plug.bakedFrom, dir, report, out _, out _,
+                        allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                    if (current != null) patched.shader = current;
+                }
                 var previous = patched.GetTexture("_YAPS_Bake");
                 patched.SetTexture("_YAPS_Bake", result.Bake);
                 patched.SetFloat("_YAPS_VertexCount", result.VertexCount);
@@ -606,6 +614,17 @@ namespace AvatarBridge
             {
                 // Ours to refresh: a socket's own material, baked before.
                 material = source;
+                // Refresh the SHADER too when the tool has moved on since
+                // this was patched. A material keeps its values across a
+                // shader swap and a property the old code never had comes
+                // in at its declared default, which the writes below then
+                // set. Without this a rebuild refreshes the bake and leaves
+                // the deform on whatever code shipped the day it was made.
+                if (socket.bakedFrom != null && YapsShaderPatcher.IsStale(material, socket.bakedFrom))
+                {
+                    var current = YapsShaderPatcher.Patch(socket.bakedFrom, dir, report, out _, out _);
+                    if (current != null) material.shader = current;
+                }
                 var previous = material.GetTexture("_YAPS_Bake");
                 material.SetTexture("_YAPS_Bake", result.Bake);
                 material.SetFloat("_YAPS_VertexCount", result.VertexCount);
