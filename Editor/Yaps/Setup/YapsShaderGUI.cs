@@ -139,7 +139,7 @@ namespace AvatarBridge
             "_YAPS_ShapeCount", "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3",
             "_YAPS_ShapeWeights4", "_YAPS_ChannelSpace", "_YAPS_ChannelExtents",
             "_YAPS_SocketPos", "_YAPS_SocketForward", "_YAPS_SocketUp", "_YAPS_SocketFlags",
-            "_YAPS_SocketFront", "_YAPS_SocketOrigin",
+            "_YAPS_SocketFront", "_YAPS_SocketOrigin", "_YAPS_SocketNoSelfExclude",
         };
 
         // --- styles -----------------------------------------------------------

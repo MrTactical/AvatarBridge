@@ -452,6 +452,36 @@ namespace AvatarBridge
             return YapsSocketReactions.Exists(socket) || AnotherSocketBaked(socket, socket.renderer);
         }
 
+        // Does a plug of the wearer's own rest on top of this socket?
+        //
+        // This is the whole reason self-exclusion exists: an avatar
+        // carrying both has its plug's tracker a hand's width from its
+        // crotch socket, permanently within a plug length, and the socket
+        // reads as always full. Measured here, in the rest pose, because
+        // the shader can only guess at it — it decides ownership by whose
+        // hip is nearest, which is right for a socket at the wearer's hip
+        // and wrong for one out on a hand.
+        //
+        // The tracker light is the measurement, not the plug's transform:
+        // it is the point the shader itself measures from, and it carries
+        // the plug's length as its intensity.
+        static bool OwnPlugRestsOn(YapsSocket socket)
+        {
+            var top = socket.transform.root;
+            if (top == null) return false;
+            foreach (var light in top.GetComponentsInChildren<Light>(true))
+            {
+                if (light == null || light.type != LightType.Point) continue;
+                if (Mathf.Abs(light.range - TrackerRange) > 0.0005f) continue;
+                float length = Mathf.Max(light.intensity, 0.01f);
+                // Within its own length of the socket, plus a hand's width
+                // of slack for a pose that is not quite the rest one.
+                if (Vector3.Distance(light.transform.position, socket.transform.position) <= length + 0.1f)
+                    return true;
+            }
+            return false;
+        }
+
         // A different socket already baked into this renderer's material.
         // One material carries one bake and one origin, so the second
         // socket on a mesh takes the animator instead of replacing it.
@@ -618,6 +648,7 @@ namespace AvatarBridge
             // dedicated socket mesh, the socket's real seat on a body.
             material.SetVector("_YAPS_SocketOrigin",
                 renderer.transform.InverseTransformPoint(socket.transform.position));
+            material.SetFloat("_YAPS_SocketNoSelfExclude", OwnPlugRestsOn(socket) ? 0f : 1f);
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
         }

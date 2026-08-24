@@ -258,8 +258,30 @@ ownership; a socket that rides a far bone keeps the animator channel, which stil
 One consequence worth its own line: the split also shows the SHIPPED behaviour is wrong for
 dedicated hand-socket meshes — their origin IS the socket, so ownership already resolves
 against the hand, and a hand in somebody's lap can claim their hip and ignore their plug.
-Fixing that needs an owner anchor baked for dedicated meshes too, which changes shipped
-sockets and wants its own test pass. Parked, noted here so it is not rediscovered.
+
+**Fixed 2026-08-24, by deleting the question rather than answering it.** The obvious repair was
+a baked owner anchor pointing at the avatar root, and it does not work: a hand socket's mesh
+rides the hand bone, so any offset baked in the rest pose is wrong the moment the arm moves.
+There is no static point on a hand that tracks the wearer's hips.
+
+So ask what the test is FOR. Its own comment says: an avatar carrying both a plug and a socket
+has the plug's tracker a hand's width from its crotch socket, permanently within a plug length,
+and the socket reads as always full. That is a crotch socket beside the wearer's own plug — and
+it is the one case where the nearest-hip heuristic is reliable, because the socket really is at
+the wearer's hip. Everywhere else the test is not merely unreliable, it is unwanted: a handjob
+socket SHOULD react to the wearer's own plug.
+
+`_YAPS_SocketNoSelfExclude`, baked. Zero keeps today's behaviour, which is what every material
+baked before this reads, so nothing shipped changes until it is rebuilt. The baker sets it when
+no plug of the avatar's rests within its own length of the socket — measured off the tracker
+light, because that is the point the shader itself measures from and its intensity carries the
+plug's length. The converter asks the same question of `ctx.YapsPlugs`, which needs no lights to
+exist yet.
+
+**What is proven**: it compiles in all four define combinations, and the reasoning above.
+**What is not**: the payoff is a hand socket reacting to a STRANGER's plug, which needs two
+clients in one instance. Nothing in the editor or the corpus can see it — a second client run by
+Joe is the only test that would.
 
 ### Built and measured 2026-08-24 — and the sync saving is NOT there
 

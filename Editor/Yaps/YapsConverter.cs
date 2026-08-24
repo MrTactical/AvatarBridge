@@ -775,6 +775,13 @@ namespace AvatarBridge
                 // -1, never 0. Zero is "a plug is here, not yet in"; -1 is
                 // "nothing told me", which lets the shader fall back to lights.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
+                // Self-exclusion earns its place only where a plug of this
+                // avatar's rests on the socket, which is the crotch case it
+                // was written for. Out on a hand it decides ownership by the
+                // nearest hip, and the nearest hip can be somebody else's.
+                bool ownPlugRests = ctx.YapsPlugs.Any(
+                    p => Vector3.Distance(p.Origin, socketRoot.position) <= p.Length + 0.1f);
+                material.SetFloat("_YAPS_SocketNoSelfExclude", ownPlugRests ? 0f : 1f);
 
                 // The authoring component, filled in from what was just built.
                 YapsNativeBuilder.AdoptSocket(socketRoot, renderer, material, bakedShapes);

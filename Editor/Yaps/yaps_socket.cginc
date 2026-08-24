@@ -66,6 +66,12 @@ float _YAPS_SocketDepth;
 // which for a body mesh is the root beside the wearer's own hip.
 float4 _YAPS_SocketOrigin;
 
+// Skip the self-exclusion below. Zero keeps it, which is what every
+// material baked before this existed does. The baker sets it when no
+// plug on the avatar rests within reach of this socket, because then
+// there is nothing to exclude and the test can only get it wrong.
+float _YAPS_SocketNoSelfExclude;
+
 // Where each shape starts and how far it takes to arrive, in fractions of
 // the plug's length. Up to sixteen, each with its own depth, so several can
 // open together; the toolkit bakes the socket's named shapes in the order
@@ -120,7 +126,12 @@ bool YapsFindPlug(float3 socketAt, float3 ownerAnchor, out float3 plugAt, out fl
         // converted avatar carrying both has its plug's tracker a hand's
         // width from its own socket, permanently within a plug length, and
         // without this the socket read as always full.
-        if (YapsSocketOwnPlug(ownerAnchor, i)) continue;
+        // Only where a plug of the wearer's actually rests on top of this
+        // socket. Elsewhere the test is both unnecessary and unreliable:
+        // it decides ownership by which player's hip is nearest, and a
+        // socket on a hand can be nearer a stranger's hip than its own
+        // wearer's, which ignores the one plug it exists for.
+        if (_YAPS_SocketNoSelfExclude <= 0 && YapsSocketOwnPlug(ownerAnchor, i)) continue;
 
         float3 at = YapsLightPosition(i);
         float away = distance(at, socketAt);
