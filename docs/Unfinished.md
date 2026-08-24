@@ -26,13 +26,22 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    `PhysBoneConverter`, which both writers already depend on and which compiles unconditionally.
    Swept the codebase after: no other cross-define reference exists.*
 
-   **The gap this exposes, worth closing before the next release.** There are four install
-   combinations (Magica ±, DynamicBone ±) and every gate we have — corpus, test project, local
-   editor — runs the one with both installed. The corpus proves BEHAVIOUR on one configuration
-   and can say nothing about whether the other three compile, so a define mistake ships
-   invisibly and kills the tool outright for whoever hits it. A compile-only pass over the four
-   combinations is cheap (no conversions, no avatars, just four batch compiles) and would have
-   caught this. Nothing else we run would have.
+   **The gap this exposed is CLOSED 2026-08-24: `Dev/Build/check-defines.sh`.** There are four
+   install combinations (Magica ±, DynamicBone ±) and every other gate — corpus, test project,
+   the editor sitting open — runs the one with both installed, so a define mistake shipped
+   invisibly and killed the tool outright for whoever hit it.
+
+   No Unity launch and no domain reload: Unity leaves the exact compile arguments for
+   `Assembly-CSharp-Editor` in a response file under `Library/Bee/artifacts/*.dag/`, so the
+   script reuses them — all 323 references, the source list, the language version — and only
+   swaps the two `-define:` lines. Four real compiles of the real assembly, seconds each.
+   Errors outside AvatarBridge are counted and ignored, because a project full of other assets'
+   editor scripts is not this gate's business.
+
+   **Self-tested against the bug it exists for**: reintroducing the `MagicaClothWriter` call in
+   `DynamicBoneWriter` makes it fail on MAGICA=0 DYNBONE=1 with `CS0103` at lines 43 and 44 —
+   the same file, lines and columns the tester's log carried. Run it before any release that
+   touches physics or the defines.
 2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
    prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
    digests.
