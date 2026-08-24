@@ -258,9 +258,30 @@ What is left of the idea is per avatar, not global: `twinOnly=0` means nothing o
 reads a twin alone, and only then could its 45-odd twin pointers be collapsed. The digest proves
 it per avatar, and so far nothing has qualified.
 
-The other question stands: which families any ChilloutVR-side consumer actually reads, since YAPS
-resolves through its own channel and marker lights. A family nothing reads is pure budget. That
-one still wants the same treatment: measure who reads, then cap.
+### Measured 2026-08-24: the second question is answered too, and it is a no
+
+Which families a ChilloutVR-side consumer actually reads, counted across the 93 corpus files that
+carry contact receivers, senders separated from receivers:
+
+```
+heard      TPS_Orf_Root 4    SPSLL_Socket_Hole 3    SPSLL_Socket_Ring 2   (+ their twins)
+heard by   TPS_Orf_Norm 0    SPSLL_Socket_Front 0                         (+ their twins)
+nothing
+```
+
+The front pair reads as four dead pointers a socket. It is not: `YapsPropBuilder.FrontTypes` is
+that exact pair, and it carries the prop channel's FX/FY/FZ front axis. Nothing in the corpus
+hears it because no corpus avatar carries a prop — the corpus enumerates SCENES and props are
+spawnables. The consumer is our own system, and capping the family would have cost props their
+axis silently. A census over avatars can only prove what avatars read.
+
+And the count should not be capped the way lights are, because the limits are not alike. Lights
+are four slots a MESH, hardware, and a fifth evicts the lowest range: the lighthouse had to
+exist. Pointers are 512 overlapping PAIRS instance-wide, and a pointer costs nothing until it is
+inside a receiver, so 174 idle pointers standing in a room spend none of the budget. Capping the
+count would break sockets in the common case to save a resource nobody is spending. If pair
+exhaustion ever turns up in the wild, the lever is the overlap, not the socket's description of
+itself.
 
 ## Phase 3 — textures, by density rather than by guess
 

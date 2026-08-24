@@ -15,9 +15,24 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 386 and 387 passed and a tester confirmed a rebuilt mouth socket with a DPS prop in game. The
 hold on 4.2.0 ended there; that number was spent on a tester build and never released.*
 
-1. **Watch the 4.3.0 reports.** The classes that reached users before are in the corpus now, but
+1. **Watch the 4.3.1 reports.** The classes that reached users before are in the corpus now, but
    the first week of a release is its real corpus. A report wearing a `test-rebuild` build is
    pre-release; ask for the file name.
+
+   *4.3.1 shipped 2026-08-24, a hotfix: a tester with **DynamicBone and no MagicaCloth2** could
+   not compile the tool at all. `DynamicBoneWriter` called two helpers that lived in
+   `MagicaClothWriter`, and the two files sit behind different defines, so the callee vanished
+   and the caller broke. The helpers were plain `Transform.Find` code and moved to
+   `PhysBoneConverter`, which both writers already depend on and which compiles unconditionally.
+   Swept the codebase after: no other cross-define reference exists.*
+
+   **The gap this exposes, worth closing before the next release.** There are four install
+   combinations (Magica ±, DynamicBone ±) and every gate we have — corpus, test project, local
+   editor — runs the one with both installed. The corpus proves BEHAVIOUR on one configuration
+   and can say nothing about whether the other three compile, so a define mistake ships
+   invisibly and kills the tool outright for whoever hits it. A compile-only pass over the four
+   combinations is cheap (no conversions, no avatars, just four batch compiles) and would have
+   caught this. Nothing else we run would have.
 2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
    prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
    digests.
@@ -25,14 +40,27 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    one line in `yaps_socket.cginc` is why a body-mesh socket needs the animator at all.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4) — blit or RT camera into a texture parser gives
    per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
-5. **Pointer capping** — the open question below.
 
 ## Loose ends, small but real
 
 - **Corpus classes: CLOSED 2026-08-22** — Fixture_DeformSocket and Fixture_HeadTransplant are in
   the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.
-- **Pointer capping**: whether pointers should be capped the way marker lights now are — raised
-  in the optimisation work (see `archive/Optimisation.md`), never decided.
+- **Pointer capping: CLOSED 2026-08-24, declined with the measurement.** Two questions, both
+  answered without a run. *Which families does anything read?* A census over the 93 corpus files
+  carrying contact receivers, senders split from receivers: `TPS_Orf_Root`/`SPSLL_Socket_Root`
+  heard in 4 files, `SPSLL_Socket_Hole` 3, `Ring` 2, twins alongside — and the front pair,
+  `TPS_Orf_Norm`/`SPSLL_Socket_Front`, heard by NOTHING. That looked like four dead pointers a
+  socket until `YapsPropBuilder.FrontTypes` turned out to be exactly that pair: it is the prop
+  channel's FX/FY/FZ front axis. No corpus avatar hears it because no corpus avatar carries a
+  prop, and the corpus enumerates scenes while props are spawnables. Our own system is the
+  consumer; capping the family would silently cost props their axis.
+  *Should the COUNT be capped like marker lights?* No, the limits are not alike. Lights are four
+  slots a MESH and a fifth evicts the lowest range, which is why the lighthouse had to exist.
+  Pointers are 512 overlapping PAIRS instance-wide, and a pointer costs nothing until it is
+  inside a receiver — 174 idle pointers standing in a room spend none of the budget. A count cap
+  would break sockets in the common case to save a resource nobody is spending. If pair
+  exhaustion ever appears in the wild, the lever is the overlap, not the socket's description of
+  itself.
 - **DPS range offset, ON ICE 2026-08-23** — the +0.003 offset makes YAPS sockets and plugs
   invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
   `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and our 0.4130/0.4230/0.4530/
@@ -198,6 +226,26 @@ THEIR hip. Any candidate has to be checked against the hand case, not just the j
 
 None is free of a catch, which is why this is a spike and not a patch. Worth it: it would move
 every body-mesh socket onto the free path and retire the sync tickbox for most avatars.
+
+**The hand case is measured now, and it closes the question — 2026-08-24.** Grepping the
+baseline digests: 79 avatars, 19 with sockets, and all 19 carry hand or foot sockets
+("Handjob L/R" on nearly every one, "Footjob"/"Steppies" on about twelve). Far-from-root
+sockets are not an edge case, they are the standard loadout. So no single position can be put
+in the line: depth wants the socket, ownership wants the wearer, and every candidate above
+failed by making one value answer both.
+
+**The answer is a split, not a choice.** `YapsSocketOwnPlug` keeps reading the renderer's
+object origin, which for a body mesh is the avatar root beside the wearer's hip — the accident
+that worked, now on purpose. Depth reads the origin plus a baked `_YAPS_SocketOrigin` offset.
+Both default to zero, so a dedicated socket mesh, where the two coincide, is bit-for-bit
+unchanged. Candidate 1's jaw catch still stands but now costs only depth accuracy, never
+ownership; a socket that rides a far bone keeps the animator channel, which still overrides.
+
+One consequence worth its own line: the split also shows the SHIPPED behaviour is wrong for
+dedicated hand-socket meshes — their origin IS the socket, so ownership already resolves
+against the hand, and a hand in somebody's lap can claim their hip and ignore their plug.
+Fixing that needs an owner anchor baked for dedicated meshes too, which changes shipped
+sockets and wants its own test pass. Parked, noted here so it is not rediscovered.
 
 **Also on the same axis:** the GPU bridge (`YAPS5.md`, candidate 4) can write
 `Transform.localPosition` and `localScale` per client for nothing. So a reaction rigged to BONES

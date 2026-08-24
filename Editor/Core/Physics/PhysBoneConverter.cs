@@ -13,6 +13,34 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones";
 
+        // Where a writer parks what it makes. Here rather than in either
+        // writer because both call it and the two compile on different
+        // defines: with these in the Magica writer, a project that had
+        // DynamicBone and not MagicaCloth would not compile at all.
+        internal static Transform CollectionUnder(BridgeContext ctx, string name)
+        {
+            var target = ctx.Target.transform;
+            var home = target.Find(name);
+            if (home != null) return home;
+            var made = new GameObject(name);
+            made.transform.SetParent(target, false);
+            return made.transform;
+        }
+
+        internal static string UniqueChildName(Transform parent, string name)
+        {
+            if (parent.Find(name) == null)
+            {
+                return name;
+            }
+            int suffix = 2;
+            while (parent.Find($"{name} {suffix}") != null)
+            {
+                suffix++;
+            }
+            return $"{name} {suffix}";
+        }
+
         internal static void RecordColliderHost(BridgeContext ctx, Component original, GameObject host)
         {
             string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);

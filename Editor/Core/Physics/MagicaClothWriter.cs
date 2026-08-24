@@ -38,7 +38,7 @@ namespace AvatarBridge
             // four hairstyles produces several chains rooted at a bone called "Hair_root", and
             // two holders both named "MagicaCloth_Hair_root" mean every animation curve aimed at
             // one of them resolves to whichever Unity finds first.
-            holderName = UniqueChildName(home, holderName);
+            holderName = PhysBoneConverter.UniqueChildName(home, holderName);
             var holder = new GameObject(holderName);
             holder.transform.SetParent(home, false);
             var cloth = holder.AddComponent<MagicaCloth>();
@@ -320,31 +320,8 @@ namespace AvatarBridge
         //
         // Holders no longer inherit an outfit's toggle, so the off state
         // rides the component and RewirePhysicsToggles asserts every stop.
-        public static Transform HolderHome(BridgeContext ctx) => CollectionUnder(ctx, CollectionName);
-
-        internal static Transform CollectionUnder(BridgeContext ctx, string name)
-        {
-            var target = ctx.Target.transform;
-            var home = target.Find(name);
-            if (home != null) return home;
-            var made = new GameObject(name);
-            made.transform.SetParent(target, false);
-            return made.transform;
-        }
-
-        internal static string UniqueChildName(Transform parent, string name)
-        {
-            if (parent.Find(name) == null)
-            {
-                return name;
-            }
-            int suffix = 2;
-            while (parent.Find($"{name} {suffix}") != null)
-            {
-                suffix++;
-            }
-            return $"{name} {suffix}";
-        }
+        public static Transform HolderHome(BridgeContext ctx) =>
+            PhysBoneConverter.CollectionUnder(ctx, CollectionName);
 
         static int SynthesizeEndpointBones(ClothSerializeData sdata, PhysBoneChainData data)
         {

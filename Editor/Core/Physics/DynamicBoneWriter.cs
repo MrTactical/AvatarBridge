@@ -40,8 +40,8 @@ namespace AvatarBridge
             // One object PER CHAIN, not one shared object: an animation
             // binding names a path and a component TYPE, so two DynamicBones
             // on the same GameObject could not be toggled apart.
-            var home = MagicaClothWriter.CollectionUnder(ctx, CollectionName);
-            var holder = new GameObject(MagicaClothWriter.UniqueChildName(home, "DynamicBone_" + data.Root.name));
+            var home = PhysBoneConverter.CollectionUnder(ctx, CollectionName);
+            var holder = new GameObject(PhysBoneConverter.UniqueChildName(home, "DynamicBone_" + data.Root.name));
             holder.transform.SetParent(home, false);
             var db = holder.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
