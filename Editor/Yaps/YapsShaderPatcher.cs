@@ -110,10 +110,13 @@ namespace AvatarBridge
         // since a material was patched. Without it a shader fix reaches
         // nobody who already converted: their bake refreshes, their shader
         // does not, and the two disagree in silence.
-        public static string CurrentNameFor(Material original)
+        public static string CurrentNameFor(Material patchedOrOriginal)
         {
-            if (original == null || original.shader == null) return null;
-            string sourcePath = ShaderSpiPatcher.SourcePathOf(original.shader);
+            if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
+            // A patched material names its own source; an unpatched one is
+            // its own source.
+            var from = OriginalShaderOf(patchedOrOriginal) ?? patchedOrOriginal.shader;
+            string sourcePath = ShaderSpiPatcher.SourcePathOf(from);
             if (string.IsNullOrEmpty(sourcePath)) return null;
             var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
             if (unit.Count == 0) return null;
@@ -124,11 +127,42 @@ namespace AvatarBridge
 
         // Whether a patched material is carrying code this version no
         // longer emits. False whenever it cannot be told.
-        public static bool IsStale(Material patched, Material original)
+        //
+        // The original is recovered from the patch itself rather than from
+        // the component: a CONVERTED avatar adopts its components and never
+        // records what it was baked from, which is most avatars, and a check
+        // that needs that field would quietly do nothing for all of them.
+        // The patch carries its source shader's name in a hidden property's
+        // description, which is the one place a string can ride.
+        public static bool IsStale(Material patched)
         {
-            if (patched == null || patched.shader == null) return false;
-            string want = CurrentNameFor(original);
-            return want != null && patched.shader.name != want;
+            return patched != null && patched.shader != null
+                   && CurrentNameFor(patched) is string want && patched.shader.name != want;
+        }
+
+        // The shader a patched material was made from, or null.
+        public static Shader OriginalShaderOf(Material patched)
+        {
+            string name = SourceShaderOf(patched);
+            return string.IsNullOrEmpty(name) ? null : Shader.Find(name);
+        }
+
+        // Re-patch a material that has fallen behind, in place. Its values
+        // survive the swap and a property the old code never had arrives at
+        // the default its block declares.
+        public static bool Refresh(Material patched, string outputDir, BridgeReport report)
+        {
+            var original = OriginalShaderOf(patched);
+            if (original == null) return false;
+            var stand = new Material(original) { name = patched.name };
+            try
+            {
+                var current = Patch(stand, outputDir, report, out _, out _, allowSps: true);
+                if (current == null) return false;
+                patched.shader = current;
+                return true;
+            }
+            finally { UnityEngine.Object.DestroyImmediate(stand); }
         }
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,

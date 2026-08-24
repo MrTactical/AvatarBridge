@@ -66,9 +66,17 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
   that evening, because the morning's landed on a FIRST patch and the evening's needed a second.
   The constant was forgotten twice in one day, which is the argument against constants like it.
   Now the name hashes the emitted source itself (`EmittedVersion`), so it moves exactly when the
-  code moves, and both bake paths compare the material's shader against `CurrentNameFor(bakedFrom)`
-  and re-patch when it has fallen behind. A material keeps its values across a shader swap, and a
-  property the old code never had arrives at its declared default, which the bake then sets.
+  code moves, and both bake paths ask `IsStale` and re-patch when it has fallen behind. A material
+  keeps its values across a shader swap, and a property the old code never had arrives at its
+  declared default, which the bake then sets.
+
+  **The original is recovered from the PATCH, not from the component.** The first version asked
+  `socket.bakedFrom`, which only the tool's own bake ever fills in — a CONVERTED avatar adopts its
+  components and leaves it null, so the check would have done nothing for the majority of avatars
+  and looked like it worked. `_YAPS_SourceShader` already carried the source shader's name in a
+  hidden property's description, so `OriginalShaderOf` reads it back and `Refresh` re-patches
+  through a stand-in material. Verified in the editor: a socket material's shader moved from
+  `56f6502ef13e` to `253145a5a99b` on a rebuild and gained the property it had been missing.
 
 - **Corpus classes: CLOSED 2026-08-22** — Fixture_DeformSocket and Fixture_HeadTransplant are in
   the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.

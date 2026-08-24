@@ -123,12 +123,7 @@ namespace AvatarBridge
                 // not leave one twelve-megabyte asset per click behind.
                 // The shader too, when this version emits something the
                 // patch on it predates.
-                if (plug.bakedFrom != null && YapsShaderPatcher.IsStale(patched, plug.bakedFrom))
-                {
-                    var current = YapsShaderPatcher.Patch(plug.bakedFrom, dir, report, out _, out _,
-                        allowSps: legacy == YapsLegacyMap.Origin.SPS);
-                    if (current != null) patched.shader = current;
-                }
+                if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, dir, report);
                 var previous = patched.GetTexture("_YAPS_Bake");
                 patched.SetTexture("_YAPS_Bake", result.Bake);
                 patched.SetFloat("_YAPS_VertexCount", result.VertexCount);
@@ -620,11 +615,7 @@ namespace AvatarBridge
                 // in at its declared default, which the writes below then
                 // set. Without this a rebuild refreshes the bake and leaves
                 // the deform on whatever code shipped the day it was made.
-                if (socket.bakedFrom != null && YapsShaderPatcher.IsStale(material, socket.bakedFrom))
-                {
-                    var current = YapsShaderPatcher.Patch(socket.bakedFrom, dir, report, out _, out _);
-                    if (current != null) material.shader = current;
-                }
+                if (YapsShaderPatcher.IsStale(material)) YapsShaderPatcher.Refresh(material, dir, report);
                 var previous = material.GetTexture("_YAPS_Bake");
                 material.SetTexture("_YAPS_Bake", result.Bake);
                 material.SetFloat("_YAPS_VertexCount", result.VertexCount);
