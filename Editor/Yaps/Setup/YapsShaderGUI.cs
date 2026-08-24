@@ -139,7 +139,7 @@ namespace AvatarBridge
             "_YAPS_ShapeCount", "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3",
             "_YAPS_ShapeWeights4", "_YAPS_ChannelSpace", "_YAPS_ChannelExtents",
             "_YAPS_SocketPos", "_YAPS_SocketForward", "_YAPS_SocketUp", "_YAPS_SocketFlags",
-            "_YAPS_SocketFront",
+            "_YAPS_SocketFront", "_YAPS_SocketOrigin",
         };
 
         // --- styles -----------------------------------------------------------
@@ -165,7 +165,13 @@ namespace AvatarBridge
         public override void OnGUI(MaterialEditor editor, MaterialProperty[] properties)
         {
             EnsureStyles();
-            var byName = properties.ToDictionary(p => p.name, p => p);
+            // Not ToDictionary: a shader may declare the same property name
+            // twice and Unity hands both back. Poiyomi does, with
+            // m_start_PoiLightData under two different headers, and a
+            // duplicate key threw here on every repaint, which made the
+            // material uninspectable rather than merely noisy.
+            var byName = new Dictionary<string, MaterialProperty>(properties.Length);
+            foreach (var p in properties) byName[p.name] = p;
             var material = editor.target as Material;
             bool hasSocket = byName.TryGetValue("_YAPS_SocketPower", out var sp) && sp.floatValue > 0;
             bool hasPlug = byName.TryGetValue("_YAPS_Enabled", out var en) && en.floatValue > 0;
