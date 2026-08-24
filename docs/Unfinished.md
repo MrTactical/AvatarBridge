@@ -36,8 +36,13 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
    prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
    digests.
-3. **The body-mesh fallback** (section below) — a spike, and the biggest remaining sync cost:
-   one line in `yaps_socket.cginc` is why a body-mesh socket needs the animator at all.
+3. **The body-mesh fallback: ANSWERED 2026-08-24, and the answer is no** (section below). The
+   split is built and shipped, but a skinned body mesh receives no vertex lights, so the shader
+   can never compute the depth this was meant to make free. The 32 bits stay. What is left on
+   this axis is the **dedicated-mesh ownership bug** the work exposed: a hand socket's own mesh
+   sits at the socket, so a hand in somebody's lap resolves ownership to THEIR hip and ignores
+   their plug. `_YAPS_SocketOrigin` is the foundation for the fix; it needs an owner anchor
+   baked for dedicated meshes and its own test pass.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4) — blit or RT camera into a texture parser gives
    per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
 
