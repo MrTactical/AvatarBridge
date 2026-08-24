@@ -492,7 +492,12 @@ namespace AvatarBridge
                     if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
                 }
                 bool complete = f.Notes.Count == 0;
-                var colour = f.IsYapsAlready && complete ? BridgeTheme.Good
+                // Nothing to fix but something to say gets a softer green
+                // than a silent row: working as designed must never wear
+                // the colour that means "you have a problem".
+                var settled = BridgeTheme.Dark ? new Color(0.42f, 0.72f, 0.52f) : new Color(0.28f, 0.55f, 0.35f);
+                var colour = f.IsYapsAlready && complete
+                             ? (f.Expected.Count > 0 ? settled : BridgeTheme.Good)
                            : !complete ? BridgeTheme.Warn
                            : new Color(0.45f, 0.65f, 0.95f);
                 string what = f.Kind == YapsScanner.Kind.Plug ? "Plug" : (f.IsHole ? "Hole" : "Ring");
@@ -502,6 +507,7 @@ namespace AvatarBridge
                 if (f.Kind == YapsScanner.Kind.Socket && f.HasAxis) detail.Add("has an axis");
                 if (f.Renderer != null && f.Kind == YapsScanner.Kind.Socket) detail.Add("shapes on " + f.Renderer.name);
                 detail.AddRange(f.Notes);
+                detail.AddRange(f.Expected);
 
                 // By the bone it hangs from, so two rings are two rows a
                 // reader can tell apart.

@@ -51,7 +51,12 @@ namespace AvatarBridge
             public float StatedLength;         // plugs
             public List<Light> Lights = new List<Light>();
             public List<CVRPointer> Pointers = new List<CVRPointer>();
+            // Something to fix. An entry here turns the row amber.
             public List<string> Notes = new List<string>();
+
+            // Working as designed, said out loud so it does not read as
+            // damage. A row with only these stays green.
+            public List<string> Expected = new List<string>();
 
             public string ReadableList()
             {
@@ -389,9 +394,16 @@ namespace AvatarBridge
                 bool lighthouse = avatar != null && avatar.avatarSettings != null
                     && avatar.avatarSettings.settings != null
                     && avatar.avatarSettings.settings.Any(e => e != null && e.machineName == "YAPS/Lighthouse");
-                f.Notes.Add(lighthouse
-                    ? $"{darkLights} of its marker lights wait on the lighthouse — the \"Marker lights\" menu lights one socket at a time"
-                    : $"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+                if (lighthouse)
+                {
+                    f.Expected.Add("expected: its marker lights wait on the lighthouse, which lights one " +
+                                   "socket at a time because a mesh has only four light slots. Old DPS toys " +
+                                   "use the \"Marker lights\" menu to pick; everything else finds it by contact");
+                }
+                else
+                {
+                    f.Notes.Add($"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+                }
             }
             if (f.Root != null)
             {
