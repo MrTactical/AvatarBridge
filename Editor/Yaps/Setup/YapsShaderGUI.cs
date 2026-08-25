@@ -236,7 +236,14 @@ namespace AvatarBridge
             var original = OriginalEditor(material);
             if (original != null)
             {
-                original.OnGUI(editor, rest);
+                // The FULL list, not the filtered one. A shader's own editor
+                // builds its UI from the properties its shader declares and
+                // looks them up by name and index; handing it a subset makes
+                // it dereference something that is not there. Poiyomi's threw
+                // NullReferenceException in ShaderPart.IsPropertyValueDefault
+                // on every repaint. Ours appearing in its panel as well is
+                // cosmetic; taking its editor down is not.
+                original.OnGUI(editor, properties);
             }
             else
             {
