@@ -276,7 +276,12 @@ namespace AvatarBridge
                 // socket that is no longer there.
                 var socket = existing.GetComponent<YapsSocket>();
                 if (socket != null) Set(socket, false, spawnPlugIfNone: false);
-                Undo.DestroyObjectImmediate(existing);
+                // Set destroys OUR preview socket itself, so by here it is
+                // usually gone. Handing Unity a destroyed object throws
+                // ArgumentNullException on objectToUndo; the null check is
+                // Unity's overloaded ==, which reports a destroyed object as
+                // null and is exactly what is wanted.
+                if (existing != null) Undo.DestroyObjectImmediate(existing);
             }
             SceneView.RepaintAll();
         }
