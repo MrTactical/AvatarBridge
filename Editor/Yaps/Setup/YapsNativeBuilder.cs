@@ -586,6 +586,16 @@ namespace AvatarBridge
             var avatar = plug != null ? plug.GetComponentInParent<CVRAvatar>() : null;
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) o.Notes.Add(menu);
+            // The contact channel, which the window's Build does after baking
+            // and this door did not. The same plug came out differently
+            // depending on which button was pressed, and the inspector's is
+            // the one people reach for. The channel reads the frames the bake
+            // just measured and replaces its own wiring rather than stacking,
+            // so doing it per plug here is safe.
+            if (avatar != null && o.Ok)
+            {
+                o.Notes.AddRange(YapsNativeChannel.Build(avatar));
+            }
             return o;
         }
 
