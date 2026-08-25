@@ -163,8 +163,11 @@ namespace AvatarBridge
                 // A tree owned by some other asset can't be edited in place; that would
                 // reach into somebody else's controller. Clone it into ours first.
                 string treePath = AssetDatabase.GetAssetPath(tree);
+                var sourceTree = tree;
+                bool ours = treePath == controllerPath;
                 if (treePath != controllerPath && NeedsCopy(treePath, outputDir, controllerPath))
                 {
+                    ours = true;
                     var clone = UnityEngine.Object.Instantiate(tree);
                     clone.name = tree.name;
                     clone.hideFlags |= HideFlags.HideInHierarchy;
@@ -189,6 +192,22 @@ namespace AvatarBridge
                 }
                 if (changed)
                 {
+                    // NeedsCopy says no for a tree the CCK or an engine
+                    // builtin owns, on the grounds that it travels with
+                    // every project. That is true of the tree, and not of
+                    // a CHILD this pass just copied: writing the new
+                    // children back would edit the CCK's own asset, which
+                    // is the shared-asset mistake this file exists to
+                    // prevent and its comment above already names.
+                    if (!ours)
+                    {
+                        var late = UnityEngine.Object.Instantiate(tree);
+                        late.name = tree.name;
+                        late.hideFlags |= HideFlags.HideInHierarchy;
+                        AssetDatabase.AddObjectToAsset(late, controller);
+                        map[sourceTree] = late;
+                        tree = late;
+                    }
                     tree.children = children;
                     EditorUtility.SetDirty(tree);
                 }

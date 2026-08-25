@@ -9494,15 +9494,23 @@ namespace AvatarBridge
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
+            => WalkMachines(machine, visit, new HashSet<AnimatorStateMachine>());
+
+        // Guarded the way LocomotionGrafter.AllStates is. Unity's own editor
+        // cannot build a cycle here, but a script-made or corrupt controller
+        // can, and unguarded recursion answers that with a stack overflow
+        // rather than a skip.
+        static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit,
+            HashSet<AnimatorStateMachine> seen)
         {
-            if (machine == null)
+            if (machine == null || !seen.Add(machine))
             {
                 return;
             }
             visit(machine);
             foreach (var child in machine.stateMachines)
             {
-                WalkMachines(child.stateMachine, visit);
+                WalkMachines(child.stateMachine, visit, seen);
             }
         }
 

@@ -562,11 +562,14 @@ namespace AvatarBridge
                     prunedNames?.Add(child.directBlendParameter);
                     continue;
                 }
+                int countedBefore = pruned;
                 var newMotion = PruneMotion(child.motion, isStripped, ref pruned, prunedNames);
                 if (tree.blendType == BlendTreeType.Direct && newMotion == null)
                 {
                     // Dead branch in a direct tree contributes nothing; drop it entirely.
-                    pruned++;
+                    // Only count it if PruneMotion did not already: a clip writing solely
+                    // stripped parameters is counted there and was being counted twice.
+                    if (pruned == countedBefore) pruned++;
                     continue;
                 }
                 var keptChild = child;
@@ -629,15 +632,22 @@ namespace AvatarBridge
         }
 
         internal static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
+            => WalkMachines(machine, visit, new HashSet<AnimatorStateMachine>());
+
+        // Same guard as the copy in AnimatorMerger: a cycle in state-machine
+        // parentage is not reachable from the editor and is reachable from a
+        // script, and without this it overflows the stack instead of skipping.
+        static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit,
+            HashSet<AnimatorStateMachine> seen)
         {
-            if (machine == null)
+            if (machine == null || !seen.Add(machine))
             {
                 return;
             }
             visit(machine);
             foreach (var child in machine.stateMachines)
             {
-                WalkMachines(child.stateMachine, visit);
+                WalkMachines(child.stateMachine, visit, seen);
             }
         }
 
