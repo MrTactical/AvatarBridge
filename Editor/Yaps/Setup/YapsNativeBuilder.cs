@@ -258,11 +258,17 @@ namespace AvatarBridge
             var chainRoot = plug.rootBone;
             if (chainRoot != null)
             {
-                var bones = new List<string> { AnimationUtility.CalculateTransformPath(chainRoot, animator.transform) };
-                for (int i = 0; i < chainRoot.childCount; i++)
-                    bones.Add(AnimationUtility.CalculateTransformPath(chainRoot.GetChild(i), animator.transform));
-                int along = YapsCurveMirror.AlongAxis(chainRoot, result.Rotation);
-                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), along);
+                // Each bone with its path: the mirror reads the scale it is
+                // sitting at now, which is the pose the bake just measured.
+                var bones = new Dictionary<string, Transform>();
+                void Bone(Transform t)
+                {
+                    string p = AnimationUtility.CalculateTransformPath(t, animator.transform);
+                    if (p != null) bones[p] = t;
+                }
+                Bone(chainRoot);
+                for (int i = 0; i < chainRoot.childCount; i++) Bone(chainRoot.GetChild(i));
+                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), result.Rotation);
             }
 
             if (shapes + scaled + switched > 0)

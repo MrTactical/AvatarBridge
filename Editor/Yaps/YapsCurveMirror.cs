@@ -91,18 +91,28 @@ namespace AvatarBridge
         // The chain root's scale curves become the bake scale (its length
         // axis) and the bake girth (a radial axis) on the material. One
         // bone per clip, the first that has a scale curve. Bones are given
-        // as paths from the animator root.
-        public static int MirrorBoneScale(IEnumerable<AnimationClip> clips, IEnumerable<string> bonePaths,
-            string rendererPath, Type rendererType, int alongAxis)
+        // as their path from the animator root together with the transform
+        // itself, because what the shader wants is a RATIO to the pose the
+        // bake measured, not the bone's raw scale.
+        //
+        // The material carries 1 for "the size it was baked at". A bone's
+        // m_LocalScale curve carries an absolute number, so copying it
+        // straight across told the truth only for a bone sitting at exactly
+        // 1 when it was baked. Every other rig had its bone scale applied a
+        // second time, on top of the skinning that had already applied it:
+        // a bone baked at 0.4 drew a plug squashed to 40 percent in game,
+        // while the editor, where no animator runs, kept the baked size and
+        // looked correct. Dividing by the bake pose makes the two agree by
+        // construction, and keeps them agreeing wherever a size slider goes.
+        public static int MirrorBoneScale(IEnumerable<AnimationClip> clips,
+            IDictionary<string, Transform> bones, string rendererPath, Type rendererType,
+            Quaternion bakeRotation)
         {
-            var bones = new HashSet<string>(bonePaths.Where(p => p != null), StringComparer.Ordinal);
-            if (bones.Count == 0)
+            if (bones == null || bones.Count == 0)
             {
                 return 0;
             }
             string[] axes = { "m_LocalScale.x", "m_LocalScale.y", "m_LocalScale.z" };
-            string along = axes[Mathf.Clamp(alongAxis, 0, 2)];
-            var radial = axes.Where(a => a != along).ToArray();
 
             int written = 0;
             foreach (var clip in clips)
@@ -112,14 +122,15 @@ namespace AvatarBridge
                     continue;
                 }
                 // The bone this clip scales, if any of ours.
-                string bone = null;
+                Transform bone = null;
+                string bonePath = null;
                 var bindings = AnimationUtility.GetCurveBindings(clip);
                 foreach (var b in bindings)
                 {
                     if (b.type == typeof(Transform) && b.propertyName.StartsWith("m_LocalScale.", StringComparison.Ordinal)
-                        && bones.Contains(b.path))
+                        && bones.TryGetValue(b.path, out bone) && bone != null)
                     {
-                        bone = b.path;
+                        bonePath = b.path;
                         break;
                     }
                 }
@@ -131,22 +142,35 @@ namespace AvatarBridge
                 {
                     foreach (var b in bindings)
                     {
-                        if (b.type == typeof(Transform) && b.path == bone && b.propertyName == property)
+                        if (b.type == typeof(Transform) && b.path == bonePath && b.propertyName == property)
                         {
                             return AnimationUtility.GetEditorCurve(clip, b);
                         }
                     }
                     return null;
                 }
-                var length = Curve(along);
-                var girth = Curve(radial[0]) ?? Curve(radial[1]);
+                // Per bone, not per chain: a child further down sits at its
+                // own angle, and its scale curve is in its own space.
+                int along = AlongAxis(bone, bakeRotation);
+                var length = Curve(axes[along]);
+                AnimationCurve girth = null;
+                int girthAxis = 0;
+                for (int a = 0; a < 3 && girth == null; a++)
+                {
+                    if (a == along)
+                    {
+                        continue;
+                    }
+                    girth = Curve(axes[a]);
+                    girthAxis = a;
+                }
                 bool any = false;
                 if (length != null)
                 {
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
                     {
                         path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeScale",
-                    }, new AnimationCurve(length.keys));
+                    }, AsRatio(length, bone.localScale[along]));
                     any = true;
                 }
                 if (girth != null)
@@ -154,7 +178,7 @@ namespace AvatarBridge
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
                     {
                         path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeGirth",
-                    }, new AnimationCurve(girth.keys));
+                    }, AsRatio(girth, bone.localScale[girthAxis]));
                     any = true;
                 }
                 if (any)
@@ -163,6 +187,25 @@ namespace AvatarBridge
                 }
             }
             return written;
+        }
+
+        // The same curve read against the size the bake measured, so that 1
+        // means "as baked". Tangents are a slope in the same units, so they
+        // are divided with the values or the curve kinks between keys.
+        static AnimationCurve AsRatio(AnimationCurve curve, float atBake)
+        {
+            float divisor = Mathf.Max(Mathf.Abs(atBake), 1e-4f);
+            var keys = curve.keys;
+            if (Mathf.Abs(divisor - 1f) > 1e-4f)
+            {
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    keys[i].value /= divisor;
+                    keys[i].inTangent /= divisor;
+                    keys[i].outTangent /= divisor;
+                }
+            }
+            return new AnimationCurve(keys);
         }
 
         // A curve on the COMPONENT's own Enabled field, mirrored onto the

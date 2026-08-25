@@ -956,7 +956,9 @@ toward 0 and `_YAPS_EntranceStiffness` up as it rises; a "soft" toggle drops `_Y
 The **Animate it** card on each component lists the names. Size is wired for you: a size slider
 or hyper toggle that scales the plug's root bone, or moves one of its baked blendshapes, gets a
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
-weights), so the deform is the size the mesh is drawn at.
+weights), so the deform is the size the mesh is drawn at. Those curves are written *relative to
+the size it was baked at*, so 1 always means "as baked": re-scale the bone and Bake again and the
+numbers still line up, in the editor and in game alike.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The

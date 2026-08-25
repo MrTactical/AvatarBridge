@@ -240,6 +240,22 @@ Wants measuring first: how much of CVR's contact resolution has to be reproduced
 answer is trustworthy. A preview that is right most of the time is worse than one that is
 honest about being a preview.
 
+**One member of this class is FIXED 2026-08-25: the squish.** Joe wore a plug in game and was
+compressed hard; the editor showed it correct, and scaling the plug made the mismatch worse.
+`_YAPS_BakeScale` is written as `1` at Bake, meaning "the size it was baked at", but
+`MirrorBoneScale` copied the bone's `m_LocalScale` curve across as an ABSOLUTE number. The two
+agree only for a bone that happened to sit at exactly 1 when it was baked; on any other rig the
+bone's scale was applied a second time, on top of the skinning that had already applied it. The
+editor hid it because no animator runs there, so the material's static `1` stood. Mirrored as a
+ratio to the bake pose now, tangents divided with the values. The same change gives each bone its
+own along-axis, which a child further down the chain never shared with its root.
+
+Still open in the same class, because a ratio only fixes the reference: a plug whose size layer
+holds a different value in game than the scene pose does in the editor is still two different
+plugs. **Wanted: a corpus fixture with a root bone at a scale other than 1 and a size clip on it**,
+asserting the mirrored curve reads 1 at the bake pose. Nothing in the corpus has one, which is why
+this reached a user.
+
 ---
 
 ## The body-mesh fallback is our line, not ChilloutVR's
