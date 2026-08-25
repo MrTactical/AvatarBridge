@@ -308,6 +308,11 @@ namespace AvatarBridge
 
         static readonly Dictionary<string, string> JsonCache = new Dictionary<string, string>();
 
+        // Per conversion, the way GrabbyBonesSupport.Reset() is. Without it
+        // a preset edited on disk mid-session keeps serving the text this
+        // session first read, and the report still says "preset applied".
+        public static void Reset() => JsonCache.Clear();
+
         static string LoadJson(string presetName)
         {
             if (JsonCache.TryGetValue(presetName, out string cached))
@@ -331,7 +336,10 @@ namespace AvatarBridge
                     break;
                 }
             }
-            JsonCache[presetName] = json;
+            // A miss is not an answer. Caching it means "drop your own
+            // preset in and convert again" silently keeps shipping the
+            // built-in defaults for the rest of the session.
+            if (json != null) JsonCache[presetName] = json;
             return json;
         }
 

@@ -707,6 +707,12 @@ namespace AvatarBridge
                 skin.updateWhenOffscreen = true;
                 return;
             }
+            // From the mesh's OWN bounds, recomputed, never from whatever a
+            // previous bake left behind. This is a shared asset: expanding
+            // the current value grows it again on every reconvert, and the
+            // tool's own reports invite reconverting, so a session of
+            // tuning used to ratchet the bounds several times over.
+            mesh.RecalculateBounds();
             var bounds = mesh.bounds;
             bounds.Expand(length * 2f);
             mesh.bounds = bounds;

@@ -2108,6 +2108,20 @@ namespace AvatarBridge
             {
                 setting.machineName = Rename(setting.machineName);
             }
+            // And the record of which of those entries this tool created
+            // itself. WithdrawSelfDrivenExposures compares it against the
+            // machineNames just rewritten above, so leaving it on the VRC
+            // spelling makes every renamed parameter miss: the menu entry
+            // survives beside the animator's own driver, which is the
+            // two-entries-one-responds fight that pass exists to end. A
+            // space in a parameter name is all it takes.
+            if (ctx.AutoExposedParameters.Count > 0)
+            {
+                var moved = new HashSet<string>();
+                foreach (string exposed in ctx.AutoExposedParameters) moved.Add(Rename(exposed));
+                ctx.AutoExposedParameters.Clear();
+                foreach (string exposed in moved) ctx.AutoExposedParameters.Add(exposed);
+            }
             foreach (var trigger in ctx.CvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
             {
                 trigger.settingName = Rename(trigger.settingName);

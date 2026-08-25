@@ -186,6 +186,9 @@ namespace AvatarBridge
             }
 
             GrabbyBonesSupport.Reset();
+#if AVATARBRIDGE_MAGICA
+            MagicaPresetLibrary.Reset();
+#endif
             ReportGrabbableChains(ctx, physBones);
 
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
