@@ -857,6 +857,14 @@ from the CCK as a prop. **Make it again after updating AvatarBridge**: a prop th
 the bake and the patched shader copy it was built with, and nothing in the project reaches it — an
 old one bending oddly next to a current avatar is that, not a fault in the avatar.
 
+**A ring-and-socket prop prefab** — *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
+`YAPS Ring and Socket Prop` beside them: the plug prop's other half, a spawnable carrying a ring to
+pass through above and a hole to enter below, facing opposite ways so one prop serves both. Resize
+the body and move the sockets before uploading. Both sockets carry marker lights, and a mesh has
+four vertex light slots, so an old DPS toy sees one at a time; anything modern finds both by
+contact. **Not yet confirmed in game** — it is built and it behaves in the editor, and nobody has
+uploaded one and used it with another person yet.
+
 **YAPS Socket** (the component the prefabs carry) — hole or ring; the mesh whose shapes should
 open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
 depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens
