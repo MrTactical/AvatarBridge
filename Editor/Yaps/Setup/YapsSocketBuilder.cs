@@ -95,6 +95,18 @@ namespace AvatarBridge
                       "already uploaded keeps the shader and bake it was built with.");
         }
 
+        // A socket in the scene rather than a prefab on disk, for previewing
+        // a plug against. Same construction as the universal prefabs, so
+        // there is one definition of what a socket is.
+        public static GameObject BuildPreviewSocket(string name)
+        {
+            var root = new GameObject(name);
+            var socket = root.AddComponent<YapsSocket>();
+            socket.kind = YapsSocket.SocketKind.Hole;
+            Build(socket);
+            return root;
+        }
+
         static GameObject CreatePrefab(string name, YapsSocket.SocketKind kind)
         {
             var root = new GameObject(name);

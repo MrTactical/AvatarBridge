@@ -81,7 +81,8 @@ namespace AvatarBridge
             _tabs.Clear();
             _tabs.Add(BridgeElements.Tabs(
                 new[] { "Set up an avatar or prop", "Test it" },
-                new[] { "d_Avatar Icon", "d_PlayButton" },
+                // Unthemed: GetIcon adds the dark-skin prefix itself.
+                new[] { "Avatar Icon", "PlayButton" },
                 (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
             _pages.Clear();
             if (_mode == Mode.Setup) BuildSetupPage(); else BuildTestPage();

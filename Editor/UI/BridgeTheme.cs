@@ -131,14 +131,18 @@ namespace AvatarBridge
             {
                 return null;
             }
+            // A caller may hand over a name that is already themed. Prefixing
+            // that again asks Unity for "d_d_Avatar Icon", which it answers
+            // with a console ERROR rather than an exception — so the catch
+            // below never saw it and every repaint logged one.
+            string bare = name.StartsWith("d_", System.StringComparison.Ordinal) ? name.Substring(2) : name;
             try
             {
-                var content = EditorGUIUtility.IconContent(Dark ? "d_" + name : name);
-                if (content?.image != null)
-                {
-                    return content.image;
-                }
-                return EditorGUIUtility.IconContent(name)?.image;
+                // FindTexture, not IconContent: both resolve a built-in icon,
+                // and only IconContent shouts about a miss. A missing icon is
+                // a cosmetic matter and has no business filling a console.
+                var icon = Dark ? EditorGUIUtility.FindTexture("d_" + bare) : null;
+                return icon != null ? icon : EditorGUIUtility.FindTexture(bare);
             }
             catch
             {

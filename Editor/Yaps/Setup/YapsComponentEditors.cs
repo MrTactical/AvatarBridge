@@ -223,6 +223,47 @@ namespace AvatarBridge
             SceneView.RepaintAll();
         }
 
+        public const string SocketName = "YAPS Preview Socket";
+
+        // The mirror of DropTestPlug, for the other end.
+        //
+        // Preview has always been socket-driven: a socket drops a plug and
+        // watches it bend in. A plug had nothing to bend TOWARD, so its own
+        // inspector could only ever show it straight, which reads as broken.
+        //
+        // The socket is built by the same code the universal prefabs are, so
+        // there is one definition of what a socket is, and it is placed one
+        // plug length along the plug's own measured forward — the position
+        // the plug is actually reaching for.
+        public static void DropTestSocket(YapsPlug plug)
+        {
+            if (plug == null) return;
+            RemoveTestSocket();
+            if (!PlugFrame(plug, out var origin, out var forward, out var up, out float length))
+            {
+                EditorUtility.DisplayDialog("YAPS preview",
+                    "This plug has not been baked yet, so there is nothing to bend. Bake it from " +
+                    "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
+                return;
+            }
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName);
+            if (go == null) return;
+            go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
+            Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
+            EditorGUIUtility.PingObject(go);
+            Animate(true);
+            SceneView.RepaintAll();
+        }
+
+        public static bool TestSocketInScene => GameObject.Find(SocketName) != null;
+
+        public static void RemoveTestSocket()
+        {
+            var existing = GameObject.Find(SocketName);
+            if (existing != null) Undo.DestroyObjectImmediate(existing);
+            SceneView.RepaintAll();
+        }
+
         public static bool TestPlugInScene => GameObject.Find(PlugName) != null;
 
         public static void RemoveTestPlug()
@@ -1154,7 +1195,27 @@ namespace AvatarBridge
             var mesh = new BridgeElements.Card("Mesh");
             var move = new BridgeElements.Card("How it moves");
             var sockets = new BridgeElements.Card("Sockets");
-            body.Add(mesh); body.Add(move); body.Add(sockets);
+            var see = new BridgeElements.Card("See it work");
+            body.Add(see); body.Add(mesh); body.Add(move); body.Add(sockets);
+
+            // The mirror of the socket's preview. A plug on its own has
+            // nothing to bend toward, so its inspector could only ever show
+            // it straight, which reads as a plug that does not work.
+            see.Body.Add(BridgeElements.Hint(
+                "Drops a socket one plug length ahead, pointing back, and bends this plug into it — " +
+                "here in the editor, so you can watch before uploading. Writes nothing that ships. " +
+                "The bend needs the plug baked, and needs its deform switched on: if an animator " +
+                "gates it (an erection slider, say), set the material's _YAPS_Enabled to 1 while you " +
+                "look, because preview does not run your animator."));
+            var socketButton = new BridgeElements.PrimaryButton(
+                YapsPreview.TestSocketInScene ? "Take the test socket away" : "Preview against a test socket",
+                () =>
+                {
+                    if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
+                    else YapsPreview.DropTestSocket(target as YapsPlug);
+                    RebuildLater();
+                });
+            see.Body.Add(socketButton);
 
             // Every knob is tagged with its system, and the filter shows one system.
             var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));
