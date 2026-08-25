@@ -12,8 +12,11 @@ namespace AvatarBridge.Yaps
         [Tooltip("The mesh that bends. Leave empty to use the renderer on this object.")]
         public Renderer renderer;
 
-        [Tooltip("Which of the renderer's materials is the plug. -1 means the first material " +
-                 "whose vertices the bone chain moves, or slot 0 on a static mesh.")]
+        [Tooltip("Which of the renderer's materials is the plug. Leave it at -1 unless you mean " +
+                 "otherwise: -1 bakes EVERY material the bone chain reaches, which is one of them " +
+                 "for an ordinary plug and all of them when a whole avatar is the plug. A number " +
+                 "means that slot alone, so a plug whose vertices span several materials will bend " +
+                 "in one and stay rigid in the rest, tearing along the seam.")]
         public int materialSlot = -1;
 
         [Header("Skinned mesh")]

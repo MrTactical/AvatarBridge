@@ -707,8 +707,13 @@ namespace AvatarBridge
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                var skin = renderer as SkinnedMeshRenderer;
-                if (skin != null && rootBone != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
+                // Left on auto. Pinning it to the best-weighted slot here
+                // reads as helpful and is not: an explicit slot means "this
+                // one only", so a plug whose vertices span several materials
+                // silently bakes into one and tears along the seam. The bake
+                // finds every slot the chain reaches; a number is the author
+                // overriding that, not the tool guessing for them.
+                plug.materialSlot = -1;
             }
             else if (rootBone != null && plug.renderer != renderer
                      && YapsBaker.CountVerticesUnder(plug.renderer, rootBone) == 0)
@@ -717,8 +722,7 @@ namespace AvatarBridge
                 Undo.RecordObject(plug, "YAPS plug mesh");
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                var skin = renderer as SkinnedMeshRenderer;
-                if (skin != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
+                plug.materialSlot = -1;   // auto, for the reason above
             }
             var o = YapsNativeBuilder.Bake(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
