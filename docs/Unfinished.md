@@ -61,13 +61,24 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
   (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
   fixed the same day; two were wrong (F1's consequence, F17's premise); these five are real,
   deferred on purpose, and each changes behaviour, so each wants evidence before it moves:
-  - **F3, strafe folding.** `LocomotionGrafter.DirectionOf` mirrors east/west into one bucket and
-    `ReplaceAt` writes that one clip to both sides, so an author's distinct left-strafe clip is
-    lost. Checked against the CCK's own `AvatarAnimator.controller`: it has separate children at
-    `x: -0.5` and `x: +0.5` and points BOTH at clip `004085e0…`, so CVR ships mirrored strafe —
-    but the slots are real and can hold different clips. Fix is per-slot left and right picks.
-    **The corpus cannot judge it: no avatar in it has asymmetric strafe.** Needs a fixture built
-    for the shape first, the way Fixture_DeformSocket was.
+  - **F3, strafe folding: FIXED 2026-08-25, fixture first.** `DirectionOf` folded east into west
+    and the replacement wrote one clip to both sides, so an author's distinct left-strafe clip was
+    lost. Checked against the CCK's own `AvatarAnimator.controller` before touching anything: it
+    has separate children at `x: -0.5` and `x: +0.5` and points BOTH at clip `004085e0…`, so CVR
+    ships mirrored strafe — but the slots are real and can hold different clips.
+
+    **The corpus could not judge it, so the corpus was given the shape it lacked.**
+    `Fixture_AsymmetricStrafe` (built by `FixtureBuilder.RunStrafeOnly`, so the two existing
+    fixtures are not rebuilt from a source scene that has been hand-edited since) carries a
+    velocity tree with a different clip on each side of every sideways direction. Run against the
+    unfixed tool it lost three clips — `(1,0)` played `Fix_StrafeL`, and both diagonals the same —
+    which is the point of building it before the fix rather than after.
+
+    `Slot` still describes the direction PAIR, because CVR's slot set is pair-shaped; a `Side`
+    now rides beside it, picks are keyed `(Slot, Side)`, and replacement is child-driven so each
+    CCK position asks for its own side. A source with one clip for both sides still fills both,
+    by falling back to the opposite side — which is what every symmetric avatar relies on.
+    After: `(-1,0)=>Fix_StrafeL (1,0)=>Fix_StrafeR`, both diagonals likewise.
   - **F11, slider hole-drop degrades to hole-filling.** `kept.Count >= 2` sends a slider tree with
     one surviving child to the generic filler, which inserts the placeholder clip the report text
     beside it promises sliders never get.

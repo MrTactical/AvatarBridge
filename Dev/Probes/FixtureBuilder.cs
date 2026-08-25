@@ -53,6 +53,32 @@ namespace AvatarBridge.Dev
                     .IndexOf(nameContains, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
+        // Only the new one. Run() rebuilds all three from the source
+        // scene, which would overwrite two fixtures the corpus already has
+        // a baseline for — and the source scene has been edited by hand
+        // since they were made, so they would not come back the same.
+        //
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunStrafeOnly
+        public static void RunStrafeOnly()
+        {
+            int code = 0;
+            try
+            {
+                string source = FindScene(SourceScene);
+                if (source == null) throw new Exception($"no scene matching \"{SourceScene}\"");
+                string dir = Path.GetDirectoryName(source).Replace('\\', '/');
+                BuildOne(source, dir + "/Fixture_AsymmetricStrafe.unity", AddAsymmetricStrafe);
+                AssetDatabase.SaveAssets();
+            }
+            catch (Exception e)
+            {
+                _log.AppendLine("FAILED: " + e);
+                code = 1;
+            }
+            File.WriteAllText(Log, _log.ToString());
+            EditorApplication.Exit(code);
+        }
+
         static void BuildFixtures()
         {
             string source = FindScene(SourceScene);
@@ -61,6 +87,7 @@ namespace AvatarBridge.Dev
 
             BuildOne(source, dir + "/Fixture_DeformSocket.unity", AddDeformSocket);
             BuildOne(source, dir + "/Fixture_HeadTransplant.unity", AddTransplantSocket);
+            BuildOne(source, dir + "/Fixture_AsymmetricStrafe.unity", AddAsymmetricStrafe);
             AssetDatabase.SaveAssets();
         }
 
@@ -274,6 +301,96 @@ namespace AvatarBridge.Dev
                 animator.SetFloat(parameter, 0f);
                 animator.Update(0f);
             }
+        }
+
+
+        // A Base layer whose locomotion tree has a DIFFERENT clip on the
+        // left and the right of every sideways direction.
+        //
+        // The corpus has never held this shape: every avatar in it either
+        // mirrors its strafe or has no velocity tree at all, so the graft's
+        // folding of east and west into one direction bucket has never had
+        // anything to lose. Here it does. Grafted correctly the CCK tree
+        // ends up with StrafeL at x<0 and StrafeR at x>0; folded, one of
+        // them is written to both sides and the other never appears.
+        //
+        // The digest records blend tree children as position=>motion, so
+        // the failure and the fix are both readable there without a single
+        // extra field.
+        static void AddAsymmetricStrafe(VRCAvatarDescriptor d)
+        {
+            string dir = "Assets/FixtureAssets";
+            if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder("Assets", "FixtureAssets");
+
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(dir + "/FixtureStrafe.controller");
+            controller.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+            controller.AddParameter("VelocityZ", AnimatorControllerParameterType.Float);
+
+            var tree = new BlendTree
+            {
+                name = "Standing Blend",
+                blendType = BlendTreeType.FreeformDirectional2D,
+                blendParameter = "VelocityX",
+                blendParameterY = "VelocityZ",
+                useAutomaticThresholds = false,
+            };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+
+            // Cardinals and diagonals, each side its own clip. Magnitudes
+            // sit on one ring so the classifier reads them as one speed.
+            var placements = new (string name, float x, float z)[]
+            {
+                ("Fix_Idle", 0f, 0f),
+                ("Fix_Fwd", 0f, 1f),
+                ("Fix_Back", 0f, -1f),
+                ("Fix_StrafeL", -1f, 0f),
+                ("Fix_StrafeR", 1f, 0f),
+                ("Fix_FwdDiagL", -0.7f, 0.7f),
+                ("Fix_FwdDiagR", 0.7f, 0.7f),
+                ("Fix_BackDiagL", -0.7f, -0.7f),
+                ("Fix_BackDiagR", 0.7f, -0.7f),
+            };
+            foreach (var (name, x, z) in placements)
+            {
+                tree.AddChild(StrafeClip(dir, name), new Vector2(x, z));
+            }
+
+            var machine = controller.layers[0].stateMachine;
+            var standing = machine.AddState("Standing");
+            standing.motion = tree;
+            machine.defaultState = standing;
+
+            var layers = d.baseAnimationLayers;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (layers[i].type != VRCAvatarDescriptor.AnimLayerType.Base) continue;
+                layers[i].animatorController = controller;
+                layers[i].isDefault = false;
+                layers[i].isEnabled = true;
+            }
+            d.baseAnimationLayers = layers;
+            d.customizeAnimationLayers = true;
+            EditorUtility.SetDirty(d);
+            AssetDatabase.SaveAssets();
+            _log.AppendLine($"asymmetric strafe: {placements.Length} clips, distinct per side");
+        }
+
+        // One clip per placement, each moving the root a different amount
+        // so no two are equal and the digest can tell them apart by name.
+        static AnimationClip StrafeClip(string dir, string name)
+        {
+            string path = dir + "/" + name + ".anim";
+            var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            if (existing != null) return existing;
+            var clip = new AnimationClip { name = name, wrapMode = WrapMode.Loop };
+            float lift = 0.01f * (Mathf.Abs(name.GetHashCode()) % 20 + 1);
+            clip.SetCurve("", typeof(Transform), "m_LocalPosition.y",
+                AnimationCurve.Linear(0f, 0f, 1f, lift));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            settings.loopTime = true;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            AssetDatabase.CreateAsset(clip, path);
+            return clip;
         }
 
         static float[] Snapshot(SkinnedMeshRenderer smr)

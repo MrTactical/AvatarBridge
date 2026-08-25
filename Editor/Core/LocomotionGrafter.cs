@@ -406,31 +406,27 @@ namespace AvatarBridge
             // Both trees run through the same classifier: direction from the child's angle,
             // speed ring from its magnitude relative to the others in its direction. The units
             // differ (m/s vs normalized input) but the GEOMETRY is the same language.
-            var sourcePicks = new Dictionary<Slot, AnimationClip>();
-            foreach (var (slot, clip) in ClassifyClips(sourceTree))
+            var sourcePicks = new Dictionary<(Slot, Side), AnimationClip>();
+            foreach (var (slot, side, clip) in ClassifyClips(sourceTree))
             {
                 if (IsVrchatStock(clip))
                 {
                     proxiesSkipped++;
                     continue;
                 }
-                // First pick per slot wins; later duplicates (mirrored diagonals reusing one
-                // clip) would be the same clip anyway.
-                if (!sourcePicks.ContainsKey(slot))
+                // First pick per slot AND SIDE wins. Keying on the slot alone
+                // meant an author's left-strafe and right-strafe clips were
+                // the same pick, one of them thrown away before anything was
+                // placed.
+                if (!sourcePicks.ContainsKey((slot, side)))
                 {
-                    sourcePicks[slot] = clip;
+                    sourcePicks[(slot, side)] = clip;
                 }
             }
-            foreach (var pair in sourcePicks)
-            {
-                if (ReplaceAt(cvrTree, pair.Key, pair.Value))
-                {
-                    grafts.Add($"{label} {Describe(pair.Key)} ← \"{pair.Value.name}\"");
-                }
-            }
+            ReplaceAll(cvrTree, sourcePicks, label, grafts);
         }
 
-        static IEnumerable<(Slot slot, AnimationClip clip)> ClassifyClips(BlendTree tree)
+        static IEnumerable<(Slot slot, Side side, AnimationClip clip)> ClassifyClips(BlendTree tree)
         {
             var children = tree.children;
             float maxMag = 0f;
@@ -465,9 +461,29 @@ namespace AvatarBridge
                 var slot = SlotOf(child.position, maxMag, byDirection);
                 if (slot.HasValue)
                 {
-                    yield return (slot.Value, clip);
+                    yield return (slot.Value, SideOf(child.position), clip);
                 }
             }
+        }
+
+        // Which side of the avatar a child sits on. DirectionOf folds east
+        // into west on purpose — CVR's slot set is direction-PAIR shaped and
+        // classification wants the pair — but the sign is thrown away there
+        // and something has to remember it, or a source with a real left and
+        // a real strafe clip has one of them written to both sides and the
+        // other never placed at all.
+        enum Side { Centre, Left, Right }
+
+        static Side SideOf(Vector2 position)
+        {
+            if (position.x < -0.001f) return Side.Left;
+            if (position.x > 0.001f) return Side.Right;
+            return Side.Centre;
+        }
+
+        static Side Opposite(Side side)
+        {
+            return side == Side.Left ? Side.Right : side == Side.Right ? Side.Left : Side.Centre;
         }
 
         static int DirectionOf(Vector2 position, float maxMag)
@@ -523,8 +539,18 @@ namespace AvatarBridge
             }
         }
 
-        static bool ReplaceAt(BlendTree cvrTree, Slot slot, AnimationClip clip)
+        // Child-driven, so every CCK position asks for the clip that belongs
+        // on ITS side. A source that authored one clip for both sides still
+        // fills both: when a side has no pick of its own it falls back to the
+        // other, which is what every symmetric avatar relies on and what this
+        // did for all of them before sides existed.
+        static void ReplaceAll(BlendTree cvrTree, Dictionary<(Slot, Side), AnimationClip> picks,
+            string label, List<string> grafts)
         {
+            if (picks.Count == 0)
+            {
+                return;
+            }
             var children = cvrTree.children;
             float maxMag = 0f;
             foreach (var child in children)
@@ -541,18 +567,33 @@ namespace AvatarBridge
                 }
                 mags.Add(child.position.magnitude);
             }
+
             bool replaced = false;
+            var reported = new HashSet<(Slot, Side)>();
             for (int i = 0; i < children.Length; i++)
             {
-                if (SlotOf(children[i].position, maxMag, byDirection) != slot)
+                var slot = SlotOf(children[i].position, maxMag, byDirection);
+                if (!slot.HasValue)
+                {
+                    continue;
+                }
+                var side = SideOf(children[i].position);
+                if (!picks.TryGetValue((slot.Value, side), out var clip)
+                    && !picks.TryGetValue((slot.Value, Side.Centre), out clip)
+                    && !picks.TryGetValue((slot.Value, Opposite(side)), out clip))
                 {
                     continue;
                 }
                 var use = Prepare(clip, children[i].motion);
-                if (children[i].motion != use)
+                if (children[i].motion == use)
                 {
-                    children[i].motion = use;
-                    replaced = true;
+                    continue;
+                }
+                children[i].motion = use;
+                replaced = true;
+                if (reported.Add((slot.Value, side)))
+                {
+                    grafts.Add($"{label} {Describe(slot.Value)}{SideLabel(side)} ← \"{clip.name}\"");
                 }
             }
             if (replaced)
@@ -560,7 +601,11 @@ namespace AvatarBridge
                 cvrTree.children = children;
                 EditorUtility.SetDirty(cvrTree);
             }
-            return replaced;
+        }
+
+        static string SideLabel(Side side)
+        {
+            return side == Side.Left ? " (left)" : side == Side.Right ? " (right)" : "";
         }
 
         static string Describe(Slot slot)
