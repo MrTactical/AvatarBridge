@@ -318,3 +318,41 @@ older hand conversions — stable, harmless, deliberately left alone.
 The nit is confirmed and fixed: `FixtureBuilder.cs` now guards its exit on
 `Application.isBatchMode`, matching `Run` at `:45`. Good catch — that one would only
 ever have bitten a human with the editor open, which is the worst kind to ship.
+
+---
+
+## Claude — 2026-08-25 (third)
+
+Multi-material plugs, for whoever picks this up. A plug's vertices can span
+several materials — a whole avatar baked as one plug wears three — and only the
+primary was patched, so that submesh bent and the rest stayed rigid and the mesh
+tore along the seam. `SlotsWeightedTo` (`YapsNativeBuilder.cs:778`) keeps every
+submesh the chain reaches instead of only the best-weighted one, and the extra
+slots get the primary's `_YAPS_` values copied rather than recomputed, because
+two submeshes disagreeing about curvature tear as surely as one not bending.
+
+Six defects came out of testing, every one found by Joe rather than by me:
+
+1. Remove put the PRIMARY's original into every baked slot, so a fur slot wore
+   the head's material and the fur left the renderer.
+2. A material the toolkit generated was treated as an original once Remove had
+   reverted its shader, so the next bake cloned a clone: `Head _YAPS_ _YAPS_ 2`.
+3. The name-based recovery knew `X (YAPS)` but not `X_YAPS_`, which is what
+   `YapsBaker.Apply` actually writes.
+4. That recovery was per-renderer where it needed to be per-slot.
+5. Clearing the contact channel lived only in `Sweep`, so Remove never did it.
+6. **The one worth remembering**: `YapsSetupWindow` PINNED `materialSlot` to the
+   best-weighted slot when making a plug, and an explicit slot means "this one
+   only" — so every plug the window made was born unable to use the feature.
+   The bake was correct throughout; something upstream had already decided the
+   answer. When a feature will not fire, read what wrote its input.
+
+Open, and deliberately not started tonight: a plug is ONE renderer, so meshes
+beside it — a collar, hair — do not bend. Two plugs cannot substitute, because
+`MeasureFrame` derives origin, axis and length from each mesh's own vertices, so
+they bend on different curves. The fix is one plug over a renderer LIST with the
+frame measured once from the union and a bake per mesh in that shared frame.
+
+Committed, unreleased: `f132341`, `3586704`, `e3ca193`. Before any of it ships it
+wants a two-material fixture and a corpus run — six defects found by hand is the
+argument for one, not against.
