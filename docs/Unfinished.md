@@ -57,6 +57,34 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ## Loose ends, small but real
 
+- **External audit 2026-08-25, the five deferred findings.** An audit by another agent
+  (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
+  fixed the same day; two were wrong (F1's consequence, F17's premise); these five are real,
+  deferred on purpose, and each changes behaviour, so each wants evidence before it moves:
+  - **F3, strafe folding.** `LocomotionGrafter.DirectionOf` mirrors east/west into one bucket and
+    `ReplaceAt` writes that one clip to both sides, so an author's distinct left-strafe clip is
+    lost. Checked against the CCK's own `AvatarAnimator.controller`: it has separate children at
+    `x: -0.5` and `x: +0.5` and points BOTH at clip `004085e0…`, so CVR ships mirrored strafe —
+    but the slots are real and can hold different clips. Fix is per-slot left and right picks.
+    **The corpus cannot judge it: no avatar in it has asymmetric strafe.** Needs a fixture built
+    for the shape first, the way Fixture_DeformSocket was.
+  - **F11, slider hole-drop degrades to hole-filling.** `kept.Count >= 2` sends a slider tree with
+    one surviving child to the generic filler, which inserts the placeholder clip the report text
+    beside it promises sliders never get.
+  - **F12, gesture-hand promotion by substring.** `layerName.Contains("left")` on a lowercased
+    name: "Copyright pose" contains "right". The tempting fix is wrong — `\bleft\b` cannot match
+    `GestureLeft`, there is no boundary inside one run of word characters, and lowercasing has
+    already flattened the camel hump. The right fix is to promote only layers that actually WRITE
+    a gesture parameter.
+  - **F18, owner-rule shortcut skips the humanoid guard.** `FindPlugRenderer` returns the parent's
+    SkinnedMeshRenderer before `chainLevel` is ever set, so `HumanoidBoneName(null)` returns null
+    and the "your chain is the body" refusal never runs. Silent bypass, not a crash. A guard here
+    risks refusing legitimate plugs, so it wants the corpus.
+  - **F19/F20, the shader surface.** The patcher's regexes are unanchored and comment-blind, and
+    the socket decoder admits a coloured light whose alpha is zero (`&& colour.a > 0`), which also
+    defeats the self-exclusion test that consumes its verdict. Held back because a shader change
+    cannot be judged from this machine — see the body-mesh section for what that cost on 2026-08-24.
+
 - **A rebuild refreshes the shader now, not just the bake — FIXED 2026-08-24.** Every shader-level
   fix used to reach nobody who had already converted. `BakeSocket` and `Bake` took a refresh
   branch whenever the material carried `_YAPS_Bake` and never called `Patch` again, and the patch
