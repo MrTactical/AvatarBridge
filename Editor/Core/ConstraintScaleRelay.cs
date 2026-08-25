@@ -51,8 +51,11 @@ namespace AvatarBridge
             catch (Exception e)
             {
                 ctx.Report.Warning(Category, "Could not re-anchor constraint offsets to the scale",
-                    $"{e.GetType().Name}: {e.Message}. The avatar is otherwise fine — hats and held " +
-                    "items may drift when the height slider moves away from its default.");
+                    $"{e.GetType().Name}: {e.Message}. This pass walks the constraints in order, so " +
+                    "a failure part way through leaves the ones before it re-anchored and the rest " +
+                    "as they were — the avatar is otherwise fine, but hats and held items may drift " +
+                    "when the height slider moves away from its default, and they may not all drift " +
+                    "the same way. Converting again after fixing the cause re-anchors the lot.");
                 Debug.LogException(e);
             }
         }

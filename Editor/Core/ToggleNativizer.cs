@@ -34,6 +34,7 @@ namespace AvatarBridge
         {
             _targetsUnsupportedReported = false;
             _dumpedTargetFields = false;
+            _appliedTargets.Clear();
 
             var entriesByParam = new Dictionary<string, CVRAdvancedSettingsEntry>();
             foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
@@ -47,6 +48,19 @@ namespace AvatarBridge
             }
             if (entriesByParam.Count == 0)
             {
+                return;
+            }
+
+            // Asked once, before anything is mutated. The answer is a
+            // property of the installed CCK's type, so it is the same for
+            // every entry; asking it per entry meant a "no" could arrive
+            // after earlier layers had already been removed from vrcLayers,
+            // and the bail-out skipped the deferred cleanup that finishes
+            // them. Deterministic today, one CCK release from not being.
+            if (!TargetsSupported())
+            {
+                ctx.Report.Warning(Category, "CCK toggle targets not found on this CCK version",
+                    "Keeping animator-based toggles instead.");
                 return;
             }
 
@@ -611,6 +625,16 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- apply ----
 
+        // Whether this CCK exposes the native toggle target list at all.
+        // The field layout differs between CCK versions and reflection keeps
+        // this compiling either way.
+        static bool TargetsSupported()
+        {
+            var field = typeof(CVRAdvancesAvatarSettingGameObjectToggle)
+                .GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
+            return field != null && field.FieldType.IsGenericType;
+        }
+
         static bool ApplyTargets(BridgeContext ctx, CVRAdvancedSettingsEntry entry, List<TargetInfo> targets)
         {
             var toggle = (CVRAdvancesAvatarSettingGameObjectToggle)entry.setting;
@@ -646,6 +670,14 @@ namespace AvatarBridge
                         $"Toggle target \"{target.Path}\" not found on the avatar; skipped.");
                     continue;
                 }
+                // One parameter can drive two branches in two service trees.
+                // Different objects there are two real targets and both
+                // belong; the SAME object twice is one target written twice,
+                // which lands in the CCK's list twice and is reported twice.
+                if (!_appliedTargets.Add($"{entry.machineName}|{target.Path}|{target.OnState}"))
+                {
+                    continue;
+                }
                 var item = Activator.CreateInstance(elementType);
                 AssignTargetMembers(item, transform.gameObject, target.OnState, target.Path);
                 list.Add(item);
@@ -655,6 +687,10 @@ namespace AvatarBridge
         }
 
         static bool _dumpedTargetFields;
+
+        // Every (entry, object, state) handed to the CCK this run, so the
+        // same one written from two branches is not added twice.
+        static readonly HashSet<string> _appliedTargets = new HashSet<string>();
 
         static void AssignTargetMembers(object item, GameObject go, bool onState, string path)
         {
