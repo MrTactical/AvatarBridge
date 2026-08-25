@@ -570,6 +570,24 @@ namespace AvatarBridge
                     chip.style.marginLeft = 4; chip.style.marginRight = 8;
                     wrap.Add(chip);
                 }
+                else if (plugComp != null)
+                {
+                    // The plug's half of the same idea. A socket previews by
+                    // dropping a plug in front of it; a plug had no row chip
+                    // at all, because there was nothing for it to bend toward
+                    // until the test socket existed.
+                    bool testing = YapsPreview.TestSocketInScene;
+                    var chip = BridgeElements.Chip(testing ? "previewing" : "preview",
+                        BridgeTheme.Good, testing, () =>
+                        {
+                            if (captured.Root == null) { Rescan(); return; }
+                            if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
+                            else YapsPreview.DropTestSocket(plugComp);
+                            Rescan();
+                        }, testing);
+                    chip.style.marginLeft = 4; chip.style.marginRight = 8;
+                    wrap.Add(chip);
+                }
                 else if (!hasComp && f.Root != null)
                 {
                     // No component yet. YAPS output adopts; DPS, TPS or SPS

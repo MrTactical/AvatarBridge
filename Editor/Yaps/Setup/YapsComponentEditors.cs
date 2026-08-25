@@ -251,7 +251,15 @@ namespace AvatarBridge
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
             EditorGUIUtility.PingObject(go);
-            Animate(true);
+            // Switching preview ON is what makes it do anything: the socket's
+            // own PreviewTick writes _YAPS_SocketPos/Forward/Up into every
+            // plug material near it, and Tick only calls it for a socket whose
+            // preview is set. Placing the socket and leaving that off gives a
+            // socket that sits there while the plug stays straight.
+            //
+            // spawnPlugIfNone: false — the plug being looked at IS the plug.
+            var socket = go.GetComponent<YapsSocket>();
+            if (socket != null) Set(socket, true, spawnPlugIfNone: false);
             SceneView.RepaintAll();
         }
 
@@ -260,7 +268,16 @@ namespace AvatarBridge
         public static void RemoveTestSocket()
         {
             var existing = GameObject.Find(SocketName);
-            if (existing != null) Undo.DestroyObjectImmediate(existing);
+            if (existing != null)
+            {
+                // Preview off BEFORE it is destroyed: that is what writes the
+                // cleared flags back into every plug material this socket had
+                // engaged. Destroying it first leaves the plug bent toward a
+                // socket that is no longer there.
+                var socket = existing.GetComponent<YapsSocket>();
+                if (socket != null) Set(socket, false, spawnPlugIfNone: false);
+                Undo.DestroyObjectImmediate(existing);
+            }
             SceneView.RepaintAll();
         }
 
