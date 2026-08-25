@@ -58,11 +58,22 @@ namespace AvatarBridge
             var mats = renderer.sharedMaterials;
             if (mats == null || mats.Length == 0) { o.Message = "the renderer has no materials"; return o; }
             int slot = plug.materialSlot >= 0 && plug.materialSlot < mats.Length ? plug.materialSlot : -1;
+            // Every slot the plug's vertices reach, not only the primary. An
+            // explicit materialSlot is the author overriding that and wins.
+            var alsoSlots = new List<int>();
             if (slot < 0 && renderer is SkinnedMeshRenderer skinned && plug.rootBone != null)
             {
                 slot = SlotWeightedTo(skinned, plug.rootBone);
+                alsoSlots = SlotsWeightedTo(skinned, plug.rootBone);
+            }
+            else if (slot < 0)
+            {
+                // A plain mesh bends whole, so every one of its materials
+                // carries part of the plug.
+                for (int i = 0; i < mats.Length; i++) alsoSlots.Add(i);
             }
             if (slot < 0) slot = 0;
+            alsoSlots.Remove(slot);
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
 
@@ -105,7 +116,19 @@ namespace AvatarBridge
             }
             if (shader == null) { o.Message = "could not patch the shader: " + refusal; return o; }
 
-            bool fresh = !source.HasProperty("_YAPS_Bake");
+            // A material THIS toolkit generated is never an original, even
+            // when it looks like one. Remove's fallback puts the source
+            // shader back on our clone and leaves it in the slot, so the next
+            // bake sees no _YAPS_Bake and would clone it again — that is
+            // where "Head _YAPS_ _YAPS_ 2" comes from, and every round buries
+            // the real original one level deeper. Re-patch ours in place.
+            bool oursAlready = IsGenerated(source);
+            if (oursAlready && !source.HasProperty("_YAPS_Bake"))
+            {
+                source.shader = shader;
+                EditorUtility.SetDirty(source);
+            }
+            bool fresh = !source.HasProperty("_YAPS_Bake") && !oursAlready;
             var patched = fresh
                 ? YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh)
                 : source;
@@ -115,6 +138,7 @@ namespace AvatarBridge
                 renderer.sharedMaterials = mats;
                 // What the slot held, for Remove to put back.
                 if (plug.bakedFrom == null) { plug.bakedFrom = original; EditorUtility.SetDirty(plug); }
+                RecordBakedSlot(plug, slot, original);
             }
             else
             {
@@ -157,6 +181,20 @@ namespace AvatarBridge
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
             o.Material = patched;
+
+            // The rest of the slots the plug's vertices reach. They carry the
+            // SAME deform: the bake is indexed by a mesh-global vertex id, so
+            // one bake serves every submesh, and every _YAPS_ value is copied
+            // from the primary rather than recomputed — a submesh bending on
+            // its own curvature would tear against its neighbour just as
+            // surely as one not bending at all.
+            int mirrored = MirrorToSlots(plug, renderer, patched, alsoSlots, dir, report);
+            if (mirrored > 0)
+            {
+                o.Notes.Add($"The plug's vertices span {mirrored + 1} of this mesh's materials, so the " +
+                            "deform was baked into all of them. Baking only the primary one would leave " +
+                            "the rest rigid and tear the mesh along the seam.");
+            }
 
             // Announce: tip light for DPS, pointers for TPS and SPS.
             BuildMarkers(plug, result, o.Length, o.Radius);
@@ -768,6 +806,155 @@ namespace AvatarBridge
 
         // The material slot whose triangles are weighted to this bone and
         // its children the most. -1 when none is.
+        // Patch each extra slot and give it the primary's deform exactly.
+        // Returns how many were mirrored.
+        static int MirrorToSlots(YapsPlug plug, Renderer renderer, Material primary,
+            List<int> slots, string dir, BridgeReport report)
+        {
+            if (slots == null || slots.Count == 0) return 0;
+            var mats = renderer.sharedMaterials;
+            int done = 0;
+            foreach (int i in slots)
+            {
+                if (i < 0 || i >= mats.Length || mats[i] == null || mats[i] == primary) continue;
+                var was = mats[i];
+                Material target;
+                if (IsGenerated(was) && !was.HasProperty("_YAPS_Bake"))
+                {
+                    // Ours, with its shader reverted by a previous Remove.
+                    // Re-patch in place rather than cloning a clone.
+                    var again = YapsShaderPatcher.Patch(was, dir, report, out _, out _);
+                    if (again != null)
+                    {
+                        was.shader = again;
+                        CopyYapsProperties(primary, was);
+                        EditorUtility.SetDirty(was);
+                        done++;
+                    }
+                    continue;
+                }
+                if (was.HasProperty("_YAPS_Bake"))
+                {
+                    // Ours already, from an earlier bake: refresh it, and do
+                    // NOT record it as the slot's original. It is not one —
+                    // recording it makes Remove put a patched material back
+                    // and call that a restore.
+                    target = was;
+                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, dir, report);
+                    CopyYapsProperties(primary, target);
+                    EditorUtility.SetDirty(target);
+                    done++;
+                    continue;
+                }
+                {
+                    var shader = YapsShaderPatcher.Patch(was, dir, report, out string refusal, out _);
+                    if (shader == null)
+                    {
+                        // Leave a material we cannot patch alone and say so:
+                        // silently skipping it is what produces a tear nobody
+                        // can account for.
+                        report?.Warning("YAPS", $"\"{was.name}\" keeps its own shader",
+                            $"The plug's vertices reach this material, but its shader could not be " +
+                            $"patched ({refusal}), so that part of the mesh will not bend with the rest.");
+                        continue;
+                    }
+                    target = new Material(was) { name = was.name + " (YAPS)", shader = shader };
+                    AssetDatabase.CreateAsset(target, AssetDatabase.GenerateUniqueAssetPath(
+                        dir + "/" + Sanitise(was.name) + "_YAPS_.mat"));
+                    mats[i] = target;
+                }
+                CopyYapsProperties(primary, target);
+                EditorUtility.SetDirty(target);
+                RecordBakedSlot(plug, i, was);
+                done++;
+            }
+            if (done > 0) renderer.sharedMaterials = mats;
+            return done;
+        }
+
+        // Every _YAPS_ value from one material onto another, so two submeshes
+        // of one mesh cannot disagree about how they bend.
+        static void CopyYapsProperties(Material from, Material to)
+        {
+            var shader = from.shader;
+            for (int i = 0; i < ShaderUtil.GetPropertyCount(shader); i++)
+            {
+                string name = ShaderUtil.GetPropertyName(shader, i);
+                if (!name.StartsWith("_YAPS_", System.StringComparison.Ordinal)) continue;
+                if (!to.HasProperty(name)) continue;
+                switch (ShaderUtil.GetPropertyType(shader, i))
+                {
+                    case ShaderUtil.ShaderPropertyType.Float:
+                    case ShaderUtil.ShaderPropertyType.Range:
+                        to.SetFloat(name, from.GetFloat(name)); break;
+                    case ShaderUtil.ShaderPropertyType.Vector:
+                        to.SetVector(name, from.GetVector(name)); break;
+                    case ShaderUtil.ShaderPropertyType.Color:
+                        to.SetColor(name, from.GetColor(name)); break;
+                    case ShaderUtil.ShaderPropertyType.TexEnv:
+                        to.SetTexture(name, from.GetTexture(name)); break;
+                }
+            }
+        }
+
+        // Did this toolkit make this material? Everything it makes lives
+        // under OutputRoot, which survives a shader revert where a name or a
+        // property does not.
+        static bool IsGenerated(Material m)
+        {
+            if (m == null) return false;
+            string path = AssetDatabase.GetAssetPath(m);
+            return !string.IsNullOrEmpty(path)
+                   && path.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal);
+        }
+
+        // What a slot held before the bake, so Remove can put each one back.
+        static void RecordBakedSlot(YapsPlug plug, int slot, Material was)
+        {
+            if (plug == null || was == null) return;
+            var found = plug.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot);
+            if (found != null) return;                  // the first bake owns the record
+            plug.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = was });
+            EditorUtility.SetDirty(plug);
+        }
+
+        // Every submesh the chain moves, not just the one it moves most.
+        //
+        // A plug's vertices can span several materials — a whole avatar baked
+        // as one plug is the clear case — and a submesh left unpatched stays
+        // rigid while its neighbours bend, so the mesh tears along the seam.
+        // Any real weight counts: one moving vertex in a submesh is enough to
+        // tear it, and an extra patched material is the cheaper mistake.
+        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone)
+        {
+            var slots = new List<int>();
+            if (skin == null || skin.sharedMesh == null || skin.bones == null || rootBone == null) return slots;
+            var mesh = skin.sharedMesh;
+            var weights = mesh.boneWeights;
+            if (weights == null || weights.Length == 0) return slots;
+            var chain = new HashSet<int>();
+            for (int i = 0; i < skin.bones.Length; i++)
+                if (skin.bones[i] != null && (skin.bones[i] == rootBone || skin.bones[i].IsChildOf(rootBone))) chain.Add(i);
+            if (chain.Count == 0) return slots;
+            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            {
+                float total = 0f;
+                var seen = new HashSet<int>();
+                foreach (int v in mesh.GetTriangles(sub))
+                {
+                    if (v >= weights.Length || !seen.Add(v)) continue;
+                    var w = weights[v];
+                    if (chain.Contains(w.boneIndex0)) total += w.weight0;
+                    if (chain.Contains(w.boneIndex1)) total += w.weight1;
+                    if (chain.Contains(w.boneIndex2)) total += w.weight2;
+                    if (chain.Contains(w.boneIndex3)) total += w.weight3;
+                    if (total > 0.001f) break;
+                }
+                if (total > 0.001f) slots.Add(sub);
+            }
+            return slots;
+        }
+
         public static int SlotWeightedTo(SkinnedMeshRenderer skin, Transform rootBone)
         {
             if (skin == null || skin.sharedMesh == null || skin.bones == null || rootBone == null) return -1;

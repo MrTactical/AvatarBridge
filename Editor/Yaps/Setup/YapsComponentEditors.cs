@@ -235,7 +235,7 @@ namespace AvatarBridge
         // there is one definition of what a socket is, and it is placed one
         // plug length along the plug's own measured forward — the position
         // the plug is actually reaching for.
-        public static void DropTestSocket(YapsPlug plug)
+        public static void DropTestSocket(YapsPlug plug, YapsSocket.SocketKind kind = YapsSocket.SocketKind.Hole)
         {
             if (plug == null) return;
             RemoveTestSocket();
@@ -246,7 +246,7 @@ namespace AvatarBridge
                     "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
-            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName);
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
@@ -299,6 +299,14 @@ namespace AvatarBridge
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
+            // A socket WE dropped exists only to be previewed against, so
+            // switching its preview off is asking for it to go rather than
+            // to sit there inert. Last, because PreviewTick above still
+            // needs it alive to write the cleared flags back.
+            if (!on && socket.gameObject.name == SocketName)
+            {
+                Undo.DestroyObjectImmediate(socket.gameObject);
+            }
             SceneView.RepaintAll();
         }
 
@@ -1224,15 +1232,33 @@ namespace AvatarBridge
                 "The bend needs the plug baked, and needs its deform switched on: if an animator " +
                 "gates it (an erection slider, say), set the material's _YAPS_Enabled to 1 while you " +
                 "look, because preview does not run your animator."));
-            var socketButton = new BridgeElements.PrimaryButton(
-                YapsPreview.TestSocketInScene ? "Take the test socket away" : "Preview against a test socket",
-                () =>
+            if (YapsPreview.TestSocketInScene)
+            {
+                see.Body.Add(new BridgeElements.PrimaryButton("Take the test socket away", () =>
                 {
-                    if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
-                    else YapsPreview.DropTestSocket(target as YapsPlug);
+                    YapsPreview.RemoveTestSocket();
                     RebuildLater();
-                });
-            see.Body.Add(socketButton);
+                }));
+            }
+            else
+            {
+                // Both kinds, because they are not the same test: a hole
+                // closes around the shaft and stops it, a ring slides along
+                // it. A plug that looks right entering one can be wrong in
+                // the other.
+                var row = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+                foreach (var kind in new[] { YapsSocket.SocketKind.Hole, YapsSocket.SocketKind.Ring })
+                {
+                    var k = kind;
+                    var b = new BridgeElements.PrimaryButton(
+                        k == YapsSocket.SocketKind.Hole ? "Preview into a hole" : "Preview through a ring",
+                        () => { YapsPreview.DropTestSocket(target as YapsPlug, k); RebuildLater(); });
+                    b.style.flexGrow = 1;
+                    if (k == YapsSocket.SocketKind.Ring) b.style.marginLeft = 4;
+                    row.Add(b);
+                }
+                see.Body.Add(row);
+            }
 
             // Every knob is tagged with its system, and the filter shows one system.
             var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));

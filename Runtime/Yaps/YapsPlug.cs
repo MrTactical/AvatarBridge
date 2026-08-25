@@ -120,6 +120,23 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
+        // One entry per material slot the bake replaced, because a plug's
+        // vertices can span several. A whole avatar baked as one plug wears
+        // three materials, and patching only one leaves the rest of the mesh
+        // rigid while the patched part bends — the mesh tears along the
+        // seam. bakedFrom above stays for the primary slot so an avatar
+        // baked before this still restores.
+        [System.Serializable]
+        public class BakedSlot
+        {
+            public int slot;
+            public Material was;
+        }
+
+        [HideInInspector]
+        public System.Collections.Generic.List<BakedSlot> bakedSlots =
+            new System.Collections.Generic.List<BakedSlot>();
+
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();
     }
 }

@@ -13,6 +13,17 @@
 # arguments for Assembly-CSharp-Editor in a response file, so this reuses
 # them and only swaps the -define: lines. Seconds per combination.
 #
+# BLIND SPOT, and it will mislead you: this compiles the EDITOR assembly
+# against the prebuilt Assembly-CSharp.dll in Library/ScriptAssemblies. A
+# change to anything under Runtime/ is invisible until Unity rebuilds that
+# dll, so editor code using a new runtime member fails here with "does not
+# contain a definition for" while Unity itself compiles it happily. When
+# that happens, let Unity recompile once:
+#
+#   Unity.exe -batchmode -quit -projectPath "<project>" -logFile <log>
+#
+# then re-run. The failure is real only if it survives that.
+#
 # Usage:
 #   check-defines.sh [project]     default: the corpus project
 set -uo pipefail
