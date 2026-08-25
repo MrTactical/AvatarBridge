@@ -631,6 +631,58 @@ namespace AvatarBridge.Regression
             public string avatar = "";
         }
 
+        // Writes the reset to disk instead of doing it in memory.
+        //
+        // A scene that was converted by hand and saved keeps the converted
+        // root and its source switched off, so every run afterwards reports
+        // "leftover conversions removed: 1" — true, harmless, and noise in
+        // a diff forever. This applies the same two rules ResetScene and the
+        // convert path already use, then saves, so the scene goes back to
+        // the state the corpus assumes.
+        //
+        //   AVATARBRIDGE_CLEAN=<file of scene paths>
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Regression.RegressionRunner.CleanScenesBatch
+        public static void CleanScenesBatch()
+        {
+            string listFile = Environment.GetEnvironmentVariable("AVATARBRIDGE_CLEAN");
+            if (string.IsNullOrEmpty(listFile) || !File.Exists(listFile))
+            {
+                Debug.LogError("[Regression] AVATARBRIDGE_CLEAN must name a file of scene paths.");
+                EditorApplication.Exit(2);
+                return;
+            }
+            int cleaned = 0;
+            foreach (string line in File.ReadAllLines(listFile))
+            {
+                string path = line.Trim();
+                if (path.Length == 0 || path.StartsWith("#", StringComparison.Ordinal)) continue;
+                var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                var reset = ResetScene(scene);
+                int reactivated = 0;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    foreach (var d in root.GetComponentsInChildren<VRCAvatarDescriptor>(true))
+                    {
+                        for (var t = d.transform; t != null; t = t.parent)
+                        {
+                            if (t.gameObject.activeSelf) continue;
+                            t.gameObject.SetActive(true);
+                            reactivated++;
+                        }
+                    }
+                }
+                if (reset.leftovers > 0 || reactivated > 0)
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                    cleaned++;
+                }
+                Debug.Log($"[Regression] cleaned \"{path}\": {reset.leftovers} conversion(s), {reactivated} re-activated");
+            }
+            Debug.Log($"[Regression] {cleaned} scene(s) written");
+            EditorApplication.Exit(0);
+        }
+
         static SceneReset ResetScene(Scene scene)
         {
             var result = new SceneReset();

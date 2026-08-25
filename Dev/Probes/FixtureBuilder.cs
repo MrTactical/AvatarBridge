@@ -76,7 +76,9 @@ namespace AvatarBridge.Dev
                 code = 1;
             }
             File.WriteAllText(Log, _log.ToString());
-            EditorApplication.Exit(code);
+            // Guarded the way Run is: called from an open editor this would
+            // otherwise close Unity on whoever ran it.
+            if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
         static void BuildFixtures()
