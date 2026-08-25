@@ -122,7 +122,7 @@ namespace AvatarBridge
             if (unit.Count == 0) return null;
             string yaps = LoadYapsSource(out _);
             if (yaps == null) return null;
-            return "Hidden/YAPS/" + Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
+            return PatchedName(unit[0].Text, Hash(sourcePath + EmittedVersion(yaps) + unit.Count));
         }
 
         // Whether a patched material is carrying code this version no
@@ -163,6 +163,26 @@ namespace AvatarBridge
                 return true;
             }
             finally { UnityEngine.Object.DestroyImmediate(stand); }
+        }
+
+        // What the patched shader is called, and it is not cosmetic.
+        //
+        // Poiyomi strips a shader from the BUILD when it carries Thry's two
+        // marker properties and is not named "Hidden/Locked/...", reading
+        // that as an unlocked uber-shader. Our patch of a Poiyomi material
+        // inherits both markers, so under any other name it is excluded from
+        // the bundle and the avatar uploads PINK — correct in the editor,
+        // missing in game, which is the worst failure this tool can produce.
+        //
+        // A patch of a locked Poiyomi IS locked: its features are already
+        // resolved to constants, and only the deform was added. So the name
+        // is honest as well as necessary. Shaders with no Thry markers keep
+        // the plain name; there is nothing to strip them.
+        static string PatchedName(string sourceText, string hash)
+        {
+            bool thry = sourceText != null
+                        && sourceText.Contains("shader_is_using_thry_editor");
+            return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
@@ -253,7 +273,7 @@ namespace AvatarBridge
             }
 
             string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
-            string newName = "Hidden/YAPS/" + hash;
+            string newName = PatchedName(shaderFile.Text, hash);
             shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
                 "Shader \"" + newName + "\"");
 
