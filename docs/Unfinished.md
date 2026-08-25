@@ -250,11 +250,17 @@ editor hid it because no animator runs there, so the material's static `1` stood
 ratio to the bake pose now, tangents divided with the values. The same change gives each bone its
 own along-axis, which a child further down the chain never shared with its root.
 
+**The scaled-bone check is in: `Dev/Probes/BakeScaleCheck.cs`.** Every plug in the corpus sits at
+scale 1, the one value where the old code was right, so 87 avatars passed green for weeks while
+this was live. Not a corpus scene: the digest records no curve values, so no baseline would have
+moved even with a scaled bone in it. Three cases asserted directly instead, in seconds, with no
+avatar and no baseline: a bone baked at 0.4 that reads 1 at the bake pose and 3 at the top of its
+slider, the halfway point that only comes out right if the tangents were divided too, a bone at 1
+that must still pass through untouched, and a turned child whose length axis is not its root's.
+
 Still open in the same class, because a ratio only fixes the reference: a plug whose size layer
 holds a different value in game than the scene pose does in the editor is still two different
-plugs. **Wanted: a corpus fixture with a root bone at a scale other than 1 and a size clip on it**,
-asserting the mirrored curve reads 1 at the bake pose. Nothing in the corpus has one, which is why
-this reached a user.
+plugs.
 
 ---
 
