@@ -1094,6 +1094,13 @@ namespace AvatarBridge
                     RecordBakedSlot(plug, skin, i, was);
                 }
                 WriteKnobs(plug, target);
+                // The author's length override, which reached only the
+                // PRIMARY materials. A carried mesh kept the measured
+                // length, so with an override set the body ran one envelope
+                // and the collar another — every threshold, taper and reach
+                // landing at a different depth per mesh, identically on both
+                // routes, because a material value is route-independent.
+                if (plug.lengthOverride > 0) target.SetFloat("_YAPS_Length", plug.lengthOverride);
                 done++;
             }
             if (done > 0) skin.sharedMaterials = mats;
