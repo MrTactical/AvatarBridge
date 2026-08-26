@@ -148,13 +148,14 @@ outlives scrollback.
 running the previous shader, and nothing said so. The tell each time was a debug view answering
 a question the shader it was running had never been asked.
 
-`IsStale` already knows. Nothing surfaces it. A line in the YAPS panel — *this material is
-behind the toolkit, re-bake* — costs one call and removes a whole class of wasted round trip,
-including for anyone testing a build they did not make themselves.
+**DONE 2026-08-26, in the two places a person actually looks.** The material's own YAPS panel
+gets a warning under the banner, because that is where somebody reads a value and believes it —
+which is exactly how all three readings were lost. And the Setup window's row goes amber with
+"its shader is older than the toolkit — Build refreshes it", because there the fix is one click
+away and the row already had a mechanism for saying so.
 
-Same underlying gap as the prop sweep below: the toolkit can tell when a material has fallen
-behind and only ever acts on it when something happens to bake. One sweep and one label close
-both.
+Still open below: the project-wide sweep. A warning only reaches a material somebody happens to
+select or an avatar somebody happens to scan, and a prop prefab is neither.
 
 ### Nothing revisits a prop, so a shader fix never reaches it
 

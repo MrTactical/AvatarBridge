@@ -278,6 +278,20 @@ namespace AvatarBridge
             var ver = new Rect(rect.xMax - 60, rect.y + 6, 50, 16);
             GUI.Label(ver, BridgeDefines.Version, new GUIStyle(_bannerSub) { alignment = TextAnchor.MiddleRight });
             GUILayout.Space(6);
+
+            // A material can be running a shader older than the toolkit, and
+            // nothing said so. Three readings were wasted in one afternoon
+            // on values a stale shader had never been asked for, and the
+            // material panel is exactly where somebody reads a value and
+            // believes it, so the warning belongs here as much as anywhere.
+            if (YapsShaderPatcher.IsStale(material))
+            {
+                EditorGUILayout.HelpBox(
+                    "This material is running a shader older than the toolkit, so what you see here " +
+                    "is not what the current version does. Bake it again to refresh it — the knobs " +
+                    "and the bake are kept.", MessageType.Warning);
+                GUILayout.Space(4);
+            }
         }
 
         // A section header: colour bar, arrow, title, rule.

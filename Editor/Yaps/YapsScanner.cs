@@ -359,6 +359,11 @@ namespace AvatarBridge
                 f.Notes.Add($"{f.Origin} deform — upgrade carries its settings onto YAPS");
             if ((f.ReadableBy & Speaks.DPS) == 0) f.Notes.Add("no tip light: DPS sockets cannot see it");
             if ((f.ReadableBy & (Speaks.TPS | Speaks.SPS)) == 0) f.Notes.Add("no plug pointers: contact sockets cannot see it");
+            // Behind the toolkit: the row goes amber and Build is the fix,
+            // which is the whole point of saying it here rather than only
+            // on the material.
+            if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
+                f.Notes.Add("its shader is older than the toolkit — Build refreshes it");
         }
 
         static void Classify(Found f)
