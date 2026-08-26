@@ -523,7 +523,23 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
                                      + frameForward * frontOffset.z;
         float3 axis = frontAt - socket.position;
         float axisLength = length(axis);
-        if (axisLength > 1e-5 && axisLength < worldLength * 0.5)
+        // AN ABSOLUTE WINDOW, because the front point is at an absolute
+        // distance. Both ecosystems put it about a centimetre out —
+        // FrontOffset is 0.01 here, TPS_Orf_Norm and SPSLL_Socket_Front are
+        // the same — and that never scales with the plug.
+        //
+        // This gate was worldLength * 0.5, which on a plug measuring a metre
+        // and a half accepts anything up to seventy-seven centimetres as a
+        // socket's axis. A noisy or half-delivered front then passed it and
+        // became the facing, and the plug arrived along a direction nobody
+        // sent. On an ordinary plug the same gate is a few centimetres and
+        // rejects the same noise, which is why this only ever showed on long
+        // ones. Joe's read square across the shaft when the socket was
+        // pointing straight back at it.
+        //
+        // Two millimetres to five centimetres: generous either side of a
+        // centimetre, and nothing beyond it is a front point.
+        if (axisLength > 0.002 && axisLength < 0.05)
         {
             socket.forward = axis / axisLength;
         }
