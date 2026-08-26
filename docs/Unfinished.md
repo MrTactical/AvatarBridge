@@ -142,6 +142,20 @@ outlives scrollback.
    two bugs — every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
+### A stale material is invisible, and it wasted three readings
+
+2026-08-26. Three times in one afternoon a test result was wrong because the material was still
+running the previous shader, and nothing said so. The tell each time was a debug view answering
+a question the shader it was running had never been asked.
+
+`IsStale` already knows. Nothing surfaces it. A line in the YAPS panel — *this material is
+behind the toolkit, re-bake* — costs one call and removes a whole class of wasted round trip,
+including for anyone testing a build they did not make themselves.
+
+Same underlying gap as the prop sweep below: the toolkit can tell when a material has fallen
+behind and only ever acts on it when something happens to bake. One sweep and one label close
+both.
+
 ### Nothing revisits a prop, so a shader fix never reaches it
 
 Found 2026-08-26, after the two-socket prop fix. A patched shader's name hashes the emitted
