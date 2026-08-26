@@ -149,11 +149,19 @@ namespace AvatarBridge
                 // patch on it predates.
                 if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, dir, report);
                 var previous = patched.GetTexture("_YAPS_Bake");
-                patched.SetTexture("_YAPS_Bake", result.Bake);
-                patched.SetFloat("_YAPS_VertexCount", result.VertexCount);
-                patched.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
-                patched.SetFloat("_YAPS_Length", result.Length);
-                patched.SetFloat("_YAPS_FrameFromVertex", result.FromSkinnedMesh ? 1f : 0f);
+                // THE SAME CALL A FRESH BAKE MAKES, rather than a hand-copied
+                // subset of it. This listed five of the seven fields and left
+                // out _YAPS_BakeScale and _YAPS_BakeGirth, so a re-bake kept
+                // whatever those were sitting at instead of returning them to
+                // the rest pose of 1 — and on a plug whose size is animated
+                // they are sitting at whatever the last evaluated clip left.
+                // They scale the baked positions, the plug's length and the
+                // channel's offset, so a re-baked plug quietly deformed
+                // differently from a freshly baked one.
+                //
+                // Two doors to one job again, and the third today. Apply is
+                // the door; nothing else should be writing these by hand.
+                YapsBaker.Apply(result, patched, result.FromSkinnedMesh);
                 string old = previous != null && previous != result.Bake
                     ? AssetDatabase.GetAssetPath(previous) : null;
                 if (!string.IsNullOrEmpty(old) && old.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal))
