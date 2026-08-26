@@ -142,7 +142,23 @@ outlives scrollback.
    two bugs — every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
-### OPEN: the channel route still deforms differently from the world route
+### RESOLVED IN THE EDITOR 2026-08-26: the two routes now behave identically
+
+The remainder after the entry below was three more faults: the published channel frame decoded
+through unity_ObjectToWorld, which is IDENTITY for a skinned mesh, so it arrived unrotated (the
+decode is back on the per-vertex recovered frame, and no object-space math survives in the
+channel path); a carried renderer computed its engagement gate from its own bounds centre
+instead of its carrier's frame; and the length override reached the primary materials only, so
+the body and the collar ran different envelopes. With those closed, channel and world previews
+agree at the shipped -89.98 import rotation, carried meshes in step.
+
+What the editor still cannot prove, for the game test: the REAL triggers' sizes and encoding
+(the probe measured half-extents normalisation once — worth re-confirming), the 10 Hz sync
+stepping, the posed-skeleton per-vertex divergence on a whole-avatar plug, and the known gap
+that the material driver carries socket values to the PRIMARY material only, so a carried mesh
+in game deforms by lights alone until the channel build reaches its materials.
+
+### The prior state, kept for the record: the channel route deformed differently
 
 2026-08-26, end of a long day, and this is where it stands. The socket preview can now write
 EITHER route — `previewAsChannel` on the socket, under "See it work" — so the question is one
