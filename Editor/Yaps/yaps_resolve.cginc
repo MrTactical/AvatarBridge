@@ -473,7 +473,19 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // about how far in it is, which they have no business doing.
         if (socket.engaged > 0)
         {
-            float channelGap = length(socket.position - plugOrigin);
+            // From the CHANNEL'S frame, not the vertex's.
+            //
+            // This measured to plugOrigin, which is recovered per vertex, so
+            // on a plug spanning more than a bone every vertex computed its
+            // own gap and therefore its own engagement: vertices near the
+            // socket fully engaged, vertices at the far end not at all, and
+            // the mesh deformed in pieces. The world route has no remap and
+            // so never showed it, which is exactly the difference between
+            // the two that this was chased through.
+            //
+            // frameOrigin is the frame the offsets were measured in, so
+            // every vertex gets the same gap and the same engagement.
+            float channelGap = length(socket.position - frameOrigin);
             socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, channelGap);
 
             // The remap doubles as the channel's own reality check, and it
