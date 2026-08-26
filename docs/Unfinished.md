@@ -142,6 +142,41 @@ outlives scrollback.
    two bugs — every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
+### The contact channel fires now, and its deform is wrong
+
+2026-08-26, and it is the day's real finding. **The channel had never engaged, for anyone,
+including the wearer.** Every YAPS deform ever seen was the marker-light fallback, and a viewer
+with avatar lights off got nothing at all. Measured with the "Resolved by" view across three
+clients, then proved by a socket prop with its lights stripped.
+
+Cause: `BuildEngagementTrigger` and `AddHoleTrigger` halved their `areaSize` because a
+distance-only trigger was believed to become a sphere of radius `areaSize.x`. It does not. The
+client's `ImportReceiverShape` sets Box and `boxSize = areaSize`, always, and `ContactConversion`
+takes `boxSize` from `BoxCollider.size`, a full size. So the halving simply made the engagement
+volume half what was intended. Fixed, and the channel now fires.
+
+**What is left is the decode.** Same socket, two transports, two different deforms. Through
+contacts, on an armature plug, the body does not bend and only the face breaks — vertices before
+the socket ride the curve untouched and only those past it collapse, so that reads as the socket
+landing far along the shaft when the prop is right in front. One line does it:
+
+    offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001)
+
+Two suspects, one measurement each. Is `penetration` normalised across the box's half-extents or
+its full size — the contact probe's 1 m box answers that by where cyan reaches max, the face or
+halfway to it. And `_YAPS_BakeScale` is in the multiply, driven on an armature plug by the
+wearer's own size clips, so it may be scaling the offset a second time.
+
+Two instruments exist for this and both are in the Furgon project, not the repo:
+`Assets/Editor/ContactProbe.cs` (one trigger, three sliders, no YAPS) and
+`Assets/Editor/MakeContactOnlyProp.cs` (a socket with no lights, so nothing can cover for the
+channel).
+
+Also found on the way: **a sender that disappears never fires an exit.** Move a prop away and the
+exit task clears the value; DELETE it and the last value stays written forever. A plug would stay
+bent toward a socket that no longer exists. Exit tasks are not enough — the value wants a decay or
+a staleness check.
+
 ### A stale material is invisible, and it wasted three readings
 
 2026-08-26. Three times in one afternoon a test result was wrong because the material was still
