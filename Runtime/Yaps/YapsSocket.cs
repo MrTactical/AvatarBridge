@@ -118,7 +118,7 @@ namespace AvatarBridge.Yaps
                         });
                     }
                     float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
-                    float gap = Vector3.Distance(r.transform.position, transform.position);
+                    float gap = Vector3.Distance(PlugOrigin(r), transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
                     r.GetPropertyBlock(Block, slot);
                     Block.SetFloat("_YAPS_ChannelSpace", 0f);
@@ -129,6 +129,32 @@ namespace AvatarBridge.Yaps
                     r.SetPropertyBlock(Block, slot);
                 }
             }
+        }
+
+        // Where the plug on this renderer actually STARTS.
+        //
+        // The preview used the renderer's own transform, which is right for
+        // a prop and wrong for every skinned plug: a skinned renderer sits
+        // at the avatar root, so a plug on the hips measured its distance
+        // to a socket from between the avatar's feet. That reads as far too
+        // far, the simulated channel never engages, and a marker light
+        // quietly carries the preview instead — so the editor showed the
+        // light path while appearing to show the channel.
+        //
+        // The bake leaves "YAPS Markers" on the plug at the frame origin it
+        // measured, which is exactly the point the shader bends from.
+        static Vector3 PlugOrigin(Renderer r)
+        {
+            foreach (var plug in FindObjectsOfType<YapsPlug>())
+            {
+                if (plug == null || plug.Target != r) continue;
+                var markers = plug.transform.Find("YAPS Markers");
+                return markers != null ? markers.position : plug.transform.position;
+            }
+            // No component to ask: a converted avatar keeps the bake and
+            // loses the authoring component. The bounds centre is nearer the
+            // truth than the avatar root, and never worse than it.
+            return r is SkinnedMeshRenderer ? r.bounds.center : r.transform.position;
         }
 
         void OnDisable() { if (_previewing == this) { Release(); _previewing = null; } }
