@@ -148,12 +148,29 @@ namespace AvatarBridge
         // A socket in the scene rather than a prefab on disk, for previewing
         // a plug against. Same construction as the universal prefabs, so
         // there is one definition of what a socket is.
-        public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind)
+        //
+        // withLights false builds one that can ONLY be found by contacts.
+        // A socket normally announces itself both ways, and the light path
+        // is so much more forgiving that it covered for a contact channel
+        // which had never once worked in game — through every editor test
+        // anyone ever ran. A preview that emits lights cannot tell you
+        // anything about the channel, so testing it needs a socket that
+        // has nothing else to offer.
+        public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind,
+            bool withLights = true)
         {
             var root = new GameObject(name);
             var socket = root.AddComponent<YapsSocket>();
             socket.kind = kind;
+            socket.emitLights = withLights;
             Build(socket);
+            if (!withLights)
+            {
+                foreach (var light in root.GetComponentsInChildren<Light>(true))
+                {
+                    Object.DestroyImmediate(light);
+                }
+            }
             return root;
         }
 

@@ -246,7 +246,13 @@ namespace AvatarBridge
                     "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
-            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
+            // NO LIGHTS on a preview socket. It exists to drive the preview,
+            // and the preview writes the contact channel — so a light on it
+            // is a second, uncontrolled path answering the same question.
+            // That is precisely how a channel which had never worked once in
+            // game passed every editor test anyone ran: the light was always
+            // there to catch it.
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind, withLights: false);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
