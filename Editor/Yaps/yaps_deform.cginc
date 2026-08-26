@@ -522,6 +522,24 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         {
             shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
         }
+        else if (_YAPS_Debug >= 3.5)
+        {
+            // THE SOCKET'S FACING, against the plug's own forward.
+            //
+            // Full length means the socket faces the same way the plug
+            // points, half means square across it, nothing means it faces
+            // straight back. The channel never sends a rotation: it sends a
+            // second point a centimetre from the first and the facing is
+            // derived from the pair, so this is the one value that exists
+            // only on the channel route and cannot be compared against the
+            // world route by eye.
+            //
+            // A facing that reads steady and sane while the deform is wrong
+            // clears it; one that wanders as the socket moves is the fault.
+            float3 face = dot(socket.forward, socket.forward) > 1e-6
+                ? normalize(socket.forward) : rootForward;
+            shown = saturate(dot(face, rootForward) * 0.5 + 0.5);
+        }
         else if (_YAPS_Debug >= 2.5)
         {
             // ENGAGEMENT, the switch itself. Who found the socket and how
