@@ -364,6 +364,14 @@ namespace AvatarBridge
             // on the material.
             if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
                 f.Notes.Add("its shader is older than the toolkit — Build refreshes it");
+            // A debug view REPLACES the deform, and it is a material value,
+            // so it uploads. On an ordinary plug that is a curiosity; on a
+            // whole-avatar plug it flattens the avatar for everyone, and it
+            // survives the upload looking like a broken bake. Cost an hour
+            // of hunting a sync bug that was not there, 2026-08-26.
+            if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
+                && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
+                f.Notes.Add("a DEBUG VIEW is on — it replaces the deform and will upload with the avatar");
         }
 
         static void Classify(Found f)
