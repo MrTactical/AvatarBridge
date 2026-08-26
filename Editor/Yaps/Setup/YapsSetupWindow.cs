@@ -645,7 +645,13 @@ namespace AvatarBridge
             {
                 var plug = f.Root.GetComponent<YapsPlug>();
                 if (plug == null) return;
-                var o = YapsNativeBuilder.Bake(plug);
+                // The same door the inspector's Bake goes through, menu and
+                // channel included. Bake alone left the channel holding the
+                // frames of a previous build and the menu animator unrefreshed,
+                // so one plug came out differently depending on which button
+                // was pressed. BuildAll below does those two once, for the
+                // whole avatar, which is why it can call the bare Bake.
+                var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
             }
@@ -724,7 +730,7 @@ namespace AvatarBridge
                 plug.rootBone = rootBone;
                 plug.materialSlot = -1;   // auto, for the reason above
             }
-            var o = YapsNativeBuilder.Bake(plug);
+            var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
             if (_target == null) _picker.value = YapsSocketEditor.AvatarRootOf(go.transform).gameObject;
             Rescan();

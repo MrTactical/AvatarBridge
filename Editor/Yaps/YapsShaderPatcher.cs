@@ -178,10 +178,24 @@ namespace AvatarBridge
         // resolved to constants, and only the deform was added. So the name
         // is honest as well as necessary. Shaders with no Thry markers keep
         // the plain name; there is nothing to strip them.
+        //
+        // The name does a second job, found by reading Thry's own sweep
+        // (ShaderOptimizer.SetLockedForAllMaterials). Auto-lock-on-upload
+        // takes every material whose shader uses the optimizer and is not
+        // already locked, and its test for "already locked" is this exact
+        // prefix. Under any other name our patch is swept into a lock, which
+        // resolves properties to constants — and OUR properties are the ones
+        // animation drives, so the deform would freeze at whatever the
+        // material happened to hold. The prefix keeps the sweep off it.
+        //
+        // Hence BOTH markers, not just the editor's: the sweep keys on
+        // ThryShaderOptimizerLockButton, and a shader carrying that without
+        // the editor marker would have been named plainly and swept.
         static string PatchedName(string sourceText, string hash)
         {
             bool thry = sourceText != null
-                        && sourceText.Contains("shader_is_using_thry_editor");
+                        && (sourceText.Contains("shader_is_using_thry_editor")
+                            || sourceText.Contains("ThryShaderOptimizerLockButton"));
             return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 

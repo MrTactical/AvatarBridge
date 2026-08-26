@@ -90,10 +90,51 @@ outlives scrollback.
    a Runtime change cannot be validated there — the documented blind spot. Needs a real Unity
    compile and a bake on an avatar with a second weighted mesh.
 
-3. **Poiyomi's auto-lock still sweeps our materials.** Adjacent to the pink bug: naming the patch
-   `Hidden/Locked/YAPS/…` got it past the upload stripper, but Poiyomi's own lock pass still
-   walks the material and does not know what our properties are. Unproven whether it damages
-   anything; it wants a deliberate look rather than a guess.
+3. **Poiyomi's auto-lock — ANSWERED 2026-08-26, and the pink fix had already closed it.**
+   Read out of `ShaderOptimizer.SetLockedForAllMaterials` rather than guessed. The sweep takes
+   every material whose shader uses the optimizer and is not already locked, and its test for
+   "already locked" is `shader.name.StartsWith("Hidden/Locked/")` — the exact prefix the pink fix
+   gave us. So auto-lock-on-upload skips our materials, and has been skipping them since that fix.
+
+   Worth knowing what it would have done: locking resolves properties to constants, and OUR
+   properties are the ones animation drives (`_YAPS_Enabled`, `_YAPS_BakeScale`, the knobs). A
+   locked YAPS material would have frozen at whatever it happened to hold — a plug that never
+   toggles and never resizes, in game only.
+
+   **One gap closed with it.** `IsShaderUsingThryOptimizer` keys on the `ThryShaderOptimizerLockButton`
+   attribute, while `PatchedName` keyed only on `shader_is_using_thry_editor`. A shader carrying
+   the lock button without the editor marker would have been named plainly and swept in. Both
+   markers now.
+
+   **Still open, and left alone on purpose:** an explicit "Unlock all materials" grabs ours too,
+   and tries to restore a `TAG_ORIGINAL_SHADER` we never wrote. The result is a broken material,
+   recovered by re-baking. Guarding it means writing Thry's own lock records, which is
+   impersonating another tool's bookkeeping to survive a button the user deliberately pressed.
+
+4. **Parallel paths — AUDITED 2026-08-26, two closed and one recorded.**
+
+   *Window vs inspector, CLOSED.* Three doors bake a single plug and only one went through
+   `BakeAndRefreshMenu`. The window's row button and its make-this-a-plug flow called the bare
+   `Bake`, so they left the contact channel holding a previous build's frames and the menu
+   animator unrefreshed — the same divergence as yesterday's, in two more places. Both now go
+   through the same door as the inspector. `BuildAll` keeps the bare `Bake` deliberately: it does
+   the menu and the channel once, for the whole avatar, which is the point of a batch.
+
+   *Remove vs Sweep, CLOSED.* Both clear the channel and refresh the menu animator. The rest of
+   the difference is real: Remove undoes one plug, Sweep collects orphans. They are not two doors
+   to one job.
+
+   *Native builder vs converter, OPEN and the interesting one.* **The converter has its own bake
+   path** (`YapsConverter` lines 116 and 211) and patches ONE material slot on ONE renderer. It
+   never calls `MirrorToSlots`, and now never calls `MirrorToRenderers` either — so both the
+   multi-material fix of 2026-08-25 and the multi-renderer fix of 2026-08-26 apply to the native
+   toolkit ONLY, and a CONVERTED avatar still tears along the seam.
+
+   Not fixed here, for two honest reasons: the mirroring takes a `YapsPlug` and the converter
+   holds a VRCFury plug, so closing it is a refactor to pass values rather than the component;
+   and it changes conversion output, so it needs a corpus run to land. Low impact in practice — a
+   VRCFury plug is normally one dedicated mesh with one material, and multi-material plugs are the
+   whole-avatar case, which is a native-toolkit experiment. Worth doing, not worth rushing.
 
 4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
    window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared
