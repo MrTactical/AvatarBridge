@@ -57,6 +57,39 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ## Loose ends, small but real
 
+### Four found wearing the avatar, 2026-08-25/26
+
+Joe baked a whole avatar as one plug and four separate faults fell out of it. Recorded here
+because they were found in a session, not in a report, and the queue is the only thing that
+outlives scrollback.
+
+1. **The bake made a new material every time — FIXED 2026-08-26.** Both material sites asked
+   `AssetDatabase.GenerateUniqueAssetPath`, so a plug removed and baked again left `Fur_YAPS_`,
+   `Fur_YAPS_ 1`, `Fur_YAPS_ 2` behind it, one full material per click, in a user's project.
+   `YapsBaker.Generated` now derives a path that does not move and re-derives the values from the
+   source onto whatever is already there. The file keeps its GUID, so anything already pointing at
+   it stays pointed at the right thing, and what was there is never trusted — only its identity —
+   so an asset left by an older version cannot carry stale settings forward. One helper serves
+   both sites; the primary and the mirrored slots had drifted into two different conventions.
+
+2. **Additional meshes under the armature do not bend.** A plug whose root bone is the Armature
+   patches the materials of ONE renderer. Every other skinned mesh weighted to the same bones —
+   a collar, a second body, hair — keeps its own shader and stays rigid while the rest of the
+   avatar bends, which is the seam-tearing failure the multi-material work exists to prevent,
+   one level up. Wanted: one plug, a renderer list, one shared frame. Joe: *"but additional
+   meshes under the armature does not bend?"*
+
+3. **Poiyomi's auto-lock still sweeps our materials.** Adjacent to the pink bug: naming the patch
+   `Hidden/Locked/YAPS/…` got it past the upload stripper, but Poiyomi's own lock pass still
+   walks the material and does not know what our properties are. Unproven whether it damages
+   anything; it wants a deliberate look rather than a guess.
+
+4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
+   window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared
+   channels where Sweep did the leftovers. Both were fixed one at a time. That is a class, not
+   two bugs — every pair of entry points into one operation wants auditing against each other:
+   window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
+
 - **External audit 2026-08-25, the five deferred findings.** An audit by another agent
   (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
   fixed the same day; two were wrong (F1's consequence, F17's premise); these five are real,

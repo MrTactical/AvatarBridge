@@ -874,9 +874,7 @@ namespace AvatarBridge
                             $"patched ({refusal}), so that part of the mesh will not bend with the rest.");
                         continue;
                     }
-                    target = new Material(was) { name = was.name + " (YAPS)", shader = shader };
-                    AssetDatabase.CreateAsset(target, AssetDatabase.GenerateUniqueAssetPath(
-                        dir + "/" + Sanitise(was.name) + "_YAPS_.mat"));
+                    target = YapsBaker.Generated(was, shader, dir + "/" + Sanitise(was.name) + "_YAPS_.mat");
                     mats[i] = target;
                 }
                 CopyYapsProperties(primary, target);

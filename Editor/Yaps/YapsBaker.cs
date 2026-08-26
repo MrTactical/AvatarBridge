@@ -281,11 +281,8 @@ namespace AvatarBridge
         public static Material Apply(Result result, Material source, Shader patchedShader,
             string outputDir, bool skinned)
         {
-            var clone = new Material(source) { name = source.name + " (YAPS)" };
-            if (patchedShader != null)
-            {
-                clone.shader = patchedShader;
-            }
+            var clone = Generated(source, patchedShader,
+                outputDir + "/" + Sanitise(source.name + " (YAPS)") + ".mat");
             clone.SetTexture("_YAPS_Bake", result.Bake);
             clone.SetFloat("_YAPS_VertexCount", result.VertexCount);
             clone.SetFloat("_YAPS_Length", result.Length);
@@ -294,10 +291,44 @@ namespace AvatarBridge
             clone.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             clone.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
 
-            Directory.CreateDirectory(outputDir);
-            AssetDatabase.CreateAsset(clone, AssetDatabase.GenerateUniqueAssetPath(
-                outputDir + "/" + Sanitise(clone.name) + ".mat"));
+            EditorUtility.SetDirty(clone);
             return clone;
+        }
+
+        // The generated material for one source material, at a name that does
+        // not move.
+        //
+        // GenerateUniqueAssetPath was making a NEW file every time, so a plug
+        // removed and baked again left "Fur_YAPS_", "Fur_YAPS_ 1",
+        // "Fur_YAPS_ 2" behind it — full materials nobody pointed at, one per
+        // click, in a user's project.
+        //
+        // What is already at the path is never trusted, only its identity:
+        // the values are re-derived from the source every time, so an asset
+        // left by an older version cannot carry stale settings forward. The
+        // file keeps its GUID, so anything already referencing it stays
+        // pointed at the right thing.
+        public static Material Generated(Material source, Shader patched, string path)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null && existing != source)
+            {
+                existing.CopyPropertiesFromMaterial(source);
+                if (patched != null)
+                {
+                    existing.shader = patched;
+                }
+                EditorUtility.SetDirty(existing);
+                return existing;
+            }
+            var made = new Material(source) { name = source.name + " (YAPS)" };
+            if (patched != null)
+            {
+                made.shader = patched;
+            }
+            AssetDatabase.CreateAsset(made, path);
+            return made;
         }
 
         // --- placing the vertices -------------------------------------
