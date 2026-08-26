@@ -217,6 +217,30 @@ namespace AvatarBridge
         // the bake writes the curve people meant to write. The original is
         // left where it is: it is the user's clip, and a field bound to a
         // component that is not there costs nothing.
+        // WHOSE "enabled" this is, on the plug's own object.
+        //
+        // Matching the toolkit's own component alone missed the case that
+        // matters most: a vendor's clip animating the ORIGINAL system's plug
+        // component, which conversion replaced. Joe's horse rig ships
+        // HRS_COCK_ERECT driving an SPS plug's m_Enabled from an erection
+        // slider; YAPS swapped the component underneath it, the binding kept
+        // pointing at a script guid no longer in the project, and the mirror
+        // ignored it. The slider then switched a plug on that had no way to
+        // hear it — nothing in game, on either transport, since the material
+        // gate never moved.
+        //
+        // A curve on the PLUG'S OWN transform saying "enabled" means the
+        // plug, whoever wrote it. A missing type (null) is the strongest
+        // signal of all: the component it named is gone, which is exactly
+        // what conversion does to the system this replaces.
+        static bool MeansThePlug(Type type, Type ours)
+        {
+            if (type == ours || type == null) return true;
+            string n = type.Name;
+            return n.IndexOf("Plug", StringComparison.OrdinalIgnoreCase) >= 0
+                || n.IndexOf("Penetrator", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         public static int MirrorEnabled(IEnumerable<AnimationClip> clips, string componentPath, Type componentType,
             string rendererPath, Type rendererType, string property)
         {
@@ -233,8 +257,8 @@ namespace AvatarBridge
                 bool alreadyDriven = false;
                 foreach (var b in bindings)
                 {
-                    if (b.type == componentType && b.path == componentPath
-                        && b.propertyName == "m_Enabled")
+                    if (b.path == componentPath && b.propertyName == "m_Enabled"
+                        && MeansThePlug(b.type, componentType))
                     {
                         source = AnimationUtility.GetEditorCurve(clip, b);
                     }
