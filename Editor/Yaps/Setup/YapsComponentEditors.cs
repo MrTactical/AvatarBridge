@@ -963,6 +963,32 @@ namespace AvatarBridge
                     RebuildLater();
                 })));
 
+            // WHICH ROUTE the preview speaks. Off is the old shortcut, a
+            // world position and a true forward, which is close to what a
+            // marker light gives. On is what the game actually sends: an
+            // offset normalised across the channel's box, and no rotation
+            // at all, with the facing derived from a second point.
+            //
+            // Worth a switch rather than a constant, because "it works one
+            // way and not the other" is the fastest question there is to
+            // ask about a socket, and answering it used to take an upload.
+            var route = new Toggle("Preview through the contact channel") { value = socket.previewAsChannel };
+            route.AddToClassList("ab-field");
+            route.RegisterValueChangedCallback(e =>
+            {
+                Undo.RecordObject(socket, "YAPS preview route");
+                socket.previewAsChannel = e.newValue;
+                EditorUtility.SetDirty(socket);
+            });
+            see.Body.Add(route);
+            see.Body.Add(BridgeElements.Hint(
+                "On: the socket arrives the way the game sends it, as an offset normalised across the " +
+                "channel's box with no rotation, so the editor runs the same maths the game does. Off: a " +
+                "world position and a true forward, which is the simpler route the preview always used — " +
+                "and is NOT what the game runs, which is how a contact channel that had never once worked " +
+                "looked perfect in the editor. Flip it to see whether a fault belongs to the channel or " +
+                "to the deform."));
+
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.
             if (current != null && shapesProp.arraySize > 0)
