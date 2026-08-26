@@ -142,6 +142,23 @@ outlives scrollback.
    two bugs — every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
+### Nothing revisits a prop, so a shader fix never reaches it
+
+Found 2026-08-26, after the two-socket prop fix. A patched shader's name hashes the emitted
+source, so `IsStale` knows when a material has fallen behind and both bake paths re-patch it —
+but only when something bakes. An avatar gets baked because its scene is open and Build is
+pressed. **A prop is a prefab sitting in the project, and nothing ever opens it**, so every
+shader-level fix reaches everyone except the props, and the only cure today is to make a new one.
+
+The fix is not a prop button. It is one project-wide sweep: walk the materials carrying
+`_YAPS_Bake`, ask `IsStale`, `Refresh` the ones that answer yes. That catches props, avatars in
+scenes nobody has opened, and anything imported from someone else's package — the same blind
+spot in three shapes. `YapsShaderPatcher` already has every piece; what is missing is the caller
+and a line in the window saying it exists.
+
+Joe's question is the right one: it should just work. A user has no way to know a shader moved,
+and "make a new one" is not an answer for a prop somebody has positioned and tuned.
+
 - **External audit 2026-08-25, the five deferred findings.** An audit by another agent
   (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
   fixed the same day; two were wrong (F1's consequence, F17's premise); these five are real,
