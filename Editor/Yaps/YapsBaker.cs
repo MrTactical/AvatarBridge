@@ -46,7 +46,7 @@ namespace AvatarBridge
         // deltas in the mesh's own frame, so a socket bake stays in it.
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure, IList<string> wantedShapes = null,
-            bool objectFrame = false, bool flipAxis = false)
+            bool objectFrame = false, bool flipAxis = false, Result shareFrameWith = null)
         {
             failure = null;
             if (renderer == null || plugRoot == null)
@@ -113,8 +113,26 @@ namespace AvatarBridge
                 rootPos = renderer.transform.InverseTransformPoint(plugRoot.position);
                 rootRot = Quaternion.Inverse(renderer.transform.rotation) * plugRoot.rotation;
             }
-            MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis,
-                out var origin, out var rotation, out float axisDrift, out float originDrift);
+            Vector3 origin;
+            Quaternion rotation;
+            float axisDrift = 0f, originDrift = 0f;
+            bool shared = shareFrameWith != null && !staticMesh;
+            if (shared)
+            {
+                // A second mesh on the same plug takes the FIRST one's frame
+                // rather than measuring its own. A collar weighted to the
+                // same bones would otherwise find its own axis, its own
+                // origin and its own length, and bend as a separate plug
+                // alongside the body it is sitting on. No drift to report:
+                // this frame was not measured, it was given.
+                origin = shareFrameWith.Origin;
+                rotation = shareFrameWith.Rotation;
+            }
+            else
+            {
+                MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis,
+                    out origin, out rotation, out axisDrift, out originDrift);
+            }
             var toPlug = staticMesh || objectFrame ? Matrix4x4.identity
                 : Matrix4x4.TRS(origin, rotation, Vector3.one).inverse;
             if (staticMesh)
@@ -141,6 +159,15 @@ namespace AvatarBridge
                     length = Mathf.Max(length, positions[i].z);
                     radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
                 }
+            }
+
+            // The shaft is the same shaft for every mesh on the plug, so the
+            // length is the first one's too. Measured per mesh it would make
+            // every reach fraction — taper, squeeze, engagement — mean a
+            // different distance on each renderer.
+            if (shared)
+            {
+                length = shareFrameWith.Length;
             }
 
             if (active == 0)
@@ -283,16 +310,31 @@ namespace AvatarBridge
         {
             var clone = Generated(source, patchedShader,
                 outputDir + "/" + Sanitise(source.name + " (YAPS)") + ".mat");
-            clone.SetTexture("_YAPS_Bake", result.Bake);
-            clone.SetFloat("_YAPS_VertexCount", result.VertexCount);
-            clone.SetFloat("_YAPS_Length", result.Length);
-            clone.SetFloat("_YAPS_BakeScale", 1f);   // the rest pose; a size animation drives these
-            clone.SetFloat("_YAPS_BakeGirth", 1f);
-            clone.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
-            clone.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
-
-            EditorUtility.SetDirty(clone);
+            Apply(result, clone, skinned);
             return clone;
+        }
+
+        // The per-MESH half of a bake, onto a material that already exists.
+        //
+        // Split out because a plug spanning several renderers patches one
+        // material per renderer and each needs its OWN bake: the texture is
+        // indexed by mesh-global vertex id and no two meshes share one.
+        // Everything here describes the mesh; the author's knobs are written
+        // separately, from the component.
+        public static void Apply(Result result, Material target, bool skinned)
+        {
+            if (result == null || target == null)
+            {
+                return;
+            }
+            target.SetTexture("_YAPS_Bake", result.Bake);
+            target.SetFloat("_YAPS_VertexCount", result.VertexCount);
+            target.SetFloat("_YAPS_Length", result.Length);
+            target.SetFloat("_YAPS_BakeScale", 1f);   // the rest pose; a size animation drives these
+            target.SetFloat("_YAPS_BakeGirth", 1f);
+            target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
+            target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            EditorUtility.SetDirty(target);
         }
 
         // The generated material for one source material, at a name that does

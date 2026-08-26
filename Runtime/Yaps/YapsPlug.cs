@@ -134,6 +134,13 @@ namespace AvatarBridge.Yaps
         {
             public int slot;
             public Material was;
+
+            // Which renderer's slot. A plug rooted high enough spans several
+            // meshes, and slot 0 of a collar is not slot 0 of the body — a
+            // record keyed on the number alone puts one mesh's material onto
+            // another. Empty means the plug's own renderer, so records
+            // written before a plug could span meshes still resolve.
+            public Renderer renderer;
         }
 
         [HideInInspector]

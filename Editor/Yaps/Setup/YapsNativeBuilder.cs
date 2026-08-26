@@ -138,7 +138,7 @@ namespace AvatarBridge
                 renderer.sharedMaterials = mats;
                 // What the slot held, for Remove to put back.
                 if (plug.bakedFrom == null) { plug.bakedFrom = original; EditorUtility.SetDirty(plug); }
-                RecordBakedSlot(plug, slot, original);
+                RecordBakedSlot(plug, renderer, slot, original);
             }
             else
             {
@@ -194,6 +194,16 @@ namespace AvatarBridge
                 o.Notes.Add($"The plug's vertices span {mirrored + 1} of this mesh's materials, so the " +
                             "deform was baked into all of them. Baking only the primary one would leave " +
                             "the rest rigid and tear the mesh along the seam.");
+            }
+
+            // And every OTHER mesh the same bones move. One plug, one frame,
+            // a bake each.
+            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes);
+            if (alsoMeshes > 0)
+            {
+                o.Notes.Add($"{alsoMeshes} other mesh(es) on this avatar are weighted to the plug's bone " +
+                            $"chain, so they were baked into it too ({alsoMats} material(s)), sharing this " +
+                            "plug's frame and length. Left out they would have stayed rigid while the rest bent.");
             }
 
             // Announce: tip light for DPS, pointers for TPS and SPS.
@@ -879,7 +889,7 @@ namespace AvatarBridge
                 }
                 CopyYapsProperties(primary, target);
                 EditorUtility.SetDirty(target);
-                RecordBakedSlot(plug, i, was);
+                RecordBakedSlot(plug, renderer, i, was);
                 done++;
             }
             if (done > 0) renderer.sharedMaterials = mats;
@@ -923,13 +933,119 @@ namespace AvatarBridge
         }
 
         // What a slot held before the bake, so Remove can put each one back.
-        static void RecordBakedSlot(YapsPlug plug, int slot, Material was)
+        // Keyed on the renderer as well as the number: a plug spanning meshes
+        // has a slot 0 on each of them, and they are not the same slot.
+        static void RecordBakedSlot(YapsPlug plug, Renderer on, int slot, Material was)
         {
             if (plug == null || was == null) return;
-            var found = plug.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot);
+            var found = plug.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot && Same(b.renderer, on, plug));
             if (found != null) return;                  // the first bake owns the record
-            plug.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = was });
+            plug.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = was, renderer = on });
             EditorUtility.SetDirty(plug);
+        }
+
+        // A record with no renderer was written before a plug could span
+        // them, and belonged to the plug's own.
+        public static bool Same(Renderer recorded, Renderer asked, YapsPlug plug)
+        {
+            if (recorded == asked) return true;
+            return recorded == null && plug != null && asked == plug.Target;
+        }
+
+        // Every OTHER skinned mesh the chain reaches.
+        //
+        // A plug rooted at the Armature IS the whole avatar, and an avatar is
+        // rarely one renderer: a collar, a second body, hair, all weighted to
+        // the same bones. Left out they keep their own shader and stay rigid
+        // while everything around them bends — the same seam the material
+        // mirroring closes, one level up.
+        //
+        // Each renderer gets its OWN bake, because the bake is indexed by
+        // mesh-global vertex id and no two meshes share one. What they share
+        // is the primary's FRAME and LENGTH, so they bend as one object
+        // instead of each measuring its own idea of where the shaft is.
+        //
+        // Only when the author has not named a material slot. Naming one says
+        // "this mesh, this slot", and reaching onto other renderers would be
+        // answering a question nobody asked.
+        static int MirrorToRenderers(YapsPlug plug, Renderer primaryRenderer, YapsBaker.Result primary,
+            string dir, BridgeReport report, out int meshes)
+        {
+            meshes = 0;
+            if (plug == null || plug.rootBone == null || plug.materialSlot >= 0) return 0;
+            if (primary == null || !primary.FromSkinnedMesh) return 0;
+            // The avatar, not the scene root: two avatars parented under one
+            // container would otherwise lend each other their meshes.
+            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var root = avatar != null ? avatar.transform : TopOf(plug.transform);
+            int done = 0;
+            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (skin == null || skin == primaryRenderer || skin.sharedMesh == null) continue;
+                var slots = SlotsWeightedTo(skin, plug.rootBone);
+                if (slots.Count == 0) continue;
+
+                var result = YapsBaker.Bake(skin, plug.rootBone, dir, report, out string failure,
+                    flipAxis: plug.flipAxis, shareFrameWith: primary);
+                if (result == null)
+                {
+                    report?.Warning("YAPS", $"\"{skin.name}\" could not join the plug",
+                        $"Its vertices are weighted to the plug's bone chain, but it could not be " +
+                        $"baked ({failure}), so it will stay rigid while the rest bends.");
+                    continue;
+                }
+                int patched = PatchExtra(plug, skin, result, slots, dir, report);
+                if (patched > 0) { done += patched; meshes++; }
+            }
+            return done;
+        }
+
+        // One extra renderer's slots: this renderer's own bake, and the
+        // component's knobs.
+        //
+        // Not MirrorToSlots — that copies the primary MATERIAL's values
+        // wholesale, which for another mesh would hand it the primary's bake
+        // texture and the primary's vertex count, and the shader would read
+        // one mesh's vertices out of another mesh's bake.
+        static int PatchExtra(YapsPlug plug, SkinnedMeshRenderer skin, YapsBaker.Result result,
+            List<int> slots, string dir, BridgeReport report)
+        {
+            var mats = skin.sharedMaterials;
+            int done = 0;
+            foreach (int i in slots)
+            {
+                if (i < 0 || i >= mats.Length || mats[i] == null) continue;
+                var was = mats[i];
+                bool ours = was.HasProperty("_YAPS_Bake") || IsGenerated(was);
+                var shader = was.HasProperty("_YAPS_Bake")
+                    ? was.shader
+                    : YapsShaderPatcher.Patch(was, dir, report, out _, out _);
+                if (shader == null)
+                {
+                    report?.Warning("YAPS", $"\"{was.name}\" keeps its own shader",
+                        "The plug's vertices reach this material, but its shader could not be " +
+                        "patched, so that part of the mesh will not bend with the rest.");
+                    continue;
+                }
+                Material target;
+                if (ours)
+                {
+                    target = was;
+                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, dir, report);
+                    else target.shader = shader;
+                    YapsBaker.Apply(result, target, true);
+                }
+                else
+                {
+                    target = YapsBaker.Apply(result, was, shader, dir, true);
+                    mats[i] = target;
+                    RecordBakedSlot(plug, skin, i, was);
+                }
+                WriteKnobs(plug, target);
+                done++;
+            }
+            if (done > 0) skin.sharedMaterials = mats;
+            return done;
         }
 
         // Every submesh the chain moves, not just the one it moves most.

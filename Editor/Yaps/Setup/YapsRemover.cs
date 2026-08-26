@@ -210,8 +210,12 @@ namespace AvatarBridge
                         // span several materials replaced several, and putting
                         // the primary's back into all of them would paint the
                         // whole mesh with one of its parts.
+                        // Keyed on the renderer too: a plug spanning meshes
+                        // has a slot 0 on each of them, and matching on the
+                        // number alone hands one mesh's material to another.
                         var recorded = plug.bakedSlots
-                            .FirstOrDefault(b => b != null && b.slot == slot && b.was != null)?.was;
+                            .FirstOrDefault(b => b != null && b.slot == slot && b.was != null
+                                                 && YapsNativeBuilder.Same(b.renderer, renderer, plug))?.was;
                         // `back` is the PRIMARY slot's original, so falling
                         // back to it for a slot we have no record of paints
                         // one part of the mesh over another — a fur slot
@@ -238,7 +242,8 @@ namespace AvatarBridge
                         }
                     }
                     renderer.sharedMaterials = mats;
-                    int restored = slots.Count(sl => plug.bakedSlots.Any(b => b != null && b.slot == sl && b.was != null))
+                    int restored = slots.Count(sl => plug.bakedSlots.Any(b => b != null && b.slot == sl && b.was != null
+                                                        && YapsNativeBuilder.Same(b.renderer, renderer, plug)))
                                    + (back != null ? 0 : 0);
                     done.Add(back != null || restored > 0
                         ? (slots.Count > 1

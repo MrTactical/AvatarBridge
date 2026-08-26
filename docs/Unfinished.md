@@ -72,12 +72,23 @@ outlives scrollback.
    so an asset left by an older version cannot carry stale settings forward. One helper serves
    both sites; the primary and the mirrored slots had drifted into two different conventions.
 
-2. **Additional meshes under the armature do not bend.** A plug whose root bone is the Armature
-   patches the materials of ONE renderer. Every other skinned mesh weighted to the same bones —
-   a collar, a second body, hair — keeps its own shader and stays rigid while the rest of the
-   avatar bends, which is the seam-tearing failure the multi-material work exists to prevent,
-   one level up. Wanted: one plug, a renderer list, one shared frame. Joe: *"but additional
-   meshes under the armature does not bend?"*
+2. **Additional meshes under the armature do not bend — FIXED 2026-08-26, UNTESTED IN UNITY.**
+   A plug whose root bone is the Armature patched ONE renderer's materials; every other skinned
+   mesh weighted to the same bones kept its own shader and stayed rigid, which is the seam the
+   multi-material work closes, one level up. `MirrorToRenderers` now bakes each of them, and the
+   bake is per mesh because the texture is indexed by mesh-global vertex id — what they share is
+   the primary's FRAME and LENGTH, via a new `shareFrameWith` on `YapsBaker.Bake`, so they bend
+   as one object rather than each measuring its own idea of where the shaft is. Scoped to the
+   `CVRAvatar`, not the scene root, or two avatars under one container lend each other meshes.
+   Skipped entirely when the author names a material slot: that says "this mesh, this slot".
+
+   **`BakedSlot` gained a `renderer`**, because a plug spanning meshes has a slot 0 on each of
+   them. Matching on the number alone would have handed one mesh's material to another on Remove
+   — the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
+
+   *Compile-checked only.* `check-defines.sh` links the project's compiled Runtime assembly, so
+   a Runtime change cannot be validated there — the documented blind spot. Needs a real Unity
+   compile and a bake on an avatar with a second weighted mesh.
 
 3. **Poiyomi's auto-lock still sweeps our materials.** Adjacent to the pink bug: naming the patch
    `Hidden/Locked/YAPS/…` got it past the upload stripper, but Poiyomi's own lock pass still
