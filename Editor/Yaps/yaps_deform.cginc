@@ -536,9 +536,30 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             //
             // A facing that reads steady and sane while the deform is wrong
             // clears it; one that wanders as the socket moves is the fault.
-            float3 face = dot(socket.forward, socket.forward) > 1e-6
-                ? normalize(socket.forward) : rootForward;
-            shown = saturate(dot(face, rootForward) * 0.5 + 0.5);
+            // Measured against the CHANNEL'S frame, not the vertex's.
+            //
+            // The first version compared with rootForward, which is
+            // recovered per vertex: on a plug spanning a whole skeleton
+            // every vertex compared against a different direction, so the
+            // mesh showed thousands of different answers at once and read as
+            // a flat half. That is an average, not a measurement, and it is
+            // the third view here to be wrong in its own right rather than
+            // about the thing it was pointed at.
+            //
+            // The published channel frame is one direction for the whole
+            // plug, so this is now one number.
+            float3 reference = rootForward;
+            if (dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8)
+            {
+                reference = YapsSafeNormalize(
+                    mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelForward.xyz), rootForward);
+            }
+            // A zero forward is the honest "no facing was believed", and it
+            // reads as exactly half so it cannot be mistaken for either end.
+            float3 face = socket.forward;
+            shown = dot(face, face) > 1e-6
+                ? saturate(dot(normalize(face), reference) * 0.5 + 0.5)
+                : 0.5;
         }
         else if (_YAPS_Debug >= 2.5)
         {
