@@ -295,13 +295,29 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
 // Nearest root to the plug, with its front partner if one arrived. Unity
 // may hand over a root without its front, so an unpaired root still yields a
 // position and simply leaves the axis to the caller.
-bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, out float3 forward,
+// preferNear: the socket the channel already resolved, when it resolved
+// one, else the plug's own origin.
+//
+// Ranking by distance to the PLUG picked the wrong light on a prop
+// carrying two sockets. A hole and a ring six centimetres apart are both
+// inside the envelope, and which one sits nearer the plug's origin flips
+// as the plug moves in — so a plug genuinely inside the hole was handed
+// the ring's light, took its kind, and swept past instead of entering.
+// It changed with viewing distance because the geometry and Unity's
+// four-slot light list both change as you approach, which reads as a
+// socket that breaks when you look at it.
+//
+// The reach gate still measures from the plug, because that is the
+// engagement envelope. Only the ranking moved. The caller's guard below
+// stays, demoted from the only defence to a sanity check.
+bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
+                         out float3 position, out float3 forward,
                          out float holeHint)
 {
     position = 0;
     forward = 0;
     holeHint = -1;   // the light did not say
-    float bestDistanceSq = reach * reach;
+    float bestRankSq = 1e30;
     bool found = false;
 
     [unroll]
@@ -310,9 +326,11 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
         int kind = YapsClassifyLight(i, plugOrigin);
         if (!YapsIsRoot(kind)) continue;
         float3 at = YapsLightPosition(i);
-        float distanceSq = dot(at - plugOrigin, at - plugOrigin);
-        if (distanceSq >= bestDistanceSq) continue;
-        bestDistanceSq = distanceSq;
+        float fromPlugSq = dot(at - plugOrigin, at - plugOrigin);
+        if (fromPlugSq >= reach * reach) continue;
+        float rankSq = dot(at - preferNear, at - preferNear);
+        if (rankSq >= bestRankSq) continue;
+        bestRankSq = rankSq;
         position = at;
         found = true;
         holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
@@ -499,7 +517,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
-    bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward,
+    bool litRoot = YapsFindLightSocket(plugOrigin,
+                                       channelFound ? channelPosition : plugOrigin,
+                                       worldLength * 1.6, lightPosition, lightForward,
                                        lightHoleHint);
     // A light refines the socket the channel already resolved. It does not
     // get to nominate a DIFFERENT one, and it used to: any lit root inside
