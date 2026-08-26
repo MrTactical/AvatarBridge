@@ -985,6 +985,22 @@ namespace AvatarBridge
                 var slots = SlotsWeightedTo(skin, plug.rootBone);
                 if (slots.Count == 0) continue;
 
+                // A mesh with a plug of its own is not ours to take. Both
+                // would bake the same material and whichever ran last would
+                // win, so which frame the mesh wore depended on hierarchy
+                // order: it bent with the body until the second bake, then
+                // snapped to its own. A component is the author saying "this
+                // one is mine". Say what that costs, and leave it alone.
+                var claimed = OwnerPlugOf(root, skin);
+                if (claimed != null && claimed != plug)
+                {
+                    report?.Warning("YAPS", $"\"{skin.name}\" bends on its own",
+                        "Its vertices are weighted to this plug's bone chain, but it has a plug of its " +
+                        "own, so it keeps its own frame and length and will not move as one piece with " +
+                        "this plug. Remove that plug to fold this mesh in.");
+                    continue;
+                }
+
                 var result = YapsBaker.Bake(skin, plug.rootBone, dir, report, out string failure,
                     flipAxis: plug.flipAxis, shareFrameWith: primary);
                 if (result == null)
@@ -998,6 +1014,19 @@ namespace AvatarBridge
                 if (patched > 0) { done += patched; meshes++; }
             }
             return done;
+        }
+
+        // The plug that has declared this renderer its own, if any. Used
+        // both to keep one plug off another's mesh and, by the scanner, to
+        // tell a carried mesh from a plug in its own right.
+        public static YapsPlug OwnerPlugOf(Transform root, Renderer renderer)
+        {
+            if (root == null || renderer == null) return null;
+            foreach (var other in root.GetComponentsInChildren<YapsPlug>(true))
+            {
+                if (other != null && other.Target == renderer) return other;
+            }
+            return null;
         }
 
         // One extra renderer's slots: this renderer's own bake, and the

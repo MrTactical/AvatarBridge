@@ -58,6 +58,17 @@ namespace AvatarBridge
             // damage. A row with only these stays green.
             public List<string> Expected = new List<string>();
 
+            // The plug this mesh is PART OF, when it has no plug of its own.
+            // A plug rooted high enough carries every mesh its bones move, and
+            // each of those ends up wearing a patched material — which reads
+            // as a plug in its own right and lists as a peer. It is not one:
+            // it has no frame, no length and no settings of its own, it wears
+            // the carrier's. Listing it as a peer invited exactly the mistake
+            // that produced this field, a second plug component added to a
+            // mesh already carried, which then re-baked it with its own frame
+            // and broke the two apart.
+            public Yaps.YapsPlug CarriedBy;
+
             public string ReadableList()
             {
                 var parts = new List<string>();
@@ -193,6 +204,25 @@ namespace AvatarBridge
                 if (p == null || string.IsNullOrEmpty(p.type)) continue;
                 if (IsSocketRootTag(p.type) || IsSocketFrontTag(p.type)) markers.Add((p.transform, null, p));
             }
+            // Which plugs found by their MATERIAL are really another plug's
+            // carried mesh. Only ever a mesh with no plug of its own: a
+            // component is an author saying "this one is mine", and that is
+            // answered as a conflict at bake, not quietly reparented here.
+            foreach (var f in result.Plugs)
+            {
+                if (f.Root == null || f.Renderer == null) continue;
+                if (f.Root.GetComponent<Yaps.YapsPlug>() != null) continue;
+                foreach (var carrier in root.GetComponentsInChildren<Yaps.YapsPlug>(true))
+                {
+                    if (carrier == null || carrier.rootBone == null) continue;
+                    if (carrier.Target == f.Renderer) continue;
+                    if (!(f.Renderer is SkinnedMeshRenderer skin)) continue;
+                    if (YapsNativeBuilder.SlotsWeightedTo(skin, carrier.rootBone).Count == 0) continue;
+                    f.CarriedBy = carrier;
+                    break;
+                }
+            }
+
             // Skip markers under a plug already found.
             markers.RemoveAll(m => result.Plugs.Any(pl => pl.Root != null && m.host.IsChildOf(pl.Root)));
 

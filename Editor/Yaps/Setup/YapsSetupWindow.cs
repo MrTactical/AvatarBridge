@@ -492,6 +492,32 @@ namespace AvatarBridge
                         .Select(o => o.Name).ToList();
                     if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
                 }
+                // A mesh another plug carries is not a plug. It gets a row —
+                // it IS being changed, and a change nobody can see is the one
+                // people add a second plug to fix — but a nested, quiet one
+                // that says whose it is and offers none of the controls that
+                // would make it a peer.
+                if (f.CarriedBy != null)
+                {
+                    var carried = BridgeElements.ReportRow("part of",
+                        f.Name,
+                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\" — its bones move this mesh, so it " +
+                        "was baked with that plug's frame and length and bends as one piece with it. " +
+                        "Nothing to set here: it wears that plug's settings. Give it its own plug only if " +
+                        "you want it to bend separately.",
+                        BridgeTheme.Dark ? new Color(0.45f, 0.47f, 0.52f) : new Color(0.55f, 0.57f, 0.62f), alt);
+                    carried.style.marginLeft = 22;
+                    carried.style.opacity = 0.75f;
+                    var held = f;
+                    carried.RegisterCallback<ClickEvent>(_ =>
+                    {
+                        if (held.Root != null) { Selection.activeTransform = held.Root; EditorGUIUtility.PingObject(held.Root); }
+                    });
+                    _foundBody.Add(carried);
+                    alt = !alt;
+                    return;
+                }
+
                 bool complete = f.Notes.Count == 0;
                 // Nothing to fix but something to say gets a softer green
                 // than a silent row: working as designed must never wear
@@ -607,7 +633,23 @@ namespace AvatarBridge
                 _foundBody.Add(wrap);
                 alt = !alt;
             }
-            foreach (var f in _scan.Plugs) Row(f);
+            // Each plug, then the meshes it carries, so "part of" sits under
+            // the thing it is part of.
+            foreach (var f in _scan.Plugs.Where(p => p.CarriedBy == null))
+            {
+                Row(f);
+                var mine = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
+                if (mine == null) continue;
+                foreach (var c in _scan.Plugs.Where(p => p.CarriedBy == mine)) Row(c);
+            }
+            // Anything carried by a plug that is not itself listed, so a row
+            // can never go missing.
+            foreach (var f in _scan.Plugs.Where(p => p.CarriedBy != null
+                && !_scan.Plugs.Any(o => o.CarriedBy == null && o.Root != null
+                                         && o.Root.GetComponent<YapsPlug>() == p.CarriedBy)))
+            {
+                Row(f);
+            }
             foreach (var f in _scan.Sockets) Row(f);
         }
 
