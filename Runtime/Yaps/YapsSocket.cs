@@ -91,6 +91,12 @@ namespace AvatarBridge.Yaps
         // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
 
+        [Tooltip("Preview the way the game does it: the socket's offset from the plug, normalised " +
+                 "across the channel's box, rather than a world position. The world route is simpler " +
+                 "and is what the preview always used — and it is NOT what the game runs, which is how " +
+                 "a contact channel that had never worked once looked perfect in the editor.")]
+        public bool previewAsChannel = true;
+
         public void PreviewTick()
         {
             if (!preview)
@@ -121,14 +127,95 @@ namespace AvatarBridge.Yaps
                     float gap = Vector3.Distance(PlugOrigin(r), transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
                     r.GetPropertyBlock(Block, slot);
-                    Block.SetFloat("_YAPS_ChannelSpace", 0f);
-                    Block.SetVector("_YAPS_SocketPos", transform.position);
-                    Block.SetVector("_YAPS_SocketForward", transform.forward);
-                    Block.SetVector("_YAPS_SocketUp", transform.up);
+                    if (previewAsChannel)
+                    {
+                        WriteAsChannel(r, m, length, engaged);
+                    }
+                    else
+                    {
+                        Block.SetFloat("_YAPS_ChannelSpace", 0f);
+                        Block.SetVector("_YAPS_SocketPos", transform.position);
+                        Block.SetVector("_YAPS_SocketForward", transform.forward);
+                        Block.SetVector("_YAPS_SocketUp", transform.up);
+                    }
                     Block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
                     r.SetPropertyBlock(Block, slot);
                 }
             }
+        }
+
+        // What the CONTACT CHANNEL would put on the material, exactly.
+        //
+        // The preview has always written a world position with
+        // _YAPS_ChannelSpace 0, which the game never does: in game the
+        // triggers report the socket's offset from the plug, normalised per
+        // axis across the channel's box, and the shader rebuilds it. So the
+        // editor exercised a decode path the game does not run, and a
+        // channel that had never once worked in game looked perfect here.
+        // That is how it stayed hidden.
+        //
+        // This is the exact inverse of the decode in yaps_resolve.cginc:
+        //
+        //     offset   = (SocketPos * 2 - 1) * Extents * BakeScale
+        //     position = origin + right*offset.x + up*offset.y + fwd*offset.z
+        //
+        // so encoding is that read backwards. Anything the two disagree
+        // about shows up here rather than after an upload.
+        void WriteAsChannel(Renderer r, Material m, float length, float engaged)
+        {
+            PlugFrame(r, out var origin, out var rotation);
+            Vector3 forward = rotation * Vector3.forward;
+            Vector3 up = rotation * Vector3.up;
+            Vector3 right = Vector3.Cross(up, forward);
+
+            Vector3 extents = m.HasProperty("_YAPS_ChannelExtents")
+                ? (Vector3) m.GetVector("_YAPS_ChannelExtents") : Vector3.zero;
+            // No channel built yet: the same box the builder would have used.
+            if (extents.sqrMagnitude < 1e-8f) extents = Vector3.one * (length * 1.75f);
+            float bakeScale = m.HasProperty("_YAPS_BakeScale") ? Mathf.Max(m.GetFloat("_YAPS_BakeScale"), 0.0001f) : 1f;
+            Vector3 span = extents * bakeScale;
+
+            Block.SetFloat("_YAPS_ChannelSpace", 1f);
+            Block.SetVector("_YAPS_ChannelExtents", extents);
+            Block.SetVector("_YAPS_SocketPos", Normalised(transform.position, origin, right, up, forward, span));
+            // The socket's second point, a centimetre along its own
+            // forward, which is what a real front pointer sits at.
+            Block.SetVector("_YAPS_SocketFront",
+                Normalised(transform.position + transform.forward * 0.01f, origin, right, up, forward, span));
+            // The channel publishes position and a front point, never a
+            // rotation, so these stay zero exactly as in game. A preview
+            // that quietly handed over the true forward would hide any
+            // fault in deriving it from the pair.
+            Block.SetVector("_YAPS_SocketForward", Vector4.zero);
+            Block.SetVector("_YAPS_SocketUp", Vector4.zero);
+        }
+
+        static Vector4 Normalised(Vector3 at, Vector3 origin, Vector3 right, Vector3 up, Vector3 forward, Vector3 span)
+        {
+            Vector3 d = at - origin;
+            var local = new Vector3(Vector3.Dot(d, right), Vector3.Dot(d, up), Vector3.Dot(d, forward));
+            return new Vector4(
+                Mathf.Clamp01((local.x / Mathf.Max(span.x, 1e-5f) + 1f) * 0.5f),
+                Mathf.Clamp01((local.y / Mathf.Max(span.y, 1e-5f) + 1f) * 0.5f),
+                Mathf.Clamp01((local.z / Mathf.Max(span.z, 1e-5f) + 1f) * 0.5f),
+                0f);
+        }
+
+        // The plug's measured frame. The bake leaves "YAPS Markers" at the
+        // origin and rotation it measured, which is what the shader bends
+        // from; without it the plug object's own transform is the best
+        // available guess.
+        static void PlugFrame(Renderer r, out Vector3 origin, out Quaternion rotation)
+        {
+            foreach (var plug in FindObjectsOfType<YapsPlug>())
+            {
+                if (plug == null || plug.Target != r) continue;
+                var markers = plug.transform.Find("YAPS Markers");
+                if (markers != null) { origin = markers.position; rotation = markers.rotation; return; }
+                origin = plug.transform.position; rotation = plug.transform.rotation; return;
+            }
+            origin = r is SkinnedMeshRenderer ? r.bounds.center : r.transform.position;
+            rotation = r.transform.rotation;
         }
 
         // Where the plug on this renderer actually STARTS.
