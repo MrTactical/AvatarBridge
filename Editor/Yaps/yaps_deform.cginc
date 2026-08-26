@@ -505,7 +505,30 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // make the most important case the one the view cannot show.
     if (_YAPS_Debug >= 0.5)
     {
-        float shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
+        float shown;
+        if (_YAPS_Debug < 1.5)
+        {
+            shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
+        }
+        else
+        {
+            // GAP TO THE SOCKET, as a fraction of plug length. The question
+            // this answers is whether the socket the plug is aiming at MOVES
+            // — two lights of the same tier swapping places, or one socket
+            // handing over to another, are invisible to the view above
+            // because both read as "a marker light".
+            //
+            // Smooth shortening as a socket approaches is the geometry
+            // behaving. A JUMP is the plug being handed a different answer,
+            // and the frame it jumps on is the frame to explain.
+            //
+            // Full length when nobody resolved: there is no gap to report,
+            // and a zero-length plug would read as "the socket is exactly on
+            // the root", which is the opposite of nothing.
+            shown = socket.tier < 0.5
+                ? 1.0
+                : saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
+        }
         float3 right = cross(rootUp, rootForward);
         float3 at = rootWorld
                   + right * baked.position.x
