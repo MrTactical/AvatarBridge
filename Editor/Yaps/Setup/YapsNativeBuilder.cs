@@ -163,7 +163,22 @@ namespace AvatarBridge
             }
             if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", plug.lengthOverride);
             patched.SetFloat("_YAPS_Enabled", 1f);
-            patched.SetFloat("_YAPS_SelfTag", -1f);   // native: self-exclusion is by body, no tag
+            // 1 when this avatar wears sockets of its own, so the plug checks
+            // ownership before answering a light; -1 when there is nothing to
+            // check for. The converter has always decided it this way and the
+            // toolkit hardcoded -1, which reads as "this avatar has no
+            // sockets" and switches own-body exclusion OFF entirely:
+            //
+            //     if (_YAPS_SelfTag >= 0 && YapsSameBodyAs(...)) skip;
+            //
+            // The wearer's own sockets are permanently in reach and
+            // permanently nearest, so a plug that does not skip them never
+            // looks at anybody else's — which is exactly what the comment
+            // over that check warns about.
+            var ownAvatar = plug.GetComponentInParent<CVRAvatar>();
+            bool ownSockets = ownAvatar != null
+                              && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
+            patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
 
             // A fresh bake of a legacy plug: carry the author's values onto
             // the YAPS knobs, switch the old deform off, and let the
