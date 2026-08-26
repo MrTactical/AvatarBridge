@@ -215,12 +215,12 @@ namespace AvatarBridge.Yaps
         // available guess.
         static void PlugFrame(Renderer r, out Vector3 origin, out Quaternion rotation)
         {
-            foreach (var plug in FindObjectsOfType<YapsPlug>())
+            var carrier = CarrierOf(r);
+            if (carrier != null)
             {
-                if (plug == null || plug.Target != r) continue;
-                var markers = plug.transform.Find("YAPS Markers");
+                var markers = carrier.transform.Find("YAPS Markers");
                 if (markers != null) { origin = markers.position; rotation = markers.rotation; return; }
-                origin = plug.transform.position; rotation = plug.transform.rotation; return;
+                origin = carrier.transform.position; rotation = carrier.transform.rotation; return;
             }
             origin = r is SkinnedMeshRenderer ? r.bounds.center : r.transform.position;
             rotation = r.transform.rotation;
@@ -238,13 +238,31 @@ namespace AvatarBridge.Yaps
         //
         // The bake leaves "YAPS Markers" on the plug at the frame origin it
         // measured, which is exactly the point the shader bends from.
-        static Vector3 PlugOrigin(Renderer r)
+        // The plug this renderer belongs to: its own, or the one CARRYING
+        // it. A collar swept in by an armature plug has no plug of its own,
+        // and falling back to its own bounds centre gave it its own gate —
+        // measured from the waist while the body's measured from the feet,
+        // so the collar engaged first and visibly bent before everything
+        // around it, in both preview routes. One plug, one origin, one gate.
+        static YapsPlug CarrierOf(Renderer r)
         {
+            YapsPlug carried = null;
             foreach (var plug in FindObjectsOfType<YapsPlug>())
             {
-                if (plug == null || plug.Target != r) continue;
-                var markers = plug.transform.Find("YAPS Markers");
-                return markers != null ? markers.position : plug.transform.position;
+                if (plug == null) continue;
+                if (plug.Target == r) return plug;
+                if (carried == null && plug.transform.root == r.transform.root) carried = plug;
+            }
+            return carried;
+        }
+
+        static Vector3 PlugOrigin(Renderer r)
+        {
+            var carrier = CarrierOf(r);
+            if (carrier != null)
+            {
+                var markers = carrier.transform.Find("YAPS Markers");
+                return markers != null ? markers.position : carrier.transform.position;
             }
             // No component to ask: a converted avatar keeps the bake and
             // loses the authoring component. The bounds centre is nearer the
