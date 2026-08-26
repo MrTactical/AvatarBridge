@@ -142,6 +142,43 @@ outlives scrollback.
    two bugs — every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
+### OPEN: the channel route still deforms differently from the world route
+
+2026-08-26, end of a long day, and this is where it stands. The socket preview can now write
+EITHER route — `previewAsChannel` on the socket, under "See it work" — so the question is one
+tickbox in the editor rather than an upload:
+
+    off   world position and a true forward   deform is CORRECT
+    on    the channel's own encoding          deform is WRONG
+
+Every difference between the two that could be found by reading has been closed, and it is still
+wrong. Fixed on the way, all real and all confirmed:
+
+- the engagement and hole triggers were built at HALF size, on a belief that a distance-only
+  trigger becomes a sphere, which the client disproves
+- channel space decoded against the frame recovered PER VERTEX, so a plug spanning a skeleton
+  landed the socket somewhere different for every vertex
+- the channel configured `plug.Material` alone, so one material of three got channel space and
+  the others fell back to the per-vertex frame
+- the engagement remap measured to the per-vertex origin, fragmenting engagement across the mesh
+- a re-bake set five of the seven fields a fresh bake sets, leaving `_YAPS_BakeScale` and
+  `_YAPS_BakeGirth` at whatever an animated size clip last wrote
+- the front-axis gate scaled with plug length (`worldLength * 0.5`), so on a 1.5 m plug anything
+  up to 77 cm was accepted as a socket's axis; the front point is 1 cm in every system and never
+  scales, so it is an absolute window now
+
+**The next measurement, not yet taken:** read "Gap to socket" with the channel preview ON and then
+OFF, at the same socket position. The preview encodes using the same extents and bake scale the
+shader decodes with, so the round trip should be EXACT and the two readings identical. Joe's
+earlier reading was "close, but not 100%", and if that holds it means something between encode and
+decode is changing the value — which is the thread to pull, because by construction nothing should.
+
+Three instruments were themselves wrong before they measured anything, which is most of why this
+took as long as it did: a motion-time readout that never animated, a `GestureLeft` control that
+could not move on a desktop avatar with no humanoid rig, and a facing view compared against a
+per-vertex direction. Every one reported nonsense loudly rather than reporting "fine", which is
+the only reason they were caught.
+
 ### The contact channel fires now, and its deform is wrong
 
 2026-08-26, and it is the day's real finding. **The channel had never engaged, for anyone,
