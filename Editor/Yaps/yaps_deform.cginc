@@ -556,10 +556,16 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             }
             // A zero forward is the honest "no facing was believed", and it
             // reads as exactly half so it cannot be mistaken for either end.
+            // A floor, because zero length is a correct reading here and
+            // looked like a catastrophe: a socket facing straight back at
+            // the plug scores 0, the plug collapsed to nothing, and that
+            // reads as the mesh flattening onto the floor rather than as
+            // the answer it is. A tenth to full, like the engagement view.
             float3 face = socket.forward;
-            shown = dot(face, face) > 1e-6
+            float facing = dot(face, face) > 1e-6
                 ? saturate(dot(normalize(face), reference) * 0.5 + 0.5)
-                : 0.5;
+                : 0.5;   // nothing believed, and it sits deliberately mid
+            shown = lerp(0.1, 1.0, facing);
         }
         else if (_YAPS_Debug >= 2.5)
         {
