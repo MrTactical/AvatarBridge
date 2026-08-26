@@ -310,9 +310,21 @@ namespace AvatarBridge
             var host = TriggerHost($"YAPS Channel {index} E", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // A trigger with only a distance task is a sphere, and its
-            // radius is areaSize.x outright, not half as a box uses it.
-            trigger.areaSize = box * 0.5f;
+            // EVERY trigger is a BOX, and areaSize is its FULL size.
+            //
+            // This used to halve the box "because a distance-only trigger is
+            // a sphere whose radius is areaSize.x outright". Read out of the
+            // client 2026-08-26 and that is not true, if it ever was:
+            // TriggerToContact.ImportReceiverShape sets shapeType = Box and
+            // boxSize = areaSize with no sphere case anywhere, and
+            // ContactConversion takes boxSize from BoxCollider.size, which
+            // is a full size. So the halving was not converting a box to a
+            // sphere radius, it was simply making the engagement volume half
+            // the size intended, and the same for the hole flag beside it.
+            //
+            // The axis triggers below were always right: they pass `box`
+            // whole, which matches _YAPS_ChannelExtents at half of it.
+            trigger.areaSize = box;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = SocketPointerTypes;
@@ -341,9 +353,9 @@ namespace AvatarBridge
             var host = TriggerHost($"YAPS Channel {index} H", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // Enter/exit with no stay tasks counts as distance-only, so this
-            // is a sphere too, radius areaSize.x.
-            trigger.areaSize = box * 0.5f;
+            // A box like every other, full size. See the engagement trigger
+            // above for why this is no longer halved.
+            trigger.areaSize = box;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = HolePointerTypes;
