@@ -1,9 +1,10 @@
 // YAPS: the discrete channel. How a plug learns where a socket is.
 // A trigger exists only on the wearer's copy and reports position in
 // its own frame, one axis per trigger, so the box sits on the plug.
-// A contact write bypasses the outbound buffer, so a trigger drives a
-// "#" local and a CVRAnimatorDriver copies it into the synced twin.
-// Drivers read animated fields, so each value costs a two-motion tree.
+// The trigger writes the SYNCED parameter itself: an advanced trigger's
+// write goes through PlayerSetup and out over the network, so no driver
+// round trip is needed, and the driver that used to do it clobbered the
+// value on every remote copy. See cvr-animator-driver-clobbers-remote.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -18,8 +19,10 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Two material-driver tasks per plug against sixteen. The real
-        // ceiling is the sync budget, not the tasks.
+        // Four plugs. The ceiling is the sync budget, not the driver
+        // tasks: publishing used to spend two of sixteen per plug and no
+        // longer spends any, because the trigger writes the synced
+        // parameter itself.
         const int MaxPlugs = 4;
 
         // Box reach as a multiple of plug length. The deform stops
@@ -75,20 +78,18 @@ namespace AvatarBridge
                 site.Report.Warning(Category,
                     $"Only the first {MaxPlugs} plug(s) are wired to the socket channel",
                     $"This avatar has {site.Plugs.Count}. ChilloutVR's material driver carries " +
-                    "sixteen driver tasks and each plug needs two, plus five synced floats. " +
+                    "sixteen material driver tasks and each plug needs two, plus five synced floats. " +
                     "The rest keep their mesh and their shader and simply never engage.");
             }
 
             var materialDriver = site.Target.AddComponent<CVRMaterialDriver>();
-            var drivers = new DriverPool(site);
-            var animator = site.Animator;
 
             int taskIndex = 0;
             int wired = 0;
             foreach (var plug in plugs)
             {
                 int index = plugs.IndexOf(plug);
-                if (BuildForPlug(site, plug, index, materialDriver, drivers, animator, ref taskIndex))
+                if (BuildForPlug(site, plug, index, materialDriver, ref taskIndex))
                 {
                     wired++;
                 }
@@ -98,7 +99,6 @@ namespace AvatarBridge
             if (wired == 0)
             {
                 Object.DestroyImmediate(materialDriver);
-                drivers.Discard();
                 return;
             }
 
@@ -123,60 +123,15 @@ namespace AvatarBridge
                 $"Wired {wired} plug(s) to the socket channel",
                 $"{taskIndex} value(s): where the socket sits relative to the plug, " +
                 "and how engaged it is. Contact triggers on the plug measure it on your own machine " +
-                "every frame; a driver copies it into a synced parameter so other people see it too, " +
+                "every frame, straight into a synced parameter so other people see it too, " +
                 "at ChilloutVR's ten-a-second parameter rate. What crosses the wire is the gap " +
                 "between two bodies already touching, so that rate is generous for it — and the " +
                 "marker lights sharpen the position further for anyone close enough to see them.");
         }
 
-        // A CVRAnimatorDriver carries sixteen slots. Two plugs with
-        // orientation fill one; the third would have written past its
-        // end, so a full driver hands over to a fresh one on its own
-        // object, which is how a clip tells them apart.
-        class DriverPool
-        {
-            const int Slots = 16;
-            readonly Site _site;
-            readonly List<GameObject> _hosts = new List<GameObject>();
-            CVRAnimatorDriver _current;
-            string _path = "";
-
-            public DriverPool(Site site)
-            {
-                _site = site;
-                _current = site.Target.AddComponent<CVRAnimatorDriver>();
-            }
-
-            public string Take(Animator animator, string parameter, out string field)
-            {
-                if (_current.animators.Count >= Slots)
-                {
-                    var host = new GameObject($"YAPS Driver {_hosts.Count + 2}");
-                    host.transform.SetParent(_site.Target.transform, false);
-                    _hosts.Add(host);
-                    _current = host.AddComponent<CVRAnimatorDriver>();
-                    _path = _site.PathIn(host.transform);
-                }
-                int slot = _current.animators.Count;
-                _current.animators.Add(animator);
-                _current.animatorParameters.Add(parameter);
-                _current.animatorParameterType.Add(0);
-                field = $"animatorParameter{slot + 1:00}";
-                return _path;
-            }
-
-            public void Discard()
-            {
-                Object.DestroyImmediate(_site.Target.GetComponent<CVRAnimatorDriver>());
-                foreach (var host in _hosts)
-                {
-                    Object.DestroyImmediate(host);
-                }
-            }
-        }
 
         static bool BuildForPlug(Site site, BridgeContext.YapsPlug plug, int index,
-            CVRMaterialDriver materialDriver, DriverPool drivers, Animator animator,
+            CVRMaterialDriver materialDriver,
             ref int taskIndex)
         {
             float extent = Mathf.Max(plug.Length, 0.01f) * BoxLengths;
@@ -305,17 +260,36 @@ namespace AvatarBridge
 
             foreach (var (axis, field) in values)
             {
-                string local = Local(index, axis);
+                // THE TRIGGER WRITES THE SYNCED PARAMETER ITSELF.
+                //
+                // It used to write a "#" local and a CVRAnimatorDriver
+                // copied that into a synced twin, on the belief that a
+                // contact writing a synced parameter would have it
+                // overwritten by the incoming stream. That is true of the
+                // NATIVE contact system, which was removed in 3.7.5, and
+                // not of the advanced triggers this uses. Read out of the
+                // client 2026-08-26: every TriggerToContact call is
+                // `ChangeAnimatorParam(name, value)` with no source, so
+                // source defaults to Default, and PlayerSetup calls
+                // SendAdvancedAvatarUpdate for Default — the value goes out
+                // over the network from the trigger itself.
+                //
+                // The round trip was worse than unnecessary, it was the bug.
+                // CVRAnimatorDriver has no ownership gate: it runs on every
+                // client, and on a REMOTE copy of the avatar it takes the
+                // `animator.SetFloat(...)` branch, reading a "#" local that
+                // is 0 there because the trigger never fired on that
+                // machine. So each remote client stamped 0 over the synced
+                // value the moment it arrived, every frame. Perfect for the
+                // wearer, permanently still for everyone else, silently.
+                //
+                // Writing the synced parameter directly also frees the two
+                // driver tasks per plug that publishing cost, out of
+                // sixteen.
                 string synced = Synced(index, axis);
-                Declare(site, local);
                 Declare(site, synced);
-                site.ContactParameters.Add(local);
+                site.ContactParameters.Add(synced);
                 site.PreserveParameters.Add(synced);
-
-                // Publish: the "#" local into the synced twin.
-                string driverPath = drivers.Take(animator, synced, out string driverField);
-                AddDriverLayer(site, $"YAPS{index}{axis} publish", local,
-                    driverPath, typeof(CVRAnimatorDriver), driverField);
 
                 // Consume: the synced value into the material, on every client.
                 // Read the smoothed name so a remote viewer follows the value.
@@ -344,7 +318,7 @@ namespace AvatarBridge
             trigger.allowedTypes = SocketPointerTypes;
             trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
             {
-                settingName = Local(index, "E"),
+                settingName = Synced(index, "E"),
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                 minValue = 0f,
                 maxValue = 1f,
@@ -353,7 +327,7 @@ namespace AvatarBridge
             // Nothing writes a stay task after the sender leaves; reset on exit.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "E"),
+                settingName = Synced(index, "E"),
                 settingValue = 0f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
@@ -375,13 +349,13 @@ namespace AvatarBridge
             trigger.allowedTypes = HolePointerTypes;
             trigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "H"),
+                settingName = Synced(index, "H"),
                 settingValue = 1f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "H"),
+                settingName = Synced(index, "H"),
                 settingValue = 0f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
@@ -503,7 +477,6 @@ namespace AvatarBridge
             "SPSLL_Socket_Front", "SPSLL_Socket_Front_SelfNotOnHips",
         };
 
-        static string Local(int index, string axis) => $"#YAPS{index}{axis}";
         static string Synced(int index, string axis) => $"YAPS{index}{axis}";
 
 
@@ -568,7 +541,7 @@ namespace AvatarBridge
             trigger.allowedTypes = types;
             trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
             {
-                settingName = Local(index, prefix + axis),
+                settingName = Synced(index, prefix + axis),
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
                 minValue = 0f,
                 maxValue = 1f,
