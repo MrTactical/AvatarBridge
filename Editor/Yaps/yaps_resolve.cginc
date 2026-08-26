@@ -600,36 +600,30 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.tier = 2;
     }
 
-    // Only a socket clearly BEHIND the base is refused. Anything from
-    // dead ahead to square beside it engages in full; past that it fades
-    // out by about a hundred and twenty degrees. That is enough to stop
-    // the plug folding back on itself, and it still lets one reach up.
+    // ONLY A SOCKET A REAL WAY BEHIND THE BASE IS REFUSED. Dead ahead and
+    // square beside both engage in full; it fades out over the last half of
+    // a plug length behind the root. That is enough to stop the plug
+    // folding back on itself and still lets one reach up.
+    //
+    // Asked as a DISTANCE along the shaft, never as a direction.
+    //
+    // It used to normalise the vector from the root to the socket and test
+    // its angle, and that had no answer at the one place it mattered.
+    // Engagement is computed per VERTEX — a skinned plug recovers its frame
+    // from each vertex's own normal and tangent, so every vertex brings its
+    // own plugOrigin — and near the root the scatter between those origins
+    // is as large as the gap itself. Each vertex normalised a different
+    // tiny vector, got a different answer, and the mesh came out half
+    // engaged: some vertices swallowed, some hanging out. Joe called it "a
+    // weird mixture of engagement and not", which is exactly what a
+    // per-vertex singularity looks like from outside.
+    //
+    // A signed distance passes smoothly through zero instead of being
+    // undefined there, so every vertex near the root agrees.
     if (socket.engaged > 0)
     {
-        float3 toSocket = socket.position - plugOrigin;
-        float gapAhead = length(toSocket);
-        // A socket sitting ON the root has no direction to be behind.
-        // Normalising a vector that short gives an answer set by the last
-        // decimal, so `ahead` swings between +1 and -1 on sub-millimetre
-        // movement and this fade — which is smooth in `ahead` — collapses
-        // engagement to zero in a single frame. The plug then snaps back to
-        // its unengaged rest shape: fully inserted one frame, hanging out
-        // untouched the next.
-        //
-        // The deform has a floor for exactly this, MinimumSocketDistance,
-        // and it could never help: it is applied in YapsDeform AFTER this
-        // function has returned, so the gate that needs protecting runs on
-        // the raw position and the protection arrives too late to matter.
-        //
-        // Below a twentieth of a plug length the question is meaningless
-        // anyway — nothing that close is "behind" anything — so the test is
-        // skipped rather than answered badly. Reported by Joe as a pop when
-        // pushing a socket down to the base, 2026-08-26.
-        if (gapAhead > max(0.0001, worldLength * 0.05))
-        {
-            float ahead = dot(toSocket / gapAhead, plugForward);
-            socket.engaged *= smoothstep(-0.5, 0.0, ahead);
-        }
+        float behind = dot(socket.position - plugOrigin, plugForward);
+        socket.engaged *= smoothstep(-worldLength * 0.5, -worldLength * 0.05, behind);
     }
 
     // Nothing to bend toward. Say so, rather than bending toward nothing.
