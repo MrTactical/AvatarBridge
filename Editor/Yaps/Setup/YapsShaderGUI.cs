@@ -129,7 +129,7 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH carries the answer, because a patched shader only lets us edit its vertex stage and there is no fragment of ours to colour.  Resolved by: who found the socket, a third nobody, two thirds the contact channel, full a marker light.  Gap to socket: how far away that socket is, as a fraction of length. Smooth shortening is the geometry behaving; a jump means the plug was handed a different socket, which Resolved by cannot show because both answers read as a light."),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH carries the answer, because a patched shader only lets us edit its vertex stage and there is no fragment of ours to colour.  Resolved by: who found the socket, a third nobody, two thirds the contact channel, full a marker light.  Gap to socket: how far away that socket is, as a fraction of length. Smooth shortening is the geometry behaving; a jump means the plug was handed a different socket, which Resolved by cannot show because both answers read as a light.  Engagement: the switch itself, a tenth long at zero and full at one. Who found it and how far away it is can both hold steady while this collapses, and when it does the deform stops dead and the plug springs back to its rest shape."),
                 }},
         };
 

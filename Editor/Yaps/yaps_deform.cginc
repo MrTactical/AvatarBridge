@@ -510,6 +510,18 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         {
             shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
         }
+        else if (_YAPS_Debug >= 2.5)
+        {
+            // ENGAGEMENT, the switch itself. Who found the socket and how
+            // far away it is can both be perfectly steady while THIS
+            // collapses, and when it does the deform stops dead and the
+            // plug springs back to its rest shape — which is the whole
+            // appearance of a pop.
+            //
+            // A tenth at zero rather than nothing, so "not engaged" is a
+            // visible stub instead of an absent plug, and full at one.
+            shown = lerp(0.1, 1.0, saturate(socket.engaged));
+        }
         else
         {
             // GAP TO THE SOCKET, as a fraction of plug length. The question
