@@ -146,10 +146,13 @@ namespace AvatarBridge
             bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
             bool carryEngagement = spare >= 3;   // engagement and is-hole
 
-            plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
-            plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
+            foreach (var m in PlugMaterials(plug))
+            {
+                m.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
+                m.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
+                m.SetFloat("_YAPS_Enabled", 1f);
+            }
             PublishFrame(plug);
-            plug.Material.SetFloat("_YAPS_Enabled", 1f);
 
             if (!carryEngagement)
             {
@@ -563,6 +566,25 @@ namespace AvatarBridge
 
         // A trigger measures from its own transform, and the shader
         // reconstructs the socket against the measured mesh frame. Same frame.
+        // EVERY baked material on the plug's mesh, not just the primary.
+        //
+        // A plug's vertices can span several materials — a whole avatar
+        // baked as one plug wears three — and the channel configured only
+        // plug.Material. The others kept channel space off and no frame at
+        // all, so on one mesh some materials decoded the socket through the
+        // channel and the rest fell back to the per-vertex frame: the head
+        // bending ninety degrees while the body sat still. The bake learned
+        // to mirror across slots on 2026-08-25; the channel never did.
+        static IEnumerable<Material> PlugMaterials(BridgeContext.YapsPlug plug)
+        {
+            if (plug.Material != null) yield return plug.Material;
+            if (plug.Renderer == null) yield break;
+            foreach (var m in plug.Renderer.sharedMaterials)
+            {
+                if (m != null && m != plug.Material && m.HasProperty("_YAPS_Bake")) yield return m;
+            }
+        }
+
         // The frame the trigger boxes ride, handed to the shader in the
         // RENDERER's object space.
         //
@@ -587,9 +609,15 @@ namespace AvatarBridge
             var origin = recorded ? plug.Origin : plug.Root.position;
             if (!recorded) rotation = plug.Root.rotation;
 
-            plug.Material.SetVector("_YAPS_ChannelOrigin", into.InverseTransformPoint(origin));
-            plug.Material.SetVector("_YAPS_ChannelForward", into.InverseTransformDirection(rotation * Vector3.forward));
-            plug.Material.SetVector("_YAPS_ChannelUp", into.InverseTransformDirection(rotation * Vector3.up));
+            var o = (Vector4) into.InverseTransformPoint(origin);
+            var f = (Vector4) into.InverseTransformDirection(rotation * Vector3.forward);
+            var u = (Vector4) into.InverseTransformDirection(rotation * Vector3.up);
+            foreach (var m in PlugMaterials(plug))
+            {
+                m.SetVector("_YAPS_ChannelOrigin", o);
+                m.SetVector("_YAPS_ChannelForward", f);
+                m.SetVector("_YAPS_ChannelUp", u);
+            }
         }
 
         static GameObject TriggerHost(string name, BridgeContext.YapsPlug plug)
