@@ -435,26 +435,25 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // scaled boxes; the decode scales with them.
         float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
 
-        // ONE frame for the whole plug, not one per vertex.
+        // THE PER-VERTEX RECOVERED FRAME, and this is a decision with a
+        // history. The channel's offsets are measured in the trigger boxes'
+        // frame, which rides the plug's bones — and the per-vertex recovery
+        // is the shader's only live estimate of that frame, because for a
+        // SKINNED mesh Unity skins into world space and unity_ObjectToWorld
+        // is IDENTITY at draw time. A frame published in the renderer's
+        // object space therefore decodes unrotated: on a Blender-imported
+        // body carrying -90 on X, "up" arrived pointing forward and the
+        // avatar bent toward a socket a metre and a half behind it. Joe
+        // found it by zeroing the rotation and watching the avatar stand up.
         //
-        // The trigger boxes ride the measured frame, so the offsets they
-        // report only mean anything measured back in it. Rebuilding them
-        // against the per-vertex recovered frame is right only while every
-        // vertex recovers the same one, which stops being true the moment a
-        // plug spans more than a bone: the same offset then lands somewhere
-        // different for every vertex and the mesh comes apart.
-        //
-        // The published frame is in the RENDERER's object space, so this is
-        // the same answer for every vertex by construction.
+        // At rest pose every vertex recovers the SAME frame, so the editor
+        // and an unposed avatar are exact. Posed, a plug spanning many bones
+        // recovers slightly different frames per vertex — each vertex bends
+        // toward the socket as its own bones perceive it, which is the least
+        // wrong option available and exact for every normal plug.
         float3 frameOrigin = plugOrigin;
         float3 frameForward = plugForward;
         float3 frameUp = plugUp;
-        if (dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8)
-        {
-            frameOrigin = mul(unity_ObjectToWorld, float4(_YAPS_ChannelOrigin.xyz, 1)).xyz;
-            frameForward = YapsNormalizeOr(mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelForward.xyz), plugForward);
-            frameUp = YapsNormalizeOr(mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelUp.xyz), plugUp);
-        }
         float3 plugRight = cross(frameUp, frameForward);
         socket.position = frameOrigin + plugRight * offset.x
                                       + frameUp * offset.y

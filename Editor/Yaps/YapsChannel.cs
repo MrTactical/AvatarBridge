@@ -152,7 +152,6 @@ namespace AvatarBridge
                 m.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
                 m.SetFloat("_YAPS_Enabled", 1f);
             }
-            PublishFrame(plug);
 
             if (!carryEngagement)
             {
@@ -582,54 +581,6 @@ namespace AvatarBridge
             foreach (var m in plug.Renderer.sharedMaterials)
             {
                 if (m != null && m != plug.Material && m.HasProperty("_YAPS_Bake")) yield return m;
-            }
-        }
-
-        // The frame the trigger boxes ride, handed to the shader in the
-        // RENDERER's object space.
-        //
-        // TriggerHost puts every box on the measured frame, so the offsets
-        // they report only mean anything measured back in that same frame.
-        // The shader used to rebuild them against the frame recovered from
-        // each vertex, which agrees only while a plug spans one bone. Rooted
-        // higher, every vertex recovers a different frame, the same offset
-        // lands somewhere different for each, and the mesh comes apart while
-        // the light path sits beside it looking perfect — because a light
-        // sends a world position that is the same for everybody.
-        //
-        // Renderer space rather than world, because a vertex shader has the
-        // renderer's matrix and nothing else that survives the avatar moving.
-        static void PublishFrame(BridgeContext.YapsPlug plug)
-        {
-            if (plug.Material == null || plug.Renderer == null) return;
-
-            var rotation = plug.Rotation;
-            bool recorded = rotation.x != 0f || rotation.y != 0f || rotation.z != 0f || rotation.w != 0f;
-            var origin = recorded ? plug.Origin : plug.Root.position;
-            if (!recorded) rotation = plug.Root.rotation;
-
-            // THE RENDER MATRIX, never the transform's. The shader maps
-            // these with unity_ObjectToWorld, and for a SkinnedMeshRenderer
-            // that matrix is built from the ROOT BONE, not the renderer's
-            // own transform — a Blender-imported Body carries a -90 X
-            // rotation its Hips does not, so the two spaces disagree by a
-            // quarter turn and a translation. Published through the
-            // transform, the frame decoded to a coherent wrong point for
-            // every vertex and the whole avatar leaned toward it, while
-            // every C# check "verified" the decode by replicating the same
-            // wrong matrix on both sides and round-tripping to zero.
-            // Renderer.localToWorldMatrix is the matrix rendering actually
-            // uses, which is the whole reason it exists as a separate
-            // property.
-            var w2l = plug.Renderer.localToWorldMatrix.inverse;
-            var o = (Vector4) w2l.MultiplyPoint3x4(origin);
-            var f = (Vector4) w2l.MultiplyVector(rotation * Vector3.forward);
-            var u = (Vector4) w2l.MultiplyVector(rotation * Vector3.up);
-            foreach (var m in PlugMaterials(plug))
-            {
-                m.SetVector("_YAPS_ChannelOrigin", o);
-                m.SetVector("_YAPS_ChannelForward", f);
-                m.SetVector("_YAPS_ChannelUp", u);
             }
         }
 

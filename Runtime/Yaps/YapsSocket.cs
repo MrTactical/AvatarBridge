@@ -163,30 +163,17 @@ namespace AvatarBridge.Yaps
         // about shows up here rather than after an upload.
         void WriteAsChannel(Renderer r, Material m, float length, float engaged)
         {
-            // The frame the CHANNEL is measured in, exactly as the shader
-            // rebuilds it: published in the renderer's object space by the
-            // channel build. Falling back to the measured markers only when
-            // no channel has been built yet.
-            Vector3 origin, forward, up;
-            Vector3 chFwd = m.HasProperty("_YAPS_ChannelForward") ? (Vector3) m.GetVector("_YAPS_ChannelForward") : Vector3.zero;
-            if (chFwd.sqrMagnitude > 1e-8f)
-            {
-                // The RENDER matrix, exactly as the shader's
-                // unity_ObjectToWorld: for a skinned mesh it is built from
-                // the root bone and is not the transform's matrix. Going
-                // through the transform here is how the preview encoded a
-                // frame the GPU then decoded through a different space.
-                var l2w = r.localToWorldMatrix;
-                origin = l2w.MultiplyPoint3x4(m.GetVector("_YAPS_ChannelOrigin"));
-                forward = l2w.MultiplyVector(chFwd).normalized;
-                up = l2w.MultiplyVector(m.GetVector("_YAPS_ChannelUp")).normalized;
-            }
-            else
-            {
-                PlugFrame(r, out origin, out var rotation);
-                forward = rotation * Vector3.forward;
-                up = rotation * Vector3.up;
-            }
+            // The MARKERS frame, always. The shader decodes the channel in
+            // the per-vertex recovered frame, which at rest pose equals the
+            // measured frame the markers sit at. There is no object-space
+            // route: Unity skins into world space, unity_ObjectToWorld is
+            // identity for a skinned mesh at draw time, so a frame published
+            // in renderer space decodes unrotated — on a Blender-imported
+            // body carrying -90 on X, "up" arrived pointing forward and the
+            // avatar bent toward a socket behind it.
+            PlugFrame(r, out Vector3 origin, out var rotation);
+            Vector3 forward = rotation * Vector3.forward;
+            Vector3 up = rotation * Vector3.up;
             Vector3 right = Vector3.Cross(up, forward);
 
             Vector3 extents = m.HasProperty("_YAPS_ChannelExtents")

@@ -524,25 +524,17 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
         else if (_YAPS_Debug >= 5.5)
         {
-            // DECODED GAP: the channel's own reconstructed socket, measured
-            // from the published frame origin — ONE number for the whole
-            // mesh, no per-vertex fuzz. The C# replication says exactly 1.0
-            // for a socket at the tip. Anything else is the GPU's decode
-            // numerically disagreeing, and the size of the disagreement.
-            float3 chOrigin = mul(unity_ObjectToWorld, float4(_YAPS_ChannelOrigin.xyz, 1)).xyz;
-            shown = saturate(length(socket.position - chOrigin) / max(worldLength, 1e-4));
+            // DECODED GAP: the channel's reconstructed socket, measured from
+            // the recovered frame origin. Expected 1.0 for a socket at the
+            // tip. Differs from the Gap view only in skipping the tier
+            // special-case, so a nobody-answer reads as its raw distance.
+            shown = saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
         }
         else if (_YAPS_Debug >= 4.5)
         {
-            // GPU INPUTS: do the two values every theory rests on actually
-            // arrive in the constant registers? Read here, in the shader,
-            // at draw time — the one place no C# check can reach.
-            //   0.15  _YAPS_ChannelForward arrived ZERO (frame missing)
-            //   0.5   frame arrived, but SocketFlags.x (engagement) is 0
-            //   1.0   both arrived as the C# believes
-            bool frameOk = dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8;
-            bool engagedOk = _YAPS_SocketFlags.x > 0.5;
-            shown = !frameOk ? 0.15 : (!engagedOk ? 0.5 : 1.0);
+            // GPU INPUTS: does the property block's engagement actually
+            // arrive in the constant registers? 1.0 yes, 0.15 no.
+            shown = _YAPS_SocketFlags.x > 0.5 ? 1.0 : 0.15;
         }
         else if (_YAPS_Debug >= 3.5)
         {
