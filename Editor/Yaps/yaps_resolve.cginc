@@ -608,7 +608,24 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     {
         float3 toSocket = socket.position - plugOrigin;
         float gapAhead = length(toSocket);
-        if (gapAhead > 0.0001)
+        // A socket sitting ON the root has no direction to be behind.
+        // Normalising a vector that short gives an answer set by the last
+        // decimal, so `ahead` swings between +1 and -1 on sub-millimetre
+        // movement and this fade — which is smooth in `ahead` — collapses
+        // engagement to zero in a single frame. The plug then snaps back to
+        // its unengaged rest shape: fully inserted one frame, hanging out
+        // untouched the next.
+        //
+        // The deform has a floor for exactly this, MinimumSocketDistance,
+        // and it could never help: it is applied in YapsDeform AFTER this
+        // function has returned, so the gate that needs protecting runs on
+        // the raw position and the protection arrives too late to matter.
+        //
+        // Below a twentieth of a plug length the question is meaningless
+        // anyway — nothing that close is "behind" anything — so the test is
+        // skipped rather than answered badly. Reported by Joe as a pop when
+        // pushing a socket down to the base, 2026-08-26.
+        if (gapAhead > max(0.0001, worldLength * 0.05))
         {
             float ahead = dot(toSocket / gapAhead, plugForward);
             socket.engaged *= smoothstep(-0.5, 0.0, ahead);
