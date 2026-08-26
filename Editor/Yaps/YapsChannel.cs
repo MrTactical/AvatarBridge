@@ -602,16 +602,29 @@ namespace AvatarBridge
         static void PublishFrame(BridgeContext.YapsPlug plug)
         {
             if (plug.Material == null || plug.Renderer == null) return;
-            var into = plug.Renderer.transform;
 
             var rotation = plug.Rotation;
             bool recorded = rotation.x != 0f || rotation.y != 0f || rotation.z != 0f || rotation.w != 0f;
             var origin = recorded ? plug.Origin : plug.Root.position;
             if (!recorded) rotation = plug.Root.rotation;
 
-            var o = (Vector4) into.InverseTransformPoint(origin);
-            var f = (Vector4) into.InverseTransformDirection(rotation * Vector3.forward);
-            var u = (Vector4) into.InverseTransformDirection(rotation * Vector3.up);
+            // THE RENDER MATRIX, never the transform's. The shader maps
+            // these with unity_ObjectToWorld, and for a SkinnedMeshRenderer
+            // that matrix is built from the ROOT BONE, not the renderer's
+            // own transform — a Blender-imported Body carries a -90 X
+            // rotation its Hips does not, so the two spaces disagree by a
+            // quarter turn and a translation. Published through the
+            // transform, the frame decoded to a coherent wrong point for
+            // every vertex and the whole avatar leaned toward it, while
+            // every C# check "verified" the decode by replicating the same
+            // wrong matrix on both sides and round-tripping to zero.
+            // Renderer.localToWorldMatrix is the matrix rendering actually
+            // uses, which is the whole reason it exists as a separate
+            // property.
+            var w2l = plug.Renderer.localToWorldMatrix.inverse;
+            var o = (Vector4) w2l.MultiplyPoint3x4(origin);
+            var f = (Vector4) w2l.MultiplyVector(rotation * Vector3.forward);
+            var u = (Vector4) w2l.MultiplyVector(rotation * Vector3.up);
             foreach (var m in PlugMaterials(plug))
             {
                 m.SetVector("_YAPS_ChannelOrigin", o);

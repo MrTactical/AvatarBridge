@@ -171,10 +171,15 @@ namespace AvatarBridge.Yaps
             Vector3 chFwd = m.HasProperty("_YAPS_ChannelForward") ? (Vector3) m.GetVector("_YAPS_ChannelForward") : Vector3.zero;
             if (chFwd.sqrMagnitude > 1e-8f)
             {
-                var into = r.transform;
-                origin = into.TransformPoint(m.GetVector("_YAPS_ChannelOrigin"));
-                forward = into.TransformDirection(chFwd).normalized;
-                up = into.TransformDirection(m.GetVector("_YAPS_ChannelUp")).normalized;
+                // The RENDER matrix, exactly as the shader's
+                // unity_ObjectToWorld: for a skinned mesh it is built from
+                // the root bone and is not the transform's matrix. Going
+                // through the transform here is how the preview encoded a
+                // frame the GPU then decoded through a different space.
+                var l2w = r.localToWorldMatrix;
+                origin = l2w.MultiplyPoint3x4(m.GetVector("_YAPS_ChannelOrigin"));
+                forward = l2w.MultiplyVector(chFwd).normalized;
+                up = l2w.MultiplyVector(m.GetVector("_YAPS_ChannelUp")).normalized;
             }
             else
             {
