@@ -59,6 +59,12 @@
 float4 _CVR_PlayerHipPositions[255];
 float4 CVRGlobalParams1;
 
+inline float3 YapsNormalizeOr(float3 v, float3 fallback)
+{
+    float lengthSq = dot(v, v);
+    return lengthSq < 1e-12 ? fallback : v * rsqrt(lengthSq);
+}
+
 struct YapsSocket
 {
     float3 position;
@@ -428,10 +434,31 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // The trigger boxes ride the plug object, so a scaled plug has
         // scaled boxes; the decode scales with them.
         float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
-        float3 plugRight = cross(plugUp, plugForward);
-        socket.position = plugOrigin + plugRight * offset.x
-                                     + plugUp * offset.y
-                                     + plugForward * offset.z;
+
+        // ONE frame for the whole plug, not one per vertex.
+        //
+        // The trigger boxes ride the measured frame, so the offsets they
+        // report only mean anything measured back in it. Rebuilding them
+        // against the per-vertex recovered frame is right only while every
+        // vertex recovers the same one, which stops being true the moment a
+        // plug spans more than a bone: the same offset then lands somewhere
+        // different for every vertex and the mesh comes apart.
+        //
+        // The published frame is in the RENDERER's object space, so this is
+        // the same answer for every vertex by construction.
+        float3 frameOrigin = plugOrigin;
+        float3 frameForward = plugForward;
+        float3 frameUp = plugUp;
+        if (dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8)
+        {
+            frameOrigin = mul(unity_ObjectToWorld, float4(_YAPS_ChannelOrigin.xyz, 1)).xyz;
+            frameForward = YapsNormalizeOr(mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelForward.xyz), plugForward);
+            frameUp = YapsNormalizeOr(mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelUp.xyz), plugUp);
+        }
+        float3 plugRight = cross(frameUp, frameForward);
+        socket.position = frameOrigin + plugRight * offset.x
+                                      + frameUp * offset.y
+                                      + frameForward * offset.z;
 
         // The channel's engagement is a PROXIMITY reading taken across the
         // whole trigger sphere, and that sphere is 1.75 plug lengths, so
@@ -479,9 +506,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // honest answer is to say nothing and let the deform take its
         // direction from the approach, which is what a zero forward means.
         float3 frontOffset = (_YAPS_SocketFront.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
-        float3 frontAt = plugOrigin + plugRight * frontOffset.x
-                                    + plugUp * frontOffset.y
-                                    + plugForward * frontOffset.z;
+        float3 frontAt = frameOrigin + plugRight * frontOffset.x
+                                     + frameUp * frontOffset.y
+                                     + frameForward * frontOffset.z;
         float3 axis = frontAt - socket.position;
         float axisLength = length(axis);
         if (axisLength > 1e-5 && axisLength < worldLength * 0.5)

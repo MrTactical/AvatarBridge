@@ -55,6 +55,9 @@ namespace AvatarBridge
         _YAPS_SocketFlags (""YAPS socket flags"", Vector) = (0,0,0,0)
         _YAPS_SocketFront (""YAPS socket front"", Vector) = (0,0,0,0)
         _YAPS_ChannelSpace (""YAPS channel space"", Range(0,1)) = 0
+        _YAPS_ChannelOrigin (""YAPS channel origin"", Vector) = (0,0,0,0)
+        _YAPS_ChannelForward (""YAPS channel forward"", Vector) = (0,0,0,0)
+        _YAPS_ChannelUp (""YAPS channel up"", Vector) = (0,0,0,0)
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
         [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3)] _YAPS_Debug (""YAPS view"", Float) = 0

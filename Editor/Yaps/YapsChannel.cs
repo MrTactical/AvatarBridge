@@ -148,6 +148,7 @@ namespace AvatarBridge
 
             plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
             plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
+            PublishFrame(plug);
             plug.Material.SetFloat("_YAPS_Enabled", 1f);
 
             if (!carryEngagement)
@@ -562,6 +563,35 @@ namespace AvatarBridge
 
         // A trigger measures from its own transform, and the shader
         // reconstructs the socket against the measured mesh frame. Same frame.
+        // The frame the trigger boxes ride, handed to the shader in the
+        // RENDERER's object space.
+        //
+        // TriggerHost puts every box on the measured frame, so the offsets
+        // they report only mean anything measured back in that same frame.
+        // The shader used to rebuild them against the frame recovered from
+        // each vertex, which agrees only while a plug spans one bone. Rooted
+        // higher, every vertex recovers a different frame, the same offset
+        // lands somewhere different for each, and the mesh comes apart while
+        // the light path sits beside it looking perfect — because a light
+        // sends a world position that is the same for everybody.
+        //
+        // Renderer space rather than world, because a vertex shader has the
+        // renderer's matrix and nothing else that survives the avatar moving.
+        static void PublishFrame(BridgeContext.YapsPlug plug)
+        {
+            if (plug.Material == null || plug.Renderer == null) return;
+            var into = plug.Renderer.transform;
+
+            var rotation = plug.Rotation;
+            bool recorded = rotation.x != 0f || rotation.y != 0f || rotation.z != 0f || rotation.w != 0f;
+            var origin = recorded ? plug.Origin : plug.Root.position;
+            if (!recorded) rotation = plug.Root.rotation;
+
+            plug.Material.SetVector("_YAPS_ChannelOrigin", into.InverseTransformPoint(origin));
+            plug.Material.SetVector("_YAPS_ChannelForward", into.InverseTransformDirection(rotation * Vector3.forward));
+            plug.Material.SetVector("_YAPS_ChannelUp", into.InverseTransformDirection(rotation * Vector3.up));
+        }
+
         static GameObject TriggerHost(string name, BridgeContext.YapsPlug plug)
         {
             var host = new GameObject(name);

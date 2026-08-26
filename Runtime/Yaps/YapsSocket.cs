@@ -163,9 +163,25 @@ namespace AvatarBridge.Yaps
         // about shows up here rather than after an upload.
         void WriteAsChannel(Renderer r, Material m, float length, float engaged)
         {
-            PlugFrame(r, out var origin, out var rotation);
-            Vector3 forward = rotation * Vector3.forward;
-            Vector3 up = rotation * Vector3.up;
+            // The frame the CHANNEL is measured in, exactly as the shader
+            // rebuilds it: published in the renderer's object space by the
+            // channel build. Falling back to the measured markers only when
+            // no channel has been built yet.
+            Vector3 origin, forward, up;
+            Vector3 chFwd = m.HasProperty("_YAPS_ChannelForward") ? (Vector3) m.GetVector("_YAPS_ChannelForward") : Vector3.zero;
+            if (chFwd.sqrMagnitude > 1e-8f)
+            {
+                var into = r.transform;
+                origin = into.TransformPoint(m.GetVector("_YAPS_ChannelOrigin"));
+                forward = into.TransformDirection(chFwd).normalized;
+                up = into.TransformDirection(m.GetVector("_YAPS_ChannelUp")).normalized;
+            }
+            else
+            {
+                PlugFrame(r, out origin, out var rotation);
+                forward = rotation * Vector3.forward;
+                up = rotation * Vector3.up;
+            }
             Vector3 right = Vector3.Cross(up, forward);
 
             Vector3 extents = m.HasProperty("_YAPS_ChannelExtents")
