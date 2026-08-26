@@ -475,8 +475,11 @@ namespace AvatarBridge
             _scan = YapsScanner.Scan(_target);
             _summary.text = _scan.Summary();
             _build?.SetActive(_scan.Total > 0);
+            // Carried meshes are not plugs to bake: their carrier bakes them.
+            // Counting them promises a number the build will not do.
+            int bakeable = _scan.Plugs.Count(p => p.CarriedBy == null);
             _build?.SetLabel(_scan.Total > 0
-                ? $"Bake {_scan.Plugs.Count} plug{(_scan.Plugs.Count == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
+                ? $"Bake {bakeable} plug{(bakeable == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
                 : "Nothing to build yet");
             SayNext();
 
@@ -657,6 +660,13 @@ namespace AvatarBridge
         static void Adopt(YapsScanner.Found f)
         {
             if (f.Root == null) return;
+            // Never a mesh another plug carries. It wears a patched material,
+            // so it reads as a plug, and adopting it hands it a component —
+            // which is a claim on the mesh, which makes the carrier let go of
+            // it, which leaves it bending on its own frame. That is Build
+            // re-creating the exact component the user just deleted, every
+            // time they press it.
+            if (f.CarriedBy != null) return;
             if (f.Kind == YapsScanner.Kind.Socket)
             {
                 var shapes = new List<string>();
@@ -705,7 +715,7 @@ namespace AvatarBridge
             int n = 0;
             foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
             {
-                if (f.Root == null) continue;
+                if (f.Root == null || f.CarriedBy != null) continue;
                 if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
                 Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
                 Adopt(f);
