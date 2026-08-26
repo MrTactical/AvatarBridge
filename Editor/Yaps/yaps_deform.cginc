@@ -481,6 +481,40 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // the channel reports the socket in the PLUG's frame.
     YapsSocket socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
 
+    // THE "RESOLVED BY" VIEW.
+    //
+    // A plug bending near a socket does not say WHO bent it, and a stray
+    // marker light, a lit socket nearby, or the holder's own avatar wearing
+    // one all read exactly like a working contact channel. A full day went
+    // to a channel that had never worked because the lights kept covering
+    // for it.
+    //
+    // It cannot be a colour. The patcher edits a host shader's VERTEX stage
+    // and nothing else — it refuses surface shaders precisely because there
+    // is no vertex function to wrap — so there is no fragment of ours to
+    // paint in. What every host shader does share is where the vertices go,
+    // so the answer is given as LENGTH:
+    //
+    //     a third      nobody resolved it
+    //     two thirds   the contact channel
+    //     full         a marker light
+    //
+    // Straight, unbent and unengaged, so the length is the only thing
+    // moving and a change of hands is unmissable. Placed before the enabled
+    // test on purpose: "nobody" is an answer, and returning early would
+    // make the most important case the one the view cannot show.
+    if (_YAPS_Debug >= 0.5)
+    {
+        float shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
+        float3 right = cross(rootUp, rootForward);
+        float3 at = rootWorld
+                  + right * baked.position.x
+                  + rootUp * baked.position.y
+                  + rootForward * (baked.position.z * shown);
+        position = mul(unity_WorldToObject, float4(at, 1)).xyz;
+        return;
+    }
+
     float enabled = saturate(_YAPS_Enabled) * socket.engaged;
     if (enabled <= 0) return;
 

@@ -129,7 +129,7 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Resolved by — black nobody, green the contact channel, yellow a marker light"),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Resolved by — the plug goes straight and its LENGTH says who found the socket: a third nobody, two thirds the contact channel, full a marker light. Not a colour, because a patched shader only lets us edit its vertex stage"),
                 }},
         };
 

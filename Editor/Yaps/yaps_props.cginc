@@ -87,6 +87,13 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // is reconstructed as 5·rsqrt(atten) rather than read, and it showed as
 // sockets that worked or did not depending on which digit their range
 // happened to land on.
+// Debug view. 0 off; 1 "Resolved by". A patched shader can only be
+// edited in its VERTEX stage — the patcher refuses surface shaders for
+// exactly that reason — so the view cannot paint a colour and says what
+// it knows in the one language every host shader shares: the plug's
+// length. See YapsDeform.
+float _YAPS_Debug;
+
 float _YAPS_SelfTag;
 
 // --- the hole taper --------------------------------------------------
