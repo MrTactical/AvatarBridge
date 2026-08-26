@@ -788,7 +788,23 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         // it, and everything beyond simply piles up there and closes off.
         leftOver = min(leftOver, taperTo);
         radius = 1 - YapsRamp(leftOver, taperFrom, taperTo);
-        if (_YAPS_Overrun < 0.5) leftOver = 0;
+    }
+
+    // OVERRUN, and it belongs to BOTH kinds.
+    //
+    // Its own tooltip is about rings — "let the tip carry on past a ring,
+    // off and the shaft stops at every socket" — and it was read only
+    // inside the hole branch above, so a ring always carried on and the
+    // switch did nothing for the one case it names.
+    //
+    // A ring gets no clamp either, for the same reason: the clamp is the
+    // hole's taper distance. So with a ring pushed near the base, every
+    // vertex past it travels its full remaining length along the socket's
+    // forward at once, which is the "flat twisted ribbon" the comment above
+    // warns about, arriving by the door that comment does not cover.
+    if (_YAPS_Overrun < 0.5)
+    {
+        leftOver = 0;
     }
     // SQUEEZE and BULGE, both measured from the entry, the point along
     // the shaft that is level with the socket. A vertex at baked z == gap
