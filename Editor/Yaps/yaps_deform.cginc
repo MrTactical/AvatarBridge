@@ -522,6 +522,28 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         {
             shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
         }
+        else if (_YAPS_Debug >= 5.5)
+        {
+            // DECODED GAP: the channel's own reconstructed socket, measured
+            // from the published frame origin — ONE number for the whole
+            // mesh, no per-vertex fuzz. The C# replication says exactly 1.0
+            // for a socket at the tip. Anything else is the GPU's decode
+            // numerically disagreeing, and the size of the disagreement.
+            float3 chOrigin = mul(unity_ObjectToWorld, float4(_YAPS_ChannelOrigin.xyz, 1)).xyz;
+            shown = saturate(length(socket.position - chOrigin) / max(worldLength, 1e-4));
+        }
+        else if (_YAPS_Debug >= 4.5)
+        {
+            // GPU INPUTS: do the two values every theory rests on actually
+            // arrive in the constant registers? Read here, in the shader,
+            // at draw time — the one place no C# check can reach.
+            //   0.15  _YAPS_ChannelForward arrived ZERO (frame missing)
+            //   0.5   frame arrived, but SocketFlags.x (engagement) is 0
+            //   1.0   both arrived as the C# believes
+            bool frameOk = dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8;
+            bool engagedOk = _YAPS_SocketFlags.x > 0.5;
+            shown = !frameOk ? 0.15 : (!engagedOk ? 0.5 : 1.0);
+        }
         else if (_YAPS_Debug >= 3.5)
         {
             // THE SOCKET'S FACING, against the plug's own forward.
