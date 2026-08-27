@@ -46,6 +46,8 @@ public class SpikePlug : EditorWindow
     const int OriginPx = 8;
 
     float _cellSize = 0.12f;
+    bool _fitCells = true;
+    int _radius = 2;
     int _grid = 8;
     int _slotPx = 1;
     float _reach = 1.6f;
@@ -68,15 +70,27 @@ public class SpikePlug : EditorWindow
             + "reads the twenty-seven cells around itself. Grey means it found nothing.",
             MessageType.Info);
 
-        _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.1f, 2f);
+        _fitCells = EditorGUILayout.ToggleLeft(
+            "Fit the cell size to the plug (cells must be smaller than a plug)", _fitCells);
+        if (_fitCells) _cellSize = _length * 0.3f;
+        using (new EditorGUI.DisabledScope(_fitCells))
+            _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.02f, 2f);
+        _radius = EditorGUILayout.IntSlider("Neighbour radius", _radius, 0, 2);
+        int cells = (2 * _radius + 1) * (2 * _radius + 1) * (2 * _radius + 1);
+        // The number Joe actually asked for, and it comes from the
+        // NEIGHBOURHOOD rather than from the length of the list.
+        EditorGUILayout.LabelField("  ceiling",
+            "at most " + (2 * _radius + 1) + " sockets on one plug, for " + cells + " reads a vertex");
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
         _slotPx = EditorGUILayout.IntSlider("Slot, pixels", _slotPx, 1, 8);
         EditorGUILayout.LabelField("  atlas",
             (OriginPx + _grid * 2 * _slotPx) + " x " + (OriginPx + _grid * _slotPx) + " px"
             + "   (a cell is two slots: position, then facing)");
 
-        EditorGUILayout.LabelField("  a radius-1 read sees",
-            "a " + (_cellSize * 3f).ToString("F2") + " m box around the shaft midpoint");
+        EditorGUILayout.LabelField("  a read sees",
+            "a " + (_cellSize * (2 * _radius + 1)).ToString("F2")
+            + " m box around the shaft midpoint, and the plug spans "
+            + _length.ToString("F2") + " m");
 
         EditorGUILayout.Space();
         _length = EditorGUILayout.Slider("Plug length, metres", _length, 0.05f, 0.6f);
@@ -143,18 +157,22 @@ public class SpikePlug : EditorWindow
         cm.renderQueue = _queueBase;
         clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
 
-        // THREE, in a rough line along the plug, each in its own cell.
+        // THREE, spaced off the CELL SIZE rather than hardcoded, because
+        // the two are not independent. One cell holds one socket, so sockets
+        // closer than a cell cannot both exist; and a plug only threads what
+        // fits within its own length of chain. Placing them by hand is how
+        // two of them ended up in one cell and only two of the three showed.
         //
-        // The spacing is not decoration. One cell holds one socket, so two
-        // sockets closer together than a cell cannot both exist; and a plug
-        // can only thread sockets that fit within its own LENGTH of chain.
-        // Those two pull opposite ways and between them they set the cell
-        // size: it has to be smaller than a plug, which is why the default
-        // here is twelve centimetres rather than the half metre the earlier
-        // spikes used. See the reach line in the window.
-        Socket(root, sockShader, "Socket A", new Vector3(-0.13f, 1.16f, 0.01f), Quaternion.Euler(0, 95, 0));
-        Socket(root, sockShader, "Socket B", new Vector3(-0.02f, 1.17f, 0.02f), Quaternion.Euler(0, 80, 15));
-        Socket(root, sockShader, "Socket C", new Vector3(0.09f, 1.15f, 0.03f), Quaternion.Euler(0, 100, -10));
+        // The plug below is turned ninety degrees, so its shaft runs along
+        // world +X from its root.
+        Vector3 from = new Vector3(-0.18f, 1.15f, 0f);
+        for (int i = 0; i < 3; i++)
+        {
+            float along = _length * (0.15f + 0.35f * i);
+            var at = from + new Vector3(along, 0.01f * i, 0.02f * i);
+            Socket(root, sockShader, "Socket " + (char)('A' + i), at,
+                   Quaternion.Euler(0, 90 + (i - 1) * 12, (i - 1) * 10));
+        }
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
         // space and hands a SkinnedMeshRenderer an identity matrix, so a
@@ -250,6 +268,7 @@ public class SpikePlug : EditorWindow
             p.SetFloat("_OriginPx", OriginPx);
             p.SetFloat("_CellSize", _cellSize);
             p.SetFloat("_Reach", _reach);
+            p.SetFloat("_Radius", _radius);
             p.SetFloat("_Debug", _debug);
             p.SetFloat("_ForceRow", _forceRow);
         }

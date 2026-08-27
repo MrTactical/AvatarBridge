@@ -25,6 +25,14 @@
 // setting, since sockets hash with it too: small buys precision and costs
 // reach.
 //
+// HOW MANY SOCKETS. Not the length of the list. A plug spanning L has to see
+// cells covering L/2 either side of its midpoint, so cell >= L/2r; and one
+// cell holds one socket, so sockets sit at least a cell apart. Divide the
+// one by the other and the answer is 2r+1, whatever the list length: three
+// at radius 1, five at radius 2 for 125 reads instead of 27. Raising
+// YAPS_MAX past that buys nothing. The way out is a cell holding SEVERAL
+// sockets, which decouples spacing from cell size and is not built here.
+//
 // No lights, no contacts, no animator parameters, no sync. The socket draws
 // two pixels; the plug hashes its own world position, reads the twenty-seven
 // cells around it, and deforms. Nothing is wired between them and nothing
@@ -68,6 +76,11 @@ Shader "YAPS/Spike Plug"
         _CellSize ("World cell size, metres", Float) = 0.25
         _MeshLength ("Shaft length in the mesh, local units", Float) = 1
         _Reach ("How far it reaches, in plug lengths", Range(0.5, 4)) = 1.6
+        // How many cells out to read. This is what actually caps how many
+        // sockets a plug can thread: cells one step either way along the
+        // shaft is three cells, so three sockets, and no list length changes
+        // that. Two costs 125 reads against 27.
+        _Radius ("Neighbourhood radius", Range(0, 2)) = 1
         _Colour ("Colour", Color) = (0.85, 0.6, 0.62, 1)
         _Miss ("Colour when it finds nothing", Color) = (0.45, 0.45, 0.48, 1)
         // 0 normal. 1 paints what the resolve DECIDED rather than what it
@@ -127,7 +140,7 @@ Shader "YAPS/Spike Plug"
             float4 _YAPS_SpikeAtlas_TexelSize;
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
-            float _Debug, _ForceRow;
+            float _Debug, _ForceRow, _Radius;
             fixed4 _Colour, _Miss;
 
             // Must match HashCell in the socket shader and SpikeCell.Hash in
@@ -215,9 +228,13 @@ Shader "YAPS/Spike Plug"
                     sockP[i] = 0; sockD[i] = 1e9; sockX[i] = -1; sockY[i] = 0;
                 }
 
-                [unroll] for (int dx = -1; dx <= 1; dx++)
-                [unroll] for (int dy = -1; dy <= 1; dy++)
-                [unroll] for (int dz = -1; dz <= 1; dz++)
+                // [loop], not [unroll]: the bound is a property now, and the
+                // whole point of it being one is being able to measure the
+                // cost of widening it rather than arguing about it.
+                int R = clamp(int(_Radius), 0, 2);
+                [loop] for (int dx = -R; dx <= R; dx++)
+                [loop] for (int dy = -R; dy <= R; dy++)
+                [loop] for (int dz = -R; dz <= R; dz++)
                 {
                     int3 c = mine + int3(dx, dy, dz);
                     int idx = HashCell(c) % total;
@@ -339,10 +356,10 @@ Shader "YAPS/Spike Plug"
                 o.pos = mul(UNITY_MATRIX_VP, float4(pos, 1));
                 o.nrm = nrm;
                 o.engaged = engaged;
-                // red   how many cells claimed a socket, over 27
+                // red   what share of the cells read claimed a socket
                 // green how many made the LIST, over four
                 // blue  which row order was used
-                o.dbg = float3(saturate(hits / 27.0), count / (float)YAPS_MAX, flip ? 1 : 0);
+                o.dbg = float3(saturate(hits / (float)((2*R+1)*(2*R+1)*(2*R+1))), count / (float)YAPS_MAX, flip ? 1 : 0);
                 return o;
             }
 
