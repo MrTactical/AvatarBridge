@@ -1,4 +1,29 @@
-// Spike 4: a plug that bends into a socket it reads out of the screen.
+// Spike 4: a plug that threads through every socket it can see.
+//
+// A LIST, NOT A WINNER. The first version picked the nearest socket and threw
+// the rest of the neighbourhood away, which is what yaps_resolve.cginc does
+// today. Two sockets in range then made the plug flip between them as
+// whichever was momentarily closer to its ROOT changed, and a socket behind
+// it could beat one in front, because distance-to-root never asks which way
+// a plug points.
+//
+// So the sockets are kept as an ORDERED LIST and the plug becomes a path
+// rather than an aim. Each socket claims a range of ARC LENGTH along the
+// shaft, and the shaft is a chain of cubics: leave the root along the plug's
+// own axis, arrive at socket one against its facing, leave socket one out the
+// far side, arrive at socket two. Position and tangent are continuous at
+// every join because the segments either side share them.
+//
+// Three wanted features are then the same change: a ring mid-shaft and a hole
+// at the tip are two entries; a portal is two entries with a GAP between
+// their ranges; a duplicate is one range mapped twice. Only the first is
+// built here.
+//
+// A radius-1 read covers one cell either side, so the plug hashes the
+// MIDPOINT of its shaft rather than the root, which halves the radius the
+// same coverage needs. Cell size is a protocol constant, not a per-plug
+// setting, since sockets hash with it too: small buys precision and costs
+// reach.
 //
 // No lights, no contacts, no animator parameters, no sync. The socket draws
 // two pixels; the plug hashes its own world position, reads the twenty-seven
@@ -40,7 +65,7 @@ Shader "YAPS/Spike Plug"
         _Grid ("Cells across the atlas", Float) = 8
         _SlotPx ("One slot, in pixels", Float) = 1
         _OriginPx ("Atlas origin, pixels from the top left", Float) = 8
-        _CellSize ("World cell size, metres", Float) = 0.5
+        _CellSize ("World cell size, metres", Float) = 0.25
         _MeshLength ("Shaft length in the mesh, local units", Float) = 1
         _Reach ("How far it reaches, in plug lengths", Range(0.5, 4)) = 1.6
         _Colour ("Colour", Color) = (0.85, 0.6, 0.62, 1)
@@ -69,6 +94,10 @@ Shader "YAPS/Spike Plug"
             #pragma target 4.0
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
+
+            // How many sockets one plug can thread. Four is the whole list,
+            // sorted, so a fifth in range is dropped rather than fought over.
+            #define YAPS_MAX 4
 
             struct appdata
             {
@@ -168,10 +197,23 @@ Shader "YAPS/Spike Plug"
                 // is a piece of scene colour decoded as a socket.
                 int hits = 0;
 
-                int3   mine  = int3(floor(root / size));
-                float3 best  = 0;
-                float  bestD = 1e9;
-                int    bestPx = -1, bestPy = 0;
+                // Where engagement reaches zero. Also the inclusion test
+                // for the list: a socket the plug cannot reach is not part
+                // of the path it takes.
+                float far = len * _Reach * 1.6;
+
+                // Hashed on the MIDPOINT of the shaft rather than the root,
+                // so a radius-1 read covers the whole plug instead of only
+                // the half nearest the body. One line, no extra taps.
+                int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
+
+                float3 sockP[YAPS_MAX];
+                float  sockD[YAPS_MAX];
+                int    sockX[YAPS_MAX], sockY[YAPS_MAX];
+                [unroll] for (int i = 0; i < YAPS_MAX; i++)
+                {
+                    sockP[i] = 0; sockD[i] = 1e9; sockX[i] = -1; sockY[i] = 0;
+                }
 
                 [unroll] for (int dx = -1; dx <= 1; dx++)
                 [unroll] for (int dy = -1; dy <= 1; dy++)
@@ -193,58 +235,98 @@ Shader "YAPS/Spike Plug"
                     float3 at = (float3(c) + got.rgb) * size;
                     float d = distance(at, root);
                     // A hash collision from across the world decodes to a
-                    // plausible payload in an implausible place. Anything
-                    // further than the neighbourhood could reach is one.
-                    if (d > size * 4) continue;
-                    if (d < bestD) { bestD = d; best = at; bestPx = px; bestPy = py; }
+                    // plausible payload in an implausible place, and so does
+                    // a socket too far to reach. Both are the same test.
+                    if (d > far) continue;
+
+                    // Insertion sort, nearest first. Sorted here rather than
+                    // later because the ORDER IS THE PATH: socket one is the
+                    // one the shaft meets first.
+                    [unroll] for (int k = 0; k < YAPS_MAX; k++)
+                    {
+                        if (d >= sockD[k]) continue;
+                        [unroll] for (int m = YAPS_MAX - 1; m > k; m--)
+                        {
+                            sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
+                            sockX[m] = sockX[m - 1]; sockY[m] = sockY[m - 1];
+                        }
+                        sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = py;
+                        break;
+                    }
+                }
+
+                // The facings, one extra read each, and only for sockets that
+                // made the list rather than for all twenty-seven cells.
+                int count = 0;
+                float3 sockF[YAPS_MAX];
+                [unroll] for (int i2 = 0; i2 < YAPS_MAX; i2++)
+                {
+                    sockF[i2] = float3(0, 0, 1);
+                    if (sockX[i2] < 0) continue;
+                    count++;
+                    sockF[i2] = normalize(YAPS_LOAD(sockX[i2] + slot, sockY[i2]).rgb * 2 - 1);
+                }
+
+                // The arc length at which each socket sits, measured along
+                // the chain. Chords rather than true cubic arc length, the
+                // same approximation the single-socket version made.
+                float arc[YAPS_MAX + 1];
+                arc[0] = 0;
+                float3 prev = root;
+                [unroll] for (int i3 = 0; i3 < YAPS_MAX; i3++)
+                {
+                    arc[i3 + 1] = arc[i3] + (i3 < count ? distance(sockP[i3], prev) : 1e6);
+                    if (i3 < count) prev = sockP[i3];
                 }
 
                 float3 pos = wv, nrm = wn;
                 float engaged = 0;
 
-                if (bestPx >= 0)
+                if (count > 0)
                 {
-                    // One more read for the winner's orientation, rather
-                    // than reading both slots for all twenty-seven.
-                    float4 f = YAPS_LOAD(bestPx + slot, bestPy);
-                    float3 sockFwd = normalize(f.rgb * 2 - 1);
-
-                    engaged = 1 - smoothstep(len * _Reach, len * _Reach * 1.6, bestD);
+                    engaged = 1 - smoothstep(len * _Reach, far, sockD[0]);
                     if (engaged > 0)
                     {
-                        // Leaves the root where it is, arrives along the
-                        // socket's own axis. The handle length is a third of
-                        // the gap, the usual cubic compromise between a lazy
-                        // curve and an S bend.
-                        float3 p0 = root;
-                        float3 p3 = best;
-                        float  gap = max(bestD, 1e-4);
-                        float3 p1 = p0 + axis * (gap / 3);
-                        float3 p2 = p3 + sockFwd * (gap / 3);
-
                         // Where this vertex sits along the shaft, and how far
                         // off the axis. Taken in WORLD space so the object's
                         // scale and rotation come along for free.
                         float s = dot(wv - root, axis);
                         float3 radial = wv - (root + axis * s);
 
+                        // Which link of the chain this arc length falls in.
+                        int seg = 0;
+                        [unroll] for (int i4 = 0; i4 < YAPS_MAX; i4++)
+                            if (i4 < count && s > arc[i4 + 1]) seg = i4 + 1;
+
                         float3 at, tangent;
-                        if (s <= gap)
+                        if (seg >= count)
                         {
-                            // ponytail: parameterised by u rather than by arc
-                            // length, so the shaft stretches slightly through
-                            // the bend. Fine for a spike; the shipped deform
-                            // reparameterises off the bake.
-                            float u = saturate(s / gap);
-                            at = Bez(p0, p1, p2, p3, u);
-                            tangent = normalize(BezT(p0, p1, p2, p3, u));
+                            // Past the last socket: straight on out of it.
+                            // This is the whole of insertion depth here.
+                            tangent = -sockF[count - 1];
+                            at = sockP[count - 1] + tangent * (s - arc[count]);
                         }
                         else
                         {
-                            // Past the mouth: straight on into the socket.
-                            // This is the whole of insertion depth here.
-                            tangent = normalize(-sockFwd);
-                            at = p3 + tangent * (s - gap);
+                            // Leaves along whatever the previous link exited
+                            // on and arrives against this socket's facing, so
+                            // position AND tangent match at every join. That
+                            // continuity is the only reason a chain of cubics
+                            // reads as one shaft rather than as kinked parts.
+                            float3 p0 = seg == 0 ? root : sockP[seg - 1];
+                            float3 t0 = seg == 0 ? axis : -sockF[seg - 1];
+                            float3 p3 = sockP[seg];
+                            float3 t3 = sockF[seg];
+                            float  L  = max(arc[seg + 1] - arc[seg], 1e-4);
+                            // ponytail: parameterised by u rather than by arc
+                            // length, so a link stretches slightly through
+                            // its bend. The shipped deform reparameterises
+                            // off the bake.
+                            float u = saturate((s - arc[seg]) / L);
+                            float3 p1 = p0 + t0 * (L / 3);
+                            float3 p2 = p3 + t3 * (L / 3);
+                            at = Bez(p0, p1, p2, p3, u);
+                            tangent = normalize(BezT(p0, p1, p2, p3, u));
                         }
 
                         float3 bent  = at + RotateTo(radial, axis, tangent);
@@ -258,9 +340,9 @@ Shader "YAPS/Spike Plug"
                 o.nrm = nrm;
                 o.engaged = engaged;
                 // red   how many cells claimed a socket, over 27
-                // green found one at all
+                // green how many made the LIST, over four
                 // blue  which row order was used
-                o.dbg = float3(saturate(hits / 27.0), bestPx >= 0 ? 1 : 0, flip ? 1 : 0);
+                o.dbg = float3(saturate(hits / 27.0), count / (float)YAPS_MAX, flip ? 1 : 0);
                 return o;
             }
 

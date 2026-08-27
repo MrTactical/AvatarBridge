@@ -45,7 +45,7 @@ public class SpikePlug : EditorWindow
     const string Dir = "Assets/YapsSpike";
     const int OriginPx = 8;
 
-    float _cellSize = 0.5f;
+    float _cellSize = 0.12f;
     int _grid = 8;
     int _slotPx = 1;
     float _reach = 1.6f;
@@ -75,10 +75,18 @@ public class SpikePlug : EditorWindow
             (OriginPx + _grid * 2 * _slotPx) + " x " + (OriginPx + _grid * _slotPx) + " px"
             + "   (a cell is two slots: position, then facing)");
 
+        EditorGUILayout.LabelField("  a radius-1 read sees",
+            "a " + (_cellSize * 3f).ToString("F2") + " m box around the shaft midpoint");
+
         EditorGUILayout.Space();
         _length = EditorGUILayout.Slider("Plug length, metres", _length, 0.05f, 0.6f);
         _radius = EditorGUILayout.Slider("Plug radius, metres", _radius, 0.005f, 0.08f);
         _reach = EditorGUILayout.Slider("Reach, in plug lengths", _reach, 0.5f, 4f);
+        // Two ceilings that pull opposite ways, both worth seeing before
+        // wondering why a socket is ignored.
+        EditorGUILayout.LabelField("  sockets are included within",
+            (_length * _reach * 1.6f).ToString("F2") + " m of the root, "
+            + "and threaded over the plug's own " + _length.ToString("F2") + " m of chain");
 
         EditorGUILayout.Space();
         _queueBase = EditorGUILayout.IntField("Atlas queue base", _queueBase);
@@ -135,11 +143,18 @@ public class SpikePlug : EditorWindow
         cm.renderQueue = _queueBase;
         clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
 
-        // Placed in DIFFERENT cells on purpose. One cell holds one socket:
-        // the second to draw simply overwrites the first, which is a real
-        // limit of the scheme rather than a bug in the spike.
-        Socket(root, sockShader, "Socket A", new Vector3(0.0f, 1.05f, 0.30f), Quaternion.Euler(0, 180, 0));
-        Socket(root, sockShader, "Socket B", new Vector3(0.30f, 1.36f, 0.78f), Quaternion.Euler(0, 250, 0));
+        // THREE, in a rough line along the plug, each in its own cell.
+        //
+        // The spacing is not decoration. One cell holds one socket, so two
+        // sockets closer together than a cell cannot both exist; and a plug
+        // can only thread sockets that fit within its own LENGTH of chain.
+        // Those two pull opposite ways and between them they set the cell
+        // size: it has to be smaller than a plug, which is why the default
+        // here is twelve centimetres rather than the half metre the earlier
+        // spikes used. See the reach line in the window.
+        Socket(root, sockShader, "Socket A", new Vector3(-0.13f, 1.16f, 0.01f), Quaternion.Euler(0, 95, 0));
+        Socket(root, sockShader, "Socket B", new Vector3(-0.02f, 1.17f, 0.02f), Quaternion.Euler(0, 80, 15));
+        Socket(root, sockShader, "Socket C", new Vector3(0.09f, 1.15f, 0.03f), Quaternion.Euler(0, 100, -10));
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
         // space and hands a SkinnedMeshRenderer an identity matrix, so a
@@ -218,7 +233,7 @@ public class SpikePlug : EditorWindow
     // changed without rebuilding and losing where the sockets were dragged to.
     void Push()
     {
-        foreach (string n in new[] { "SocketA", "SocketB" })
+        foreach (string n in new[] { "SocketA", "SocketB", "SocketC" })
         {
             var m = Load(n);
             if (m == null) continue;
