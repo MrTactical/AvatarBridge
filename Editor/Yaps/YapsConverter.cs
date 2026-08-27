@@ -1049,7 +1049,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    int slot = MaterialSlotIndex(binding.propertyName);
+                    int slot = Yaps.YapsSwapFollow.SlotIndex(binding.propertyName);
                     if (slot < 0 || !slots.TryGetValue(slot, out var swap))
                     {
                         continue;
