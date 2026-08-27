@@ -47,7 +47,7 @@ public class SpikePlug : EditorWindow
 
     float _cellSize = 0.12f;
     bool _fitCells = true;
-    int _radius = 2;
+    int _cellRadius = 2;   // cells out, NOT the plug radius above
     int _grid = 8;
     int _slotPx = 1;
     float _reach = 1.6f;
@@ -75,12 +75,12 @@ public class SpikePlug : EditorWindow
         if (_fitCells) _cellSize = _length * 0.3f;
         using (new EditorGUI.DisabledScope(_fitCells))
             _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.02f, 2f);
-        _radius = EditorGUILayout.IntSlider("Neighbour radius", _radius, 0, 2);
-        int cells = (2 * _radius + 1) * (2 * _radius + 1) * (2 * _radius + 1);
+        _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 2);
+        int cells = (2 * _cellRadius + 1) * (2 * _cellRadius + 1) * (2 * _cellRadius + 1);
         // The number Joe actually asked for, and it comes from the
         // NEIGHBOURHOOD rather than from the length of the list.
         EditorGUILayout.LabelField("  ceiling",
-            "at most " + (2 * _radius + 1) + " sockets on one plug, for " + cells + " reads a vertex");
+            "at most " + (2 * _cellRadius + 1) + " sockets on one plug, for " + cells + " reads a vertex");
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
         _slotPx = EditorGUILayout.IntSlider("Slot, pixels", _slotPx, 1, 8);
         EditorGUILayout.LabelField("  atlas",
@@ -88,7 +88,7 @@ public class SpikePlug : EditorWindow
             + "   (a cell is two slots: position, then facing)");
 
         EditorGUILayout.LabelField("  a read sees",
-            "a " + (_cellSize * (2 * _radius + 1)).ToString("F2")
+            "a " + (_cellSize * (2 * _cellRadius + 1)).ToString("F2")
             + " m box around the shaft midpoint, and the plug spans "
             + _length.ToString("F2") + " m");
 
@@ -268,7 +268,7 @@ public class SpikePlug : EditorWindow
             p.SetFloat("_OriginPx", OriginPx);
             p.SetFloat("_CellSize", _cellSize);
             p.SetFloat("_Reach", _reach);
-            p.SetFloat("_Radius", _radius);
+            p.SetFloat("_Radius", _cellRadius);
             p.SetFloat("_Debug", _debug);
             p.SetFloat("_ForceRow", _forceRow);
         }
