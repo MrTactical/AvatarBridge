@@ -892,6 +892,32 @@ mode alongside the compatibility pair, not a replacement. Cheap to spike, and th
 are small: whether CVR's asset filter clamps light colour or intensity on avatars, and how much
 precision survives the intensity multiply.
 
+**SPIKED 2026-08-27 IN PLAY MODE AND IT WORKS.** A quad writing a known value into a fixed corner
+of clip space, a named `GrabPass`, and a second quad sampling it back: the value returns exactly.
+The grab comes back **ARGBHalf**, 16 bits of float per channel, worst error measured at 0.00005,
+which across a two metre range is about **0.1 mm**. That is twelve times finer than the contact
+channel, arrives every frame rather than ten times a second, and needs no smoothing, so none of
+the resolution-versus-lag trade above applies to it at all. `Assets/YapsSpike/` and
+`Assets/Editor/SpikeAtlas.cs` in the Dracaionan project.
+
+Writing the patch in clip space, ignoring the object's transform and the eye, makes it
+stereo-proof by construction: both slices of the eye texture array get identical content, so
+there is no double-wide layout maths to get wrong. This is the part that does not survive
+conversion from VRChat, and we simply do not have it.
+
+**Still unanswered, in order:** whether ChilloutVR's asset filter keeps a `GrabPass` through an
+upload (only an upload can say); the per-frame cost of a named grab in VR; whether the patch
+escapes frustum culling when the socket is off screen (scaling the quad enormously works, since
+the vertex shader ignores its position and only the bounds change); and cell collisions.
+
+**A possible answer to collisions, untested:** give each socket a build-time random id, hash it to
+a cell, and write the id into the cell beside the position. A colliding cell then decodes to some
+other socket's position, which is almost always metres away, and the engagement range gate already
+rejects that. Collisions would degrade to "no socket found", falling back to lights or contacts,
+rather than "wrong socket found".
+
+**Original note, written before the spike:**
+
 **The screen-space atlas is real, and we would write it better than SPS — but do not build it
 yet.** Sockets render a small quad encoding their world position into a reserved screen region;
 the plug samples it back through a named GrabPass. It is the only channel that dodges *both* walls
@@ -1166,14 +1192,48 @@ therefore the same number:
 
 There is no value that does both, because the two requirements pull on one knob.
 
-**Shape of the fix.** Either a PROPORTIONAL smoother, moving a fraction of the remaining error
-each frame, which is fast when the gap is large and naturally slow when it is small, so a
-millimetre never builds enough error to show while a hand-speed socket is still tracked. Or a
-deadband that ignores changes below one quantisation step, which is cheaper but stair-steps on
-purpose. The first is the better behaviour and is a change to the smoothing rig rather than a
-constant, so it is real work, not a tweak.
+**Measured properly 2026-08-27, and the earlier conclusion was wrong: the smoother is ALREADY
+proportional.** With a 0.14 unit input wobble at 10 a second, the amount reaching the material
+scales linearly with StepSize:
 
-**The rig for it already exists.** `Assets/Editor/ChannelHandDrive.cs` in the Dracaionan project
-drives the channel by hand, delivers at the network's rate, wobbles the input by a calibrated
-amount, and tunes StepSize live. Any replacement smoother can be judged against 0.07 units of
-wobble at 10 a second without a single upload.
+    0.05  ships today   0.12 units survive   86 per cent
+    0.02                0.04 units           29 per cent
+    0.01                0.02 units           14 per cent
+    0.005               0.01 units            7 per cent
+
+Linear in the gain is the signature of a first-order filter, so it does not need replacing. It
+does mean noise rejection and tracking speed are the same knob, which is the bind: the setting
+that hides the wobble leaves the plug seconds behind the socket.
+
+**A deadband was tried and is WORSE.** Two extra children on the delta blend at plus and minus
+0.0015, both the zero-step clip, so the output holds still while the delta is inside the band.
+Measured result: the surviving wobble went UP, to 0.29 units, over twice what went in. Inside the
+band the output freezes, then the input escapes and it jumps by roughly the band width. A deadband
+only helps when the noise is much smaller than the error you will tolerate, and here the noise IS
+one quantisation step, so any band wide enough to swallow it produces jumps wider than it.
+Reverted; do not try it again without that arithmetic in front of you.
+
+**So this is a resolution limit, not a bug.** The channel's resolution is about 1.2 mm and the
+deform is sensitive enough to show one step of it. Removing a one-step wobble requires averaging
+over several samples, which is lag by definition. The choices, all with costs:
+
+- **Lower the gain.** `BridgeSettings.DefaultSocketFollow` at 0.02 gives a third of the wobble for
+  roughly 0.3 s of trailing while a socket is moving. Probably the right default.
+- **Shrink the channel box**, so the same number of quantisation steps covers less distance.
+  Extents are `length * BoxLengths` at about 1.75, and the engagement gate reaches zero at
+  `length * 1.6`, so about 9 per cent is free. Tighter than that buys real resolution but loses
+  the range where engagement fades in, between roughly 0.6 and 0.8 of a plug length.
+- **Accept it.** It is a millimetre, and it only reads as stutter because the deform amplifies
+  small position changes in some geometries. See the note below.
+
+## The bend direction is ill-conditioned when a socket lines up with the plug's axis
+
+Noticed 2026-08-27 while testing the above. With the socket dead on the plug's own axis, X and Y
+both at the centre of the channel box, a sub-millimetre wobble makes the deform thrash: there is
+no preferred side to bend toward, so the direction swings. Move the socket off-axis and it is
+steady, and at long range it does not show because the plug is nearly straight anyway.
+
+No amount of smoothing the POSITION fixes an unstable DIRECTION, so this is separate from the
+resolution limit above. How much it matters depends on how often a real socket sits within a
+millimetre of the axis, which is probably rare. Worth remembering when someone reports that a
+plug "freaks out sometimes" with no other pattern to it.

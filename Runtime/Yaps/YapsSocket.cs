@@ -48,10 +48,16 @@ namespace AvatarBridge.Yaps
         public float depthReach = 0f;
 
         [Tooltip("Emit the marker lights that let plugs with no contacts (Raliv DPS, and any " +
-                 "converted plug with no sync budget) find this socket. A mesh gets four vertex " +
-                 "light slots, a socket needs two and a plug's tracker takes one, so only the " +
-                 "first socket or two carry lights; past that a plug sees roots without fronts " +
-                 "and cannot enter any of them. The rest are found by contact, which has no limit.")]
+                 "converted plug with no sync budget) find this socket. They also SHARPEN the " +
+                 "contact channel: a light in range replaces the channel's position outright, " +
+                 "every frame, so the bend is smooth. The channel alone is about a millimetre " +
+                 "coarse and arrives ten times a second, which is visible as a slight tremble on " +
+                 "a close socket, and it is all a viewer with avatar lights switched off ever " +
+                 "gets. Leave this on unless the slots are needed elsewhere. A mesh gets four " +
+                 "vertex light slots, a socket needs two and a plug's tracker takes one, so only " +
+                 "the first socket or two carry lights; past that a plug sees roots without " +
+                 "fronts and cannot enter any of them. The rest are found by contact, which has " +
+                 "no limit.")]
         public bool emitLights = true;
 
         // The material the socket bake replaced on its own mesh, so Remove

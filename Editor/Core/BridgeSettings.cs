@@ -167,9 +167,24 @@ namespace AvatarBridge
         internal const int DefaultMaxLightEmittingSockets = 1;
         // How far the smoothed channel value may move per frame. Lower is a
         // heavier plug. Only the channel is buffered.
+        //
+        // 0.05 to 0.02 on 2026-08-27, measured rather than guessed. The
+        // smoother is first order, so the fraction of an input wobble that
+        // reaches the material scales with this: 86 per cent at 0.05, 29 at
+        // 0.02, 14 at 0.01. The channel's own resolution is about a
+        // millimetre, one quantisation step of a synced float across the
+        // channel box, and the deform is sensitive enough to show one step
+        // as a tremble. Rejecting it costs tracking speed by exactly as
+        // much, so this is a choice of where to sit, not a bug to fix.
+        //
+        // 0.02 gives a third of the tremble for roughly 0.3s of trailing
+        // while a socket is actually moving. It only matters where no marker
+        // light is in range, because a light replaces the channel's position
+        // outright and is sampled every frame; a viewer with avatar lights
+        // switched off is the case this serves.
         [Range(0.01f, 0.5f)]
         public float yapsSocketFollow = DefaultSocketFollow;
-        internal const float DefaultSocketFollow = 0.05f;
+        internal const float DefaultSocketFollow = 0.02f;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

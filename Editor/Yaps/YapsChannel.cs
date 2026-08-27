@@ -561,6 +561,26 @@ namespace AvatarBridge
                 minValue = 0f,
                 maxValue = 1f,
             });
+            // Back to the middle of the box on the way out, which is the
+            // plug's own origin and means nothing in particular.
+            //
+            // A stay task with no exit keeps its last reading forever, and
+            // the last reading before a socket leaves is taken at the edge:
+            // measured in game as 0.99 and 1.00 on the axis it left by. That
+            // is harmless while engagement is 0, but engagement rises the
+            // instant the NEXT socket arrives, and for the tick before its
+            // own stay task reports, the plug snaps toward wherever the last
+            // one left. Half is the only neutral value the axis has.
+            //
+            // This does nothing for a sender that VANISHES inside the box: no
+            // exit runs at all then, and the axes and engagement both keep
+            // their last values with nothing left to clear them.
+            trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Synced(index, prefix + axis),
+                settingValue = 0.5f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
         }
 
         // A trigger measures from its own transform, and the shader
