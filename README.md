@@ -313,8 +313,15 @@ per avatar: 512 overlapping pairs a frame, and everything past that is dropped w
 converted avatar carried over a hundred of them, so two people close together could spend the
 room's budget and stop every contact in it, including the ones YAPS needs and other people's.
 Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and would
-rather pay that price. YAPS keeps its own two per plug either way, so plugs and sockets are
-unaffected.
+rather pay that price.
+
+**What YAPS itself spends, for comparison.** A plug's contact channel builds up to nine receivers:
+engagement, is-it-a-hole, is-it-a-ring, three for where the socket is and three more for which way
+it faces. It buys them in tiers against the sync budget, so a plug with little budget left carries
+three rather than nine, and the report says which it got. A socket emits pointers rather than
+receivers. That is a real share of the instance's 512 overlapping pairs and worth knowing when a
+crowded room stops responding — but it is what the bending is made of, where a haptics stack's
+hundred-odd contacts drive a toy the wearer may not own.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -2103,8 +2110,9 @@ Normal. That's AvatarBridge registering its scripting defines.
 Work down the list; the first that fits is usually it.
 
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
-  by*: black means nothing found the socket, green the contact channel did, yellow a marker light
-  did. Black with a socket right there means neither transport reached the plug.
+  by*. It straightens the plug and puts the answer in its LENGTH: a third means nothing found the
+  socket, two thirds the contact channel did, full a marker light did. A third with a socket right
+  there means neither transport reached the plug.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
@@ -2113,8 +2121,11 @@ Work down the list; the first that fits is usually it.
   socket you have switched on but not chosen here is visible in the hierarchy and dark to every
   old toy — that exact picture has been reported as "it does nothing".
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
-  alone. A converted avatar has that channel; a plug built with the YAPS tool reads lights only,
-  and a prop has one only if you added it. The report and the tool both say which a plug has.
+  alone. Every plug has that channel now: a converted avatar always did, and **since 4.4.0 a plug
+  built with the YAPS tool does too**. It was being built into a controller ChilloutVR never
+  uploads, so it looked correct in the editor and did nothing in game, for anybody. If a plug made
+  before 4.4.0 does nothing against a lightless socket, bake it again. The report and the tool both
+  say what a plug has.
 - **Is the socket behind the plug?** Anything from dead ahead to square beside the base engages in
   full, and only a socket clearly behind it is refused, fading out by about a hundred and twenty
   degrees. That gate is what stops a plug folding back on itself to reach its own root, and it
