@@ -334,7 +334,7 @@ Shader "YAPS/Spike Plug"
                                     sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
                                     sockX[m] = sockX[m - 1]; sockY[m] = sockY[m - 1];
                                 }
-                                sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = py;
+                                sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = cellY;
                                 break;
                             }
                         }

@@ -618,9 +618,21 @@ public class SpikePlug : EditorWindow
             break;
         }
 
-        var cs = Shader.Find("YAPS/Spike Clear");
-        lines.Add("clear shader  " + (cs == null ? "MISSING"
-                  : (UnityEditor.ShaderUtil.ShaderHasError(cs) ? "FAILED TO COMPILE" : "compiles")));
+        // Every shader, not just the clear. A magenta mesh says one of them
+        // failed and says nothing about which or why, and reading the error
+        // beats reading the source.
+        foreach (string n in new[] { "YAPS/Spike Clear", "YAPS/Spike Socket", "YAPS/Spike Plug" })
+        {
+            var sh = Shader.Find(n);
+            if (sh == null) { lines.Add(n + "  MISSING"); continue; }
+            bool bad = UnityEditor.ShaderUtil.ShaderHasError(sh);
+            int msgs = UnityEditor.ShaderUtil.GetShaderMessageCount(sh);
+            lines.Add(n + "  " + (bad ? "FAILED TO COMPILE" : "compiles") + ", " + msgs + " messages");
+            if (msgs > 0)
+                foreach (var msg in UnityEditor.ShaderUtil.GetShaderMessages(sh))
+                    lines.Add("    " + msg.severity + ": " + msg.message.Trim()
+                              + (msg.line > 0 ? "  (line " + msg.line + ")" : ""));
+        }
 
         DestroyImmediate(shot);
         _result = string.Join(System.Environment.NewLine, lines);
