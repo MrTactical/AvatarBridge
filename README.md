@@ -730,10 +730,18 @@ both. The report says which case you're in.
 **How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
 parameter sync it has left:
 
-| | costs | reaches | when it's used |
+| | costs | reaches | how good it is |
 |---|---|---|---|
-| **Contact channel** | up to 9 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
-| **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
+| **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
+| **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
+
+**They work together rather than competing.** The channel finds the socket and decides how engaged
+the plug is; a marker light in range then replaces the position outright, because a light is
+exact and continuous where the channel is quantised and stepped. So a socket carrying both gives
+the smoothest result, a lights-only socket still works for anyone drawing it, and a
+contacts-only socket still works for someone whose content filters have switched avatar lights
+off. On a close socket the channel alone can be seen as a slight tremble, which is the resolution
+of a synced float across the channel's box and not a fault.
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than
@@ -749,9 +757,9 @@ other people and does nothing for the person wearing it. Sockets built with the 
 written in, along with current marker light ranges if the socket came from an older prefab. A
 conversion rebuilds every socket from scratch, so converted avatars get the twins by default.
 
-**What other people see.** The wearer's own machine works out where the socket is, and a driver
-publishes it so everyone else sees the same bend. Marker lights are read independently by each
-viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
+**What other people see.** The contact triggers run on the wearer's machine and write the
+socket's position straight into synced parameters, so every client rebuilds the same bend from the
+same numbers. Marker lights are read independently by each viewer and need no sync at all. Both paths degrade quietly if a viewer has lights or custom
 shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
 breaks.
 
@@ -1023,14 +1031,23 @@ alone.
   plug shows live. Wriggle and pumping are time-driven; the scene view repaints while a plug is
   selected so they move. A socket's shapes follow the preview plug's tip while it runs, and
   **Test depth** moves them from a slider without any plug at all.
-- **Not in Play mode.** ChilloutVR's triggers and contacts are the game's, not Unity's, so a
-  socket whose shapes go through a contact does nothing in editor Play mode — drive its
+- **In Play mode, if you ask for it.** The preview stands down when you press Play so it cannot
+  race whatever else is writing to the material, which is right until you notice that most avatars
+  hide the plug until a toggle brings it in — so Play mode is the only state where there is
+  anything to look at. **Keep previewing in Play Mode**, on the socket, turns it back on. It is
+  also the only way to watch a POSED avatar: edit mode holds the rest pose, where every part of a
+  plug agrees about which way it faces.
+- **Contacts still do not exist in Play mode.** ChilloutVR's triggers and contacts are the game's,
+  not Unity's, so a socket whose shapes go through a contact does nothing there — drive its
   `YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
-  work, or test it in game. Preview and Test depth work outside Play mode, which is where to look.
+  work, or test it in game.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
-  debug view (on the material's YAPS panel) colours the plug by what found the socket — black
-  nobody, green the contact channel, yellow a marker light — which is the first thing to look at
-  when a plug bends toward the wrong thing, or nothing.
+  debug view (on the material's YAPS panel) straightens the plug and puts the answer in its
+  LENGTH — a third means nothing found the socket, two thirds the contact channel, full a marker
+  light. Length rather than colour because a patched shader only lets the toolkit edit the vertex
+  stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
+  bends toward the wrong thing, or toward nothing. Turn it back off before you upload; the
+  toolkit warns you if you forget.
 - **Four vertex-light slots is the whole light-path constraint.** Unity gives a mesh four; a
   socket takes two; on an avatar with many sockets the converter wires each socket's lights to
   the menu entry that already names it, so lit sockets are the ones you switched on. A hand-held
