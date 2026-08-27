@@ -487,3 +487,80 @@ picks a single best candidate; the atlas hands back a neighbourhood. Everything 
 wishlist in `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is
 described there as needing "an ordered list of sockets with arc-length ranges", which is what the
 atlas already returns and the resolver currently discards.
+### Spike 4, 2026-08-27: a plug and a socket, on the atlas alone
+
+The third implementation question was "the resolver still holds ONE socket, and that is
+the work". It is built, in `Dev/Probes/Atlas/`, and it runs: a plug threads a chain of
+sockets with no light, no contact, no animator parameter and no sync anywhere in it.
+
+**The socket takes two pixels, not one.** Slot 0 is `frac(worldPos / cellSize)`, slot 1 is
+`forward * 0.5 + 0.5`. One quad covers both and the fragment picks by where it landed
+inside the quad, so it is still one draw. Position alone is enough to FIND a socket and not
+enough to ENTER one: a plug curving toward a bare point aims at its centre and stops, and
+rotating the socket does nothing. Orientation is also the thing the light protocol
+structurally cannot carry, since a marker light encodes its kind in two free digits of a
+range and a mesh only gets four slots.
+
+**The resolver keeps an ordered list.** Sockets are sorted nearest-first and each claims a
+range of arc length along the shaft. The shaft is a chain of cubics: out of the root along
+the plug's axis, into socket one against its facing, out of socket one the far side, into
+socket two. Position and tangent match at every join because the segments either side share
+them. This is the shape `Unfinished.md` asks for, and it removes the flip between two
+sockets by construction: there is no winner to flip to, and nothing has to ask which way the
+plug points, because the order IS the path.
+
+**A socket is turned to meet its approach.** A ring is enterable from either face, so which
+of the two the author pointed it is not information. Trusting it means the cubic is asked to
+arrive travelling backwards, and it ties itself in a hairpin to do it. A HOLE is one-sided
+and would want the sign respected, so the moment holes and rings share a list the flip has
+to be conditional on the socket's kind, and the atlas has no field for kind yet.
+
+**The ceiling is 2r+1 sockets, and it is not the list length.** A plug spanning L must see
+cells covering L/2 either side of its midpoint, so `cell >= L / 2r`; one cell holds one
+socket, so sockets sit at least a cell apart. Divide and the cell size cancels: three at
+radius 1, five at radius 2 for 125 reads against 27. Raising the list length past that buys
+nothing. The way out is a cell holding SEVERAL sockets, which decouples spacing from cell
+size and is not built. Note also that cell size is a protocol constant, not a per-plug
+setting, since sockets hash with it too.
+
+Hashing moved to the MIDPOINT of the shaft rather than the root, which halves the radius the
+same coverage needs. One line, no extra taps.
+
+#### Three failures worth keeping
+
+**The flip signal was the wrong signal.** `_TexelSize.y < 0` says a UV SAMPLE needs its v
+inverted. It says nothing about which end of memory holds row zero, and `.Load` indexes
+memory rows. Reading it as one sent every tap to row 906, where the opaque scene answers
+alpha 1, so all twenty-seven cells claimed a socket and the plug bent at the nearest piece of
+floor. Row order is `UNITY_UV_STARTS_AT_TOP`, a compile-time platform fact. Settled by
+instrumenting rather than arguing: debug colours came back WHITE with the runtime signal
+(27 hits, flipped) and pure GREEN with it forced top-down (1 hit, not flipped).
+
+**A wider read aliases into itself.** Sixty-four grid slots and a radius-2 read looks at 125
+cells, so by pigeonhole some land on a slot another cell owns, and what comes back is a real
+socket's payload decoded against the wrong cell: a convincing phantom a few centimetres away
+that the sort then threads the shaft through. The payload cannot reveal this on its own,
+because an offset within a cell decodes into that cell whichever cell you decode it against.
+Alpha was carrying one bit in a sixteen-bit channel; it now carries a second independent hash
+of the cell across its top half, 256 levels, four half-float steps apart, with the bottom half
+still meaning empty. The reader recomputes and drops what does not match.
+
+**A deadzone exactly one cell tall is a slot clash.** Socket B was dead between y 1.258 and
+1.437, working either side; at eighteen-centimetre cells those are the bounds of one cell.
+Two sockets on one slot means the second to draw overwrites the first and the tag check
+correctly drops the loser, silently, for as long as it stays in that cell. Three sockets in
+64 slots clash about seven per cent of the time and a plug wandering meets those odds in
+every cell it crosses. **The grid must be sized to the expected socket count, not to the
+atlas budget**: 64x64 is 4096 slots for a 136x72 pixel atlas. And a clash has to be
+NON-SILENT in the shipped version, because a socket that quietly stops existing for one cell
+of space looks identical to every other reason one does not bend.
+
+#### What is still open
+
+- A cell holds one socket. Buckets decouple spacing from cell size and lift 2r+1.
+- No socket KIND in the payload, so a hole cannot be told from a ring, and the
+  approach-flip above is only correct for rings.
+- Portal and duplicate are ranges on top of the list, unbuilt.
+- Radius 2 is 125 reads a vertex, measured only for 27. The tap harness exists.
+- The platform default for row order is right on D3D by construction and unverified in game.
+  `_ForceRow` is kept as the one-click check.
