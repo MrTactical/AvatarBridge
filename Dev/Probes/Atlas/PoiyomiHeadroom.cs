@@ -51,9 +51,15 @@ public static class PoiyomiHeadroom
                   + System.Environment.NewLine + "  messages  " + ShaderUtil.GetShaderMessageCount(shader));
 
         // The atlas block, written the way it would ship: a hash to find the
-        // cell, then one read per neighbouring cell. The accumulator is
-        // folded into a value the deform already uses, or a compiler removes
-        // the whole thing and the test measures nothing.
+        // cell, then one read per neighbouring cell. The accumulator is folded
+        // into a value the deform already uses, or a compiler removes the
+        // whole thing and the test measures nothing.
+        //
+        // Reads through _YAPS_Bake, a Texture2D already declared and already
+        // read with .Load in the deform. Same KIND of read the atlas needs, a
+        // point read with no filtering, and it means this declares nothing:
+        // the first attempt added a sampler and landed it in the middle of a
+        // function signature.
         const string block = @"
             // --- YAPS atlas headroom probe ---
             {
@@ -68,32 +74,25 @@ public static class PoiyomiHeadroom
                     int3 yc = yapsCell + int3(yi, yj, yk);
                     int yh = yc.x * 73856093; yh ^= yc.y * 19349663; yh ^= yc.z * 83492791;
                     int yidx = yh % 64; if (yidx < 0) yidx += 64;
-                    float2 yuv = float2((yidx % 8) + 0.5, (yidx / 8) + 0.5) / 8.0 * 0.01;
-                    yapsAcc += tex2Dlod(_YAPS_AtlasProbe, float4(yuv, 0, 0)).rgb;
+                    yapsAcc += _YAPS_Bake.Load(int3(yidx % 8, yidx / 8, 0)).rgb;
                 }
                 yapsPosition += yapsAcc * 1e-9;
             }
             // --- end YAPS atlas headroom probe ---
 ";
-        // Declared beside the other YAPS properties so it survives the same
-        // include ordering the patcher relies on.
-        const string decl = "sampler2D _YAPS_AtlasProbe;\n";
-
-        int call = text.IndexOf("YapsSocketDeform(", System.StringComparison.Ordinal);
+        // The CALL, not the definition. The definition reads
+        // "void YapsSocketDeform(inout float3 position" and spans two lines,
+        // and the first version of this matched it and injected into the
+        // middle of the parameter list, which is what the two syntax errors
+        // at lines 5845 and 5849 were.
+        int call = text.IndexOf("YapsSocketDeform(yapsPosition", System.StringComparison.Ordinal);
         if (call < 0)
         {
-            Debug.LogError("[Headroom] the shader carries no YapsSocketDeform call, so it is not a "
-                           + "patched YAPS shader. Bake the plug first.");
+            Debug.LogError("[Headroom] no YapsSocketDeform(yapsPosition call here, so the patcher has not been through this shader. Bake the plug first.");
             return;
         }
-        int lineEnd = text.IndexOf('\n', call);
-        string patched = text.Insert(lineEnd + 1, block);
-
-        // The sampler goes immediately before the YAPS include block, which
-        // is where the patcher puts its own declarations.
-        int inc = patched.IndexOf("yaps_props.cginc", System.StringComparison.Ordinal);
-        int declAt = inc > 0 ? patched.LastIndexOf('\n', inc) + 1 : lineEnd + 1;
-        patched = patched.Insert(declAt, decl);
+        int lineStart = text.LastIndexOf((char)10, call) + 1;
+        string patched = text.Insert(lineStart, block);
 
         // A distinct name, or Unity resolves the copy to the original.
         patched = Regex.Replace(patched, "Shader\\s+\"([^\"]+)\"",

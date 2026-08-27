@@ -461,3 +461,29 @@ Every question that could have killed it has an answer:
    `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is exactly
    "stop discarding what the atlas already returns", so the transport and the features want the
    same change.
+
+### Two of the three implementation questions are closed, 2026-08-27
+
+**1. A patched Poiyomi CAN take it.** The real shader a plug wears, 723 KB of locked Poiyomi with
+our deform already injected, took the hash and twenty-seven reads: **compiles, zero messages**.
+`Dev/Probes/Atlas/PoiyomiHeadroom.cs` copies the shader a plug is actually wearing, injects the
+block beside the existing `YapsSocketDeform` call, imports it and reports. It touches nothing that
+ships.
+
+Two things learned building it, both worth keeping. Anchor on the CALL, `YapsSocketDeform(yapsPosition`,
+never on the string `YapsSocketDeform(` — the DEFINITION matches first, spans two lines, and an
+insert lands in the middle of its parameter list. And read through `_YAPS_Bake`, a `Texture2D`
+already declared and already read with `.Load`: that is an unfiltered point read at integer
+coordinates, which is exactly what a one-pixel cell needs, since filtering would blend the
+neighbours that break it. The production version wants `.Load` on a `Texture2D`, not `tex2Dlod` on
+a `sampler2D`.
+
+**2. One renderer per socket costs nothing measurable** — already answered by the cost run. The
+"extra sockets" in that test were real renderers, one mesh each, and thirty-two measured the same
+as two. A socket gaining a mesh is a draw call it did not have, but it does not show.
+
+**3. The resolver still holds ONE socket.** That is the work, not a question. `yaps_resolve.cginc`
+picks a single best candidate; the atlas hands back a neighbourhood. Everything on the feature
+wishlist in `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is
+described there as needing "an ordered list of sockets with arc-length ranges", which is what the
+atlas already returns and the resolver currently discards.
