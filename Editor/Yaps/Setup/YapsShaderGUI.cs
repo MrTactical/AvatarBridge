@@ -129,7 +129,7 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Resolved by — black nobody, green the contact channel, yellow a marker light"),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Colours the plug so you can see why it is doing what it is doing. The plug goes straight and its LENGTH carries the answer.  Resolved by: what found the socket. A third means nothing found it, two thirds the contact channel, full a marker light.  Gap to socket: how far away it is, as a fraction of the plug. Shortening smoothly is normal; a jump means it was handed a different socket.  Engagement: the switch that turns the bend on. A tenth at zero, full at one. When this collapses the plug springs straight back to its rest shape.  Socket facing: which way the socket points against the plug. Full is the same way, half is square across, nothing is facing straight back.  Turn it back Off before you upload; the toolkit warns you if you forget."),
                 }},
         };
 
@@ -236,7 +236,14 @@ namespace AvatarBridge
             var original = OriginalEditor(material);
             if (original != null)
             {
-                original.OnGUI(editor, rest);
+                // The FULL list, not the filtered one. A shader's own editor
+                // builds its UI from the properties its shader declares and
+                // looks them up by name and index; handing it a subset makes
+                // it dereference something that is not there. Poiyomi's threw
+                // NullReferenceException in ShaderPart.IsPropertyValueDefault
+                // on every repaint. Ours appearing in its panel as well is
+                // cosmetic; taking its editor down is not.
+                original.OnGUI(editor, properties);
             }
             else
             {
@@ -271,6 +278,20 @@ namespace AvatarBridge
             var ver = new Rect(rect.xMax - 60, rect.y + 6, 50, 16);
             GUI.Label(ver, BridgeDefines.Version, new GUIStyle(_bannerSub) { alignment = TextAnchor.MiddleRight });
             GUILayout.Space(6);
+
+            // A material can be running a shader older than the toolkit, and
+            // nothing said so. Three readings were wasted in one afternoon
+            // on values a stale shader had never been asked for, and the
+            // material panel is exactly where somebody reads a value and
+            // believes it, so the warning belongs here as much as anywhere.
+            if (YapsShaderPatcher.IsStale(material))
+            {
+                EditorGUILayout.HelpBox(
+                    "This material is running a shader older than the toolkit, so what you see here " +
+                    "is not what the current version does. Bake it again to refresh it — the knobs " +
+                    "and the bake are kept.", MessageType.Warning);
+                GUILayout.Space(4);
+            }
         }
 
         // A section header: colour bar, arrow, title, rule.

@@ -30,17 +30,46 @@ namespace AvatarBridge
             if (avatar == null) return lines;
 
             var animator = avatar.GetComponent<Animator>();
-            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+
+            // ChilloutVR uploads what avatar.overrides points at, and falls
+            // back to avatarSettings.baseController. The Animator's own slot
+            // is neither: the CCK puts a GENERATED override controller there,
+            // and on an avatar whose generated folders have drifted apart it
+            // can belong to a different avatar entirely. Building into that
+            // one gives a channel that works in Play Mode and never leaves
+            // the project, which looks the same as no channel at all from
+            // everywhere except in game.
+            var onAnimator = animator != null ? animator.runtimeAnimatorController : null;
+            var shipped = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController : null;
+            if (shipped == null && avatar.avatarSettings != null) shipped = avatar.avatarSettings.baseController;
+            var controller = BridgeContext.Underlying(shipped != null ? shipped : onAnimator);
+
+            var running = BridgeContext.Underlying(onAnimator);
+            if (controller != null && running != null && controller != running)
+            {
+                lines.Add("! the Animator runs " + AssetDatabase.GetAssetPath(running)
+                          + " but ChilloutVR uploads " + AssetDatabase.GetAssetPath(controller)
+                          + ". The channel went into the uploaded one, so the editor preview will not"
+                          + " show it. Point the Animator at the same controller to test it here.");
+            }
             if (animator == null || controller == null)
             {
                 lines.Add("✗ the channel needs an Animator with a controller on the avatar");
                 return lines;
             }
 
-            var plugs = Plugs(avatar);
+            var skipped = new List<string>();
+            var plugs = Plugs(avatar, skipped);
             Clear(avatar, controller);
             if (plugs.Count == 0)
             {
+                // Silence here reads as success. A bake that builds no
+                // channel at all still writes the materials, so the marker
+                // lights keep working and the only symptom is that contacts
+                // do nothing, with nothing in the log to say why.
+                lines.Add("✗ no plug could carry the contact channel, so none was built");
+                if (skipped.Count == 0) lines.Add("  no YapsPlug on this avatar at all");
+                else lines.AddRange(skipped);
                 return lines;
             }
 
@@ -68,13 +97,17 @@ namespace AvatarBridge
         // Every plug the channel can carry: baked, with a material of its
         // own. The frame comes from the markers the bake left, so a trigger
         // box sits on the shaft rather than on the object.
-        static List<BridgeContext.YapsPlug> Plugs(CVRAvatar avatar)
+        static List<BridgeContext.YapsPlug> Plugs(CVRAvatar avatar, List<string> skipped)
         {
             var found = new List<BridgeContext.YapsPlug>();
             foreach (var plug in avatar.GetComponentsInChildren<YapsPlug>(true))
             {
                 var renderer = plug != null ? plug.Target : null;
-                if (renderer == null) continue;
+                if (renderer == null)
+                {
+                    skipped.Add($"  {(plug == null ? "a plug" : plug.name)}: no mesh assigned");
+                    continue;
+                }
                 var mats = renderer.sharedMaterials;
                 int slot = -1;
                 for (int i = 0; i < mats.Length; i++)
@@ -83,11 +116,18 @@ namespace AvatarBridge
                     if (mats[i] != null && mats[i].HasProperty("_YAPS_Bake")
                         && mats[i].GetTexture("_YAPS_Bake") != null) { slot = i; break; }
                 }
-                if (slot < 0) continue;
+                if (slot < 0)
+                {
+                    skipped.Add($"  {plug.name}: {renderer.name} carries no baked YAPS material"
+                                + (plug.materialSlot >= 0 ? $" in slot {plug.materialSlot}" : "")
+                                + ". Bake the plug before the channel can find it.");
+                    continue;
+                }
 
                 if (!YapsPreview.PlugFrame(plug, out var origin, out var forward,
                         out var up, out float length))
                 {
+                    skipped.Add($"  {plug.name}: no measured frame, so there is nowhere to put the triggers");
                     continue;
                 }
                 found.Add(new BridgeContext.YapsPlug

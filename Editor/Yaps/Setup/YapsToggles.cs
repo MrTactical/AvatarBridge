@@ -88,7 +88,7 @@ namespace AvatarBridge
             // Fury's numbering is noise; "Blowjob" is the author's word
             // for it and the one the wearer knows.
             string bone = YapsScanner.StripFuryId(
-                BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>()));
+                BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>(true)));
             string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
             // The kind is always said: a menu row the wearer cannot tell
             // hole from ring by is a menu row they have to test in game.
@@ -139,7 +139,7 @@ namespace AvatarBridge
             }
             var chainObjects = new HashSet<GameObject>(chain.Select(t => t.gameObject));
 
-            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>();
+            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>(true);
             var root = animator != null ? animator.transform : (avatar != null ? avatar.transform : target.transform.root);
             var paths = new HashSet<string>(chain.Select(t => AnimationUtility.CalculateTransformPath(t, root)));
             string targetPath = AnimationUtility.CalculateTransformPath(target.transform, root);
@@ -304,6 +304,39 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine})";
         }
 
+        // Does the AVATAR already drive the deform itself?
+        //
+        // ToggledBy answers "is the plug's mesh hidden by something", which
+        // is a different question and misses the one that matters: an author
+        // whose own animation already writes material._YAPS_Enabled. Joe's
+        // horse rig drives it from an erection slider past 0.52 — the enable
+        // mirror had wired it correctly — and YAPS then added a menu toggle
+        // writing the SAME property from its own layer. Two drivers, one
+        // property, and the toggle defaults OFF, so it won and the plug
+        // never deformed in play mode or in game no matter where the slider
+        // sat. In edit mode no animator ran and the baked 1 stood, which is
+        // why it looked like the deform itself had broken.
+        //
+        // Ours are skipped: a generated clip is this toggle's own, and
+        // finding it would make the toggle stand down for itself.
+        static string DrivenByOwnClip(CVRAvatar avatar, string plugPath)
+        {
+            var animator = avatar.GetComponent<Animator>();
+            if (animator == null || animator.runtimeAnimatorController == null) return null;
+            foreach (var clip in YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController))
+            {
+                if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (b.path == plugPath && b.propertyName == "material._YAPS_Enabled")
+                    {
+                        return $"\"{clip.name}\", which already animates the deform itself";
+                    }
+                }
+            }
+            return null;
+        }
+
         // A menu toggle for a plug's deform: two clips writing _YAPS_Enabled
         // on its material, on and off, as an Advanced Settings toggle with
         // its own animation. Not when anything already hides the plug's
@@ -320,7 +353,8 @@ namespace AvatarBridge
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
                     .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_Enabled"));
-            string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: ours != null ? ours.name : label);
+            string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: ours != null ? ours.name : label)
+                              ?? DrivenByOwnClip(avatar, plugPath);
             if (already != null)
             {
                 if (ours == null) return $"{label}: already switched by {already}";

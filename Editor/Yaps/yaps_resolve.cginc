@@ -59,6 +59,12 @@
 float4 _CVR_PlayerHipPositions[255];
 float4 CVRGlobalParams1;
 
+inline float3 YapsNormalizeOr(float3 v, float3 fallback)
+{
+    float lengthSq = dot(v, v);
+    return lengthSq < 1e-12 ? fallback : v * rsqrt(lengthSq);
+}
+
 struct YapsSocket
 {
     float3 position;
@@ -295,13 +301,29 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
 // Nearest root to the plug, with its front partner if one arrived. Unity
 // may hand over a root without its front, so an unpaired root still yields a
 // position and simply leaves the axis to the caller.
-bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, out float3 forward,
+// preferNear: the socket the channel already resolved, when it resolved
+// one, else the plug's own origin.
+//
+// Ranking by distance to the PLUG picked the wrong light on a prop
+// carrying two sockets. A hole and a ring six centimetres apart are both
+// inside the envelope, and which one sits nearer the plug's origin flips
+// as the plug moves in — so a plug genuinely inside the hole was handed
+// the ring's light, took its kind, and swept past instead of entering.
+// It changed with viewing distance because the geometry and Unity's
+// four-slot light list both change as you approach, which reads as a
+// socket that breaks when you look at it.
+//
+// The reach gate still measures from the plug, because that is the
+// engagement envelope. Only the ranking moved. The caller's guard below
+// stays, demoted from the only defence to a sanity check.
+bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
+                         out float3 position, out float3 forward,
                          out float holeHint)
 {
     position = 0;
     forward = 0;
     holeHint = -1;   // the light did not say
-    float bestDistanceSq = reach * reach;
+    float bestRankSq = 1e30;
     bool found = false;
 
     [unroll]
@@ -310,9 +332,11 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach, out float3 position, ou
         int kind = YapsClassifyLight(i, plugOrigin);
         if (!YapsIsRoot(kind)) continue;
         float3 at = YapsLightPosition(i);
-        float distanceSq = dot(at - plugOrigin, at - plugOrigin);
-        if (distanceSq >= bestDistanceSq) continue;
-        bestDistanceSq = distanceSq;
+        float fromPlugSq = dot(at - plugOrigin, at - plugOrigin);
+        if (fromPlugSq >= reach * reach) continue;
+        float rankSq = dot(at - preferNear, at - preferNear);
+        if (rankSq >= bestRankSq) continue;
+        bestRankSq = rankSq;
         position = at;
         found = true;
         holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
@@ -410,10 +434,30 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // The trigger boxes ride the plug object, so a scaled plug has
         // scaled boxes; the decode scales with them.
         float3 offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
-        float3 plugRight = cross(plugUp, plugForward);
-        socket.position = plugOrigin + plugRight * offset.x
-                                     + plugUp * offset.y
-                                     + plugForward * offset.z;
+
+        // THE PER-VERTEX RECOVERED FRAME, and this is a decision with a
+        // history. The channel's offsets are measured in the trigger boxes'
+        // frame, which rides the plug's bones — and the per-vertex recovery
+        // is the shader's only live estimate of that frame, because for a
+        // SKINNED mesh Unity skins into world space and unity_ObjectToWorld
+        // is IDENTITY at draw time. A frame published in the renderer's
+        // object space therefore decodes unrotated: on a Blender-imported
+        // body carrying -90 on X, "up" arrived pointing forward and the
+        // avatar bent toward a socket a metre and a half behind it. Joe
+        // found it by zeroing the rotation and watching the avatar stand up.
+        //
+        // At rest pose every vertex recovers the SAME frame, so the editor
+        // and an unposed avatar are exact. Posed, a plug spanning many bones
+        // recovers slightly different frames per vertex — each vertex bends
+        // toward the socket as its own bones perceive it, which is the least
+        // wrong option available and exact for every normal plug.
+        float3 frameOrigin = plugOrigin;
+        float3 frameForward = plugForward;
+        float3 frameUp = plugUp;
+        float3 plugRight = cross(frameUp, frameForward);
+        socket.position = frameOrigin + plugRight * offset.x
+                                      + frameUp * offset.y
+                                      + frameForward * offset.z;
 
         // The channel's engagement is a PROXIMITY reading taken across the
         // whole trigger sphere, and that sphere is 1.75 plug lengths, so
@@ -428,7 +472,19 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // about how far in it is, which they have no business doing.
         if (socket.engaged > 0)
         {
-            float channelGap = length(socket.position - plugOrigin);
+            // From the CHANNEL'S frame, not the vertex's.
+            //
+            // This measured to plugOrigin, which is recovered per vertex, so
+            // on a plug spanning more than a bone every vertex computed its
+            // own gap and therefore its own engagement: vertices near the
+            // socket fully engaged, vertices at the far end not at all, and
+            // the mesh deformed in pieces. The world route has no remap and
+            // so never showed it, which is exactly the difference between
+            // the two that this was chased through.
+            //
+            // frameOrigin is the frame the offsets were measured in, so
+            // every vertex gets the same gap and the same engagement.
+            float channelGap = length(socket.position - frameOrigin);
             socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6, channelGap);
 
             // The remap doubles as the channel's own reality check, and it
@@ -461,12 +517,28 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // honest answer is to say nothing and let the deform take its
         // direction from the approach, which is what a zero forward means.
         float3 frontOffset = (_YAPS_SocketFront.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001);
-        float3 frontAt = plugOrigin + plugRight * frontOffset.x
-                                    + plugUp * frontOffset.y
-                                    + plugForward * frontOffset.z;
+        float3 frontAt = frameOrigin + plugRight * frontOffset.x
+                                     + frameUp * frontOffset.y
+                                     + frameForward * frontOffset.z;
         float3 axis = frontAt - socket.position;
         float axisLength = length(axis);
-        if (axisLength > 1e-5 && axisLength < worldLength * 0.5)
+        // AN ABSOLUTE WINDOW, because the front point is at an absolute
+        // distance. Both ecosystems put it about a centimetre out —
+        // FrontOffset is 0.01 here, TPS_Orf_Norm and SPSLL_Socket_Front are
+        // the same — and that never scales with the plug.
+        //
+        // This gate was worldLength * 0.5, which on a plug measuring a metre
+        // and a half accepts anything up to seventy-seven centimetres as a
+        // socket's axis. A noisy or half-delivered front then passed it and
+        // became the facing, and the plug arrived along a direction nobody
+        // sent. On an ordinary plug the same gate is a few centimetres and
+        // rejects the same noise, which is why this only ever showed on long
+        // ones. Joe's read square across the shaft when the socket was
+        // pointing straight back at it.
+        //
+        // Two millimetres to five centimetres: generous either side of a
+        // centimetre, and nothing beyond it is a front point.
+        if (axisLength > 0.002 && axisLength < 0.05)
         {
             socket.forward = axis / axisLength;
         }
@@ -499,7 +571,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
-    bool litRoot = YapsFindLightSocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward,
+    bool litRoot = YapsFindLightSocket(plugOrigin,
+                                       channelFound ? channelPosition : plugOrigin,
+                                       worldLength * 1.6, lightPosition, lightForward,
                                        lightHoleHint);
     // A light refines the socket the channel already resolved. It does not
     // get to nominate a DIFFERENT one, and it used to: any lit root inside
@@ -524,6 +598,24 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     {
         socket.position = lightPosition;
         found = true;
+
+        // ENGAGEMENT follows the position, or a lit socket still trembles.
+        //
+        // Engagement was measured from the CHANNEL's decoded gap further up
+        // and the light replaces the position here, afterwards, so the
+        // target went steady while the strength kept shaking at the
+        // channel's own resolution, about a millimetre arriving ten times a
+        // second. On a socket carrying both, which is most of them, the plug
+        // twitched exactly as hard as one carrying contacts alone, and the
+        // light appeared to be doing nothing.
+        //
+        // Same formula the light-only path below uses, so whoever provides
+        // the position provides the gap this is measured from.
+        if (channelFound)
+        {
+            socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6,
+                                            length(socket.position - plugOrigin));
+        }
         // A light that only SHARPENED the channel's answer leaves the tier
         // saying channel, the channel engaged it, the light polished it.
         // A light standing in for a silent channel owns the answer.
@@ -580,19 +672,30 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.tier = 2;
     }
 
-    // Only a socket clearly BEHIND the base is refused. Anything from
-    // dead ahead to square beside it engages in full; past that it fades
-    // out by about a hundred and twenty degrees. That is enough to stop
-    // the plug folding back on itself, and it still lets one reach up.
+    // ONLY A SOCKET A REAL WAY BEHIND THE BASE IS REFUSED. Dead ahead and
+    // square beside both engage in full; it fades out over the last half of
+    // a plug length behind the root. That is enough to stop the plug
+    // folding back on itself and still lets one reach up.
+    //
+    // Asked as a DISTANCE along the shaft, never as a direction.
+    //
+    // It used to normalise the vector from the root to the socket and test
+    // its angle, and that had no answer at the one place it mattered.
+    // Engagement is computed per VERTEX — a skinned plug recovers its frame
+    // from each vertex's own normal and tangent, so every vertex brings its
+    // own plugOrigin — and near the root the scatter between those origins
+    // is as large as the gap itself. Each vertex normalised a different
+    // tiny vector, got a different answer, and the mesh came out half
+    // engaged: some vertices swallowed, some hanging out. Joe called it "a
+    // weird mixture of engagement and not", which is exactly what a
+    // per-vertex singularity looks like from outside.
+    //
+    // A signed distance passes smoothly through zero instead of being
+    // undefined there, so every vertex near the root agrees.
     if (socket.engaged > 0)
     {
-        float3 toSocket = socket.position - plugOrigin;
-        float gapAhead = length(toSocket);
-        if (gapAhead > 0.0001)
-        {
-            float ahead = dot(toSocket / gapAhead, plugForward);
-            socket.engaged *= smoothstep(-0.5, 0.0, ahead);
-        }
+        float behind = dot(socket.position - plugOrigin, plugForward);
+        socket.engaged *= smoothstep(-worldLength * 0.5, -worldLength * 0.05, behind);
     }
 
     // Nothing to bend toward. Say so, rather than bending toward nothing.

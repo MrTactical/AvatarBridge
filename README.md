@@ -313,8 +313,15 @@ per avatar: 512 overlapping pairs a frame, and everything past that is dropped w
 converted avatar carried over a hundred of them, so two people close together could spend the
 room's budget and stop every contact in it, including the ones YAPS needs and other people's.
 Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and would
-rather pay that price. YAPS keeps its own two per plug either way, so plugs and sockets are
-unaffected.
+rather pay that price.
+
+**What YAPS itself spends, for comparison.** A plug's contact channel builds up to nine receivers:
+engagement, is-it-a-hole, is-it-a-ring, three for where the socket is and three more for which way
+it faces. It buys them in tiers against the sync budget, so a plug with little budget left carries
+three rather than nine, and the report says which it got. A socket emits pointers rather than
+receivers. That is a real share of the instance's 512 overlapping pairs and worth knowing when a
+crowded room stops responding — but it is what the bending is made of, where a haptics stack's
+hundred-odd contacts drive a toy the wearer may not own.
 
 **The penetration itself is converted, not stripped** — the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -730,10 +737,18 @@ both. The report says which case you're in.
 **How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
 parameter sync it has left:
 
-| | costs | reaches | when it's used |
+| | costs | reaches | how good it is |
 |---|---|---|---|
-| **Contact channel** | up to 9 synced floats per plug | everyone, at ChilloutVR's parameter rate | the exact route, when there's budget |
-| **Marker lights** | nothing | anyone whose client draws the plug | close range; the only route to legacy DPS content |
+| **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
+| **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
+
+**They work together rather than competing.** The channel finds the socket and decides how engaged
+the plug is; a marker light in range then replaces the position outright, because a light is
+exact and continuous where the channel is quantised and stepped. So a socket carrying both gives
+the smoothest result, a lights-only socket still works for anyone drawing it, and a
+contacts-only socket still works for someone whose content filters have switched avatar lights
+off. On a close socket the channel alone can be seen as a slight tremble, which is the resolution
+of a synced float across the channel's box and not a fault.
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than
@@ -749,9 +764,9 @@ other people and does nothing for the person wearing it. Sockets built with the 
 written in, along with current marker light ranges if the socket came from an older prefab. A
 conversion rebuilds every socket from scratch, so converted avatars get the twins by default.
 
-**What other people see.** The wearer's own machine works out where the socket is, and a driver
-publishes it so everyone else sees the same bend. Marker lights are read independently by each
-viewer, so they need no sync at all. Both paths degrade quietly if a viewer has lights or custom
+**What other people see.** The contact triggers run on the wearer's machine and write the
+socket's position straight into synced parameters, so every client rebuilds the same bend from the
+same numbers. Marker lights are read independently by each viewer and need no sync at all. Both paths degrade quietly if a viewer has lights or custom
 shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
 breaks.
 
@@ -857,6 +872,14 @@ from the CCK as a prop. **Make it again after updating AvatarBridge**: a prop th
 the bake and the patched shader copy it was built with, and nothing in the project reaches it — an
 old one bending oddly next to a current avatar is that, not a fault in the avatar.
 
+**A ring-and-socket prop prefab** — *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
+`YAPS Ring and Socket Prop` beside them: the plug prop's other half, a spawnable carrying a ring to
+pass through above and a hole to enter below, facing opposite ways so one prop serves both. Resize
+the body and move the sockets before uploading. Both sockets carry marker lights, and a mesh has
+four vertex light slots, so an old DPS toy sees one at a time; anything modern finds both by
+contact. **Not yet confirmed in game** — it is built and it behaves in the editor, and nobody has
+uploaded one and used it with another person yet.
+
 **YAPS Socket** (the component the prefabs carry) — hole or ring; the mesh whose shapes should
 open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
 depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens
@@ -870,6 +893,14 @@ within a couple of metres: the plug prop prefab if the project has one, since th
 the shader the project has today, otherwise a plug built on the spot. While it runs, the plug's
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
+
+**A socket says when it is behind the toolkit.** Nothing revisits a socket once it is made: fixes
+ship to new ones and reach no existing one, and the two look identical. From 4.4.0 a socket
+carries the version that built it and its inspector leads with a card when that is not the version
+you are running — which version made it, and that baking it again is the fix. Worth acting on
+rather than ignoring: a socket built before 4.4.0 has half-size trigger volumes, a hole flag that
+can only be set, and a position that sticks where it last saw a plug. On a prop, run the prop
+builder again; on an avatar, *Bake every plug and verify*.
 
 **One socket is lit at a time**, the same rule a conversion applies; every lit-capable socket
 carries its pair, dark until chosen. Unity gives a mesh
@@ -948,7 +979,9 @@ toward 0 and `_YAPS_EntranceStiffness` up as it rises; a "soft" toggle drops `_Y
 The **Animate it** card on each component lists the names. Size is wired for you: a size slider
 or hyper toggle that scales the plug's root bone, or moves one of its baked blendshapes, gets a
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
-weights), so the deform is the size the mesh is drawn at.
+weights), so the deform is the size the mesh is drawn at. Those curves are written *relative to
+the size it was baked at*, so 1 always means "as baked": re-scale the bone and Bake again and the
+numbers still line up, in the editor and in game alike.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
@@ -1013,14 +1046,23 @@ alone.
   plug shows live. Wriggle and pumping are time-driven; the scene view repaints while a plug is
   selected so they move. A socket's shapes follow the preview plug's tip while it runs, and
   **Test depth** moves them from a slider without any plug at all.
-- **Not in Play mode.** ChilloutVR's triggers and contacts are the game's, not Unity's, so a
-  socket whose shapes go through a contact does nothing in editor Play mode — drive its
+- **In Play mode, if you ask for it.** The preview stands down when you press Play so it cannot
+  race whatever else is writing to the material, which is right until you notice that most avatars
+  hide the plug until a toggle brings it in — so Play mode is the only state where there is
+  anything to look at. **Keep previewing in Play Mode**, on the socket, turns it back on. It is
+  also the only way to watch a POSED avatar: edit mode holds the rest pose, where every part of a
+  plug agrees about which way it faces.
+- **Contacts still do not exist in Play mode.** ChilloutVR's triggers and contacts are the game's,
+  not Unity's, so a socket whose shapes go through a contact does nothing there — drive its
   `YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
-  work, or test it in game. Preview and Test depth work outside Play mode, which is where to look.
+  work, or test it in game.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
-  debug view (on the material's YAPS panel) colours the plug by what found the socket — black
-  nobody, green the contact channel, yellow a marker light — which is the first thing to look at
-  when a plug bends toward the wrong thing, or nothing.
+  debug view (on the material's YAPS panel) straightens the plug and puts the answer in its
+  LENGTH — a third means nothing found the socket, two thirds the contact channel, full a marker
+  light. Length rather than colour because a patched shader only lets the toolkit edit the vertex
+  stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
+  bends toward the wrong thing, or toward nothing. Turn it back off before you upload; the
+  toolkit warns you if you forget.
 - **Four vertex-light slots is the whole light-path constraint.** Unity gives a mesh four; a
   socket takes two; on an avatar with many sockets the converter wires each socket's lights to
   the menu entry that already names it, so lit sockets are the ones you switched on. A hand-held
@@ -2076,8 +2118,9 @@ Normal. That's AvatarBridge registering its scripting defines.
 Work down the list; the first that fits is usually it.
 
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
-  by*: black means nothing found the socket, green the contact channel did, yellow a marker light
-  did. Black with a socket right there means neither transport reached the plug.
+  by*. It straightens the plug and puts the answer in its LENGTH: a third means nothing found the
+  socket, two thirds the contact channel did, full a marker light did. A third with a socket right
+  there means neither transport reached the plug.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
@@ -2086,8 +2129,11 @@ Work down the list; the first that fits is usually it.
   socket you have switched on but not chosen here is visible in the hierarchy and dark to every
   old toy — that exact picture has been reported as "it does nothing".
 - **A contact-only socket** (no lights — TPS orifices, some props) is found by the contact channel
-  alone. A converted avatar has that channel; a plug built with the YAPS tool reads lights only,
-  and a prop has one only if you added it. The report and the tool both say which a plug has.
+  alone. Every plug has that channel now: a converted avatar always did, and **since 4.4.0 a plug
+  built with the YAPS tool does too**. It was being built into a controller ChilloutVR never
+  uploads, so it looked correct in the editor and did nothing in game, for anybody. If a plug made
+  before 4.4.0 does nothing against a lightless socket, bake it again. The report and the tool both
+  say what a plug has.
 - **Is the socket behind the plug?** Anything from dead ahead to square beside the base engages in
   full, and only a socket clearly behind it is refused, fading out by about a hundred and twenty
   degrees. That gate is what stops a plug folding back on itself to reach its own root, and it

@@ -235,7 +235,7 @@ namespace AvatarBridge
         // there is one definition of what a socket is, and it is placed one
         // plug length along the plug's own measured forward — the position
         // the plug is actually reaching for.
-        public static void DropTestSocket(YapsPlug plug)
+        public static void DropTestSocket(YapsPlug plug, YapsSocket.SocketKind kind = YapsSocket.SocketKind.Hole)
         {
             if (plug == null) return;
             RemoveTestSocket();
@@ -246,7 +246,20 @@ namespace AvatarBridge
                     "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
-            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName);
+            // NO LIGHTS on a preview socket. It exists to drive the preview,
+            // and the preview writes the contact channel — so a light on it
+            // is a second, uncontrolled path answering the same question.
+            // That is precisely how a channel which had never worked once in
+            // game passed every editor test anyone ran: the light was always
+            // there to catch it.
+            // WITH lights, like a real socket. It used to be built without
+            // them so that a light could not answer in place of the contact
+            // channel while the channel was being debugged. That made the
+            // preview show the fallback route instead of the one a user
+            // actually gets, so a plug looked worse in the editor than it
+            // does in game and every reading taken from it was of the wrong
+            // path. Turn its lights off by hand to isolate the channel.
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
@@ -276,7 +289,12 @@ namespace AvatarBridge
                 // socket that is no longer there.
                 var socket = existing.GetComponent<YapsSocket>();
                 if (socket != null) Set(socket, false, spawnPlugIfNone: false);
-                Undo.DestroyObjectImmediate(existing);
+                // Set destroys OUR preview socket itself, so by here it is
+                // usually gone. Handing Unity a destroyed object throws
+                // ArgumentNullException on objectToUndo; the null check is
+                // Unity's overloaded ==, which reports a destroyed object as
+                // null and is exactly what is wanted.
+                if (existing != null) Undo.DestroyObjectImmediate(existing);
             }
             SceneView.RepaintAll();
         }
@@ -299,6 +317,14 @@ namespace AvatarBridge
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
+            // A socket WE dropped exists only to be previewed against, so
+            // switching its preview off is asking for it to go rather than
+            // to sit there inert. Last, because PreviewTick above still
+            // needs it alive to write the cleared flags back.
+            if (!on && socket.gameObject.name == SocketName)
+            {
+                Undo.DestroyObjectImmediate(socket.gameObject);
+            }
             SceneView.RepaintAll();
         }
 
@@ -313,7 +339,7 @@ namespace AvatarBridge
         static void Tick()
         {
             // Stop once nothing needs it.
-            var sockets = Object.FindObjectsOfType<YapsSocket>();
+            var sockets = Object.FindObjectsOfType<YapsSocket>(true);
             bool previewing = sockets.Any(s => s.preview);
             bool plugSelected = Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<YapsPlug>() != null;
             if (!previewing && !plugSelected) { Animate(false); return; }
@@ -328,7 +354,7 @@ namespace AvatarBridge
         {
             if (socket == null) return CountBakedPlugs();
             int n = 0;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
             {
                 if (!PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
                 float gap = Mathf.Min(Vector3.Distance(origin, socket.transform.position),
@@ -341,7 +367,7 @@ namespace AvatarBridge
         public static int CountBakedPlugs()
         {
             int n = 0;
-            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            foreach (var r in Object.FindObjectsOfType<Renderer>(true))
                 foreach (var m in r.sharedMaterials)
                     if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
             return n;
@@ -353,7 +379,7 @@ namespace AvatarBridge
         public static bool FirstBakedPlugFrame(out Vector3 origin, out Vector3 forward, out Vector3 up, out float length)
         {
             origin = Vector3.zero; forward = Vector3.forward; up = Vector3.up; length = 0.25f;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
                 if (PlugFrame(plug, out origin, out forward, out up, out length)) return true;
             return false;
         }
@@ -552,7 +578,7 @@ namespace AvatarBridge
             float best = -1f;
             var at = socket.transform;
             YapsSocketReactions.TriggerBox(socket, out var offset, out var size);
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
             {
                 if (!YapsPreview.PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
                 var tip = origin + forward * length;
@@ -671,6 +697,25 @@ namespace AvatarBridge
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
             _root.Add(body);
+
+            // BUILT BY AN OLDER TOOLKIT?
+            //
+            // A prop is built once and never revisited, so every fix ships
+            // to new ones and reaches no existing one, and the two look
+            // identical from the outside. A socket carrying half-size
+            // trigger boxes, or a channel that configured one material out
+            // of three, gives no sign of it. The stamp is written when the
+            // socket is baked or its prop is built.
+            if (!string.IsNullOrEmpty(socket.builtBy) && socket.builtBy != BridgeDefines.Version)
+            {
+                var behind = new BridgeElements.Card("This socket is behind the toolkit");
+                behind.Body.Add(BridgeElements.Hint(
+                    "Built by " + socket.builtBy + ", and this is " + BridgeDefines.Version + ". "
+                    + "Fixes since then have not reached it: nothing revisits a socket once it is "
+                    + "made. Bake it again to bring it up to date. On a prop, run the prop builder "
+                    + "again; on an avatar, Bake every plug and verify."));
+                body.Add(behind);
+            }
 
             // What it is.
             var what = new BridgeElements.Card("What it is");
@@ -943,6 +988,53 @@ namespace AvatarBridge
                     else { YapsPreview.Set(socket, true, spawnPlugIfNone: false); YapsPreview.DropTestPlug(socket); }
                     RebuildLater();
                 })));
+
+            // WHICH ROUTE the preview speaks. Off is the old shortcut, a
+            // world position and a true forward, which is close to what a
+            // marker light gives. On is what the game actually sends: an
+            // offset normalised across the channel's box, and no rotation
+            // at all, with the facing derived from a second point.
+            //
+            // Worth a switch rather than a constant, because "it works one
+            // way and not the other" is the fastest question there is to
+            // ask about a socket, and answering it used to take an upload.
+            var route = new Toggle("Preview through the contact channel") { value = socket.previewAsChannel };
+            route.AddToClassList("ab-toggle");
+            route.RegisterValueChangedCallback(e =>
+            {
+                Undo.RecordObject(socket, "YAPS preview route");
+                socket.previewAsChannel = e.newValue;
+                EditorUtility.SetDirty(socket);
+            });
+            see.Body.Add(route);
+            see.Body.Add(BridgeElements.Hint(
+                "Leave this on. The socket then arrives the way the game sends it, so what you see " +
+                "here is what you will get after an upload. Off is a simpler route the editor can " +
+                "take that the game never does, and it is only worth a look if you are trying to " +
+                "tell whether a fault belongs to how the socket is found or to how the plug bends. " +
+                "Either way, a socket with marker lights answers first: a light in range replaces " +
+                "the position outright, so switch this socket's lights off in Advanced if you want " +
+                "to see the contact channel on its own."));
+
+            // The plug mesh on most avatars only exists in Play Mode: it
+            // ships switched off and a toggle brings it in. So the one
+            // state where you can SEE a plug was the one state the preview
+            // refused to run in, and every editor bend anyone ever saw came
+            // from a marker light instead.
+            var inPlay = new Toggle("Keep previewing in Play Mode") { value = socket.previewInPlayMode };
+            inPlay.AddToClassList("ab-toggle");
+            inPlay.RegisterValueChangedCallback(e =>
+            {
+                Undo.RecordObject(socket, "YAPS preview in play mode");
+                socket.previewInPlayMode = e.newValue;
+                EditorUtility.SetDirty(socket);
+            });
+            see.Body.Add(inPlay);
+            see.Body.Add(BridgeElements.Hint(
+                "Turn this on when the plug only appears after you press Play, which is the usual " +
+                "case. It is also the only way to watch the channel on a POSED avatar: edit mode " +
+                "holds the rest pose, where every part of the plug agrees about which way it faces. " +
+                "Off by default so the preview cannot race anything else writing to the material."));
 
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.
@@ -1224,15 +1316,33 @@ namespace AvatarBridge
                 "The bend needs the plug baked, and needs its deform switched on: if an animator " +
                 "gates it (an erection slider, say), set the material's _YAPS_Enabled to 1 while you " +
                 "look, because preview does not run your animator."));
-            var socketButton = new BridgeElements.PrimaryButton(
-                YapsPreview.TestSocketInScene ? "Take the test socket away" : "Preview against a test socket",
-                () =>
+            if (YapsPreview.TestSocketInScene)
+            {
+                see.Body.Add(new BridgeElements.PrimaryButton("Take the test socket away", () =>
                 {
-                    if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
-                    else YapsPreview.DropTestSocket(target as YapsPlug);
+                    YapsPreview.RemoveTestSocket();
                     RebuildLater();
-                });
-            see.Body.Add(socketButton);
+                }));
+            }
+            else
+            {
+                // Both kinds, because they are not the same test: a hole
+                // closes around the shaft and stops it, a ring slides along
+                // it. A plug that looks right entering one can be wrong in
+                // the other.
+                var row = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+                foreach (var kind in new[] { YapsSocket.SocketKind.Hole, YapsSocket.SocketKind.Ring })
+                {
+                    var k = kind;
+                    var b = new BridgeElements.PrimaryButton(
+                        k == YapsSocket.SocketKind.Hole ? "Preview into a hole" : "Preview through a ring",
+                        () => { YapsPreview.DropTestSocket(target as YapsPlug, k); RebuildLater(); });
+                    b.style.flexGrow = 1;
+                    if (k == YapsSocket.SocketKind.Ring) b.style.marginLeft = 4;
+                    row.Add(b);
+                }
+                see.Body.Add(row);
+            }
 
             // Every knob is tagged with its system, and the filter shows one system.
             var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));

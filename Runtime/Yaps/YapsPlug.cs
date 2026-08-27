@@ -12,8 +12,11 @@ namespace AvatarBridge.Yaps
         [Tooltip("The mesh that bends. Leave empty to use the renderer on this object.")]
         public Renderer renderer;
 
-        [Tooltip("Which of the renderer's materials is the plug. -1 means the first material " +
-                 "whose vertices the bone chain moves, or slot 0 on a static mesh.")]
+        [Tooltip("Which of the renderer's materials is the plug. Leave it at -1 unless you mean " +
+                 "otherwise: -1 bakes EVERY material the bone chain reaches, which is one of them " +
+                 "for an ordinary plug and all of them when a whole avatar is the plug. A number " +
+                 "means that slot alone, so a plug whose vertices span several materials will bend " +
+                 "in one and stay rigid in the rest, tearing along the seam.")]
         public int materialSlot = -1;
 
         [Header("Skinned mesh")]
@@ -119,6 +122,30 @@ namespace AvatarBridge.Yaps
         // by the first bake; the toolkit's own, not a knob.
         [HideInInspector]
         public Material bakedFrom;
+
+        // One entry per material slot the bake replaced, because a plug's
+        // vertices can span several. A whole avatar baked as one plug wears
+        // three materials, and patching only one leaves the rest of the mesh
+        // rigid while the patched part bends — the mesh tears along the
+        // seam. bakedFrom above stays for the primary slot so an avatar
+        // baked before this still restores.
+        [System.Serializable]
+        public class BakedSlot
+        {
+            public int slot;
+            public Material was;
+
+            // Which renderer's slot. A plug rooted high enough spans several
+            // meshes, and slot 0 of a collar is not slot 0 of the body — a
+            // record keyed on the number alone puts one mesh's material onto
+            // another. Empty means the plug's own renderer, so records
+            // written before a plug could span meshes still resolve.
+            public Renderer renderer;
+        }
+
+        [HideInInspector]
+        public System.Collections.Generic.List<BakedSlot> bakedSlots =
+            new System.Collections.Generic.List<BakedSlot>();
 
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();
     }

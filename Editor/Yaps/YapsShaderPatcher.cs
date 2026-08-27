@@ -55,8 +55,12 @@ namespace AvatarBridge
         _YAPS_SocketFlags (""YAPS socket flags"", Vector) = (0,0,0,0)
         _YAPS_SocketFront (""YAPS socket front"", Vector) = (0,0,0,0)
         _YAPS_ChannelSpace (""YAPS channel space"", Range(0,1)) = 0
+        _YAPS_ChannelOrigin (""YAPS channel origin"", Vector) = (0,0,0,0)
+        _YAPS_ChannelForward (""YAPS channel forward"", Vector) = (0,0,0,0)
+        _YAPS_ChannelUp (""YAPS channel up"", Vector) = (0,0,0,0)
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
+        [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4)] _YAPS_Debug (""YAPS view"", Float) = 0
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10
         _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.30
         _YAPS_IdleLength (""YAPS idle length"", Range(0.1,1)) = 1
@@ -122,7 +126,7 @@ namespace AvatarBridge
             if (unit.Count == 0) return null;
             string yaps = LoadYapsSource(out _);
             if (yaps == null) return null;
-            return "Hidden/YAPS/" + Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
+            return PatchedName(unit[0].Text, Hash(sourcePath + EmittedVersion(yaps) + unit.Count));
         }
 
         // Whether a patched material is carrying code this version no
@@ -163,6 +167,40 @@ namespace AvatarBridge
                 return true;
             }
             finally { UnityEngine.Object.DestroyImmediate(stand); }
+        }
+
+        // What the patched shader is called, and it is not cosmetic.
+        //
+        // Poiyomi strips a shader from the BUILD when it carries Thry's two
+        // marker properties and is not named "Hidden/Locked/...", reading
+        // that as an unlocked uber-shader. Our patch of a Poiyomi material
+        // inherits both markers, so under any other name it is excluded from
+        // the bundle and the avatar uploads PINK — correct in the editor,
+        // missing in game, which is the worst failure this tool can produce.
+        //
+        // A patch of a locked Poiyomi IS locked: its features are already
+        // resolved to constants, and only the deform was added. So the name
+        // is honest as well as necessary. Shaders with no Thry markers keep
+        // the plain name; there is nothing to strip them.
+        //
+        // The name does a second job, found by reading Thry's own sweep
+        // (ShaderOptimizer.SetLockedForAllMaterials). Auto-lock-on-upload
+        // takes every material whose shader uses the optimizer and is not
+        // already locked, and its test for "already locked" is this exact
+        // prefix. Under any other name our patch is swept into a lock, which
+        // resolves properties to constants — and OUR properties are the ones
+        // animation drives, so the deform would freeze at whatever the
+        // material happened to hold. The prefix keeps the sweep off it.
+        //
+        // Hence BOTH markers, not just the editor's: the sweep keys on
+        // ThryShaderOptimizerLockButton, and a shader carrying that without
+        // the editor marker would have been named plainly and swept.
+        static string PatchedName(string sourceText, string hash)
+        {
+            bool thry = sourceText != null
+                        && (sourceText.Contains("shader_is_using_thry_editor")
+                            || sourceText.Contains("ThryShaderOptimizerLockButton"));
+            return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
@@ -253,7 +291,7 @@ namespace AvatarBridge
             }
 
             string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
-            string newName = "Hidden/YAPS/" + hash;
+            string newName = PatchedName(shaderFile.Text, hash);
             shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
                 "Shader \"" + newName + "\"");
 

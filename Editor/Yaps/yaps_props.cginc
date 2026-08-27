@@ -63,6 +63,24 @@ float4 _YAPS_SocketFront;
 //      cannot express anything else: a trigger reports where a pointer
 //      sits inside its own box, normalised per axis, and that is the only
 //      shape the value can arrive in.
+// THE FRAME CHANNEL SPACE IS MEASURED IN, in the RENDERER's object space.
+//
+// The channel reports the socket's offset from the plug, and the shader
+// used to rebuild it against the frame recovered from each VERTEX. On an
+// ordinary plug every vertex recovers nearly the same frame so it worked;
+// on a plug rooted high in a skeleton they recover wildly different ones,
+// and the same offset decoded to a different world position per vertex.
+// The mesh tore itself apart while the light path, which sends a WORLD
+// position identical for everybody, looked perfect beside it.
+//
+// The trigger boxes ride ONE frame, the measured one, so the decode has to
+// use that same one. Published here rather than derived, because the
+// vertex cannot know it. Zero forward means nothing was published and the
+// old per-vertex behaviour stands, so a bake from before this still works.
+float4 _YAPS_ChannelOrigin;
+float4 _YAPS_ChannelForward;
+float4 _YAPS_ChannelUp;
+
 float _YAPS_ChannelSpace;
 float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 
@@ -87,6 +105,13 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // is reconstructed as 5·rsqrt(atten) rather than read, and it showed as
 // sockets that worked or did not depending on which digit their range
 // happened to land on.
+// Debug view. 0 off; 1 "Resolved by". A patched shader can only be
+// edited in its VERTEX stage — the patcher refuses surface shaders for
+// exactly that reason — so the view cannot paint a colour and says what
+// it knows in the one language every host shader shares: the plug's
+// length. See YapsDeform.
+float _YAPS_Debug;
+
 float _YAPS_SelfTag;
 
 // --- the hole taper --------------------------------------------------

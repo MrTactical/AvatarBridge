@@ -58,6 +58,17 @@ namespace AvatarBridge
             // damage. A row with only these stays green.
             public List<string> Expected = new List<string>();
 
+            // The plug this mesh is PART OF, when it has no plug of its own.
+            // A plug rooted high enough carries every mesh its bones move, and
+            // each of those ends up wearing a patched material — which reads
+            // as a plug in its own right and lists as a peer. It is not one:
+            // it has no frame, no length and no settings of its own, it wears
+            // the carrier's. Listing it as a peer invited exactly the mistake
+            // that produced this field, a second plug component added to a
+            // mesh already carried, which then re-baked it with its own frame
+            // and broke the two apart.
+            public Yaps.YapsPlug CarriedBy;
+
             public string ReadableList()
             {
                 var parts = new List<string>();
@@ -193,6 +204,25 @@ namespace AvatarBridge
                 if (p == null || string.IsNullOrEmpty(p.type)) continue;
                 if (IsSocketRootTag(p.type) || IsSocketFrontTag(p.type)) markers.Add((p.transform, null, p));
             }
+            // Which plugs found by their MATERIAL are really another plug's
+            // carried mesh. Only ever a mesh with no plug of its own: a
+            // component is an author saying "this one is mine", and that is
+            // answered as a conflict at bake, not quietly reparented here.
+            foreach (var f in result.Plugs)
+            {
+                if (f.Root == null || f.Renderer == null) continue;
+                if (f.Root.GetComponent<Yaps.YapsPlug>() != null) continue;
+                foreach (var carrier in root.GetComponentsInChildren<Yaps.YapsPlug>(true))
+                {
+                    if (carrier == null || carrier.rootBone == null) continue;
+                    if (carrier.Target == f.Renderer) continue;
+                    if (!(f.Renderer is SkinnedMeshRenderer skin)) continue;
+                    if (YapsNativeBuilder.SlotsWeightedTo(skin, carrier.rootBone).Count == 0) continue;
+                    f.CarriedBy = carrier;
+                    break;
+                }
+            }
+
             // Skip markers under a plug already found.
             markers.RemoveAll(m => result.Plugs.Any(pl => pl.Root != null && m.host.IsChildOf(pl.Root)));
 
@@ -329,6 +359,19 @@ namespace AvatarBridge
                 f.Notes.Add($"{f.Origin} deform — upgrade carries its settings onto YAPS");
             if ((f.ReadableBy & Speaks.DPS) == 0) f.Notes.Add("no tip light: DPS sockets cannot see it");
             if ((f.ReadableBy & (Speaks.TPS | Speaks.SPS)) == 0) f.Notes.Add("no plug pointers: contact sockets cannot see it");
+            // Behind the toolkit: the row goes amber and Build is the fix,
+            // which is the whole point of saying it here rather than only
+            // on the material.
+            if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
+                f.Notes.Add("its shader is older than the toolkit — Build refreshes it");
+            // A debug view REPLACES the deform, and it is a material value,
+            // so it uploads. On an ordinary plug that is a curiosity; on a
+            // whole-avatar plug it flattens the avatar for everyone, and it
+            // survives the upload looking like a broken bake. Cost an hour
+            // of hunting a sync bug that was not there, 2026-08-26.
+            if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
+                && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
+                f.Notes.Add("a DEBUG VIEW is on — it replaces the deform and will upload with the avatar");
         }
 
         static void Classify(Found f)
@@ -390,7 +433,7 @@ namespace AvatarBridge
                 // Dark on purpose under the lighthouse: pairs wait on the
                 // menu, one lit at a time. Only a socket dark with no
                 // lighthouse to light it is a problem.
-                var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>() : null;
+                var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>(true) : null;
                 bool lighthouse = avatar != null && avatar.avatarSettings != null
                     && avatar.avatarSettings.settings != null
                     && avatar.avatarSettings.settings.Any(e => e != null && e.machineName == "YAPS/Lighthouse");

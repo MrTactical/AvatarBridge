@@ -57,6 +57,211 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ## Loose ends, small but real
 
+### Four found wearing the avatar, 2026-08-25/26
+
+Joe baked a whole avatar as one plug and four separate faults fell out of it. Recorded here
+because they were found in a session, not in a report, and the queue is the only thing that
+outlives scrollback.
+
+1. **The bake made a new material every time — FIXED 2026-08-26.** Both material sites asked
+   `AssetDatabase.GenerateUniqueAssetPath`, so a plug removed and baked again left `Fur_YAPS_`,
+   `Fur_YAPS_ 1`, `Fur_YAPS_ 2` behind it, one full material per click, in a user's project.
+   `YapsBaker.Generated` now derives a path that does not move and re-derives the values from the
+   source onto whatever is already there. The file keeps its GUID, so anything already pointing at
+   it stays pointed at the right thing, and what was there is never trusted — only its identity —
+   so an asset left by an older version cannot carry stale settings forward. One helper serves
+   both sites; the primary and the mirrored slots had drifted into two different conventions.
+
+2. **Additional meshes under the armature do not bend — FIXED 2026-08-26, UNTESTED IN UNITY.**
+   A plug whose root bone is the Armature patched ONE renderer's materials; every other skinned
+   mesh weighted to the same bones kept its own shader and stayed rigid, which is the seam the
+   multi-material work closes, one level up. `MirrorToRenderers` now bakes each of them, and the
+   bake is per mesh because the texture is indexed by mesh-global vertex id — what they share is
+   the primary's FRAME and LENGTH, via a new `shareFrameWith` on `YapsBaker.Bake`, so they bend
+   as one object rather than each measuring its own idea of where the shaft is. Scoped to the
+   `CVRAvatar`, not the scene root, or two avatars under one container lend each other meshes.
+   Skipped entirely when the author names a material slot: that says "this mesh, this slot".
+
+   **`BakedSlot` gained a `renderer`**, because a plug spanning meshes has a slot 0 on each of
+   them. Matching on the number alone would have handed one mesh's material to another on Remove
+   — the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
+
+   *Compile-checked only.* `check-defines.sh` links the project's compiled Runtime assembly, so
+   a Runtime change cannot be validated there — the documented blind spot. Needs a real Unity
+   compile and a bake on an avatar with a second weighted mesh.
+
+3. **Poiyomi's auto-lock — ANSWERED 2026-08-26, and the pink fix had already closed it.**
+   Read out of `ShaderOptimizer.SetLockedForAllMaterials` rather than guessed. The sweep takes
+   every material whose shader uses the optimizer and is not already locked, and its test for
+   "already locked" is `shader.name.StartsWith("Hidden/Locked/")` — the exact prefix the pink fix
+   gave us. So auto-lock-on-upload skips our materials, and has been skipping them since that fix.
+
+   Worth knowing what it would have done: locking resolves properties to constants, and OUR
+   properties are the ones animation drives (`_YAPS_Enabled`, `_YAPS_BakeScale`, the knobs). A
+   locked YAPS material would have frozen at whatever it happened to hold — a plug that never
+   toggles and never resizes, in game only.
+
+   **One gap closed with it.** `IsShaderUsingThryOptimizer` keys on the `ThryShaderOptimizerLockButton`
+   attribute, while `PatchedName` keyed only on `shader_is_using_thry_editor`. A shader carrying
+   the lock button without the editor marker would have been named plainly and swept in. Both
+   markers now.
+
+   **Still open, and left alone on purpose:** an explicit "Unlock all materials" grabs ours too,
+   and tries to restore a `TAG_ORIGINAL_SHADER` we never wrote. The result is a broken material,
+   recovered by re-baking. Guarding it means writing Thry's own lock records, which is
+   impersonating another tool's bookkeeping to survive a button the user deliberately pressed.
+
+4. **Parallel paths — AUDITED 2026-08-26, two closed and one recorded.**
+
+   *Window vs inspector, CLOSED.* Three doors bake a single plug and only one went through
+   `BakeAndRefreshMenu`. The window's row button and its make-this-a-plug flow called the bare
+   `Bake`, so they left the contact channel holding a previous build's frames and the menu
+   animator unrefreshed — the same divergence as yesterday's, in two more places. Both now go
+   through the same door as the inspector. `BuildAll` keeps the bare `Bake` deliberately: it does
+   the menu and the channel once, for the whole avatar, which is the point of a batch.
+
+   *Remove vs Sweep, CLOSED.* Both clear the channel and refresh the menu animator. The rest of
+   the difference is real: Remove undoes one plug, Sweep collects orphans. They are not two doors
+   to one job.
+
+   *Native builder vs converter, OPEN and the interesting one.* **The converter has its own bake
+   path** (`YapsConverter` lines 116 and 211) and patches ONE material slot on ONE renderer. It
+   never calls `MirrorToSlots`, and now never calls `MirrorToRenderers` either — so both the
+   multi-material fix of 2026-08-25 and the multi-renderer fix of 2026-08-26 apply to the native
+   toolkit ONLY, and a CONVERTED avatar still tears along the seam.
+
+   Not fixed here, for two honest reasons: the mirroring takes a `YapsPlug` and the converter
+   holds a VRCFury plug, so closing it is a refactor to pass values rather than the component;
+   and it changes conversion output, so it needs a corpus run to land. Low impact in practice — a
+   VRCFury plug is normally one dedicated mesh with one material, and multi-material plugs are the
+   whole-avatar case, which is a native-toolkit experiment. Worth doing, not worth rushing.
+
+4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
+   window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared
+   channels where Sweep did the leftovers. Both were fixed one at a time. That is a class, not
+   two bugs — every pair of entry points into one operation wants auditing against each other:
+   window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
+
+### RESOLVED IN THE EDITOR 2026-08-26: the two routes now behave identically
+
+The remainder after the entry below was three more faults: the published channel frame decoded
+through unity_ObjectToWorld, which is IDENTITY for a skinned mesh, so it arrived unrotated (the
+decode is back on the per-vertex recovered frame, and no object-space math survives in the
+channel path); a carried renderer computed its engagement gate from its own bounds centre
+instead of its carrier's frame; and the length override reached the primary materials only, so
+the body and the collar ran different envelopes. With those closed, channel and world previews
+agree at the shipped -89.98 import rotation, carried meshes in step.
+
+What the editor still cannot prove, for the game test: the REAL triggers' sizes and encoding
+(the probe measured half-extents normalisation once — worth re-confirming), the 10 Hz sync
+stepping, the posed-skeleton per-vertex divergence on a whole-avatar plug, and the known gap
+that the material driver carries socket values to the PRIMARY material only, so a carried mesh
+in game deforms by lights alone until the channel build reaches its materials.
+
+### The prior state, kept for the record: the channel route deformed differently
+
+2026-08-26, end of a long day, and this is where it stands. The socket preview can now write
+EITHER route — `previewAsChannel` on the socket, under "See it work" — so the question is one
+tickbox in the editor rather than an upload:
+
+    off   world position and a true forward   deform is CORRECT
+    on    the channel's own encoding          deform is WRONG
+
+Every difference between the two that could be found by reading has been closed, and it is still
+wrong. Fixed on the way, all real and all confirmed:
+
+- the engagement and hole triggers were built at HALF size, on a belief that a distance-only
+  trigger becomes a sphere, which the client disproves
+- channel space decoded against the frame recovered PER VERTEX, so a plug spanning a skeleton
+  landed the socket somewhere different for every vertex
+- the channel configured `plug.Material` alone, so one material of three got channel space and
+  the others fell back to the per-vertex frame
+- the engagement remap measured to the per-vertex origin, fragmenting engagement across the mesh
+- a re-bake set five of the seven fields a fresh bake sets, leaving `_YAPS_BakeScale` and
+  `_YAPS_BakeGirth` at whatever an animated size clip last wrote
+- the front-axis gate scaled with plug length (`worldLength * 0.5`), so on a 1.5 m plug anything
+  up to 77 cm was accepted as a socket's axis; the front point is 1 cm in every system and never
+  scales, so it is an absolute window now
+
+**The next measurement, not yet taken:** read "Gap to socket" with the channel preview ON and then
+OFF, at the same socket position. The preview encodes using the same extents and bake scale the
+shader decodes with, so the round trip should be EXACT and the two readings identical. Joe's
+earlier reading was "close, but not 100%", and if that holds it means something between encode and
+decode is changing the value — which is the thread to pull, because by construction nothing should.
+
+Three instruments were themselves wrong before they measured anything, which is most of why this
+took as long as it did: a motion-time readout that never animated, a `GestureLeft` control that
+could not move on a desktop avatar with no humanoid rig, and a facing view compared against a
+per-vertex direction. Every one reported nonsense loudly rather than reporting "fine", which is
+the only reason they were caught.
+
+### The contact channel fires now, and its deform is wrong
+
+2026-08-26, and it is the day's real finding. **The channel had never engaged, for anyone,
+including the wearer.** Every YAPS deform ever seen was the marker-light fallback, and a viewer
+with avatar lights off got nothing at all. Measured with the "Resolved by" view across three
+clients, then proved by a socket prop with its lights stripped.
+
+Cause: `BuildEngagementTrigger` and `AddHoleTrigger` halved their `areaSize` because a
+distance-only trigger was believed to become a sphere of radius `areaSize.x`. It does not. The
+client's `ImportReceiverShape` sets Box and `boxSize = areaSize`, always, and `ContactConversion`
+takes `boxSize` from `BoxCollider.size`, a full size. So the halving simply made the engagement
+volume half what was intended. Fixed, and the channel now fires.
+
+**What is left is the decode.** Same socket, two transports, two different deforms. Through
+contacts, on an armature plug, the body does not bend and only the face breaks — vertices before
+the socket ride the curve untouched and only those past it collapse, so that reads as the socket
+landing far along the shaft when the prop is right in front. One line does it:
+
+    offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001)
+
+Two suspects, one measurement each. Is `penetration` normalised across the box's half-extents or
+its full size — the contact probe's 1 m box answers that by where cyan reaches max, the face or
+halfway to it. And `_YAPS_BakeScale` is in the multiply, driven on an armature plug by the
+wearer's own size clips, so it may be scaling the offset a second time.
+
+Two instruments exist for this and both are in the Furgon project, not the repo:
+`Assets/Editor/ContactProbe.cs` (one trigger, three sliders, no YAPS) and
+`Assets/Editor/MakeContactOnlyProp.cs` (a socket with no lights, so nothing can cover for the
+channel).
+
+Also found on the way: **a sender that disappears never fires an exit.** Move a prop away and the
+exit task clears the value; DELETE it and the last value stays written forever. A plug would stay
+bent toward a socket that no longer exists. Exit tasks are not enough — the value wants a decay or
+a staleness check.
+
+### A stale material is invisible, and it wasted three readings
+
+2026-08-26. Three times in one afternoon a test result was wrong because the material was still
+running the previous shader, and nothing said so. The tell each time was a debug view answering
+a question the shader it was running had never been asked.
+
+**DONE 2026-08-26, in the two places a person actually looks.** The material's own YAPS panel
+gets a warning under the banner, because that is where somebody reads a value and believes it —
+which is exactly how all three readings were lost. And the Setup window's row goes amber with
+"its shader is older than the toolkit — Build refreshes it", because there the fix is one click
+away and the row already had a mechanism for saying so.
+
+Still open below: the project-wide sweep. A warning only reaches a material somebody happens to
+select or an avatar somebody happens to scan, and a prop prefab is neither.
+
+### Nothing revisits a prop, so a shader fix never reaches it
+
+Found 2026-08-26, after the two-socket prop fix. A patched shader's name hashes the emitted
+source, so `IsStale` knows when a material has fallen behind and both bake paths re-patch it —
+but only when something bakes. An avatar gets baked because its scene is open and Build is
+pressed. **A prop is a prefab sitting in the project, and nothing ever opens it**, so every
+shader-level fix reaches everyone except the props, and the only cure today is to make a new one.
+
+The fix is not a prop button. It is one project-wide sweep: walk the materials carrying
+`_YAPS_Bake`, ask `IsStale`, `Refresh` the ones that answer yes. That catches props, avatars in
+scenes nobody has opened, and anything imported from someone else's package — the same blind
+spot in three shapes. `YapsShaderPatcher` already has every piece; what is missing is the caller
+and a line in the window saying it exists.
+
+Joe's question is the right one: it should just work. A user has no way to know a shader moved,
+and "make a new one" is not an answer for a prop somebody has positioned and tuned.
+
 - **External audit 2026-08-25, the five deferred findings.** An audit by another agent
   (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
   fixed the same day; two were wrong (F1's consequence, F17's premise); these five are real,
@@ -239,6 +444,28 @@ entire class of report — works in editor, dead in game — stops existing.
 Wants measuring first: how much of CVR's contact resolution has to be reproduced before the
 answer is trustworthy. A preview that is right most of the time is worse than one that is
 honest about being a preview.
+
+**One member of this class is FIXED 2026-08-25: the squish.** Joe wore a plug in game and was
+compressed hard; the editor showed it correct, and scaling the plug made the mismatch worse.
+`_YAPS_BakeScale` is written as `1` at Bake, meaning "the size it was baked at", but
+`MirrorBoneScale` copied the bone's `m_LocalScale` curve across as an ABSOLUTE number. The two
+agree only for a bone that happened to sit at exactly 1 when it was baked; on any other rig the
+bone's scale was applied a second time, on top of the skinning that had already applied it. The
+editor hid it because no animator runs there, so the material's static `1` stood. Mirrored as a
+ratio to the bake pose now, tangents divided with the values. The same change gives each bone its
+own along-axis, which a child further down the chain never shared with its root.
+
+**The scaled-bone check is in: `Dev/Probes/BakeScaleCheck.cs`.** Every plug in the corpus sits at
+scale 1, the one value where the old code was right, so 87 avatars passed green for weeks while
+this was live. Not a corpus scene: the digest records no curve values, so no baseline would have
+moved even with a scaled bone in it. Three cases asserted directly instead, in seconds, with no
+avatar and no baseline: a bone baked at 0.4 that reads 1 at the bake pose and 3 at the top of its
+slider, the halfway point that only comes out right if the tangents were divided too, a bone at 1
+that must still pass through untouched, and a turned child whose length axis is not its root's.
+
+Still open in the same class, because a ratio only fixes the reference: a plug whose size layer
+holds a different value in game than the scene pose does in the editor is still two different
+plugs.
 
 ---
 
@@ -665,6 +892,32 @@ mode alongside the compatibility pair, not a replacement. Cheap to spike, and th
 are small: whether CVR's asset filter clamps light colour or intensity on avatars, and how much
 precision survives the intensity multiply.
 
+**SPIKED 2026-08-27 IN PLAY MODE AND IT WORKS.** A quad writing a known value into a fixed corner
+of clip space, a named `GrabPass`, and a second quad sampling it back: the value returns exactly.
+The grab comes back **ARGBHalf**, 16 bits of float per channel, worst error measured at 0.00005,
+which across a two metre range is about **0.1 mm**. That is twelve times finer than the contact
+channel, arrives every frame rather than ten times a second, and needs no smoothing, so none of
+the resolution-versus-lag trade above applies to it at all. `Assets/YapsSpike/` and
+`Assets/Editor/SpikeAtlas.cs` in the Dracaionan project.
+
+Writing the patch in clip space, ignoring the object's transform and the eye, makes it
+stereo-proof by construction: both slices of the eye texture array get identical content, so
+there is no double-wide layout maths to get wrong. This is the part that does not survive
+conversion from VRChat, and we simply do not have it.
+
+**Still unanswered, in order:** whether ChilloutVR's asset filter keeps a `GrabPass` through an
+upload (only an upload can say); the per-frame cost of a named grab in VR; whether the patch
+escapes frustum culling when the socket is off screen (scaling the quad enormously works, since
+the vertex shader ignores its position and only the bounds change); and cell collisions.
+
+**A possible answer to collisions, untested:** give each socket a build-time random id, hash it to
+a cell, and write the id into the cell beside the position. A colliding cell then decodes to some
+other socket's position, which is almost always metres away, and the engagement range gate already
+rejects that. Collisions would degrade to "no socket found", falling back to lights or contacts,
+rather than "wrong socket found".
+
+**Original note, written before the spike:**
+
 **The screen-space atlas is real, and we would write it better than SPS — but do not build it
 yet.** Sockets render a small quad encoding their world position into a reserved screen region;
 the plug samples it back through a named GrabPass. It is the only channel that dodges *both* walls
@@ -785,3 +1038,278 @@ model and it invalidates the instinct to make contact parameters local because t
 controlled by a curve, and `IsSynced` requires `!IsReadOnly`. Any design that computes a
 value in the animator and expects the room to see it is already wrong; sync the inputs, or
 compute it on every client from something that does sync.
+
+## The socket preview stands down in Play Mode without saying so
+
+`YapsSocket.PreviewTick` returns at `if (Application.isPlaying) return;`. That is correct:
+in Play Mode the game systems own the property blocks and an editor preview writing over
+them would fight whatever drives the material. But it stands down in total silence, and a
+preview that writes nothing is indistinguishable from a feature that does not work.
+
+This cost a full evening of diagnosis on 2026-08-26. Every reading taken in Play Mode showed
+an empty block, which decodes to the far corner of the channel box, which looks exactly like
+a bad encode. Out of Play Mode the same scene round-tripped to within 0 m.
+
+**Fix:** grey the preview toggle out in Play Mode, or put a line under it reading that the
+preview is inactive while playing. The user must not have to infer it.
+
+## `YapsSocket.preview` does not survive a recompile
+
+It is `[NonSerialized]`, so a domain reload drops it to false while the button can still read
+as active until it repaints. Any script edit silently stops a running preview. Either serialise
+it, or have the socket editor re-assert it after a reload.
+
+## Scene scans skipped inactive objects
+
+Fixed 2026-08-26: eight `FindObjectsOfType` calls across `YapsSocket`, `YapsComponentEditors`
+and `YapsNativeBuilder` took the parameterless overload, which excludes inactive GameObjects.
+An avatar plug ships switched off and an erection clip activates it at runtime, so in edit mode
+the mesh is hidden and the preview, the baked-plug count and the knob sync all passed straight
+over it. Every one of those scans means "find the plug in the scene", never "find the visible
+one". Not yet covered by the corpus.
+
+## The contact channel cannot choose between two sockets
+
+**DISPROVEN 2026-08-27, kept as a record of a wrong theory.** Two ring props were spawned beside
+one plug in game and it stayed completely stable, picking whichever socket the plug pointed at.
+So the channel does arbitrate in practice, whatever the code appears to leave undefined, and
+nothing below needs doing. The original text follows.
+
+**It was read off the code, not measured.** It was written up on 2026-08-27 as the
+cause of an in-game twitch, and that was wrong: the twitch survived a prop rebuilt with a single
+ring, so it is a different bug entirely. Nobody has yet put two sockets near one plug and
+watched. Treat what follows as a hypothesis worth testing, not a finding.
+
+A plug's axis triggers report whatever allowed pointer the client hands them, and nothing ranks
+the candidates. With two sockets inside one trigger box there is no way to express a preference,
+so the reported position has no defined winner.
+
+The light path does not have this problem: the shader sees every marker light at once and picks
+one by distance. The channel sees one pointer at a time and has no memory.
+
+This is not a contrived case. Any prop carrying both a ring and a hole hits it, and so do two
+people standing close to one plug.
+
+**Worth thinking about:** the trigger cannot rank, so arbitration has to happen after the fact,
+either by preferring the socket whose engagement is highest, or by holding the current one until
+it clearly leaves. Neither is free in sync budget. Until then a plug near two sockets is
+unstable on contacts alone.
+
+## The channel flickers at the sync rate in game
+
+Found 2026-08-27, immediately after the channel first worked in game. The deform twitches hard
+and the flicker is at about ten a second, which is ChilloutVR's parameter rate. It happens deep
+inside the socket, not only near the trigger's edge, and the light path on the same prop in the
+same room is perfectly smooth.
+
+**What is already ruled out, all measured rather than reasoned:**
+
+- Everything downstream of the parameter. Driving the channel by hand in Play Mode with a
+  constant value holds the driver fields, the material and the deform completely still. So
+  smoothing, the driver layers, the material and the shader are all stable.
+- A leftover `CVRAnimatorDriver`. There are no `YAPS Driver` objects on the avatar.
+- Two sockets fighting. Confirmed 2026-08-27 against a prop REBUILT with a single ring and no
+  hole pointer anywhere, so this is not an arbitration artifact.
+- The trigger boundary. It flickers deep inside as well as at the entrance.
+
+**So the parameter itself is alternating in game.** Ten a second is the tick at which a synced
+value arrives, which points at something restoring or overwriting it between contact updates
+rather than at the contact reading being noisy. Worth looking at next: whether the owner also
+applies the networked echo of its own parameter, and what value it alternates to (a zero would
+implicate an exit task or a default, a stale position would implicate the echo).
+
+## The hole flag: not a latch after all
+
+Investigated 2026-08-27 and closed. A ring socket appeared to behave as a hole in game and no
+enter/exit cleared it, which looked exactly like a synced flag latching. It was not: the prop
+being tested still carried a hole-typed pointer, so `YAPS0H` was being set correctly and
+honestly. A prop rebuilt with a single ring behaves as a ring.
+
+Two things confirmed on the way, worth keeping:
+
+- The flag reaches the shader intact. Toggling H by hand changes the deform, but ONLY where
+  there is leftover shaft past the socket (`if (leftOver > 0 && isHole)`), so a socket further
+  away than the plug is long shows no difference between ring and hole. That is correct, and it
+  makes a naive hand test look like a dead feature.
+- The exit-task concern is still real in principle, just not what happened here: a sender that
+  despawns inside a trigger fires no exit, and disabling the plug's own object fires none either.
+  Worth a stay-task that asserts the value rather than an enter/exit pair, but nothing is known
+  to be broken by it today.
+
+## The channel latches: no socket, and the plug still thinks it is in one
+
+Measured in game 2026-08-27 by giving the channel parameters temporary menu sliders, which is
+the only way to read their live values. With no socket anywhere near:
+
+    YAPS0E 61    YAPS0H 0    YAPS0X 58    YAPS0Y 49    YAPS0Z 84
+
+Every one of those should be at rest. The plug is sitting permanently 61 per cent engaged toward
+a socket position that has not existed for minutes.
+
+**Cause, for the axes: they have no exit task at all.** `AddAxisTrigger` adds a `stayTask` and
+nothing else, so X, Y, Z and the three front axes keep whatever they last saw, forever. Only the
+engagement and hole triggers have exit tasks, and engagement was ALSO stale at 61, so its exit
+did not fire either (a sender that despawns inside a trigger never fires one).
+
+**Corrected the same evening, before acting on it.** Pulling AWAY from a socket cleanly does
+reset engagement: the sliders then read `E 0, H 0, X 46, Y 60, Z 99`. So the exit task works, and
+the axes latching is harmless while engagement is 0, because engagement gates the whole deform.
+
+**The latch only bites when the exit does not fire at all** — a prop despawning inside the box,
+the plug's own object being toggled off (disabling a collider fires no exit), an instance change,
+a sender leaving the room. That is how E came to be stuck at 61 with nothing nearby, and in THAT
+state the plug is bent toward a phantom socket with nothing to clear it. Not the everyday case,
+but not rare either, and there is no way back short of finding another socket.
+
+**Shape of the fix:** engagement must decay rather than rely on an exit, and the axes need
+either an exit task or the same decay. Anything that can only be written while a sender is
+present, and never cleared when it leaves, will latch.
+
+## The channel's drift is quantisation, and the smoother cannot filter it
+
+Fully characterised 2026-08-27 in the editor, no uploads. The channel's values never settle while
+a socket is near: they wander by about one part in a thousand every tick, and the deform is
+sensitive enough that this reads as a constant stutter. The marker light path on the same socket
+is smooth, because it samples continuously rather than about ten times a second.
+
+**How big is the wander?** Measured by simulating it. `ChannelHandDrive` can wobble its input by a
+chosen number of slider units while delivering at 10 a second, and Joe matched the in-game look
+by eye at **0.07 units**. The channel box is 1.78 m across and a slider unit is 1.8 cm, so the
+apparent socket movement is about **1.2 mm**.
+
+**That rules out body motion**, which had been the leading theory. Breathing and an idle animation
+move the hips a centimetre or two, which is about one slider unit, and one unit was reported as
+"way too much" wobble. The real signal is fifteen times smaller than a body sways. A millimetre is
+quantisation scale: ChilloutVR does not send a full float, so a value between two steps dithers
+between them.
+
+**Why the smoothing cannot fix it as built.** The cloned layer is the AvatarScaler's "Linear
+Smoothing Layer", which moves a FIXED amount per frame. Noise rejection and tracking speed are
+therefore the same number:
+
+    StepSize 0.05    ships today       stutter clearly visible
+    StepSize 0.0015  kills the wobble  the plug lags the socket by 3 to 5 seconds
+
+There is no value that does both, because the two requirements pull on one knob.
+
+**Measured properly 2026-08-27, and the earlier conclusion was wrong: the smoother is ALREADY
+proportional.** With a 0.14 unit input wobble at 10 a second, the amount reaching the material
+scales linearly with StepSize:
+
+    0.05  ships today   0.12 units survive   86 per cent
+    0.02                0.04 units           29 per cent
+    0.01                0.02 units           14 per cent
+    0.005               0.01 units            7 per cent
+
+Linear in the gain is the signature of a first-order filter, so it does not need replacing. It
+does mean noise rejection and tracking speed are the same knob, which is the bind: the setting
+that hides the wobble leaves the plug seconds behind the socket.
+
+**A deadband was tried and is WORSE.** Two extra children on the delta blend at plus and minus
+0.0015, both the zero-step clip, so the output holds still while the delta is inside the band.
+Measured result: the surviving wobble went UP, to 0.29 units, over twice what went in. Inside the
+band the output freezes, then the input escapes and it jumps by roughly the band width. A deadband
+only helps when the noise is much smaller than the error you will tolerate, and here the noise IS
+one quantisation step, so any band wide enough to swallow it produces jumps wider than it.
+Reverted; do not try it again without that arithmetic in front of you.
+
+**So this is a resolution limit, not a bug.** The channel's resolution is about 1.2 mm and the
+deform is sensitive enough to show one step of it. Removing a one-step wobble requires averaging
+over several samples, which is lag by definition. The choices, all with costs:
+
+- **Lower the gain.** `BridgeSettings.DefaultSocketFollow` at 0.02 gives a third of the wobble for
+  roughly 0.3 s of trailing while a socket is moving. Probably the right default.
+- **Shrink the channel box**, so the same number of quantisation steps covers less distance.
+  Extents are `length * BoxLengths` at about 1.75, and the engagement gate reaches zero at
+  `length * 1.6`, so about 9 per cent is free. Tighter than that buys real resolution but loses
+  the range where engagement fades in, between roughly 0.6 and 0.8 of a plug length.
+- **Accept it.** It is a millimetre, and it only reads as stutter because the deform amplifies
+  small position changes in some geometries. See the note below.
+
+## The bend direction is ill-conditioned when a socket lines up with the plug's axis
+
+Noticed 2026-08-27 while testing the above. With the socket dead on the plug's own axis, X and Y
+both at the centre of the channel box, a sub-millimetre wobble makes the deform thrash: there is
+no preferred side to bend toward, so the direction swings. Move the socket off-axis and it is
+steady, and at long range it does not show because the plug is nearly straight anyway.
+
+No amount of smoothing the POSITION fixes an unstable DIRECTION, so this is separate from the
+resolution limit above. How much it matters depends on how often a real socket sits within a
+millimetre of the axis, which is probably rare. Worth remembering when someone reports that a
+plug "freaks out sometimes" with no other pattern to it.
+
+## User reports from stable, 2026-08-27
+
+Both from a user on the shipped build, relayed by Joe. Neither is reproduced here yet, and
+neither should be closed on the reasoning below alone.
+
+### Duplicate SPS toggles after conversion
+
+The conversion lists the avatar's SPS toggles, and converting to YAPS adds a SECOND set, so the
+menu carries two of each and one of them is inert.
+
+**The first hypothesis here was wrong and is corrected.** It said `ToggledBy` only recognises an
+entry driving the object through `gameObjectTargets`, so a clip-driven SPS toggle would slip past.
+Reading it properly: it checks `gameObjectTargets`, the entry's own on and off animation clips,
+dropdown options by both routes, AND every clip in the avatar's controller for anything hiding the
+target or any of its parents. Only clips under YAPS's own output folder are skipped, so a
+converted toggle's clips in `RehomedAssets` stay visible. Ordering is not it either: `Parameters
+and menu` and `Animator merge` are passes 128 and 131, and YAPS is 146, so the entries and clips
+exist by the time it looks.
+
+**What YAPS does is defer, not replace.** If anything already switches the object it adds no
+toggle, and it removes one an earlier build added that turned out to be redundant. So a duplicate
+means `ToggledBy` returned null on an object something demonstrably switches, and no reading of
+the code so far explains why.
+
+**Cause unknown.** `Dev/Probes/DuplicateToggleCheck.cs` finds every object under more than one menu
+entry and labels each by route, targets or clip, across the whole corpus in one Unity session. Run
+it and let the answer come from an avatar rather than from me reading. It cannot run while a
+corpus run holds the same project.
+
+**To confirm before fixing:** take an avatar whose SPS toggle is clip-driven, convert it, and look
+at whether the duplicate entry appears and whether `ToggledBy` returned null. The corpus has SPS
+avatars in it; a probe counting menu entries that target the same object would find this across
+all of them at once, which is better than one reproduction.
+
+### The plug does not go back to straight when you move away
+
+Moving away from a socket leaves the plug bent or misshapen rather than returning to rest.
+
+This has the shape of the latch found the same day: the channel's axis triggers carried a stay
+task and no exit, so X, Y and Z kept the last reading, which is taken at the EDGE of the box.
+Engagement gates the deform and does reset on a clean exit, so a stale position alone should be
+harmless, but any engagement that does not reset leaves the plug aimed at a phantom socket. Fixed
+for the clean case in 4.4.0; a sender that vanishes inside the box still fires no exit at all.
+
+**Worth asking the reporter to retest on 4.4.0**, and to say whether the socket was on a prop that
+despawned, an avatar that left, or one they simply walked away from. Those are three different
+paths through the same symptom and only the last one is fixed.
+
+## The prop channel is a second implementation, and fixes land in one of them
+
+Found 2026-08-27 while auditing the README. `YapsChannel` builds the contact channel for avatars
+and `YapsPropBuilder.BuildChannel` builds it for props, and they are separate code that does the
+same job with different component types, `CVRAdvancedAvatarSettingsTrigger` against
+`CVRSpawnableTrigger`. So a fix goes into whichever one was being debugged.
+
+Three had never crossed:
+
+- The trigger halving. `box * 0.5f` on the engagement and hole triggers, fixed for avatars in
+  `53e293c` and still live on props, so a prop's engagement volume was half what it should be
+  while its axis triggers beside it were full size. Exactly the mismatch avatars had.
+- No exit task on the axis triggers, so a prop's reported position stuck at the edge of the box
+  after a socket left.
+- No ring trigger, so the hole flag could only ever be set: a ring arriving after a hole was
+  treated as a hole for as long as the prop lived.
+
+All three are across now, but the shape of the problem is not fixed. **Two implementations of one
+protocol will keep drifting**, and nothing compares them. Worth either a shared builder that emits
+whichever trigger type it is handed, or a test that builds both and asserts the same box sizes,
+tasks and tag lists come out.
+
+**And the corpus cannot catch it.** It converts avatars; nothing in it builds a prop, so the prop
+path has no regression cover at all. That is a separate gap from "nothing revisits an existing
+prop", already recorded above, and worse: this one means the code is untested, not just that
+users hold stale copies.
+

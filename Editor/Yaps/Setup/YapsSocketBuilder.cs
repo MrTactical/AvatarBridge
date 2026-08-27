@@ -95,15 +95,82 @@ namespace AvatarBridge
                       "already uploaded keeps the shader and bake it was built with.");
         }
 
+        public const string SocketPropPrefabPath = PrefabFolder + "/YAPS Ring and Socket Prop.prefab";
+
+        // A prop that is two sockets rather than a plug: a ring to pass
+        // through and a hole to enter, on one body somebody can spawn and
+        // hand around. The plug prop above is its other half.
+        [MenuItem("Tools/YAPS/Create a ring-and-socket prop prefab")]
+        public static void CreateSocketPropPrefab()
+        {
+            EnsureFolder(PrefabFolder);
+            var root = new GameObject("YAPS Ring and Socket Prop");
+
+            // Something to see and to grab. A prop with no renderer is an
+            // invisible thing to pick up, which is no use to anyone in game.
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            body.name = "Body";
+            body.transform.SetParent(root.transform, false);
+            body.transform.localScale = new Vector3(0.06f, 0.02f, 0.06f);
+            // Its own collider would fight the one MakeProp fits to the prop.
+            Object.DestroyImmediate(body.GetComponent<Collider>());
+
+            // Facing opposite ways on purpose: a plug approaches the ring
+            // from above and the hole from below, so one prop serves both
+            // without the two competing for the same approach.
+            var ring = BuildPreviewSocket("Ring", YapsSocket.SocketKind.Ring);
+            ring.transform.SetParent(root.transform, false);
+            ring.transform.localPosition = new Vector3(0f, 0.03f, 0f);
+            ring.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+
+            var hole = BuildPreviewSocket("Hole", YapsSocket.SocketKind.Hole);
+            hole.transform.SetParent(root.transform, false);
+            hole.transform.localPosition = new Vector3(0f, -0.03f, 0f);
+            hole.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            var prop = YapsPropBuilder.MakeProp(root);
+
+            string path = SocketPropPrefabPath;
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Selection.activeObject = prefab;
+            EditorGUIUtility.PingObject(prefab);
+
+            Debug.Log("[YAPS] Ring-and-socket prop prefab written to " + path + ". " + prop.Message +
+                      (prop.Notes.Count > 0 ? " " + string.Join(" ", prop.Notes) : "") +
+                      " Upload it from the CCK as a prop. Both sockets carry marker lights, and a mesh has " +
+                      "four vertex light slots, so an old DPS toy sees one of them at a time; anything " +
+                      "modern finds both by contact. Resize the body and move the sockets to taste before " +
+                      "uploading.");
+        }
+
         // A socket in the scene rather than a prefab on disk, for previewing
         // a plug against. Same construction as the universal prefabs, so
         // there is one definition of what a socket is.
-        public static GameObject BuildPreviewSocket(string name)
+        //
+        // withLights false builds one that can ONLY be found by contacts.
+        // A socket normally announces itself both ways, and the light path
+        // is so much more forgiving that it covered for a contact channel
+        // which had never once worked in game — through every editor test
+        // anyone ever ran. A preview that emits lights cannot tell you
+        // anything about the channel, so testing it needs a socket that
+        // has nothing else to offer.
+        public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind,
+            bool withLights = true)
         {
             var root = new GameObject(name);
             var socket = root.AddComponent<YapsSocket>();
-            socket.kind = YapsSocket.SocketKind.Hole;
+            socket.kind = kind;
+            socket.emitLights = withLights;
             Build(socket);
+            if (!withLights)
+            {
+                foreach (var light in root.GetComponentsInChildren<Light>(true))
+                {
+                    Object.DestroyImmediate(light);
+                }
+            }
             return root;
         }
 
@@ -207,7 +274,7 @@ namespace AvatarBridge
         // always the hole root at 0.4130 and Unity drops exactly that one.
         static int Places(YapsSocket socket)
         {
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var root = avatar != null ? avatar.transform : socket.transform.root;
             int trackers = root.GetComponentsInChildren<YapsPlug>(true)
                 .Count(p => p != null && p.emitTipLight);
@@ -219,7 +286,7 @@ namespace AvatarBridge
         // get them.
         public static System.Collections.Generic.List<YapsSocket> Lit(YapsSocket socket)
         {
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var root = avatar != null ? avatar.transform : socket.transform.root;
             return root.GetComponentsInChildren<YapsSocket>(true)
                 .Where(s => s != null && s.emitLights)

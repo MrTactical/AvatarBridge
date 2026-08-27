@@ -80,7 +80,7 @@ namespace AvatarBridge
         {
             if (socket == null) return DefaultReach;
             if (socket.depthReach > 0f) return socket.depthReach;
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var top = avatar != null ? avatar.transform : socket.transform.root;
             float longest = LongestPlugOn(top);
             return longest > 0f ? longest : DefaultReach;
@@ -122,8 +122,8 @@ namespace AvatarBridge
         static List<AnimatorController> Controllers(YapsSocket socket)
         {
             var list = new List<AnimatorController>();
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
-            var animator = socket.GetComponentInParent<Animator>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            var animator = socket.GetComponentInParent<Animator>(true);
             // Through any override: it wraps a controller rather than being one.
             var based = avatar != null && avatar.avatarSettings != null
                 ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
@@ -161,8 +161,8 @@ namespace AvatarBridge
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
             if (renderer == null || stages.Count == 0 || renderer.sharedMesh == null) return null;
 
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
-            var animator = socket.GetComponentInParent<Animator>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            var animator = socket.GetComponentInParent<Animator>(true);
             if (avatar == null || animator == null)
                 return $"✗ {socket.name}: the shapes need a CVRAvatar and an Animator above the socket";
             var controller = (avatar.avatarSettings != null ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)

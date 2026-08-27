@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# STALE LIBRARY WARNING. This reuses the project's compiled Assembly-CSharp,
+# so straight after a deploy it compiles the new editor code against the OLD
+# runtime code and reports missing fields that exist. Seen 2026-08-27: six
+# errors for bakedSlots, previewAsChannel and previewInPlayMode, every one of
+# them present in the source, against a DLL a day older than the deploy.
+# Compare Library/ScriptAssemblies/Assembly-CSharp.dll against the files you
+# deployed before believing a failure, or let Unity open the project once.
 # Compiles the editor scripts twice: with the VRChat SDK and without it.
 #
 # The second one matters. A ChilloutVR-only user installs AvatarBridge for

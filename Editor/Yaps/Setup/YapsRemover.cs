@@ -34,7 +34,7 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
             if (socket == null) return lines;
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             lines.Add(OwnObject(socket.gameObject, typeof(YapsSocket))
                 ? $"the object \"{socket.name}\" and everything under it"
                 : $"the YAPS Socket component on \"{socket.name}\" and the markers, lights and pointers under it (the object stays: it has other things on it)");
@@ -51,7 +51,7 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
             if (plug == null) return lines;
-            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
             var renderer = plug.Target;
             lines.Add(OwnObject(plug.gameObject, typeof(YapsPlug))
                 ? $"the object \"{plug.name}\" and everything under it"
@@ -101,7 +101,7 @@ namespace AvatarBridge
         {
             if (socket == null) return null;
             string name = socket.name;
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var top = TopOf(socket.transform);
             var done = new List<string>();
 
@@ -183,7 +183,7 @@ namespace AvatarBridge
         {
             if (plug == null) return null;
             string name = plug.name;
-            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
             var top = TopOf(plug.transform);
             var renderer = plug.Target;
             var done = new List<string>();
@@ -206,9 +206,30 @@ namespace AvatarBridge
                     foreach (int slot in slots)
                     {
                         var m = mats[slot];
-                        if (back != null)
+                        // Each slot's OWN original first. A plug whose vertices
+                        // span several materials replaced several, and putting
+                        // the primary's back into all of them would paint the
+                        // whole mesh with one of its parts.
+                        // Keyed on the renderer too: a plug spanning meshes
+                        // has a slot 0 on each of them, and matching on the
+                        // number alone hands one mesh's material to another.
+                        var recorded = plug.bakedSlots
+                            .FirstOrDefault(b => b != null && b.slot == slot && b.was != null
+                                                 && YapsNativeBuilder.Same(b.renderer, renderer, plug))?.was;
+                        // `back` is the PRIMARY slot's original, so falling
+                        // back to it for a slot we have no record of paints
+                        // one part of the mesh over another — a fur slot
+                        // wearing the head's material, and the fur gone from
+                        // the renderer entirely. Only safe when there is one
+                        // baked slot and therefore only one original it can
+                        // belong to.
+                        // Then this slot's own clone traced home by name, and
+                        // only then the primary's original when it can only
+                        // belong to this slot.
+                        var mine = recorded ?? OriginalOfSlot(m) ?? (slots.Count == 1 ? back : null);
+                        if (mine != null)
                         {
-                            mats[slot] = back;
+                            mats[slot] = mine;
                         }
                         else
                         {
@@ -221,7 +242,14 @@ namespace AvatarBridge
                         }
                     }
                     renderer.sharedMaterials = mats;
-                    done.Add(back != null ? $"\"{renderer.name}\" back on \"{back.name}\" ({how})" : $"deform off on \"{renderer.name}\" ({how})");
+                    int restored = slots.Count(sl => plug.bakedSlots.Any(b => b != null && b.slot == sl && b.was != null
+                                                        && YapsNativeBuilder.Same(b.renderer, renderer, plug)))
+                                   + (back != null ? 0 : 0);
+                    done.Add(back != null || restored > 0
+                        ? (slots.Count > 1
+                            ? $"\"{renderer.name}\" back on its own {slots.Count} material(s) ({how})"
+                            : $"\"{renderer.name}\" back on \"{back?.name}\" ({how})")
+                        : $"deform off on \"{renderer.name}\" ({how})");
                 }
 
                 // The size wiring in the avatar's own clips.
@@ -252,6 +280,21 @@ namespace AvatarBridge
                 foreach (var child in OwnChildrenOf(go.transform)) Undo.DestroyObjectImmediate(child.gameObject);
                 Undo.DestroyObjectImmediate(plug);
                 done.Add($"the component on \"{name}\" and its markers");
+            }
+
+            // The contact channel, when this was the last baked plug. It
+            // exists to carry plugs, so leaving it behind means the objects,
+            // layers and parameters sit there until someone happens to run
+            // Clean up leftovers — which is where this lived and nowhere
+            // else, so Remove alone never cleared it.
+            if (avatar != null && !avatar.GetComponentsInChildren<YapsPlug>(true)
+                    .Any(p2 => p2 != null && p2 != plug && p2.Target != null && BakedSlots(p2.Target).Any()))
+            {
+                int cleared = YapsNativeChannel.Clear(avatar);
+                if (cleared > 0)
+                {
+                    done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
+                }
             }
 
             Undo.CollapseUndoOperations(group);
@@ -505,6 +548,39 @@ namespace AvatarBridge
 
         // The material a plug's bake replaced: recorded by the bake, or
         // found by name from the clone's, or nothing.
+        // The original one SLOT's material was cloned from, by name.
+        //
+        // Two suffixes exist in the wild: YapsBaker.Apply writes "X_YAPS_"
+        // and the mirror path writes "X (YAPS)". Knowing only the second
+        // meant the commonest clone of all could never find its way home,
+        // and Remove fell back to reverting the shader on a generated
+        // material and leaving it in the slot still called _YAPS_.
+        static Material OriginalOfSlot(Material clone)
+        {
+            if (clone == null) return null;
+            string name = clone.name;
+            string stem = null;
+            if (name.EndsWith(" (YAPS)", System.StringComparison.Ordinal))
+                stem = name.Substring(0, name.Length - 7);
+            else if (name.EndsWith("_YAPS_", System.StringComparison.Ordinal))
+                stem = name.Substring(0, name.Length - 6).TrimEnd();
+            if (string.IsNullOrEmpty(stem)) return null;
+            var found = AssetDatabase.FindAssets("t:Material " + stem)
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(pth => !pth.StartsWith(YapsNativeBuilder.OutputRoot + "/", System.StringComparison.Ordinal))
+                .Select(AssetDatabase.LoadAssetAtPath<Material>)
+                .Where(m => m != null && m.name == stem)
+                .ToList();
+            if (found.Count == 1) return found[0];
+            if (found.Count > 1)
+            {
+                string source = YapsShaderPatcher.SourceShaderOf(clone);
+                var bySource = found.Where(m => m.shader != null && m.shader.name == source).ToList();
+                if (bySource.Count == 1) return bySource[0];
+            }
+            return null;
+        }
+
         static Material OriginalMaterial(YapsPlug plug, Renderer renderer, out string how)
         {
             if (plug.bakedFrom != null) { how = "recorded at bake"; return plug.bakedFrom; }
@@ -587,7 +663,7 @@ namespace AvatarBridge
 
         static Transform TopOf(Transform t)
         {
-            var avatar = t.GetComponentInParent<CVRAvatar>();
+            var avatar = t.GetComponentInParent<CVRAvatar>(true);
             return avatar != null ? avatar.transform : t.root;
         }
 

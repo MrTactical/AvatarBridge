@@ -1116,13 +1116,18 @@ namespace AvatarBridge
                 // one of them, and the shader takes that as the plug's scale.
                 if (plug.ChainRoot != null)
                 {
-                    var bones = new List<string> { ctx.PathInTarget(plug.ChainRoot) };
+                    var bones = new Dictionary<string, Transform>();
+                    void Bone(Transform t)
+                    {
+                        string bonePath = ctx.PathInTarget(t);
+                        if (bonePath != null) bones[bonePath] = t;
+                    }
+                    Bone(plug.ChainRoot);
                     for (int i = 0; i < plug.ChainRoot.childCount; i++)
                     {
-                        bones.Add(ctx.PathInTarget(plug.ChainRoot.GetChild(i)));
+                        Bone(plug.ChainRoot.GetChild(i));
                     }
-                    int along = YapsCurveMirror.AlongAxis(plug.ChainRoot, plug.Rotation);
-                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType(), along);
+                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType(), plug.Rotation);
                 }
             }
 

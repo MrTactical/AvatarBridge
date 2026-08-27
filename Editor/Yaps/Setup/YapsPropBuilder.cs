@@ -26,6 +26,10 @@ namespace AvatarBridge
             "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
         };
         static readonly string[] HoleTypes = { "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips" };
+
+        // Only the unambiguous ring tags: a hole socket also emits
+        // TPS_Orf_Root, so accepting that would let a hole clear its own flag.
+        static readonly string[] RingTypes = { "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips" };
         static readonly string[] FrontTypes =
         {
             "TPS_Orf_Norm", "TPS_Orf_Norm_SelfNotOnHips",
@@ -56,6 +60,14 @@ namespace AvatarBridge
 
         public static Outcome MakeProp(GameObject root)
         {
+            // Stamped so a prop built months ago can say which version
+            // made it. Nothing revisits a prop, so every fix reaches new
+            // ones and no existing one, and the two look identical.
+            foreach (var s in root.GetComponentsInChildren<YapsSocket>(true))
+            {
+                s.builtBy = BridgeDefines.Version;
+                EditorUtility.SetDirty(s);
+            }
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
             var plug = root.GetComponentInChildren<YapsPlug>(true);
@@ -356,7 +368,14 @@ namespace AvatarBridge
             }
 
             var engage = Host("E").AddComponent<CVRSpawnableTrigger>();
-            engage.areaSize = box * 0.5f;
+            // FULL size. Halved here on the same belief the avatar side
+            // carried, that a distance-only trigger becomes a sphere whose
+            // radius is areaSize.x. The client has no sphere case: it takes
+            // boxSize from areaSize whole. Fixed for avatars in 53e293c and
+            // this path was never revisited, so a prop's engagement volume
+            // was half what it should be while its axis triggers below were
+            // always full, exactly the mismatch avatars had.
+            engage.areaSize = box;
             engage.useAdvancedTrigger = true;
             engage.allowedTypes = SocketTypes;
             engage.stayTasks.Add(new CVRSpawnableTriggerTaskStay
@@ -372,7 +391,7 @@ namespace AvatarBridge
             });
 
             var hole = Host("H").AddComponent<CVRSpawnableTrigger>();
-            hole.areaSize = box * 0.5f;
+            hole.areaSize = box;
             hole.useAdvancedTrigger = true;
             hole.allowedTypes = HoleTypes;
             hole.enterTasks.Add(new CVRSpawnableTriggerTask
@@ -408,7 +427,31 @@ namespace AvatarBridge
                     updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
                     minValue = 0f, maxValue = 1f,
                 });
+                // Let go on the way out, to the FAR edge. A stay task with no
+                // exit keeps its last reading, taken at the edge of the box,
+                // and the next socket to arrive snaps the plug toward
+                // wherever the previous one left. One is a whole extent out,
+                // past where engagement fades; the middle would be the plug's
+                // own base, which is the strongest bend there is.
+                axis.exitTasks.Add(new CVRSpawnableTriggerTask
+                {
+                    settingIndex = slot[name], settingValue = 1f,
+                    updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+                });
             }
+
+            // A ring asserts the hole flag too, or the flag can only ever be
+            // set: only a hole wrote it, so a ring arriving after one was
+            // treated as a hole for as long as the prop lived.
+            var ring = Host("R").AddComponent<CVRSpawnableTrigger>();
+            ring.areaSize = box;
+            ring.useAdvancedTrigger = true;
+            ring.allowedTypes = RingTypes;
+            ring.enterTasks.Add(new CVRSpawnableTriggerTask
+            {
+                settingIndex = slot["H"], settingValue = 0f,
+                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
+            });
         }
 
         // One layer per value: a two-clip blend tree, 0 and 1, on the

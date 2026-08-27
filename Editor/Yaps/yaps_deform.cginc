@@ -284,12 +284,24 @@ inline float3 YapsBezierTangent(float3 p0, float3 p1, float3 p2, float3 p3, floa
 
 // Walk `distance` metres of arc length along the curve. Returns the frame
 // there, and how much distance was left over when the curve ran out.
+// startForward: where the PLUG points, for a curve with no direction of
+// its own. Push a socket right down onto the root and all four control
+// points collapse together, so every tangent along it is a zero vector.
+// The fallback chain then ran out at float3(0,0,1) — WORLD forward, not
+// the plug's — and a ring, which unlike a hole never clamps the remainder,
+// extended every vertex along that world axis. The plug flattened into a
+// line and read as vanishing.
+//
+// Not a fault of the walk. A degenerate curve genuinely has no direction
+// and the only honest answer is the one the caller already knows, so the
+// caller now supplies it.
 YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
-                   float wantedLength, float3 startUp, out float leftOver)
+                   float wantedLength, float3 startUp, float3 startForward,
+                   out float leftOver)
 {
     YapsFrame frame;
     frame.position = p0;
-    frame.forward = YapsSafeNormalize(YapsBezierTangent(p0, p1, p2, p3, 0), float3(0, 0, 1));
+    frame.forward = YapsSafeNormalize(YapsBezierTangent(p0, p1, p2, p3, 0), startForward);
     frame.up = YapsPerpendicular(frame.forward, startUp);
     leftOver = 0;
 
@@ -481,6 +493,120 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // the channel reports the socket in the PLUG's frame.
     YapsSocket socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
 
+    // THE "RESOLVED BY" VIEW.
+    //
+    // A plug bending near a socket does not say WHO bent it, and a stray
+    // marker light, a lit socket nearby, or the holder's own avatar wearing
+    // one all read exactly like a working contact channel. A full day went
+    // to a channel that had never worked because the lights kept covering
+    // for it.
+    //
+    // It cannot be a colour. The patcher edits a host shader's VERTEX stage
+    // and nothing else — it refuses surface shaders precisely because there
+    // is no vertex function to wrap — so there is no fragment of ours to
+    // paint in. What every host shader does share is where the vertices go,
+    // so the answer is given as LENGTH:
+    //
+    //     a third      nobody resolved it
+    //     two thirds   the contact channel
+    //     full         a marker light
+    //
+    // Straight, unbent and unengaged, so the length is the only thing
+    // moving and a change of hands is unmissable. Placed before the enabled
+    // test on purpose: "nobody" is an answer, and returning early would
+    // make the most important case the one the view cannot show.
+    if (_YAPS_Debug >= 0.5)
+    {
+        float shown;
+        if (_YAPS_Debug < 1.5)
+        {
+            shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
+        }
+        else if (_YAPS_Debug >= 3.5)
+        {
+            // THE SOCKET'S FACING, against the plug's own forward.
+            //
+            // Full length means the socket faces the same way the plug
+            // points, half means square across it, nothing means it faces
+            // straight back. The channel never sends a rotation: it sends a
+            // second point a centimetre from the first and the facing is
+            // derived from the pair, so this is the one value that exists
+            // only on the channel route and cannot be compared against the
+            // world route by eye.
+            //
+            // A facing that reads steady and sane while the deform is wrong
+            // clears it; one that wanders as the socket moves is the fault.
+            // Measured against the CHANNEL'S frame, not the vertex's.
+            //
+            // The first version compared with rootForward, which is
+            // recovered per vertex: on a plug spanning a whole skeleton
+            // every vertex compared against a different direction, so the
+            // mesh showed thousands of different answers at once and read as
+            // a flat half. That is an average, not a measurement, and it is
+            // the third view here to be wrong in its own right rather than
+            // about the thing it was pointed at.
+            //
+            // The published channel frame is one direction for the whole
+            // plug, so this is now one number.
+            float3 reference = rootForward;
+            if (dot(_YAPS_ChannelForward.xyz, _YAPS_ChannelForward.xyz) > 1e-8)
+            {
+                reference = YapsSafeNormalize(
+                    mul((float3x3) unity_ObjectToWorld, _YAPS_ChannelForward.xyz), rootForward);
+            }
+            // A zero forward is the honest "no facing was believed", and it
+            // reads as exactly half so it cannot be mistaken for either end.
+            // A floor, because zero length is a correct reading here and
+            // looked like a catastrophe: a socket facing straight back at
+            // the plug scores 0, the plug collapsed to nothing, and that
+            // reads as the mesh flattening onto the floor rather than as
+            // the answer it is. A tenth to full, like the engagement view.
+            float3 face = socket.forward;
+            float facing = dot(face, face) > 1e-6
+                ? saturate(dot(normalize(face), reference) * 0.5 + 0.5)
+                : 0.5;   // nothing believed, and it sits deliberately mid
+            shown = lerp(0.1, 1.0, facing);
+        }
+        else if (_YAPS_Debug >= 2.5)
+        {
+            // ENGAGEMENT, the switch itself. Who found the socket and how
+            // far away it is can both be perfectly steady while THIS
+            // collapses, and when it does the deform stops dead and the
+            // plug springs back to its rest shape — which is the whole
+            // appearance of a pop.
+            //
+            // A tenth at zero rather than nothing, so "not engaged" is a
+            // visible stub instead of an absent plug, and full at one.
+            shown = lerp(0.1, 1.0, saturate(socket.engaged));
+        }
+        else
+        {
+            // GAP TO THE SOCKET, as a fraction of plug length. The question
+            // this answers is whether the socket the plug is aiming at MOVES
+            // — two lights of the same tier swapping places, or one socket
+            // handing over to another, are invisible to the view above
+            // because both read as "a marker light".
+            //
+            // Smooth shortening as a socket approaches is the geometry
+            // behaving. A JUMP is the plug being handed a different answer,
+            // and the frame it jumps on is the frame to explain.
+            //
+            // Full length when nobody resolved: there is no gap to report,
+            // and a zero-length plug would read as "the socket is exactly on
+            // the root", which is the opposite of nothing.
+            shown = socket.tier < 0.5
+                ? 1.0
+                : saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
+        }
+        float3 right = cross(rootUp, rootForward);
+        float3 at = rootWorld
+                  + right * baked.position.x
+                  + rootUp * baked.position.y
+                  + rootForward * (baked.position.z * shown);
+        position = mul(unity_WorldToObject, float4(at, 1)).xyz;
+        return;
+    }
+
     float enabled = saturate(_YAPS_Enabled) * socket.engaged;
     if (enabled <= 0) return;
 
@@ -665,7 +791,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
         else
         {
-            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, leftOver);
+            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, rootForward, leftOver);
             // The join: blend the walked frame back toward the straight
             // frame over the ease length past the start, so the shaft
             // bends into the curve instead of breaking at one point.
@@ -682,7 +808,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
     else
     {
-        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, leftOver);
+        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
     }
 
     // Past the end of the curve. A hole swallows the remainder and tapers
@@ -707,7 +833,23 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         // it, and everything beyond simply piles up there and closes off.
         leftOver = min(leftOver, taperTo);
         radius = 1 - YapsRamp(leftOver, taperFrom, taperTo);
-        if (_YAPS_Overrun < 0.5) leftOver = 0;
+    }
+
+    // OVERRUN, and it belongs to BOTH kinds.
+    //
+    // Its own tooltip is about rings — "let the tip carry on past a ring,
+    // off and the shaft stops at every socket" — and it was read only
+    // inside the hole branch above, so a ring always carried on and the
+    // switch did nothing for the one case it names.
+    //
+    // A ring gets no clamp either, for the same reason: the clamp is the
+    // hole's taper distance. So with a ring pushed near the base, every
+    // vertex past it travels its full remaining length along the socket's
+    // forward at once, which is the "flat twisted ribbon" the comment above
+    // warns about, arriving by the door that comment does not cover.
+    if (_YAPS_Overrun < 0.5)
+    {
+        leftOver = 0;
     }
     // SQUEEZE and BULGE, both measured from the entry, the point along
     // the shaft that is level with the socket. A vertex at baked z == gap

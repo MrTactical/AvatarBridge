@@ -296,6 +296,7 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.SubHeading("Prefabs"));
             props.Body.Add(BridgeElements.Row(
                 Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
+                Btn("Create a ring-and-socket prop prefab", YapsSocketBuilder.CreateSocketPropPrefab),
                 Btn("Create a plug prop prefab", YapsSocketBuilder.CreatePlugPropPrefab)));
             props.Body.Add(BridgeElements.Hint(
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
@@ -343,9 +344,9 @@ namespace AvatarBridge
         static GameObject TopOf(GameObject go)
         {
             if (go == null) return null;
-            var avatar = go.GetComponentInParent<CVRAvatar>();
+            var avatar = go.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) return avatar.gameObject;
-            var prop = go.GetComponentInParent<CVRSpawnable>();
+            var prop = go.GetComponentInParent<CVRSpawnable>(true);
             if (prop != null) return prop.gameObject;
             return go.transform.root.gameObject;
         }
@@ -475,8 +476,11 @@ namespace AvatarBridge
             _scan = YapsScanner.Scan(_target);
             _summary.text = _scan.Summary();
             _build?.SetActive(_scan.Total > 0);
+            // Carried meshes are not plugs to bake: their carrier bakes them.
+            // Counting them promises a number the build will not do.
+            int bakeable = _scan.Plugs.Count(p => p.CarriedBy == null);
             _build?.SetLabel(_scan.Total > 0
-                ? $"Bake {_scan.Plugs.Count} plug{(_scan.Plugs.Count == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
+                ? $"Bake {bakeable} plug{(bakeable == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
                 : "Nothing to build yet");
             SayNext();
 
@@ -492,6 +496,32 @@ namespace AvatarBridge
                         .Select(o => o.Name).ToList();
                     if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
                 }
+                // A mesh another plug carries is not a plug. It gets a row —
+                // it IS being changed, and a change nobody can see is the one
+                // people add a second plug to fix — but a nested, quiet one
+                // that says whose it is and offers none of the controls that
+                // would make it a peer.
+                if (f.CarriedBy != null)
+                {
+                    var carried = BridgeElements.ReportRow("part of",
+                        f.Name,
+                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\" — its bones move this mesh, so it " +
+                        "was baked with that plug's frame and length and bends as one piece with it. " +
+                        "Nothing to set here: it wears that plug's settings. Give it its own plug only if " +
+                        "you want it to bend separately.",
+                        BridgeTheme.Dark ? new Color(0.45f, 0.47f, 0.52f) : new Color(0.55f, 0.57f, 0.62f), alt);
+                    carried.style.marginLeft = 22;
+                    carried.style.opacity = 0.75f;
+                    var held = f;
+                    carried.RegisterCallback<ClickEvent>(_ =>
+                    {
+                        if (held.Root != null) { Selection.activeTransform = held.Root; EditorGUIUtility.PingObject(held.Root); }
+                    });
+                    _foundBody.Add(carried);
+                    alt = !alt;
+                    return;
+                }
+
                 bool complete = f.Notes.Count == 0;
                 // Nothing to fix but something to say gets a softer green
                 // than a silent row: working as designed must never wear
@@ -607,7 +637,23 @@ namespace AvatarBridge
                 _foundBody.Add(wrap);
                 alt = !alt;
             }
-            foreach (var f in _scan.Plugs) Row(f);
+            // Each plug, then the meshes it carries, so "part of" sits under
+            // the thing it is part of.
+            foreach (var f in _scan.Plugs.Where(p => p.CarriedBy == null))
+            {
+                Row(f);
+                var mine = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
+                if (mine == null) continue;
+                foreach (var c in _scan.Plugs.Where(p => p.CarriedBy == mine)) Row(c);
+            }
+            // Anything carried by a plug that is not itself listed, so a row
+            // can never go missing.
+            foreach (var f in _scan.Plugs.Where(p => p.CarriedBy != null
+                && !_scan.Plugs.Any(o => o.CarriedBy == null && o.Root != null
+                                         && o.Root.GetComponent<YapsPlug>() == p.CarriedBy)))
+            {
+                Row(f);
+            }
             foreach (var f in _scan.Sockets) Row(f);
         }
 
@@ -615,6 +661,13 @@ namespace AvatarBridge
         static void Adopt(YapsScanner.Found f)
         {
             if (f.Root == null) return;
+            // Never a mesh another plug carries. It wears a patched material,
+            // so it reads as a plug, and adopting it hands it a component —
+            // which is a claim on the mesh, which makes the carrier let go of
+            // it, which leaves it bending on its own frame. That is Build
+            // re-creating the exact component the user just deleted, every
+            // time they press it.
+            if (f.CarriedBy != null) return;
             if (f.Kind == YapsScanner.Kind.Socket)
             {
                 var shapes = new List<string>();
@@ -645,7 +698,13 @@ namespace AvatarBridge
             {
                 var plug = f.Root.GetComponent<YapsPlug>();
                 if (plug == null) return;
-                var o = YapsNativeBuilder.Bake(plug);
+                // The same door the inspector's Bake goes through, menu and
+                // channel included. Bake alone left the channel holding the
+                // frames of a previous build and the menu animator unrefreshed,
+                // so one plug came out differently depending on which button
+                // was pressed. BuildAll below does those two once, for the
+                // whole avatar, which is why it can call the bare Bake.
+                var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
             }
@@ -657,7 +716,7 @@ namespace AvatarBridge
             int n = 0;
             foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
             {
-                if (f.Root == null) continue;
+                if (f.Root == null || f.CarriedBy != null) continue;
                 if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
                 Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
                 Adopt(f);
@@ -707,8 +766,13 @@ namespace AvatarBridge
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                var skin = renderer as SkinnedMeshRenderer;
-                if (skin != null && rootBone != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
+                // Left on auto. Pinning it to the best-weighted slot here
+                // reads as helpful and is not: an explicit slot means "this
+                // one only", so a plug whose vertices span several materials
+                // silently bakes into one and tears along the seam. The bake
+                // finds every slot the chain reaches; a number is the author
+                // overriding that, not the tool guessing for them.
+                plug.materialSlot = -1;
             }
             else if (rootBone != null && plug.renderer != renderer
                      && YapsBaker.CountVerticesUnder(plug.renderer, rootBone) == 0)
@@ -717,10 +781,9 @@ namespace AvatarBridge
                 Undo.RecordObject(plug, "YAPS plug mesh");
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                var skin = renderer as SkinnedMeshRenderer;
-                if (skin != null) plug.materialSlot = YapsNativeBuilder.SlotWeightedTo(skin, rootBone);
+                plug.materialSlot = -1;   // auto, for the reason above
             }
-            var o = YapsNativeBuilder.Bake(plug);
+            var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
             if (_target == null) _picker.value = YapsSocketEditor.AvatarRootOf(go.transform).gameObject;
             Rescan();

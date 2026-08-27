@@ -1,9 +1,10 @@
 // YAPS: the discrete channel. How a plug learns where a socket is.
 // A trigger exists only on the wearer's copy and reports position in
 // its own frame, one axis per trigger, so the box sits on the plug.
-// A contact write bypasses the outbound buffer, so a trigger drives a
-// "#" local and a CVRAnimatorDriver copies it into the synced twin.
-// Drivers read animated fields, so each value costs a two-motion tree.
+// The trigger writes the SYNCED parameter itself: an advanced trigger's
+// write goes through PlayerSetup and out over the network, so no driver
+// round trip is needed, and the driver that used to do it clobbered the
+// value on every remote copy. See cvr-animator-driver-clobbers-remote.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -18,8 +19,10 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Two material-driver tasks per plug against sixteen. The real
-        // ceiling is the sync budget, not the tasks.
+        // Four plugs. The ceiling is the sync budget, not the driver
+        // tasks: publishing used to spend two of sixteen per plug and no
+        // longer spends any, because the trigger writes the synced
+        // parameter itself.
         const int MaxPlugs = 4;
 
         // Box reach as a multiple of plug length. The deform stops
@@ -75,20 +78,18 @@ namespace AvatarBridge
                 site.Report.Warning(Category,
                     $"Only the first {MaxPlugs} plug(s) are wired to the socket channel",
                     $"This avatar has {site.Plugs.Count}. ChilloutVR's material driver carries " +
-                    "sixteen driver tasks and each plug needs two, plus five synced floats. " +
+                    "sixteen material driver tasks and each plug needs two, plus five synced floats. " +
                     "The rest keep their mesh and their shader and simply never engage.");
             }
 
             var materialDriver = site.Target.AddComponent<CVRMaterialDriver>();
-            var drivers = new DriverPool(site);
-            var animator = site.Animator;
 
             int taskIndex = 0;
             int wired = 0;
             foreach (var plug in plugs)
             {
                 int index = plugs.IndexOf(plug);
-                if (BuildForPlug(site, plug, index, materialDriver, drivers, animator, ref taskIndex))
+                if (BuildForPlug(site, plug, index, materialDriver, ref taskIndex))
                 {
                     wired++;
                 }
@@ -98,7 +99,6 @@ namespace AvatarBridge
             if (wired == 0)
             {
                 Object.DestroyImmediate(materialDriver);
-                drivers.Discard();
                 return;
             }
 
@@ -123,60 +123,15 @@ namespace AvatarBridge
                 $"Wired {wired} plug(s) to the socket channel",
                 $"{taskIndex} value(s): where the socket sits relative to the plug, " +
                 "and how engaged it is. Contact triggers on the plug measure it on your own machine " +
-                "every frame; a driver copies it into a synced parameter so other people see it too, " +
+                "every frame, straight into a synced parameter so other people see it too, " +
                 "at ChilloutVR's ten-a-second parameter rate. What crosses the wire is the gap " +
                 "between two bodies already touching, so that rate is generous for it — and the " +
                 "marker lights sharpen the position further for anyone close enough to see them.");
         }
 
-        // A CVRAnimatorDriver carries sixteen slots. Two plugs with
-        // orientation fill one; the third would have written past its
-        // end, so a full driver hands over to a fresh one on its own
-        // object, which is how a clip tells them apart.
-        class DriverPool
-        {
-            const int Slots = 16;
-            readonly Site _site;
-            readonly List<GameObject> _hosts = new List<GameObject>();
-            CVRAnimatorDriver _current;
-            string _path = "";
-
-            public DriverPool(Site site)
-            {
-                _site = site;
-                _current = site.Target.AddComponent<CVRAnimatorDriver>();
-            }
-
-            public string Take(Animator animator, string parameter, out string field)
-            {
-                if (_current.animators.Count >= Slots)
-                {
-                    var host = new GameObject($"YAPS Driver {_hosts.Count + 2}");
-                    host.transform.SetParent(_site.Target.transform, false);
-                    _hosts.Add(host);
-                    _current = host.AddComponent<CVRAnimatorDriver>();
-                    _path = _site.PathIn(host.transform);
-                }
-                int slot = _current.animators.Count;
-                _current.animators.Add(animator);
-                _current.animatorParameters.Add(parameter);
-                _current.animatorParameterType.Add(0);
-                field = $"animatorParameter{slot + 1:00}";
-                return _path;
-            }
-
-            public void Discard()
-            {
-                Object.DestroyImmediate(_site.Target.GetComponent<CVRAnimatorDriver>());
-                foreach (var host in _hosts)
-                {
-                    Object.DestroyImmediate(host);
-                }
-            }
-        }
 
         static bool BuildForPlug(Site site, BridgeContext.YapsPlug plug, int index,
-            CVRMaterialDriver materialDriver, DriverPool drivers, Animator animator,
+            CVRMaterialDriver materialDriver,
             ref int taskIndex)
         {
             float extent = Mathf.Max(plug.Length, 0.01f) * BoxLengths;
@@ -191,9 +146,12 @@ namespace AvatarBridge
             bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
             bool carryEngagement = spare >= 3;   // engagement and is-hole
 
-            plug.Material.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
-            plug.Material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
-            plug.Material.SetFloat("_YAPS_Enabled", 1f);
+            foreach (var m in PlugMaterials(plug))
+            {
+                m.SetFloat("_YAPS_ChannelSpace", carryOffset ? 1f : 0f);
+                m.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
+                m.SetFloat("_YAPS_Enabled", 1f);
+            }
 
             if (!carryEngagement)
             {
@@ -305,17 +263,36 @@ namespace AvatarBridge
 
             foreach (var (axis, field) in values)
             {
-                string local = Local(index, axis);
+                // THE TRIGGER WRITES THE SYNCED PARAMETER ITSELF.
+                //
+                // It used to write a "#" local and a CVRAnimatorDriver
+                // copied that into a synced twin, on the belief that a
+                // contact writing a synced parameter would have it
+                // overwritten by the incoming stream. That is true of the
+                // NATIVE contact system, which was removed in 3.7.5, and
+                // not of the advanced triggers this uses. Read out of the
+                // client 2026-08-26: every TriggerToContact call is
+                // `ChangeAnimatorParam(name, value)` with no source, so
+                // source defaults to Default, and PlayerSetup calls
+                // SendAdvancedAvatarUpdate for Default — the value goes out
+                // over the network from the trigger itself.
+                //
+                // The round trip was worse than unnecessary, it was the bug.
+                // CVRAnimatorDriver has no ownership gate: it runs on every
+                // client, and on a REMOTE copy of the avatar it takes the
+                // `animator.SetFloat(...)` branch, reading a "#" local that
+                // is 0 there because the trigger never fired on that
+                // machine. So each remote client stamped 0 over the synced
+                // value the moment it arrived, every frame. Perfect for the
+                // wearer, permanently still for everyone else, silently.
+                //
+                // Writing the synced parameter directly also frees the two
+                // driver tasks per plug that publishing cost, out of
+                // sixteen.
                 string synced = Synced(index, axis);
-                Declare(site, local);
                 Declare(site, synced);
-                site.ContactParameters.Add(local);
+                site.ContactParameters.Add(synced);
                 site.PreserveParameters.Add(synced);
-
-                // Publish: the "#" local into the synced twin.
-                string driverPath = drivers.Take(animator, synced, out string driverField);
-                AddDriverLayer(site, $"YAPS{index}{axis} publish", local,
-                    driverPath, typeof(CVRAnimatorDriver), driverField);
 
                 // Consume: the synced value into the material, on every client.
                 // Read the smoothed name so a remote viewer follows the value.
@@ -336,24 +313,37 @@ namespace AvatarBridge
             var host = TriggerHost($"YAPS Channel {index} E", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // A trigger with only a distance task is a sphere, and its
-            // radius is areaSize.x outright, not half as a box uses it.
-            trigger.areaSize = box * 0.5f;
+            // EVERY trigger is a BOX, and areaSize is its FULL size.
+            //
+            // This used to halve the box "because a distance-only trigger is
+            // a sphere whose radius is areaSize.x outright". Read out of the
+            // client 2026-08-26 and that is not true, if it ever was:
+            // TriggerToContact.ImportReceiverShape sets shapeType = Box and
+            // boxSize = areaSize with no sphere case anywhere, and
+            // ContactConversion takes boxSize from BoxCollider.size, which
+            // is a full size. So the halving was not converting a box to a
+            // sphere radius, it was simply making the engagement volume half
+            // the size intended, and the same for the hole flag beside it.
+            //
+            // The axis triggers below were always right: they pass `box`
+            // whole, which matches _YAPS_ChannelExtents at half of it.
+            trigger.areaSize = box;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = SocketPointerTypes;
             trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
             {
-                settingName = Local(index, "E"),
+                settingName = Synced(index, "E"),
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                 minValue = 0f,
                 maxValue = 1f,
             });
             AddHoleTrigger(site, plug, index, box);
+            AddRingTrigger(site, plug, index, box);
             // Nothing writes a stay task after the sender leaves; reset on exit.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "E"),
+                settingName = Synced(index, "E"),
                 settingValue = 0f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
@@ -367,25 +357,63 @@ namespace AvatarBridge
             var host = TriggerHost($"YAPS Channel {index} H", plug);
 
             var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            // Enter/exit with no stay tasks counts as distance-only, so this
-            // is a sphere too, radius areaSize.x.
-            trigger.areaSize = box * 0.5f;
+            // A box like every other, full size. See the engagement trigger
+            // above for why this is no longer halved.
+            trigger.areaSize = box;
             trigger.areaOffset = Vector3.zero;
             trigger.useAdvancedTrigger = true;
             trigger.allowedTypes = HolePointerTypes;
             trigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "H"),
+                settingName = Synced(index, "H"),
                 settingValue = 1f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
-                settingName = Local(index, "H"),
+                settingName = Synced(index, "H"),
                 settingValue = 0f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
         }
+
+        // THE OTHER HALF OF THE HOLE FLAG.
+        //
+        // A hole sets the flag on the way in and clears it on the way out,
+        // and nothing else ever writes it. So a ring arriving after a hole
+        // is treated as a hole, because the flag still says so, and any exit
+        // that does not fire leaves it set for the rest of the session: a
+        // prop despawning inside the trigger, the plug being toggled off,
+        // an instance change. Measured in game 2026-08-27, a freshly spawned
+        // ring prop swallowed the plug like a hole.
+        //
+        // A ring now asserts it too, so whichever kind arrived last is what
+        // the flag says and neither depends on an exit it may never get.
+        // Only the unambiguous ring tags: a hole socket also emits
+        // TPS_Orf_Root, so accepting that here would have a hole clear its
+        // own flag.
+        static void AddRingTrigger(Site site, BridgeContext.YapsPlug plug, int index, Vector3 box)
+        {
+            var host = TriggerHost($"YAPS Channel {index} R", plug);
+
+            var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            trigger.areaSize = box;
+            trigger.areaOffset = Vector3.zero;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = RingPointerTypes;
+            trigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Synced(index, "H"),
+                settingValue = 0f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
+        }
+
+        // Only the tags that mean "ring", for the reason above.
+        static readonly string[] RingPointerTypes =
+        {
+            "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
+        };
 
         // Only the tags that mean "hole". A plain TPS_Orf_Root says nothing
         // either way; unknown stays a ring.
@@ -503,7 +531,6 @@ namespace AvatarBridge
             "SPSLL_Socket_Front", "SPSLL_Socket_Front_SelfNotOnHips",
         };
 
-        static string Local(int index, string axis) => $"#YAPS{index}{axis}";
         static string Synced(int index, string axis) => $"YAPS{index}{axis}";
 
 
@@ -568,15 +595,68 @@ namespace AvatarBridge
             trigger.allowedTypes = types;
             trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
             {
-                settingName = Local(index, prefix + axis),
+                settingName = Synced(index, prefix + axis),
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
                 minValue = 0f,
                 maxValue = 1f,
+            });
+            // Back to the FAR EDGE on the way out, not the middle.
+            //
+            // The middle looks like the neutral answer and is the worst one
+            // available: 0.5 decodes to an offset of zero, which puts the
+            // socket exactly at the plug's own base, and that is the
+            // MAXIMUM deform, the position that curls a plug back on
+            // itself. Anything that leaks a little engagement afterwards
+            // aims the plug at its own root.
+            //
+            // One is a whole extent out on the axis, past where engagement
+            // fades to nothing, and all three together put it in the corner
+            // of the box. Before any of this the axes had no exit at all and
+            // held their last reading, taken AT the edge, which was
+            // accidentally the safe value. Measured in game 2026-08-27:
+            // resetting to the middle snapped the plug to a hard angle a
+            // couple of metres from a socket it had already left.
+            //
+            // A stay task with no exit keeps its last reading forever, and
+            // the last reading before a socket leaves is taken at the edge:
+            // measured in game as 0.99 and 1.00 on the axis it left by. That
+            // is harmless while engagement is 0, but engagement rises the
+            // instant the NEXT socket arrives, and for the tick before its
+            // own stay task reports, the plug snaps toward wherever the last
+            // one left. Half is the only neutral value the axis has.
+            //
+            // This does nothing for a sender that VANISHES inside the box: no
+            // exit runs at all then, and the axes and engagement both keep
+            // their last values with nothing left to clear them.
+            trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Synced(index, prefix + axis),
+                settingValue = 1f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
         }
 
         // A trigger measures from its own transform, and the shader
         // reconstructs the socket against the measured mesh frame. Same frame.
+        // EVERY baked material on the plug's mesh, not just the primary.
+        //
+        // A plug's vertices can span several materials — a whole avatar
+        // baked as one plug wears three — and the channel configured only
+        // plug.Material. The others kept channel space off and no frame at
+        // all, so on one mesh some materials decoded the socket through the
+        // channel and the rest fell back to the per-vertex frame: the head
+        // bending ninety degrees while the body sat still. The bake learned
+        // to mirror across slots on 2026-08-25; the channel never did.
+        static IEnumerable<Material> PlugMaterials(BridgeContext.YapsPlug plug)
+        {
+            if (plug.Material != null) yield return plug.Material;
+            if (plug.Renderer == null) yield break;
+            foreach (var m in plug.Renderer.sharedMaterials)
+            {
+                if (m != null && m != plug.Material && m.HasProperty("_YAPS_Bake")) yield return m;
+            }
+        }
+
         static GameObject TriggerHost(string name, BridgeContext.YapsPlug plug)
         {
             var host = new GameObject(name);
