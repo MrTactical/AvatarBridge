@@ -1248,11 +1248,24 @@ neither should be closed on the reasoning below alone.
 The conversion lists the avatar's SPS toggles, and converting to YAPS adds a SECOND set, so the
 menu carries two of each and one of them is inert.
 
-`YapsToggles` already tries not to do this: `ToggledBy` asks whether anything already switches the
-object and stands its own toggle down if so. But the check only recognises an entry that drives
-the object through `gameObjectTargets`, and a converted VRChat or SPS toggle commonly drives it
-through an ANIMATION CLIP instead. A clip-driven toggle would be invisible to the check and would
-produce exactly this.
+**The first hypothesis here was wrong and is corrected.** It said `ToggledBy` only recognises an
+entry driving the object through `gameObjectTargets`, so a clip-driven SPS toggle would slip past.
+Reading it properly: it checks `gameObjectTargets`, the entry's own on and off animation clips,
+dropdown options by both routes, AND every clip in the avatar's controller for anything hiding the
+target or any of its parents. Only clips under YAPS's own output folder are skipped, so a
+converted toggle's clips in `RehomedAssets` stay visible. Ordering is not it either: `Parameters
+and menu` and `Animator merge` are passes 128 and 131, and YAPS is 146, so the entries and clips
+exist by the time it looks.
+
+**What YAPS does is defer, not replace.** If anything already switches the object it adds no
+toggle, and it removes one an earlier build added that turned out to be redundant. So a duplicate
+means `ToggledBy` returned null on an object something demonstrably switches, and no reading of
+the code so far explains why.
+
+**Cause unknown.** `Dev/Probes/DuplicateToggleCheck.cs` finds every object under more than one menu
+entry and labels each by route, targets or clip, across the whole corpus in one Unity session. Run
+it and let the answer come from an avatar rather than from me reading. It cannot run while a
+corpus run holds the same project.
 
 **To confirm before fixing:** take an avatar whose SPS toggle is clip-driven, convert it, and look
 at whether the duplicate entry appears and whether `ToggledBy` returned null. The corpus has SPS
