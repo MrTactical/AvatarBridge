@@ -139,6 +139,10 @@ namespace AvatarBridge
                 // What the slot held, for Remove to put back.
                 if (plug.bakedFrom == null) { plug.bakedFrom = original; EditorUtility.SetDirty(plug); }
                 RecordBakedSlot(plug, renderer, slot, original);
+                // Any toggle that assigns this slot has to follow the bake, or
+                // it hands the slot back to the unbaked material the moment
+                // the animator runs.
+                YapsSwapFollow.Follow(renderer, slot, original, patched, report);
             }
             else
             {
@@ -736,8 +740,10 @@ namespace AvatarBridge
                 material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
                 material.SetFloat("_YAPS_Enabled", 0f);
                 if (socket.bakedFrom == null) { socket.bakedFrom = mats[0]; EditorUtility.SetDirty(socket); }
+                var wasSocket = mats[0];
                 mats[0] = material;
                 renderer.sharedMaterials = mats;
+                YapsSwapFollow.Follow(renderer, 0, wasSocket, material, report);
             }
 
             WriteStages(material, stages.Select(s => (s.startsAt, s.fadeOver)).ToList());
@@ -916,6 +922,7 @@ namespace AvatarBridge
                 CopyYapsProperties(primary, target);
                 EditorUtility.SetDirty(target);
                 RecordBakedSlot(plug, renderer, i, was);
+                YapsSwapFollow.Follow(renderer, i, was, target, report);
                 done++;
             }
             if (done > 0) renderer.sharedMaterials = mats;
@@ -1095,6 +1102,7 @@ namespace AvatarBridge
                     target = YapsBaker.Apply(result, was, shader, dir, true);
                     mats[i] = target;
                     RecordBakedSlot(plug, skin, i, was);
+                    YapsSwapFollow.Follow(skin, i, was, target, report);
                 }
                 WriteKnobs(plug, target);
                 // The author's length override, which reached only the
