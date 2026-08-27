@@ -52,6 +52,8 @@ public class SpikePlug : EditorWindow
     float _length = 0.22f;
     float _radius = 0.022f;
     int _queueBase = 1000;
+    int _debug = 0;
+    int _forceRow = 0;
     string _result = "";
 
     void OnEnable() { EditorApplication.update += Tick; }
@@ -83,6 +85,13 @@ public class SpikePlug : EditorWindow
         EditorGUILayout.LabelField("  clear/sockets/grabber",
             _queueBase + " / " + (_queueBase + 1) + " / " + (_queueBase + 2)
             + "   (the plug draws at Geometry, after the grab)");
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Diagnosis", EditorStyles.boldLabel);
+        _debug = EditorGUILayout.Popup("Plug colours", _debug,
+            new[] { "normal", "debug: red=cells claiming a socket, green=found, blue=row flipped" });
+        _forceRow = EditorGUILayout.Popup("Atlas row order", _forceRow,
+            new[] { "auto, from _TexelSize", "force top-down", "force bottom-up" });
 
         EditorGUILayout.Space();
         if (GUILayout.Button("Build the spike")) Build();
@@ -226,6 +235,8 @@ public class SpikePlug : EditorWindow
             p.SetFloat("_OriginPx", OriginPx);
             p.SetFloat("_CellSize", _cellSize);
             p.SetFloat("_Reach", _reach);
+            p.SetFloat("_Debug", _debug);
+            p.SetFloat("_ForceRow", _forceRow);
         }
         var c = Load("Clear");
         if (c != null)
@@ -368,6 +379,37 @@ public class SpikePlug : EditorWindow
             lines.Add("   row " + dn + "   pos " + Fmt(shot.GetPixel(px, dn))
                       + "  fwd " + Fmt(shot.GetPixel(px + _slotPx, dn)));
         }
+        // Did the CLEAR run? A cell no socket hashes to has to read alpha 0.
+        // If it reads 1 the atlas is holding the opaque screen, every one of
+        // the plug's twenty-seven cells claims a socket, and it locks onto
+        // whichever piece of floor decodes nearest. That is indistinguishable
+        // from a row-order problem by eye, which is why it is measured.
+        var used = new HashSet<int>();
+        foreach (Transform t in root.transform)
+        {
+            if (!t.name.StartsWith("Socket")) continue;
+            Vector3 sc = t.position / Mathf.Max(_cellSize, 0.0001f);
+            int i2 = SpikeCell.Hash(Mathf.FloorToInt(sc.x), Mathf.FloorToInt(sc.y), Mathf.FloorToInt(sc.z))
+                     % (_grid * _grid);
+            if (i2 < 0) i2 += _grid * _grid;
+            used.Add(i2);
+        }
+        for (int i = 0; i < _grid * _grid; i++)
+        {
+            if (used.Contains(i)) continue;
+            int gx = i % _grid, gy = i / _grid;
+            int px = OriginPx + gx * 2 * _slotPx + _slotPx / 2;
+            int fromTop = OriginPx + gy * _slotPx + _slotPx / 2;
+            Color e = shot.GetPixel(px, Mathf.Clamp(fromTop, 0, tex.height - 1));
+            lines.Add("EMPTY cell grid (" + gx + "," + gy + ")  alpha " + e.a.ToString("F2")
+                      + (e.a > 0.5f ? "   <-- THE CLEAR IS NOT RUNNING" : "   (clear is working)"));
+            break;
+        }
+
+        var cs = Shader.Find("YAPS/Spike Clear");
+        lines.Add("clear shader  " + (cs == null ? "MISSING"
+                  : (UnityEditor.ShaderUtil.ShaderHasError(cs) ? "FAILED TO COMPILE" : "compiles")));
+
         DestroyImmediate(shot);
         _result = string.Join(System.Environment.NewLine, lines);
         Debug.Log("[SpikePlug] " + _result);

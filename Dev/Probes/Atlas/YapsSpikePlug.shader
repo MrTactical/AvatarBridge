@@ -19,8 +19,16 @@
 //   point read at integer coordinates is the only correct primitive here,
 //   and it is what the shipped deform already uses on _YAPS_Bake.
 //
-//   Row order comes from _TexelSize.y, not from a guess. Some targets hand
-//   back a flipped grab and the reader shader already keys off that sign.
+//   Row order is a COMPILE-TIME platform fact, not the runtime sign of
+//   _TexelSize.y. That sign is the right signal for a UV sample and the
+//   wrong one here, which cost a session to find: with it, all twenty-seven
+//   cells read the opaque screen, every one reported alpha 1, and the plug
+//   locked onto whichever piece of floor decoded nearest. Measured, not
+//   argued: the debug colours came back white with it and green without.
+//
+//   The writer places its patch in pixels from the TOP of the render
+//   target and .Load indexes memory rows directly, so the only question is
+//   which end of memory the top is, and UNITY_UV_STARTS_AT_TOP answers it.
 //
 //   Under single-pass instanced the grab is a texture ARRAY. The patch is
 //   written in clip space ignoring the eye, so both slices carry identical
@@ -37,6 +45,14 @@ Shader "YAPS/Spike Plug"
         _Reach ("How far it reaches, in plug lengths", Range(0.5, 4)) = 1.6
         _Colour ("Colour", Color) = (0.85, 0.6, 0.62, 1)
         _Miss ("Colour when it finds nothing", Color) = (0.45, 0.45, 0.48, 1)
+        // 0 normal. 1 paints what the resolve DECIDED rather than what it
+        // found, because a plug that bends at nothing looks the same as a
+        // plug reading the wrong row and only one of those is a row problem.
+        _Debug ("Debug colours", Float) = 0
+        // 0 takes the platform default, 1 forces top-down, 2 forces
+        // bottom-up. Kept past the fix because the platform default is
+        // right on D3D by construction and unverified in game.
+        _ForceRow ("Row order: 0 auto, 1 top, 2 bottom", Float) = 0
     }
     SubShader
     {
@@ -65,6 +81,7 @@ Shader "YAPS/Spike Plug"
                 float4 pos : SV_POSITION;
                 float3 nrm : TEXCOORD0;
                 float  engaged : TEXCOORD1;
+                float3 dbg : TEXCOORD2;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -81,6 +98,7 @@ Shader "YAPS/Spike Plug"
             float4 _YAPS_SpikeAtlas_TexelSize;
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
+            float _Debug, _ForceRow;
             fixed4 _Colour, _Miss;
 
             // Must match HashCell in the socket shader and SpikeCell.Hash in
@@ -139,7 +157,16 @@ Shader "YAPS/Spike Plug"
                 int   slot  = max(int(_SlotPx), 1);
                 int   mid   = slot / 2;
                 int   texH  = int(_YAPS_SpikeAtlas_TexelSize.w);
-                bool  flip  = _YAPS_SpikeAtlas_TexelSize.y < 0;
+                #if UNITY_UV_STARTS_AT_TOP
+                    bool platformFlip = false;   // memory row 0 is the top
+                #else
+                    bool platformFlip = true;
+                #endif
+                bool flip = _ForceRow > 0.5 ? (_ForceRow > 1.5) : platformFlip;
+                // How many of the twenty-seven claimed to hold something. If
+                // the clear is not running this is 27, and every one of them
+                // is a piece of scene colour decoded as a socket.
+                int hits = 0;
 
                 int3   mine  = int3(floor(root / size));
                 float3 best  = 0;
@@ -161,6 +188,7 @@ Shader "YAPS/Spike Plug"
 
                     float4 got = YAPS_LOAD(px, py);
                     if (got.a < 0.5) continue;
+                    hits++;
 
                     float3 at = (float3(c) + got.rgb) * size;
                     float d = distance(at, root);
@@ -229,6 +257,10 @@ Shader "YAPS/Spike Plug"
                 o.pos = mul(UNITY_MATRIX_VP, float4(pos, 1));
                 o.nrm = nrm;
                 o.engaged = engaged;
+                // red   how many cells claimed a socket, over 27
+                // green found one at all
+                // blue  which row order was used
+                o.dbg = float3(saturate(hits / 27.0), bestPx >= 0 ? 1 : 0, flip ? 1 : 0);
                 return o;
             }
 
@@ -240,6 +272,7 @@ Shader "YAPS/Spike Plug"
                 // Colour says whether the atlas read worked, which cannot be
                 // seen from the shape alone when the plug happens to be
                 // pointing at the socket already.
+                if (_Debug > 0.5) return fixed4(i.dbg, 1);
                 fixed4 c = lerp(_Miss, _Colour, saturate(i.engaged * 2));
                 return fixed4(c.rgb * l, 1);
             }
