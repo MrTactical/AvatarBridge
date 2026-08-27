@@ -156,6 +156,17 @@ public class SpikePlug : EditorWindow
 
         _fitCells = EditorGUILayout.ToggleLeft(
             "Fit the cell size to the plug (cells must be smaller than a plug)", _fitCells);
+        if (_fitCells)
+            EditorGUILayout.HelpBox(
+                "This is a DEMO convenience and cannot exist in the real thing. Cell size is a "
+                + "protocol constant: sockets hash with it too, so everyone in the instance has "
+                + "to agree on one number. Drag the plug length up to ten or twenty metres and "
+                + "watch the cell follow — then notice that a twenty centimetre plug in the same "
+                + "room would need a cell four hundred times smaller. One global cell cannot "
+                + "serve both, which is the real limit on a hyper plug. The way out is several "
+                + "cell sizes at once, each in its own part of the atlas, with a socket "
+                + "publishing to all of them and a plug reading only the one that matches its "
+                + "own length.", MessageType.Info);
         // The SMALLEST cell that still covers the plug, because a smaller
         // cell packs sockets tighter and a larger one is pure loss here.
         // Coverage needs cell >= L / 2r; anything under that and the ends of
@@ -194,14 +205,19 @@ public class SpikePlug : EditorWindow
             (OriginPx + _grid * 2 * _slotPx) + " x " + (OriginPx + _grid * _slotPx) + " px"
             + "   (a cell is two slots: position, then facing)");
 
+        // Precision follows the cell, so it scales with the plug: a ten
+        // metre plug at radius 2 resolves to about a millimetre, which is
+        // proportionally the same as a twenty centimetre one at 0.02 mm.
+        EditorGUILayout.LabelField("  precision",
+            (_cellSize * 0.000488f * 1000f).ToString("F3") + " mm   (the cell times a half-float step)");
         EditorGUILayout.LabelField("  a read sees",
             "a " + (_cellSize * (2 * _cellRadius + 1)).ToString("F2")
             + " m box around the shaft midpoint, and the plug spans "
             + _length.ToString("F2") + " m");
 
         EditorGUILayout.Space();
-        _length = EditorGUILayout.Slider("Plug length, metres", _length, 0.05f, 0.6f);
-        _radius = EditorGUILayout.Slider("Plug radius, metres", _radius, 0.005f, 0.08f);
+        _length = EditorGUILayout.Slider("Plug length, metres", _length, 0.05f, 30f);
+        _radius = EditorGUILayout.Slider("Plug radius, metres", _radius, 0.002f, 4f);
         _reach = EditorGUILayout.Slider("Reach, in plug lengths", _reach, 0.5f, 4f);
         // Two ceilings that pull opposite ways, both worth seeing before
         // wondering why a socket is ignored.
