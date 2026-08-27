@@ -1273,3 +1273,30 @@ for the clean case in 4.4.0; a sender that vanishes inside the box still fires n
 despawned, an avatar that left, or one they simply walked away from. Those are three different
 paths through the same symptom and only the last one is fixed.
 
+## The prop channel is a second implementation, and fixes land in one of them
+
+Found 2026-08-27 while auditing the README. `YapsChannel` builds the contact channel for avatars
+and `YapsPropBuilder.BuildChannel` builds it for props, and they are separate code that does the
+same job with different component types, `CVRAdvancedAvatarSettingsTrigger` against
+`CVRSpawnableTrigger`. So a fix goes into whichever one was being debugged.
+
+Three had never crossed:
+
+- The trigger halving. `box * 0.5f` on the engagement and hole triggers, fixed for avatars in
+  `53e293c` and still live on props, so a prop's engagement volume was half what it should be
+  while its axis triggers beside it were full size. Exactly the mismatch avatars had.
+- No exit task on the axis triggers, so a prop's reported position stuck at the edge of the box
+  after a socket left.
+- No ring trigger, so the hole flag could only ever be set: a ring arriving after a hole was
+  treated as a hole for as long as the prop lived.
+
+All three are across now, but the shape of the problem is not fixed. **Two implementations of one
+protocol will keep drifting**, and nothing compares them. Worth either a shared builder that emits
+whichever trigger type it is handed, or a test that builds both and asserts the same box sizes,
+tasks and tag lists come out.
+
+**And the corpus cannot catch it.** It converts avatars; nothing in it builds a prop, so the prop
+path has no regression cover at all. That is a separate gap from "nothing revisits an existing
+prop", already recorded above, and worse: this one means the code is untested, not just that
+users hold stale copies.
+
