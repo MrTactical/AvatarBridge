@@ -80,7 +80,7 @@ Shader "YAPS/Spike Plug"
         // sockets a plug can thread: cells one step either way along the
         // shaft is three cells, so three sockets, and no list length changes
         // that. Two costs 125 reads against 27.
-        _Radius ("Neighbourhood radius", Range(0, 2)) = 1
+        _Radius ("Neighbourhood radius", Range(0, 3)) = 2
         _Colour ("Colour", Color) = (0.85, 0.6, 0.62, 1)
         _Miss ("Colour when it finds nothing", Color) = (0.45, 0.45, 0.48, 1)
         // 0 normal. 1 paints what the resolve DECIDED rather than what it
@@ -108,9 +108,11 @@ Shader "YAPS/Spike Plug"
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
 
-            // How many sockets one plug can thread. Four is the whole list,
-            // sorted, so a fifth in range is dropped rather than fought over.
-            #define YAPS_MAX 4
+            // How many sockets one plug can thread. Eight, so the list is
+            // never the binding constraint: the neighbourhood caps it at
+            // 2r+1 long before this does, seven even at radius 3. Each entry
+            // costs about nine floats of vertex registers.
+            #define YAPS_MAX 8
 
             struct appdata
             {
@@ -252,7 +254,7 @@ Shader "YAPS/Spike Plug"
                 // [loop], not [unroll]: the bound is a property now, and the
                 // whole point of it being one is being able to measure the
                 // cost of widening it rather than arguing about it.
-                int R = clamp(int(_Radius), 0, 2);
+                int R = clamp(int(_Radius), 0, 3);
                 [loop] for (int dx = -R; dx <= R; dx++)
                 [loop] for (int dy = -R; dy <= R; dy++)
                 [loop] for (int dz = -R; dz <= R; dz++)

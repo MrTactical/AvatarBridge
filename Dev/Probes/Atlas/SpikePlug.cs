@@ -48,6 +48,7 @@ public class SpikePlug : EditorWindow
     float _cellSize = 0.12f;
     bool _fitCells = true;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
+    int _sockets = 3;
     int _grid = 32;
     int _slotPx = 1;
     float _reach = 1.6f;
@@ -155,15 +156,36 @@ public class SpikePlug : EditorWindow
 
         _fitCells = EditorGUILayout.ToggleLeft(
             "Fit the cell size to the plug (cells must be smaller than a plug)", _fitCells);
-        if (_fitCells) _cellSize = _length * 0.3f;
+        // The SMALLEST cell that still covers the plug, because a smaller
+        // cell packs sockets tighter and a larger one is pure loss here.
+        // Coverage needs cell >= L / 2r; anything under that and the ends of
+        // the shaft cannot see cells the middle can.
+        if (_fitCells) _cellSize = _length / Mathf.Max(2 * _cellRadius, 1);
         using (new EditorGUI.DisabledScope(_fitCells))
             _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.02f, 2f);
-        _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 2);
+        _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 3);
         int cells = (2 * _cellRadius + 1) * (2 * _cellRadius + 1) * (2 * _cellRadius + 1);
         // The number Joe actually asked for, and it comes from the
         // NEIGHBOURHOOD rather than from the length of the list.
+        int ceiling = Mathf.Min(2 * _cellRadius + 1, 8);
+        // Two different ceilings, and the useful one is the smaller.
+        // 2r+1 assumes sockets landing exactly on cell boundaries at the
+        // very root and the very tip; with the cell fitted to the plug the
+        // spacing that actually separates them gives 2r-1.
         EditorGUILayout.LabelField("  ceiling",
-            "at most " + (2 * _cellRadius + 1) + " sockets on one plug, for " + cells + " reads a vertex");
+            (2 * _cellRadius - 1) + " comfortably, " + ceiling + " at the limit, for "
+            + cells + " reads a vertex");
+        _sockets = EditorGUILayout.IntSlider("Sockets to build", _sockets, 1, ceiling);
+        // Sockets in the SAME cell is the one clash double hashing cannot
+        // help with: two homes are a property of the CELL, so two sockets in
+        // one cell share both. Buckets are the fix and are not built.
+        float spacing = _length / (_sockets + 1);
+        if (spacing < _cellSize)
+            EditorGUILayout.HelpBox(
+                "At " + _sockets + " sockets the spacing is " + spacing.ToString("F3")
+                + " m, under the " + _cellSize.ToString("F3") + " m cell. Some will share a cell, "
+                + "and two sockets in ONE cell share both slots, so one is lost. Raise the "
+                + "neighbour radius (which shrinks the cell) or use fewer.", MessageType.Warning);
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 64);
         EditorGUILayout.LabelField("  slots",
             (_grid * _grid) + "   (two sockets landing on one slot means one of them vanishes)");
@@ -251,17 +273,15 @@ public class SpikePlug : EditorWindow
         // The plug below is turned ninety degrees, so its shaft runs along
         // world +X from its root.
         Vector3 from = new Vector3(-0.18f, 1.15f, 0f);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < _sockets; i++)
         {
-            float along = _length * (0.15f + 0.35f * i);
-            var at = from + new Vector3(along, 0.01f * i, 0.02f * i);
-            // Facing BACK down the shaft. The plug travels +X, so a socket
-            // whose local +Z is also +X is being entered through its back,
-            // which is what the hairpin was. The shader turns a ring to meet
-            // its approach now, but a demo that only looks right because of
-            // a correction is a demo that hides the correction.
+            float along = _length * (i + 1) / (_sockets + 1);
+            var at = from + new Vector3(along, 0.01f * (i % 2), 0.02f * (i % 3));
+            // Facing BACK down the shaft. A socket pointing the way the plug
+            // travels is entered through its back, and the cubic ties itself
+            // in a hairpin to arrive that way.
             Socket(root, sockShader, "Socket " + (char)('A' + i), at,
-                   Quaternion.Euler(0, 270 + (i - 1) * 12, (i - 1) * 10));
+                   Quaternion.Euler(0, 270 + (i - 1) * 10, (i - 1) * 8));
         }
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
@@ -345,9 +365,9 @@ public class SpikePlug : EditorWindow
     // changed without rebuilding and losing where the sockets were dragged to.
     void Push()
     {
-        foreach (string n in new[] { "SocketA", "SocketB", "SocketC" })
+        for (int i = 0; i < 8; i++)
         {
-            var m = Load(n);
+            var m = Load("Socket" + (char)('A' + i));
             if (m == null) continue;
             m.SetFloat("_Grid", _grid);
             m.SetFloat("_SlotPx", _slotPx);
