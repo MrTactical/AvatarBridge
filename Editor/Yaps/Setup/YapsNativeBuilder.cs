@@ -267,12 +267,20 @@ namespace AvatarBridge
         static void WireSize(YapsPlug plug, Renderer renderer, YapsBaker.Result result, Outcome o)
         {
             var top = TopOf(plug.transform);
-            var animator = top.GetComponentInParent<Animator>(true);
-            if (animator == null || animator.runtimeAnimatorController == null) return;
-            var clips = YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController)
+            // NOT the Animator's own slot. ChilloutVR uploads what
+            // avatar.overrides points at and falls back to
+            // avatarSettings.baseController; the Animator's slot holds a
+            // generated override that is not what ships, and on an avatar
+            // that has never been built it is often empty. Reading only that
+            // slot found nothing at all on an ordinary avatar and mirrored
+            // no shapes, so a plug with a size slider bent against a rest
+            // pose its mesh had already left, silently.
+            var animRoot = YapsSwapFollow.AnimationRootOf(top);
+            if (animRoot == null) return;
+            var clips = YapsSwapFollow.RunnableClips(top)
                 .Where(YapsCurveMirror.UserOwned).ToList();
             if (clips.Count == 0) return;
-            string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animator.transform);
+            string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
 
             var missed = new HashSet<string>();
             int shapes = result.Shapes.Count > 0
@@ -283,7 +291,7 @@ namespace AvatarBridge
             // Somebody animating the component's own checkbox meant the
             // deform, so give them the deform.
             int switched = YapsCurveMirror.MirrorEnabled(clips,
-                AnimationUtility.CalculateTransformPath(plug.transform, animator.transform), typeof(YapsPlug),
+                AnimationUtility.CalculateTransformPath(plug.transform, animRoot), typeof(YapsPlug),
                 rendererPath, renderer.GetType(), "_YAPS_Enabled");
             if (switched > 0)
             {
@@ -302,7 +310,7 @@ namespace AvatarBridge
                 var bones = new Dictionary<string, Transform>();
                 void Bone(Transform t)
                 {
-                    string p = AnimationUtility.CalculateTransformPath(t, animator.transform);
+                    string p = AnimationUtility.CalculateTransformPath(t, animRoot);
                     if (p != null) bones[p] = t;
                 }
                 Bone(chainRoot);

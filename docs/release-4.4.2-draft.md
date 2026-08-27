@@ -49,6 +49,21 @@ toggles. That now runs on both paths, for sockets as well as plugs.
 shaders through the same code. Nothing to do there; noting it so the question does not have
 to be asked.
 
+Two more things turned up while checking the rest of that seam, and both are in here.
+
+**A plug with a size slider could bend against the wrong rest pose.** A shader cannot read a
+blendshape weight, so every animation that moves one of the plug's own shapes has to write
+the same value onto its material too. Native setup was looking for those animations in the
+wrong place — the Animator's own slot, rather than what ChilloutVR actually uploads — and on
+an avatar whose controller lives where CVR expects it, that found nothing and mirrored
+nothing. Quietly. Your size slider would move the mesh and the deform would keep measuring
+against the shape it started at.
+
+**And a swap in a clip that is not yours is now reported instead of edited.** A clip inside a
+package, or the CCK's own, is shared with every project that has it, so we leave it alone —
+but you get told, with the clip named, because a plug that works until somebody presses one
+particular toggle is worse than one that says what it could not reach.
+
 <details>
 <summary>Why the native path needed its own version</summary>
 
