@@ -51,8 +51,11 @@ namespace AvatarBridge.Yaps
 
         // The one that does the work. Everything else here just decides which
         // clips to hand it.
+        // skipped: clips that matched but are not ours to edit, named so the
+        // caller can say so rather than leaving a plug that half works.
         public static int RepointInClips(IEnumerable<AnimationClip> clips, string path,
-                                         int slot, Material from, Material to)
+                                         int slot, Material from, Material to,
+                                         ICollection<string> skipped = null)
         {
             if (clips == null || from == null || to == null || from == to || path == null)
             {
@@ -67,6 +70,13 @@ namespace AvatarBridge.Yaps
                 {
                     continue;
                 }
+                // NEVER a clip we do not own. A clip under Packages, or the
+                // CCK's, or one of ours, is shared with every project that
+                // has it: editing in place reaches the package file itself.
+                // The native path walks the user's LIVE controllers, so this
+                // is not hypothetical the way it was for the converter, whose
+                // clips are already its own clones.
+                bool ours = YapsCurveMirror.UserOwned(clip);
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
                     if (binding.path != path || SlotIndex(binding.propertyName) != slot)
@@ -85,6 +95,14 @@ namespace AvatarBridge.Yaps
                         {
                             continue;
                         }
+                        if (!ours)
+                        {
+                            // Matched, and left alone. Silently skipping is
+                            // what produces a plug that works until somebody
+                            // presses the one toggle nobody thought to try.
+                            skipped?.Add(clip.name);
+                            break;
+                        }
                         keys[i].value = to;
                         touched = true;
                         repointed++;
@@ -97,6 +115,58 @@ namespace AvatarBridge.Yaps
                 }
             }
             return repointed;
+        }
+
+        // What animation paths in this avatar's clips are relative to. For a
+        // ChilloutVR avatar that is the CVRAvatar's own transform, which is
+        // also where the Animator sits.
+        public static Transform AnimationRootOf(Transform any)
+        {
+            if (any == null) return null;
+            var avatar = any.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null) return avatar.transform;
+            var spawnable = any.GetComponentInParent<CVRSpawnable>(true);
+            if (spawnable != null) return spawnable.transform;
+            var animator = any.GetComponentInParent<Animator>(true);
+            return animator != null ? animator.transform : any.root;
+        }
+
+        // EVERY clip this avatar could run, not just the Animator's.
+        //
+        // ChilloutVR uploads what avatar.overrides points at and falls back to
+        // avatarSettings.baseController; the Animator's own slot holds a
+        // generated override that is not what ships, and on an avatar that has
+        // never been built it is often empty. Reading only that slot means
+        // finding nothing at all on a perfectly ordinary avatar, and doing
+        // nothing quietly.
+        //
+        // All three are read, because a clip only has to be REACHABLE to fire.
+        // Unfiltered: the caller decides what it is allowed to write to, and
+        // one caller wants to report the ones it must leave alone.
+        public static List<AnimationClip> RunnableClips(Transform any)
+        {
+            var root = AnimationRootOf(any);
+            var clips = new List<AnimationClip>();
+            if (root == null) return clips;
+
+            void Take(RuntimeAnimatorController runtime)
+            {
+                if (runtime != null && runtime.animationClips != null)
+                {
+                    clips.AddRange(runtime.animationClips.Where(c => c != null));
+                }
+            }
+            var avatar = any.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null)
+            {
+                Take(avatar.overrides);
+                if (avatar.avatarSettings != null) Take(avatar.avatarSettings.baseController);
+            }
+            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
+            {
+                Take(animator.runtimeAnimatorController);
+            }
+            return clips.Distinct().ToList();
         }
 
         // The native path: no merged controller to read, so the clips come off
@@ -116,38 +186,27 @@ namespace AvatarBridge.Yaps
                 return 0;
             }
 
-            var avatar = renderer.GetComponentInParent<CVRAvatar>(true);
-            Transform root = avatar != null ? avatar.transform : null;
-            if (root == null)
-            {
-                var spawnable = renderer.GetComponentInParent<CVRSpawnable>(true);
-                root = spawnable != null ? spawnable.transform : renderer.transform.root;
-            }
-
-            var clips = new List<AnimationClip>();
-            void Take(RuntimeAnimatorController runtime)
-            {
-                if (runtime != null && runtime.animationClips != null)
-                {
-                    clips.AddRange(runtime.animationClips.Where(c => c != null));
-                }
-            }
-            if (avatar != null)
-            {
-                Take(avatar.overrides);
-                if (avatar.avatarSettings != null) Take(avatar.avatarSettings.baseController);
-            }
-            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
-            {
-                Take(animator.runtimeAnimatorController);
-            }
-            if (clips.Count == 0)
+            Transform root = AnimationRootOf(renderer.transform);
+            var clips = RunnableClips(renderer.transform);
+            if (root == null || clips.Count == 0)
             {
                 return 0;
             }
 
             string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
-            int repointed = RepointInClips(clips, path, slot, from, to);
+            var skipped = new SortedSet<string>();
+            int repointed = RepointInClips(clips, path, slot, from, to, skipped);
+            if (skipped.Count > 0 && report != null)
+            {
+                report.Warning("YAPS",
+                    $"{skipped.Count} material swap(s) could not be repointed",
+                    "These animations assign a material to the mesh slot the bake replaced, and " +
+                    "they live outside your Assets folder — in a package, or in the CCK — so " +
+                    "editing them would change them for every project that has them. Playing one " +
+                    "will put the unbaked material back and the plug will stop bending. Copy the " +
+                    "clip into your own project and point it at the baked material: "
+                    + string.Join(", ", skipped));
+            }
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
