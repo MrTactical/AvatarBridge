@@ -52,6 +52,8 @@ Shader "YAPS/Spike Clear"
             float4 _Corner;
             float _CellPixels;
             float _Grid;
+            float _SpanPxX;
+            float _SpanPxY;
 
             v2f vert (appdata v)
             {

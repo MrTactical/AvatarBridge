@@ -117,13 +117,20 @@ public class SpikePlug : EditorWindow
         // Draws first and paints the atlas rect alpha 0, so an empty cell can
         // be told from an occupied one. Without it the grab returns the
         // opaque screen and every cell reads as a socket at the cell origin.
-        var clear = Quad(root, "Clear", 1f);
+        // Scaled huge for the same reason as the grabber: it draws in clip
+        // space and ignores its transform, but a one-metre quad at the
+        // origin can still be frustum-culled, and a clear that does not draw
+        // leaves every cell reading the opaque screen as occupied.
+        var clear = Quad(root, "Clear", 200f);
         var cm = Asset("Clear", clearShader);
         cm.renderQueue = _queueBase;
         clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
 
+        // Placed in DIFFERENT cells on purpose. One cell holds one socket:
+        // the second to draw simply overwrites the first, which is a real
+        // limit of the scheme rather than a bug in the spike.
         Socket(root, sockShader, "Socket A", new Vector3(0.0f, 1.05f, 0.30f), Quaternion.Euler(0, 180, 0));
-        Socket(root, sockShader, "Socket B", new Vector3(0.34f, 1.32f, 0.10f), Quaternion.Euler(0, 250, 0));
+        Socket(root, sockShader, "Socket B", new Vector3(0.30f, 1.36f, 0.78f), Quaternion.Euler(0, 250, 0));
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
         // space and hands a SkinnedMeshRenderer an identity matrix, so a
