@@ -264,7 +264,7 @@ never be a skinned mesh** — Unity skins into world space and hands a SkinnedMe
 so a skinned marker cannot say where it is. Same fact as the channel decoding unrotated, from the
 other side.
 
-Rig: `Dev/Spikes/Atlas/`.
+Rig: `Dev/Probes/Atlas/`.
 
 ### Next: spike 3, the rendezvous
 
