@@ -51,6 +51,21 @@ public class SpikeCell : EditorWindow
     int _taps = 27;
     int _tapMeshes = 8;
     bool _tapsOnly = true;
+
+    // WHERE IN THE FRAME the atlas is drawn, which decides whether anyone
+    // can see it. Unity lets a material override its shader's queue, so this
+    // needs no new shaders: clear at base, writers at base+1, grabber at
+    // base+2, and the grab therefore happens before the scene paints over
+    // the region. Background is 1000 and Geometry is 2000, so a base of 1000
+    // puts the whole atlas before any opaque geometry.
+    int _queueBase = 1000;
+    string _queueNote = "";
+    // Pixel-snapped mode: the atlas is placed in PIXELS rather than clip
+    // units, so cells land on exact pixel boundaries and the readback can
+    // hit their centres however small they are.
+    bool _snap = true;
+    int _cellPx = 2;
+    const int OriginPx = 8;
     int _phase = -1, _frames;
     double _sum, _onMs, _offMs;
     const int Samples = 180;
@@ -128,13 +143,25 @@ public class SpikeCell : EditorWindow
 
         _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.1f, 2f);
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
-        _cellPixels = EditorGUILayout.Slider("Cell on screen", _cellPixels, 0.01f, 0.06f);
+        // Down to a pixel or two. The payload is read from the cell CENTRE, so
+        // one pixel is enough in principle; what breaks it is anything that
+        // blends neighbours, MSAA or a resolve, and how far off centre the
+        // readback lands when a cell is only a pixel wide.
+        _cellPixels = EditorGUILayout.Slider("Cell on screen", _cellPixels, 0.002f, 0.06f);
+        _snap = EditorGUILayout.ToggleLeft("Snap the atlas to whole pixels", _snap);
+        if (_snap) _cellPx = EditorGUILayout.IntSlider("Cell, pixels", _cellPx, 1, 16);
+        int shownPx = _snap ? _cellPx : Mathf.RoundToInt(_cellPixels * 0.5f * 1920f);
+        EditorGUILayout.LabelField("  cell size",
+            shownPx + " px   atlas " + (shownPx * _grid) + " px across"
+            + (_snap ? "   (snapped)" : "   (clip space, 1920 wide)"));
         _radius = EditorGUILayout.IntSlider("Neighbour radius", _radius, 0, 2);
         // ReadPixels has y=0 at the BOTTOM; clip space +1 is the top. The
         // reader shader compensates through _TexelSize.y and this did not,
         // so the first run sampled the floor and every cell read as occupied
         // because the screen is opaque.
-        _flipY = EditorGUILayout.ToggleLeft("Flip Y when reading back", _flipY);
+        using (new EditorGUI.DisabledScope(_snap))
+            _flipY = EditorGUILayout.ToggleLeft(
+                _snap ? "Flip Y (not used when snapped)" : "Flip Y when reading back", _flipY);
         if (GUILayout.Button("Find the patches (which orientation?)")) Locate();
         EditorGUILayout.LabelField("  taps per read", ((2 * _radius + 1) * (2 * _radius + 1) * (2 * _radius + 1)).ToString());
 
@@ -146,6 +173,15 @@ public class SpikeCell : EditorWindow
         _tapMeshes = EditorGUILayout.IntSlider("Tap meshes", _tapMeshes, 0, 40);
         EditorGUILayout.LabelField("  reads per frame",
             (_tapMeshes * 515L * _taps).ToString("N0") + "   (a sphere is about 515 verts)");
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Visibility", EditorStyles.boldLabel);
+        _queueBase = EditorGUILayout.IntField("Atlas queue base", _queueBase);
+        EditorGUILayout.LabelField("  clear/writers/grabber",
+            _queueBase + " / " + (_queueBase + 1) + " / " + (_queueBase + 2)
+            + "   (Background 1000, Geometry 2000)");
+        if (GUILayout.Button("Apply the queue")) ApplyQueue();
+        if (!string.IsNullOrEmpty(_queueNote)) EditorGUILayout.LabelField("  now", _queueNote);
+
         _tapsOnly = EditorGUILayout.ToggleLeft(
             "Measure the TAPS only (hold the scene still, change only the tap count)", _tapsOnly);
         using (new EditorGUI.DisabledScope(!EditorApplication.isPlaying || _phase >= 0))
@@ -274,6 +310,7 @@ public class SpikeCell : EditorWindow
         m.SetFloat("_CellPixels", _cellPixels);
         m.SetFloat("_Grid", _grid);
         m.SetFloat("_CellSize", _cellSize);
+        m.SetFloat("_CellPx", _snap ? _cellPx : 0);
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
     }
 
@@ -321,12 +358,11 @@ public class SpikeCell : EditorWindow
             taps++;
             int gx = idx % _grid, gy = idx / _grid;
             // Cell centre in clip space, then to pixels.
-            float clipX = _corner.x + gx * _cellPixels + _cellPixels * 0.5f;
-            float clipY = _corner.y - gy * _cellPixels - _cellPixels * 0.5f;
-            int px = Mathf.Clamp(Mathf.RoundToInt((clipX * 0.5f + 0.5f) * tex.width), 0, tex.width - 1);
-            float ny = clipY * 0.5f + 0.5f;
-            if (_flipY) ny = 1f - ny;
-            int py = Mathf.Clamp(Mathf.RoundToInt(ny * tex.height), 0, tex.height - 1);
+            int px, up2, dn2;
+            PixelOf(gx, gy, tex, out px, out up2, out dn2);
+            // Snapped mode counts rows from the top already, so there is
+            // nothing to flip. The toggle only applies to clip-space mode.
+            int py = _snap ? up2 : (_flipY ? dn2 : up2);
             Color got = shot.GetPixel(px, py);
             // Alpha alone cannot be trusted: an empty cell holds whatever the
             // screen had there, and the screen is opaque. Require the flag
@@ -385,11 +421,8 @@ public class SpikeCell : EditorWindow
             int total = _grid * _grid;
             int idx = Hash(c.x, c.y, c.z) % total; if (idx < 0) idx += total;
             int gx = idx % _grid, gy = idx / _grid;
-            float clipX = _corner.x + gx * _cellPixels + _cellPixels * 0.5f;
-            float clipY = _corner.y - gy * _cellPixels - _cellPixels * 0.5f;
-            int px = Mathf.Clamp(Mathf.RoundToInt((clipX * 0.5f + 0.5f) * tex.width), 0, tex.width - 1);
-            int up = Mathf.Clamp(Mathf.RoundToInt((clipY * 0.5f + 0.5f) * tex.height), 0, tex.height - 1);
-            int dn = Mathf.Clamp(Mathf.RoundToInt((1f - (clipY * 0.5f + 0.5f)) * tex.height), 0, tex.height - 1);
+            int px, up, dn;
+            PixelOf(gx, gy, tex, out px, out up, out dn);
             Vector3 want = new Vector3(scaled.x - c.x, scaled.y - c.y, scaled.z - c.z);
             Color a = shot.GetPixel(px, up), b = shot.GetPixel(px, dn);
             lines.Add(t.name + " cell " + c + " -> grid (" + gx + "," + gy + ")");
@@ -411,6 +444,57 @@ public class SpikeCell : EditorWindow
     static float Off(Color c, Vector3 want)
     {
         return Vector3.Distance(new Vector3(c.r, c.g, c.b), want);
+    }
+
+    // Drawing the atlas early and grabbing before the scene covers it is the
+    // only way it can be invisible: any pixel it writes IS on screen, so the
+    // scene has to paint over it afterwards. That works wherever opaque
+    // geometry covers those pixels and fails against open sky, which is what
+    // this is for finding out.
+    void ApplyQueue()
+    {
+        Set("Clear", _queueBase);
+        Set("SocketA", _queueBase + 1);
+        Set("SocketB", _queueBase + 1);
+        for (int i = 0; i < 40; i++) Set("SocketX" + i, _queueBase + 1);
+        Set("Grabber", _queueBase + 2);
+        Set("PlugMarker", _queueBase + 2);
+        _queueNote = "clear " + Queue("Clear") + ", writers " + Queue("SocketA")
+                   + ", grabber " + Queue("Grabber") + "  (asked for "
+                   + _queueBase + "/" + (_queueBase + 1) + "/" + (_queueBase + 2) + ")";
+        Debug.Log("[SpikeCell] queues now " + _queueNote);
+    }
+
+    // The same maths the shader does, so the readback hits the cell centre.
+    void PixelOf(int gx, int gy, RenderTexture tex, out int px, out int up, out int dn)
+    {
+        if (_snap)
+        {
+            px = Mathf.Clamp(OriginPx + gx * _cellPx + _cellPx / 2, 0, tex.width - 1);
+            int fromTop = OriginPx + gy * _cellPx + _cellPx / 2;
+            dn = Mathf.Clamp(tex.height - 1 - fromTop, 0, tex.height - 1);
+            up = Mathf.Clamp(fromTop, 0, tex.height - 1);
+        }
+        else
+        {
+            float clipX = _corner.x + gx * _cellPixels + _cellPixels * 0.5f;
+            float clipY = _corner.y - gy * _cellPixels - _cellPixels * 0.5f;
+            px = Mathf.Clamp(Mathf.RoundToInt((clipX * 0.5f + 0.5f) * tex.width), 0, tex.width - 1);
+            up = Mathf.Clamp(Mathf.RoundToInt((clipY * 0.5f + 0.5f) * tex.height), 0, tex.height - 1);
+            dn = Mathf.Clamp(Mathf.RoundToInt((1f - (clipY * 0.5f + 0.5f)) * tex.height), 0, tex.height - 1);
+        }
+    }
+
+    static string Queue(string name)
+    {
+        var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/YapsSpike/Cell" + name + ".mat");
+        return m == null ? "?" : m.renderQueue.ToString();
+    }
+
+    static void Set(string name, int queue)
+    {
+        var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/YapsSpike/Cell" + name + ".mat");
+        if (m != null) { m.renderQueue = queue; EditorUtility.SetDirty(m); }
     }
 
     static void SetTaps(int n)

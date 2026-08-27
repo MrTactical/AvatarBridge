@@ -400,3 +400,64 @@ after that was interpretation of a confounded number.
 **What is left is all in-game or unbuilt:** a plug reading the atlas in its OWN shader rather than
 in C#, VR two-eye rendering, a real mirror, and what a viewer's safety settings do to a shader
 that has to run for the transport to work at all.
+
+### Visibility, closed 2026-08-27
+
+The last question that could have forced a redesign: any pixel the atlas writes IS on screen.
+There is no off-screen region an avatar shader can reach, clip space beyond the unit cube is
+clipped, and there is no scratch buffer. So the atlas cannot be hidden; it has to be
+imperceptible. It turned out to have two independent answers rather than one compromise.
+
+**The clear pass is invisible, for free.** It covers the whole atlas rect and was by far the most
+conspicuous part, a black square in the corner of every frame. It only ever needed to write ALPHA,
+so `ColorMask A` leaves the colour channels untouched: the rect keeps whatever the scene drew and
+still reads alpha 0 for occupancy. Payload unchanged after the mask, 0.0004 and 0.0002.
+
+**The cells go down to ONE PIXEL.** Measured at 6 px, 2 px and 1 px, the payload reads back
+identically every time. An 8x8 grid at one pixel a cell is an **8 by 8 pixel atlas** carrying
+sixty-four addressable cells at 0.2 mm.
+
+**Getting there needed pixel snapping, and that is a real implementation requirement.** Placing
+the atlas in CLIP space works at six pixels a cell and fails at two: clip space knows nothing
+about where pixel boundaries are, so a cell 0.002 wide is 1.92 px at 1920 and each cell drifts a
+fraction further than the last. The failure is abrupt and position-dependent, which is how it was
+identified: the cell at grid (0,4) read perfectly while (6,7) read a neighbour, because drift
+accumulates with the grid index. Placing the atlas in PIXELS from `_ScreenParams`, with the
+readback doing identical arithmetic, makes cell centres exact by construction.
+
+It also retires the Y question. Pixel rows count down from the top while clip space counts up, so
+the flip stops being an empirical discovery and becomes one line of the same maths.
+
+**What the visible footprint actually is:** one clear pass that paints no colour, and one pixel
+per socket in a screen corner. The reader needs no visible geometry at all, since in the real
+system the plug's own shader carries the GrabPass.
+
+---
+
+## The atlas is now an implementation job, not a research one
+
+Every question that could have killed it has an answer:
+
+    GrabPass survives a CVR upload, cross-avatar, in mirrors   proven in game
+    stereo, single-pass instanced                              solved by construction
+    a moving world position                                    0.2 mm
+    rendezvous with no negotiation                             works, spike 3
+    occupancy                                                  clear pass, ColorMask A
+    collisions                                                 fail safe, observed
+    grab cost                                                  below noise, bounded by cameras
+    tap cost                                                   under 1 ms at 16x realistic load
+    visibility                                                 8x8 pixels, clear invisible
+
+**What is left is building it**, and three things worth settling first:
+
+1. **Can a patched Poiyomi vertex stage take it?** The spikes are clean tiny shaders. A real plug
+   wears somebody's Poiyomi, patched by us, already doing vertex work. Instruction counts,
+   register pressure and Poiyomi's variants are all unknown.
+2. **One renderer per socket.** A socket today is lights and pointers with no mesh of its own. The
+   atlas needs each socket to draw something every frame: a draw call per socket per camera, cheap
+   individually, but a new per-socket cost where lights had none.
+3. **The resolver holds ONE socket.** `yaps_resolve.cginc` picks a single best candidate, and the
+   atlas returns a NEIGHBOURHOOD. Spike 3 found two and threw one away. The feature wishlist in
+   `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is exactly
+   "stop discarding what the atlas already returns", so the transport and the features want the
+   same change.

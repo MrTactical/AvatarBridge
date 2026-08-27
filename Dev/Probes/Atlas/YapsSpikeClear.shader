@@ -31,6 +31,13 @@ Shader "YAPS/Spike Clear"
         ZTest Always ZWrite Off Cull Off
         Pass
         {
+            // ONLY the alpha channel. Painting RGB as well is what made the
+            // atlas a visible black square: the clear covers the whole rect,
+            // so it is by far the most conspicuous part of the system. With
+            // the colour masked off the rect keeps whatever the scene drew
+            // there and still reads alpha 0, which is all occupancy needs.
+            ColorMask A
+
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag

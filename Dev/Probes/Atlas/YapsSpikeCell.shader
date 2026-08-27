@@ -25,6 +25,7 @@ Shader "YAPS/Spike Cell"
     {
         _Corner ("Atlas corner, clip space", Vector) = (-0.95, 0.95, 0, 0)
         _CellPixels ("One cell, clip space", Float) = 0.02
+        _CellPx ("One cell in PIXELS, 0 to use clip space", Float) = 0
         _Grid ("Cells across the atlas", Float) = 8
         _CellSize ("World cell size, metres", Float) = 0.5
     }
@@ -51,6 +52,7 @@ Shader "YAPS/Spike Cell"
 
             float4 _Corner;
             float _CellPixels;
+            float _CellPx;
             float _Grid;
             float _CellSize;
 
@@ -83,8 +85,29 @@ Shader "YAPS/Spike Cell"
 
                 // The patch goes where the HASH says, not where the object is.
                 float2 unit = v.vertex.xy + 0.5;
-                float2 at = _Corner.xy + float2(cx, -cy) * _CellPixels;
-                float2 p = at + unit * _CellPixels * float2(1, -1);
+                float2 p;
+                if (_CellPx > 0.5)
+                {
+                    // SNAPPED TO WHOLE PIXELS.
+                    //
+                    // Clip space knows nothing about where pixel boundaries
+                    // are, so a cell 0.002 wide is 1.92 px at 1920 and every
+                    // cell drifts a fraction further than the last. It does
+                    // not matter at six pixels a cell and it is fatal at two:
+                    // measured, the cell at grid (0,4) read perfectly while
+                    // (6,7) read a neighbour, because the drift accumulates
+                    // with the grid index.
+                    float2 originPx = float2(8, 8);
+                    float2 cellPx = float2(_CellPx, _CellPx);
+                    float2 atPx = originPx + float2(cx, cy) * cellPx + unit * cellPx;
+                    p = atPx / _ScreenParams.xy * 2.0 - 1.0;
+                    p.y = -p.y;                       // pixel rows count down from the top
+                }
+                else
+                {
+                    float2 at = _Corner.xy + float2(cx, -cy) * _CellPixels;
+                    p = at + unit * _CellPixels * float2(1, -1);
+                }
                 o.pos = float4(p, UNITY_NEAR_CLIP_VALUE, 1);
 
                 // Where it sits inside its own cell, already 0..1.
