@@ -16,17 +16,27 @@
 // more than half a cell apart in any axis. Two sockets in the same octant
 // still collide, which is the genuinely ambiguous case.
 //
-// Reading all eight would multiply every tap by eight and cost more than it
-// saved. So the cell carries a HEADER pixel first, whose alpha is a bitmask
-// of which octants are occupied, and a reader takes one tap for the header
-// and then only reads the octants that exist. An empty cell is one tap, the
-// same as before buckets.
+// Reading all eight in every cell would multiply every tap by eight. So the
+// cell carries a HEADER pixel first, and a reader takes one tap for it and
+// only opens the cell if it says anything is there. Nearly every cell is
+// empty, so nearly every cell still costs one tap, the same as before
+// buckets existed.
 //
-// The header is built with ADDITIVE blending on the alpha channel alone.
-// Every socket adds its own bit, nobody has to see anybody else, and the sum
-// is the OR as long as the bits differ, which is exactly when the sockets do
-// not collide anyway. Alpha only, so the header is invisible; the clear pass
-// zeroes alpha and therefore zeroes the mask for free.
+// The header is a COUNT, built with ADDITIVE blending on the alpha channel
+// alone: every socket adds 1/255 and the sum is exactly how many sockets sit
+// in that slot. Alpha only, so it is invisible, and the clear pass zeroes it
+// for free.
+//
+// It was a BITMASK of live octants first, which is strictly more information
+// and does not survive contact with two sockets in one octant: 1+1 is 2, so
+// the octant that IS occupied stops being advertised and a neighbouring one
+// that is not starts being. With several sockets in a cell the carries
+// cascade and the whole cell goes unreadable, which is worse than losing the
+// pair that collided. Addition is only an OR while the bits differ.
+//
+// A count cannot carry. Zero still means empty, which is the case that has to
+// be cheap because most cells are, and a cell that holds anything costs eight
+// reads that nothing else was going to need.
 //
 // ---------------------------------------------------------------------
 // LEVELS: several cell sizes at once
@@ -160,7 +170,7 @@ Shader "YAPS/Spike Socket"
         }
         ENDCG
 
-        // ---- the header: one pixel, alpha is a bitmask of live octants ----
+        // ---- the header: one pixel, alpha counts what is in the cell ----
         Pass
         {
             Blend One One
@@ -186,10 +196,10 @@ Shader "YAPS/Spike Socket"
                 float2 unit = v.vertex.xy + 0.5;
                 o.pos = float4(ToClip(float2(cx, cy) + unit * slot), UNITY_NEAR_CLIP_VALUE, 1);
 
-                // One bit per octant, added in. Eight sockets sum to 255/255
-                // and a half float resolves 1/255 in four steps, so the mask
-                // survives the grab intact.
-                o.bit = exp2(sub) / 255.0;
+                // One count, added in. A half float resolves 1/255 to about
+                // a hundred and thirty steps at these magnitudes, so the sum
+                // survives the grab exactly.
+                o.bit = 1.0 / 255.0;
                 return o;
             }
 

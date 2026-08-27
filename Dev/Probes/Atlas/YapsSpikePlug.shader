@@ -289,20 +289,23 @@ Shader "YAPS/Spike Plug"
                         int fromTop = int(_OriginPx) + (lvl * grid + gy) * slot;
                         int cellY = flip ? (texH - 1 - fromTop) : fromTop;
 
-                        // ONE tap for the header, whose alpha is a bitmask of
-                        // which octants of this cell hold anything. An empty
-                        // cell costs exactly this and nothing more, which is
-                        // what makes eight buckets affordable: reading all
-                        // eight unconditionally would multiply every tap by
-                        // eight and cost more than the buckets are worth.
-                        int mask = int(round(YAPS_LOAD(cellX, cellY).a * 255.0));
-                        if (mask == 0) break;      // nothing here, and home 1
+                        // ONE tap for the header, whose alpha counts how many
+                        // sockets sit in this slot. Nearly every cell holds
+                        // nothing, and that case costs exactly this and no
+                        // more, which is what makes eight buckets affordable.
+                        //
+                        // A count rather than a bitmask of live octants: the
+                        // mask was built by adding bits, and 1+1 is 2, so two
+                        // sockets in one octant unset the octant that exists
+                        // and set one that does not. With a few sockets in a
+                        // cell the carries cascade and the cell goes dark.
+                        int held = int(round(YAPS_LOAD(cellX, cellY).a * 255.0));
+                        if (held == 0) break;      // nothing here, and home 1
                                                    // is always written, so
                                                    // home 2 cannot hold it
                         bool got1 = false;
                         [loop] for (int sub = 0; sub < 8; sub++)
                         {
-                            if ((mask & (1 << sub)) == 0) continue;
                             int px = cellX + (1 + 2 * sub) * slot;
                             float4 got = YAPS_LOAD(px, cellY);
                             if (got.a < 0.5) continue;

@@ -120,22 +120,19 @@ public class SpikePlug : EditorWindow
         // It presents as a DEADZONE exactly one cell across, which is how
         // this was found: socket B stopped working between y 1.26 and 1.44,
         // the bounds of a single cell at eighteen centimetres.
-        var seen1 = new Dictionary<int, int>();
-        var seen2 = new Dictionary<int, int>();
+        // Buckets moved this. Two sockets in one CELL used to lose one of
+        // them; now a cell holds eight octants, so they only fight when they
+        // are in the same octant too. The old cell-only test cried wolf on
+        // every socket once the cell grew larger than the spacing.
+        var seen = new Dictionary<string, int>();
         foreach (var t in socks)
         {
-            int a1, a2; Slots(t.position, cell, out a1, out a2);
-            seen1[a1] = seen1.ContainsKey(a1) ? seen1[a1] + 1 : 1;
-            seen2[a2] = seen2.ContainsKey(a2) ? seen2[a2] + 1 : 1;
+            string k = Bucket(t.position, cell);
+            seen[k] = seen.ContainsKey(k) ? seen[k] + 1 : 1;
         }
         var clash = new HashSet<Transform>();
         foreach (var t in socks)
-        {
-            int a1, a2; Slots(t.position, cell, out a1, out a2);
-            // Safe as long as ONE of its two homes is uncontested. Only a
-            // socket that loses both is actually unreadable.
-            if (seen1[a1] > 1 && seen2[a2] > 1) clash.Add(t);
-        }
+            if (seen[Bucket(t.position, cell)] > 1) clash.Add(t);
 
         float arc = 0;
         Vector3 prev = at0;
@@ -145,7 +142,7 @@ public class SpikePlug : EditorWindow
             float h = span * 0.5f;
             bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
             arc += Vector3.Distance(t.position, prev);
-            string why = clash.Contains(t) ? "SLOT CLASH on BOTH homes, this one is lost"
+            string why = clash.Contains(t) ? "same OCTANT as another, one is lost"
                        : !inBox ? "OUTSIDE the read box"
                        : arc > len ? "past the tip: arc " + arc.ToString("F2") + " of " + len.ToString("F2")
                        : "threaded at " + arc.ToString("F2") + " of " + len.ToString("F2");
@@ -641,6 +638,19 @@ public class SpikePlug : EditorWindow
 
     // The shader's cell-to-slot arithmetic, so the scene view and the GPU
     // agree about which sockets are fighting over a pixel.
+    // Cell plus octant, which is what a socket actually occupies. Two
+    // sockets sharing this are the last clash nothing fixes; sharing only the
+    // cell is fine, and sharing only a grid slot is what the second home and
+    // the tag are for.
+    string Bucket(Vector3 at, float cell)
+    {
+        Vector3 sc = at / cell;
+        var c = new Vector3Int(Mathf.FloorToInt(sc.x), Mathf.FloorToInt(sc.y), Mathf.FloorToInt(sc.z));
+        Vector3 f = sc - c;
+        int oct = (f.x > 0.5f ? 4 : 0) + (f.y > 0.5f ? 2 : 0) + (f.z > 0.5f ? 1 : 0);
+        return c + ":" + oct;
+    }
+
     // Both homes of a cell, matching HashCell / HashCell2 in the shaders.
     void Slots(Vector3 at, float cell, out int first, out int second)
     {
