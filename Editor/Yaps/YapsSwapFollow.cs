@@ -51,8 +51,11 @@ namespace AvatarBridge.Yaps
 
         // The one that does the work. Everything else here just decides which
         // clips to hand it.
+        // skipped: clips that matched but are not ours to edit, named so the
+        // caller can say so rather than leaving a plug that half works.
         public static int RepointInClips(IEnumerable<AnimationClip> clips, string path,
-                                         int slot, Material from, Material to)
+                                         int slot, Material from, Material to,
+                                         ICollection<string> skipped = null)
         {
             if (clips == null || from == null || to == null || from == to || path == null)
             {
@@ -67,6 +70,13 @@ namespace AvatarBridge.Yaps
                 {
                     continue;
                 }
+                // NEVER a clip we do not own. A clip under Packages, or the
+                // CCK's, or one of ours, is shared with every project that
+                // has it: editing in place reaches the package file itself.
+                // The native path walks the user's LIVE controllers, so this
+                // is not hypothetical the way it was for the converter, whose
+                // clips are already its own clones.
+                bool ours = YapsCurveMirror.UserOwned(clip);
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
                     if (binding.path != path || SlotIndex(binding.propertyName) != slot)
@@ -84,6 +94,14 @@ namespace AvatarBridge.Yaps
                         if (keys[i].value != from)
                         {
                             continue;
+                        }
+                        if (!ours)
+                        {
+                            // Matched, and left alone. Silently skipping is
+                            // what produces a plug that works until somebody
+                            // presses the one toggle nobody thought to try.
+                            skipped?.Add(clip.name);
+                            break;
                         }
                         keys[i].value = to;
                         touched = true;
@@ -147,7 +165,19 @@ namespace AvatarBridge.Yaps
             }
 
             string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
-            int repointed = RepointInClips(clips, path, slot, from, to);
+            var skipped = new SortedSet<string>();
+            int repointed = RepointInClips(clips, path, slot, from, to, skipped);
+            if (skipped.Count > 0 && report != null)
+            {
+                report.Warning("YAPS",
+                    $"{skipped.Count} material swap(s) could not be repointed",
+                    "These animations assign a material to the mesh slot the bake replaced, and " +
+                    "they live outside your Assets folder — in a package, or in the CCK — so " +
+                    "editing them would change them for every project that has them. Playing one " +
+                    "will put the unbaked material back and the plug will stop bending. Copy the " +
+                    "clip into your own project and point it at the baked material: "
+                    + string.Join(", ", skipped));
+            }
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
