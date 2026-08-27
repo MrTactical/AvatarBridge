@@ -117,6 +117,58 @@ namespace AvatarBridge.Yaps
             return repointed;
         }
 
+        // What animation paths in this avatar's clips are relative to. For a
+        // ChilloutVR avatar that is the CVRAvatar's own transform, which is
+        // also where the Animator sits.
+        public static Transform AnimationRootOf(Transform any)
+        {
+            if (any == null) return null;
+            var avatar = any.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null) return avatar.transform;
+            var spawnable = any.GetComponentInParent<CVRSpawnable>(true);
+            if (spawnable != null) return spawnable.transform;
+            var animator = any.GetComponentInParent<Animator>(true);
+            return animator != null ? animator.transform : any.root;
+        }
+
+        // EVERY clip this avatar could run, not just the Animator's.
+        //
+        // ChilloutVR uploads what avatar.overrides points at and falls back to
+        // avatarSettings.baseController; the Animator's own slot holds a
+        // generated override that is not what ships, and on an avatar that has
+        // never been built it is often empty. Reading only that slot means
+        // finding nothing at all on a perfectly ordinary avatar, and doing
+        // nothing quietly.
+        //
+        // All three are read, because a clip only has to be REACHABLE to fire.
+        // Unfiltered: the caller decides what it is allowed to write to, and
+        // one caller wants to report the ones it must leave alone.
+        public static List<AnimationClip> RunnableClips(Transform any)
+        {
+            var root = AnimationRootOf(any);
+            var clips = new List<AnimationClip>();
+            if (root == null) return clips;
+
+            void Take(RuntimeAnimatorController runtime)
+            {
+                if (runtime != null && runtime.animationClips != null)
+                {
+                    clips.AddRange(runtime.animationClips.Where(c => c != null));
+                }
+            }
+            var avatar = any.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null)
+            {
+                Take(avatar.overrides);
+                if (avatar.avatarSettings != null) Take(avatar.avatarSettings.baseController);
+            }
+            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
+            {
+                Take(animator.runtimeAnimatorController);
+            }
+            return clips.Distinct().ToList();
+        }
+
         // The native path: no merged controller to read, so the clips come off
         // whatever the avatar or prop actually runs.
         //
@@ -134,32 +186,9 @@ namespace AvatarBridge.Yaps
                 return 0;
             }
 
-            var avatar = renderer.GetComponentInParent<CVRAvatar>(true);
-            Transform root = avatar != null ? avatar.transform : null;
-            if (root == null)
-            {
-                var spawnable = renderer.GetComponentInParent<CVRSpawnable>(true);
-                root = spawnable != null ? spawnable.transform : renderer.transform.root;
-            }
-
-            var clips = new List<AnimationClip>();
-            void Take(RuntimeAnimatorController runtime)
-            {
-                if (runtime != null && runtime.animationClips != null)
-                {
-                    clips.AddRange(runtime.animationClips.Where(c => c != null));
-                }
-            }
-            if (avatar != null)
-            {
-                Take(avatar.overrides);
-                if (avatar.avatarSettings != null) Take(avatar.avatarSettings.baseController);
-            }
-            foreach (var animator in root.GetComponentsInChildren<Animator>(true))
-            {
-                Take(animator.runtimeAnimatorController);
-            }
-            if (clips.Count == 0)
+            Transform root = AnimationRootOf(renderer.transform);
+            var clips = RunnableClips(renderer.transform);
+            if (root == null || clips.Count == 0)
             {
                 return 0;
             }
