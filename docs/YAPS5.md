@@ -206,6 +206,42 @@ some other socket's position, which is almost always metres away, and the engage
 already rejects that. Collisions would degrade to "no socket found", falling back to lights or
 contacts, rather than "wrong socket found". Untested.
 
+### The cost is smaller than it looked
+
+A **named** `GrabPass` grabs once per frame per NAME, not once per object: Unity does the grab for
+the first object that uses that texture name and every other material referencing it reuses the
+result. So twenty sockets in a room sharing one `_YAPS_Atlas` cost ONE grab per camera, not
+twenty. The cost is bounded by cameras rather than by content, which is the opposite of the
+contact system where cost scales with pairs. Worth confirming with a frame timing, but the
+architecture is not the problem it was assumed to be.
+
+### Rendezvous is the hard part, not collisions
+
+The framing has been wrong. Two avatars picking the same cell is a real problem, but it comes
+SECOND. The prior question is how a plug knows which cell to read at all. With sixty-four cells
+and no scheme, a plug samples all sixty-four, per vertex: on a three thousand vertex plug that is
+nearly two hundred thousand taps a frame. **The search is what kills it**, and no amount of
+collision handling helps.
+
+### Proposed: hash the socket's WORLD position into the cell
+
+A socket quantises its world position to a grid, half a metre say, and hashes that to a cell. A
+plug hashes its OWN position and the neighbouring grid cells, about eight of them, and samples
+only those. Neither side negotiates: both compute the same function from the same world.
+
+    search cost   about eight taps, fixed, however many sockets exist
+    collisions    only between sockets in the SAME half-metre cube, which are physically
+                  adjacent, so either answer is nearly right rather than wrong
+    range         falls out for free, since a plug only reads cells within its own reach
+    atlas size    small, because cells are reused as people move and only occupied ones matter
+
+It also fails safe in the way the earlier id-hash idea wanted: a collision returns a socket a few
+centimetres away rather than one across the room, and the engagement gate handles the rest.
+
+**Untested.** The next spike is a socket writing a real MOVING world position and a plug reading
+it back at the right place, which is the one capability the first spike did not prove: it round
+tripped a constant.
+
 **Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA —
 main view, each eye, the portrait, the CVR camera, every mirror — so the atlas has to be ONE grab
 shared by everybody, never one per socket, or it scales catastrophically. That constraint is also
