@@ -41,13 +41,59 @@ public class SpikeCell : EditorWindow
     Vector2 _corner = new Vector2(-0.95f, 0.95f);
     int _radius = 1;
     bool _flipY = true;
+
+    // Cost measurement. A named grab runs once per frame per NAME, so the
+    // cost should scale with CAMERAS and not with sockets. Both halves are
+    // worth measuring rather than assuming: extra cameras to see the per
+    // camera slope, extra sockets to confirm the slope is flat.
+    int _extraCameras = 0;
+    int _extraSockets = 0;
+    int _phase = -1, _frames;
+    double _sum, _onMs, _offMs;
+    const int Samples = 180;
     string _result = "";
 
     static MaterialPropertyBlock _blockCache;
 
     void OnEnable() { EditorApplication.update += Tick; }
     void OnDisable() { EditorApplication.update -= Tick; }
-    void Tick() { if (EditorApplication.isPlaying) Repaint(); }
+    void Tick()
+    {
+        if (!EditorApplication.isPlaying) { _phase = -1; return; }
+        Repaint();
+        if (_phase < 0) return;
+
+        // Two windows of equal length, spike on then off, so anything else
+        // going on in the scene lands in both.
+        _sum += Time.unscaledDeltaTime * 1000.0;
+        if (++_frames < Samples) return;
+
+        double avg = _sum / _frames;
+        _frames = 0; _sum = 0;
+        var root = GameObject.Find(Root);
+        if (_phase == 0)
+        {
+            _onMs = avg;
+            if (root != null) root.SetActive(false);
+            _phase = 1;
+        }
+        else
+        {
+            _offMs = avg;
+            if (root != null) root.SetActive(true);
+            _phase = -1;
+            double d = _onMs - _offMs;
+            _result = "with the atlas    " + _onMs.ToString("F3") + " ms"
+                    + System.Environment.NewLine + "without it        " + _offMs.ToString("F3") + " ms"
+                    + System.Environment.NewLine + "difference        " + d.ToString("F3") + " ms"
+                    + "   (" + (_offMs > 0 ? (d / _offMs * 100.0) : 0).ToString("F1") + " per cent)"
+                    + System.Environment.NewLine + "cameras " + (1 + _extraCameras)
+                    + ", sockets " + (2 + _extraSockets)
+                    + System.Environment.NewLine
+                    + "A difference under the frame-to-frame noise means the grab is not the cost.";
+            Debug.Log("[SpikeCell] " + _result);
+        }
+    }
 
     // Must match HashCell in YapsSpikeCell.shader exactly, wrap included.
     public static int Hash(int x, int y, int z)
@@ -78,6 +124,22 @@ public class SpikeCell : EditorWindow
         _flipY = EditorGUILayout.ToggleLeft("Flip Y when reading back", _flipY);
         if (GUILayout.Button("Find the patches (which orientation?)")) Locate();
         EditorGUILayout.LabelField("  taps per read", ((2 * _radius + 1) * (2 * _radius + 1) * (2 * _radius + 1)).ToString());
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Cost", EditorStyles.boldLabel);
+        _extraCameras = EditorGUILayout.IntSlider("Extra cameras", _extraCameras, 0, 6);
+        _extraSockets = EditorGUILayout.IntSlider("Extra sockets", _extraSockets, 0, 30);
+        using (new EditorGUI.DisabledScope(!EditorApplication.isPlaying || _phase >= 0))
+        {
+            if (GUILayout.Button(_phase >= 0
+                    ? "measuring, phase " + (_phase + 1) + " of 2"
+                    : "Measure the cost (" + (Samples * 2) + " frames)"))
+            {
+                _phase = 0; _frames = 0; _sum = 0;
+                var r = GameObject.Find(Root);
+                if (r != null) r.SetActive(true);
+            }
+        }
 
         if (GUILayout.Button("Build the spike")) Build();
         if (GUILayout.Button("Remove it")) Remove();
@@ -128,6 +190,22 @@ public class SpikeCell : EditorWindow
 
         // Something must carry the GrabPass or nothing grabs. The reader
         // material already has one.
+        for (int i = 0; i < _extraCameras; i++)
+        {
+            var cam = new GameObject("Extra camera " + i);
+            cam.transform.SetParent(root.transform, false);
+            cam.transform.position = new Vector3(2f + i, 1.5f, 2f);
+            cam.transform.LookAt(new Vector3(0, 1.2f, 0));
+            var c = cam.AddComponent<Camera>();
+            c.depth = -10 - i;
+            c.targetTexture = new RenderTexture(512, 512, 24);
+        }
+        for (int i = 0; i < _extraSockets; i++)
+        {
+            Socket(root, cell, "Socket X" + i,
+                new Vector3(-2f + i * 0.37f, 1.0f + (i % 3) * 0.4f, -1f + (i % 5) * 0.31f));
+        }
+
         Selection.activeGameObject = plug;
         _result = "Built. Press Play, then drag the plug toward a socket.";
     }

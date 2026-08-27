@@ -307,7 +307,7 @@ compensates through `_TexelSize.y`; anything doing its own readback has to as we
     encoding a moving position   done, spike 2
     rendezvous                   done, spike 3
     occupancy                    done, the clear pass
-    per-camera cost              UNMEASURED, and still the thing that could kill it
+    per-camera cost              measured in the editor, below the noise floor; see below
     frustum culling at range     partly, huge bounds worked in spike 1
     a plug reading it in ITS
       OWN SHADER rather than
@@ -343,3 +343,25 @@ already script-first, contacts next, lights last.
    for what is still unanswered: the per-camera cost, and cell allocation.
 8. The contact channel reaching a tool-built plug — **fixed in 4.4.0**. It had never worked in game
    for anybody on that path.
+
+### Cost, measured in the editor 2026-08-27
+
+180 frames with the atlas active against 180 without, same scene:
+
+    cameras 1, sockets 2     4.494 ms with, 4.522 without, difference -0.028 ms
+    cameras 7, sockets 32    4.567 ms with, 4.793 without, difference -0.226 ms
+
+**Both differences are NEGATIVE**, which is impossible and is the point: the grab costs less than
+the frame-to-frame noise, so any number read off this is fiction. What the run does establish is
+the architectural claim: **thirty-two sockets cost no more than two.** A named grab happens once
+per frame per NAME, so cost is bounded by cameras rather than by content. Had that been wrong the
+32-socket run would have moved.
+
+**What it does NOT establish is the per-camera slope.** A camera only grabs if something carrying
+the GrabPass renders in it, and the extra cameras in this rig look at a point from a distance, so
+the reader quad may simply have been culled out of them. The camera number is unverified.
+
+**A real verdict still needs the game**, with a mirror open and a headset rendering two eyes, and
+with a plug's shader doing the 27 taps rather than C# doing them. The taps are the cost that has
+never been measured at all: one grab per camera is cheap, twenty-seven texture reads per vertex
+on a three thousand vertex plug is a different question.
