@@ -256,11 +256,12 @@ Shader "YAPS/Spike Plug"
                 int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
 
                 float3 sockP[YAPS_MAX];
+                float3 sockF[YAPS_MAX];
                 float  sockD[YAPS_MAX];
-                int    sockX[YAPS_MAX], sockY[YAPS_MAX];
+                int    sockK[YAPS_MAX];
                 [unroll] for (int i = 0; i < YAPS_MAX; i++)
                 {
-                    sockP[i] = 0; sockD[i] = 1e9; sockX[i] = -1; sockY[i] = 0;
+                    sockP[i] = 0; sockF[i] = float3(0, 0, 1); sockD[i] = 1e9; sockK[i] = -1;
                 }
 
                 // [loop], not [unroll]: the bound is a property now, and the
@@ -319,6 +320,25 @@ Shader "YAPS/Spike Plug"
 
                             float3 at = (float3(c) + got.rgb) * size;
                             float d = distance(at, root);
+
+                            // The facing pixel, read here rather than after
+                            // the sort. It costs one read per socket FOUND
+                            // rather than per cell searched, and the kind it
+                            // carries is needed before the sort, not after.
+                            float4 f4 = YAPS_LOAD(px + slot, cellY);
+                            float3 fwd = normalize(f4.rgb * 2 - 1);
+                            int kind = int(round(f4.a * 16.0)) - 1;
+
+                            // A HOLE has a front and a back, and a plug does
+                            // not enter one through the back. Its facing
+                            // points out of the mouth, so a mouth pointing
+                            // away from where the plug is growing from means
+                            // this plug is arriving at the wrong side.
+                            //
+                            // A RING is a loop with no wrong side, so it is
+                            // never rejected here and is turned to meet its
+                            // approach further down.
+                            if (kind == 1 && dot(fwd, at - root) > 0) continue;
                             // A hash collision from across the world decodes
                             // to a plausible payload in an implausible place,
                             // and so does a socket too far to reach. Both are
@@ -335,9 +355,9 @@ Shader "YAPS/Spike Plug"
                                 [unroll] for (int m = YAPS_MAX - 1; m > k; m--)
                                 {
                                     sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
-                                    sockX[m] = sockX[m - 1]; sockY[m] = sockY[m - 1];
+                                    sockF[m] = sockF[m - 1]; sockK[m] = sockK[m - 1];
                                 }
-                                sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = cellY;
+                                sockD[k] = d; sockP[k] = at; sockF[k] = fwd; sockK[k] = kind;
                                 break;
                             }
                         }
@@ -348,17 +368,9 @@ Shader "YAPS/Spike Plug"
                     }
                 }
 
-                // The facings, one extra read each, and only for sockets that
-                // made the list rather than for all twenty-seven cells.
                 int count = 0;
-                float3 sockF[YAPS_MAX];
                 [unroll] for (int i2 = 0; i2 < YAPS_MAX; i2++)
-                {
-                    sockF[i2] = float3(0, 0, 1);
-                    if (sockX[i2] < 0) continue;
-                    count++;
-                    sockF[i2] = normalize(YAPS_LOAD(sockX[i2] + slot, sockY[i2]).rgb * 2 - 1);
-                }
+                    if (sockK[i2] >= 0) count++;
 
                 // The arc length at which each socket sits, measured along
                 // the chain. Chords rather than true cubic arc length, the
@@ -371,16 +383,17 @@ Shader "YAPS/Spike Plug"
                     if (i3 >= count) { arc[i3 + 1] = arc[i3] + 1e6; continue; }
                     float3 step = sockP[i3] - prev;
                     float d3 = length(step);
-                    // TURNED TO MEET THE APPROACH. A socket facing the same
-                    // way the shaft is travelling means the curve has to
-                    // arrive going backwards, and a cubic asked to do that
-                    // ties itself in a hairpin and piles the vertices up.
+                    // A RING is turned to meet its approach. It is a loop
+                    // with no wrong side, so which of the two faces the
+                    // author happened to point it is not information, and
+                    // trusting it makes the cubic arrive travelling backwards
+                    // and tie itself in a hairpin.
                     //
-                    // A ring is enterable from either face, so which of the
-                    // two the author happened to point it is not information.
-                    // A one-sided socket, a hole, would want the sign
-                    // respected instead, and nothing here is one-sided.
-                    if (d3 > 1e-5 && dot(sockF[i3], step) > 0) sockF[i3] = -sockF[i3];
+                    // A HOLE keeps its sign. It has a front, the author chose
+                    // which, and a plug arriving at the back was dropped from
+                    // the list already rather than turned around.
+                    if (sockK[i3] == 0 && d3 > 1e-5 && dot(sockF[i3], step) > 0)
+                        sockF[i3] = -sockF[i3];
                     arc[i3 + 1] = arc[i3] + d3;
                     prev = sockP[i3];
                 }

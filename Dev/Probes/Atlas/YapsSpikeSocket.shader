@@ -73,6 +73,10 @@ Shader "YAPS/Spike Socket"
         _OriginPx ("Atlas origin, pixels from the top left", Float) = 8
         _CellSize ("Cell size of level 0, metres", Float) = 0.02
         _Levels ("How many levels", Float) = 6
+        // 0 ring, 1 hole. A ring is a loop and can be entered from either
+        // face; a hole has a front and a back. Sixteen kinds fit in the
+        // facing pixel's alpha, which was only repeating the tag.
+        [Enum(Ring,0,Hole,1)] _Kind ("Socket kind", Float) = 0
     }
     SubShader
     {
@@ -85,7 +89,7 @@ Shader "YAPS/Spike Socket"
 
         struct appdata { float4 vertex : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };
 
-        float _Grid, _SlotPx, _OriginPx, _CellSize, _Levels;
+        float _Grid, _SlotPx, _OriginPx, _CellSize, _Levels, _Kind;
 
         // Must match HashCell in the plug shader and SpikeCell.Hash in C#.
         int HashCell(int3 c)
@@ -241,7 +245,11 @@ Shader "YAPS/Spike Socket"
                 o.pos = float4(ToClip(atPx), UNITY_NEAR_CLIP_VALUE, 1);
 
                 o.payload = float4(pay, tag);
-                o.other   = float4(fwd, tag);
+                // The facing pixel's alpha carried a second copy of the tag,
+                // which nothing read: it is only reached once the position
+                // pixel's tag matched, and both are written by the same draw,
+                // so it cannot disagree. It carries the KIND instead.
+                o.other   = float4(fwd, (floor(_Kind) + 1) / 16.0);
                 o.u = unit.x;
                 return o;
             }

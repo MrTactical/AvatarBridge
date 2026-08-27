@@ -142,15 +142,23 @@ public class SpikePlug : EditorWindow
             float h = span * 0.5f;
             bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
             arc += Vector3.Distance(t.position, prev);
-            string why = clash.Contains(t) ? "same OCTANT as another, one is lost"
+            // A hole approached through its back is dropped by the resolver,
+            // which is correct and looks exactly like every other reason a
+            // socket does not bend, so it gets said out loud.
+            bool hole = t.name.Length > 0 && ((t.name[t.name.Length - 1] - 'A') % 2) == 1;
+            bool backwards = hole && Vector3.Dot(t.forward, t.position - at0) > 0;
+            string why = backwards ? "HOLE approached from behind, skipped"
+                       : clash.Contains(t) ? "same OCTANT as another, one is lost"
                        : !inBox ? "OUTSIDE the read box"
                        : arc > len ? "past the tip: arc " + arc.ToString("F2") + " of " + len.ToString("F2")
                        : "threaded at " + arc.ToString("F2") + " of " + len.ToString("F2");
-            Handles.color = clash.Contains(t) ? Color.magenta
+            Handles.color = backwards ? new Color(0.8f, 0.4f, 0.8f)
+                          : clash.Contains(t) ? Color.magenta
                           : !inBox ? Color.red
                           : arc > len ? new Color(1f, 0.7f, 0.2f) : Color.green;
             Handles.DrawLine(prev, t.position);
-            Handles.Label(t.position + Vector3.up * 0.04f, t.name + "  " + why);
+            Handles.Label(t.position + Vector3.up * 0.04f,
+                          t.name + (hole ? " (hole)  " : " (ring)  ") + why);
             prev = t.position;
         }
     }
@@ -298,8 +306,12 @@ public class SpikePlug : EditorWindow
             // Facing BACK down the shaft. A socket pointing the way the plug
             // travels is entered through its back, and the cubic ties itself
             // in a hairpin to arrive that way.
+            // Alternating, so both behaviours are on screen at once. Rotate
+            // one 180 degrees and watch the difference: a RING flips to meet
+            // the plug and keeps working, a HOLE is being approached through
+            // its back and drops out of the chain entirely.
             Socket(root, sockShader, "Socket " + (char)('A' + i), at,
-                   Quaternion.Euler(0, 270 + (i - 1) * 10, (i - 1) * 8));
+                   Quaternion.Euler(0, 270 + (i - 1) * 10, (i - 1) * 8), i % 2);
         }
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
@@ -338,7 +350,7 @@ public class SpikePlug : EditorWindow
         return go;
     }
 
-    void Socket(GameObject root, Shader shader, string name, Vector3 at, Quaternion rot)
+    void Socket(GameObject root, Shader shader, string name, Vector3 at, Quaternion rot, int kind)
     {
         // The writer draws in CLIP space and ignores this object's transform,
         // so its own mesh is never seen. It still needs a real MeshRenderer
@@ -355,6 +367,7 @@ public class SpikePlug : EditorWindow
         go.AddComponent<MeshRenderer>();
         var m = Asset(name.Replace(" ", ""), shader);
         m.renderQueue = _queueBase + 1;
+        m.SetFloat("_Kind", kind);
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
 
         // Something to look at, and something that shows which way the socket
@@ -367,7 +380,9 @@ public class SpikePlug : EditorWindow
         ring.transform.localRotation = Quaternion.Euler(90, 0, 0);
         ring.transform.localScale = new Vector3(0.13f, 0.012f, 0.13f);
         DestroyImmediate(ring.GetComponent<Collider>());
-        ring.GetComponent<MeshRenderer>().sharedMaterial = Colour("Mouth", new Color(0.35f, 0.6f, 0.85f));
+        ring.GetComponent<MeshRenderer>().sharedMaterial = kind == 1
+            ? Colour("MouthHole", new Color(0.75f, 0.35f, 0.7f))
+            : Colour("Mouth", new Color(0.35f, 0.6f, 0.85f));
 
         var stub = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         stub.name = "Axis";
@@ -392,6 +407,7 @@ public class SpikePlug : EditorWindow
             m.SetFloat("_OriginPx", OriginPx);
             m.SetFloat("_CellSize", _cellBase);
             m.SetFloat("_Levels", _levels);
+            m.SetFloat("_Kind", i % 2);
         }
         var p = Load("Plug");
         if (p != null)
