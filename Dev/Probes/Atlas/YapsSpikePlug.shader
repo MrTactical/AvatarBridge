@@ -73,7 +73,8 @@ Shader "YAPS/Spike Plug"
         _Grid ("Cells across the atlas", Float) = 8
         _SlotPx ("One slot, in pixels", Float) = 1
         _OriginPx ("Atlas origin, pixels from the top left", Float) = 8
-        _CellSize ("World cell size, metres", Float) = 0.25
+        _CellSize ("Cell size of level 0, metres", Float) = 0.02
+        _Levels ("How many levels", Float) = 6
         _MeshLength ("Shaft length in the mesh, local units", Float) = 1
         _Reach ("How far it reaches, in plug lengths", Range(0.5, 4)) = 1.6
         // How many cells out to read. This is what actually caps how many
@@ -142,7 +143,7 @@ Shader "YAPS/Spike Plug"
             float4 _YAPS_SpikeAtlas_TexelSize;
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
-            float _Debug, _ForceRow, _Radius;
+            float _Debug, _ForceRow, _Radius, _Levels;
             fixed4 _Colour, _Miss;
 
             // Must match HashCell in the socket shader and SpikeCell.Hash in
@@ -216,7 +217,18 @@ Shader "YAPS/Spike Plug"
                 float  len  = length(mul((float3x3)unity_ObjectToWorld, float3(0, 0, _MeshLength)));
 
                 // ---- find a socket, knowing nothing ----
-                float size  = max(_CellSize, 0.0001);
+                //
+                // WHICH LEVEL. The atlas carries several cell sizes at once,
+                // each four times the last, because one cell size cannot
+                // serve a twenty centimetre plug and a twenty metre one.
+                // Coverage wants a cell of about L/2r, so pick the level
+                // nearest that and read only there. Costs no extra taps: the
+                // socket published to every level, this reads one.
+                int levels = max(int(_Levels), 1);
+                int R = clamp(int(_Radius), 0, 3);
+                float wantCell = len / max(2.0 * R, 1.0);
+                int lvl = clamp(int(round(log2(wantCell / max(_CellSize, 1e-6)) * 0.5)), 0, levels - 1);
+                float size  = max(_CellSize * pow(4.0, lvl), 1e-6);
                 int   grid  = max(int(_Grid), 1);
                 int   total = grid * grid;
                 int   slot  = max(int(_SlotPx), 1);
@@ -254,71 +266,82 @@ Shader "YAPS/Spike Plug"
                 // [loop], not [unroll]: the bound is a property now, and the
                 // whole point of it being one is being able to measure the
                 // cost of widening it rather than arguing about it.
-                int R = clamp(int(_Radius), 0, 3);
                 [loop] for (int dx = -R; dx <= R; dx++)
                 [loop] for (int dy = -R; dy <= R; dy++)
                 [loop] for (int dz = -R; dz <= R; dz++)
                 {
                     int3 c = mine + int3(dx, dy, dz);
+                    float tagWant = CellTag(c);
+
+                    // Both homes of this cell, computed up front so the
+                    // recovery path below is a lookup rather than a rebuild.
                     int idx = HashCell(c) % total;
                     if (idx < 0) idx += total;
-                    int gx = idx % grid, gy = idx / grid;
+                    int step = HashCell2(c) % max(total - 1, 1);
+                    if (step < 0) step += max(total - 1, 1);
+                    int idxB = (idx + step + 1) % total;
 
-                    int px = int(_OriginPx) + gx * 2 * slot + mid;
-                    int fromTop = int(_OriginPx) + gy * slot + mid;
-                    int py = flip ? (texH - 1 - fromTop) : fromTop;
-
-                    float4 got = YAPS_LOAD(px, py);
-                    // Nothing at all here. A socket in this cell writes its
-                    // FIRST slot whatever else happens, so an empty first
-                    // slot means an empty cell and the second one does not
-                    // need looking at.
-                    if (got.a < 0.5) continue;
-
-                    // Whose payload is this? A cell that merely shares a grid
-                    // slot returns somebody else's socket, decoded against
-                    // this cell, which reads as a perfectly plausible one a
-                    // few centimetres away.
-                    float want = CellTag(c);
-                    if (abs((got.a - 0.5) * 2 - want) > 0.001)
+                    [loop] for (int home = 0; home < 2; home++)
                     {
-                        // Somebody else owns the first slot. Every socket
-                        // also writes a second one, so look there before
-                        // giving up. This read only happens on an actual
-                        // clash, which is why two slots cost about nothing.
-                        int step = HashCell2(c) % max(total - 1, 1);
-                        if (step < 0) step += max(total - 1, 1);
-                        int idx2 = (idx + step + 1) % total;
-                        gx = idx2 % grid; gy = idx2 / grid;
-                        px = int(_OriginPx) + gx * 2 * slot + mid;
-                        fromTop = int(_OriginPx) + gy * slot + mid;
-                        py = flip ? (texH - 1 - fromTop) : fromTop;
-                        got = YAPS_LOAD(px, py);
-                        if (got.a < 0.5) continue;
-                        if (abs((got.a - 0.5) * 2 - want) > 0.001) continue;
-                    }
-                    hits++;
+                        int use = home == 0 ? idx : idxB;
+                        int gx = use % grid, gy = use / grid;
+                        int cellX = int(_OriginPx) + gx * 17 * slot;
+                        int fromTop = int(_OriginPx) + (lvl * grid + gy) * slot;
+                        int cellY = flip ? (texH - 1 - fromTop) : fromTop;
 
-                    float3 at = (float3(c) + got.rgb) * size;
-                    float d = distance(at, root);
-                    // A hash collision from across the world decodes to a
-                    // plausible payload in an implausible place, and so does
-                    // a socket too far to reach. Both are the same test.
-                    if (d > far) continue;
-
-                    // Insertion sort, nearest first. Sorted here rather than
-                    // later because the ORDER IS THE PATH: socket one is the
-                    // one the shaft meets first.
-                    [unroll] for (int k = 0; k < YAPS_MAX; k++)
-                    {
-                        if (d >= sockD[k]) continue;
-                        [unroll] for (int m = YAPS_MAX - 1; m > k; m--)
+                        // ONE tap for the header, whose alpha is a bitmask of
+                        // which octants of this cell hold anything. An empty
+                        // cell costs exactly this and nothing more, which is
+                        // what makes eight buckets affordable: reading all
+                        // eight unconditionally would multiply every tap by
+                        // eight and cost more than the buckets are worth.
+                        int mask = int(round(YAPS_LOAD(cellX, cellY).a * 255.0));
+                        if (mask == 0) break;      // nothing here, and home 1
+                                                   // is always written, so
+                                                   // home 2 cannot hold it
+                        bool got1 = false;
+                        [loop] for (int sub = 0; sub < 8; sub++)
                         {
-                            sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
-                            sockX[m] = sockX[m - 1]; sockY[m] = sockY[m - 1];
+                            if ((mask & (1 << sub)) == 0) continue;
+                            int px = cellX + (1 + 2 * sub) * slot;
+                            float4 got = YAPS_LOAD(px, cellY);
+                            if (got.a < 0.5) continue;
+                            // The header is a SUM across every cell sharing
+                            // this slot, so it can advertise octants that
+                            // belong to somebody else. The tag is what
+                            // settles it.
+                            if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
+                            got1 = true;
+                            hits++;
+
+                            float3 at = (float3(c) + got.rgb) * size;
+                            float d = distance(at, root);
+                            // A hash collision from across the world decodes
+                            // to a plausible payload in an implausible place,
+                            // and so does a socket too far to reach. Both are
+                            // the same test.
+                            if (d > far) continue;
+
+                            // Insertion sort, nearest first. Sorted here
+                            // rather than later because the ORDER IS THE
+                            // PATH: socket one is the one the shaft meets
+                            // first.
+                            [unroll] for (int k = 0; k < YAPS_MAX; k++)
+                            {
+                                if (d >= sockD[k]) continue;
+                                [unroll] for (int m = YAPS_MAX - 1; m > k; m--)
+                                {
+                                    sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
+                                    sockX[m] = sockX[m - 1]; sockY[m] = sockY[m - 1];
+                                }
+                                sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = py;
+                                break;
+                            }
                         }
-                        sockD[k] = d; sockP[k] = at; sockX[k] = px; sockY[k] = py;
-                        break;
+                        // Found in this home, so the other one is not this
+                        // cell's. Only a cell whose first home was taken by
+                        // somebody else falls through to look in the second.
+                        if (got1) break;
                     }
                 }
 
@@ -419,10 +442,10 @@ Shader "YAPS/Spike Plug"
                 o.pos = mul(UNITY_MATRIX_VP, float4(pos, 1));
                 o.nrm = nrm;
                 o.engaged = engaged;
-                // red   what share of the cells read claimed a socket
+                // red   how many payloads matched, over eight
                 // green how many made the LIST, over four
                 // blue  which row order was used
-                o.dbg = float3(saturate(hits / (float)((2*R+1)*(2*R+1)*(2*R+1))), count / (float)YAPS_MAX, flip ? 1 : 0);
+                o.dbg = float3(saturate(hits / 8.0), count / (float)YAPS_MAX, flip ? 1 : 0);
                 return o;
             }
 

@@ -45,11 +45,11 @@ public class SpikePlug : EditorWindow
     const string Dir = "Assets/YapsSpike";
     const int OriginPx = 8;
 
-    float _cellSize = 0.12f;
-    bool _fitCells = true;
+    float _cellBase = 0.02f;
+    int _levels = 6;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
     int _sockets = 3;
-    int _grid = 32;
+    int _grid = 16;
     int _slotPx = 1;
     float _reach = 1.6f;
     float _length = 0.22f;
@@ -58,6 +58,19 @@ public class SpikePlug : EditorWindow
     int _debug = 0;
     int _forceRow = 0;
     string _result = "";
+
+    // The level the plug will pick, and the cell size that comes with it.
+    // Same arithmetic as the shader: coverage wants a cell of about L/2r and
+    // the levels go up in fours.
+    float LevelSize(out int level)
+    {
+        float want = _length / Mathf.Max(2f * _cellRadius, 1f);
+        level = Mathf.Clamp(Mathf.RoundToInt(Mathf.Log(want / Mathf.Max(_cellBase, 1e-6f), 2f) * 0.5f),
+                            0, _levels - 1);
+        return _cellBase * Mathf.Pow(4f, level);
+    }
+
+    float LevelSize() { int l; return LevelSize(out l); }
 
     void OnEnable() { EditorApplication.update += Tick; SceneView.duringSceneGui += OnScene; }
     void OnDisable() { EditorApplication.update -= Tick; SceneView.duringSceneGui -= OnScene; }
@@ -75,7 +88,7 @@ public class SpikePlug : EditorWindow
         Vector3 axis = plug.forward;
         Vector3 at0 = plug.position;
         float len = plug.TransformVector(Vector3.forward).magnitude;
-        float cell = Mathf.Max(_cellSize, 0.0001f);
+        float cell = Mathf.Max(LevelSize(), 0.0001f);
 
         // The neighbourhood, exactly as the shader hashes it: a cube of
         // (2r+1) cells centred on the cell the shaft MIDPOINT falls in. Note
@@ -154,64 +167,56 @@ public class SpikePlug : EditorWindow
             + "reads the twenty-seven cells around itself. Grey means it found nothing.",
             MessageType.Info);
 
-        _fitCells = EditorGUILayout.ToggleLeft(
-            "Fit the cell size to the plug (cells must be smaller than a plug)", _fitCells);
-        if (_fitCells)
-            EditorGUILayout.HelpBox(
-                "This is a DEMO convenience and cannot exist in the real thing. Cell size is a "
-                + "protocol constant: sockets hash with it too, so everyone in the instance has "
-                + "to agree on one number. Drag the plug length up to ten or twenty metres and "
-                + "watch the cell follow — then notice that a twenty centimetre plug in the same "
-                + "room would need a cell four hundred times smaller. One global cell cannot "
-                + "serve both, which is the real limit on a hyper plug. The way out is several "
-                + "cell sizes at once, each in its own part of the atlas, with a socket "
-                + "publishing to all of them and a plug reading only the one that matches its "
-                + "own length.", MessageType.Info);
-        // The SMALLEST cell that still covers the plug, because a smaller
-        // cell packs sockets tighter and a larger one is pure loss here.
-        // Coverage needs cell >= L / 2r; anything under that and the ends of
-        // the shaft cannot see cells the middle can.
-        if (_fitCells) _cellSize = _length / Mathf.Max(2 * _cellRadius, 1);
-        using (new EditorGUI.DisabledScope(_fitCells))
-            _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.02f, 2f);
+        _cellBase = EditorGUILayout.Slider("Level 0 cell, metres", _cellBase, 0.005f, 0.2f);
+        _levels = EditorGUILayout.IntSlider("Levels", _levels, 1, 8);
+        EditorGUILayout.LabelField("  span",
+            _cellBase.ToString("F3") + " m to "
+            + (_cellBase * Mathf.Pow(4f, _levels - 1)).ToString("F1")
+            + " m, four times a step. A socket publishes to every level and a plug reads one.");
         _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 3);
         int cells = (2 * _cellRadius + 1) * (2 * _cellRadius + 1) * (2 * _cellRadius + 1);
         // The number Joe actually asked for, and it comes from the
         // NEIGHBOURHOOD rather than from the length of the list.
-        int ceiling = Mathf.Min(2 * _cellRadius + 1, 8);
+        // Buckets change the bound. Coverage still wants cell >= L/2r, but
+        // an OCTANT separates sockets half a cell apart rather than a whole
+        // one, so spacing L/(N+1) >= cell/2 gives N <= 4r-1 instead of 2r-1.
+        int ceiling = Mathf.Min(4 * _cellRadius - 1, 8);
+        if (ceiling < 1) ceiling = 1;
         // Two different ceilings, and the useful one is the smaller.
         // 2r+1 assumes sockets landing exactly on cell boundaries at the
         // very root and the very tip; with the cell fitted to the plug the
         // spacing that actually separates them gives 2r-1.
+        int lvlNow; float cellNow = LevelSize(out lvlNow);
         EditorGUILayout.LabelField("  ceiling",
-            (2 * _cellRadius - 1) + " comfortably, " + ceiling + " at the limit, for "
-            + cells + " reads a vertex");
+            ceiling + " sockets, on level " + lvlNow + " at " + cellNow.ToString("F3") + " m");
+        EditorGUILayout.LabelField("  reads",
+            cells + " headers a vertex, plus one per socket actually found");
         _sockets = EditorGUILayout.IntSlider("Sockets to build", _sockets, 1, ceiling);
         // Sockets in the SAME cell is the one clash double hashing cannot
         // help with: two homes are a property of the CELL, so two sockets in
         // one cell share both. Buckets are the fix and are not built.
         float spacing = _length / (_sockets + 1);
-        if (spacing < _cellSize)
+        if (spacing < cellNow * 0.5f)
             EditorGUILayout.HelpBox(
                 "At " + _sockets + " sockets the spacing is " + spacing.ToString("F3")
-                + " m, under the " + _cellSize.ToString("F3") + " m cell. Some will share a cell, "
-                + "and two sockets in ONE cell share both slots, so one is lost. Raise the "
-                + "neighbour radius (which shrinks the cell) or use fewer.", MessageType.Warning);
+                + " m, under the " + (cellNow * 0.5f).ToString("F3") + " m octant. Two sockets in "
+                + "ONE octant is the last clash nothing here fixes. Raise the neighbour radius, "
+                + "which picks a smaller level, or use fewer.", MessageType.Warning);
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 64);
         EditorGUILayout.LabelField("  slots",
             (_grid * _grid) + "   (two sockets landing on one slot means one of them vanishes)");
         _slotPx = EditorGUILayout.IntSlider("Slot, pixels", _slotPx, 1, 8);
         EditorGUILayout.LabelField("  atlas",
-            (OriginPx + _grid * 2 * _slotPx) + " x " + (OriginPx + _grid * _slotPx) + " px"
-            + "   (a cell is two slots: position, then facing)");
+            (OriginPx + _grid * 17 * _slotPx) + " x " + (OriginPx + _levels * _grid * _slotPx) + " px"
+            + "   (a cell is 17 slots: a header, then eight octants of position and facing)");
 
         // Precision follows the cell, so it scales with the plug: a ten
         // metre plug at radius 2 resolves to about a millimetre, which is
         // proportionally the same as a twenty centimetre one at 0.02 mm.
         EditorGUILayout.LabelField("  precision",
-            (_cellSize * 0.000488f * 1000f).ToString("F3") + " mm   (the cell times a half-float step)");
+            (LevelSize() * 0.000488f * 1000f).ToString("F3") + " mm   (the cell times a half-float step)");
         EditorGUILayout.LabelField("  a read sees",
-            "a " + (_cellSize * (2 * _cellRadius + 1)).ToString("F2")
+            "a " + (LevelSize() * (2 * _cellRadius + 1)).ToString("F2")
             + " m box around the shaft midpoint, and the plug spans "
             + _length.ToString("F2") + " m");
 
@@ -349,7 +354,7 @@ public class SpikePlug : EditorWindow
         go.transform.SetParent(root.transform, false);
         go.transform.position = at;
         go.transform.rotation = rot;
-        go.AddComponent<MeshFilter>().sharedMesh = TwoQuads();
+        go.AddComponent<MeshFilter>().sharedMesh = LevelQuads();
         go.AddComponent<MeshRenderer>();
         var m = Asset(name.Replace(" ", ""), shader);
         m.renderQueue = _queueBase + 1;
@@ -388,7 +393,8 @@ public class SpikePlug : EditorWindow
             m.SetFloat("_Grid", _grid);
             m.SetFloat("_SlotPx", _slotPx);
             m.SetFloat("_OriginPx", OriginPx);
-            m.SetFloat("_CellSize", _cellSize);
+            m.SetFloat("_CellSize", _cellBase);
+            m.SetFloat("_Levels", _levels);
         }
         var p = Load("Plug");
         if (p != null)
@@ -396,7 +402,8 @@ public class SpikePlug : EditorWindow
             p.SetFloat("_Grid", _grid);
             p.SetFloat("_SlotPx", _slotPx);
             p.SetFloat("_OriginPx", OriginPx);
-            p.SetFloat("_CellSize", _cellSize);
+            p.SetFloat("_CellSize", _cellBase);
+            p.SetFloat("_Levels", _levels);
             p.SetFloat("_Reach", _reach);
             p.SetFloat("_Radius", _cellRadius);
             p.SetFloat("_Debug", _debug);
@@ -408,8 +415,8 @@ public class SpikePlug : EditorWindow
             // Covers the whole snapped rect with room to spare. Clearing a
             // few unused pixels costs nothing; missing one leaves a cell
             // reading the opaque screen, which reads as occupied.
-            c.SetFloat("_SpanPxX", OriginPx + _grid * 2 * _slotPx + 4);
-            c.SetFloat("_SpanPxY", OriginPx + _grid * _slotPx + 4);
+            c.SetFloat("_SpanPxX", OriginPx + _grid * 17 * _slotPx + 4);
+            c.SetFloat("_SpanPxY", OriginPx + _levels * _grid * _slotPx + 4);
         }
     }
 
@@ -475,24 +482,29 @@ public class SpikePlug : EditorWindow
         return mesh;
     }
 
-    // Two unit quads, the second flagged by z = 1. The socket shader reads
-    // that flag to decide which of the cell's two slots to draw into.
+    // A unit quad per (level, home), flagged by z. The socket shader reads
+    // that flag to decide which level it is publishing to and which of the
+    // cell's two homes it is filling.
     //
     // The bounds are deliberately huge. The shader ignores the transform and
     // writes clip space, but Unity still culls by BOUNDS, and a socket
     // culled out of frame stops publishing entirely.
-    static Mesh TwoQuads()
+    Mesh LevelQuads()
     {
         // Cached, unlike the shaft: this mesh has no parameters, and
         // recreating it per socket would delete the asset the previous two
         // are pointing at.
+        // One quad per (level, home). The socket shader reads z to work out
+        // which level it is publishing to and which of that cell's two homes
+        // it is filling, and both passes place the same quads differently.
         string path = Dir + "/SpikeSocketQuads.asset";
+        int quads = _levels * 2;
         var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-        if (have != null) return have;
+        if (have != null && have.vertexCount == quads * 4) return have;
 
         var verts = new List<Vector3>();
         var tris = new List<int>();
-        for (int q = 0; q < 2; q++)
+        for (int q = 0; q < quads; q++)
         {
             int b = verts.Count;
             verts.Add(new Vector3(-0.5f, -0.5f, q));
@@ -506,6 +518,7 @@ public class SpikePlug : EditorWindow
         mesh.SetTriangles(tris, 0);
         mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 40f);
         System.IO.Directory.CreateDirectory(Dir);
+        if (have != null) AssetDatabase.DeleteAsset(path);
         AssetDatabase.CreateAsset(mesh, path);
         return mesh;
     }
@@ -557,7 +570,7 @@ public class SpikePlug : EditorWindow
         foreach (Transform t in root.transform)
         {
             if (!t.name.StartsWith("Socket")) continue;
-            Vector3 scaled = t.position / Mathf.Max(_cellSize, 0.0001f);
+            Vector3 scaled = t.position / Mathf.Max(LevelSize(), 0.0001f);
             var c = new Vector3Int(Mathf.FloorToInt(scaled.x), Mathf.FloorToInt(scaled.y), Mathf.FloorToInt(scaled.z));
             int total = _grid * _grid;
             int idx = SpikeCell.Hash(c.x, c.y, c.z) % total; if (idx < 0) idx += total;
@@ -587,7 +600,7 @@ public class SpikePlug : EditorWindow
         foreach (Transform t in root.transform)
         {
             if (!t.name.StartsWith("Socket")) continue;
-            Vector3 sc = t.position / Mathf.Max(_cellSize, 0.0001f);
+            Vector3 sc = t.position / Mathf.Max(LevelSize(), 0.0001f);
             int i2 = SpikeCell.Hash(Mathf.FloorToInt(sc.x), Mathf.FloorToInt(sc.y), Mathf.FloorToInt(sc.z))
                      % (_grid * _grid);
             if (i2 < 0) i2 += _grid * _grid;
