@@ -564,3 +564,54 @@ of space looks identical to every other reason one does not bend.
 - Radius 2 is 125 reads a vertex, measured only for 27. The tap harness exists.
 - The platform default for row order is right on D3D by construction and unverified in game.
   `_ForceRow` is kept as the one-click check.
+
+### Spike 5, 2026-08-27: buckets and levels, which are the same change
+
+Both open items from spike 4 are built, and they turned out to be one idea: a cell that
+holds more than one thing.
+
+**Eight sockets to a cell, indexed by OCTANT.** Which octant of the cell the socket sits in
+is deterministic, needs no negotiation between sockets that cannot see each other, and
+separates anything more than half a cell apart in any axis. The bound moves from 2r-1 to
+4r-1, and it closes the one clash double hashing could not: two homes are a property of the
+CELL, so two sockets in one cell shared both of them.
+
+**A HEADER pixel makes buckets affordable.** Reading all eight octants everywhere would
+multiply every tap by eight. Instead the cell leads with one pixel whose alpha is built by
+ADDITIVE blending on alpha alone: each socket adds 1/255, nobody sees anybody else, and the
+sum is exactly how many sockets are in that slot. Nearly every cell is empty and still costs
+one tap; a cell holding anything costs eight reads nothing else needed.
+
+It was a BITMASK of live octants first, and that is the interesting failure. **Addition is
+only an OR while the bits differ.** Two sockets in one octant give 1+1=2, so the octant that
+IS occupied stops being advertised and a neighbour that is not starts being, and with
+several sockets in a cell the carries cascade until the cell reads empty. Measured exactly:
+five sockets on a thirty metre plug threaded and six did not, because a level-4 cell is
+5.12 m and six sockets space at 4.29 m, which is where pairs start sharing a cell. A count
+cannot carry. Strictly less information, and it survives contact with the failure case.
+
+**Several cell sizes at once.** Cell size is a protocol constant, so one number has to serve
+a twenty centimetre plug and a twenty metre one, and it cannot: coverage wants about L/2r.
+The atlas now holds N levels, each four times the last, each in its own band of rows. A
+socket publishes to every level, one small draw each; a plug picks the level nearest its own
+L/2r and reads only there, so read cost does not move at all. Six levels span 2 cm to 20 m.
+
+Confirmed in the editor: a **thirty metre plug threading six sockets**, with the remaining
+two correctly reported past the tip rather than lost.
+
+#### What this costs, and what is still open
+
+- **Visibility went backwards.** The 8x8 pixel atlas is now grid x 17 slots wide by
+  levels x grid tall, and every socket paints a pixel per level per home. At slot size 4 and
+  eight levels that measured 1096 x 520 px of scattered dots. Slot size 1 and four levels is
+  sixteen times smaller and probably all anyone needs.
+- **The chain is longer than the shaft.** Sockets spread over a plug's full length make a
+  path that snakes, and arc length is measured along the path, so the last socket or two can
+  sit past the tip even though the spacing looked fine. The practical count is a little
+  under what the spacing bound suggests.
+- Two sockets in one OCTANT is the last clash, and nothing here fixes it. It is also the
+  genuinely ambiguous case.
+- Still no socket KIND in the payload, so a hole cannot be told from a ring and the
+  approach-flip is only correct for rings.
+- Portal and duplicate are ranges on top of the list, unbuilt.
+- 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
