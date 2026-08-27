@@ -235,6 +235,7 @@ namespace AvatarBridge
                 ? authored
                 : true;
             patched.SetFloat("_YAPS_Overrun", overrun ? 1f : 0f);
+            ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
 
@@ -767,6 +768,7 @@ namespace AvatarBridge
                     // No plug on this mesh: the plug half stays asleep.
                     material.SetFloat("_YAPS_Enabled", 0f);
 
+                    ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], material);
                     materials[slot] = material;
                     renderer.sharedMaterials = materials;
                 }
@@ -989,6 +991,121 @@ namespace AvatarBridge
                     "atlas marker's material, so VRChat's shader could read them back off the " +
                     "screen. The marker is gone and those writes went to nothing.");
             }
+        }
+
+        // A TOGGLE THAT SWAPS THE MATERIAL PUTS THE ORIGINAL BACK.
+        //
+        // The bake repoints a renderer's slot at the patched copy, and that
+        // holds until the animator runs. An avatar that swaps that slot in an
+        // animation — a skin picker, a variant toggle, an NSFW switch — hands
+        // the slot back to the material the author baked from, which carries
+        // no deform and no bake. The plug straightens the instant play mode
+        // starts and the tool reports it as never baked, because from the
+        // material there is nothing to find.
+        //
+        // Reported from a converted avatar whose plug went from
+        // "Dick HD 1 _YAPS_" to "Dick HD 1" between edit and play mode, with
+        // the shader going back to the author's Poiyomi with it.
+        //
+        // Scoped to the renderer AND slot we actually repointed. The original
+        // material is usually worn by other meshes as well, and they have no
+        // bake of their own: handing them a plug's deform would bend the
+        // wrong mesh.
+        public static void RepointSwappedMaterials(BridgeContext ctx)
+        {
+            if (ctx.MergedController == null || ctx.YapsMaterialSwaps.Count == 0)
+            {
+                return;
+            }
+
+            var byPath = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
+            foreach (var pair in ctx.YapsMaterialSwaps)
+            {
+                var renderer = pair.Key.renderer;
+                if (renderer == null || pair.Value.from == null || pair.Value.to == null)
+                {
+                    continue;
+                }
+                string path = AnimationUtility.CalculateTransformPath(
+                    renderer.transform, ctx.Target.transform);
+                if (!byPath.TryGetValue(path, out var slots))
+                {
+                    byPath[path] = slots = new Dictionary<int, (Material, Material)>();
+                }
+                slots[pair.Key.slot] = pair.Value;
+            }
+
+            int repointed = 0;
+            var seen = new HashSet<AnimationClip>();
+            foreach (var clip in ctx.MergedController.animationClips)
+            {
+                if (clip == null || !seen.Add(clip))
+                {
+                    continue;
+                }
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (!byPath.TryGetValue(binding.path, out var slots))
+                    {
+                        continue;
+                    }
+                    int slot = MaterialSlotIndex(binding.propertyName);
+                    if (slot < 0 || !slots.TryGetValue(slot, out var swap))
+                    {
+                        continue;
+                    }
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null)
+                    {
+                        continue;
+                    }
+                    bool touched = false;
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        if (keys[i].value != swap.from)
+                        {
+                            continue;
+                        }
+                        keys[i].value = swap.to;
+                        touched = true;
+                        repointed++;
+                    }
+                    if (touched)
+                    {
+                        AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
+                    }
+                }
+            }
+
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"Pointed {repointed} material swap(s) at the baked material",
+                    "An animation on this avatar assigns a material to the same mesh slot the " +
+                    "bake replaced — a skin picker, a variant toggle, whatever it is. Left alone " +
+                    "it hands the slot back to the material you baked FROM, which carries no " +
+                    "deform, so the plug straightens the moment you press Play and reads as " +
+                    "never baked. Those swaps now point at the baked material instead. Only the " +
+                    "exact mesh and slot the bake touched was changed; anything else wearing " +
+                    "that material keeps it.");
+            }
+        }
+
+        // "m_Materials.Array.data[3]" -> 3, anything else -> -1.
+        static int MaterialSlotIndex(string propertyName)
+        {
+            const string prefix = "m_Materials.Array.data[";
+            if (string.IsNullOrEmpty(propertyName) || !propertyName.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return -1;
+            }
+            int close = propertyName.IndexOf(']', prefix.Length);
+            if (close < 0)
+            {
+                return -1;
+            }
+            return int.TryParse(propertyName.Substring(prefix.Length, close - prefix.Length), out int slot)
+                ? slot : -1;
         }
 
         static bool AddressesAtlas(string path)
