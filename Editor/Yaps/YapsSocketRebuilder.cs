@@ -327,6 +327,14 @@ namespace AvatarBridge
                 if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
+                // Stamped like the native and prop builders do. The stale
+                // card is guarded on this being non-empty, so leaving it
+                // blank meant a CONVERTED socket could never report itself
+                // out of date, and converted avatars are the ones most
+                // likely to be: a socket built before 4.4.0 carries
+                // half-size trigger volumes and a hole flag that reads
+                // wrong, and nothing would have said so.
+                socket.builtBy = BridgeDefines.Version;
             }
 
             int rebuilt = 0, repointed = 0;
