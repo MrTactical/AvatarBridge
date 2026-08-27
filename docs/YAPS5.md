@@ -266,11 +266,52 @@ other side.
 
 Rig: `Dev/Probes/Atlas/`.
 
-### Next: spike 3, the rendezvous
+### Spike 3, 2026-08-27: the rendezvous WORKS
 
-A socket writes into a cell derived from its own world position; a plug hashes ITS position and
-the neighbouring cells and finds the socket without ever being told where to look. That is the
-last piece of the design that could be wrong, and it is testable in Play Mode.
+A socket publishes into a cell derived from its own world position; a plug derives its own cell,
+reads that and the neighbours out of the grab, and finds the socket without being told anything.
+Measured in Play Mode:
+
+    plug at (0.3500, 1.1500, 0.2500)   cell (0,2,0)
+    taps    27 (radius 1)
+    found   (0.2000, 1.1000, 0.2998)
+    nearest Socket A at (0.2000, 1.1000, 0.3000)
+    error   0.20 mm
+
+**0.20 mm**, against the 0.24 the scheme predicted, and six times finer than the contact channel.
+Two independent parties derived the same cell from the same world coordinates with no negotiation,
+which is the whole design.
+
+**Occupancy needs a CLEAR PASS, and now has one.** Alpha cannot be trusted on its own: a grab
+returns whatever the screen had at those pixels, the screen is opaque, so every cell reads as
+occupied. The first run of this spike reported all twenty-seven cells as hits, every one decoding
+the floor. One quad covering the atlas rect, queued at `Overlay-200` against the writers'
+`Overlay-100`, paints alpha 0 first. Ordering comes from the QUEUE rather than from distance,
+which matters because the clear and the writers sit on different avatars and nobody controls
+distance sorting. After it: two hits out of twenty-seven.
+
+**A collision happened and failed safe, in the log.** Cell (-1,3,0) reported a hit carrying Socket
+A's payload: two world cells landed on the same square of a 64-cell grid, so A's offset decoded
+against the wrong origin and produced a phantom 0.79 m away. The real socket was 0.166 m away and
+nearest-wins ignored it. That is the fail-safe property demonstrated rather than argued.
+
+**It also names the knob:** 27 taps into 64 squares makes collisions likely, not rare. A 32x32
+grid is 1024 squares for the same 27 taps. Grid size trades screen area against collision
+frequency, and the spike makes both adjustable.
+
+**Also settled:** the grab reads back with Y FLIPPED relative to clip space. The reader shader
+compensates through `_TexelSize.y`; anything doing its own readback has to as well.
+
+### What is left
+
+    encoding a moving position   done, spike 2
+    rendezvous                   done, spike 3
+    occupancy                    done, the clear pass
+    per-camera cost              UNMEASURED, and still the thing that could kill it
+    frustum culling at range     partly, huge bounds worked in spike 1
+    a plug reading it in ITS
+      OWN SHADER rather than
+      in C#                      not started, and the real work
 
 **Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA —
 main view, each eye, the portrait, the CVR camera, every mirror — so the atlas has to be ONE grab

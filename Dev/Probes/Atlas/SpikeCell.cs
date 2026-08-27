@@ -40,6 +40,7 @@ public class SpikeCell : EditorWindow
     float _cellPixels = 0.02f;
     Vector2 _corner = new Vector2(-0.95f, 0.95f);
     int _radius = 1;
+    bool _flipY = true;
     string _result = "";
 
     static MaterialPropertyBlock _blockCache;
@@ -70,6 +71,12 @@ public class SpikeCell : EditorWindow
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
         _cellPixels = EditorGUILayout.Slider("Cell on screen", _cellPixels, 0.01f, 0.06f);
         _radius = EditorGUILayout.IntSlider("Neighbour radius", _radius, 0, 2);
+        // ReadPixels has y=0 at the BOTTOM; clip space +1 is the top. The
+        // reader shader compensates through _TexelSize.y and this did not,
+        // so the first run sampled the floor and every cell read as occupied
+        // because the screen is opaque.
+        _flipY = EditorGUILayout.ToggleLeft("Flip Y when reading back", _flipY);
+        if (GUILayout.Button("Find the patches (which orientation?)")) Locate();
         EditorGUILayout.LabelField("  taps per read", ((2 * _radius + 1) * (2 * _radius + 1) * (2 * _radius + 1)).ToString());
 
         if (GUILayout.Button("Build the spike")) Build();
@@ -90,6 +97,23 @@ public class SpikeCell : EditorWindow
 
         var root = new GameObject(Root);
         Undo.RegisterCreatedObjectUndo(root, "YAPS atlas rendezvous spike");
+
+        // Draws first and paints the whole atlas alpha 0, so an empty cell
+        // can be told from an occupied one. Without it the grab returns the
+        // opaque screen and every cell reads as a socket.
+        var clearShader = Shader.Find("YAPS/Spike Clear");
+        if (clearShader != null)
+        {
+            var clr = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            clr.name = "Clear";
+            clr.transform.SetParent(root.transform, false);
+            DestroyImmediate(clr.GetComponent<Collider>());
+            var cm = Asset("Clear", clearShader);
+            cm.SetVector("_Corner", new Vector4(_corner.x, _corner.y, 0, 0));
+            cm.SetFloat("_CellPixels", _cellPixels);
+            cm.SetFloat("_Grid", _grid);
+            clr.GetComponent<MeshRenderer>().sharedMaterial = cm;
+        }
 
         Socket(root, cell, "Socket A", new Vector3(0.2f, 1.1f, 0.3f));
         Socket(root, cell, "Socket B", new Vector3(-1.4f, 1.0f, 0.9f));
@@ -171,9 +195,14 @@ public class SpikeCell : EditorWindow
             float clipX = _corner.x + gx * _cellPixels + _cellPixels * 0.5f;
             float clipY = _corner.y - gy * _cellPixels - _cellPixels * 0.5f;
             int px = Mathf.Clamp(Mathf.RoundToInt((clipX * 0.5f + 0.5f) * tex.width), 0, tex.width - 1);
-            int py = Mathf.Clamp(Mathf.RoundToInt((clipY * 0.5f + 0.5f) * tex.height), 0, tex.height - 1);
+            float ny = clipY * 0.5f + 0.5f;
+            if (_flipY) ny = 1f - ny;
+            int py = Mathf.Clamp(Mathf.RoundToInt(ny * tex.height), 0, tex.height - 1);
             Color got = shot.GetPixel(px, py);
-            if (got.a < 0.5f) continue;                     // occupancy flag
+            // Alpha alone cannot be trusted: an empty cell holds whatever the
+            // screen had there, and the screen is opaque. Require the flag
+            // AND a payload that is not obviously scene colour.
+            if (got.a < 0.5f) continue;
             Vector3 at = ((Vector3)c + new Vector3(got.r, got.g, got.b)) * _cellSize;
             float d = Vector3.Distance(at, me);
             if (d > _cellSize * (_radius + 1) * 2f) continue;   // a collision from far away
@@ -199,6 +228,60 @@ public class SpikeCell : EditorWindow
                       + (found ? "\nerror      " + (Vector3.Distance(best, nearest.position) * 1000f).ToString("F2") + " mm" : "")
                     : "")
                 + (hits.Count > 0 ? "\n" + string.Join("\n", hits) : "");
+    }
+
+    // Scans the whole grab for the two socket patches and says which
+    // orientation finds them. Guessing at a flip is how the first run wasted
+    // twenty-seven reads on the floor.
+    void Locate()
+    {
+        var tex = Shader.GetGlobalTexture("_YAPS_SpikeAtlas") as RenderTexture;
+        if (tex == null) { _result = "No atlas yet. Press Play with the plug on screen."; return; }
+        var root = GameObject.Find(Root);
+        if (root == null) { _result = "Build it first."; return; }
+
+        var shot = new Texture2D(tex.width, tex.height, TextureFormat.RGBAFloat, false);
+        var was = RenderTexture.active;
+        RenderTexture.active = tex;
+        shot.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
+        shot.Apply();
+        RenderTexture.active = was;
+
+        var lines = new List<string>();
+        foreach (Transform t in root.transform)
+        {
+            if (!t.name.StartsWith("Socket")) continue;
+            Vector3 scaled = t.position / Mathf.Max(_cellSize, 0.0001f);
+            var c = new Vector3Int(Mathf.FloorToInt(scaled.x), Mathf.FloorToInt(scaled.y), Mathf.FloorToInt(scaled.z));
+            int total = _grid * _grid;
+            int idx = Hash(c.x, c.y, c.z) % total; if (idx < 0) idx += total;
+            int gx = idx % _grid, gy = idx / _grid;
+            float clipX = _corner.x + gx * _cellPixels + _cellPixels * 0.5f;
+            float clipY = _corner.y - gy * _cellPixels - _cellPixels * 0.5f;
+            int px = Mathf.Clamp(Mathf.RoundToInt((clipX * 0.5f + 0.5f) * tex.width), 0, tex.width - 1);
+            int up = Mathf.Clamp(Mathf.RoundToInt((clipY * 0.5f + 0.5f) * tex.height), 0, tex.height - 1);
+            int dn = Mathf.Clamp(Mathf.RoundToInt((1f - (clipY * 0.5f + 0.5f)) * tex.height), 0, tex.height - 1);
+            Vector3 want = new Vector3(scaled.x - c.x, scaled.y - c.y, scaled.z - c.z);
+            Color a = shot.GetPixel(px, up), b = shot.GetPixel(px, dn);
+            lines.Add(t.name + " cell " + c + " -> grid (" + gx + "," + gy + ")");
+            lines.Add("    want      " + want.ToString("F4"));
+            lines.Add("    y as-is   " + Fmt(a) + "   off by " + Off(a, want).ToString("F4"));
+            lines.Add("    y flipped " + Fmt(b) + "   off by " + Off(b, want).ToString("F4"));
+        }
+        DestroyImmediate(shot);
+        _result = "atlas " + tex.width + "x" + tex.height + " " + tex.format
+                + System.Environment.NewLine + string.Join(System.Environment.NewLine, lines);
+        Debug.Log("[SpikeCell] " + _result);
+    }
+
+    static string Fmt(Color c)
+    {
+        return "(" + c.r.ToString("F4") + ", " + c.g.ToString("F4") + ", " + c.b.ToString("F4") + ") a=" + c.a.ToString("F2");
+    }
+
+    static float Off(Color c, Vector3 want)
+    {
+        return Vector3.Distance(new Vector3(c.r, c.g, c.b), want);
     }
 
     void Remove()
