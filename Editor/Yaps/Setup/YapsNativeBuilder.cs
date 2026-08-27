@@ -645,6 +645,7 @@ namespace AvatarBridge
         public static string BakeSocket(YapsSocket socket)
         {
             if (socket == null) return null;
+            socket.builtBy = BridgeDefines.Version;
             var renderer = socket.renderer;
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
             if (renderer == null || stages.Count == 0) return null;

@@ -296,6 +296,7 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.SubHeading("Prefabs"));
             props.Body.Add(BridgeElements.Row(
                 Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
+                Btn("Create a ring-and-socket prop prefab", YapsSocketBuilder.CreateSocketPropPrefab),
                 Btn("Create a plug prop prefab", YapsSocketBuilder.CreatePlugPropPrefab)));
             props.Body.Add(BridgeElements.Hint(
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +

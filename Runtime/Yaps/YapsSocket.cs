@@ -60,6 +60,16 @@ namespace AvatarBridge.Yaps
                  "no limit.")]
         public bool emitLights = true;
 
+        // WHICH VERSION BUILT THIS, so a prop made months ago can say so.
+        //
+        // A prop is built once and never revisited: every fix ships to new
+        // ones and reaches no existing one, and nothing tells the owner. A
+        // prop carrying the half-size trigger boxes, or a channel that
+        // configured one material out of three, looks identical to a current
+        // one. The toolkit stamps this when it builds or bakes a socket and
+        // the inspector says so when it falls behind.
+        [HideInInspector] public string builtBy = "";
+
         // The material the socket bake replaced on its own mesh, so Remove
         // can put it back. Set by the first bake; the toolkit's own.
         [HideInInspector]

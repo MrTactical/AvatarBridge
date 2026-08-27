@@ -698,6 +698,25 @@ namespace AvatarBridge
             body.AddToClassList("ab-scroll");
             _root.Add(body);
 
+            // BUILT BY AN OLDER TOOLKIT?
+            //
+            // A prop is built once and never revisited, so every fix ships
+            // to new ones and reaches no existing one, and the two look
+            // identical from the outside. A socket carrying half-size
+            // trigger boxes, or a channel that configured one material out
+            // of three, gives no sign of it. The stamp is written when the
+            // socket is baked or its prop is built.
+            if (!string.IsNullOrEmpty(socket.builtBy) && socket.builtBy != BridgeDefines.Version)
+            {
+                var behind = new BridgeElements.Card("This socket is behind the toolkit");
+                behind.Body.Add(BridgeElements.Hint(
+                    "Built by " + socket.builtBy + ", and this is " + BridgeDefines.Version + ". "
+                    + "Fixes since then have not reached it: nothing revisits a socket once it is "
+                    + "made. Bake it again to bring it up to date. On a prop, run the prop builder "
+                    + "again; on an avatar, Bake every plug and verify."));
+                body.Add(behind);
+            }
+
             // What it is.
             var what = new BridgeElements.Card("What it is");
             what.Body.Add(BridgeElements.Choice("Kind",

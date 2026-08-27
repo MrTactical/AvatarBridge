@@ -56,6 +56,14 @@ namespace AvatarBridge
 
         public static Outcome MakeProp(GameObject root)
         {
+            // Stamped so a prop built months ago can say which version
+            // made it. Nothing revisits a prop, so every fix reaches new
+            // ones and no existing one, and the two look identical.
+            foreach (var s in root.GetComponentsInChildren<YapsSocket>(true))
+            {
+                s.builtBy = BridgeDefines.Version;
+                EditorUtility.SetDirty(s);
+            }
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
             var plug = root.GetComponentInChildren<YapsPlug>(true);
