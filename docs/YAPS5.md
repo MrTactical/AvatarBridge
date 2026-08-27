@@ -365,3 +365,38 @@ the reader quad may simply have been culled out of them. The camera number is un
 with a plug's shader doing the 27 taps rather than C# doing them. The taps are the cost that has
 never been measured at all: one grab per camera is cheap, twenty-seven texture reads per vertex
 on a three thousand vertex plug is a different question.
+
+### The taps are affordable too, 2026-08-27
+
+Measured properly, holding every object still and changing ONLY the tap count:
+
+    1,318,400 vertex reads a frame    0.177 ms and 1.031 ms across two runs
+
+A real plug is about three thousand vertices at twenty-seven taps, which is 81,000 reads: a
+SIXTEENTH of what was measured. Ten plugs in view is still under a millisecond. Both halves of the
+cost question are cheap.
+
+**Three wrong readings came out of this before the right one, all from one harness flaw.** The
+first said the taps cost 7.5 ms; the second, seeing that cost stay flat against twelve times the
+workload, said it must be a pipeline stall. The truth was that the on/off toggle disabled the
+whole spike root, so it was changing whether the atlas ran AND how much geometry was in the scene.
+Forty spheres cost about 7.5 ms whether they read the atlas sixty-four times or not at all, and
+the 0-tap run is what exposed it.
+
+**An A/B harness has to change exactly one thing.** This one changed the scene, and every reading
+after that was interpretation of a confounded number.
+
+### Where the atlas stands
+
+    GrabPass survives upload, cross-avatar, mirrors   proven in game
+    stereo                                            solved by construction
+    a moving position encodes and decodes             spike 2
+    rendezvous with no negotiation, 0.20 mm           spike 3
+    occupancy                                         the clear pass
+    collisions fail safe                              observed in the log
+    grab cost                                         below the noise, bounded by cameras
+    tap cost                                          under 1 ms at 16x realistic load
+
+**What is left is all in-game or unbuilt:** a plug reading the atlas in its OWN shader rather than
+in C#, VR two-eye rendering, a real mirror, and what a viewer's safety settings do to a shader
+that has to run for the transport to work at all.

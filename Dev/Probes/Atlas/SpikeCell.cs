@@ -48,6 +48,9 @@ public class SpikeCell : EditorWindow
     // camera slope, extra sockets to confirm the slope is flat.
     int _extraCameras = 0;
     int _extraSockets = 0;
+    int _taps = 27;
+    int _tapMeshes = 8;
+    bool _tapsOnly = true;
     int _phase = -1, _frames;
     double _sum, _onMs, _offMs;
     const int Samples = 180;
@@ -74,13 +77,21 @@ public class SpikeCell : EditorWindow
         if (_phase == 0)
         {
             _onMs = avg;
-            if (root != null) root.SetActive(false);
+            // Toggling the whole root changes the SCENE, not the atlas: 40
+            // extra spheres cost about 7.5 ms whether they read the atlas
+            // sixty-four times or not at all, which is what the first run of
+            // this measured and I read as a tap cost. Tap mode holds every
+            // object in place and changes only the tap count, so the delta
+            // is the taps and nothing else.
+            if (_tapsOnly) SetTaps(0);
+            else if (root != null) root.SetActive(false);
             _phase = 1;
         }
         else
         {
             _offMs = avg;
-            if (root != null) root.SetActive(true);
+            if (_tapsOnly) SetTaps(_taps);
+            else if (root != null) root.SetActive(true);
             _phase = -1;
             double d = _onMs - _offMs;
             _result = "with the atlas    " + _onMs.ToString("F3") + " ms"
@@ -89,6 +100,8 @@ public class SpikeCell : EditorWindow
                     + "   (" + (_offMs > 0 ? (d / _offMs * 100.0) : 0).ToString("F1") + " per cent)"
                     + System.Environment.NewLine + "cameras " + (1 + _extraCameras)
                     + ", sockets " + (2 + _extraSockets)
+                    + ", tap meshes " + _tapMeshes + " at " + _taps + " taps"
+                    + " (" + (_tapMeshes * 515L * _taps).ToString("N0") + " reads a frame)"
                     + System.Environment.NewLine
                     + "A difference under the frame-to-frame noise means the grab is not the cost.";
             Debug.Log("[SpikeCell] " + _result);
@@ -129,6 +142,12 @@ public class SpikeCell : EditorWindow
         EditorGUILayout.LabelField("Cost", EditorStyles.boldLabel);
         _extraCameras = EditorGUILayout.IntSlider("Extra cameras", _extraCameras, 0, 6);
         _extraSockets = EditorGUILayout.IntSlider("Extra sockets", _extraSockets, 0, 30);
+        _taps = EditorGUILayout.IntSlider("Taps per vertex", _taps, 0, 64);
+        _tapMeshes = EditorGUILayout.IntSlider("Tap meshes", _tapMeshes, 0, 40);
+        EditorGUILayout.LabelField("  reads per frame",
+            (_tapMeshes * 515L * _taps).ToString("N0") + "   (a sphere is about 515 verts)");
+        _tapsOnly = EditorGUILayout.ToggleLeft(
+            "Measure the TAPS only (hold the scene still, change only the tap count)", _tapsOnly);
         using (new EditorGUI.DisabledScope(!EditorApplication.isPlaying || _phase >= 0))
         {
             if (GUILayout.Button(_phase >= 0
@@ -188,6 +207,21 @@ public class SpikeCell : EditorWindow
         DestroyImmediate(plug.GetComponent<Collider>());
         plug.GetComponent<MeshRenderer>().sharedMaterial = Asset("PlugMarker", reader);
 
+        // A DEDICATED grabber, scaled huge so no camera can cull it.
+        //
+        // A camera only grabs if something carrying the GrabPass renders in
+        // it. The plug marker is a small cube near the origin, so an extra
+        // camera looking from across the scene may simply not see it and
+        // never grab at all — which is why the first per-camera measurement
+        // was unverified. The shader writes clip space and ignores this
+        // object's transform, so scale changes nothing except the bounds.
+        var grab = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        grab.name = "Grabber";
+        grab.transform.SetParent(root.transform, false);
+        grab.transform.localScale = Vector3.one * 200f;
+        DestroyImmediate(grab.GetComponent<Collider>());
+        grab.GetComponent<MeshRenderer>().sharedMaterial = Asset("Grabber", reader);
+
         // Something must carry the GrabPass or nothing grabs. The reader
         // material already has one.
         for (int i = 0; i < _extraCameras; i++)
@@ -200,6 +234,23 @@ public class SpikeCell : EditorWindow
             c.depth = -10 - i;
             c.targetTexture = new RenderTexture(512, 512, 24);
         }
+        // The tap load: the cost a plug's own vertex shader would pay.
+        var tapShader = Shader.Find("YAPS/Spike Taps");
+        if (tapShader != null && _tapMeshes > 0)
+        {
+            var tm = Asset("Taps", tapShader);
+            tm.SetFloat("_Taps", _taps);
+            for (int i = 0; i < _tapMeshes; i++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                go.name = "Tap load " + i;
+                go.transform.SetParent(root.transform, false);
+                go.transform.position = new Vector3(-3f + (i % 8) * 0.8f, 0.6f, -2f - (i / 8) * 0.8f);
+                DestroyImmediate(go.GetComponent<Collider>());
+                go.GetComponent<MeshRenderer>().sharedMaterial = tm;
+            }
+        }
+
         for (int i = 0; i < _extraSockets; i++)
         {
             Socket(root, cell, "Socket X" + i,
@@ -360,6 +411,12 @@ public class SpikeCell : EditorWindow
     static float Off(Color c, Vector3 want)
     {
         return Vector3.Distance(new Vector3(c.r, c.g, c.b), want);
+    }
+
+    static void SetTaps(int n)
+    {
+        var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/YapsSpike/CellTaps.mat");
+        if (m != null) m.SetFloat("_Taps", n);
     }
 
     void Remove()
