@@ -894,6 +894,14 @@ the shader the project has today, otherwise a plug built on the spot. While it r
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced* holds the marker lights, *Rebuild
 markers* and **Remove this socket**.
 
+**A socket says when it is behind the toolkit.** Nothing revisits a socket once it is made: fixes
+ship to new ones and reach no existing one, and the two look identical. From 4.4.0 a socket
+carries the version that built it and its inspector leads with a card when that is not the version
+you are running — which version made it, and that baking it again is the fix. Worth acting on
+rather than ignoring: a socket built before 4.4.0 has half-size trigger volumes, a hole flag that
+can only be set, and a position that sticks where it last saw a plug. On a prop, run the prop
+builder again; on an avatar, *Bake every plug and verify*.
+
 **One socket is lit at a time**, the same rule a conversion applies; every lit-capable socket
 carries its pair, dark until chosen. Unity gives a mesh
 four vertex light slots, refills them every frame from the ranges in reach, and a socket takes

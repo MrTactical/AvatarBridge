@@ -17,7 +17,18 @@ Status words used below: **shipped** (in the package), **built** (in the code, u
 conversion strips VRCFury's rig and re-emits it through the native builder. Everything below
 describes both at once, which is the point.*
 
-Two channels, tiered. A plug tries contacts first and falls back to lights; a socket speaks both.
+Two channels, and which one answers is not the same question as which one is better. The channel
+FINDS the socket and decides engagement; a marker light in range then replaces the position
+outright, because a light is exact and sampled every frame where the channel is quantised to about
+a millimetre and arrives ten times a second. So a socket carrying both is the best case, and each
+alone covers a viewer the other cannot: lights reach someone whose client blocks custom shaders,
+the channel reaches someone who has switched avatar lights off.
+
+*Corrected 2026-08-27. This said a plug "tries contacts first and falls back to lights", which had
+the quality ranking backwards and would lead someone to spend nine synced floats to get the worse
+of the two. And until 4.4.0 a TOOL-BUILT plug had no working channel at all: it was written into a
+controller ChilloutVR never uploads, so it read correctly in the editor and did nothing in game
+for anybody. Converted avatars were unaffected; the converter passes its own controller.*
 
 | channel | who reads it | what it carries |
 |---|---|---|
@@ -171,10 +182,36 @@ GrabPass. The only channel that dodges the light slots, the pair cap, the sync b
 authority gate, with no socket-count ceiling — and where SPS's atlas is double-wide-native and
 dies under ChilloutVR's instancing, this one would be instanced-native from the first line.
 
-Unbuilt because one problem has no answer without scripting: **two avatars cannot negotiate
-screen cells**, and a cell collision yields a WRONG socket position rather than a missing one.
-Wrong-but-confident is the worst failure mode this system can have. Stays designed, stays
-parked, until either scripting lands or a cell scheme that fails safe is found.
+**SPIKED AND PROVEN IN GAME, 2026-08-27.** A writer quad stamping a known value into a fixed
+corner of clip space, a named `GrabPass`, a reader sampling it back: the value returns exactly,
+and the verdict was green locally, in the self portrait, in the CVR camera, in a MIRROR, and on a
+remote user's client. So ChilloutVR keeps a `GrabPass` through an avatar upload and it works
+cross-avatar, which was the whole gate.
+
+What it measured: the grab comes back **ARGBHalf**, sixteen bits of float per channel, worst error
+0.00005, which across a two metre range is about **0.1 mm**. Twelve times finer than the contact
+channel, every frame instead of ten a second, and needing no smoothing, so none of the
+resolution-versus-lag trade the channel has applies. `Assets/YapsSpike/` and
+`Assets/Editor/SpikeAtlas.cs` in the Dracaionan project.
+
+Writing the patch in CLIP space, ignoring both the object's transform and the eye, makes it
+stereo-proof by construction: both slices of the eye texture array get identical content, so there
+is no double-wide layout maths to get wrong. That is the part of SPS that does not survive
+conversion, and we simply never have it. It also means the patch lands at the same UV in every
+camera's frame, so a grab leaking between cameras still finds the right pixels.
+
+**The cell problem may have an answer that fails safe.** Give each socket a build-time random id,
+hash it to a cell, and write the id into the cell beside the position. A collision then decodes to
+some other socket's position, which is almost always metres away, and the engagement range gate
+already rejects that. Collisions would degrade to "no socket found", falling back to lights or
+contacts, rather than "wrong socket found". Untested.
+
+**Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA —
+main view, each eye, the portrait, the CVR camera, every mirror — so the atlas has to be ONE grab
+shared by everybody, never one per socket, or it scales catastrophically. That constraint is also
+why cell allocation matters: a shared atlas is the only affordable shape. And a viewer whose
+safety settings block custom shaders gets nothing from it, where marker lights survive that,
+because lights are components rather than shader work. So it is a third leg, not a replacement.
 
 ### 6. Scripting — blocked
 
@@ -194,3 +231,8 @@ already script-first, contacts next, lights last.
 5. Light colour: shelved — its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
 6. ~~Corpus, with the two missing avatar classes added~~ — done: Fixture_DeformSocket and
    Fixture_HeadTransplant are in the corpus and its baseline, and gated 4.3.0.
+7. ~~Spike the screen-space atlas~~ — **done 2026-08-27, and it works.** GrabPass survives a
+   ChilloutVR avatar upload, cross-avatar, in mirrors. See candidate 5 for the measurements and
+   for what is still unanswered: the per-camera cost, and cell allocation.
+8. The contact channel reaching a tool-built plug — **fixed in 4.4.0**. It had never worked in game
+   for anybody on that path.
