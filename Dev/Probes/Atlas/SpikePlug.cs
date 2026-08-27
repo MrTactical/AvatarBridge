@@ -48,7 +48,7 @@ public class SpikePlug : EditorWindow
     float _cellSize = 0.12f;
     bool _fitCells = true;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
-    int _grid = 8;
+    int _grid = 32;
     int _slotPx = 1;
     float _reach = 1.6f;
     float _length = 0.22f;
@@ -100,6 +100,21 @@ public class SpikePlug : EditorWindow
         socks.Sort((a, b) => Vector3.Distance(a.position, at0)
                      .CompareTo(Vector3.Distance(b.position, at0)));
 
+        // Which grid slot each socket hashes to. Two on one slot means the
+        // second to draw overwrites the first and the loser is dropped by
+        // the tag check, silently, for as long as it stays in that cell.
+        // It presents as a DEADZONE exactly one cell across, which is how
+        // this was found: socket B stopped working between y 1.26 and 1.44,
+        // the bounds of a single cell at eighteen centimetres.
+        var slots = new Dictionary<int, string>();
+        var clash = new HashSet<Transform>();
+        foreach (var t in socks)
+        {
+            int i = Slot(t.position, cell);
+            if (slots.ContainsKey(i)) { clash.Add(t); slots[i] = slots[i] + " + " + t.name; }
+            else slots[i] = t.name;
+        }
+
         float arc = 0;
         Vector3 prev = at0;
         foreach (var t in socks)
@@ -108,10 +123,13 @@ public class SpikePlug : EditorWindow
             float h = span * 0.5f;
             bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
             arc += Vector3.Distance(t.position, prev);
-            string why = !inBox ? "OUTSIDE the read box"
+            string why = clash.Contains(t) ? "SLOT CLASH, this one is overwritten"
+                       : !inBox ? "OUTSIDE the read box"
                        : arc > len ? "past the tip: arc " + arc.ToString("F2") + " of " + len.ToString("F2")
                        : "threaded at " + arc.ToString("F2") + " of " + len.ToString("F2");
-            Handles.color = !inBox ? Color.red : arc > len ? new Color(1f, 0.7f, 0.2f) : Color.green;
+            Handles.color = clash.Contains(t) ? Color.magenta
+                          : !inBox ? Color.red
+                          : arc > len ? new Color(1f, 0.7f, 0.2f) : Color.green;
             Handles.DrawLine(prev, t.position);
             Handles.Label(t.position + Vector3.up * 0.04f, t.name + "  " + why);
             prev = t.position;
@@ -138,7 +156,9 @@ public class SpikePlug : EditorWindow
         // NEIGHBOURHOOD rather than from the length of the list.
         EditorGUILayout.LabelField("  ceiling",
             "at most " + (2 * _cellRadius + 1) + " sockets on one plug, for " + cells + " reads a vertex");
-        _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
+        _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 64);
+        EditorGUILayout.LabelField("  slots",
+            (_grid * _grid) + "   (two sockets landing on one slot means one of them vanishes)");
         _slotPx = EditorGUILayout.IntSlider("Slot, pixels", _slotPx, 1, 8);
         EditorGUILayout.LabelField("  atlas",
             (OriginPx + _grid * 2 * _slotPx) + " x " + (OriginPx + _grid * _slotPx) + " px"
@@ -509,6 +529,16 @@ public class SpikePlug : EditorWindow
         DestroyImmediate(shot);
         _result = string.Join(System.Environment.NewLine, lines);
         Debug.Log("[SpikePlug] " + _result);
+    }
+
+    // The shader's cell-to-slot arithmetic, so the scene view and the GPU
+    // agree about which sockets are fighting over a pixel.
+    int Slot(Vector3 at, float cell)
+    {
+        int idx = SpikeCell.Hash(Mathf.FloorToInt(at.x / cell),
+                                 Mathf.FloorToInt(at.y / cell),
+                                 Mathf.FloorToInt(at.z / cell)) % (_grid * _grid);
+        return idx < 0 ? idx + _grid * _grid : idx;
     }
 
     static string Fmt(Color c)
