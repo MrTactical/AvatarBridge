@@ -522,20 +522,6 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         {
             shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
         }
-        else if (_YAPS_Debug >= 5.5)
-        {
-            // DECODED GAP: the channel's reconstructed socket, measured from
-            // the recovered frame origin. Expected 1.0 for a socket at the
-            // tip. Differs from the Gap view only in skipping the tier
-            // special-case, so a nobody-answer reads as its raw distance.
-            shown = saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
-        }
-        else if (_YAPS_Debug >= 4.5)
-        {
-            // GPU INPUTS: does the property block's engagement actually
-            // arrive in the constant registers? 1.0 yes, 0.15 no.
-            shown = _YAPS_SocketFlags.x > 0.5 ? 1.0 : 0.15;
-        }
         else if (_YAPS_Debug >= 3.5)
         {
             // THE SOCKET'S FACING, against the plug's own forward.

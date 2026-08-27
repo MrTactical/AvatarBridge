@@ -252,7 +252,14 @@ namespace AvatarBridge
             // That is precisely how a channel which had never worked once in
             // game passed every editor test anyone ran: the light was always
             // there to catch it.
-            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind, withLights: false);
+            // WITH lights, like a real socket. It used to be built without
+            // them so that a light could not answer in place of the contact
+            // channel while the channel was being debugged. That made the
+            // preview show the fallback route instead of the one a user
+            // actually gets, so a plug looked worse in the editor than it
+            // does in game and every reading taken from it was of the wrong
+            // path. Turn its lights off by hand to isolate the channel.
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
@@ -973,7 +980,7 @@ namespace AvatarBridge
             // way and not the other" is the fastest question there is to
             // ask about a socket, and answering it used to take an upload.
             var route = new Toggle("Preview through the contact channel") { value = socket.previewAsChannel };
-            route.AddToClassList("ab-field");
+            route.AddToClassList("ab-toggle");
             route.RegisterValueChangedCallback(e =>
             {
                 Undo.RecordObject(socket, "YAPS preview route");
@@ -982,12 +989,13 @@ namespace AvatarBridge
             });
             see.Body.Add(route);
             see.Body.Add(BridgeElements.Hint(
-                "On: the socket arrives the way the game sends it, as an offset normalised across the " +
-                "channel's box with no rotation, so the editor runs the same maths the game does. Off: a " +
-                "world position and a true forward, which is the simpler route the preview always used — " +
-                "and is NOT what the game runs, which is how a contact channel that had never once worked " +
-                "looked perfect in the editor. Flip it to see whether a fault belongs to the channel or " +
-                "to the deform."));
+                "Leave this on. The socket then arrives the way the game sends it, so what you see " +
+                "here is what you will get after an upload. Off is a simpler route the editor can " +
+                "take that the game never does, and it is only worth a look if you are trying to " +
+                "tell whether a fault belongs to how the socket is found or to how the plug bends. " +
+                "Either way, a socket with marker lights answers first: a light in range replaces " +
+                "the position outright, so switch this socket's lights off in Advanced if you want " +
+                "to see the contact channel on its own."));
 
             // The plug mesh on most avatars only exists in Play Mode: it
             // ships switched off and a toggle brings it in. So the one
@@ -995,7 +1003,7 @@ namespace AvatarBridge
             // refused to run in, and every editor bend anyone ever saw came
             // from a marker light instead.
             var inPlay = new Toggle("Keep previewing in Play Mode") { value = socket.previewInPlayMode };
-            inPlay.AddToClassList("ab-field");
+            inPlay.AddToClassList("ab-toggle");
             inPlay.RegisterValueChangedCallback(e =>
             {
                 Undo.RecordObject(socket, "YAPS preview in play mode");
