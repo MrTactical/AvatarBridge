@@ -598,6 +598,24 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     {
         socket.position = lightPosition;
         found = true;
+
+        // ENGAGEMENT follows the position, or a lit socket still trembles.
+        //
+        // Engagement was measured from the CHANNEL's decoded gap further up
+        // and the light replaces the position here, afterwards, so the
+        // target went steady while the strength kept shaking at the
+        // channel's own resolution, about a millimetre arriving ten times a
+        // second. On a socket carrying both, which is most of them, the plug
+        // twitched exactly as hard as one carrying contacts alone, and the
+        // light appeared to be doing nothing.
+        //
+        // Same formula the light-only path below uses, so whoever provides
+        // the position provides the gap this is measured from.
+        if (channelFound)
+        {
+            socket.engaged = 1 - smoothstep(worldLength, worldLength * 1.6,
+                                            length(socket.position - plugOrigin));
+        }
         // A light that only SHARPENED the channel's answer leaves the tier
         // saying channel, the channel engaged it, the light polished it.
         // A light standing in for a silent channel owns the answer.

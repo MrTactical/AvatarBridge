@@ -339,6 +339,7 @@ namespace AvatarBridge
                 maxValue = 1f,
             });
             AddHoleTrigger(site, plug, index, box);
+            AddRingTrigger(site, plug, index, box);
             // Nothing writes a stay task after the sender leaves; reset on exit.
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
@@ -375,6 +376,44 @@ namespace AvatarBridge
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
         }
+
+        // THE OTHER HALF OF THE HOLE FLAG.
+        //
+        // A hole sets the flag on the way in and clears it on the way out,
+        // and nothing else ever writes it. So a ring arriving after a hole
+        // is treated as a hole, because the flag still says so, and any exit
+        // that does not fire leaves it set for the rest of the session: a
+        // prop despawning inside the trigger, the plug being toggled off,
+        // an instance change. Measured in game 2026-08-27, a freshly spawned
+        // ring prop swallowed the plug like a hole.
+        //
+        // A ring now asserts it too, so whichever kind arrived last is what
+        // the flag says and neither depends on an exit it may never get.
+        // Only the unambiguous ring tags: a hole socket also emits
+        // TPS_Orf_Root, so accepting that here would have a hole clear its
+        // own flag.
+        static void AddRingTrigger(Site site, BridgeContext.YapsPlug plug, int index, Vector3 box)
+        {
+            var host = TriggerHost($"YAPS Channel {index} R", plug);
+
+            var trigger = host.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            trigger.areaSize = box;
+            trigger.areaOffset = Vector3.zero;
+            trigger.useAdvancedTrigger = true;
+            trigger.allowedTypes = RingPointerTypes;
+            trigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+            {
+                settingName = Synced(index, "H"),
+                settingValue = 0f,
+                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+            });
+        }
+
+        // Only the tags that mean "ring", for the reason above.
+        static readonly string[] RingPointerTypes =
+        {
+            "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
+        };
 
         // Only the tags that mean "hole". A plain TPS_Orf_Root says nothing
         // either way; unknown stays a ring.
@@ -561,8 +600,22 @@ namespace AvatarBridge
                 minValue = 0f,
                 maxValue = 1f,
             });
-            // Back to the middle of the box on the way out, which is the
-            // plug's own origin and means nothing in particular.
+            // Back to the FAR EDGE on the way out, not the middle.
+            //
+            // The middle looks like the neutral answer and is the worst one
+            // available: 0.5 decodes to an offset of zero, which puts the
+            // socket exactly at the plug's own base, and that is the
+            // MAXIMUM deform, the position that curls a plug back on
+            // itself. Anything that leaks a little engagement afterwards
+            // aims the plug at its own root.
+            //
+            // One is a whole extent out on the axis, past where engagement
+            // fades to nothing, and all three together put it in the corner
+            // of the box. Before any of this the axes had no exit at all and
+            // held their last reading, taken AT the edge, which was
+            // accidentally the safe value. Measured in game 2026-08-27:
+            // resetting to the middle snapped the plug to a hard angle a
+            // couple of metres from a socket it had already left.
             //
             // A stay task with no exit keeps its last reading forever, and
             // the last reading before a socket leaves is taken at the edge:
@@ -578,7 +631,7 @@ namespace AvatarBridge
             trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
             {
                 settingName = Synced(index, prefix + axis),
-                settingValue = 0.5f,
+                settingValue = 1f,
                 updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
             });
         }

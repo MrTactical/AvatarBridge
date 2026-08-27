@@ -1237,3 +1237,39 @@ No amount of smoothing the POSITION fixes an unstable DIRECTION, so this is sepa
 resolution limit above. How much it matters depends on how often a real socket sits within a
 millimetre of the axis, which is probably rare. Worth remembering when someone reports that a
 plug "freaks out sometimes" with no other pattern to it.
+
+## User reports from stable, 2026-08-27
+
+Both from a user on the shipped build, relayed by Joe. Neither is reproduced here yet, and
+neither should be closed on the reasoning below alone.
+
+### Duplicate SPS toggles after conversion
+
+The conversion lists the avatar's SPS toggles, and converting to YAPS adds a SECOND set, so the
+menu carries two of each and one of them is inert.
+
+`YapsToggles` already tries not to do this: `ToggledBy` asks whether anything already switches the
+object and stands its own toggle down if so. But the check only recognises an entry that drives
+the object through `gameObjectTargets`, and a converted VRChat or SPS toggle commonly drives it
+through an ANIMATION CLIP instead. A clip-driven toggle would be invisible to the check and would
+produce exactly this.
+
+**To confirm before fixing:** take an avatar whose SPS toggle is clip-driven, convert it, and look
+at whether the duplicate entry appears and whether `ToggledBy` returned null. The corpus has SPS
+avatars in it; a probe counting menu entries that target the same object would find this across
+all of them at once, which is better than one reproduction.
+
+### The plug does not go back to straight when you move away
+
+Moving away from a socket leaves the plug bent or misshapen rather than returning to rest.
+
+This has the shape of the latch found the same day: the channel's axis triggers carried a stay
+task and no exit, so X, Y and Z kept the last reading, which is taken at the EDGE of the box.
+Engagement gates the deform and does reset on a clean exit, so a stale position alone should be
+harmless, but any engagement that does not reset leaves the plug aimed at a phantom socket. Fixed
+for the clean case in 4.4.0; a sender that vanishes inside the box still fires no exit at all.
+
+**Worth asking the reporter to retest on 4.4.0**, and to say whether the socket was on a prop that
+despawned, an avatar that left, or one they simply walked away from. Those are three different
+paths through the same symptom and only the last one is fixed.
+
