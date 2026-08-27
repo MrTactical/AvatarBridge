@@ -195,11 +195,29 @@ namespace AvatarBridge
         // Hence BOTH markers, not just the editor's: the sweep keys on
         // ThryShaderOptimizerLockButton, and a shader carrying that without
         // the editor marker would have been named plainly and swept.
+        // An ALREADY LOCKED source is the third signal, and it is the one
+        // that matters most. Locking strips both marker properties, so a
+        // locked Poiyomi looks like no Thry shader at all, and the copy was
+        // named plainly and swept into a lock of its own. That resolves OUR
+        // properties to constants, and a constant where a declaration should
+        // be is not a frozen deform but a shader that will not compile:
+        //
+        //   float4 _YAPS_SocketPos;   ->   float4 0.5;
+        //   'float4' already defined as a type / unexpected integer constant
+        //
+        // The editor never shows it, because nothing there forces the shadow
+        // caster pass to compile. Entering play mode does, the pass fails,
+        // and the plug loses its deform in front of the user, who reasonably
+        // reports that the bake came undone.
+        //
+        // So the shaders that most need the protective name were the only
+        // ones that could not get it.
         static string PatchedName(string sourceText, string hash)
         {
             bool thry = sourceText != null
                         && (sourceText.Contains("shader_is_using_thry_editor")
-                            || sourceText.Contains("ThryShaderOptimizerLockButton"));
+                            || sourceText.Contains("ThryShaderOptimizerLockButton")
+                            || Regex.IsMatch(sourceText, @"Shader\s+""Hidden/Locked/"));
             return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 
