@@ -292,8 +292,21 @@ Shader "YAPS/Spike Plug"
                 float3 prev = root;
                 [unroll] for (int i3 = 0; i3 < YAPS_MAX; i3++)
                 {
-                    arc[i3 + 1] = arc[i3] + (i3 < count ? distance(sockP[i3], prev) : 1e6);
-                    if (i3 < count) prev = sockP[i3];
+                    if (i3 >= count) { arc[i3 + 1] = arc[i3] + 1e6; continue; }
+                    float3 step = sockP[i3] - prev;
+                    float d3 = length(step);
+                    // TURNED TO MEET THE APPROACH. A socket facing the same
+                    // way the shaft is travelling means the curve has to
+                    // arrive going backwards, and a cubic asked to do that
+                    // ties itself in a hairpin and piles the vertices up.
+                    //
+                    // A ring is enterable from either face, so which of the
+                    // two the author happened to point it is not information.
+                    // A one-sided socket, a hole, would want the sign
+                    // respected instead, and nothing here is one-sided.
+                    if (d3 > 1e-5 && dot(sockF[i3], step) > 0) sockF[i3] = -sockF[i3];
+                    arc[i3 + 1] = arc[i3] + d3;
+                    prev = sockP[i3];
                 }
 
                 float3 pos = wv, nrm = wn;

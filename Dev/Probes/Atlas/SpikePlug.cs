@@ -170,8 +170,13 @@ public class SpikePlug : EditorWindow
         {
             float along = _length * (0.15f + 0.35f * i);
             var at = from + new Vector3(along, 0.01f * i, 0.02f * i);
+            // Facing BACK down the shaft. The plug travels +X, so a socket
+            // whose local +Z is also +X is being entered through its back,
+            // which is what the hairpin was. The shader turns a ring to meet
+            // its approach now, but a demo that only looks right because of
+            // a correction is a demo that hides the correction.
             Socket(root, sockShader, "Socket " + (char)('A' + i), at,
-                   Quaternion.Euler(0, 90 + (i - 1) * 12, (i - 1) * 10));
+                   Quaternion.Euler(0, 270 + (i - 1) * 12, (i - 1) * 10));
         }
 
         // The plug. An ORDINARY mesh, never skinned: Unity skins into world
