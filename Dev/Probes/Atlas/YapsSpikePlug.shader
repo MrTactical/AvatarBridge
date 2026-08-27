@@ -153,6 +153,17 @@ Shader "YAPS/Spike Plug"
                 return h;
             }
 
+            // Must match CellTag in the socket shader. See the note there:
+            // without it a radius-2 read aliases into itself.
+            float CellTag(int3 c)
+            {
+                int h = c.x * 19349663;
+                h ^= c.y * 83492791;
+                h ^= c.z * 73856093;
+                h = h & 0x7FFFFF;
+                return (h % 256) / 255.0;
+            }
+
             float3 Bez(float3 a, float3 b, float3 c, float3 d, float u)
             {
                 float3 ab = lerp(a, b, u), bc = lerp(b, c, u), cd = lerp(c, d, u);
@@ -247,6 +258,11 @@ Shader "YAPS/Spike Plug"
 
                     float4 got = YAPS_LOAD(px, py);
                     if (got.a < 0.5) continue;
+                    // Whose payload is this? A cell that merely shares a
+                    // grid slot returns somebody else's socket, decoded
+                    // against this cell, which reads as a perfectly
+                    // plausible one a few centimetres away.
+                    if (abs((got.a - 0.5) * 2 - CellTag(c)) > 0.001) continue;
                     hits++;
 
                     float3 at = (float3(c) + got.rgb) * size;

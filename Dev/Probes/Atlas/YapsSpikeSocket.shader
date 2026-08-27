@@ -70,6 +70,29 @@ Shader "YAPS/Spike Socket"
                 return h;
             }
 
+            // A SECOND, independent hash, carried in alpha as a tag.
+            //
+            // The grid has 64 slots and a radius-2 read looks at 125 cells,
+            // so by pigeonhole some of them land on a slot another cell
+            // owns. The payload that comes back is a real socket's, decoded
+            // against the WRONG cell, which puts a convincing phantom
+            // somewhere in the neighbourhood. Nothing about the payload can
+            // reveal that on its own: an offset within a cell always decodes
+            // into that cell, whichever cell you decode it against.
+            //
+            // So the writer stamps who it is and the reader checks. 256
+            // levels over the top half of alpha, which is four half-float
+            // steps apart and therefore actually distinguishable, and the
+            // bottom half stays free for "empty".
+            float CellTag(int3 c)
+            {
+                int h = c.x * 19349663;
+                h ^= c.y * 83492791;
+                h ^= c.z * 73856093;
+                h = h & 0x7FFFFF;
+                return (h % 256) / 255.0;
+            }
+
             v2f vert (appdata v)
             {
                 v2f o;
@@ -101,13 +124,14 @@ Shader "YAPS/Spike Socket"
                 p.y = -p.y;                       // pixel rows count down from the top
                 o.pos = float4(p, UNITY_NEAR_CLIP_VALUE, 1);
 
-                o.payload = float4(frac(scaled), 1);
+                float tag = 0.5 + 0.5 * CellTag(cell);
+                o.payload = float4(frac(scaled), tag);
 
                 // Local +Z in world. Normalised here rather than in the
                 // fragment so a non-uniform scale cannot skew it, and mapped
                 // into 0..1 because the grab has no signed format.
                 float3 fwd = normalize(mul((float3x3)unity_ObjectToWorld, float3(0, 0, 1)));
-                o.other = float4(fwd * 0.5 + 0.5, 1);
+                o.other = float4(fwd * 0.5 + 0.5, tag);
 
                 o.u = unit.x;
                 return o;
