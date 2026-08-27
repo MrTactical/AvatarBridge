@@ -183,7 +183,7 @@ namespace AvatarBridge
             // permanently nearest, so a plug that does not skip them never
             // looks at anybody else's — which is exactly what the comment
             // over that check warns about.
-            var ownAvatar = plug.GetComponentInParent<CVRAvatar>();
+            var ownAvatar = plug.GetComponentInParent<CVRAvatar>(true);
             bool ownSockets = ownAvatar != null
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
             patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
@@ -237,7 +237,7 @@ namespace AvatarBridge
             WireSize(plug, renderer, result, o);
 
             // A switch for the deform, unless the avatar already has one.
-            var avatarForToggle = plug.GetComponentInParent<CVRAvatar>();
+            var avatarForToggle = plug.GetComponentInParent<CVRAvatar>(true);
             if (avatarForToggle != null)
             {
                 string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, YapsToggles.LabelFor(plug));
@@ -263,7 +263,7 @@ namespace AvatarBridge
         static void WireSize(YapsPlug plug, Renderer renderer, YapsBaker.Result result, Outcome o)
         {
             var top = TopOf(plug.transform);
-            var animator = top.GetComponentInParent<Animator>();
+            var animator = top.GetComponentInParent<Animator>(true);
             if (animator == null || animator.runtimeAnimatorController == null) return;
             var clips = YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController)
                 .Where(YapsCurveMirror.UserOwned).ToList();
@@ -377,7 +377,7 @@ namespace AvatarBridge
         public static void SyncPlugsFrom(Material m)
         {
             if (m == null) return;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
             {
                 var r = plug.Target;
                 if (r == null || !r.sharedMaterials.Contains(m)) continue;
@@ -594,18 +594,18 @@ namespace AvatarBridge
             var lines = new List<string>();
             if (socket == null) return lines;
             Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Build YAPS socket");
-            string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>());
+            string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>(true));
             if (renamed != null) lines.Add($"✓ {renamed}");
             YapsSocketBuilder.Build(socket);
             string capped = YapsSocketBuilder.LightCapNote(socket);
             if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));
             if (toggled != null) lines.Add(toggled);
-            var animator = socket.GetComponentInParent<Animator>();
+            var animator = socket.GetComponentInParent<Animator>(true);
             var controller = (avatar != null && avatar.avatarSettings != null
                     ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
                 ?? (animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null);
@@ -624,7 +624,7 @@ namespace AvatarBridge
         {
             int before = YapsToggles.Edits;
             var o = Bake(plug);
-            var avatar = plug != null ? plug.GetComponentInParent<CVRAvatar>() : null;
+            var avatar = plug != null ? plug.GetComponentInParent<CVRAvatar>(true) : null;
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) o.Notes.Add(menu);
             // The contact channel, which the window's Build does after baking
@@ -1001,7 +1001,7 @@ namespace AvatarBridge
             if (primary == null || !primary.FromSkinnedMesh) return 0;
             // The avatar, not the scene root: two avatars parented under one
             // container would otherwise lend each other their meshes.
-            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
             var root = avatar != null ? avatar.transform : TopOf(plug.transform);
             int done = 0;
             foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))

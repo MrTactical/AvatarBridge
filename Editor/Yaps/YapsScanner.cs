@@ -433,7 +433,7 @@ namespace AvatarBridge
                 // Dark on purpose under the lighthouse: pairs wait on the
                 // menu, one lit at a time. Only a socket dark with no
                 // lighthouse to light it is a problem.
-                var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>() : null;
+                var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>(true) : null;
                 bool lighthouse = avatar != null && avatar.avatarSettings != null
                     && avatar.avatarSettings.settings != null
                     && avatar.avatarSettings.settings.Any(e => e != null && e.machineName == "YAPS/Lighthouse");

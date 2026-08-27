@@ -274,7 +274,7 @@ namespace AvatarBridge
         // always the hole root at 0.4130 and Unity drops exactly that one.
         static int Places(YapsSocket socket)
         {
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var root = avatar != null ? avatar.transform : socket.transform.root;
             int trackers = root.GetComponentsInChildren<YapsPlug>(true)
                 .Count(p => p != null && p.emitTipLight);
@@ -286,7 +286,7 @@ namespace AvatarBridge
         // get them.
         public static System.Collections.Generic.List<YapsSocket> Lit(YapsSocket socket)
         {
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var root = avatar != null ? avatar.transform : socket.transform.root;
             return root.GetComponentsInChildren<YapsSocket>(true)
                 .Where(s => s != null && s.emitLights)

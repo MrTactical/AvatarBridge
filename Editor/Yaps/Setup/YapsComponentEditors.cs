@@ -332,7 +332,7 @@ namespace AvatarBridge
         static void Tick()
         {
             // Stop once nothing needs it.
-            var sockets = Object.FindObjectsOfType<YapsSocket>();
+            var sockets = Object.FindObjectsOfType<YapsSocket>(true);
             bool previewing = sockets.Any(s => s.preview);
             bool plugSelected = Selection.activeGameObject != null && Selection.activeGameObject.GetComponent<YapsPlug>() != null;
             if (!previewing && !plugSelected) { Animate(false); return; }
@@ -347,7 +347,7 @@ namespace AvatarBridge
         {
             if (socket == null) return CountBakedPlugs();
             int n = 0;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
             {
                 if (!PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
                 float gap = Mathf.Min(Vector3.Distance(origin, socket.transform.position),
@@ -360,7 +360,7 @@ namespace AvatarBridge
         public static int CountBakedPlugs()
         {
             int n = 0;
-            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            foreach (var r in Object.FindObjectsOfType<Renderer>(true))
                 foreach (var m in r.sharedMaterials)
                     if (m != null && m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") > 0) { n++; break; }
             return n;
@@ -372,7 +372,7 @@ namespace AvatarBridge
         public static bool FirstBakedPlugFrame(out Vector3 origin, out Vector3 forward, out Vector3 up, out float length)
         {
             origin = Vector3.zero; forward = Vector3.forward; up = Vector3.up; length = 0.25f;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
                 if (PlugFrame(plug, out origin, out forward, out up, out length)) return true;
             return false;
         }
@@ -571,7 +571,7 @@ namespace AvatarBridge
             float best = -1f;
             var at = socket.transform;
             YapsSocketReactions.TriggerBox(socket, out var offset, out var size);
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>())
+            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
             {
                 if (!YapsPreview.PlugFrame(plug, out var origin, out var forward, out _, out float length)) continue;
                 var tip = origin + forward * length;
@@ -988,6 +988,26 @@ namespace AvatarBridge
                 "and is NOT what the game runs, which is how a contact channel that had never once worked " +
                 "looked perfect in the editor. Flip it to see whether a fault belongs to the channel or " +
                 "to the deform."));
+
+            // The plug mesh on most avatars only exists in Play Mode: it
+            // ships switched off and a toggle brings it in. So the one
+            // state where you can SEE a plug was the one state the preview
+            // refused to run in, and every editor bend anyone ever saw came
+            // from a marker light instead.
+            var inPlay = new Toggle("Keep previewing in Play Mode") { value = socket.previewInPlayMode };
+            inPlay.AddToClassList("ab-field");
+            inPlay.RegisterValueChangedCallback(e =>
+            {
+                Undo.RecordObject(socket, "YAPS preview in play mode");
+                socket.previewInPlayMode = e.newValue;
+                EditorUtility.SetDirty(socket);
+            });
+            see.Body.Add(inPlay);
+            see.Body.Add(BridgeElements.Hint(
+                "Turn this on when the plug only appears after you press Play, which is the usual " +
+                "case. It is also the only way to watch the channel on a POSED avatar: edit mode " +
+                "holds the rest pose, where every part of the plug agrees about which way it faces. " +
+                "Off by default so the preview cannot race anything else writing to the material."));
 
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.

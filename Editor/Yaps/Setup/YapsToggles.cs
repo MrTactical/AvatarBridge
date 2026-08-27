@@ -88,7 +88,7 @@ namespace AvatarBridge
             // Fury's numbering is noise; "Blowjob" is the author's word
             // for it and the one the wearer knows.
             string bone = YapsScanner.StripFuryId(
-                BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>()));
+                BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>(true)));
             string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
             // The kind is always said: a menu row the wearer cannot tell
             // hole from ring by is a menu row they have to test in game.
@@ -139,7 +139,7 @@ namespace AvatarBridge
             }
             var chainObjects = new HashSet<GameObject>(chain.Select(t => t.gameObject));
 
-            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>();
+            var animator = avatar != null ? avatar.GetComponent<Animator>() : target.GetComponentInParent<Animator>(true);
             var root = animator != null ? animator.transform : (avatar != null ? avatar.transform : target.transform.root);
             var paths = new HashSet<string>(chain.Select(t => AnimationUtility.CalculateTransformPath(t, root)));
             string targetPath = AnimationUtility.CalculateTransformPath(target.transform, root);

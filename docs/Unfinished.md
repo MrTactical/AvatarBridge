@@ -1012,3 +1012,168 @@ model and it invalidates the instinct to make contact parameters local because t
 controlled by a curve, and `IsSynced` requires `!IsReadOnly`. Any design that computes a
 value in the animator and expects the room to see it is already wrong; sync the inputs, or
 compute it on every client from something that does sync.
+
+## The socket preview stands down in Play Mode without saying so
+
+`YapsSocket.PreviewTick` returns at `if (Application.isPlaying) return;`. That is correct:
+in Play Mode the game systems own the property blocks and an editor preview writing over
+them would fight whatever drives the material. But it stands down in total silence, and a
+preview that writes nothing is indistinguishable from a feature that does not work.
+
+This cost a full evening of diagnosis on 2026-08-26. Every reading taken in Play Mode showed
+an empty block, which decodes to the far corner of the channel box, which looks exactly like
+a bad encode. Out of Play Mode the same scene round-tripped to within 0 m.
+
+**Fix:** grey the preview toggle out in Play Mode, or put a line under it reading that the
+preview is inactive while playing. The user must not have to infer it.
+
+## `YapsSocket.preview` does not survive a recompile
+
+It is `[NonSerialized]`, so a domain reload drops it to false while the button can still read
+as active until it repaints. Any script edit silently stops a running preview. Either serialise
+it, or have the socket editor re-assert it after a reload.
+
+## Scene scans skipped inactive objects
+
+Fixed 2026-08-26: eight `FindObjectsOfType` calls across `YapsSocket`, `YapsComponentEditors`
+and `YapsNativeBuilder` took the parameterless overload, which excludes inactive GameObjects.
+An avatar plug ships switched off and an erection clip activates it at runtime, so in edit mode
+the mesh is hidden and the preview, the baked-plug count and the knob sync all passed straight
+over it. Every one of those scans means "find the plug in the scene", never "find the visible
+one". Not yet covered by the corpus.
+
+## The contact channel cannot choose between two sockets
+
+**DISPROVEN 2026-08-27, kept as a record of a wrong theory.** Two ring props were spawned beside
+one plug in game and it stayed completely stable, picking whichever socket the plug pointed at.
+So the channel does arbitrate in practice, whatever the code appears to leave undefined, and
+nothing below needs doing. The original text follows.
+
+**It was read off the code, not measured.** It was written up on 2026-08-27 as the
+cause of an in-game twitch, and that was wrong: the twitch survived a prop rebuilt with a single
+ring, so it is a different bug entirely. Nobody has yet put two sockets near one plug and
+watched. Treat what follows as a hypothesis worth testing, not a finding.
+
+A plug's axis triggers report whatever allowed pointer the client hands them, and nothing ranks
+the candidates. With two sockets inside one trigger box there is no way to express a preference,
+so the reported position has no defined winner.
+
+The light path does not have this problem: the shader sees every marker light at once and picks
+one by distance. The channel sees one pointer at a time and has no memory.
+
+This is not a contrived case. Any prop carrying both a ring and a hole hits it, and so do two
+people standing close to one plug.
+
+**Worth thinking about:** the trigger cannot rank, so arbitration has to happen after the fact,
+either by preferring the socket whose engagement is highest, or by holding the current one until
+it clearly leaves. Neither is free in sync budget. Until then a plug near two sockets is
+unstable on contacts alone.
+
+## The channel flickers at the sync rate in game
+
+Found 2026-08-27, immediately after the channel first worked in game. The deform twitches hard
+and the flicker is at about ten a second, which is ChilloutVR's parameter rate. It happens deep
+inside the socket, not only near the trigger's edge, and the light path on the same prop in the
+same room is perfectly smooth.
+
+**What is already ruled out, all measured rather than reasoned:**
+
+- Everything downstream of the parameter. Driving the channel by hand in Play Mode with a
+  constant value holds the driver fields, the material and the deform completely still. So
+  smoothing, the driver layers, the material and the shader are all stable.
+- A leftover `CVRAnimatorDriver`. There are no `YAPS Driver` objects on the avatar.
+- Two sockets fighting. Confirmed 2026-08-27 against a prop REBUILT with a single ring and no
+  hole pointer anywhere, so this is not an arbitration artifact.
+- The trigger boundary. It flickers deep inside as well as at the entrance.
+
+**So the parameter itself is alternating in game.** Ten a second is the tick at which a synced
+value arrives, which points at something restoring or overwriting it between contact updates
+rather than at the contact reading being noisy. Worth looking at next: whether the owner also
+applies the networked echo of its own parameter, and what value it alternates to (a zero would
+implicate an exit task or a default, a stale position would implicate the echo).
+
+## The hole flag: not a latch after all
+
+Investigated 2026-08-27 and closed. A ring socket appeared to behave as a hole in game and no
+enter/exit cleared it, which looked exactly like a synced flag latching. It was not: the prop
+being tested still carried a hole-typed pointer, so `YAPS0H` was being set correctly and
+honestly. A prop rebuilt with a single ring behaves as a ring.
+
+Two things confirmed on the way, worth keeping:
+
+- The flag reaches the shader intact. Toggling H by hand changes the deform, but ONLY where
+  there is leftover shaft past the socket (`if (leftOver > 0 && isHole)`), so a socket further
+  away than the plug is long shows no difference between ring and hole. That is correct, and it
+  makes a naive hand test look like a dead feature.
+- The exit-task concern is still real in principle, just not what happened here: a sender that
+  despawns inside a trigger fires no exit, and disabling the plug's own object fires none either.
+  Worth a stay-task that asserts the value rather than an enter/exit pair, but nothing is known
+  to be broken by it today.
+
+## The channel latches: no socket, and the plug still thinks it is in one
+
+Measured in game 2026-08-27 by giving the channel parameters temporary menu sliders, which is
+the only way to read their live values. With no socket anywhere near:
+
+    YAPS0E 61    YAPS0H 0    YAPS0X 58    YAPS0Y 49    YAPS0Z 84
+
+Every one of those should be at rest. The plug is sitting permanently 61 per cent engaged toward
+a socket position that has not existed for minutes.
+
+**Cause, for the axes: they have no exit task at all.** `AddAxisTrigger` adds a `stayTask` and
+nothing else, so X, Y, Z and the three front axes keep whatever they last saw, forever. Only the
+engagement and hole triggers have exit tasks, and engagement was ALSO stale at 61, so its exit
+did not fire either (a sender that despawns inside a trigger never fires one).
+
+**Corrected the same evening, before acting on it.** Pulling AWAY from a socket cleanly does
+reset engagement: the sliders then read `E 0, H 0, X 46, Y 60, Z 99`. So the exit task works, and
+the axes latching is harmless while engagement is 0, because engagement gates the whole deform.
+
+**The latch only bites when the exit does not fire at all** — a prop despawning inside the box,
+the plug's own object being toggled off (disabling a collider fires no exit), an instance change,
+a sender leaving the room. That is how E came to be stuck at 61 with nothing nearby, and in THAT
+state the plug is bent toward a phantom socket with nothing to clear it. Not the everyday case,
+but not rare either, and there is no way back short of finding another socket.
+
+**Shape of the fix:** engagement must decay rather than rely on an exit, and the axes need
+either an exit task or the same decay. Anything that can only be written while a sender is
+present, and never cleared when it leaves, will latch.
+
+## The channel's drift is quantisation, and the smoother cannot filter it
+
+Fully characterised 2026-08-27 in the editor, no uploads. The channel's values never settle while
+a socket is near: they wander by about one part in a thousand every tick, and the deform is
+sensitive enough that this reads as a constant stutter. The marker light path on the same socket
+is smooth, because it samples continuously rather than about ten times a second.
+
+**How big is the wander?** Measured by simulating it. `ChannelHandDrive` can wobble its input by a
+chosen number of slider units while delivering at 10 a second, and Joe matched the in-game look
+by eye at **0.07 units**. The channel box is 1.78 m across and a slider unit is 1.8 cm, so the
+apparent socket movement is about **1.2 mm**.
+
+**That rules out body motion**, which had been the leading theory. Breathing and an idle animation
+move the hips a centimetre or two, which is about one slider unit, and one unit was reported as
+"way too much" wobble. The real signal is fifteen times smaller than a body sways. A millimetre is
+quantisation scale: ChilloutVR does not send a full float, so a value between two steps dithers
+between them.
+
+**Why the smoothing cannot fix it as built.** The cloned layer is the AvatarScaler's "Linear
+Smoothing Layer", which moves a FIXED amount per frame. Noise rejection and tracking speed are
+therefore the same number:
+
+    StepSize 0.05    ships today       stutter clearly visible
+    StepSize 0.0015  kills the wobble  the plug lags the socket by 3 to 5 seconds
+
+There is no value that does both, because the two requirements pull on one knob.
+
+**Shape of the fix.** Either a PROPORTIONAL smoother, moving a fraction of the remaining error
+each frame, which is fast when the gap is large and naturally slow when it is small, so a
+millimetre never builds enough error to show while a hand-speed socket is still tracked. Or a
+deadband that ignores changes below one quantisation step, which is cheaper but stair-steps on
+purpose. The first is the better behaviour and is a change to the smoothing rig rather than a
+constant, so it is real work, not a tweak.
+
+**The rig for it already exists.** `Assets/Editor/ChannelHandDrive.cs` in the Dracaionan project
+drives the channel by hand, delivers at the network's rate, wobbles the input by a calibrated
+amount, and tunes StepSize live. Any replacement smoother can be judged against 0.07 units of
+wobble at 10 a second without a single upload.

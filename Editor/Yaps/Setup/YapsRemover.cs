@@ -34,7 +34,7 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
             if (socket == null) return lines;
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             lines.Add(OwnObject(socket.gameObject, typeof(YapsSocket))
                 ? $"the object \"{socket.name}\" and everything under it"
                 : $"the YAPS Socket component on \"{socket.name}\" and the markers, lights and pointers under it (the object stays: it has other things on it)");
@@ -51,7 +51,7 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
             if (plug == null) return lines;
-            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
             var renderer = plug.Target;
             lines.Add(OwnObject(plug.gameObject, typeof(YapsPlug))
                 ? $"the object \"{plug.name}\" and everything under it"
@@ -101,7 +101,7 @@ namespace AvatarBridge
         {
             if (socket == null) return null;
             string name = socket.name;
-            var avatar = socket.GetComponentInParent<CVRAvatar>();
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var top = TopOf(socket.transform);
             var done = new List<string>();
 
@@ -183,7 +183,7 @@ namespace AvatarBridge
         {
             if (plug == null) return null;
             string name = plug.name;
-            var avatar = plug.GetComponentInParent<CVRAvatar>();
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
             var top = TopOf(plug.transform);
             var renderer = plug.Target;
             var done = new List<string>();
@@ -663,7 +663,7 @@ namespace AvatarBridge
 
         static Transform TopOf(Transform t)
         {
-            var avatar = t.GetComponentInParent<CVRAvatar>();
+            var avatar = t.GetComponentInParent<CVRAvatar>(true);
             return avatar != null ? avatar.transform : t.root;
         }
 

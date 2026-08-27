@@ -343,9 +343,9 @@ namespace AvatarBridge
         static GameObject TopOf(GameObject go)
         {
             if (go == null) return null;
-            var avatar = go.GetComponentInParent<CVRAvatar>();
+            var avatar = go.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) return avatar.gameObject;
-            var prop = go.GetComponentInParent<CVRSpawnable>();
+            var prop = go.GetComponentInParent<CVRSpawnable>(true);
             if (prop != null) return prop.gameObject;
             return go.transform.root.gameObject;
         }

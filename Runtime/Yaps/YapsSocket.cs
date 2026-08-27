@@ -97,6 +97,13 @@ namespace AvatarBridge.Yaps
                  "a contact channel that had never worked once looked perfect in the editor.")]
         public bool previewAsChannel = true;
 
+        [Tooltip("Keep previewing after you press Play. The preview normally stands down in Play " +
+                 "Mode so it cannot fight whatever drives the material there. Turn this on when the " +
+                 "plug only appears in Play Mode, which is the usual case: the mesh ships switched " +
+                 "off and a toggle brings it in. It is also the only way to see the channel on a " +
+                 "POSED avatar, since edit mode holds the rest pose.")]
+        public bool previewInPlayMode;
+
         public void PreviewTick()
         {
             if (!preview)
@@ -106,15 +113,25 @@ namespace AvatarBridge.Yaps
             }
             if (_previewing != null && _previewing != this) { _previewing.preview = false; _previewing.Release(); }
             _previewing = this;
-            if (UnityEngine.Application.isPlaying) return;
+            // Play Mode stands the preview down so it cannot race whatever
+            // drives the material there, but on most avatars the plug mesh
+            // only APPEARS in Play Mode: it ships switched off and a toggle
+            // brings it in. That left no way at all to look at the contact
+            // channel, and a marker light quietly covered for it.
+            if (UnityEngine.Application.isPlaying && !previewInPlayMode) return;
 
-            foreach (var r in FindObjectsOfType<Renderer>())
+            // Inactive ones too. An avatar plug ships switched off and an
+            // erection clip activates it at runtime, so in edit mode the
+            // mesh is hidden. Skipping inactive objects here wrote no block
+            // at all and the shader read zeros, which decode to the far
+            // corner of the channel box and look exactly like a bad encode.
+            foreach (var r in FindObjectsOfType<Renderer>(true))
             {
                 var mats = r.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
                 {
                     var m = mats[slot];
-                    if (m == null || !m.HasProperty("_YAPS_Bake") || !m.HasProperty("_YAPS_SocketPos")) continue;
+                    if (m == null || !IsYapsMaterial(m)) continue;
                     if (!_touched.Exists(t => t.Renderer == r && t.Slot == slot))
                     {
                         _touched.Add(new Touched
@@ -247,7 +264,7 @@ namespace AvatarBridge.Yaps
         static YapsPlug CarrierOf(Renderer r)
         {
             YapsPlug carried = null;
-            foreach (var plug in FindObjectsOfType<YapsPlug>())
+            foreach (var plug in FindObjectsOfType<YapsPlug>(true))
             {
                 if (plug == null) continue;
                 if (plug.Target == r) return plug;
@@ -288,6 +305,23 @@ namespace AvatarBridge.Yaps
                 t.Renderer.SetPropertyBlock(Block, t.Slot);
             }
             _touched.Clear();
+            _isYaps.Clear();
+        }
+
+        // Asking a material whether it carries the YAPS properties is not
+        // free: Poiyomi's custom drawers log "Failed to create material
+        // drawer" on every HasProperty, and this ran for every material on
+        // every renderer on every frame, which buried the console. The
+        // answer cannot change for a given material, so ask it once.
+        static readonly System.Collections.Generic.Dictionary<Material, bool> _isYaps =
+            new System.Collections.Generic.Dictionary<Material, bool>();
+
+        static bool IsYapsMaterial(Material m)
+        {
+            if (_isYaps.TryGetValue(m, out bool yes)) return yes;
+            yes = m.HasProperty("_YAPS_Bake") && m.HasProperty("_YAPS_SocketPos");
+            _isYaps[m] = yes;
+            return yes;
         }
 #endif
     }
