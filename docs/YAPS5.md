@@ -238,9 +238,39 @@ only those. Neither side negotiates: both compute the same function from the sam
 It also fails safe in the way the earlier id-hash idea wanted: a collision returns a socket a few
 centimetres away rather than one across the room, and the engagement gate handles the rest.
 
-**Untested.** The next spike is a socket writing a real MOVING world position and a plug reading
-it back at the right place, which is the one capability the first spike did not prove: it round
-tripped a constant.
+### Spike 2, 2026-08-27: a moving position survives, and precision is set by BOX SIZE
+
+A marker publishing its own world position from its own matrix, dragged around the scene, decoded
+from the grab and measured against the truth:
+
+    1.2 m from the origin    4.10 mm error
+    3.9 m from the origin    4.60 mm error
+    8.6 m out, box is 8 m    clamped at the edge, not a precision failure
+
+**The prediction that error grows with distance was WRONG.** Normalising to 0..1 before encoding
+removes the absolute-magnitude problem, so the error is roughly constant wherever you stand. It is
+`box_size x half-float-step`: a half near 0.5 steps by about 0.000488, and 0.000488 x 16 m is 7.8
+mm worst case, which is what was measured.
+
+**That makes the case for cells stronger, for a different reason than assumed.** Precision trades
+directly against range, and the clamp shows range cannot be bought by growing the box. A **0.5 m
+cell gives 0.5 x 0.000488, about 0.24 mm** — five times finer than the contact channel — with
+range coming from HOW MANY cells exist rather than from how big one is. That is the argument for
+the spatial hash, measured rather than asserted.
+
+Also confirmed by construction: the payload has to come from the object's own matrix, since no
+script runs on someone else's avatar to set a material value. So **a socket marker for this can
+never be a skinned mesh** — Unity skins into world space and hands a SkinnedMeshRenderer identity,
+so a skinned marker cannot say where it is. Same fact as the channel decoding unrotated, from the
+other side.
+
+Rig: `Dev/Spikes/Atlas/`.
+
+### Next: spike 3, the rendezvous
+
+A socket writes into a cell derived from its own world position; a plug hashes ITS position and
+the neighbouring cells and finds the socket without ever being told where to look. That is the
+last piece of the design that could be wrong, and it is testable in Play Mode.
 
 **Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA —
 main view, each eye, the portrait, the CVR camera, every mirror — so the atlas has to be ONE grab
