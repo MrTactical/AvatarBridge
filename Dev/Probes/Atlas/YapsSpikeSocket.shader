@@ -70,6 +70,27 @@ Shader "YAPS/Spike Socket"
                 return h;
             }
 
+            // DOUBLE HASHING. Every socket writes itself into TWO slots, not
+            // one, and a reader that finds somebody else in the first looks
+            // in the second.
+            //
+            // A bigger grid only makes a clash rarer; it is never a fix, and
+            // a rare fault that switches on and off as you move is worse to
+            // live with than a common one. Two independent slots turn the
+            // failure probability from 1/N into 1/N squared: at 1024 slots,
+            // from one in a thousand to one in a million.
+            //
+            // The step is taken modulo total-1 and then incremented, which
+            // is the standard double-hashing trick and guarantees the second
+            // slot is never the first. Both sides compute it identically.
+            int HashCell2(int3 c)
+            {
+                int h = c.x * 12582917;
+                h ^= c.y * 3145739;
+                h ^= c.z * 6291469;
+                return h;
+            }
+
             // A SECOND, independent hash, carried in alpha as a tag.
             //
             // The grid has 64 slots and a radius-2 read looks at 125 cells,
@@ -108,6 +129,17 @@ Shader "YAPS/Spike Socket"
                 int total = grid * grid;
                 int idx = HashCell(cell) % total;
                 if (idx < 0) idx += total;
+
+                // The mesh is two quads. The second one carries the same
+                // payload to this cell's other slot, which costs one more
+                // two-pixel draw and nothing at all to read unless the first
+                // slot turns out to be somebody else's.
+                if (v.vertex.z > 0.5)
+                {
+                    int step = HashCell2(cell) % max(total - 1, 1);
+                    if (step < 0) step += max(total - 1, 1);
+                    idx = (idx + step + 1) % total;
+                }
                 int cx = idx % grid;
                 int cy = idx / grid;
 

@@ -153,6 +153,16 @@ Shader "YAPS/Spike Plug"
                 return h;
             }
 
+            // Must match HashCell2 in the socket shader. Every socket lives
+            // in two slots, so a clash on the first one is recoverable.
+            int HashCell2(int3 c)
+            {
+                int h = c.x * 12582917;
+                h ^= c.y * 3145739;
+                h ^= c.z * 6291469;
+                return h;
+            }
+
             // Must match CellTag in the socket shader. See the note there:
             // without it a radius-2 read aliases into itself.
             float CellTag(int3 c)
@@ -257,12 +267,34 @@ Shader "YAPS/Spike Plug"
                     int py = flip ? (texH - 1 - fromTop) : fromTop;
 
                     float4 got = YAPS_LOAD(px, py);
+                    // Nothing at all here. A socket in this cell writes its
+                    // FIRST slot whatever else happens, so an empty first
+                    // slot means an empty cell and the second one does not
+                    // need looking at.
                     if (got.a < 0.5) continue;
-                    // Whose payload is this? A cell that merely shares a
-                    // grid slot returns somebody else's socket, decoded
-                    // against this cell, which reads as a perfectly
-                    // plausible one a few centimetres away.
-                    if (abs((got.a - 0.5) * 2 - CellTag(c)) > 0.001) continue;
+
+                    // Whose payload is this? A cell that merely shares a grid
+                    // slot returns somebody else's socket, decoded against
+                    // this cell, which reads as a perfectly plausible one a
+                    // few centimetres away.
+                    float want = CellTag(c);
+                    if (abs((got.a - 0.5) * 2 - want) > 0.001)
+                    {
+                        // Somebody else owns the first slot. Every socket
+                        // also writes a second one, so look there before
+                        // giving up. This read only happens on an actual
+                        // clash, which is why two slots cost about nothing.
+                        int step = HashCell2(c) % max(total - 1, 1);
+                        if (step < 0) step += max(total - 1, 1);
+                        int idx2 = (idx + step + 1) % total;
+                        gx = idx2 % grid; gy = idx2 / grid;
+                        px = int(_OriginPx) + gx * 2 * slot + mid;
+                        fromTop = int(_OriginPx) + gy * slot + mid;
+                        py = flip ? (texH - 1 - fromTop) : fromTop;
+                        got = YAPS_LOAD(px, py);
+                        if (got.a < 0.5) continue;
+                        if (abs((got.a - 0.5) * 2 - want) > 0.001) continue;
+                    }
                     hits++;
 
                     float3 at = (float3(c) + got.rgb) * size;

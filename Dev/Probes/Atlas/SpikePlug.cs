@@ -106,13 +106,21 @@ public class SpikePlug : EditorWindow
         // It presents as a DEADZONE exactly one cell across, which is how
         // this was found: socket B stopped working between y 1.26 and 1.44,
         // the bounds of a single cell at eighteen centimetres.
-        var slots = new Dictionary<int, string>();
+        var seen1 = new Dictionary<int, int>();
+        var seen2 = new Dictionary<int, int>();
+        foreach (var t in socks)
+        {
+            int a1, a2; Slots(t.position, cell, out a1, out a2);
+            seen1[a1] = seen1.ContainsKey(a1) ? seen1[a1] + 1 : 1;
+            seen2[a2] = seen2.ContainsKey(a2) ? seen2[a2] + 1 : 1;
+        }
         var clash = new HashSet<Transform>();
         foreach (var t in socks)
         {
-            int i = Slot(t.position, cell);
-            if (slots.ContainsKey(i)) { clash.Add(t); slots[i] = slots[i] + " + " + t.name; }
-            else slots[i] = t.name;
+            int a1, a2; Slots(t.position, cell, out a1, out a2);
+            // Safe as long as ONE of its two homes is uncontested. Only a
+            // socket that loses both is actually unreadable.
+            if (seen1[a1] > 1 && seen2[a2] > 1) clash.Add(t);
         }
 
         float arc = 0;
@@ -123,7 +131,7 @@ public class SpikePlug : EditorWindow
             float h = span * 0.5f;
             bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
             arc += Vector3.Distance(t.position, prev);
-            string why = clash.Contains(t) ? "SLOT CLASH, this one is overwritten"
+            string why = clash.Contains(t) ? "SLOT CLASH on BOTH homes, this one is lost"
                        : !inBox ? "OUTSIDE the read box"
                        : arc > len ? "past the tip: arc " + arc.ToString("F2") + " of " + len.ToString("F2")
                        : "threaded at " + arc.ToString("F2") + " of " + len.ToString("F2");
@@ -297,12 +305,16 @@ public class SpikePlug : EditorWindow
         // The writer draws in CLIP space and ignores this object's transform,
         // so its own mesh is never seen. It still needs a real MeshRenderer
         // with a real matrix, because the matrix is the payload.
-        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        go.name = name;
+        //
+        // TWO quads, not one: the shader sends the second to this cell's
+        // other slot, so a socket that loses a slot clash is still readable
+        // from its second home.
+        var go = new GameObject(name);
         go.transform.SetParent(root.transform, false);
         go.transform.position = at;
         go.transform.rotation = rot;
-        DestroyImmediate(go.GetComponent<Collider>());
+        go.AddComponent<MeshFilter>().sharedMesh = TwoQuads();
+        go.AddComponent<MeshRenderer>();
         var m = Asset(name.Replace(" ", ""), shader);
         m.renderQueue = _queueBase + 1;
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
@@ -427,6 +439,41 @@ public class SpikePlug : EditorWindow
         return mesh;
     }
 
+    // Two unit quads, the second flagged by z = 1. The socket shader reads
+    // that flag to decide which of the cell's two slots to draw into.
+    //
+    // The bounds are deliberately huge. The shader ignores the transform and
+    // writes clip space, but Unity still culls by BOUNDS, and a socket
+    // culled out of frame stops publishing entirely.
+    static Mesh TwoQuads()
+    {
+        // Cached, unlike the shaft: this mesh has no parameters, and
+        // recreating it per socket would delete the asset the previous two
+        // are pointing at.
+        string path = Dir + "/SpikeSocketQuads.asset";
+        var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        if (have != null) return have;
+
+        var verts = new List<Vector3>();
+        var tris = new List<int>();
+        for (int q = 0; q < 2; q++)
+        {
+            int b = verts.Count;
+            verts.Add(new Vector3(-0.5f, -0.5f, q));
+            verts.Add(new Vector3( 0.5f, -0.5f, q));
+            verts.Add(new Vector3(-0.5f,  0.5f, q));
+            verts.Add(new Vector3( 0.5f,  0.5f, q));
+            tris.AddRange(new[] { b, b + 2, b + 1, b + 1, b + 2, b + 3 });
+        }
+        var mesh = new Mesh { name = "YAPS Spike Socket Quads" };
+        mesh.SetVertices(verts);
+        mesh.SetTriangles(tris, 0);
+        mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 40f);
+        System.IO.Directory.CreateDirectory(Dir);
+        AssetDatabase.CreateAsset(mesh, path);
+        return mesh;
+    }
+
     static Material Asset(string name, Shader shader)
     {
         string path = Dir + "/Plug" + name + ".mat";
@@ -533,12 +580,25 @@ public class SpikePlug : EditorWindow
 
     // The shader's cell-to-slot arithmetic, so the scene view and the GPU
     // agree about which sockets are fighting over a pixel.
-    int Slot(Vector3 at, float cell)
+    // Both homes of a cell, matching HashCell / HashCell2 in the shaders.
+    void Slots(Vector3 at, float cell, out int first, out int second)
     {
-        int idx = SpikeCell.Hash(Mathf.FloorToInt(at.x / cell),
-                                 Mathf.FloorToInt(at.y / cell),
-                                 Mathf.FloorToInt(at.z / cell)) % (_grid * _grid);
-        return idx < 0 ? idx + _grid * _grid : idx;
+        int cx = Mathf.FloorToInt(at.x / cell);
+        int cy = Mathf.FloorToInt(at.y / cell);
+        int cz = Mathf.FloorToInt(at.z / cell);
+        int total = _grid * _grid;
+        first = SpikeCell.Hash(cx, cy, cz) % total;
+        if (first < 0) first += total;
+        int step;
+        unchecked
+        {
+            int h = cx * 12582917;
+            h ^= cy * 3145739;
+            h ^= cz * 6291469;
+            step = h % Mathf.Max(total - 1, 1);
+        }
+        if (step < 0) step += Mathf.Max(total - 1, 1);
+        second = (first + step + 1) % total;
     }
 
     static string Fmt(Color c)
