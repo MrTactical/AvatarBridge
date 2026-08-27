@@ -58,8 +58,65 @@ public class SpikePlug : EditorWindow
     int _forceRow = 0;
     string _result = "";
 
-    void OnEnable() { EditorApplication.update += Tick; }
-    void OnDisable() { EditorApplication.update -= Tick; }
+    void OnEnable() { EditorApplication.update += Tick; SceneView.duringSceneGui += OnScene; }
+    void OnDisable() { EditorApplication.update -= Tick; SceneView.duringSceneGui -= OnScene; }
+
+    // Draws the two ceilings in the scene view, because "why is that socket
+    // ignored" has two completely different answers and they look identical
+    // from outside: it is outside the box the plug can READ, or it is inside
+    // the box and past the end of the CHAIN the plug can cover.
+    void OnScene(SceneView sv)
+    {
+        var root = GameObject.Find(Root);
+        var plug = root != null ? root.transform.Find(PlugName) : null;
+        if (plug == null) return;
+
+        Vector3 axis = plug.forward;
+        Vector3 at0 = plug.position;
+        float len = plug.TransformVector(Vector3.forward).magnitude;
+        float cell = Mathf.Max(_cellSize, 0.0001f);
+
+        // The neighbourhood, exactly as the shader hashes it: a cube of
+        // (2r+1) cells centred on the cell the shaft MIDPOINT falls in. Note
+        // it is anchored to the cell, not to the plug, so it shifts in steps
+        // as the plug moves and is never quite centred on it.
+        Vector3 m = at0 + axis * (len * 0.5f);
+        var c = new Vector3Int(Mathf.FloorToInt(m.x / cell),
+                               Mathf.FloorToInt(m.y / cell),
+                               Mathf.FloorToInt(m.z / cell));
+        Vector3 centre = ((Vector3)c + Vector3.one * 0.5f) * cell;
+        float span = (2 * _cellRadius + 1) * cell;
+        Handles.color = new Color(0.35f, 0.75f, 1f, 0.9f);
+        Handles.DrawWireCube(centre, Vector3.one * span);
+        Handles.Label(centre + Vector3.up * (span * 0.5f + 0.02f),
+                      "what the plug can read: " + span.ToString("F2") + " m");
+
+        // The chain, in the shader's own order: nearest to the root first,
+        // then cumulative chord length. A socket sitting past the plug's own
+        // length is found and simply never reached.
+        var socks = new List<Transform>();
+        foreach (Transform t in root.transform)
+            if (t.name.StartsWith("Socket")) socks.Add(t);
+        socks.Sort((a, b) => Vector3.Distance(a.position, at0)
+                     .CompareTo(Vector3.Distance(b.position, at0)));
+
+        float arc = 0;
+        Vector3 prev = at0;
+        foreach (var t in socks)
+        {
+            Vector3 d = t.position - centre;
+            float h = span * 0.5f;
+            bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
+            arc += Vector3.Distance(t.position, prev);
+            string why = !inBox ? "OUTSIDE the read box"
+                       : arc > len ? "past the tip: arc " + arc.ToString("F2") + " of " + len.ToString("F2")
+                       : "threaded at " + arc.ToString("F2") + " of " + len.ToString("F2");
+            Handles.color = !inBox ? Color.red : arc > len ? new Color(1f, 0.7f, 0.2f) : Color.green;
+            Handles.DrawLine(prev, t.position);
+            Handles.Label(t.position + Vector3.up * 0.04f, t.name + "  " + why);
+            prev = t.position;
+        }
+    }
     void Tick() { if (EditorApplication.isPlaying) Repaint(); }
 
     void OnGUI()
