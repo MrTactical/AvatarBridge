@@ -201,6 +201,11 @@ namespace AvatarBridge
                     // dead-path sweep judges a clean set.
                     Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
                          PassTraits.EditsClips),
+                    // Also before the rename, and after every bake: a swap
+                    // recorded against a renderer needs that renderer's path
+                    // as the clips still spell it.
+                    Pass("Point material swaps at the baked material",
+                         YapsConverter.RepointSwappedMaterials, PassTraits.EditsClips),
                     // DEAD LAST among the passes that touch a clip. It
                     // renames objects and rewrites every path naming them,
                     // so anything running after it that wrote a path would

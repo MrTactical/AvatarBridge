@@ -109,6 +109,13 @@ namespace AvatarBridge
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();
 
+        // Every plug and socket material we replaced on a renderer slot, so
+        // the animation that swaps that slot can be made to follow. Keyed by
+        // the renderer and slot the swap happened on, because the original
+        // material is usually worn by other meshes too and they must keep it.
+        public Dictionary<(Renderer renderer, int slot), (Material from, Material to)>
+            YapsMaterialSwaps = new Dictionary<(Renderer, int), (Material, Material)>();
+
         public Dictionary<string, List<string>> PhysicsColliderHosts =
             new Dictionary<string, List<string>>();
 
