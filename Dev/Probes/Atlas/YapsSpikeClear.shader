@@ -24,6 +24,8 @@ Shader "YAPS/Spike Clear"
         _Corner ("Atlas corner, clip space", Vector) = (-0.95, 0.95, 0, 0)
         _CellPixels ("One cell, clip space", Float) = 0.02
         _Grid ("Cells across the atlas", Float) = 8
+        _SpanPxX ("Rect to clear, pixels across, 0 for clip space", Float) = 0
+        _SpanPxY ("Rect to clear, pixels down", Float) = 0
     }
     SubShader
     {
@@ -56,9 +58,23 @@ Shader "YAPS/Spike Clear"
                 v2f o;
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
-                float span = _CellPixels * max(_Grid, 1);
                 float2 unit = v.vertex.xy + 0.5;
-                float2 p = _Corner.xy + unit * span * float2(1, -1);
+                float2 p;
+                if (_SpanPxX > 0.5)
+                {
+                    // PIXELS, matching the snapped atlas. The clip-space path
+                    // below lands somewhere else entirely once the atlas is
+                    // eight pixels wide, which would leave every cell reading
+                    // the opaque screen and therefore occupied.
+                    float2 atPx = unit * float2(_SpanPxX, _SpanPxY);
+                    p = atPx / _ScreenParams.xy * 2.0 - 1.0;
+                    p.y = -p.y;
+                }
+                else
+                {
+                    float span = _CellPixels * max(_Grid, 1);
+                    p = _Corner.xy + unit * span * float2(1, -1);
+                }
                 o.pos = float4(p, UNITY_NEAR_CLIP_VALUE, 1);
                 return o;
             }
