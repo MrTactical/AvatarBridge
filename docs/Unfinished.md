@@ -344,10 +344,15 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
   `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and our 0.4130/0.4230/0.4530/
   0.4930 all land on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it is
-  one choice for both. **Parked until CVRGoesBrrr is fixed or rejected** — if that mod stops
-  reading strangers' lights without consent, or the modding group turns it down, the reason for
-  the offset is gone and exact VRCFury ranges (0.4106/0.4206/0.4506/0.4906) restore every mod at
-  once. The alternative, if it drags: a wearer-facing setting defaulting to today's behaviour.
+  one choice for both. **PR MERGED 2026-08-28 (a13175a), and that is not yet the trigger.** The
+  mod's source now bounds the estimate with the stated length, so it engages at contact rather
+  than across a room — but its latest RELEASE is still 2026-07-05, so nobody running it has the
+  fix. The condition was always "merges AND users update"; only the first half has happened.
+  The trigger is now **a CVRGoesBrrr release containing a13175a, plus a window for people to
+  take it**. When that lands, exact VRCFury ranges (0.4106/0.4206/0.4506/0.4906) restore every
+  mod at once, sound mods included. Old builds stay broken forever, so this is a judgement about
+  how much of the userbase has moved, not a switch that flips itself. The alternative, if it
+  drags: a wearer-facing setting defaulting to today's behaviour.
 - **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
   which was skipped on purpose.
 
