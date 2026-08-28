@@ -5,6 +5,7 @@
 // of it.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AvatarBridge
 {
@@ -51,6 +52,56 @@ namespace AvatarBridge
             "IsLocal", "DistanceTo", "VisemeIdx", "VisemeLoudness", "IsFriend",
             "VelocityX", "VelocityY", "VelocityZ", "AFK"
         };
+
+        // The subset of Core that CVR's own Locomotion/Emotes layer runs on.
+        //
+        // These are the ones a rename must never target. A merged VRChat
+        // layer sits ABOVE that layer at full weight, so pointing a VRChat
+        // name at one of these hands CVR's own locomotion signal to a layer
+        // that outranks CVR's locomotion, and the two fire together with the
+        // merged one winning. Renaming onto VisemeIdx or IsFriend is fine by
+        // contrast: a layer reading those outranks nothing.
+        internal static readonly HashSet<string> LocomotionDriven = new HashSet<string>
+        {
+            "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
+            "Toggle", "Sitting", "Crouching", "Prone", "Flying", "Swimming"
+        };
+
+        // What the tables must never say, checked at conversion.
+        //
+        // Seated and InStation were BOTH renamed onto Sitting for months.
+        // Sitting drives CVR's locomotion; InStation was simultaneously
+        // listed as unsupported by the merger, so two tables in two files
+        // contradicted each other and the rename quietly won. Nothing
+        // compared them, so nothing said so, and it surfaced as an avatar
+        // pedalling in a chair.
+        //
+        // Three rules, each one of which alone would have caught it.
+        internal static IEnumerable<string> Contradictions(IEnumerable<string> knownUnsupported)
+        {
+            var unsupported = new HashSet<string>(knownUnsupported ?? Enumerable.Empty<string>());
+            foreach (var pair in RenameMap)
+            {
+                if (LocomotionDriven.Contains(pair.Value))
+                {
+                    yield return $"\"{pair.Key}\" is renamed onto \"{pair.Value}\", which drives " +
+                                 "ChilloutVR's own Locomotion/Emotes layer. A merged layer reading it " +
+                                 "sits above that layer and takes the body from it.";
+                }
+                if (unsupported.Contains(pair.Key))
+                {
+                    yield return $"\"{pair.Key}\" is renamed to \"{pair.Value}\" AND listed as a VRChat " +
+                                 "built-in with no CVR equivalent. It cannot be both; the rename wins " +
+                                 "and the second listing is a lie.";
+                }
+            }
+            foreach (var same in RenameMap.GroupBy(p => p.Value).Where(g => g.Count() > 1))
+            {
+                yield return "\"" + string.Join("\", \"", same.Select(p => p.Key))
+                             + $"\" all become \"{same.Key}\". Distinct VRChat parameters mean distinct "
+                             + "things; collapsing them makes one of them wrong.";
+            }
+        }
 
         // Fed from the game by a CVRParameterStream.
         // Never "#" prefixed. The stream runs on the wearer's copy only,
