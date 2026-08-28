@@ -56,7 +56,13 @@ namespace AvatarBridge
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
-            "IsAnimatorEnabled"
+            "IsAnimatorEnabled",
+            // Seated is deliberately NOT fed, even though ChilloutVR knows
+            // perfectly well when you are sitting. Feeding it re-arms the
+            // VRChat Base layer's seated state, which outranks CVR's own and
+            // takes the body. See CvrParameterNames for the whole story. The
+            // avatar's real sit pose reaches CVR through the grafter instead.
+            "Seated"
         };
 
         public static void Run(BridgeContext ctx)

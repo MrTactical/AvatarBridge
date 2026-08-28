@@ -17,8 +17,28 @@ namespace AvatarBridge
         {
             { "Viseme", "VisemeIdx" },
             { "Voice", "VisemeLoudness" },
-            { "Seated", "Sitting" },
-            { "InStation", "Sitting" },
+            // NOT Seated or InStation. Both used to become "Sitting", and
+            // "Sitting" is a parameter ChilloutVR DRIVES ITSELF.
+            //
+            // The merged VRChat Base layer sits above CVR's Locomotion/Emotes
+            // at full weight, so renaming onto Sitting handed CVR's own
+            // sitting signal to a layer that outranks CVR's sitting. The
+            // moment the game sat you down, the avatar's VRChat seated state
+            // fired as well and won — landing mid-blend, because those states
+            // are usually blend trees driven by parameters CVR never feeds.
+            // That is the "bicycle pose", confirmed in game 2026-08-28, and it
+            // is why sitting was the ONLY locomotion state that broke: no
+            // other CVR parameter has a VRChat name pointed at it.
+            //
+            // Nothing is lost by dropping it. The avatar's authored sit is
+            // already handled properly by LocomotionGrafter.GraftSitting,
+            // which takes the clip from VRChat's dedicated Sitting layer and
+            // grafts it INTO CVR's own sitting state, where it belongs.
+            //
+            // InStation was doubly wrong: it is true in ANY station, a
+            // rideable prop or a bed included, and it was already listed in
+            // KnownUnsupportedVrcParameters, so the two lists contradicted
+            // each other and the rename won.
             { "IsOnFriendsList", "IsFriend" }
         };
 
