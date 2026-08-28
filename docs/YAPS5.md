@@ -611,7 +611,18 @@ two correctly reported past the tip rather than lost.
   under what the spacing bound suggests.
 - Two sockets in one OCTANT is the last clash, and nothing here fixes it. It is also the
   genuinely ambiguous case.
-- Still no socket KIND in the payload, so a hole cannot be told from a ring and the
-  approach-flip is only correct for rings.
+- ~~No socket KIND in the payload~~ — **built.** The facing pixel's alpha was carrying a
+  second copy of the tag that nothing read, so it carries the kind instead: sixteen fit.
+  A ring is turned to meet its approach; a HOLE keeps its sign and is dropped from the chain
+  when approached from behind. The facing read moved into the gather with it, which costs one
+  read per socket FOUND rather than per cell searched and deleted the separate facing pass.
 - Portal and duplicate are ranges on top of the list, unbuilt.
 - 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
+- **NONE OF IT HAS BEEN IN GAME.** Spike 1 proved a named GrabPass survives a ChilloutVR
+  upload and returns what another avatar rendered. Everything since — the cell hash, the tag,
+  the two homes, the octant buckets, the additive alpha header, the level pyramid, the whole
+  two-pass socket shader — has only ever run in the editor. That is the biggest single
+  unknown left, and it is cheap to close.
+- **Nothing is in the shipped shaders.** `yaps_resolve.cginc` still resolves ONE socket from
+  lights and contacts. How the atlas coexists with those two, and what happens when only one
+  side of a pair has it, is unanswered and is the real design work.
