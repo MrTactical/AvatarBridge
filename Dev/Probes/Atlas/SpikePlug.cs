@@ -32,6 +32,7 @@
 // rather than the bake.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
+using ABI.CCK.Components;
 using UnityEditor;
 using UnityEngine;
 
@@ -42,11 +43,15 @@ public class SpikePlug : EditorWindow
 
     const string Root = "YAPS Atlas Plug Spike";
     const string PlugName = "Plug";
+    const string WearPrefix = "YAPS Wear";
     const string Dir = "Assets/YapsSpike";
     const int OriginPx = 8;
 
     float _cellBase = 0.02f;
-    int _levels = 6;
+    // Four levels: cells from 2 cm to 1.28 m, plugs to about five metres.
+    // The guess that this is all anyone needs gets its test in game before
+    // six levels earn their extra rows of atlas.
+    int _levels = 4;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
     int _sockets = 3;
     int _grid = 16;
@@ -257,6 +262,16 @@ public class SpikePlug : EditorWindow
         }
         if (GUILayout.Button("Remove it")) Remove();
 
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Wear it", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Builds the same rig on the selected CVR avatar, ready to upload. The plug grows "
+            + "forward from the hips; sockets ride the hands and head, so in game a controller "
+            + "IS a socket: move the hand, rotate the wrist. No toggles, no pickups, no scripts. "
+            + "Press Play and see it bend BEFORE uploading.", MessageType.Info);
+        if (GUILayout.Button("Build on the selected avatar")) WearBuild();
+        if (GUILayout.Button("Remove it from the selected avatar")) WearRemove();
+
         if (!EditorApplication.isPlaying)
             EditorGUILayout.HelpBox("Press Play. The grab does not run otherwise.", MessageType.None);
         if (!string.IsNullOrEmpty(_result)) EditorGUILayout.HelpBox(_result, MessageType.None);
@@ -310,7 +325,7 @@ public class SpikePlug : EditorWindow
             // one 180 degrees and watch the difference: a RING flips to meet
             // the plug and keeps working, a HOLE is being approached through
             // its back and drops out of the chain entirely.
-            Socket(root, sockShader, "Socket " + (char)('A' + i), at,
+            Socket(root.transform, sockShader, "Socket " + (char)('A' + i), at,
                    Quaternion.Euler(0, 270 + (i - 1) * 10, (i - 1) * 8), i % 2);
         }
 
@@ -350,7 +365,7 @@ public class SpikePlug : EditorWindow
         return go;
     }
 
-    void Socket(GameObject root, Shader shader, string name, Vector3 at, Quaternion rot, int kind)
+    GameObject Socket(Transform parent, Shader shader, string name, Vector3 at, Quaternion rot, int kind)
     {
         // The writer draws in CLIP space and ignores this object's transform,
         // so its own mesh is never seen. It still needs a real MeshRenderer
@@ -360,7 +375,7 @@ public class SpikePlug : EditorWindow
         // other slot, so a socket that loses a slot clash is still readable
         // from its second home.
         var go = new GameObject(name);
-        go.transform.SetParent(root.transform, false);
+        go.transform.SetParent(parent, false);
         go.transform.position = at;
         go.transform.rotation = rot;
         go.AddComponent<MeshFilter>().sharedMesh = LevelQuads();
@@ -392,6 +407,7 @@ public class SpikePlug : EditorWindow
         stub.transform.localScale = new Vector3(0.02f, 0.06f, 0.02f);
         DestroyImmediate(stub.GetComponent<Collider>());
         stub.GetComponent<MeshRenderer>().sharedMaterial = Colour("Axis", new Color(0.9f, 0.75f, 0.25f));
+        return go;
     }
 
     // Pushes every slider onto the live materials, so the atlas layout can be
@@ -699,6 +715,121 @@ public class SpikePlug : EditorWindow
         var go = GameObject.Find(Root);
         if (go != null) Undo.DestroyObjectImmediate(go);
         _result = "";
+    }
+
+    // The spike, worn. Everything travels as plain renderers on shared
+    // materials, so the upload needs no scripts, no animator layers and no
+    // menu entries; the CCK packs what the renderers reference. Sockets ride
+    // the hands and the head because in VR that makes the controller the
+    // socket gizmo: moving a hand is moving a socket, rotating the wrist is
+    // the arrival-axis test, and no toggles are needed at all.
+    void WearBuild()
+    {
+        var picked = Selection.activeGameObject;
+        var avatar = picked != null ? picked.GetComponentInParent<CVRAvatar>() : null;
+        if (avatar == null) { _result = "Select the CVR avatar to wear it."; return; }
+        var anim = avatar.GetComponent<Animator>();
+        if (anim == null || !anim.isHuman)
+        { _result = "The avatar needs a humanoid Animator: the sockets ride its hands."; return; }
+        Transform hips = anim.GetBoneTransform(HumanBodyBones.Hips);
+        Transform lHand = anim.GetBoneTransform(HumanBodyBones.LeftHand);
+        Transform rHand = anim.GetBoneTransform(HumanBodyBones.RightHand);
+        Transform head = anim.GetBoneTransform(HumanBodyBones.Head);
+        if (hips == null || lHand == null || rHand == null)
+        { _result = "Hips or a hand is not mapped on this rig."; return; }
+
+        var sockShader = Shader.Find("YAPS/Spike Socket");
+        var plugShader = Shader.Find("YAPS/Spike Plug");
+        var readShader = Shader.Find("YAPS/Spike Reader");
+        var clearShader = Shader.Find("YAPS/Spike Clear");
+        if (sockShader == null || plugShader == null || readShader == null || clearShader == null)
+        { _result = "Missing a shader. Needs YAPS/Spike Socket, Plug, Reader and Clear."; return; }
+
+        WearRemove();
+        Transform root = avatar.transform;
+
+        // Clear and grabber under the avatar root. Both draw in clip space
+        // and ignore where they sit; the scale only exists to beat frustum
+        // culling, and it is countered so a scaled rig cannot shrink it back
+        // into cullable range.
+        var rig = new GameObject(WearPrefix + " Atlas");
+        Undo.RegisterCreatedObjectUndo(rig, "YAPS atlas wear rig");
+        rig.transform.SetParent(root, false);
+        var clear = Quad(rig, "Clear", 1f);
+        clear.transform.localScale = Counter(rig.transform, 200f);
+        var cm = Asset("Clear", clearShader);
+        cm.renderQueue = _queueBase;
+        clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
+        var grab = Quad(rig, "Grabber", 1f);
+        grab.transform.localScale = Counter(rig.transform, 200f);
+        var gm = Asset("Grabber", readShader);
+        gm.renderQueue = _queueBase + 2;
+        grab.GetComponent<MeshRenderer>().sharedMaterial = gm;
+
+        // Facing the wearer's BACK, which is toward the oncoming plug. The
+        // ring would flip to meet it anyway; the hole on the right hand only
+        // opens facing the approach, so both start correct and a twist of
+        // the wrist shows the difference between the kinds live.
+        Quaternion facing = root.rotation * Quaternion.Euler(0, 180, 0);
+        WearSocket(lHand, sockShader, 'A', 0, facing);
+        WearSocket(rHand, sockShader, 'B', 1, facing);
+        if (head != null) WearSocket(head, sockShader, 'C', 0, facing);
+
+        // From the hips, along the avatar's forward. Never skinned: Unity
+        // skins into world space and hands the shader an identity matrix, so
+        // a skinned plug cannot find its own root. Parented to the bone it
+        // rides animation fine as a rigid child.
+        var plug = new GameObject(WearPrefix + " Plug");
+        plug.transform.SetParent(hips, false);
+        plug.transform.localScale = Counter(hips, _length);
+        plug.transform.rotation = root.rotation;
+        plug.transform.position = hips.position + root.forward * 0.05f;
+        plug.AddComponent<MeshFilter>().sharedMesh = Shaft();
+        var pm = Asset("Plug", plugShader);
+        pm.SetFloat("_MeshLength", 1f);
+        plug.AddComponent<MeshRenderer>().sharedMaterial = pm;
+
+        Push();
+        Selection.activeGameObject = avatar.gameObject;
+        _result = "Worn. Press Play HERE first: the plug grows forward from the hips and must "
+                + "bend toward a hand brought near it, ring on the left, hole on the right, one "
+                + "more on the head. If that holds, upload, then check the same three in game: "
+                + "flat screen, VR, and a mirror.";
+    }
+
+    // A named holder per bone keeps the socket child on the scene spike's
+    // names, so it lands on the SAME materials and Push reaches both rigs.
+    void WearSocket(Transform bone, Shader shader, char letter, int kind, Quaternion facing)
+    {
+        var holder = new GameObject(WearPrefix + " " + bone.name);
+        holder.transform.SetParent(bone, false);
+        holder.transform.localScale = Counter(bone, 1f);
+        Socket(holder.transform, shader, "Socket " + letter, bone.position, facing, kind);
+    }
+
+    // World-size a child no matter what the rig scaled its parent to. Import
+    // scale hides here: a 0.01 armature would shrink a hand socket's gizmo
+    // to a hundredth, and a scaled clear quad back into cullable range.
+    static Vector3 Counter(Transform parent, float world)
+    {
+        Vector3 s = parent.lossyScale;
+        return new Vector3(world / Mathf.Max(Mathf.Abs(s.x), 1e-6f),
+                           world / Mathf.Max(Mathf.Abs(s.y), 1e-6f),
+                           world / Mathf.Max(Mathf.Abs(s.z), 1e-6f));
+    }
+
+    void WearRemove()
+    {
+        var picked = Selection.activeGameObject;
+        var avatar = picked != null ? picked.GetComponentInParent<CVRAvatar>() : null;
+        Transform scan = avatar != null ? avatar.transform
+                       : picked != null ? picked.transform : null;
+        if (scan == null) { _result = "Select the avatar it is worn on."; return; }
+        var doomed = new List<GameObject>();
+        foreach (var t in scan.GetComponentsInChildren<Transform>(true))
+            if (t.name.StartsWith(WearPrefix)) doomed.Add(t.gameObject);
+        foreach (var go in doomed) if (go != null) Undo.DestroyObjectImmediate(go);
+        _result = doomed.Count > 0 ? "Removed." : "Nothing worn there.";
     }
 }
 #endif

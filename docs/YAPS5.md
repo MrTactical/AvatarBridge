@@ -626,3 +626,46 @@ two correctly reported past the tip rather than lost.
 - **Nothing is in the shipped shaders.** `yaps_resolve.cginc` still resolves ONE socket from
   lights and contacts. How the atlas coexists with those two, and what happens when only one
   side of a pair has it, is unanswered and is the real design work.
+- **The atlas result can reach the animator without contacts** (recorded 2026-09-01, not
+  acted on). Decompiling the client's component whitelists turned up
+  `CVRTexturePropertyParser`: async GPU readback of a RenderTexture, per-pixel tasks that
+  write any public field on any component. Atlas shader to a one-pixel RT via `CVRBlitter`,
+  parser task into a `CVRAnimatorDriver` field, and the "seated" bit becomes a SYNCED
+  parameter with no contact receivers at all. That is the answer to "how does resolution
+  drive toggles and haptics", not a rival transport: the deform stays on the atlas, this is
+  the exit ramp. Unproven in game, beta DLL, viewer-side it sits behind the Cameras content
+  filter (own avatar skips filters, and wearer-computes-AAS-syncs is the contract anyway).
+  Full sweep in the memory file `cvr-avatar-component-channels`. Do nothing with it until
+  the atlas itself has been in game.
+
+### The wear rig, 2026-09-01: built to close the biggest gap
+
+The in-game test no longer needs hand assembly. `SpikePlug.cs` grew a second build path:
+select the CVR avatar, press **Build on the selected avatar**, and the same four draws are
+placed as plain renderers on the shared materials. No scripts, no animator work, no menu
+entries, so the CCK packs everything the upload needs. The clear and grabber quads sit under
+the avatar root, counter-scaled so import scale cannot shrink them back into culling range.
+
+The sockets ride the hands and the head, which answers "how do I move them in VR" with the
+controllers themselves: moving a hand is moving a socket, and rotating the wrist is the
+arrival-axis test. Ring on the left hand, HOLE on the right, ring on the head, all facing
+the wearer's back, where the plug approaches from. The plug grows forward from the hips.
+No toggles: a socket that should vanish is a hand put behind the back, out of the read box.
+
+Defaults dropped to **four levels** on the visibility note above (cells 2 cm to 1.28 m,
+plugs to about five metres); the slider still goes to eight if a longer plug needs it.
+
+Pass 1, in order, each step only after the one before holds:
+
+1. Play mode in the editor, worn. The plug bends to a hand brought near it. Proves the
+   build, not the game.
+2. In game, flat screen: the same three sockets. The first time anything past spike 1 has
+   run in game at all.
+3. In VR. The eye buffers are the real unknown: the writer places pixels in clip space per
+   eye, but what an instanced-stereo GrabPass returns has never been measured, and whether
+   spike 1's in-game proof covered VR was not recorded.
+4. A mirror. The mirror camera runs its own grab at its own queue order, so the mirrored
+   plug should bend on its own.
+
+Synced to the Dracaionan project (`Assets/Editor` + `Assets/YapsSpike`) 2026-09-01, along
+with the eight older spike files the project still had pre-collection copies of.
