@@ -1061,8 +1061,10 @@ alone.
   LENGTH — a quarter means nothing found the socket, a half the contact channel, three quarters
   a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
-  bends toward the wrong thing, or toward nothing. Turn it back off before you upload; the
-  toolkit warns you if you forget.
+  bends toward the wrong thing, or toward nothing. *Atlas taps* beside it answers the follow-up
+  question when the answer is "nothing": a stub means the screen carried nothing to read, full
+  length means it read the screen itself rather than anything YAPS wrote there. Turn the view back
+  off before you upload; the toolkit warns you if you forget.
 - **Four vertex-light slots is the whole light-path constraint.** Unity gives a mesh four; a
   socket takes two; on an avatar with many sockets the converter wires each socket's lights to
   the menu entry that already names it, so lit sockets are the ones you switched on. A hand-held

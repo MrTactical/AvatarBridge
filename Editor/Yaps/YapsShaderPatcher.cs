@@ -61,7 +61,7 @@ namespace AvatarBridge
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
         _YAPS_UseAtlas (""YAPS read the screen atlas"", Range(0,1)) = 0
-        [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4)] _YAPS_Debug (""YAPS view"", Float) = 0
+        [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4,Atlas taps,5)] _YAPS_Debug (""YAPS view"", Float) = 0
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10
         _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.30
         _YAPS_IdleLength (""YAPS idle length"", Range(0.1,1)) = 1

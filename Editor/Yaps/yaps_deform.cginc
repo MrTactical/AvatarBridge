@@ -525,6 +525,25 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
                   : (socket.tier < 1.5 ? 0.50
                   : (socket.tier < 2.5 ? 0.75 : 1.0));
         }
+        else if (_YAPS_Debug >= 4.5)
+        {
+            // WHAT THE ATLAS READ, before anything was decoded from it.
+            //
+            // Every other view here describes an answer. This one describes
+            // the raw material, because "nothing resolved" has two opposite
+            // causes and they need opposite fixes.
+            //
+            // A STUB means not one of the twenty-seven cells reported holding
+            // anything: nothing published, or the grab is empty, or the
+            // reader is addressing different pixels than the writer.
+            //
+            // FULL means all twenty-seven reported, which cannot be true and
+            // means the clear never ran: every cell is decoding whatever
+            // opaque pixel the screen had there. Anything between the two is
+            // the transport working, and the loss is downstream in the tag,
+            // the kind or the reach.
+            shown = lerp(0.1, 1.0, saturate(socket.atlasHeaders / 27.0));
+        }
         else if (_YAPS_Debug >= 3.5)
         {
             // THE SOCKET'S FACING, against the plug's own forward.

@@ -79,6 +79,11 @@ struct YapsSocket
     // exactly like a working channel until the two are coloured apart. A
     // day was lost to precisely that.
     float tier;
+    // How many of the atlas's 27 header taps said a cell held anything.
+    // Diagnostic only. It splits the search in half when nothing resolves:
+    // none means the writers, the grab or the addressing, all 27 means the
+    // clear never ran and every cell is decoding opaque screen.
+    float atlasHeaders;
 };
 
 // --- protocol lights -------------------------------------------------
@@ -412,6 +417,7 @@ struct YapsChain
     float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
     int    count;
     float  engaged;
+    float  headers;
 };
 
 // Reads the neighbourhood of the shaft's MIDPOINT rather than its root, so a
@@ -481,6 +487,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
             // one octant unset the octant that exists and set one that does
             // not.
             int held = int(round(YAPS_ATLAS_LOAD(cellX, cellY).a * 255.0));
+            if (held > 0) chain.headers += 1;
             if (held == 0) break;   // home 1 is always written, so home 2
                                     // cannot hold what home 1 does not
             bool got1 = false;
@@ -609,6 +616,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.forward = _YAPS_SocketForward.xyz;
     socket.up = _YAPS_SocketUp.xyz;
     socket.tier = 0;
+    socket.atlasHeaders = 0;
 
     // A zero position is NOT a socket at the world origin, however much it
     // looks like one to the maths. Track whether anything actually
@@ -917,6 +925,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     if (_YAPS_UseAtlas > 0.5)
     {
         YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
+        socket.atlasHeaders = chain.headers;
         if (chain.count > 0)
         {
             socket.position = chain.position[0];
