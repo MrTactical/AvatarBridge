@@ -639,6 +639,61 @@ two correctly reported past the tip rather than lost.
   Full sweep in the memory file `cvr-avatar-component-channels`. Do nothing with it until
   the atlas itself has been in game.
 
+### A1, 2026-09-03: the protocol, and the one number that cannot be frozen yet
+
+The atlas is the first shared mutable surface in this system. Every other transport is
+private: a socket owns its lights, a plug owns its contact receivers, and an avatar built by
+an older version of the tool simply does not participate. The atlas has ONE grid, ONE cell
+size, ONE origin and ONE level count, and a socket hashes its world position with all of
+them, so an avatar built by a later version writes cells this reader addresses differently.
+That is not absence. It decodes as a real socket a few centimetres away, which is the same
+phantom a slot clash produces and the reason the tag exists at all.
+
+**The version rides the tag.** Built, in both spike shaders. `CellTag` mixes
+`YAPS_ATLAS_VERSION` into its hash, so a socket written under a different protocol fails the
+check the reader already performs and is dropped through the path already written: no extra
+pixel, no extra read, no extra branch, no new failure mode. It cannot be retrofitted, because
+the thing a later version would negotiate with is the version that predates negotiation.
+
+    frozen      the cell hash, the second-home hash, the tag hash and the version in it
+    frozen      the payload layout: header alpha counts, slot 0 position, slot 1 facing+kind
+    frozen      the octant bucket rule and the additive alpha header
+    frozen      levels step by 4x, each in its own band of rows
+    NOT frozen  grid, cell size, level count, slot size
+
+**Grid size is the open one, and it is an occupancy question.** Spike defaults are grid 16,
+which is 256 slots. Sockets clash by hashing to a slot another cell owns, and the second home
+is the recovery, so what matters is the chance of clashing on BOTH. For n sockets at one
+level:
+
+    slots   grid   both homes clash, 120 sockets
+    256     16     ~14%
+    1024    32     ~1.2%
+    4096    64     ~0.08%
+
+Twenty people carrying six sockets each is 120, which is an ordinary public instance, not a
+worst case. At grid 16 that is a socket silently vanishing about one time in seven, and a
+clash has to be non-silent in anything shipped. Grid 64 is the first size where it stops
+mattering.
+
+**Grid size does NOT cost visibility, which was the fear.** The atlas rect grows with the
+grid, but the rect is not painted: the clear writes alpha only, so an empty cell keeps
+whatever the scene drew there. What is visible is one pixel per socket per level per home,
+and that count follows the SOCKET count, not the grid. A bigger grid scatters the same dots
+over more screen. It costs no read either, since a plug still taps its neighbourhood.
+
+**What blocks the freeze is a render target size, and it is measurable today.** The atlas
+rect at grid 64, slot 1, four levels is 1088 x 256 pixels, and the writer places pixels from
+`_ScreenParams`. Every camera that has to carry the atlas must be at least that wide.
+ChilloutVR renders mirrors into their own render texture, and a mirror is routinely rendered
+smaller than the main view. Joe's mirror test passed at grid 16, which is 272 pixels wide, so
+it says nothing about 1088.
+
+**The measurement:** raise the spike's grid to 64 and repeat the mirror test. If the mirror
+clips the atlas, the answer is not a smaller grid, it is a rect that scales with
+`_ScreenParams` or a per-camera fallback, and that is a protocol decision that has to happen
+BEFORE version 1 ships rather than after.
+
 ### The wear rig, 2026-09-01: built to close the biggest gap
 
 The in-game test no longer needs hand assembly. `SpikePlug.cs` grew a second build path:

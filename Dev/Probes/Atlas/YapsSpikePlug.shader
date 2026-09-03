@@ -166,13 +166,29 @@ Shader "YAPS/Spike Plug"
                 return h;
             }
 
-            // Must match CellTag in the socket shader. See the note there:
-            // without it a radius-2 read aliases into itself.
+            // THE ATLAS PROTOCOL VERSION. Grid, cell size, origin, slot size and level
+            // count are constants EVERY avatar in the instance shares, because a socket
+            // hashes its world position with them and a plug addresses cells with them.
+            // So a socket written by a later version lands where this reader looks and
+            // decodes against the wrong constants, which is not absence: it reads as a
+            // real socket a few centimetres away, the same phantom a slot clash makes.
+            //
+            // It rides the TAG rather than a pixel of its own. The tag exists to reject
+            // a payload decoded against the wrong cell, and a version mismatch is that
+            // failure exactly, so the rejection is already written: no extra pixel, no
+            // extra read, no extra branch. Unretrofittable, which is why it is here
+            // before anything ships, and it must be bumped whenever ANY protocol
+            // constant changes.
+            #define YAPS_ATLAS_VERSION 1
+
+            // Must match CellTag in the socket shader, version included. See
+            // the note there: without it a radius-2 read aliases into itself.
             float CellTag(int3 c)
             {
                 int h = c.x * 19349663;
                 h ^= c.y * 83492791;
                 h ^= c.z * 73856093;
+                h ^= YAPS_ATLAS_VERSION * 1566083941;
                 h = h & 0x7FFFFF;
                 return (h % 256) / 255.0;
             }

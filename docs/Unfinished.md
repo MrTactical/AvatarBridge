@@ -70,6 +70,22 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    and contacts. How the three coexist, and what a pair sees when only one side has the atlas, is
    the design work and is unanswered.
 
+   **A1 done 2026-09-03**: the protocol version is mixed into the cell tag, so a socket from a
+   different protocol is dropped by the check that already runs. Frozen with it: the hashes, the
+   payload layout, the octant rule, the 4x level step.
+
+   **A1 is NOT complete, and one measurement blocks it.** Grid size stays open. Grid 16 is 256
+   slots and clashes on both homes about one socket in seven at 120 sockets, which is an ordinary
+   public instance; grid 64 makes that one in twelve hundred. Grid 64 costs no visibility and no
+   reads, but its atlas rect is 1088 px wide and the writer places pixels from `_ScreenParams`,
+   so every camera carrying the atlas must be at least that wide. ChilloutVR renders a mirror
+   into its own render texture and routinely renders it smaller than the main view. The mirror
+   test passed at grid 16, which is 272 px, so it says nothing about 1088.
+
+   **Raise the spike to grid 64 and repeat the mirror test.** If the mirror clips, the fix is a
+   rect that scales with `_ScreenParams` or a per-camera fallback, and that is a protocol change
+   that has to land before version 1 ships, not after.
+
 ## Loose ends, small but real
 
 ### Four found wearing the avatar, 2026-08-25/26

@@ -219,6 +219,16 @@ public class SpikePlug : EditorWindow
         EditorGUILayout.LabelField("  atlas",
             (OriginPx + _grid * 17 * _slotPx) + " x " + (OriginPx + _levels * _grid * _slotPx) + " px"
             + "   (a cell is 17 slots: a header, then eight octants of position and facing)");
+        // The writer places pixels from _ScreenParams, so the rect has to FIT
+        // every camera that carries the atlas. A mirror renders into its own
+        // texture and is routinely smaller than the main view; the in-game
+        // mirror test passed at grid 16, which is 280 px, and says nothing
+        // about a wider one. Unverified, so it is stated rather than guarded:
+        // inventing a threshold here would assert a mirror size nobody has
+        // measured.
+        EditorGUILayout.LabelField("  needs a camera",
+            "at least " + (OriginPx + _grid * 17 * _slotPx) + " px wide, MIRRORS INCLUDED"
+            + "   (untested above 280)");
 
         // Precision follows the cell, so it scales with the plug: a ten
         // metre plug at radius 2 resolves to about a millimetre, which is
