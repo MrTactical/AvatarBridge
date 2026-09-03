@@ -54,7 +54,14 @@ public class SpikePlug : EditorWindow
     int _levels = 4;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
     int _sockets = 3;
-    int _grid = 16;
+    // 64, not 16. Sockets clash by hashing to a slot another cell owns, and
+    // the second home is the recovery, so what matters is clashing on BOTH:
+    // 256 slots loses about one socket in seven at 120 sockets, which is
+    // twenty people carrying six each, an ordinary instance. 4096 makes it
+    // one in twelve hundred. Costs no reads and no visible dots, since the
+    // clear writes alpha only and the dots follow the socket count. It costs
+    // WIDTH, and whether a mirror is that wide is the open question.
+    int _grid = 64;
     int _slotPx = 1;
     float _reach = 1.6f;
     float _length = 0.22f;
