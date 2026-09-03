@@ -1444,3 +1444,28 @@ path has no regression cover at all. That is a separate gap from "nothing revisi
 prop", already recorded above, and worse: this one means the code is untested, not just that
 users hold stale copies.
 
+## SPS2 shipped, and the converter cannot see it
+
+Published 2026-09-03 at `https://vrcfury.com/sps/`. It transports deformation through grab
+passes, two per world rather than two per item, and its own notes say deformation "no longer
+depends on socket lights or plug contacts". Legacy compatibility keeps the lights so it can still
+meet SPS1, DPS and TPS; depth animations and some haptics still ride contacts. Each plug and each
+socket costs two extra material slots. Supported shaders are a wide list: Poiyomi 7/8+, lilToon,
+UTS, Mochie, XSToon, Silent, Standard, `Unity/Color`, a mobile particle shader and some Shader
+Graph. The page does not publish the encoding, so there is nothing to read from it about cell
+layout, hashing, or what the second grab pass carries.
+
+**The problem for the converter is detection, not transport.** `YapsLegacyMap.Detect` knows DPS,
+TPS and SPS1 by their material properties. An SPS2 plug will carry new ones, so it reads as "no
+legacy system": the plug still bakes, the material still patches, the deform still works, and
+nothing switches SPS2's own deform off. Two deforms on one mesh is exactly the case the DPS
+branch exists to prevent, and it will arrive silently, on an avatar that looks converted.
+
+Wanted, in order: a property signature for SPS2 on `YapsLegacyMap.Origin`, the switch-off in
+`SwitchOffLegacyDeform`, and a carry map for whatever its knobs are called. Needs a real SPS2
+avatar to write against, so it waits for one.
+
+One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
+the editor" is their constraint too. The bake measures a rest pose because the technique requires
+it, not because ours is weak.
+
