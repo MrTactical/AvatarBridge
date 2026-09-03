@@ -1,4 +1,4 @@
-# AvatarBridge — convert your VRChat avatar to ChilloutVR
+﻿# AvatarBridge — convert your VRChat avatar to ChilloutVR
 
 [![Latest release](https://img.shields.io/github/v/release/MrTactical/AvatarBridge?label=release&color=1778FF)](https://github.com/MrTactical/AvatarBridge/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-EE4408.svg)](LICENSE.md)
@@ -817,7 +817,8 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
    the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) Under *Tidy*,
    **Clean up leftovers** sweeps an avatar for what a hand-deleted socket left behind: an animator
    layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing.
-3. **Build.** Bakes every plug — measuring the mesh, patching the material's own shader, writing
+3. **Build.** Bakes every plug — measuring the mesh, patching the shader of every material its
+   triangles use, writing
    the knobs, wiring its size animations, announcing it to every socket family — and builds each
    socket: markers, shapes, and a menu toggle for anything the avatar cannot already switch off.
    Safe to run again; it edits, not stacks. On an avatar with DPS, TPS or SPS on it, Build is the

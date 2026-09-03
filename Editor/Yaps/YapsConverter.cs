@@ -1,4 +1,4 @@
-// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
+﻿// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
 // something ChilloutVR can run. Inspired by VRCFury's SPS; no SPS
 // code is used, see docs/YAPS-CLEAN-ROOM.md.
 // VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket"
@@ -137,14 +137,89 @@ namespace AvatarBridge
                 return;
             }
 
-            // The plug's material is the slot its triangles use, not a name.
-            int slot = MaterialSlotOf(renderer, plugRoot);
+            // Every material slot the plug's triangles use, not just the
+            // biggest one. A tip modelled on its own material is a second
+            // slot, and leaving it unpatched leaves it hanging in the air
+            // while the rest of the plug bends away from it.
+            var slots = MaterialSlotsOf(renderer, plugRoot);
+            var patchedSlots = new List<string>();
+            int primarySlot = -1;
+            Material primaryMaterial = null;
+            int skippedShadowPasses = 0;
+            foreach (int slot in slots)
+            {
+                var slotMaterial = PatchPlugSlot(ctx, where, renderer, plugRoot, slot, result,
+                    out int skipped);
+                if (slotMaterial == null)
+                {
+                    continue;
+                }
+                patchedSlots.Add($"{slot} (\"{slotMaterial.name}\")");
+                if (primarySlot < 0)
+                {
+                    primarySlot = slot;
+                    primaryMaterial = slotMaterial;
+                    skippedShadowPasses = skipped;
+                }
+            }
+            if (primarySlot < 0)
+            {
+                return;
+            }
+
+            ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
+            {
+                Root = plugRoot,
+                Renderer = renderer,
+                Material = primaryMaterial,
+                MaterialSlot = primarySlot,
+                Length = result.Length,
+                Radius = result.Radius,
+                Shapes = result.Shapes,
+                MovingShapes = result.MovingShapes,
+                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot),
+                Origin = result.Origin,
+                Rotation = result.Rotation,
+            });
+
+            // The same markers the toolkit builds for a native plug, on the
+            // measured frame: DPS tracker light, TPS and SPS pointers.
+            // Fury's own rig goes first, or its tracker doubles the fresh
+            // one and its pointers win the announce's dedupe.
+            YapsSocketRebuilder.StripPlugRig(plugRoot);
+            YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
+                result.Length, result.Radius, tipLight: true, pointers: true);
+
+            // The authoring component, read back off the patched material,
+            // so a re-bake writes the same thing.
+            YapsNativeBuilder.AdoptPlug(plugRoot, renderer, primarySlot, primaryMaterial, null);
+
+            ctx.Report.Converted(Category, $"Plug converted at {where}",
+                $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +
+                $"{string.Join(" and ", patchedSlots)}, " +
+                $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long. " +
+                "The mesh data it bends by is baked into a texture, and the deform is patched into " +
+                "a private copy of the shader, so nothing else on the avatar is affected." +
+                (skippedShadowPasses > 0
+                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed — Unity's own " +
+                      "shadow vertex function lives inside the engine and cannot be patched, and an " +
+                      "unbent shadow is a far smaller loss than no deform at all."
+                    : ""));
+        }
+
+        // One material slot of the plug's renderer: patch its shader,
+        // apply the bake, carry the old system's settings. Null means the
+        // slot could not take the deform, and it has said why.
+        static Material PatchPlugSlot(BridgeContext ctx, string where, Renderer renderer,
+            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses)
+        {
+            skippedShadowPasses = 0;
             var materials = renderer.sharedMaterials;
             if (slot < 0 || slot >= materials.Length || materials[slot] == null)
             {
                 ctx.Report.Warning(Category, $"No material to patch for the plug at {where}",
                     "The renderer's material list does not cover the plug's triangles.");
-                return;
+                return null;
             }
 
             // What the material already is. The old deform must not run
@@ -156,7 +231,6 @@ namespace AvatarBridge
             var patchSource = source;
             Shader shader = null;
             string refusal = null;
-            int skippedShadowPasses = 0;
             if (legacy == YapsLegacyMap.Origin.DPS)
             {
                 var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
@@ -219,7 +293,7 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, $"Could not add the deform to \"{source.name}\"",
                     $"{refusal}. The plug converts as an ordinary mesh: it will look right and " +
                     "simply will not bend.");
-                return;
+                return null;
             }
 
             // Read the author's values off the original material before the
@@ -254,44 +328,7 @@ namespace AvatarBridge
             ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
-
-            ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
-            {
-                Root = plugRoot,
-                Renderer = renderer,
-                Material = patched,
-                MaterialSlot = slot,
-                Length = result.Length,
-                Radius = result.Radius,
-                Shapes = result.Shapes,
-                MovingShapes = result.MovingShapes,
-                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot),
-                Origin = result.Origin,
-                Rotation = result.Rotation,
-            });
-
-            // The same markers the toolkit builds for a native plug, on the
-            // measured frame: DPS tracker light, TPS and SPS pointers.
-            // Fury's own rig goes first, or its tracker doubles the fresh
-            // one and its pointers win the announce's dedupe.
-            YapsSocketRebuilder.StripPlugRig(plugRoot);
-            YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
-                result.Length, result.Radius, tipLight: true, pointers: true);
-
-            // The authoring component, read back off the patched material,
-            // so a re-bake writes the same thing.
-            YapsNativeBuilder.AdoptPlug(plugRoot, renderer, slot, patched, null);
-
-            ctx.Report.Converted(Category, $"Plug converted at {where}",
-                $"\"{renderer.name}\" material {slot} (\"{materials[slot].name}\"), " +
-                $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long. " +
-                "The mesh data it bends by is baked into a texture, and the deform is patched into " +
-                "a private copy of the shader, so nothing else on the avatar is affected." +
-                (skippedShadowPasses > 0
-                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed — Unity's own " +
-                      "shadow vertex function lives inside the engine and cannot be patched, and an " +
-                      "unbent shadow is a far smaller loss than no deform at all."
-                    : ""));
+            return patched;
         }
 
         static Renderer FindPlugRenderer(BridgeContext ctx, Transform plugRoot, out int plugVertices,
@@ -419,23 +456,22 @@ namespace AvatarBridge
 
         // A submesh belongs to the plug if its triangles use plug vertices.
         // Names are the author's business and are routinely "Body".
-        static int MaterialSlotOf(Renderer renderer, Transform plugRoot)
+        // Every such submesh, biggest first: a tip modelled on its own
+        // material is a second slot, and an unpatched slot stays rigid
+        // while the rest of the plug bends around it.
+        static List<int> MaterialSlotsOf(Renderer renderer, Transform plugRoot)
         {
+            var found = new List<int>();
             var skin = renderer as SkinnedMeshRenderer;
             var mesh = skin != null ? skin.sharedMesh : null;
-            if (mesh == null)
-            {
-                return 0;
-            }
-
-            var plugVertex = PlugVertexMask(skin, plugRoot);
+            var plugVertex = mesh != null ? PlugVertexMask(skin, plugRoot) : null;
             if (plugVertex == null)
             {
-                return 0;
+                found.Add(0);
+                return found;
             }
 
-            int bestSlot = 0;
-            int bestHits = 0;
+            var hitsBySlot = new List<KeyValuePair<int, int>>();
             for (int sub = 0; sub < mesh.subMeshCount; sub++)
             {
                 var indices = mesh.GetTriangles(sub);
@@ -447,14 +483,25 @@ namespace AvatarBridge
                         hits++;
                     }
                 }
-                if (hits > bestHits)
+                if (hits > 0)
                 {
-                    bestHits = hits;
-                    bestSlot = sub;
+                    hitsBySlot.Add(new KeyValuePair<int, int>(sub, hits));
                 }
             }
-            return bestSlot;
+            hitsBySlot.Sort((a, b) => b.Value.CompareTo(a.Value));
+            foreach (var pair in hitsBySlot)
+            {
+                found.Add(pair.Key);
+            }
+            if (found.Count == 0)
+            {
+                found.Add(0);
+            }
+            return found;
         }
+
+        static int MaterialSlotOf(Renderer renderer, Transform plugRoot) =>
+            MaterialSlotsOf(renderer, plugRoot)[0];
 
         static bool[] PlugVertexMask(SkinnedMeshRenderer skin, Transform plugRoot)
         {

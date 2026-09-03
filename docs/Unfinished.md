@@ -1,4 +1,4 @@
-# Unfinished
+﻿# Unfinished
 
 The single list. Every open piece of work lives here and nowhere else. Check this document
 before starting on a new idea, in case something similar is already on it, and whenever the
@@ -245,17 +245,22 @@ outlives scrollback.
    the difference is real: Remove undoes one plug, Sweep collects orphans. They are not two doors
    to one job.
 
-   *Native builder vs converter, OPEN and the interesting one.* **The converter has its own bake
-   path** (`YapsConverter` lines 116 and 211) and patches ONE material slot on ONE renderer. It
-   never calls `MirrorToSlots`, and now never calls `MirrorToRenderers` either — so both the
-   multi-material fix of 2026-08-25 and the multi-renderer fix of 2026-08-26 apply to the native
-   toolkit ONLY, and a CONVERTED avatar still tears along the seam.
+   *Native builder vs converter. The slot half is FIXED 2026-09-03, the renderer half is OPEN.*
+   **The converter has its own bake path** (`YapsConverter`) and used to patch ONE material slot
+   on ONE renderer, so the multi-material fix of 2026-08-25 and the multi-renderer fix of
+   2026-08-26 reached the native toolkit only and a CONVERTED avatar tore along the seam.
 
-   Not fixed here, for two honest reasons: the mirroring takes a `YapsPlug` and the converter
-   holds a VRCFury plug, so closing it is a refactor to pass values rather than the component;
-   and it changes conversion output, so it needs a corpus run to land. Low impact in practice — a
-   VRCFury plug is normally one dedicated mesh with one material, and multi-material plugs are the
-   whole-avatar case, which is a native-toolkit experiment. Worth doing, not worth rushing.
+   The slot half turned up in the wild on 2026-09-03: a plug whose tip was modelled on a second
+   material bent along its shaft and left the tip hanging in the air, and nothing in the report
+   said so, because `MaterialSlotOf` counted plug vertices per submesh and then returned the
+   winner. `MaterialSlotsOf` now returns every submesh that carries plug vertices, biggest first;
+   `PatchPlugSlot` patches each one off the same bake; the first that takes it is the slot the
+   plug record and the authoring component use, and any slot that refuses says why in the report.
+
+   Still open: **one renderer**. A plug split across two meshes gets one of them. The mirroring
+   takes a `YapsPlug` and the converter holds a VRCFury plug, so closing it is a refactor to pass
+   values rather than the component. Low impact in practice, and it changes conversion output, so
+   it wants a corpus run to land.
 
 4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
    window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared
