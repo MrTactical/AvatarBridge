@@ -1,4 +1,4 @@
-# YAPS 5: the transport question
+﻿# YAPS 5: the transport question
 
 How a plug finds a socket is the whole system; everything else is presentation. This gathers
 every route that exists, every route proposed, and every measured limit, from a month of in-game
@@ -833,3 +833,15 @@ whose arrow points away from the plug is a hole the plug is arriving at the back
 on that avatar face outward and the plug grows from the crotch, so they are behind it.
 
 Editor Play only. In game is a separate claim and has not been made.
+
+### The toolkit's own Build got the avatar half, 2026-09-03
+
+A2 put the writer on the socket and A3 put the clear and the grab on the avatar root, but only
+on the CONVERT path. An avatar built by hand out of the socket prefabs had every writer and no
+surface: sockets publishing to a screen nothing grabbed, and no clear, so every cell read as
+occupied. `BuildAll` now adds the same two objects behind the same `YapsAtlas.Enabled` switch.
+
+Regenerating the prefabs (Tools, YAPS, Create universal socket prefabs) is what puts the writer
+into `YAPS Hole` and `YAPS Ring`; `Build` is what completes the avatar. The plug prop prefab is
+separate, and it bakes and patches its shader when it is created, so it needs recreating to pick
+up the resolver.

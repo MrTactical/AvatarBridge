@@ -1,4 +1,4 @@
-// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
+﻿// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
 // or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -826,6 +826,16 @@ namespace AvatarBridge
                 socketsBuilt++;
                 lines.AddRange(YapsNativeBuilder.BuildSocket(s));
             }
+            // The writers go on the sockets; the surface they publish to
+            // goes on the avatar. Only the converter used to add it, so a
+            // hand-built avatar had sockets writing to a screen nothing
+            // grabbed. One switch for both halves, as on the convert path.
+            if (YapsAtlas.Enabled && YapsAtlas.AddClear(_target.transform) != null
+                && YapsAtlas.AddGrab(_target.transform) != null)
+            {
+                lines.Add("Added the screen surface plugs read each other through.");
+            }
+
             // Last, and once: the channel reads the frames the bakes just
             // measured, and it replaces its own wiring rather than stacking.
             lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>()));
