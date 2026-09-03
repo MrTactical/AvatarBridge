@@ -605,7 +605,7 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var group in materials.Where(m => m != null && m.shader != null)
+            foreach (var group in materials.Where(m => m != null && m.shader != null && !YapsAtlas.IsPlumbing(m))
                          .GroupBy(m => m.shader.name)
                          .Where(g => g.Count() > 1))
             {

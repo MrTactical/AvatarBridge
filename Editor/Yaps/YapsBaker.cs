@@ -190,8 +190,20 @@ namespace AvatarBridge
 
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
-            string path = AssetDatabase.GenerateUniqueAssetPath(
-                outputDir + "/YAPS " + Sanitise(renderer.name) + " bake.asset");
+            // Named for the plug that wrote it, not numbered. A unique path
+            // is the wrong answer here: the name it was avoiding belongs to
+            // the SAME plug from the last conversion, so every reconvert left
+            // another ten megabytes in the project and none of them were ever
+            // read again. Overwriting the one this plug owns is the point.
+            //
+            // The parent goes in the name because two plugs on one renderer
+            // are usually called the same thing under different bones.
+            string owner = plugRoot != null && plugRoot.parent != null
+                ? plugRoot.parent.name + " " + plugRoot.name
+                : plugRoot != null ? plugRoot.name : "plug";
+            string path = outputDir + "/YAPS " + Sanitise(renderer.name) + " "
+                          + Sanitise(owner) + " bake.asset";
+            AssetDatabase.DeleteAsset(path);
             AssetDatabase.CreateAsset(texture, path);
             SettleForUpload(texture);
 

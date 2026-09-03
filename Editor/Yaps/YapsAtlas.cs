@@ -80,6 +80,15 @@ namespace AvatarBridge
 
         public const string GrabName = "YAPS Atlas Grab";
 
+        // The clear, the grab and every socket writer, told apart by shader
+        // rather than by name or by where they sit, because a report that
+        // offers the user something to DO about an object has to skip these.
+        // A prop chip or an atlasing suggestion on this tool's own plumbing is
+        // advice nobody can act on, and reads as a bug.
+        public static bool IsPlumbing(Material m) =>
+            m != null && m.shader != null
+            && m.shader.name.StartsWith("YAPS/Atlas", System.StringComparison.Ordinal);
+
         // The clear, without which an empty cell reads as the opaque screen
         // and every cell looks occupied. One per room is enough and a second
         // is harmless: it paints alpha 0 over alpha 0.

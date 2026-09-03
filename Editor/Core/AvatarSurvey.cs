@@ -313,6 +313,11 @@ namespace AvatarBridge
                 string path = AnimationUtility.CalculateTransformPath(r.transform, root);
                 var mesh = MeshOf(r);
 
+                // This tool's own atlas objects. Not rejected with a reason,
+                // because there is no question to answer: they are not the
+                // user's to lift out.
+                if (r.sharedMaterials != null && r.sharedMaterials.Any(YapsAtlas.IsPlumbing)) continue;
+
                 // One bone, or none. More than one is clothing.
                 string bone = null;
                 if (r is SkinnedMeshRenderer skin)

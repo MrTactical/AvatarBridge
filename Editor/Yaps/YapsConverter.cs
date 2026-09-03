@@ -1317,9 +1317,9 @@ namespace AvatarBridge
             }
             ctx.Report.Converted(Category, $"Removed {removed} screen-atlas object(s)",
                 "VRChat's version passes socket positions between avatars by drawing them into a " +
-                "corner of the screen and reading them back. ChilloutVR publishes player positions " +
-                "to shaders directly, so none of that machinery is needed here, and left in place " +
-                "it would render marker quads into the view.");
+                "corner of the screen and reading them back. These objects speak VRChat's protocol, " +
+                "which nothing in ChilloutVR reads, and left in place they draw marker quads into " +
+                "the view. YAPS finds sockets its own way and builds whatever it needs itself.");
         }
 
         static int Depth(Transform t)

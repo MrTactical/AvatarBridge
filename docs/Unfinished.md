@@ -155,9 +155,14 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
 
-   **Wrong-in-waiting, for phase C or D:** the report string that removes VRChat's own screen
-   atlas says ChilloutVR "publishes player positions to shaders directly, so none of that
-   machinery is needed here". True today, false the moment ours ships.
+   **FIXED 2026-09-03.** The report string that removes VRChat's own screen atlas used to say
+   ChilloutVR "publishes player positions to shaders directly, so none of that machinery is
+   needed here", four bullets before the one that adds ours. It now says those objects speak
+   VRChat's protocol, which is true whether or not the atlas is switched on.
+
+   **FIXED 2026-09-03.** The prop detector and the atlasing advice both offered this tool's own
+   atlas objects to the user. `YapsAtlas.IsPlumbing` tells them apart by SHADER rather than by
+   name or place, so renaming or remounting one cannot quietly put it back in the report.
 
    **Cosmetic, carried from the spike:** the payload pass writes colour because the payload is
    colour, so an occupied cell paints a few pixels near the corner of the screen. Count follows
@@ -179,6 +184,13 @@ outlives scrollback.
    it stays pointed at the right thing, and what was there is never trusted — only its identity —
    so an asset left by an older version cannot carry stale settings forward. One helper serves
    both sites; the primary and the mirrored slots had drifted into two different conventions.
+
+   **The BAKE TEXTURE was the same bug and was missed — FIXED 2026-09-03.** Only the material
+   sites were changed in August. The 10 MB bake asset still asked for a unique path, so a
+   reconvert left `YAPS Body bake` and `YAPS Body bake 1` side by side, and the name it was
+   carefully avoiding belonged to the same plug from the previous run. Named for the renderer and
+   the plug now, and the existing one is deleted first. Ceiling: two plugs on one renderer whose
+   roots share a name AND a parent name would still collide.
 
 2. **Additional meshes under the armature do not bend — FIXED 2026-08-26, UNTESTED IN UNITY.**
    A plug whose root bone is the Armature patched ONE renderer's materials; every other skinned
