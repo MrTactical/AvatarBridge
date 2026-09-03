@@ -726,7 +726,8 @@ namespace AvatarBridge
             // is the drift that has cost the most time on this feature.
             string[] names =
             {
-                "yaps_props.cginc", "yaps_resolve.cginc", "yaps_deform.cginc", "yaps_socket.cginc",
+                "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
+                "yaps_socket.cginc",
             };
             var sb = new StringBuilder();
             foreach (string name in names)
