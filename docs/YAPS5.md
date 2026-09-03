@@ -862,3 +862,16 @@ Removed. Range is the only inclusion test now, which is also what rejects a hash
 across the world. If a hole still reads two thirds, the rejector is `d > far`, which is
 `worldLength * 2.56`, and that is now unambiguous.
 
+### A4 confirmed on the atlas alone, 2026-09-03
+
+The earlier A4 pass resolved a socket on the avatar's own hand, which left a marker light as an
+alternative explanation. This one does not: a standalone hole in the scene, its `YAPS Lights` and
+`YAPS Pointers` folders switched OFF, with the plug's preview off so the C# route wrote nothing.
+*Resolved by* read FULL, which is tier 3, and tier 3 is set in one place.
+
+Nothing but the screen carried the position. The socket's writer published it, the avatar's grab
+read it back, and the plug bent.
+
+Removing the facing test is what turned it on: the same hole read a tenth an hour earlier with
+Atlas taps at two thirds.
+
