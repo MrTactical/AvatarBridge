@@ -419,17 +419,11 @@ struct YapsChain
 // body. One line, no extra taps.
 YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
 {
-    YapsChain chain;
-    chain.count = 0;
-    chain.engaged = 0;
-    [unroll] for (int z = 0; z < YAPS_CHAIN_MAX; z++)
-    {
-        chain.position[z] = 0;
-        chain.forward[z] = float3(0, 0, 1);
-        chain.kind[z] = 0;
-        chain.arc[z] = 0;
-    }
-    chain.arc[YAPS_CHAIN_MAX] = 0;
+    // Zeroed in one go rather than field by field: shorter, and it stops the
+    // compiler reading the early return below as leaving the struct
+    // part-written. Nothing reads an entry past count, so the zeroed forward
+    // never reaches anybody.
+    YapsChain chain = (YapsChain)0;
 
     float len = max(worldLength, 1e-4);
 
@@ -449,14 +443,13 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     // to a plausible payload in an implausible place.
     float far = len * YAPS_ATLAS_REACH * 1.6;
 
-    float3 sockP[YAPS_CHAIN_MAX];
-    float3 sockF[YAPS_CHAIN_MAX];
-    float  sockD[YAPS_CHAIN_MAX];
-    float  sockK[YAPS_CHAIN_MAX];
-    [unroll] for (int i = 0; i < YAPS_CHAIN_MAX; i++)
-    {
-        sockP[i] = 0; sockF[i] = float3(0, 0, 1); sockD[i] = 1e9; sockK[i] = -1;
-    }
+    // Spelled out rather than looped, so the compiler can see every entry is
+    // written before anything reads one. A distance of 1e9 and a kind of -1
+    // are what "empty" means below.
+    float3 sockP[YAPS_CHAIN_MAX] = { (float3)0, (float3)0, (float3)0, (float3)0 };
+    float3 sockF[YAPS_CHAIN_MAX] = { float3(0, 0, 1), float3(0, 0, 1), float3(0, 0, 1), float3(0, 0, 1) };
+    float  sockD[YAPS_CHAIN_MAX] = { 1e9, 1e9, 1e9, 1e9 };
+    float  sockK[YAPS_CHAIN_MAX] = { -1, -1, -1, -1 };
 
     int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
 
@@ -555,10 +548,6 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     [unroll] for (int i2 = 0; i2 < YAPS_CHAIN_MAX; i2++)
         if (sockK[i2] > -0.5) count++;
     chain.count = count;
-    if (count == 0)
-    {
-        return chain;
-    }
 
     // Chords rather than true cubic arc length, the same approximation the
     // single-socket path makes.
@@ -566,7 +555,6 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     float3 prev = root;
     [unroll] for (int i3 = 0; i3 < YAPS_CHAIN_MAX; i3++)
     {
-        if (i3 >= count) { chain.arc[i3 + 1] = chain.arc[i3] + 1e6; continue; }
         float3 seg = sockP[i3] - prev;
         float d3 = length(seg);
         // A RING is turned to meet its approach. It is a loop with no wrong
@@ -577,7 +565,11 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
         // back was dropped from the list already.
         if (sockK[i3] < 0.5 && d3 > 1e-5 && dot(sockF[i3], seg) > 0)
             sockF[i3] = -sockF[i3];
-        chain.arc[i3 + 1] = chain.arc[i3] + d3;
+        // Entries past the count get a range nothing can fall inside rather
+        // than a branch that skips them. A runtime-dependent continue is what
+        // stopped this loop unrolling, and it has to unroll for the indices to
+        // stay constant, same rule as the sort above.
+        chain.arc[i3 + 1] = chain.arc[i3] + (i3 < count ? d3 : 1e6);
         prev = sockP[i3];
 
         chain.position[i3] = sockP[i3];

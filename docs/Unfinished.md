@@ -128,6 +128,20 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      "Resolved by" view, since it would otherwise read identically to a marker light, which is the
      exact confusion that view exists to prevent: quarter nobody, half channel, three quarters
      light, full atlas.
+
+     **Three compile failures before it built at all, none of them visible in the scene.** The
+     patcher inlines a hand-written list of includes and strips `#include "yaps_*.cginc"`, so
+     `yaps_atlas.cginc` was stripped and never added: every patched shader failed on
+     `YAPS_ATLAS_RADIUS`. Then twice on the same HLSL rule, that a small local array only stays in
+     registers while every index is a compile-time constant. The insertion sort broke out of its
+     loop on a comparison and the arc loop skipped entries with a `continue`; both left the counter
+     data-dependent, the `[unroll]` failed, and the write became dynamic and was refused. Both are
+     written out by literal index now, which is the real reason `YAPS_CHAIN_MAX` is not a knob.
+
+     Each of those cost a reconvert to find, reported against a generated file nobody can read, and
+     the patcher CATCHES the failure and converts the plug as an ordinary mesh, so nothing throws
+     and nothing goes magenta. The avatar looks perfect and does not bend. `Dev/Probes/Hlsl` now
+     compiles the same include set with fxc in about a second.
    - **A5** patch a real Poiyomi with it, through the converter.
 
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
