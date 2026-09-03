@@ -542,7 +542,27 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             // opaque pixel the screen had there. Anything between the two is
             // the transport working, and the loss is downstream in the tag,
             // the kind or the reach.
-            shown = lerp(0.1, 1.0, saturate(socket.atlasHeaders / 27.0));
+            // FOUR STEPS, not a ratio. A ratio was the first version and
+            // it was unreadable: one socket occupies one cell out of the
+            // twenty-seven read, so a working transport and a dead one
+            // differed by three percent of plug length.
+            //
+            // A tenth: no cell reported anything. Nothing published within
+            // reach, the grab is empty, or reader and writer address
+            // different pixels.
+            //
+            // A third: a cell reported something but no payload in it
+            // matched the cell's tag. The slot was somebody else's, or the
+            // tag itself does not survive the round trip.
+            //
+            // Two thirds: a payload matched its tag and was then thrown away
+            // by the kind test or by reach. The transport is entirely
+            // healthy and the geometry tests are wrong.
+            //
+            // Full: a socket came back. Resolved by says which tier used it.
+            shown = socket.atlasHeaders < 0.5 ? 0.10
+                  : (socket.atlasHits < 0.5 ? 0.33
+                  : (socket.tier < 2.5 ? 0.66 : 1.0));
         }
         else if (_YAPS_Debug >= 3.5)
         {

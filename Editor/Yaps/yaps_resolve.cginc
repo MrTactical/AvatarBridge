@@ -80,10 +80,11 @@ struct YapsSocket
     // day was lost to precisely that.
     float tier;
     // How many of the atlas's 27 header taps said a cell held anything.
-    // Diagnostic only. It splits the search in half when nothing resolves:
-    // none means the writers, the grab or the addressing, all 27 means the
-    // clear never ran and every cell is decoding opaque screen.
+    // Diagnostic only, and read as a LADDER rather than a count: each step
+    // is a different half of the search, and the step it stops on is the
+    // stage that threw the socket away.
     float atlasHeaders;
+    float atlasHits;
 };
 
 // --- protocol lights -------------------------------------------------
@@ -417,7 +418,8 @@ struct YapsChain
     float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
     int    count;
     float  engaged;
-    float  headers;
+    float  headers;   // cells whose header said something was there
+    float  hits;      // payloads that then matched the cell's tag
 };
 
 // Reads the neighbourhood of the shaft's MIDPOINT rather than its root, so a
@@ -502,6 +504,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // it, so a socket from another version fails here.
                 if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
                 got1 = true;
+                chain.hits += 1;
 
                 float3 at = (float3(c) + got.rgb) * size;
                 float d = distance(at, root);
@@ -617,6 +620,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.up = _YAPS_SocketUp.xyz;
     socket.tier = 0;
     socket.atlasHeaders = 0;
+    socket.atlasHits = 0;
 
     // A zero position is NOT a socket at the world origin, however much it
     // looks like one to the maths. Track whether anything actually
@@ -926,6 +930,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     {
         YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
         socket.atlasHeaders = chain.headers;
+        socket.atlasHits = chain.hits;
         if (chain.count > 0)
         {
             socket.position = chain.position[0];
