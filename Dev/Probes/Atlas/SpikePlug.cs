@@ -224,7 +224,7 @@ public class SpikePlug : EditorWindow
             (_grid * _grid) + "   (two sockets landing on one slot means one of them vanishes)");
         _slotPx = EditorGUILayout.IntSlider("Slot, pixels", _slotPx, 1, 8);
         EditorGUILayout.LabelField("  atlas",
-            (OriginPx + _grid * 17 * _slotPx) + " x " + (OriginPx + _levels * _grid * _slotPx) + " px"
+            AtlasWidth() + " x " + AtlasHeight() + " px, " + Columns() + " columns"
             + "   (a cell is 17 slots: a header, then eight octants of position and facing)");
         // The writer places pixels from _ScreenParams, so the rect has to FIT
         // every camera that carries the atlas. A mirror renders into its own
@@ -234,8 +234,7 @@ public class SpikePlug : EditorWindow
         // inventing a threshold here would assert a mirror size nobody has
         // measured.
         EditorGUILayout.LabelField("  needs a camera",
-            "at least " + (OriginPx + _grid * 17 * _slotPx) + " px wide, MIRRORS INCLUDED"
-            + "   (untested above 280)");
+            "at least " + AtlasWidth() + " x " + AtlasHeight() + " px, MIRRORS INCLUDED");
 
         // Precision follows the cell, so it scales with the plug: a ten
         // metre plug at radius 2 resolves to about a millimetre, which is
@@ -436,6 +435,7 @@ public class SpikePlug : EditorWindow
             var m = Load("Socket" + (char)('A' + i));
             if (m == null) continue;
             m.SetFloat("_Grid", _grid);
+            m.SetFloat("_Cols", Columns());
             m.SetFloat("_SlotPx", _slotPx);
             m.SetFloat("_OriginPx", OriginPx);
             m.SetFloat("_CellSize", _cellBase);
@@ -446,6 +446,7 @@ public class SpikePlug : EditorWindow
         if (p != null)
         {
             p.SetFloat("_Grid", _grid);
+            p.SetFloat("_Cols", Columns());
             p.SetFloat("_SlotPx", _slotPx);
             p.SetFloat("_OriginPx", OriginPx);
             p.SetFloat("_CellSize", _cellBase);
@@ -461,10 +462,35 @@ public class SpikePlug : EditorWindow
             // Covers the whole snapped rect with room to spare. Clearing a
             // few unused pixels costs nothing; missing one leaves a cell
             // reading the opaque screen, which reads as occupied.
-            c.SetFloat("_SpanPxX", OriginPx + _grid * 17 * _slotPx + 4);
-            c.SetFloat("_SpanPxY", OriginPx + _levels * _grid * _slotPx + 4);
+            c.SetFloat("_SpanPxX", AtlasWidth() + 4);
+            c.SetFloat("_SpanPxY", AtlasHeight() + 4);
         }
     }
+
+    // The atlas folds its slots into COLUMNS, and the grid is not that
+    // number. They were the same for no reason, which made the rect a wide
+    // strip 1088 px across at grid 64, and any camera narrower than that
+    // clips the right-hand columns. A clipped slot reads as the opaque
+    // screen rather than as absent, so a socket hashing there vanishes
+    // until it moves cell. That is what the editor showed on 2026-09-03: a
+    // bend dropping out every few centimetres, cured by widening the view.
+    //
+    // Snapped to a DIVISOR of the grid so every level holds whole rows, and
+    // set on both shaders from here so there is one derivation rather than
+    // two that have to agree.
+    int Columns()
+    {
+        int total = _grid * _grid;
+        float ideal = Mathf.Sqrt(total * _levels / 17f);
+        int best = _grid;
+        for (int c = 1; c <= _grid; c++)
+            if (_grid % c == 0 && Mathf.Abs(c - ideal) < Mathf.Abs(best - ideal)) best = c;
+        return Mathf.Max(best, 1);
+    }
+
+    int AtlasWidth() => OriginPx + Columns() * 17 * _slotPx;
+
+    int AtlasHeight() => OriginPx + _levels * Mathf.Max(_grid * _grid / Columns(), 1) * _slotPx;
 
     // A cylinder along local +Z with a rounded tip, generated because the
     // built-in cylinder has two rings of vertices and therefore cannot bend

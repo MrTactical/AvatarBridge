@@ -71,6 +71,7 @@ Shader "YAPS/Spike Plug"
     Properties
     {
         _Grid ("Cells across the atlas", Float) = 8
+        _Cols ("Columns the slots fold into", Float) = 32
         _SlotPx ("One slot, in pixels", Float) = 1
         _OriginPx ("Atlas origin, pixels from the top left", Float) = 8
         _CellSize ("Cell size of level 0, metres", Float) = 0.02
@@ -143,6 +144,21 @@ Shader "YAPS/Spike Plug"
             float4 _YAPS_SpikeAtlas_TexelSize;
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
+
+            // HOW MANY COLUMNS the atlas folds its slots into, and it is NOT the grid.
+            // The two were the same number for no reason, which made the rect a wide
+            // strip: 4096 slots at 17 pixels a cell is 1088 px across, and a camera
+            // narrower than that clips the right-hand columns. A clipped slot does not
+            // read as absent, it reads as the opaque screen, so a socket whose cell
+            // hashes there vanishes until it moves to another cell. Found in the editor
+            // 2026-09-03 as a bend dropping out every few centimetres and returning when
+            // the Game view was widened.
+            //
+            // Folding is free: the same slots, a squarer block. 4096 at 32 columns is
+            // 544 x 512 instead of 1088 x 256, which fits a 720p view, a mirror texture
+            // and an eye buffer. C# derives it and sets it on both shaders, so there is
+            // one derivation rather than two that have to agree.
+            float _Cols;
             float _Debug, _ForceRow, _Radius, _Levels;
             fixed4 _Colour, _Miss;
 
@@ -179,7 +195,7 @@ Shader "YAPS/Spike Plug"
             // extra read, no extra branch. Unretrofittable, which is why it is here
             // before anything ships, and it must be bumped whenever ANY protocol
             // constant changes.
-            #define YAPS_ATLAS_VERSION 1
+            #define YAPS_ATLAS_VERSION 2
 
             // Must match CellTag in the socket shader, version included. See
             // the note there: without it a radius-2 read aliases into itself.
@@ -248,6 +264,8 @@ Shader "YAPS/Spike Plug"
                 int   grid  = max(int(_Grid), 1);
                 int   total = grid * grid;
                 int   slot  = max(int(_SlotPx), 1);
+                int   cols  = max(int(_Cols), 1);
+                int   rowsPerLevel = max(total / cols, 1);
                 int   mid   = slot / 2;
                 int   texH  = int(_YAPS_SpikeAtlas_TexelSize.w);
                 #if UNITY_UV_STARTS_AT_TOP
@@ -301,9 +319,9 @@ Shader "YAPS/Spike Plug"
                     [loop] for (int home = 0; home < 2; home++)
                     {
                         int use = home == 0 ? idx : idxB;
-                        int gx = use % grid, gy = use / grid;
+                        int gx = use % cols, gy = use / cols;
                         int cellX = int(_OriginPx) + gx * 17 * slot;
-                        int fromTop = int(_OriginPx) + (lvl * grid + gy) * slot;
+                        int fromTop = int(_OriginPx) + (lvl * rowsPerLevel + gy) * slot;
                         int cellY = flip ? (texH - 1 - fromTop) : fromTop;
 
                         // ONE tap for the header, whose alpha counts how many
