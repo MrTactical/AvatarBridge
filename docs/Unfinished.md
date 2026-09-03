@@ -83,9 +83,13 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    **The chain, restated: atlas primary, DPS fallback, TPS and contacts dropped.** Phases past
    A1, none started:
 
-   - **A2** the patcher cannot insert a `GrabPass`. `YapsShaderPatcher` edits vertex functions
-     inside `CGPROGRAM` blocks and never touches SubShader-level declarations, and the atlas
-     needs one per shader. This is the gate on everything after it.
+   - **A2** a grabber mesh, and the patcher needs no `GrabPass` at all. This looked like the gate
+     and is not one. A named `GrabPass` writes a globally named texture, so only ONE shader in
+     the room has to declare it; the spike plug declares none and samples `_YAPS_SpikeAtlas` by
+     name. So the converter adds a small quad carrying the grab at `Queue Overlay`, after the
+     sockets at `Overlay-100`, and the patcher only has to declare a sampler and insert resolve
+     code, which is what it already does. The plug draws at Geometry and therefore reads the
+     PREVIOUS frame's grab, about 11 ms at 90 Hz, and that is what already passed in game.
    - **A3** the shipped socket writes to the atlas. Today it emits marker lights and nothing else.
    - **A4** `yaps_resolve.cginc` reads the atlas alongside its existing single-socket resolve, and
      the atlas wins where it answers. What a pair sees when only one side has it is the design
