@@ -797,32 +797,47 @@ public class SpikePlug : EditorWindow
         WearRemove();
         Transform root = avatar.transform;
 
+        // A CONVERTED avatar already carries the shipped clear, grab and
+        // socket writers. Building the spike's beside them proves nothing:
+        // the spike clear covers the same rect and would mask a broken
+        // shipped one, and a spike socket rides a hand, which is the easiest
+        // thing to bring near the plug, so a bend could not be attributed.
+        // Reader only, then, and everything else under test is shipped.
+        bool shipped = root.Find("YAPS Atlas Clear") != null
+                       || root.Find("YAPS Atlas Grab") != null;
+
         // Clear and grabber under the avatar root. Both draw in clip space
         // and ignore where they sit; the scale only exists to beat frustum
         // culling, and it is countered so a scaled rig cannot shrink it back
         // into cullable range.
-        var rig = new GameObject(WearPrefix + " Atlas");
-        Undo.RegisterCreatedObjectUndo(rig, "YAPS atlas wear rig");
-        rig.transform.SetParent(root, false);
-        var clear = Quad(rig, "Clear", 1f);
-        clear.transform.localScale = Counter(rig.transform, 200f);
-        var cm = Asset("Clear", clearShader);
-        cm.renderQueue = _queueBase;
-        clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
-        var grab = Quad(rig, "Grabber", 1f);
-        grab.transform.localScale = Counter(rig.transform, 200f);
-        var gm = Asset("Grabber", readShader);
-        gm.renderQueue = _queueBase + 2;
-        grab.GetComponent<MeshRenderer>().sharedMaterial = gm;
+        if (!shipped)
+        {
+            var rig = new GameObject(WearPrefix + " Atlas");
+            Undo.RegisterCreatedObjectUndo(rig, "YAPS atlas wear rig");
+            rig.transform.SetParent(root, false);
+            var clear = Quad(rig, "Clear", 1f);
+            clear.transform.localScale = Counter(rig.transform, 200f);
+            var cm = Asset("Clear", clearShader);
+            cm.renderQueue = _queueBase;
+            clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
+            var grab = Quad(rig, "Grabber", 1f);
+            grab.transform.localScale = Counter(rig.transform, 200f);
+            var gm = Asset("Grabber", readShader);
+            gm.renderQueue = _queueBase + 2;
+            grab.GetComponent<MeshRenderer>().sharedMaterial = gm;
+        }
 
         // Facing the wearer's BACK, which is toward the oncoming plug. The
         // ring would flip to meet it anyway; the hole on the right hand only
         // opens facing the approach, so both start correct and a twist of
         // the wrist shows the difference between the kinds live.
-        Quaternion facing = root.rotation * Quaternion.Euler(0, 180, 0);
-        WearSocket(lHand, sockShader, 'A', 0, facing);
-        WearSocket(rHand, sockShader, 'B', 1, facing);
-        if (head != null) WearSocket(head, sockShader, 'C', 0, facing);
+        if (!shipped)
+        {
+            Quaternion facing = root.rotation * Quaternion.Euler(0, 180, 0);
+            WearSocket(lHand, sockShader, 'A', 0, facing);
+            WearSocket(rHand, sockShader, 'B', 1, facing);
+            if (head != null) WearSocket(head, sockShader, 'C', 0, facing);
+        }
 
         // From the hips, along the avatar's forward. Never skinned: Unity
         // skins into world space and hands the shader an identity matrix, so
@@ -840,10 +855,15 @@ public class SpikePlug : EditorWindow
 
         Push();
         Selection.activeGameObject = avatar.gameObject;
-        _result = "Worn. Press Play HERE first: the plug grows forward from the hips and must "
-                + "bend toward a hand brought near it, ring on the left, hole on the right, one "
-                + "more on the head. If that holds, upload, then check the same three in game: "
-                + "flat screen, VR, and a mirror.";
+        _result = shipped
+            ? "Worn as a READER only. This avatar carries the shipped clear, grab and socket "
+            + "writers, so the spike built none of its own: everything but the plug is shipped "
+            + "code. Press Play and bring one of the avatar's OWN sockets near the plug at the "
+            + "hips. A bend is the shipped writer working."
+            : "Worn. Press Play HERE first: the plug grows forward from the hips and must "
+            + "bend toward a hand brought near it, ring on the left, hole on the right, one "
+            + "more on the head. If that holds, upload, then check the same three in game: "
+            + "flat screen, VR, and a mirror.";
     }
 
     // A named holder per bone keeps the socket child on the scene spike's
