@@ -400,6 +400,10 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 // walks them belongs to the deform.
 #define YAPS_CHAIN_MAX 4
 
+// The sort below moves and places whole entries by literal index.
+#define YAPS_CH_MOVE(a, b) sockD[a] = sockD[b]; sockP[a] = sockP[b]; sockF[a] = sockF[b]; sockK[a] = sockK[b];
+#define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
+
 struct YapsChain
 {
     float3 position[YAPS_CHAIN_MAX];
@@ -516,16 +520,29 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // Insertion sort, nearest first. Sorted here rather than
                 // later because THE ORDER IS THE PATH: socket one is the one
                 // the shaft meets first.
-                [unroll] for (int k = 0; k < YAPS_CHAIN_MAX; k++)
+                //
+                // Written out rather than looped. These four arrays only stay
+                // in registers while every index is a compile-time constant,
+                // and a loop that breaks on a comparison leaves its counter
+                // data-dependent, so the compiler cannot unroll it and then
+                // refuses the write it has turned into a dynamic one. Four
+                // entries is few enough to spell, and this is the whole
+                // reason YAPS_CHAIN_MAX is not a knob.
+                if (d < sockD[0])
                 {
-                    if (d >= sockD[k]) continue;
-                    [unroll] for (int m = YAPS_CHAIN_MAX - 1; m > k; m--)
-                    {
-                        sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
-                        sockF[m] = sockF[m - 1]; sockK[m] = sockK[m - 1];
-                    }
-                    sockD[k] = d; sockP[k] = at; sockF[k] = fwd; sockK[k] = kind;
-                    break;
+                    YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_MOVE(1, 0) YAPS_CH_PUT(0)
+                }
+                else if (d < sockD[1])
+                {
+                    YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_PUT(1)
+                }
+                else if (d < sockD[2])
+                {
+                    YAPS_CH_MOVE(3, 2) YAPS_CH_PUT(2)
+                }
+                else if (d < sockD[3])
+                {
+                    YAPS_CH_PUT(3)
                 }
             }
             // Found in this home, so the other is not this cell's. Only a
