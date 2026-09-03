@@ -36,6 +36,7 @@ namespace AvatarBridge
         const string Twin = "_SelfNotOnHips";
 
         public const string LightsName = "YAPS Lights";
+        const string AtlasName = "YAPS Atlas";
         const string PointersName = "YAPS Pointers";
         const string PrefabFolder = "Assets/YAPS/Prefabs";
         public const string PlugPropPrefabPath = PrefabFolder + "/YAPS Plug Prop.prefab";
@@ -350,6 +351,15 @@ namespace AvatarBridge
                 if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
                 if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
                 lights.gameObject.SetActive(WithinLightCap(socket));
+            });
+
+            // The atlas writer. Off until something reads the atlas, and
+            // Replace deletes the folder when nothing goes in it, so a
+            // disabled atlas leaves no object behind.
+            Replace(t, AtlasName, atlas =>
+            {
+                if (!YapsAtlas.Enabled) return;
+                YapsAtlas.AddWriter(atlas, hole);
             });
 
             Replace(t, PointersName, pointers =>

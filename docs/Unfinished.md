@@ -88,16 +88,25 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **A1 DONE.** Freeze the protocol and version it. Deviation worth keeping: the version is not
      a pixel, it is mixed into the `CellTag` hash, so a mismatch is dropped by the check that
      already runs. No extra pixel, read or branch. Grid 64 settled, seven cameras.
-   - **A2 NEXT, not started.** The socket writer quad. Port the spike's two-pass socket shader to
-     a small quad the converter puts on every socket: header pixel, payload, per level, both
-     homes. Done when a converted socket publishes with no hand assembly.
-   - **A3 half built early, out of order.** Clear quad and grabber quad on the avatar root,
-     counter-scaled against import scale. The GRABBER exists: `YapsAtlasGrab.shader` declares
-     `GrabPass { "_YAPS_Atlas" }` at `Queue Overlay`, `YapsAtlasGrab.cs` mounts it as one triangle
-     a millimetre across with 1000 m bounds, since Unity culls on bounds and a culled object never
-     grabs. Still missing: the CLEAR quad, and the counter-scaling. The patcher needs no
-     `GrabPass` of its own, because a named grab writes a globally named texture and one
-     declaration serves the room.
+   - **A2 BUILT 2026-09-03, unexercised.** The socket writer. `yaps_atlas.cginc` holds the
+     protocol as `#define`s, not material properties: every avatar shares these numbers, and a
+     property is a slider somebody can drag, which does not read as absence but as a socket a few
+     centimetres from where it is. `YapsAtlasSocket.shader` is the two-pass writer, header count
+     and octant payload, at `Queue Overlay-100` so the grab contains it. `YapsAtlas.AddWriter`
+     mounts it under the socket as one quad per (level, home) with 1000 m bounds, since a culled
+     socket stops publishing. It goes on through `YapsSocketBuilder.Build`, which is the one place
+     both the converter and the hand-built path go through.
+   - **A3 grabber done early, clear quad still missing.** `YapsAtlas.AddGrab` mounts
+     `GrabPass { "_YAPS_Atlas" }` at `Queue Overlay` as one triangle a millimetre across. Still
+     missing: the CLEAR quad, without which an empty cell reads as the opaque screen and every
+     cell looks occupied, and the counter-scaling against import scale. The patcher needs no
+     `GrabPass` of its own: a named grab writes a globally named texture and one declaration
+     serves the room.
+
+     **Everything atlas is behind `YapsAtlas.Enabled`, which is `false`.** One switch, so the
+     writers and the grab cannot disagree. C3 is where it flips. Until then nothing in a
+     conversion touches any of it, and the spike rig is the only thing exercising the shipped
+     shaders: its grabber loads `YAPS/Atlas Grab` rather than its own.
    - **A4** port the chain resolver into `yaps_resolve.cginc` behind a material flag, default off.
    - **A5** patch a real Poiyomi with it, through the converter.
 
@@ -111,11 +120,6 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Phase D, retire the contact channel: D1 prove the texture-parser route to the animator. D2 move
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
-
-   **The grabber is spawned only when a plug material declares `_YAPS_AtlasRead`**, which nothing
-   does until A4. A grab is a full screen copy per camera and mirrors get their own, so it must
-   not go on against the chance it gets used. The spike rig is what exercises it meanwhile, and
-   its grabber now loads the SHIPPED shader so the two cannot drift.
 
    **Wrong-in-waiting, for phase C or D:** the report string that removes VRChat's own screen
    atlas says ChilloutVR "publishes player positions to shaders directly, so none of that

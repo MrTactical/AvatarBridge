@@ -58,11 +58,9 @@ namespace AvatarBridge
             WireSocketToggles(ctx, socketRoots);
             YapsSocketRebuilder.Lighthouse(ctx);
 
-            // A grab is a full screen copy per camera, and mirrors get their
-            // own, so it goes on only when something reads it. Nothing does
-            // until the patched plug shader declares _YAPS_AtlasRead.
-            if (ctx.YapsPlugs.Any(p => p.Material != null && p.Material.HasProperty("_YAPS_AtlasRead"))
-                && YapsAtlasGrab.Add(ctx.Target.transform, ctx.OutputDir + "/YAPS") != null)
+            // One switch for the whole atlas, so the writers and the grab
+            // cannot disagree about whether it is on.
+            if (YapsAtlas.Enabled && YapsAtlas.AddGrab(ctx.Target.transform) != null)
             {
                 ctx.Report.Converted(Category, "Added the screen grab plugs read each other through",
                     "A plug has to know where a socket is, and the socket usually belongs to " +
