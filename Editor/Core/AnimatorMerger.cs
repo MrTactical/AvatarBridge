@@ -56,11 +56,18 @@ namespace AvatarBridge
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
-            "IsAnimatorEnabled"
+            "IsAnimatorEnabled",
+            // Seated is deliberately NOT fed, even though ChilloutVR knows
+            // perfectly well when you are sitting. Feeding it re-arms the
+            // VRChat Base layer's seated state, which outranks CVR's own and
+            // takes the body. See CvrParameterNames for the whole story. The
+            // avatar's real sit pose reaches CVR through the grafter instead.
+            "Seated"
         };
 
         public static void Run(BridgeContext ctx)
         {
+            CheckNamingTables(ctx);
             var vrcControllers = GetSelectedVrcControllers(ctx);
             ReportSkippedLayers(ctx);
             // Only a gesture layer that actually claims a hand slot costs
@@ -861,6 +868,24 @@ namespace AvatarBridge
                 }
             }
             return result;
+        }
+
+        // The naming tables are compile-time constants, so anything this
+        // finds is OUR bug and not the avatar's. It is reported anyway rather
+        // than only logged: a user whose conversion is wrong because of it
+        // deserves the reason in the same file as everything else.
+        //
+        // It costs one pass over two dictionaries and will normally find
+        // nothing. It is here because the last thing it would have caught ran
+        // for months and surfaced as an avatar pedalling in a chair.
+        static void CheckNamingTables(BridgeContext ctx)
+        {
+            foreach (string problem in CvrParameterNames.Contradictions(KnownUnsupportedVrcParameters))
+            {
+                Debug.LogError("[AvatarBridge] parameter naming tables disagree: " + problem);
+                ctx.Report.Warning(Category, "Parameter naming tables disagree", problem
+                    + " This is a bug in AvatarBridge rather than in your avatar; please report it.");
+            }
         }
 
         static AnimatorController LoadBaseController(BridgeContext ctx, bool convertingGestureLayer)
