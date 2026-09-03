@@ -507,9 +507,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // paint in. What every host shader does share is where the vertices go,
     // so the answer is given as LENGTH:
     //
-    //     a third      nobody resolved it
-    //     two thirds   the contact channel
-    //     full         a marker light
+    //     a quarter    nobody resolved it
+    //     a half       the contact channel
+    //     three parts  a marker light
+    //     full         the screen atlas
     //
     // Straight, unbent and unengaged, so the length is the only thing
     // moving and a change of hands is unmissable. Placed before the enabled
@@ -520,7 +521,9 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         float shown;
         if (_YAPS_Debug < 1.5)
         {
-            shown = socket.tier < 0.5 ? 0.33 : (socket.tier < 1.5 ? 0.66 : 1.0);
+            shown = socket.tier < 0.5 ? 0.25
+                  : (socket.tier < 1.5 ? 0.50
+                  : (socket.tier < 2.5 ? 0.75 : 1.0));
         }
         else if (_YAPS_Debug >= 3.5)
         {

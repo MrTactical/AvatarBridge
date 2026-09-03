@@ -1058,8 +1058,8 @@ alone.
   work, or test it in game.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
   debug view (on the material's YAPS panel) straightens the plug and puts the answer in its
-  LENGTH — a third means nothing found the socket, two thirds the contact channel, full a marker
-  light. Length rather than colour because a patched shader only lets the toolkit edit the vertex
+  LENGTH — a quarter means nothing found the socket, a half the contact channel, three quarters
+  a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
   bends toward the wrong thing, or toward nothing. Turn it back off before you upload; the
   toolkit warns you if you forget.
@@ -2131,9 +2131,9 @@ Normal. That's AvatarBridge registering its scripting defines.
 Work down the list; the first that fits is usually it.
 
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
-  by*. It straightens the plug and puts the answer in its LENGTH: a third means nothing found the
-  socket, two thirds the contact channel did, full a marker light did. A third with a socket right
-  there means neither transport reached the plug.
+  by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
+  the socket, a half the contact channel did, three quarters a marker light did, full the screen
+  atlas did. A quarter with a socket right there means no transport reached the plug.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so

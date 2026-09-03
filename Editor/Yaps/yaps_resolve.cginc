@@ -48,6 +48,7 @@
 #define YAPS_RESOLVE_INCLUDED
 
 #include "yaps_props.cginc"
+#include "yaps_atlas.cginc"
 
 // CVR publishes these for every player in the instance, on every client.
 // Declared at the client's capacity: Unity locks an array's size at first
@@ -382,6 +383,195 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 
 // --- the resolution --------------------------------------------------
 
+
+// --- the screen atlas ------------------------------------------------
+//
+// A LIST, NOT A WINNER. The rest of this file picks the nearest socket and
+// throws the neighbourhood away, which makes a plug flip between two sockets
+// as whichever is momentarily closer to its ROOT changes, and lets a socket
+// BEHIND it beat one in front, because distance-to-root never asks which way
+// a plug points.
+//
+// The atlas hands back an ordered list instead, and the plug becomes a path
+// rather than an aim: each socket claims a range of arc length along the
+// shaft. A ring mid-shaft and a hole at the tip are then two entries, a
+// portal is two entries with a gap between their ranges, and a duplicate is
+// one range mapped twice. Only the list and the ranges are built here; what
+// walks them belongs to the deform.
+#define YAPS_CHAIN_MAX 4
+
+struct YapsChain
+{
+    float3 position[YAPS_CHAIN_MAX];
+    float3 forward[YAPS_CHAIN_MAX];
+    float  kind[YAPS_CHAIN_MAX];      // 0 ring, 1 hole
+    float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
+    int    count;
+    float  engaged;
+};
+
+// Reads the neighbourhood of the shaft's MIDPOINT rather than its root, so a
+// radius-1 read covers the whole plug instead of only the half nearest the
+// body. One line, no extra taps.
+YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
+{
+    YapsChain chain;
+    chain.count = 0;
+    chain.engaged = 0;
+    [unroll] for (int z = 0; z < YAPS_CHAIN_MAX; z++)
+    {
+        chain.position[z] = 0;
+        chain.forward[z] = float3(0, 0, 1);
+        chain.kind[z] = 0;
+        chain.arc[z] = 0;
+    }
+    chain.arc[YAPS_CHAIN_MAX] = 0;
+
+    float len = max(worldLength, 1e-4);
+
+    // WHICH LEVEL. The atlas carries several cell sizes at once, each four
+    // times the last, because one cell size cannot serve a twenty centimetre
+    // plug and a twenty metre one. Coverage wants a cell of about L/2r, so
+    // read only the level nearest that. Costs no extra taps: the socket
+    // published to every level and this reads one.
+    float wantCell = len / max(2.0 * YAPS_ATLAS_RADIUS, 1.0);
+    int lvl = clamp(int(round(log2(wantCell / YAPS_ATLAS_CELL) * 0.5)), 0, YAPS_ATLAS_LEVELS - 1);
+    float size = max(YAPS_ATLAS_CELL * pow(4.0, lvl), 1e-6);
+    int total = YAPS_ATLAS_GRID * YAPS_ATLAS_GRID;
+
+    // Where engagement reaches zero, and the inclusion test for the list: a
+    // socket the plug cannot reach is not part of the path it takes. It is
+    // also what rejects a hash collision from across the world, which decodes
+    // to a plausible payload in an implausible place.
+    float far = len * YAPS_ATLAS_REACH * 1.6;
+
+    float3 sockP[YAPS_CHAIN_MAX];
+    float3 sockF[YAPS_CHAIN_MAX];
+    float  sockD[YAPS_CHAIN_MAX];
+    float  sockK[YAPS_CHAIN_MAX];
+    [unroll] for (int i = 0; i < YAPS_CHAIN_MAX; i++)
+    {
+        sockP[i] = 0; sockF[i] = float3(0, 0, 1); sockD[i] = 1e9; sockK[i] = -1;
+    }
+
+    int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
+
+    [loop] for (int dx = -YAPS_ATLAS_RADIUS; dx <= YAPS_ATLAS_RADIUS; dx++)
+    [loop] for (int dy = -YAPS_ATLAS_RADIUS; dy <= YAPS_ATLAS_RADIUS; dy++)
+    [loop] for (int dz = -YAPS_ATLAS_RADIUS; dz <= YAPS_ATLAS_RADIUS; dz++)
+    {
+        int3 c = mine + int3(dx, dy, dz);
+        float tagWant = YapsAtlasTag(c);
+
+        int idx = YapsAtlasHash(c) % total;
+        if (idx < 0) idx += total;
+        int step = YapsAtlasHash2(c) % max(total - 1, 1);
+        if (step < 0) step += max(total - 1, 1);
+        int idxB = (idx + step + 1) % total;
+
+        [loop] for (int home = 0; home < 2; home++)
+        {
+            int use = home == 0 ? idx : idxB;
+            int cellX, fromTop;
+            YapsAtlasCellPixels(use, lvl, cellX, fromTop);
+            int cellY = YapsAtlasRow(fromTop);
+
+            // ONE tap for the header, whose alpha COUNTS how many sockets sit
+            // in this slot. Nearly every cell holds nothing and that case
+            // costs exactly this, which is what makes eight buckets
+            // affordable. A count rather than a bitmask of live octants: a
+            // mask is built by adding bits and 1+1 is 2, so two sockets in
+            // one octant unset the octant that exists and set one that does
+            // not.
+            int held = int(round(YAPS_ATLAS_LOAD(cellX, cellY).a * 255.0));
+            if (held == 0) break;   // home 1 is always written, so home 2
+                                    // cannot hold what home 1 does not
+            bool got1 = false;
+            [loop] for (int sub = 0; sub < 8; sub++)
+            {
+                int px = cellX + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX;
+                float4 got = YAPS_ATLAS_LOAD(px, cellY);
+                if (got.a < 0.5) continue;
+                // The header is a SUM across every cell sharing this slot, so
+                // it can advertise octants belonging to somebody else. The
+                // tag is what settles it, and the protocol version rides in
+                // it, so a socket from another version fails here.
+                if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
+                got1 = true;
+
+                float3 at = (float3(c) + got.rgb) * size;
+                float d = distance(at, root);
+
+                float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
+                float3 fwd = normalize(f4.rgb * 2 - 1);
+                float kind = round(f4.a * 16.0) - 1;
+
+                // A HOLE has a front and a back, and a plug does not enter
+                // one through the back. A RING is a loop with no wrong side,
+                // so it is never rejected here and is turned to meet its
+                // approach below.
+                if (kind > 0.5 && dot(fwd, at - root) > 0) continue;
+                if (d > far) continue;
+
+                // Insertion sort, nearest first. Sorted here rather than
+                // later because THE ORDER IS THE PATH: socket one is the one
+                // the shaft meets first.
+                [unroll] for (int k = 0; k < YAPS_CHAIN_MAX; k++)
+                {
+                    if (d >= sockD[k]) continue;
+                    [unroll] for (int m = YAPS_CHAIN_MAX - 1; m > k; m--)
+                    {
+                        sockD[m] = sockD[m - 1]; sockP[m] = sockP[m - 1];
+                        sockF[m] = sockF[m - 1]; sockK[m] = sockK[m - 1];
+                    }
+                    sockD[k] = d; sockP[k] = at; sockF[k] = fwd; sockK[k] = kind;
+                    break;
+                }
+            }
+            // Found in this home, so the other is not this cell's. Only a
+            // cell whose first home was taken by somebody else falls through.
+            if (got1) break;
+        }
+    }
+
+    int count = 0;
+    [unroll] for (int i2 = 0; i2 < YAPS_CHAIN_MAX; i2++)
+        if (sockK[i2] > -0.5) count++;
+    chain.count = count;
+    if (count == 0)
+    {
+        return chain;
+    }
+
+    // Chords rather than true cubic arc length, the same approximation the
+    // single-socket path makes.
+    chain.arc[0] = 0;
+    float3 prev = root;
+    [unroll] for (int i3 = 0; i3 < YAPS_CHAIN_MAX; i3++)
+    {
+        if (i3 >= count) { chain.arc[i3 + 1] = chain.arc[i3] + 1e6; continue; }
+        float3 seg = sockP[i3] - prev;
+        float d3 = length(seg);
+        // A RING is turned to meet its approach. It is a loop with no wrong
+        // side, so which of the two faces the author happened to point it is
+        // not information, and trusting it makes the path arrive travelling
+        // backwards and tie itself in a hairpin. A HOLE keeps its sign: it
+        // has a front, the author chose which, and a plug arriving at the
+        // back was dropped from the list already.
+        if (sockK[i3] < 0.5 && d3 > 1e-5 && dot(sockF[i3], seg) > 0)
+            sockF[i3] = -sockF[i3];
+        chain.arc[i3 + 1] = chain.arc[i3] + d3;
+        prev = sockP[i3];
+
+        chain.position[i3] = sockP[i3];
+        chain.forward[i3] = sockF[i3];
+        chain.kind[i3] = sockK[i3];
+    }
+
+    chain.engaged = 1 - smoothstep(len * YAPS_ATLAS_REACH, far, sockD[0]);
+    return chain;
+}
+
 YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugUp, float worldLength)
 {
     YapsSocket socket;
@@ -702,6 +892,30 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     if (!found)
     {
         socket.engaged = 0;
+    }
+
+    // THE ATLAS, on top of both, and off by default.
+    //
+    // It answers where neither of the others can: a socket on somebody
+    // else's avatar, with no contact receiver between them and no light
+    // slot spent. Where it answers at all it is also the better answer,
+    // because it carries the socket's own facing and kind rather than
+    // deriving them, so it takes the result outright rather than blending.
+    //
+    // Only the FIRST link is handed back here. The rest of the chain exists
+    // and is ordered, but what walks it is the deform's job and the deform
+    // still bends toward one socket.
+    if (_YAPS_UseAtlas > 0.5)
+    {
+        YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
+        if (chain.count > 0)
+        {
+            socket.position = chain.position[0];
+            socket.forward = chain.forward[0];
+            socket.isHole = chain.kind[0];
+            socket.engaged = chain.engaged;
+            socket.tier = 3;
+        }
     }
 
     return socket;

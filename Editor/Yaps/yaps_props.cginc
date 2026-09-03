@@ -110,6 +110,12 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // exactly that reason — so the view cannot paint a colour and says what
 // it knows in the one language every host shader shares: the plug's
 // length. See YapsDeform.
+// The screen atlas, off by default. It is a THIRD transport beside the
+// channel and the lights, not a replacement for either yet, and a plug on a
+// converted avatar has no way to know whether anyone else in the room
+// publishes to it.
+float _YAPS_UseAtlas;
+
 float _YAPS_Debug;
 
 float _YAPS_SelfTag;

@@ -117,7 +117,17 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    same rect and would mask a broken shipped one, and a spike socket rides a hand, which is the
    easiest thing to bring near the plug, so a bend could not be attributed to either.
 
-   - **A4** port the chain resolver into `yaps_resolve.cginc` behind a material flag, default off.
+   - **A4 BUILT 2026-09-03, untested.** `YapsResolveChain` in `yaps_resolve.cginc`: the ordered
+     list, the octant buckets, the level pick, the tag check and the arc-length ranges, all ported
+     from the spike. Behind `_YAPS_UseAtlas`, default 0, set by the converter from
+     `YapsAtlas.Enabled`.
+
+     **Only the FIRST link reaches the deform.** `YapsResolveSocket` takes the chain's socket 0 as
+     tier 3 and the deform still bends toward one socket. The chain and its ranges exist and are
+     correct; walking them is deform work and is not A4. Tier 3 needed a fourth length in the
+     "Resolved by" view, since it would otherwise read identically to a marker light, which is the
+     exact confusion that view exists to prevent: quarter nobody, half channel, three quarters
+     light, full atlas.
    - **A5** patch a real Poiyomi with it, through the converter.
 
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.

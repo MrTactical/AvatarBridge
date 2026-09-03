@@ -82,6 +82,52 @@ void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
     cellPy = YAPS_ATLAS_ORIGIN + (level * rowsPerLevel + gy) * YAPS_ATLAS_SLOTPX;
 }
 
+
+// --- reading ---------------------------------------------------------
+//
+// .Load, not a filtered sample. A cell is one pixel and any filtering
+// blends it with its neighbours, which is exactly the failure the early
+// spikes measured. A point read at integer coordinates is the only correct
+// primitive here.
+//
+// Under single-pass instanced the grab is a texture ARRAY. The patch is
+// written in clip space ignoring the eye, so both slices carry identical
+// content and slice 0 is always right.
+#if defined(UNITY_STEREO_INSTANCING_ENABLED)
+    Texture2DArray _YAPS_Atlas;
+    #define YAPS_ATLAS_LOAD(px, py) _YAPS_Atlas.Load(int4(px, py, 0, 0))
+#else
+    Texture2D _YAPS_Atlas;
+    #define YAPS_ATLAS_LOAD(px, py) _YAPS_Atlas.Load(int3(px, py, 0))
+#endif
+float4 _YAPS_Atlas_TexelSize;
+
+// Row order is a COMPILE-TIME platform fact, NOT the runtime sign of
+// _TexelSize.y. That sign is the right signal for a UV sample and the wrong
+// one here, which cost a session to find: with it, every cell read the
+// opaque screen, all of them reported occupied, and the plug locked onto
+// whichever piece of floor decoded nearest.
+//
+// The writer places its patch in pixels from the TOP of the render target
+// and .Load indexes memory rows directly, so the only question is which end
+// of memory the top is.
+int YapsAtlasRow(int fromTop)
+{
+#if UNITY_UV_STARTS_AT_TOP
+    return fromTop;
+#else
+    return int(_YAPS_Atlas_TexelSize.w) - 1 - fromTop;
+#endif
+}
+
+// How many cells out to read, and how far a socket may be and still count.
+// The radius is what actually caps how many sockets a plug can thread:
+// cells one step either way along the shaft is three cells, so three
+// sockets, and no list length changes that. Two would cost 125 reads
+// against 27.
+#define YAPS_ATLAS_RADIUS 1
+#define YAPS_ATLAS_REACH  1.6
+
 // The rect the atlas occupies, which the clear has to cover exactly.
 int YapsAtlasWidthPx()
 {

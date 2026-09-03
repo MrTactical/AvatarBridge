@@ -51,6 +51,9 @@ namespace AvatarBridge
             foreach (var plug in ctx.YapsPlugs)
             {
                 plug.Material.SetFloat("_YAPS_SelfTag", selfFlag);
+                // The atlas is a material flag so a plug can be built
+                // without it, and one switch decides for the whole system.
+                plug.Material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
             }
 
             ConvertSockets(ctx, socketRoots);
