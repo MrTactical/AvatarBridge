@@ -117,7 +117,8 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    same rect and would mask a broken shipped one, and a spike socket rides a hand, which is the
    easiest thing to bring near the plug, so a bend could not be attributed to either.
 
-   - **A4 BUILT 2026-09-03, untested.** `YapsResolveChain` in `yaps_resolve.cginc`: the ordered
+   - **A4 PASSES 2026-09-03.** A converted plug resolved a converted socket from the atlas in
+     Play, shipped code throughout. See docs/YAPS5.md. `YapsResolveChain` in `yaps_resolve.cginc`: the ordered
      list, the octant buckets, the level pick, the tag check and the arc-length ranges, all ported
      from the spike. Behind `_YAPS_UseAtlas`, default 0, set by the converter from
      `YapsAtlas.Enabled`.

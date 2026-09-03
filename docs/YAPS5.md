@@ -807,4 +807,29 @@ hands, which is the easiest thing in the scene to bring near a plug, so a bend c
 attributed to either publisher. One reader and everything else shipped is the only arrangement
 where a pass means what it looks like it means.
 
+Editor Play only. In game is a separate claim and has not been made.
+
+## A4 passes, 2026-09-03: the shipped plug resolves
+
+A CONVERTED plug bent toward a converted socket with no spike shader anywhere in the scene. That
+is the whole path in shipped code: the writer under the socket, the clear and the grab on the
+root, the reader inlined into a patched shader, tier 3 taken over the marker light that was also
+in range.
+
+Three compile failures came first and none of them were visible. The patcher inlines a
+hand-written list of includes and strips the rest, so yaps_atlas.cginc was removed and never
+added back; then twice on the rule that a small local array only stays in registers while every
+index is a compile-time constant. A failed patch is CAUGHT and the plug converts as an ordinary
+mesh, so the avatar looked perfect and did not bend. Dev/Probes/Hlsl compiles the same include
+set with fxc in about a second and would have found all three without a reconvert.
+
+The Atlas taps view was built during this, and earned itself immediately: it separated "nothing
+published" from "published and thrown away", which is what turned the last failure from a guess
+into a reading.
+
+A ring resolved and a hole did not, which is the hole-back test working rather than failing. A
+ring is a loop with no wrong side and is never rejected on facing; a hole has a front, and one
+whose arrow points away from the plug is a hole the plug is arriving at the back of. The holes
+on that avatar face outward and the plug grows from the crotch, so they are behind it.
+
 Editor Play only. In game is a separate claim and has not been made.
