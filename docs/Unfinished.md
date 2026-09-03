@@ -88,7 +88,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **A1 DONE.** Freeze the protocol and version it. Deviation worth keeping: the version is not
      a pixel, it is mixed into the `CellTag` hash, so a mismatch is dropped by the check that
      already runs. No extra pixel, read or branch. Grid 64 settled, seven cameras.
-   - **A2 BUILT 2026-09-03, unexercised.** The socket writer. `yaps_atlas.cginc` holds the
+   - **A2 DONE 2026-09-03, proven in Play.** The socket writer. `yaps_atlas.cginc` holds the
      protocol as `#define`s, not material properties: every avatar shares these numbers, and a
      property is a slider somebody can drag, which does not read as absence but as a socket a few
      centimetres from where it is. `YapsAtlasSocket.shader` is the two-pass writer, header count
@@ -96,7 +96,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      mounts it under the socket as one quad per (level, home) with 1000 m bounds, since a culled
      socket stops publishing. It goes on through `YapsSocketBuilder.Build`, which is the one place
      both the converter and the hand-built path go through.
-   - **A3 BUILT 2026-09-03.** `YapsAtlas.AddClear` and `AddGrab` put one of each on the avatar
+   - **A3 DONE 2026-09-03, proven in Play.** `YapsAtlas.AddClear` and `AddGrab` put one of each on the avatar
      root. Clear at `Queue Overlay-200`, writers at `Overlay-100`, grab at `Overlay`: ordering
      comes from the QUEUE, not distance, which matters because the three live on different
      avatars and Unity sorts within a queue by distance, which nobody controls. Without the clear
@@ -106,6 +106,16 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      one of these places its pixels from `_ScreenParams` and ignores its own transform, so import
      scale cannot reach any of them. The wear rig needed it because its quads were sized in world
      units.
+
+   **How A2 and A3 were proven, both at once.** A converted avatar, the spike plug and nothing
+   else: the wear rig detects the shipped clear and grab on the root and builds a READER only, no
+   spike sockets and no spike clear. So every publisher, the clear and the grab were shipped code
+   and the only spike part was the thing doing the reading. The plug bent to the avatar's own
+   converted socket. Editor Play, not yet in game.
+
+   Building the spike's own beside them would have proved nothing: the spike clear covers the
+   same rect and would mask a broken shipped one, and a spike socket rides a hand, which is the
+   easiest thing to bring near the plug, so a bend could not be attributed to either.
 
    - **A4** port the chain resolver into `yaps_resolve.cginc` behind a material flag, default off.
    - **A5** patch a real Poiyomi with it, through the converter.

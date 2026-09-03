@@ -793,3 +793,18 @@ writes colour as well as alpha, because the payload IS colour, so an occupied ce
 few pixels on screen. It shows as a small coloured dot near the corner. The count follows
 socket count rather than grid, so it does not grow with the atlas, but it is not nothing and
 it is the kind of thing a user reports as a rendering bug.
+
+### A2 and A3 pass in Play, 2026-09-03: the shipped path publishes
+
+A converted avatar's own socket bent a plug, with nothing of the spike in the scene except the
+plug itself. The shipped writer wrote it, the shipped clear made the cell readable, the shipped
+grab carried it.
+
+The test only says that because of what was NOT in the scene. The wear rig now detects the
+shipped clear and grab on the root and builds a reader alone. Its own clear covers the same 552
+by 520 rect and would have masked a broken shipped one completely; its own sockets ride the
+hands, which is the easiest thing in the scene to bring near a plug, so a bend could have been
+attributed to either publisher. One reader and everything else shipped is the only arrangement
+where a pass means what it looks like it means.
+
+Editor Play only. In game is a separate claim and has not been made.
