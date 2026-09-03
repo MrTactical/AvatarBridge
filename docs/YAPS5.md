@@ -845,3 +845,20 @@ Regenerating the prefabs (Tools, YAPS, Create universal socket prefabs) is what 
 into `YAPS Hole` and `YAPS Ring`; `Build` is what completes the avatar. The plug prop prefab is
 separate, and it bakes and patches its shader when it is created, so it needs recreating to pick
 up the resolver.
+
+### The hole-back test was a contradiction, 2026-09-03
+
+A loose hole in the scene read *two thirds* on Atlas taps: its payload reached the plug and
+matched the cell tag, and then the candidate filter threw it away. The rejector was the facing
+test, `kind > 0.5 && dot(fwd, at - root) > 0`, carried over from the spike.
+
+It cannot stand beside the deform. `yaps_deform.cginc` flips the socket axis to meet the
+approach, and says why in a comment: a converter inherits whatever convention the source avatar
+used and cannot dictate one. The resolver was rejecting on exactly the thing the deform is
+written not to care about, and on the convention the toolkit documents ("point its +Z the way a
+plug should enter") it rejected the correctly aimed holes and kept the backwards ones.
+
+Removed. Range is the only inclusion test now, which is also what rejects a hash collision from
+across the world. If a hole still reads two thirds, the rejector is `d > far`, which is
+`worldLength * 2.56`, and that is now unambiguous.
+

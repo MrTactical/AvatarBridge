@@ -513,11 +513,14 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 float3 fwd = normalize(f4.rgb * 2 - 1);
                 float kind = round(f4.a * 16.0) - 1;
 
-                // A HOLE has a front and a back, and a plug does not enter
-                // one through the back. A RING is a loop with no wrong side,
-                // so it is never rejected here and is turned to meet its
-                // approach below.
-                if (kind > 0.5 && dot(fwd, at - root) > 0) continue;
+                // No facing test. There used to be one here, rejecting a
+                // hole whose forward pointed the way the plug was going, and
+                // it was wrong twice over: the deform already flips the
+                // socket axis to meet the approach precisely because a
+                // converter inherits whatever convention the original avatar
+                // used, and the two halves disagreeing meant a correctly
+                // aimed hole was thrown away before the deform ever saw it.
+                // Range is what says a socket is not this plug's business.
                 if (d > far) continue;
 
                 // Insertion sort, nearest first. Sorted here rather than
