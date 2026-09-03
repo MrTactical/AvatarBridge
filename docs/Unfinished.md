@@ -54,6 +54,21 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    baked for dedicated meshes and its own test pass.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4) — blit or RT camera into a texture parser gives
    per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
+5. **A shipped plug's colour changes in VR on Poiyomi 9, and does not on Poiyomi 8.** A user
+   report, so it outranks everything else here. The shape is right and only the colour moves.
+   Nothing in the shipped YAPS reads the eye, the camera or the screen; it rewrites position,
+   normal and tangent in the vertex stage and stops. What Poi 9 adds that Poi 8 does not have in
+   the same shader is two more `ForwardBase` passes — an `EarlyZ` depth prepass (`ZWrite On`,
+   `ColorMask 0`, drawn first) and an outline pass — where Poi 8 ships both as separate shader
+   files you opt into. Both carry a vertex program the patcher patches. A prepass whose deform
+   disagrees with the base pass's by any amount depth-tests the plug against its own undeformed
+   silhouette, which reads as colour going wrong while the shape stays right. **Unproven**: ask
+   the user to turn Early Z and the outline off and reupload, or reproduce it locally against the
+   Poiyomi 9.3 in `Fixing The Flexing` with MockHMD.
+6. **The atlas is proven in game and nothing of it is in the shipped shaders.** Pass 1 passed all
+   four steps 2026-09-03 (`YAPS5.md`). `yaps_resolve.cginc` still resolves ONE socket from lights
+   and contacts. How the three coexist, and what a pair sees when only one side has the atlas, is
+   the design work and is unanswered.
 
 ## Loose ends, small but real
 

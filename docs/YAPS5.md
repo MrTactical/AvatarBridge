@@ -439,7 +439,8 @@ system the plug's own shader carries the GrabPass.
 Every question that could have killed it has an answer:
 
     GrabPass survives a CVR upload, cross-avatar, in mirrors   proven in game
-    stereo, single-pass instanced                              solved by construction
+    the WHOLE atlas: hash, buckets, levels, two-pass socket    proven in game 2026-09-03
+    stereo, single-pass instanced                              proven in game, VR, both eyes
     a moving world position                                    0.2 mm
     rendezvous with no negotiation                             works, spike 3
     occupancy                                                  clear pass, ColorMask A
@@ -618,11 +619,11 @@ two correctly reported past the tip rather than lost.
   read per socket FOUND rather than per cell searched and deleted the separate facing pass.
 - Portal and duplicate are ranges on top of the list, unbuilt.
 - 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
-- **NONE OF IT HAS BEEN IN GAME.** Spike 1 proved a named GrabPass survives a ChilloutVR
-  upload and returns what another avatar rendered. Everything since — the cell hash, the tag,
-  the two homes, the octant buckets, the additive alpha header, the level pyramid, the whole
-  two-pass socket shader — has only ever run in the editor. That is the biggest single
-  unknown left, and it is cheap to close.
+- ~~NONE OF IT HAS BEEN IN GAME.~~ **CLOSED 2026-09-03, all four steps of pass 1.** Spike 1
+  had proved only that a named GrabPass survives a ChilloutVR upload and returns what another
+  avatar rendered. Everything since — the cell hash, the tag, the two homes, the octant
+  buckets, the additive alpha header, the level pyramid, the whole two-pass socket shader —
+  had only ever run in the editor. It all runs in game. See the pass 1 record below.
 - **Nothing is in the shipped shaders.** `yaps_resolve.cginc` still resolves ONE socket from
   lights and contacts. How the atlas coexists with those two, and what happens when only one
   side of a pair has it, is unanswered and is the real design work.
@@ -666,6 +667,34 @@ Pass 1, in order, each step only after the one before holds:
    spike 1's in-game proof covered VR was not recorded.
 4. A mirror. The mirror camera runs its own grab at its own queue order, so the mirrored
    plug should bend on its own.
+
+### Pass 1 PASSED, all four steps, 2026-09-03
+
+Worn rig on a humanoid avatar, uploaded through the CCK, tested by Joe.
+
+    editor Play, worn        bends to a hand brought near it
+    in game, flat screen     bends, engaged colour
+    in game, VR              bends, both eyes agree, and CROSS-AVATAR
+    in game, a mirror        bends in the reflection, on the mirror's own grab
+
+**The cross-avatar result is the one that was not on the list.** A socket riding somebody
+else's hands published into the shared grab and this plug read it, which is the property the
+whole transport exists for and the one no editor test can show. Spike 1 proved a value
+survives the round trip; this proves the addressed, hashed, bucketed, levelled version of it
+does, between two people, in a public instance.
+
+**Stereo needed nothing.** The reasoning in the plug shader's header — the patch is written
+in clip space ignoring the eye, so both slices of the instanced array carry identical content
+and slice 0 is always right — held without a line changing. Same for the row order: the
+platform default was correct in game and `_ForceRow` was never needed.
+
+**The mirror settles the per-camera question**, which is the one that killed marker lights as
+a primary transport. A deform runs per camera, so a transport whose answer depends on which
+camera is asking bends the mesh differently in a mirror than in the view. The atlas does not:
+the mirror runs its own grab, decodes the same cells, and arrives at the same shape.
+
+What that leaves is not a research question any more. Every transport property the atlas
+needed is measured, in game, on real hardware.
 
 Synced to the Dracaionan project (`Assets/Editor` + `Assets/YapsSpike`) 2026-09-01, along
 with the eight older spike files the project still had pre-collection copies of.
