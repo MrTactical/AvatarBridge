@@ -753,3 +753,43 @@ needed is measured, in game, on real hardware.
 
 Synced to the Dracaionan project (`Assets/Editor` + `Assets/YapsSpike`) 2026-09-01, along
 with the eight older spike files the project still had pre-collection copies of.
+
+### Grid 64 passed everywhere, 2026-09-03: the last open number closes
+
+The blocker in A1 was a render target width. It was real, and it bit before the mirror ever
+got a chance to: at grid 64 the editor showed a bend dropping out every few centimetres of
+idle sway. That reads as a distance threshold and is not one. A clipped slot does not come
+back empty, it comes back as whatever opaque pixel the screen had there, so a socket whose
+cell hashes past the right edge is discarded by the tag and simply vanishes until it moves
+cell. Dragging the Game view wider cured it, which is what identified it.
+
+**The fix separates two numbers that were one.** Cell count sets correctness, since it is
+what clash probability is computed from. Column count sets fit, since it is what decides how
+wide the rect is. They were equal out of habit, so raising the grid to cut clashes silently
+pushed the atlas off the side of the screen. `_Cols` is now derived once in C# as the divisor
+of the grid closest to square and pushed to both shaders. Grid 64 lays out as 32 x 128 cells,
+552 x 520 pixels, instead of a 1088 x 256 strip. The clash table is untouched: 4096 cells
+before, 4096 after.
+
+Protocol version 2, since the layout moved. An old socket and a new plug now refuse each
+other through the tag rather than decoding each other's rows.
+
+**Every camera passes at grid 64**, tested by wearing it:
+
+    editor Play                     bends
+    desktop, first person           bends
+    desktop, third person           bends
+    desktop mirror                  bends
+    VR                              bends, both eyes
+    VR mirror                       bends
+    personal mirror                 bends
+
+That is the full set, including the two cameras that were only assumed before: third person
+renders from a camera the wearer does not control, and a personal mirror is a second mirror
+render on top of the world one. Grid 64 is settled, and with it the last number A1 left open.
+
+**One cosmetic item is now visible and belongs on the shipping list.** The payload pass
+writes colour as well as alpha, because the payload IS colour, so an occupied cell paints a
+few pixels on screen. It shows as a small coloured dot near the corner. The count follows
+socket count rather than grid, so it does not grow with the atlas, but it is not nothing and
+it is the kind of thing a user reports as a rendering bug.
