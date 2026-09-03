@@ -82,6 +82,18 @@ void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
     cellPy = YAPS_ATLAS_ORIGIN + (level * rowsPerLevel + gy) * YAPS_ATLAS_SLOTPX;
 }
 
+// The rect the atlas occupies, which the clear has to cover exactly.
+int YapsAtlasWidthPx()
+{
+    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_COLS * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
+}
+
+int YapsAtlasHeightPx()
+{
+    int rowsPerLevel = max(YAPS_ATLAS_GRID * YAPS_ATLAS_GRID / YAPS_ATLAS_COLS, 1);
+    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * rowsPerLevel * YAPS_ATLAS_SLOTPX;
+}
+
 // Pixels to clip space. Rows count down from the top, which is why y flips.
 float2 YapsAtlasToClip(float2 atPx)
 {

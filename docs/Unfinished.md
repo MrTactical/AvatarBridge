@@ -96,17 +96,17 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      mounts it under the socket as one quad per (level, home) with 1000 m bounds, since a culled
      socket stops publishing. It goes on through `YapsSocketBuilder.Build`, which is the one place
      both the converter and the hand-built path go through.
-   - **A3 grabber done early, clear quad still missing.** `YapsAtlas.AddGrab` mounts
-     `GrabPass { "_YAPS_Atlas" }` at `Queue Overlay` as one triangle a millimetre across. Still
-     missing: the CLEAR quad, without which an empty cell reads as the opaque screen and every
-     cell looks occupied, and the counter-scaling against import scale. The patcher needs no
-     `GrabPass` of its own: a named grab writes a globally named texture and one declaration
-     serves the room.
+   - **A3 BUILT 2026-09-03.** `YapsAtlas.AddClear` and `AddGrab` put one of each on the avatar
+     root. Clear at `Queue Overlay-200`, writers at `Overlay-100`, grab at `Overlay`: ordering
+     comes from the QUEUE, not distance, which matters because the three live on different
+     avatars and Unity sorts within a queue by distance, which nobody controls. Without the clear
+     an empty cell reads as the opaque screen and every cell looks occupied.
 
-     **Everything atlas is behind `YapsAtlas.Enabled`, which is `false`.** One switch, so the
-     writers and the grab cannot disagree. C3 is where it flips. Until then nothing in a
-     conversion touches any of it, and the spike rig is the only thing exercising the shipped
-     shaders: its grabber loads `YAPS/Atlas Grab` rather than its own.
+     **Counter-scaling turned out not to be needed**, which the plan expected to be work. Every
+     one of these places its pixels from `_ScreenParams` and ignores its own transform, so import
+     scale cannot reach any of them. The wear rig needed it because its quads were sized in world
+     units.
+
    - **A4** port the chain resolver into `yaps_resolve.cginc` behind a material flag, default off.
    - **A5** patch a real Poiyomi with it, through the converter.
 

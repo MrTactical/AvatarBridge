@@ -30,6 +30,7 @@ namespace AvatarBridge
 
         const string SocketShader = "YAPS/Atlas Socket";
         const string GrabShader = "YAPS/Atlas Grab";
+        const string ClearShader = "YAPS/Atlas Clear";
 
         // Unity culls on renderer bounds and a culled object never draws. A
         // socket culled out of frame stops publishing, and the grab has to
@@ -79,6 +80,38 @@ namespace AvatarBridge
 
         public const string GrabName = "YAPS Atlas Grab";
 
+        // The clear, without which an empty cell reads as the opaque screen
+        // and every cell looks occupied. One per room is enough and a second
+        // is harmless: it paints alpha 0 over alpha 0.
+        //
+        // Placed in PIXELS from _ScreenParams like everything else in the
+        // atlas, so the object's transform is ignored and import scale cannot
+        // reach it. That is why neither this nor the grab is counter-scaled.
+        public static GameObject AddClear(Transform root)
+        {
+            var shader = Shader.Find(ClearShader);
+            if (root == null || shader == null)
+            {
+                return null;
+            }
+            var existing = root.Find(ClearName);
+            if (existing != null)
+            {
+                return existing.gameObject;
+            }
+
+            var host = new GameObject(ClearName);
+            host.transform.SetParent(root, false);
+            host.AddComponent<MeshFilter>().sharedMesh = UnitQuad();
+
+            var renderer = host.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = Made(Folder + "/YAPS Atlas Clear.mat", shader);
+            Quiet(renderer);
+            return host;
+        }
+
+        public const string ClearName = "YAPS Atlas Clear";
+
         static void Quiet(MeshRenderer renderer)
         {
             renderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -120,6 +153,29 @@ namespace AvatarBridge
             mesh.SetTriangles(tris, 0);
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
             return Save(mesh, path, have != null);
+        }
+
+        // One unit quad. The clear shader scales it to the atlas rect in
+        // clip space, so the mesh carries no size of its own.
+        static Mesh UnitQuad()
+        {
+            string path = Folder + "/YAPS Atlas Quad.asset";
+            var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (have != null)
+            {
+                return have;
+            }
+            var mesh = new Mesh { name = "YAPS Atlas Quad" };
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(-0.5f, 0.5f, 0f),
+                new Vector3(0.5f, 0.5f, 0f)
+            };
+            mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
+            return Save(mesh, path, false);
         }
 
         // One triangle a millimetre across. The grab pass writes no colour and

@@ -60,9 +60,10 @@ namespace AvatarBridge
 
             // One switch for the whole atlas, so the writers and the grab
             // cannot disagree about whether it is on.
-            if (YapsAtlas.Enabled && YapsAtlas.AddGrab(ctx.Target.transform) != null)
+            if (YapsAtlas.Enabled && YapsAtlas.AddClear(ctx.Target.transform) != null
+                && YapsAtlas.AddGrab(ctx.Target.transform) != null)
             {
-                ctx.Report.Converted(Category, "Added the screen grab plugs read each other through",
+                ctx.Report.Converted(Category, "Added the screen surface plugs read each other through",
                     "A plug has to know where a socket is, and the socket usually belongs to " +
                     "somebody else. This object lets the shader see what the rest of the room " +
                     "drew, which is how the position crosses without costing a light slot, a " +
