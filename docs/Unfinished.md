@@ -83,13 +83,17 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    **The chain, restated: atlas primary, DPS fallback, TPS and contacts dropped.** Phases past
    A1, none started:
 
-   - **A2** a grabber mesh, and the patcher needs no `GrabPass` at all. This looked like the gate
-     and is not one. A named `GrabPass` writes a globally named texture, so only ONE shader in
-     the room has to declare it; the spike plug declares none and samples `_YAPS_SpikeAtlas` by
-     name. So the converter adds a small quad carrying the grab at `Queue Overlay`, after the
-     sockets at `Overlay-100`, and the patcher only has to declare a sampler and insert resolve
-     code, which is what it already does. The plug draws at Geometry and therefore reads the
-     PREVIOUS frame's grab, about 11 ms at 90 Hz, and that is what already passed in game.
+   - **A2 BUILT 2026-09-03, unexercised.** `YapsAtlasGrab.shader` declares `GrabPass
+     { "_YAPS_Atlas" }` at `Queue Overlay`; `YapsAtlasGrab.cs` puts it on the avatar as one
+     triangle a millimetre across with 1000 m bounds, since Unity culls on bounds and a culled
+     object never grabs. The patcher needs no `GrabPass`: a named grab writes a globally named
+     texture, so ONE declaration serves the room and every plug just samples the name.
+
+     **It is spawned only when a plug material declares `_YAPS_AtlasRead`**, which nothing does
+     until A4. A grab is a full screen copy per camera and mirrors get their own, so it must not
+     go on against the chance it gets used. That also means nothing in the shipped path runs this
+     code yet: the spike rig is what exercises it, and its grabber now loads the SHIPPED shader
+     rather than `YAPS/Spike Reader`, so the two cannot drift.
    - **A3** the shipped socket writes to the atlas. Today it emits marker lights and nothing else.
    - **A4** `yaps_resolve.cginc` reads the atlas alongside its existing single-socket resolve, and
      the atlas wins where it answers. What a pair sees when only one side has it is the design
@@ -97,7 +101,10 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **B** conversion wiring: SPS sockets and plugs go to the atlas, DPS is emitted underneath as
      the fallback for anyone whose partner has neither.
    - **C** delete the TPS path and the contact channel.
-   - **D** README, report strings, window text, release.
+   - **D** README, window text, release. One report string is already wrong-in-waiting: the
+     removal of VRChat's own screen atlas says ChilloutVR "publishes player positions to shaders
+     directly, so none of that machinery is needed here". True today, false the moment A4 ships
+     ours.
 
    **Cosmetic, carried from the spike:** the payload pass writes colour because the payload is
    colour, so an occupied cell paints a few pixels near the corner of the screen. Count follows

@@ -135,13 +135,13 @@ Shader "YAPS/Spike Plug"
             // sampler2D has no Load, and UNITY_DECLARE_SCREENSPACE_TEXTURE
             // expands to one outside stereo instancing.
             #if defined(UNITY_STEREO_INSTANCING_ENABLED) || defined(UNITY_STEREO_MULTIVIEW_ENABLED)
-                Texture2DArray _YAPS_SpikeAtlas;
-                #define YAPS_LOAD(px, py) _YAPS_SpikeAtlas.Load(int4(px, py, 0, 0))
+                Texture2DArray _YAPS_Atlas;
+                #define YAPS_LOAD(px, py) _YAPS_Atlas.Load(int4(px, py, 0, 0))
             #else
-                Texture2D _YAPS_SpikeAtlas;
-                #define YAPS_LOAD(px, py) _YAPS_SpikeAtlas.Load(int3(px, py, 0))
+                Texture2D _YAPS_Atlas;
+                #define YAPS_LOAD(px, py) _YAPS_Atlas.Load(int3(px, py, 0))
             #endif
-            float4 _YAPS_SpikeAtlas_TexelSize;
+            float4 _YAPS_Atlas_TexelSize;
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
 
@@ -267,7 +267,7 @@ Shader "YAPS/Spike Plug"
                 int   cols  = max(int(_Cols), 1);
                 int   rowsPerLevel = max(total / cols, 1);
                 int   mid   = slot / 2;
-                int   texH  = int(_YAPS_SpikeAtlas_TexelSize.w);
+                int   texH  = int(_YAPS_Atlas_TexelSize.w);
                 #if UNITY_UV_STARTS_AT_TOP
                     bool platformFlip = false;   // memory row 0 is the top
                 #else

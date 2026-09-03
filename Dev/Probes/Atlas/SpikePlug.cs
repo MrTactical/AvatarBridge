@@ -298,7 +298,10 @@ public class SpikePlug : EditorWindow
         Remove();
         var sockShader = Shader.Find("YAPS/Spike Socket");
         var plugShader = Shader.Find("YAPS/Spike Plug");
-        var readShader = Shader.Find("YAPS/Spike Reader");
+        // The SHIPPED grab, not the spike's own. The spike is the only thing
+        // that exercises it until a patched plug declares it reads the atlas,
+        // so pointing the rig at it is what keeps it honest.
+        var readShader = Shader.Find("YAPS/Atlas Grab");
         var clearShader = Shader.Find("YAPS/Spike Clear");
         if (sockShader == null || plugShader == null || readShader == null || clearShader == null)
         {
@@ -626,7 +629,7 @@ public class SpikePlug : EditorWindow
     // is how spike 3 spent a run reading the floor.
     void Inspect()
     {
-        var tex = Shader.GetGlobalTexture("_YAPS_SpikeAtlas") as RenderTexture;
+        var tex = Shader.GetGlobalTexture("_YAPS_Atlas") as RenderTexture;
         if (tex == null) { _result = "No atlas. Is the grabber on screen?"; return; }
         var root = GameObject.Find(Root);
         if (root == null) { _result = "Build it first."; return; }
@@ -783,7 +786,10 @@ public class SpikePlug : EditorWindow
 
         var sockShader = Shader.Find("YAPS/Spike Socket");
         var plugShader = Shader.Find("YAPS/Spike Plug");
-        var readShader = Shader.Find("YAPS/Spike Reader");
+        // The SHIPPED grab, not the spike's own. The spike is the only thing
+        // that exercises it until a patched plug declares it reads the atlas,
+        // so pointing the rig at it is what keeps it honest.
+        var readShader = Shader.Find("YAPS/Atlas Grab");
         var clearShader = Shader.Find("YAPS/Spike Clear");
         if (sockShader == null || plugShader == null || readShader == null || clearShader == null)
         { _result = "Missing a shader. Needs YAPS/Spike Socket, Plug, Reader and Clear."; return; }
