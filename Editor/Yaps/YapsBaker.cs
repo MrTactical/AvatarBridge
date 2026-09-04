@@ -454,9 +454,28 @@ namespace AvatarBridge
         static string PathOf(Renderer on)
         {
             if (on == null) return "";
-            string path = on.name;
-            for (var t = on.transform.parent; t != null; t = t.parent) path = t.name + "/" + path;
+            string path = Step(on.transform);
+            for (var t = on.transform.parent; t != null; t = t.parent) path = Step(t) + "/" + path;
             return path;
+        }
+
+        // Unity lets two siblings carry the same name, and two renderers
+        // whose whole path matches share a generated material, which is the
+        // mixed-up bake this identity exists to stop. Only an ambiguous step
+        // is numbered, so an ordinary path stays the readable thing it was.
+        static string Step(Transform t)
+        {
+            var parent = t.parent;
+            if (parent == null) return t.name;
+            int seen = 0, mine = 0;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (child.name != t.name) continue;
+                if (child == t) mine = seen;
+                seen++;
+            }
+            return seen > 1 ? t.name + "#" + mine : t.name;
         }
 
         // The per-MESH half of a bake, onto a material that already exists.

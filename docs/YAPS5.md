@@ -1148,3 +1148,19 @@ that plug's per-slot cost, and trims the plug's slot list to fit. Trimmed rather
 slots that do fit still get their channel, and the ones dropped fall back to whatever the atlas
 can see. It warns, naming the plug and the count, because a silently missing slot on a
 multi-material plug reads as the bake being wrong.
+
+
+## What a generated material is named after (2026-09-04)
+
+The path is the source material's GUID and local id, plus the renderer's hierarchy path, hashed.
+The material alone was not enough: three plugs sharing one source material got one generated
+material and therefore one bake, and two of the three wore a length measured off the third.
+
+Same-named siblings are legal in Unity and would collide again, so a step whose name is shared by
+a sibling carries its occurrence number. Only the ambiguous step, so an ordinary path reads as
+itself.
+
+Renaming or reparenting a renderer changes the path and so generates a fresh material, leaving the
+old one in the output folder. Left alone deliberately: it is an unreferenced asset in a folder the
+converter owns, and sweeping it would mean deciding what else in there is still wanted, which the
+native builder cannot answer because it works one plug at a time.
