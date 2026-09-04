@@ -1068,6 +1068,11 @@ alone.
   question when the answer is "nothing", in four steps: a tenth means the screen carried nothing
   to read, a third that something was there but did not belong to this plug, two thirds that it
   did and was either out of reach or on your own body, and full that a socket came back.
+  *Atlas target* answers the one thing neither of those can, which is whether the atlas could be on
+  THIS camera at all: a tenth means the target is too small to hold it, four tenths that the screen
+  it read was a different one from the one being drawn, seven tenths that it read the right screen
+  and found nothing there, and full that the transport is on this camera. Read it in the view and
+  then in a mirror.
   Turn the view back off before you upload; the toolkit warns you if you forget.
 - **Four vertex-light slots is the whole light-path constraint.** Unity gives a mesh four; a
   socket takes two; on an avatar with many sockets the converter wires each socket's lights to

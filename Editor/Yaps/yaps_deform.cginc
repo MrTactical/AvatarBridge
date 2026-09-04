@@ -540,6 +540,35 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
                   : (socket.tier < 1.5 ? 0.50
                   : (socket.tier < 2.5 ? 0.75 : 1.0));
         }
+        else if (_YAPS_Debug >= 5.5)
+        {
+            // WHICH TARGET this camera is drawing into, and whether the atlas
+            // could have been on it.
+            //
+            // Every other view describes the plug. This one describes the
+            // CAMERA, because the same plug answers differently in the view,
+            // in a mirror and in the self portrait, and no view here could
+            // say which of those differences was the transport's fault.
+            //
+            // A tenth: the target is too small to hold the rect, so nothing
+            // was painted and nothing was read. The gate did its job.
+            //
+            // Four tenths: the rect fits, but the grab is a different size
+            // from the target being drawn now. The grab did not happen for
+            // this camera and the plug is reading somebody else's screen.
+            //
+            // Seven tenths: fits, the grab is this target, and not one cell
+            // reported anything. Writer and reader are addressing different
+            // pixels of the same texture.
+            //
+            // Full: fits, the grab is this target, and cells reported. The
+            // transport is on this camera and Atlas taps says the rest.
+            float2 grabPx = _YAPS_Atlas_TexelSize.zw;
+            bool sameTarget = all(abs(grabPx - _ScreenParams.xy) < 1.5);
+            shown = !YapsAtlasFits() ? 0.10
+                  : (!sameTarget ? 0.40
+                  : (socket.atlasHeaders < 0.5 ? 0.70 : 1.0));
+        }
         else if (_YAPS_Debug >= 4.5)
         {
             // WHAT THE ATLAS READ, before anything was decoded from it.

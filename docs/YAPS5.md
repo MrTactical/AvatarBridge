@@ -1254,3 +1254,24 @@ drawn at Geometry, so every bend was one frame stale.
 
 The size gate stays. It is still true that a target too small to hold the rect cannot carry the
 protocol, and it now also keeps the writers off targets where there may be nothing to cover them.
+
+
+## A debug view that describes the CAMERA (2026-09-04)
+
+Every view on the plug describes the plug. None of them could say why the same plug answers one way
+in the view, another in a mirror and another in the self portrait, which is how two wrong
+diagnoses got shipped in one deploy.
+
+*Atlas target* reports three camera facts in one length. A tenth: the target cannot hold the rect.
+Four tenths: it can, but the grab is a different SIZE from the target being drawn, so the grab did
+not happen for this camera and the plug is reading somebody else's screen. Seven tenths: right
+screen, no cell reported anything, so writer and reader address different pixels of it. Full: the
+transport is on this camera.
+
+What the client says about mirrors, for when that reading comes back. `CVRMirror` renders into
+`RenderTexture.GetTemporary(min(setting, cam.pixelWidth), min(setting, cam.pixelHeight), 24,
+RenderTextureFormat.ARGBHalf)` with `CalculateObliqueMatrix` on the near plane. Three things follow.
+The size setting tops out at 4096 but is clamped to the camera, so a 1080p view gives a 1920 by 1080
+mirror, far larger than the rect: the size gate is not what stops it. The oblique matrix rewrites
+the third row only, so clip x and y placement is untouched. The target is HALF FLOAT, not eight bit,
+which is the one difference that reaches the payload.
