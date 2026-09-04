@@ -22,6 +22,7 @@ trap 'rm -rf "$TMP"' EXIT
 cat > "$TMP/stubs.cginc" <<'STUB'
 #define UNITY_UV_STARTS_AT_TOP 1
 float4 _ScreenParams;
+float4 _ProjectionParams;
 float4 unity_4LightAtten0;
 float4 unity_LightColor[8];
 float4 unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0;

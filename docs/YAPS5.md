@@ -1200,3 +1200,21 @@ Nothing available to a shader distinguishes that camera from a view: the client 
 shader can see, and layer culling cannot be used because the avatar's layers are reassigned on load.
 It needs somebody in game with a portrait bigger than 552 by 520 before there is anything to
 measure.
+
+
+## The plug bent in front of you and stood still in the mirror (2026-09-04)
+
+The writer places its pixels in CLIP space and the reader indexes MEMORY rows against
+`UNITY_UV_STARTS_AT_TOP`, a compile-time constant. On the back buffer those two agree. Rendering
+into a texture, Unity flips the projection: clip +1 becomes the last memory row rather than the
+first, the writer's rows land mirrored, and the reader looks where nothing was written.
+
+Every render-to-texture is affected, so a mirror showed an undeformed plug while the same plug bent
+in the view beside it. A 4K mirror ruled out the size gate and left only this.
+
+`YapsAtlasToClip` now multiplies y by `_ProjectionParams.x`, which is that flip's runtime sign. It
+is the one thing in the placement that may be read at runtime; the ROW constant must stay
+compile-time, for the reason recorded above it.
+
+The self portrait bends by the contact channel, not the atlas. It fails the size gate, and a plug
+engaged with its wearer's own socket is the channel's job anyway.
