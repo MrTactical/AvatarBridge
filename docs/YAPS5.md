@@ -1123,6 +1123,13 @@ means. Sockets bake in their own frame and have no shaft to find, so `objectFram
 Moving the plug onto the bone you want overrides it: a root whose children are a single chain
 has nothing to choose between and the suggestion stands down.
 
+What the descent inherits from the bone it lands on is the authored UP, and only that. Forward is
+measured by power iteration on the vertex covariance and the authored one is a seed with its sign
+fixed against the attachment point, so a child bone pointing somewhere odd changes nothing. Roll is
+taken as given, and it reaches the authored bend direction and the wriggle phase. Both are rest
+cosmetics: the bend toward a socket is built from the socket, not from the frame's up. Wants a real
+avatar whose shaft bone is rolled against its hub before that is stated as fact.
+
 The chosen root travels back out in `YapsBaker.Result.Root`, and both builders ask THAT which
 material slots are the plug's and where the chain starts. They used to ask the root they came in
 with, which is the hub: everything the descent had just excluded came back through the slot scan,

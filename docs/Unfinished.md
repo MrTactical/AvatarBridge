@@ -158,6 +158,12 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      used for a day and why the chord-versus-curve tear was found by reading rather than by
      looking. What to watch for is a torn ring of mesh at the joint, and a shaft that picks one
      socket and ignores the other.
+   - **B7, a plug whose shaft bone is rolled differently from the hub it hung off.** The shaft
+     descent inherits the authored UP from whichever bone it lands on. Forward does not matter,
+     that is measured off the vertices and only seeded by the authored one, but roll is taken
+     as given. It reaches the authored bend direction and the wriggle phase, not the bend
+     toward a socket, so the shape to watch for is a plug that curves the wrong way at rest and
+     bends correctly once engaged.
    - **B6, a multi-material plug seen by SOMEBODY ELSE.** The channel's per-slot driver tasks
      only diverge remotely: the wearer's own view is correct either way, and a second material
      left behind shows as half the mesh following the socket and half sitting still, on the other
