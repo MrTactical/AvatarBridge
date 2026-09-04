@@ -972,7 +972,10 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // The first link fills the single-socket fields, so everything that
     // reads a socket and knows nothing of chains keeps working. The whole
     // chain rides along beside it for the deform to walk.
-    if (_YAPS_UseAtlas > 0.5)
+    // YapsAtlasFits here rather than inside the resolve, so a target too small
+    // to have been painted is never read. Nothing wrote there, and decoding it
+    // anyway hands back whatever the scene drew.
+    if (_YAPS_UseAtlas > 0.5 && YapsAtlasFits())
     {
         YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
         socket.atlasHeaders = chain.headers;

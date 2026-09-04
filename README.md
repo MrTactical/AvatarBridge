@@ -1062,7 +1062,9 @@ alone.
   LENGTH — a quarter means nothing found the socket, a half the contact channel, three quarters
   a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
-  bends toward the wrong thing, or toward nothing. *Atlas taps* beside it answers the follow-up
+  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 552 by
+  520 pixels and stands down below that, so a small window answers three quarters where a full
+  screen answers full. *Atlas taps* beside it answers the follow-up
   question when the answer is "nothing", in four steps: a tenth means the screen carried nothing
   to read, a third that something was there but did not belong to this plug, two thirds that it
   did and was either out of reach or on your own body, and full that a socket came back.

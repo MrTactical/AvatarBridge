@@ -1171,3 +1171,32 @@ Renaming or reparenting a renderer changes the path and so generates a fresh mat
 old one in the output folder. Left alone deliberately: it is an unreferenced asset in a folder the
 converter owns, and sweeping it would mean deciding what else in there is still wanted, which the
 native builder cannot answer because it works one plug at a time.
+
+
+## The atlas erased the self portrait (2026-09-04)
+
+ChilloutVR's self portrait is a camera rendering into a texture with a transparent background,
+composited by a RawImage. Its ALPHA is the mask. The atlas clear writes alpha 0 across a 552 by 520
+rect of whatever target it is drawn into, invisible on the back buffer because nothing reads screen
+alpha, and fatal to a portrait: a portrait smaller than the rect is erased outright. With *Reflect
+Other Players* on, the wearer's avatar renders into everybody else's portrait camera and erases
+theirs too, which is how it was found.
+
+The scale slider does not resize the target. `SelfPortrait.ApplySelfPortraitSettings` lerps the
+RawImage's localScale between 0.3 and 2, and nothing in the client resizes the texture behind it,
+so the portrait's resolution is a fixed authored number.
+
+`YapsAtlasFits` is the gate, on the clear, both socket writer passes and the reader. It is a
+precondition rather than a guess at which camera this is: the rect sits at fixed pixel coordinates
+in the target's corner, so a target that cannot hold it could never have carried the protocol, and
+painting one is pure damage. The reader is gated by the same call at the tier 3 branch, because a
+target nobody painted decodes to whatever the scene drew there.
+
+Gated in the vertex stage by moving the vertex outside the clip cube, not by a fragment discard.
+The clear's cost is the rect it covers, so a discard would still shade every pixel of it.
+
+What this does NOT fix is a portrait target LARGER than the rect, which keeps a transparent corner.
+Nothing available to a shader distinguishes that camera from a view: the client sets no flag a
+shader can see, and layer culling cannot be used because the avatar's layers are reassigned on load.
+It needs somebody in game with a portrait bigger than 552 by 520 before there is anything to
+measure.

@@ -99,8 +99,10 @@ Shader "YAPS/Atlas Socket"
                 Place(v.vertex, cx, cy, sub, pay, fwd, tag);
 
                 float2 unit = v.vertex.xy + 0.5;
-                o.pos = float4(YapsAtlasToClip(float2(cx, cy) + unit * YAPS_ATLAS_SLOTPX),
-                               UNITY_NEAR_CLIP_VALUE, 1);
+                o.pos = YapsAtlasFits()
+                    ? float4(YapsAtlasToClip(float2(cx, cy) + unit * YAPS_ATLAS_SLOTPX),
+                             UNITY_NEAR_CLIP_VALUE, 1)
+                    : YapsAtlasNowhere();
 
                 // A half float resolves 1/255 to about a hundred and thirty
                 // steps at these magnitudes, so the sum survives the grab.
@@ -142,7 +144,9 @@ Shader "YAPS/Atlas Socket"
                 float2 atPx;
                 atPx.x = cx + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX + unit.x * 2 * YAPS_ATLAS_SLOTPX;
                 atPx.y = cy + unit.y * YAPS_ATLAS_SLOTPX;
-                o.pos = float4(YapsAtlasToClip(atPx), UNITY_NEAR_CLIP_VALUE, 1);
+                o.pos = YapsAtlasFits()
+                    ? float4(YapsAtlasToClip(atPx), UNITY_NEAR_CLIP_VALUE, 1)
+                    : YapsAtlasNowhere();
 
                 o.payload = float4(pay, tag);
                 // The facing pixel's alpha carried a second copy of the tag,

@@ -140,6 +140,32 @@ int YapsAtlasHeightPx()
     return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * rowsPerLevel * YAPS_ATLAS_SLOTPX;
 }
 
+// Whether this render target can hold the atlas at all.
+//
+// The rect sits in the target's corner at fixed pixel coordinates, so a
+// target smaller than the rect cannot carry the protocol however the shader
+// is written. Painting one anyway is what broke the self portrait: that
+// camera renders into a texture whose ALPHA is the compositing mask, and the
+// clear writes alpha 0 over the whole rect, so a portrait smaller than the
+// rect is erased entirely and a larger one loses a corner. The portrait's
+// scale slider does not defeat this, it scales the RawImage and not the
+// texture behind it.
+//
+// A precondition rather than a guess at which camera this is: nothing that
+// fails it could have worked.
+bool YapsAtlasFits()
+{
+    return _ScreenParams.x >= YapsAtlasWidthPx() && _ScreenParams.y >= YapsAtlasHeightPx();
+}
+
+// Somewhere the clipper will throw away, for a vertex that must not be drawn.
+// x and y outside the cube are what does it, so z only has to be a value both
+// depth conventions accept rather than the near plane of either.
+float4 YapsAtlasNowhere()
+{
+    return float4(2, 2, 0.5, 1);
+}
+
 // Pixels to clip space. Rows count down from the top, which is why y flips.
 float2 YapsAtlasToClip(float2 atPx)
 {

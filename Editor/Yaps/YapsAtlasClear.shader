@@ -51,7 +51,9 @@ Shader "YAPS/Atlas Clear"
                 // transform is ignored, so import scale cannot reach this.
                 float2 unit = v.vertex.xy + 0.5;
                 float2 span = float2(YapsAtlasWidthPx(), YapsAtlasHeightPx()) + 4;
-                o.pos = float4(YapsAtlasToClip(unit * span), UNITY_NEAR_CLIP_VALUE, 1);
+                o.pos = YapsAtlasFits()
+                    ? float4(YapsAtlasToClip(unit * span), UNITY_NEAR_CLIP_VALUE, 1)
+                    : YapsAtlasNowhere();
                 return o;
             }
 
