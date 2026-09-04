@@ -807,8 +807,10 @@ hands, which is the easiest thing in the scene to bring near a plug, so a bend c
 attributed to either publisher. One reader and everything else shipped is the only arrangement
 where a pass means what it looks like it means.
 
-Editor Play only. In game is a separate claim and has not been made.
-
+Editor Play only. In game is a separate claim and has not been made.
+
+
+
 ## A4 passes, 2026-09-03: the shipped plug resolves
 
 A CONVERTED plug bent toward a converted socket with no spike shader anywhere in the scene. That
@@ -975,10 +977,19 @@ there. That rejection was removed when it turned out to be a contradiction with 
 the ring-only flip was left behind: a hole with the other convention would hairpin the path. It
 matches the deform's own unconditional flip now.
 
-Known and left alone: arc positions are chord distances, so a segment's curve is slightly longer
-than the range it was given and a vertex lands a little short of its socket, which reads as the
-shaft being a touch slack. Squeeze and bulge still measure from link 0, so a mid-chain socket
-does not grip. Both want a real two-socket avatar before they are worth chasing.
+**The ranges are measured on the curve, not the chord.** Written first as "a vertex lands a
+little short of its socket, harmless slack", which was wrong on inspection: the last vertex of a
+segment stops short of the socket while the first vertex of the next segment starts exactly on
+it, so it is a step, a ring of the mesh torn open at every joint. The resolver still orders by
+chord, which is the right thing to sort by, and the deform remeasures each segment where the
+handles that decide its shape are known. `YapsCurveLength` is the mean of the chord and the
+control net, within about a percent, because four walks per vertex to choose one walk is the
+wrong trade. The plug covers less ground than the chord list suggested, which is what an
+inextensible shaft bent through two sockets genuinely does.
+
+**Squeeze and bulge measure from the vertex's own socket.** `entry` was `z - gap`, the distance
+to link 0, so on a chain a mid-chain socket did not grip at all. It is now the running arc to
+whichever socket owns the vertex.
 
 Compiles clean through `Dev/Probes/Hlsl/yaps-fxc.sh`. Not yet seen in ChilloutVR: nobody has a
 plug through two sockets to test it with, which is why the resolver sat half-used for a day.
