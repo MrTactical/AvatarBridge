@@ -961,7 +961,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.engaged = 0;
     }
 
-    // THE ATLAS, on top of both, and off by default.
+    // THE ATLAS, on top of both.
     //
     // It answers where neither of the others can: a socket on somebody
     // else's avatar, with no contact receiver between them and no light
