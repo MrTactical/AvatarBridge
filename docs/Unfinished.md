@@ -167,7 +167,10 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **B8, a camera that draws nothing over the atlas rect.** Moving the writers before the scene
      means the scene covers them, which is what makes the payload invisible and what stopped the
      portrait damage. A camera that renders neither geometry nor sky in that corner would leave
-     them showing. Watch the top left corner in a world with no skybox.
+     them showing. Not a world: every ChilloutVR world has a skybox, so the view and the mirrors
+     are covered. The shape at risk is a camera with a TRANSPARENT background and no sky, which
+     is what the self portrait is, and it is only safe today because it fails the size gate. A
+     portrait bigger than the rect would show the payload against nothing.
    - **B6, a multi-material plug seen by SOMEBODY ELSE.** The channel's per-slot driver tasks
      only diverge remotely: the wearer's own view is correct either way, and a second material
      left behind shows as half the mesh following the socket and half sitting still, on the other
