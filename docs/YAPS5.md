@@ -827,10 +827,11 @@ The Atlas taps view was built during this, and earned itself immediately: it sep
 published" from "published and thrown away", which is what turned the last failure from a guess
 into a reading.
 
-A ring resolved and a hole did not, which is the hole-back test working rather than failing. A
-ring is a loop with no wrong side and is never rejected on facing; a hole has a front, and one
-whose arrow points away from the plug is a hole the plug is arriving at the back of. The holes
-on that avatar face outward and the plug grows from the crotch, so they are behind it.
+A ring resolved and a hole did not, and I read that as the hole-back test working. WRONG, and
+corrected the same day: see "The hole-back test was a contradiction" below. The deform already
+flips a socket's axis to meet the approach, so rejecting a hole on facing threw away sockets the
+deform would have handled, and under the documented convention it threw away the correctly aimed
+ones. The test is gone; range is the only inclusion test now.
 
 Editor Play only. In game is a separate claim and has not been made.
 

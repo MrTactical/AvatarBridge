@@ -389,7 +389,8 @@ float4 YapsDebug(uint vertexId)
 }
 
 // WHO resolved the socket, for the "Resolved by" debug view: x is the tier
-// (0 nobody, 1 the contact channel, 2 a marker light), y the engagement, so the view can dim an answer that resolved but
+// (0 nobody, 1 the contact channel, 2 a marker light, 3 the screen atlas),
+// y the engagement, so the view can dim an answer that resolved but
 // did not engage.
 //
 // The distinction this buys: a plug bending near a socket does not say who

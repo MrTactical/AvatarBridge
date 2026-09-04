@@ -1469,3 +1469,22 @@ One thing it confirms rather than threatens: "The plug mesh must be straight / f
 the editor" is their constraint too. The bake measures a rest pose because the technique requires
 it, not because ours is weak.
 
+
+## A4 resolves a chain and walks one link of it
+
+`YapsResolveChain` gathers up to four sockets, sorts them nearest-first because THE ORDER IS THE
+PATH, and fills `arc[]` with the arc-length range each one owns. `YapsResolveSocket` then hands
+the deform `chain.position[0]` and nothing else, and `yaps_deform.cginc` bends toward one socket
+the way it always has.
+
+So A4 as shipped is a working single-socket atlas resolver. The A4 contract said "ordered list,
+arc-length ranges, cubic chain", and two of those three are real: the list and the ranges exist
+and are correct, the cubic walk is not wired up. Called out by review rather than by me, and the
+distinction matters, because "A4 passes" reads as the whole contract to anybody who was not in
+the room.
+
+The walk is a deform change, not a resolver change: take `chain.count`, `chain.position[]`,
+`chain.forward[]` and `chain.arc[]`, and place each baked vertex by which arc range its distance
+along the plug falls into rather than bending the whole shaft at one target. Worth doing when a
+plug through two sockets is a case somebody actually has; the resolver has been ready for it
+since 2026-09-03.

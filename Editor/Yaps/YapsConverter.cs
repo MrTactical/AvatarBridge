@@ -50,10 +50,18 @@ namespace AvatarBridge
             }
             foreach (var plug in ctx.YapsPlugs)
             {
-                plug.Material.SetFloat("_YAPS_SelfTag", selfFlag);
-                // The atlas is a material flag so a plug can be built
-                // without it, and one switch decides for the whole system.
-                plug.Material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
+                // Every material of the plug, not just the recorded one. A
+                // plug spanning two materials with the flag on one reads the
+                // atlas across half its mesh and the lights across the other,
+                // which looks right until the lights go out.
+                foreach (var material in plug.Materials)
+                {
+                    if (material == null) { continue; }
+                    material.SetFloat("_YAPS_SelfTag", selfFlag);
+                    // The atlas is a material flag so a plug can be built
+                    // without it, and one switch decides for the whole system.
+                    material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
+                }
             }
 
             ConvertSockets(ctx, socketRoots);
@@ -143,6 +151,7 @@ namespace AvatarBridge
             // while the rest of the plug bends away from it.
             var slots = MaterialSlotsOf(renderer, plugRoot);
             var patchedSlots = new List<string>();
+            var patchedMaterials = new List<Material>();
             int primarySlot = -1;
             Material primaryMaterial = null;
             int skippedShadowPasses = 0;
@@ -155,6 +164,7 @@ namespace AvatarBridge
                     continue;
                 }
                 patchedSlots.Add($"{slot} (\"{slotMaterial.name}\")");
+                patchedMaterials.Add(slotMaterial);
                 if (primarySlot < 0)
                 {
                     primarySlot = slot;
@@ -173,6 +183,7 @@ namespace AvatarBridge
                 Renderer = renderer,
                 Material = primaryMaterial,
                 MaterialSlot = primarySlot,
+                Materials = patchedMaterials,
                 Length = result.Length,
                 Radius = result.Radius,
                 Shapes = result.Shapes,
@@ -1092,7 +1103,8 @@ namespace AvatarBridge
             // Still scoped to this RENDERER. Every patched copy here was
             // baked for this mesh, so moving one between this mesh's own
             // slots is safe; handing it to another mesh would not be.
-            var byPath = new Dictionary<string, Dictionary<Material, Material>>();
+            var bySlot = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
+            var byMaterial = new Dictionary<string, Dictionary<Material, Material>>();
             foreach (var pair in ctx.YapsMaterialSwaps)
             {
                 var renderer = pair.Key.renderer;
@@ -1102,11 +1114,23 @@ namespace AvatarBridge
                 }
                 string path = AnimationUtility.CalculateTransformPath(
                     renderer.transform, ctx.Target.transform);
-                if (!byPath.TryGetValue(path, out var swaps))
+                if (!bySlot.TryGetValue(path, out var slots))
                 {
-                    byPath[path] = swaps = new Dictionary<Material, Material>();
+                    bySlot[path] = slots = new Dictionary<int, (Material, Material)>();
+                    byMaterial[path] = new Dictionary<Material, Material>();
                 }
-                swaps[pair.Value.from] = pair.Value.to;
+                slots[pair.Key.slot] = pair.Value;
+
+                // One original material baked twice on one mesh is ambiguous:
+                // two plug regions sharing a material get a bake each, and
+                // there is no telling from a clip's key which one it meant.
+                // Null marks it unanswerable, and the slot route below stays
+                // the one that can answer.
+                var mats = byMaterial[path];
+                mats[pair.Value.from] = mats.TryGetValue(pair.Value.from, out var had)
+                                        && had != pair.Value.to
+                    ? null
+                    : pair.Value.to;
             }
 
             int repointed = 0;
@@ -1119,14 +1143,16 @@ namespace AvatarBridge
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (!byPath.TryGetValue(binding.path, out var swaps))
+                    if (!bySlot.TryGetValue(binding.path, out var slots))
                     {
                         continue;
                     }
-                    if (Yaps.YapsSwapFollow.SlotIndex(binding.propertyName) < 0)
+                    int slot = Yaps.YapsSwapFollow.SlotIndex(binding.propertyName);
+                    if (slot < 0)
                     {
                         continue;
                     }
+                    var swaps = byMaterial[binding.path];
                     var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
                     if (keys == null)
                     {
@@ -1136,7 +1162,24 @@ namespace AvatarBridge
                     for (int i = 0; i < keys.Length; i++)
                     {
                         var was = keys[i].value as Material;
-                        if (was == null || !swaps.TryGetValue(was, out var to))
+                        if (was == null)
+                        {
+                            continue;
+                        }
+                        // The slot the bake touched answers first and exactly.
+                        // The material map covers a clip that moves a material
+                        // to another slot of the same mesh, and stands down
+                        // where one original was baked more than once here.
+                        Material to = null;
+                        if (slots.TryGetValue(slot, out var swap) && swap.from == was)
+                        {
+                            to = swap.to;
+                        }
+                        else if (swaps.TryGetValue(was, out var wide))
+                        {
+                            to = wide;
+                        }
+                        if (to == null)
                         {
                             continue;
                         }

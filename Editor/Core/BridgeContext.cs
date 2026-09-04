@@ -93,6 +93,12 @@ namespace AvatarBridge
             public Renderer Renderer;
             public Material Material;
             public int MaterialSlot;
+            // EVERY material the plug's triangles use, Material included. The
+            // channel wires to one, but a knob that decides how the plug
+            // resolves has to reach all of them or half the mesh answers a
+            // different way.
+            public System.Collections.Generic.List<Material> Materials =
+                new System.Collections.Generic.List<Material>();
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
             public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
