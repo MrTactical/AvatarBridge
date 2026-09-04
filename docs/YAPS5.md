@@ -875,3 +875,42 @@ read it back, and the plug bent.
 Removing the facing test is what turned it on: the same hole read a tenth an hour earlier with
 Atlas taps at two thirds.
 
+## A5 passes, 2026-09-03: Phase A is closed
+
+A locked Poiyomi 9.0.61, through the converter, reading the atlas.
+
+The plug material became `Hidden/Locked/YAPS/f06d81a2d0d6` off a 400 KB locked Poiyomi Toon with
+six passes and three vertex stages. The patch took, `_YAPS_UseAtlas` came out of the converter
+already at 1, and with the socket's lights and pointers both switched off the plug bent fully.
+Nothing but the screen could have carried that position.
+
+That closes the last question the headroom probe left open. The probe said a locked 723 KB
+Poiyomi could take the hash and 27 reads with zero messages, but a probe is a synthetic shader
+with room to spare. This is a real one, already flattened and locked by somebody else's tooling,
+and it had the registers.
+
+Phase A is done: protocol, socket writer, clear and grab, resolver, real shader. What is left is
+Phase B, which is the part no editor can answer.
+
+### What A5 also turned up: an unbent part that is not a slot problem
+
+The plug's renderer carries two materials and only one was patched. It looks exactly like the
+multi-slot bug fixed earlier the same day, and it is not.
+
+`MaterialSlotsOf` marks vertices weighted to bones beneath the plug root and counts each
+submesh's triangles against them. The second submesh scored zero, so it is not plug geometry by
+that definition, and patching it would change nothing: `TryPlaceVertices` writes EVERY vertex of
+the mesh into the bake and stores `WeightOnPlug` alongside as the active flag, so a vertex
+weighted outside the plug's bones is baked inactive and the shader leaves it where it is.
+Patching its material would hand it a deform that is switched off for exactly those vertices.
+
+So the blocker is the WEIGHTS, not the slot. Geometry that sits on the plug but rides a bone
+outside the plug's chain cannot bend, whatever material it wears, and it is the author's rig that
+decides that.
+
+Worth doing, not done: the converter can SEE this. It has the plug's measured frame, length and
+radius, so a submesh with no plug-weighted vertices whose vertices sit inside the plug's own
+volume is detectable, and saying "this part will not bend, its vertices are weighted to a bone
+outside the plug" turns a silent visual fault into a told one. Detection only. Re-weighting
+somebody's mesh is not the converter's business.
+
