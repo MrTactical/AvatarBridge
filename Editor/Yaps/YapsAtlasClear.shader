@@ -13,10 +13,16 @@
 // conspicuous part of the system. Masked off, the rect keeps whatever the
 // scene drew there and still reads alpha 0, which is all occupancy needs.
 //
-// Queue Overlay-200, against the writers at Overlay-100 and the grab at
-// Overlay. Ordering comes from the QUEUE, not from distance, which matters
-// because these three live on different avatars and Unity sorts within a
-// queue by distance, which nobody controls. Across queues it is deterministic.
+// Queue Background-946, against the writers at -945 and the grab at -944.
+// Ordering comes from the QUEUE, not from distance, which matters because
+// these three live on different avatars and Unity sorts within a queue by
+// distance, which nobody controls. Across queues it is deterministic.
+//
+// Before the scene rather than after it. The whole rect is then painted over
+// by whatever the camera draws, so it never reaches the screen, and the alpha
+// it wrote is what a camera clearing to a transparent background wrote there
+// anyway. Painting last is what made the atlas visible and what erased self
+// portraits.
 //
 // If nobody in the room draws a clear, cells degrade to unreliable rather
 // than to wrong, which is the right direction for a fallback transport.
@@ -24,7 +30,7 @@ Shader "YAPS/Atlas Clear"
 {
     SubShader
     {
-        Tags { "Queue" = "Overlay-200" "RenderType" = "Opaque" "IgnoreProjector" = "True" }
+        Tags { "Queue" = "Background-946" "RenderType" = "Opaque" "IgnoreProjector" = "True" }
         ZTest Always ZWrite Off Cull Off
 
         Pass

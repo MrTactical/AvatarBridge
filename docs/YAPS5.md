@@ -1218,3 +1218,27 @@ compile-time, for the reason recorded above it.
 
 The self portrait bends by the contact channel, not the atlas. It fails the size gate, and a plug
 engaged with its wearer's own socket is the channel's job anyway.
+
+
+## The atlas draws before the scene, not after it (2026-09-04)
+
+The payload pass writes opaque RGBA, because the payload needs the whole pixel. Only the clear was
+alpha-masked, and only the clear was invisible: every socket painted coloured specks on screen, and
+they became obvious as soon as anything started resolving.
+
+Alpha alone cannot carry it. Eight bits a pixel against thirty-two triples the rect, and the note
+on YAPS_ATLAS_COLS already records that anything past 1088 px wide clips at 720p.
+
+SPS2 solves it by ordering rather than by masking: its resolver sits at Queue Background-944, grabs
+immediately, and lets the entire scene render on top. The data lives in the grabbed texture and the
+pixels never survive to the screen. The atlas now does the same, at Background-946 for the clear,
+-945 for the writers and -944 for the grab.
+
+Three things fall out of the move. The specks are covered by whatever the camera draws. The self
+portrait damage goes with them, because a clear painting alpha 0 before the scene writes what a
+camera clearing to a transparent background wrote there anyway, and the avatar then draws over it.
+And the plug reads the CURRENT frame: the grab used to sit at Overlay, after the plugs had already
+drawn at Geometry, so every bend was one frame stale.
+
+The size gate stays. It is still true that a target too small to hold the rect cannot carry the
+protocol, and it now also keeps the writers off targets where there may be nothing to cover them.

@@ -164,11 +164,10 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      as given. It reaches the authored bend direction and the wriggle phase, not the bend
      toward a socket, so the shape to watch for is a plug that curves the wrong way at rest and
      bends correctly once engaged.
-   - **B8, a self portrait bigger than the atlas rect.** The fit gate keeps the atlas off any
-     target too small to hold it, which covers the portrait as it ships. A portrait target larger
-     than 552 by 520 would still lose a transparent corner, and no shader-visible signal separates
-     that camera from a view. Wants somebody whose portrait is that big before there is anything
-     to fix.
+   - **B8, a camera that draws nothing over the atlas rect.** Moving the writers before the scene
+     means the scene covers them, which is what makes the payload invisible and what stopped the
+     portrait damage. A camera that renders neither geometry nor sky in that corner would leave
+     them showing. Watch the top left corner in a world with no skybox.
    - **B6, a multi-material plug seen by SOMEBODY ELSE.** The channel's per-slot driver tasks
      only diverge remotely: the wearer's own view is correct either way, and a second material
      left behind shows as half the mesh following the socket and half sitting still, on the other

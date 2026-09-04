@@ -5,14 +5,15 @@
 // carry it. So one avatar wearing this serves every plug present, including
 // plugs on avatars carrying none, and a second copy in the room is free.
 //
-// Queue Overlay, after the sockets, so the grab contains what they wrote. A
-// plug drawing at Geometry therefore reads the PREVIOUS frame, about 11 ms
-// at 90 Hz.
+// Queue Background-944, after the sockets at -945 and before the scene. The
+// grab holds what they wrote, and everything the camera draws afterwards
+// covers those pixels, so the payload never appears on screen. A plug drawing
+// at Geometry reads this frame's grab rather than the previous one.
 Shader "YAPS/Atlas Grab"
 {
     SubShader
     {
-        Tags { "Queue" = "Overlay" "RenderType" = "Opaque" "IgnoreProjector" = "True" }
+        Tags { "Queue" = "Background-944" "RenderType" = "Opaque" "IgnoreProjector" = "True" }
 
         GrabPass { "_YAPS_Atlas" }
 

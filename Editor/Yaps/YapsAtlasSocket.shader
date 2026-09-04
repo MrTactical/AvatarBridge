@@ -31,8 +31,9 @@ Shader "YAPS/Atlas Socket"
     }
     SubShader
     {
-        // Before the grab at Overlay, so the grab contains this.
-        Tags { "Queue" = "Overlay-100" "RenderType" = "Opaque" }
+        // Before the grab at Background-944, so the grab contains this, and
+        // before the scene, so the scene covers the pixels it wrote.
+        Tags { "Queue" = "Background-945" "RenderType" = "Opaque" }
         ZTest Always ZWrite Off Cull Off
 
         CGINCLUDE
