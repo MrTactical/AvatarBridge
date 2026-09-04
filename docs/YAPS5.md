@@ -1123,5 +1123,28 @@ means. Sockets bake in their own frame and have no shaft to find, so `objectFram
 Moving the plug onto the bone you want overrides it: a root whose children are a single chain
 has nothing to choose between and the suggestion stands down.
 
+The chosen root travels back out in `YapsBaker.Result.Root`, and both builders ask THAT which
+material slots are the plug's and where the chain starts. They used to ask the root they came in
+with, which is the hub: everything the descent had just excluded came back through the slot scan,
+so a sibling chain's material got patched and deformed against a bake that never measured it.
+
 Wants the corpus before shipping. It changes the measured length and origin of every plug whose
 root sits on a hub, which is most of the ones that came from another format.
+
+
+## Sixteen driver tasks for the whole avatar (2026-09-04)
+
+`CVRMaterialDriver` declares `material01` through `material16` and no more. Anything past the
+sixteenth task is written into a field that does not exist: no error, no log, the layer simply
+drives nothing.
+
+A plug spends three tasks per material slot it patches (flags, position, front), so the ceiling is
+not a plug count. `MaxPlugs` (4) used to bound it back when a plug cost three altogether, and it
+stopped bounding anything when the channel began driving every patched slot rather than the first.
+Four two-material plugs want twenty-four.
+
+`YapsChannel` now counts what is already in the driver before each plug, divides the room left by
+that plug's per-slot cost, and trims the plug's slot list to fit. Trimmed rather than refused: the
+slots that do fit still get their channel, and the ones dropped fall back to whatever the atlas
+can see. It warns, naming the plug and the count, because a silently missing slot on a
+multi-material plug reads as the bake being wrong.

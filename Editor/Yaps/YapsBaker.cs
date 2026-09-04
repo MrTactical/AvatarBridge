@@ -37,6 +37,12 @@ namespace AvatarBridge
             // alone: a bake is indexed by mesh-global vertex id, so two
             // meshes can never share one.
             public Renderer Renderer;
+            // The root the bake ACTUALLY measured from, which is not always
+            // the one it was handed: see the shaft descent in Bake. Anything
+            // that asks which vertices or which material slots are the plug's
+            // has to ask the same question the bake did, or it answers about
+            // a wider chain than the one that was baked.
+            public Transform Root;
             public List<string> Shapes = new List<string>();
             public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
 
@@ -278,6 +284,7 @@ namespace AvatarBridge
                 ActiveVertices = active,
                 FromSkinnedMesh = !staticMesh,
                 Renderer = renderer,
+                Root = plugRoot,
                 Shapes = shapeNames,
                 MovingShapes = movingShapes,
                 Origin = origin,

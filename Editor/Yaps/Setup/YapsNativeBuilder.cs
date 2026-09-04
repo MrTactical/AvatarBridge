@@ -63,8 +63,10 @@ namespace AvatarBridge
             var alsoSlots = new List<int>();
             if (slot < 0 && renderer is SkinnedMeshRenderer skinned && plug.rootBone != null)
             {
-                slot = SlotWeightedTo(skinned, plug.rootBone);
-                alsoSlots = SlotsWeightedTo(skinned, plug.rootBone);
+                // result.Root, not plug.rootBone: the bake may have descended
+                // to the shaft, and the slots have to be the ones it baked.
+                slot = SlotWeightedTo(skinned, result.Root);
+                alsoSlots = SlotsWeightedTo(skinned, result.Root);
             }
             else if (slot < 0)
             {

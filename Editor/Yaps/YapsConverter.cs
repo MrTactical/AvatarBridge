@@ -149,7 +149,10 @@ namespace AvatarBridge
             // biggest one. A tip modelled on its own material is a second
             // slot, and leaving it unpatched leaves it hanging in the air
             // while the rest of the plug bends away from it.
-            var slots = MaterialSlotsOf(renderer, plugRoot);
+            // result.Root, not plugRoot: the bake may have descended to the
+            // shaft, and asking a wider root which slots are the plug's
+            // patches materials the bake deliberately left out of it.
+            var slots = MaterialSlotsOf(renderer, result.Root);
             var patchedSlots = new List<string>();
             var patchedMaterials = new List<Material>();
             var patchedSlotIndices = new List<int>();
@@ -158,7 +161,7 @@ namespace AvatarBridge
             int skippedShadowPasses = 0;
             foreach (int slot in slots)
             {
-                var slotMaterial = PatchPlugSlot(ctx, where, renderer, plugRoot, slot, result,
+                var slotMaterial = PatchPlugSlot(ctx, where, renderer, result.Root, slot, result,
                     out int skipped);
                 if (slotMaterial == null)
                 {
@@ -181,7 +184,7 @@ namespace AvatarBridge
 
             ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
             {
-                Root = plugRoot,
+                Root = result.Root,
                 Renderer = renderer,
                 Material = primaryMaterial,
                 MaterialSlot = primarySlot,
@@ -191,7 +194,7 @@ namespace AvatarBridge
                 Radius = result.Radius,
                 Shapes = result.Shapes,
                 MovingShapes = result.MovingShapes,
-                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot),
+                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, result.Root),
                 Origin = result.Origin,
                 Rotation = result.Rotation,
             });

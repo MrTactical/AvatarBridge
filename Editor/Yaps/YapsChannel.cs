@@ -25,6 +25,16 @@ namespace AvatarBridge
         // parameter itself.
         const int MaxPlugs = 4;
 
+        // CVRMaterialDriver declares material01 to material16 and nothing
+        // else, so a seventeenth task is written into a field that does not
+        // exist and the layer driving it does nothing, silently.
+        //
+        // A plug used to cost three of these, so four plugs fitted with room
+        // over and MaxPlugs alone kept it safe. Driving every material slot
+        // rather than the first made the cost three PER SLOT, and MaxPlugs
+        // stopped bounding it: four two-material plugs want twenty-four.
+        const int MaxDriverTasks = 16;
+
         // Box reach as a multiple of plug length. The deform stops
         // responding past 1.6 lengths.
         const float BoxLengths = 1.75f;
@@ -77,9 +87,10 @@ namespace AvatarBridge
             {
                 site.Report.Warning(Category,
                     $"Only the first {MaxPlugs} plug(s) are wired to the socket channel",
-                    $"This avatar has {site.Plugs.Count}. ChilloutVR's material driver carries " +
-                    "sixteen material driver tasks and each plug needs two, plus five synced floats. " +
-                    "The rest keep their mesh and their shader and simply never engage.");
+                    $"This avatar has {site.Plugs.Count}. Each plug needs five synced floats, and " +
+                    "ChilloutVR's material driver carries sixteen tasks, which a plug spends three " +
+                    "of for every material its mesh is made of. The rest keep their mesh and their " +
+                    "shader and simply never engage.");
             }
 
             var materialDriver = site.Target.AddComponent<CVRMaterialDriver>();
@@ -145,6 +156,32 @@ namespace AvatarBridge
             bool carryOrientation = spare >= 9;   // the offset tier, and three more
             bool carryOffset = spare >= 6;   // engagement, is-hole, and three axes
             bool carryEngagement = spare >= 3;   // engagement and is-hole
+
+            // WHAT THE DRIVER CAN STILL AFFORD. Three tasks per slot: the
+            // flags, the offset, the facing. Extra slots go first, because a
+            // plug driven across its main material and left behind on a
+            // second is half right, and a plug driven on none of them is not
+            // right anywhere.
+            var slots = PlugSlots(plug).ToList();
+            int perSlot = 1 + (carryOffset ? 1 : 0) + (carryOrientation ? 1 : 0);
+            int affordable = (MaxDriverTasks - materialDriver.tasks.Count) / Mathf.Max(perSlot, 1);
+            if (affordable < slots.Count)
+            {
+                int dropped = slots.Count - Mathf.Max(affordable, 0);
+                site.Report.Warning(Category,
+                    affordable > 0
+                        ? $"Plug {index + 1} drives {affordable} of its {slots.Count} materials"
+                        : $"Plug {index + 1} is not wired to the socket channel",
+                    $"ChilloutVR's material driver carries {MaxDriverTasks} tasks for the whole " +
+                    $"avatar and this plug's mesh needs {perSlot} for each of the {slots.Count} " +
+                    $"materials it is made of. {dropped} of them keep the shader and the bake and " +
+                    "find sockets by their marker lights at close range instead, which is the same " +
+                    "path used for content this tool never converted: it works, it is simply less " +
+                    "exact and it is not guaranteed to agree between viewers. Fewer plugs, or a " +
+                    "plug built from fewer materials, frees tasks.");
+                slots = slots.Take(Mathf.Max(affordable, 0)).ToList();
+            }
+            if (slots.Count == 0) return false;
 
             foreach (var m in PlugMaterials(plug))
             {
@@ -215,7 +252,7 @@ namespace AvatarBridge
             List<int> Tasks(string property)
             {
                 var made = new List<int>();
-                foreach (int slot in PlugSlots(plug))
+                foreach (int slot in slots)
                 {
                     made.Add(materialDriver.tasks.Count + 1);
                     materialDriver.tasks.Add(new CVRMaterialDriverTask
