@@ -257,6 +257,14 @@ outlives scrollback.
    `PatchPlugSlot` patches each one off the same bake; the first that takes it is the slot the
    plug record and the authoring component use, and any slot that refuses says why in the report.
 
+   The CHANNEL half of the same gap closed on 2026-09-04: the static settings reached every baked
+   material, but the CVRMaterialDriver tasks that carry the live socket vectors were built against
+   `plug.MaterialSlot` alone, so a two-material plug had half its mesh following the socket and
+   half sitting on whatever the bake left, and only remotely, only in game. `plug.MaterialSlots`
+   now records the slots beside the materials, and the channel builds a task and a driver layer
+   per slot. `PlugMaterials` also stopped sweeping the renderer for anything with a bake, which
+   put one plug's channel extents into another plug's material when two shared a mesh.
+
    Still open: **one renderer**. A plug split across two meshes gets one of them. The mirroring
    takes a `YapsPlug` and the converter holds a VRCFury plug, so closing it is a refactor to pass
    values rather than the component. Low impact in practice, and it changes conversion output, so

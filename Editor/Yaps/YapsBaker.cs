@@ -321,9 +321,33 @@ namespace AvatarBridge
             string outputDir, bool skinned)
         {
             var clone = Generated(source, patchedShader,
-                outputDir + "/" + Sanitise(source.name + " (YAPS)") + ".mat");
+                outputDir + "/" + Sanitise(source.name + " (YAPS)") + Tail(source) + ".mat");
             Apply(result, clone, skinned);
             return clone;
+        }
+
+        // Which source material this copy came from, in six bytes.
+        //
+        // The path used to be the source's NAME alone, and two different
+        // materials called "Material" is not a corner case, it is what an
+        // exporter writes when nobody renamed anything. The second bake then
+        // loaded the first one's asset by path, overwrote it, and left the
+        // first renderer pointing at a bake that describes a different mesh:
+        // wrong vertex count, wrong placements, a plug that deforms into
+        // nothing. Silent, because reusing an asset at a path is what this
+        // is supposed to do when the SAME material is baked twice.
+        //
+        // GUID plus local id, so it is stable across sessions and distinct
+        // for two materials embedded in one FBX. An in-scene material has
+        // neither and falls back to its instance id, which lasts as long as
+        // the bake does.
+        internal static string Tail(Material source)
+        {
+            string id = AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
+                source, out string guid, out long local)
+                ? guid + local
+                : source.GetInstanceID().ToString();
+            return " " + YapsShaderPatcher.Hash(id);
         }
 
         // The per-MESH half of a bake, onto a material that already exists.

@@ -1,4 +1,4 @@
-﻿// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
+// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
 // something ChilloutVR can run. Inspired by VRCFury's SPS; no SPS
 // code is used, see docs/YAPS-CLEAN-ROOM.md.
 // VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket"
@@ -152,6 +152,7 @@ namespace AvatarBridge
             var slots = MaterialSlotsOf(renderer, plugRoot);
             var patchedSlots = new List<string>();
             var patchedMaterials = new List<Material>();
+            var patchedSlotIndices = new List<int>();
             int primarySlot = -1;
             Material primaryMaterial = null;
             int skippedShadowPasses = 0;
@@ -165,6 +166,7 @@ namespace AvatarBridge
                 }
                 patchedSlots.Add($"{slot} (\"{slotMaterial.name}\")");
                 patchedMaterials.Add(slotMaterial);
+                patchedSlotIndices.Add(slot);
                 if (primarySlot < 0)
                 {
                     primarySlot = slot;
@@ -184,6 +186,7 @@ namespace AvatarBridge
                 Material = primaryMaterial,
                 MaterialSlot = primarySlot,
                 Materials = patchedMaterials,
+                MaterialSlots = patchedSlotIndices,
                 Length = result.Length,
                 Radius = result.Radius,
                 Shapes = result.Shapes,

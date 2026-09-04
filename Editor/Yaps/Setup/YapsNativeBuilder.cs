@@ -191,6 +191,11 @@ namespace AvatarBridge
             bool ownSockets = ownAvatar != null
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
             patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
+            // Build adds the socket writers and the avatar's clear and grab,
+            // so a toolkit avatar published to the atlas and then read none
+            // of it: the flag was set on the convert path only, and a plug
+            // with it off falls back to the lights without saying so.
+            patched.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
 
             // A fresh bake of a legacy plug: carry the author's values onto
             // the YAPS knobs, switch the old deform off, and let the
@@ -652,6 +657,52 @@ namespace AvatarBridge
             return o;
         }
 
+        // Which submesh the socket actually IS.
+        //
+        // It was always slot 0. A socket modelled into a mesh that carries
+        // several materials then had the shader patched onto whichever part
+        // happened to be first, while the submesh holding the opening kept
+        // the shader it came with, so the shapes never moved and nothing
+        // said why.
+        //
+        // The blendshapes name it: a shape's deltas are non-zero on exactly
+        // the vertices it moves, and those vertices are the socket's own
+        // triangles. Biggest share wins, and a mesh with one material or no
+        // usable shapes keeps the old answer.
+        static int SocketSlot(SkinnedMeshRenderer skin, IEnumerable<string> shapes)
+        {
+            var mesh = skin != null ? skin.sharedMesh : null;
+            if (mesh == null || mesh.subMeshCount < 2) return 0;
+
+            var moved = new bool[mesh.vertexCount];
+            var delta = new Vector3[mesh.vertexCount];
+            var spare = new Vector3[mesh.vertexCount];
+            bool any = false;
+            foreach (string name in shapes)
+            {
+                int index = mesh.GetBlendShapeIndex(name);
+                if (index < 0) continue;
+                for (int f = 0; f < mesh.GetBlendShapeFrameCount(index); f++)
+                {
+                    mesh.GetBlendShapeFrameVertices(index, f, delta, spare, null);
+                    for (int v = 0; v < delta.Length; v++)
+                        if (delta[v].sqrMagnitude > 1e-10f) { moved[v] = true; any = true; }
+                }
+            }
+            if (!any) return 0;
+
+            int best = 0, bestHits = 0;
+            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            {
+                var indices = mesh.GetTriangles(sub);
+                int hits = 0;
+                for (int i = 0; i < indices.Length; i++)
+                    if (indices[i] < moved.Length && moved[indices[i]]) hits++;
+                if (hits > bestHits) { bestHits = hits; best = sub; }
+            }
+            return best;
+        }
+
         // Bakes the socket's chosen shapes into its mesh's material, staged
         // as the component says. Returns what happened, for the window.
         public static string BakeSocket(YapsSocket socket)
@@ -682,7 +733,9 @@ namespace AvatarBridge
             }
 
             var mats = renderer.sharedMaterials;
-            if (mats == null || mats.Length == 0 || mats[0] == null) return $"✗ {socket.name}: its mesh has no material";
+            if (mats == null || mats.Length == 0) return $"✗ {socket.name}: its mesh has no material";
+            int slot = SocketSlot(renderer, stages.Select(s => s.blendshape));
+            if (mats[slot] == null) return $"✗ {socket.name}: its mesh has no material";
             string dir = OutputRoot + "/" + Sanitise(TopName(socket.transform));
             EnsureFolder(dir);
             var report = new BridgeReport();
@@ -692,7 +745,7 @@ namespace AvatarBridge
             if (result == null) return $"✗ {socket.name}: could not bake: {failure}";
             if (result.Shapes.Count == 0) return $"✗ {socket.name}: none of the named shapes exist on \"{renderer.name}\"";
 
-            var source = mats[0];
+            var source = mats[slot];
             // A material carries ONE bake. If this mesh's material is a plug's,
             // baking the socket into it replaces the plug's vertex data with the
             // socket's and the plug stops deforming, which is what happens when
@@ -747,9 +800,9 @@ namespace AvatarBridge
                 }
                 material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
                 material.SetFloat("_YAPS_Enabled", 0f);
-                if (socket.bakedFrom == null) { socket.bakedFrom = mats[0]; EditorUtility.SetDirty(socket); }
-                var wasSocket = mats[0];
-                mats[0] = material;
+                if (socket.bakedFrom == null) { socket.bakedFrom = mats[slot]; EditorUtility.SetDirty(socket); }
+                var wasSocket = mats[slot];
+                mats[slot] = material;
                 renderer.sharedMaterials = mats;
                 YapsSwapFollow.Follow(renderer, 0, wasSocket, material, report);
             }
@@ -924,7 +977,7 @@ namespace AvatarBridge
                             $"patched ({refusal}), so that part of the mesh will not bend with the rest.");
                         continue;
                     }
-                    target = YapsBaker.Generated(was, shader, dir + "/" + Sanitise(was.name) + "_YAPS_.mat");
+                    target = YapsBaker.Generated(was, shader, dir + "/" + Sanitise(was.name) + "_YAPS_" + YapsBaker.Tail(was) + ".mat");
                     mats[i] = target;
                 }
                 CopyYapsProperties(primary, target);
@@ -1237,7 +1290,12 @@ namespace AvatarBridge
             var mr = root.AddComponent<MeshRenderer>();
             EnsureFolder(OutputRoot + "/Test Plug");
             var mesh = CapsuleMesh(length, radius);
-            AssetDatabase.CreateAsset(mesh, AssetDatabase.GenerateUniqueAssetPath(OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset"));
+            // One asset, overwritten. GenerateUniqueAssetPath left a mesh
+            // behind for every spawn, and the test plug is spawned to try
+            // something and deleted straight after.
+            string meshPath = OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset";
+            AssetDatabase.DeleteAsset(meshPath);
+            AssetDatabase.CreateAsset(mesh, meshPath);
             mf.sharedMesh = mesh;
             var shader = Shader.Find(SimpleLitName) ?? Shader.Find("Standard");
             var mat = new Material(shader) { name = "YAPS Test Plug", color = new Color(0.85f, 0.55f, 0.65f) };

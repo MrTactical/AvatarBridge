@@ -206,50 +206,43 @@ namespace AvatarBridge
                 }
             }
 
-            // One task per material property. A task writes the whole float4
-            // from its own materialNN X/Y/Z/W group; three tasks would overwrite each other.
-            int flagsTask = materialDriver.tasks.Count + 1;
-            materialDriver.tasks.Add(new CVRMaterialDriverTask
+            // One task per material property PER SLOT. A task writes the whole
+            // float4 from its own materialNN X/Y/Z/W group; three tasks on one
+            // property would overwrite each other, and one task for a plug that
+            // spans two materials leaves the second one still holding whatever
+            // the bake left. The static settings above already reach every
+            // material; these are the values that move.
+            List<int> Tasks(string property)
             {
-                Renderer = plug.Renderer,
-                Index = plug.MaterialSlot,
-                PropertyName = "_YAPS_SocketFlags",
-                PropertyType = CVRMaterialDriverTask.Type.Vector4,
-            });
-            int posTask = 0;
-            if (carryOffset)
-            {
-                posTask = materialDriver.tasks.Count + 1;
-                materialDriver.tasks.Add(new CVRMaterialDriverTask
+                var made = new List<int>();
+                foreach (int slot in PlugSlots(plug))
                 {
-                    Renderer = plug.Renderer,
-                    Index = plug.MaterialSlot,
-                    PropertyName = "_YAPS_SocketPos",
-                    PropertyType = CVRMaterialDriverTask.Type.Vector4,
-                });
-            }
-            int frontTask = 0;
-            if (carryOrientation)
-            {
-                frontTask = materialDriver.tasks.Count + 1;
-                materialDriver.tasks.Add(new CVRMaterialDriverTask
-                {
-                    Renderer = plug.Renderer,
-                    Index = plug.MaterialSlot,
-                    PropertyName = "_YAPS_SocketFront",
-                    PropertyType = CVRMaterialDriverTask.Type.Vector4,
-                });
+                    made.Add(materialDriver.tasks.Count + 1);
+                    materialDriver.tasks.Add(new CVRMaterialDriverTask
+                    {
+                        Renderer = plug.Renderer,
+                        Index = slot,
+                        PropertyName = property,
+                        PropertyType = CVRMaterialDriverTask.Type.Vector4,
+                    });
+                }
+                return made;
             }
 
+            var flagsTasks = Tasks("_YAPS_SocketFlags");
+            var posTasks = carryOffset ? Tasks("_YAPS_SocketPos") : new List<int>();
+            var frontTasks = carryOrientation ? Tasks("_YAPS_SocketFront") : new List<int>();
+
             // Engagement first: slots go out in declaration order.
-            var values = new List<(string axis, string field)>
+            var values = new List<(string axis, List<string> fields)>
             {
-                ("E", $"material{flagsTask:00}X"),
-                ("H", $"material{flagsTask:00}Y"),
+                ("E", flagsTasks.Select(t => $"material{t:00}X").ToList()),
+                ("H", flagsTasks.Select(t => $"material{t:00}Y").ToList()),
             };
             foreach (var (axis, _) in axes)
             {
-                values.Add((axis, $"material{posTask:00}{axis}"));
+                string a2 = axis;
+                values.Add((axis, posTasks.Select(t => $"material{t:00}{a2}").ToList()));
             }
             if (carryOrientation)
             {
@@ -257,11 +250,12 @@ namespace AvatarBridge
                 {
                     // "F" only names the parameter; the field keeps the bare
                     // axis letter, since a task's fields are X/Y/Z/W of its float4.
-                    values.Add(("F" + axis, $"material{frontTask:00}{axis}"));
+                    string a2 = axis;
+                    values.Add(("F" + axis, frontTasks.Select(t => $"material{t:00}{a2}").ToList()));
                 }
             }
 
-            foreach (var (axis, field) in values)
+            foreach (var (axis, fields) in values)
             {
                 // THE TRIGGER WRITES THE SYNCED PARAMETER ITSELF.
                 //
@@ -298,8 +292,14 @@ namespace AvatarBridge
                 // Read the smoothed name so a remote viewer follows the value.
                 var smoothLayers = new HashSet<string>();
                 string source = Smoothed(site, synced, smoothLayers);
-                AddDriverLayer(site, $"YAPS{index}{axis} apply", source,
-                    "", typeof(CVRMaterialDriver), field);
+                // One layer per slot the plug covers. The parameter is the
+                // same for all of them: it is one socket, read by however
+                // many materials the plug happens to be made of.
+                for (int f = 0; f < fields.Count; f++)
+                {
+                    AddDriverLayer(site, $"YAPS{index}{axis} apply{(f == 0 ? "" : (f + 1).ToString())}",
+                        source, "", typeof(CVRMaterialDriver), fields[f]);
+                }
                 taskIndex++;
             }
             return true;
@@ -647,13 +647,29 @@ namespace AvatarBridge
         // channel and the rest fell back to the per-vertex frame: the head
         // bending ninety degrees while the body sat still. The bake learned
         // to mirror across slots on 2026-08-25; the channel never did.
+        // THIS plug's materials, from what the converter recorded, not every
+        // baked material on the renderer. Two plugs on one mesh is ordinary,
+        // and the old sweep wrote each plug's channel extents into the
+        // other's material: the second plug to be wired won, and the first
+        // measured its socket against a box the wrong size for it.
+        // The slots those materials sit in. MaterialSlot alone when the
+        // record predates the list, so an old context still wires one.
+        static IEnumerable<int> PlugSlots(BridgeContext.YapsPlug plug)
+        {
+            if (plug.MaterialSlots == null || plug.MaterialSlots.Count == 0)
+            {
+                yield return plug.MaterialSlot;
+                yield break;
+            }
+            foreach (int slot in plug.MaterialSlots) yield return slot;
+        }
+
         static IEnumerable<Material> PlugMaterials(BridgeContext.YapsPlug plug)
         {
             if (plug.Material != null) yield return plug.Material;
-            if (plug.Renderer == null) yield break;
-            foreach (var m in plug.Renderer.sharedMaterials)
+            foreach (var m in plug.Materials)
             {
-                if (m != null && m != plug.Material && m.HasProperty("_YAPS_Bake")) yield return m;
+                if (m != null && m != plug.Material) yield return m;
             }
         }
 

@@ -99,6 +99,10 @@ namespace AvatarBridge
             // different way.
             public System.Collections.Generic.List<Material> Materials =
                 new System.Collections.Generic.List<Material>();
+            // The renderer slots those materials sit in, same order, so the
+            // channel can drive every one of them and not only the first.
+            public System.Collections.Generic.List<int> MaterialSlots =
+                new System.Collections.Generic.List<int>();
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
             public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();

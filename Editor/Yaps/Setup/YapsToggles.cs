@@ -179,12 +179,19 @@ namespace AvatarBridge
             return null;
         }
 
-        // Every clip any of the avatar's controllers plays: the animator's,
-        // the CCK's base controller and its override, once each.
+        // Every clip any of the avatar's controllers plays, once each.
+        //
+        // avatar.overrides FIRST, because that is the one ChilloutVR uploads:
+        // it was missing here, so a deform already animated from the shipped
+        // controller read as not animated at all and YAPS built a toggle
+        // against it. The Animator's own slot holds a generated override that
+        // is not what ships, and avatarSettings holds the fallback. All of
+        // them are read anyway: a clip only has to be reachable to fire.
         static IEnumerable<AnimationClip> ClipsOfAvatar(CVRAvatar avatar, Animator animator)
         {
             var seen = new HashSet<AnimationClip>();
             var controllers = new List<RuntimeAnimatorController>();
+            if (avatar != null) controllers.Add(avatar.overrides);
             if (animator != null) controllers.Add(animator.runtimeAnimatorController);
             if (avatar != null && avatar.avatarSettings != null)
             {
@@ -321,9 +328,12 @@ namespace AvatarBridge
         // finding it would make the toggle stand down for itself.
         static string DrivenByOwnClip(CVRAvatar avatar, string plugPath)
         {
-            var animator = avatar.GetComponent<Animator>();
-            if (animator == null || animator.runtimeAnimatorController == null) return null;
-            foreach (var clip in YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController))
+            // Through ClipsOfAvatar, not the Animator's own slot alone. An
+            // avatar whose deform is already animated from the shipped
+            // controller read as having no controller at all: this returned
+            // null, and the toggle was built anyway, straight into the
+            // two-drivers-one-property fight above.
+            foreach (var clip in ClipsOfAvatar(avatar, avatar.GetComponent<Animator>()))
             {
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))

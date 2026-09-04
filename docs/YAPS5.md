@@ -993,3 +993,41 @@ whichever socket owns the vertex.
 
 Compiles clean through `Dev/Probes/Hlsl/yaps-fxc.sh`. Not yet seen in ChilloutVR: nobody has a
 plug through two sockets to test it with, which is why the resolver sat half-used for a day.
+
+## An audit, and five things it was right about (2026-09-04)
+
+**Two materials called "Material" overwrote each other's bake.** Generated material paths were
+built from `source.name` alone, and `YapsBaker.Generated` reuses an asset at a path, which is
+exactly what it should do when the same material is baked twice. Two DIFFERENT materials with
+the same name is not a corner case, it is what an exporter writes when nobody renamed anything:
+the second bake loaded the first one's asset, overwrote it, and left the first renderer pointing
+at a bake describing a different mesh. `YapsBaker.Tail` appends six bytes of the source's GUID
+and local id, so two materials embedded in one FBX stay apart and reconverting still lands on
+the same file. Converter and toolkit both.
+
+**The toolkit built the atlas and then read none of it.** `Build` adds the socket writers and
+the avatar's clear and grab quads, but `_YAPS_UseAtlas` was set on the convert path only, so a
+hand-built avatar published to the screen and fell silently back to the marker lights. One line
+in the native bake, from the same `YapsAtlas.Enabled` switch.
+
+**The channel drove one slot.** Static settings already reached every baked material; the
+CVRMaterialDriver tasks carrying the live socket vectors did not. A two-material plug followed
+the socket across half its mesh, remotely and in game only. `plug.MaterialSlots` records the
+slots beside the materials now, and the channel builds one task and one driver layer per slot.
+`PlugMaterials` stopped sweeping the renderer for anything carrying a bake at the same time,
+which had been writing one plug's channel extents into another plug's material.
+
+**Socket baking always patched slot 0.** A socket modelled into a mesh with several materials
+had its shader patched onto whichever submesh came first while the submesh holding the opening
+kept the shader it came with. `SocketSlot` asks the blendshapes: a shape's deltas are non-zero
+on exactly the vertices it moves, and those vertices are the socket's own triangles.
+
+**The toggle scan missed the controller ChilloutVR actually uploads.** `ClipsOfAvatar` read the
+Animator's slot and `avatarSettings`, but not `avatar.overrides`, and `DrivenByOwnClip` read the
+Animator's slot alone and returned null when it was empty. An avatar whose deform is already
+animated from the shipped controller read as not animated at all, and YAPS built a competing
+toggle against it, which is the two-drivers-one-property fight that leaves a plug permanently
+undeformed. Both go through `ClipsOfAvatar` now and it reads `avatar.overrides` first.
+
+Also: the test plug left a uniquely named mesh asset behind on every spawn. One asset now,
+deleted and rewritten, since the test plug exists to try something and be deleted.

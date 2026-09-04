@@ -874,7 +874,7 @@ namespace AvatarBridge
             }
         }
 
-        static string Hash(string input)
+        internal static string Hash(string input)
         {
             using (var sha = System.Security.Cryptography.SHA256.Create())
             {
