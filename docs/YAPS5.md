@@ -892,6 +892,28 @@ and it had the registers.
 Phase A is done: protocol, socket writer, clear and grab, resolver, real shader. What is left is
 Phase B, which is the part no editor can answer.
 
+### What A5 also turned up: a swap clip that moves a material between slots
+
+WRONG FIRST READING, kept because it is the mistake worth not repeating. The plug's renderer
+showed one patched material and one untouched one, and it looked like the multi-slot bug fixed
+earlier the same day. I explained it as weights: the bake stores every vertex with
+`WeightOnPlug` as an active flag, so geometry riding a bone outside the plug's chain is baked
+inactive and patching its material would change nothing. All true, and not what was happening.
+
+The conversion report says both materials were patched, by name, on all three of that avatar's
+plugs. What the inspector showed was a material-swap ANIMATION putting the unbaked original back.
+
+`RepointSwappedMaterials` matched a clip's key by the SLOT the bake had touched and rewrote it
+only when the key held the material that had been in that slot. A swap clip is free to move a
+material between slots, and a mesh with two baked materials has clips that do: one puts material
+B where the bake found A. Those keys matched no slot's `from` and were left pointing at the
+unbaked original, so the part came back rigid the moment the toggle played, on an avatar whose
+report correctly said both were patched.
+
+Now keyed by the original MATERIAL, still scoped to the renderer. Every patched copy on a mesh
+was baked for that mesh, so moving one between that mesh's own slots is safe; handing it to
+another mesh would not be, and that protection is unchanged.
+
 ### What A5 also turned up: an unbent part that is not a slot problem
 
 The plug's renderer carries two materials and only one was patched. It looks exactly like the

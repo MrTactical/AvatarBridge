@@ -1081,7 +1081,18 @@ namespace AvatarBridge
                 return;
             }
 
-            var byPath = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
+            // Keyed by the ORIGINAL material, not by the slot it sat in.
+            // A swap clip is free to move a material between slots, and a
+            // mesh with two baked materials has clips that do: one puts
+            // material B where the bake found A. Matching on the slot alone
+            // left those keys pointing at the unbaked original, so the part
+            // came back rigid the moment the toggle played, on an avatar
+            // whose report correctly said both materials were patched.
+            //
+            // Still scoped to this RENDERER. Every patched copy here was
+            // baked for this mesh, so moving one between this mesh's own
+            // slots is safe; handing it to another mesh would not be.
+            var byPath = new Dictionary<string, Dictionary<Material, Material>>();
             foreach (var pair in ctx.YapsMaterialSwaps)
             {
                 var renderer = pair.Key.renderer;
@@ -1091,11 +1102,11 @@ namespace AvatarBridge
                 }
                 string path = AnimationUtility.CalculateTransformPath(
                     renderer.transform, ctx.Target.transform);
-                if (!byPath.TryGetValue(path, out var slots))
+                if (!byPath.TryGetValue(path, out var swaps))
                 {
-                    byPath[path] = slots = new Dictionary<int, (Material, Material)>();
+                    byPath[path] = swaps = new Dictionary<Material, Material>();
                 }
-                slots[pair.Key.slot] = pair.Value;
+                swaps[pair.Value.from] = pair.Value.to;
             }
 
             int repointed = 0;
@@ -1108,12 +1119,11 @@ namespace AvatarBridge
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (!byPath.TryGetValue(binding.path, out var slots))
+                    if (!byPath.TryGetValue(binding.path, out var swaps))
                     {
                         continue;
                     }
-                    int slot = Yaps.YapsSwapFollow.SlotIndex(binding.propertyName);
-                    if (slot < 0 || !slots.TryGetValue(slot, out var swap))
+                    if (Yaps.YapsSwapFollow.SlotIndex(binding.propertyName) < 0)
                     {
                         continue;
                     }
@@ -1125,11 +1135,12 @@ namespace AvatarBridge
                     bool touched = false;
                     for (int i = 0; i < keys.Length; i++)
                     {
-                        if (keys[i].value != swap.from)
+                        var was = keys[i].value as Material;
+                        if (was == null || !swaps.TryGetValue(was, out var to))
                         {
                             continue;
                         }
-                        keys[i].value = swap.to;
+                        keys[i].value = to;
                         touched = true;
                         repointed++;
                     }
@@ -1148,9 +1159,10 @@ namespace AvatarBridge
                     "bake replaced — a skin picker, a variant toggle, whatever it is. Left alone " +
                     "it hands the slot back to the material you baked FROM, which carries no " +
                     "deform, so the plug straightens the moment you press Play and reads as " +
-                    "never baked. Those swaps now point at the baked material instead. Only the " +
-                    "exact mesh and slot the bake touched was changed; anything else wearing " +
-                    "that material keeps it.");
+                    "never baked. Those swaps now point at the baked material instead, including " +
+                    "the ones that move a material to a different slot of the same mesh. Only " +
+                    "meshes the bake touched were changed; anything else wearing that material " +
+                    "keeps it.");
             }
         }
 
