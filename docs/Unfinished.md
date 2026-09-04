@@ -143,7 +143,9 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      the patcher CATCHES the failure and converts the plug as an ordinary mesh, so nothing throws
      and nothing goes magenta. The avatar looks perfect and does not bend. `Dev/Probes/Hlsl` now
      compiles the same include set with fxc in about a second.
-   - **A5** patch a real Poiyomi with it, through the converter.
+   - **A5 PASSES 2026-09-03. Phase A is closed.** A locked Poiyomi Toon, six passes and three
+     vertex stages, took the patch through the converter and bent from the atlas with both marker
+     sources switched off. See docs/YAPS5.md.
 
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
    B3 an atlas avatar meeting a legacy DPS avatar. B4 a viewer with custom shaders blocked.
