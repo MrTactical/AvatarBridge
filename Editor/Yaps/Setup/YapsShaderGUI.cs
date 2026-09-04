@@ -109,6 +109,7 @@ namespace AvatarBridge
                 Knobs = new[]
                 {
                     new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them — -1 on a prop"),
+                    new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "the transport that does not need a light slot or a contact: sockets draw where they are into a corner of the screen and this plug reads it back. The converter sets it; off falls back to the contact channel and the marker lights. Debug's Resolved by says which one answered."),
                 }},
             new Section { Title = "Socket", Tint = TintSocket,
                 Blurb = "For a mesh that is a socket: how its shapes open as a plug goes in.",
