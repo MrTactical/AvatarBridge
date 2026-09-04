@@ -168,18 +168,17 @@ float4 YapsAtlasNowhere()
 
 // Pixels to clip space. Rows count down from the top, which is why y flips.
 //
-// TWICE, when the projection is flipped. Rendering into a texture turns clip
-// +1 into the LAST memory row rather than the first, and the reader indexes
-// memory rows against a compile-time constant that knows nothing about it, so
-// the writer's rows land mirrored and the reader looks where nothing was
-// written. On the back buffer the two agree, which is why this only ever
-// showed as a plug that bends in front of you and stands still in a mirror.
-// _ProjectionParams.x is that flip's runtime sign and it is the only thing
-// here that may be read at runtime: the row constant must stay compile-time.
+// NOT multiplied by _ProjectionParams.x. Tried on the theory that rendering
+// into a texture flips the projection and lands the rows mirrored, which
+// would explain a plug that bends in the view and stands still in a mirror.
+// It broke the view instead: every cell the reader looks at was then one the
+// CLEAR had missed too, so they read alpha 1, counted as occupied, and the
+// plug locked onto sockets decoded out of screen noise. Whatever the mirror
+// is doing, this is not it.
 float2 YapsAtlasToClip(float2 atPx)
 {
     float2 p = atPx / _ScreenParams.xy * 2.0 - 1.0;
-    p.y = -p.y * _ProjectionParams.x;
+    p.y = -p.y;
     return p;
 }
 

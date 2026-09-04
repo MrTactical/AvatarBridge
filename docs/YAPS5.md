@@ -1202,7 +1202,19 @@ It needs somebody in game with a portrait bigger than 552 by 520 before there is
 measure.
 
 
-## The plug bent in front of you and stood still in the mirror (2026-09-04)
+## The plug bent in front of you and stood still in the mirror (2026-09-04, WRONG)
+
+Kept as a record of a wrong diagnosis. The fix below was shipped, broke the view, and was reverted.
+The reasoning was that a render to texture flips the projection and lands the writer's rows
+mirrored against a reader that indexes memory. It is plausible and it is not what is happening: with
+the multiply in, the clear missed the same cells the reader reads, so those cells held alpha 1, read
+as occupied, and the plug locked onto sockets decoded out of screen noise. The mirror still needs a
+measurement rather than another theory.
+
+It also went out in the same deploy as the queue move, so neither could be attributed on its own.
+One change per test.
+
+
 
 The writer places its pixels in CLIP space and the reader indexes MEMORY rows against
 `UNITY_UV_STARTS_AT_TOP`, a compile-time constant. On the back buffer those two agree. Rendering
