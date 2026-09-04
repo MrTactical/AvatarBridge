@@ -167,6 +167,11 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    returns. C2 sockets keep emitting DPS ranges byte for byte, not negotiable. C3 flip the
    default, corpus, ship.
 
+   **The default is already flipped**, 2026-09-04, so Phase B can be run at all: an atlas nobody
+   publishes to cannot be tested in an instance. C3 keeps the other two thirds, and the corpus
+   run is the part that is owed. Nothing ships off a switch that was flipped to make a test
+   possible.
+
    Phase D, retire the contact channel: D1 prove the texture-parser route to the animator. D2 move
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.

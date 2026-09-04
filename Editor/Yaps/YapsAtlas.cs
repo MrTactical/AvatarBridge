@@ -13,12 +13,19 @@ namespace AvatarBridge
 {
     public static class YapsAtlas
     {
-        // OFF until the resolver reads it. Writing costs a handful of tiny
-        // draws per socket and a grab is a full screen copy per camera, with
-        // mirrors getting their own, so switching it on before anything reads
-        // it charges the whole room for nothing. It also paints: the payload
-        // is colour, so an occupied cell puts a few pixels on screen.
-        public const bool Enabled = false;
+        // ON. It was off while nothing read the atlas, because writing costs
+        // a handful of tiny draws per socket and a grab is a full screen copy
+        // per camera with mirrors getting their own, so publishing to a
+        // screen nobody reads charges the whole room for nothing. The
+        // resolver reads it now, on both builders.
+        //
+        // Still unproven in ChilloutVR: what it costs in a crowded instance,
+        // how it behaves in mirrors and in VR, and whether a viewer with
+        // custom shaders blocked sees anything at all. That is Phase B, and
+        // this switch is what makes Phase B possible to run rather than a
+        // claim that it is finished. It also paints: the payload is colour,
+        // so an occupied cell puts a few pixels on screen.
+        public const bool Enabled = true;
 
         // Must match YAPS_ATLAS_LEVELS in yaps_atlas.cginc. Only the mesh
         // needs it here, and only to know how many quads to make.

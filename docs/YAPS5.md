@@ -1038,3 +1038,36 @@ code path.
 
 Also: the test plug left a uniquely named mesh asset behind on every spawn. One asset now,
 deleted and rewritten, since the test plug exists to try something and be deleted.
+
+## Own body, and the switch turned on (2026-09-04)
+
+**The atlas had no own-body exclusion.** The light path has had one since the beginning: a
+wearer's own sockets are permanently in reach and permanently nearest, so a plug that does not
+skip them never looks at anybody else's. `YapsResolveChain` never asked, and range was its only
+filter, so on any avatar wearing both a plug and a socket the chain would have taken its own
+socket as link 0 for ever.
+
+The fix costs no protocol and no new knob. `YapsSameBodyAs` split into `YapsSameBodyAt`, which
+takes a world position instead of a light slot, and the chain calls it on a candidate that has
+already passed range. `_YAPS_SelfTag` is the same switch the lights read and both builders
+already set it, so an avatar wearing no sockets of its own skips the test entirely.
+
+**Nothing is lost by excluding them, and this is the rule worth stating:** own body is the
+contact channel's job, everybody else is the atlas's. A wearer's own sockets already reach the
+plug through the channel, exactly, locally, on every client, with no screen read at all. The
+atlas exists for the sockets the channel cannot see.
+
+The scan inside is over players, not over taps, and it runs only for a socket that already
+passed range, which is a handful per frame rather than 27.
+
+**Testing note.** The exclusion needs a socket that is INBOARD of the plug, nearer the wearer's
+hip than the plug is. A standalone hole placed in the world is not, so the A4 and B5 setups still
+resolve; two sockets modelled on the same avatar as the plug will not, and want `_YAPS_SelfTag`
+set to -1 on the plug's material for the duration of the test.
+
+**`YapsAtlas.Enabled` is now true by default.** It was off while nothing read the atlas, because
+publishing to a screen nobody reads charges the whole room for a handful of draws and a full
+screen copy per camera. Both builders read it now. What it costs in a crowded instance, how it
+behaves in mirrors and VR, and whether a viewer with custom shaders blocked sees anything at all
+are all still unmeasured: that is Phase B, and this switch is what makes Phase B runnable rather
+than a claim that it is finished. C3's corpus run is still owed before any of this ships.

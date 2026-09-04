@@ -194,7 +194,10 @@ inline float3 YapsLightPosition(uint slot)
 // somebody else's costs a socket that should have worked; keeping one that
 // was its own costs a plug bent into its wearer, which the deform recovers
 // from as soon as anything better resolves. Doubt therefore keeps the light.
-bool YapsSameBodyAs(float3 plugOrigin, uint slot)
+// Takes a WORLD POSITION rather than a light slot, so the atlas can ask the
+// same question about a socket it read off the screen. The light version
+// below is this one with the slot looked up.
+bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
 {
     // No early-out for a lone player. Alone in an instance the wearer IS
     // the only body, and the inboard test below is exactly what separates
@@ -203,7 +206,6 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
     // by themselves.
     int count = min((int) round(CVRGlobalParams1.y), 255);
 
-    float3 lightAt = YapsLightPosition(slot);
     int nearPlug = -1, nearLight = -1;
     float bestPlug = 1e9, bestLight = 1e9;
 
@@ -241,6 +243,11 @@ bool YapsSameBodyAs(float3 plugOrigin, uint slot)
     float plugToHip = dot(_CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin,
                           _CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin);
     return bestLight < plugToHip;
+}
+
+inline bool YapsSameBodyAs(float3 plugOrigin, uint slot)
+{
+    return YapsSameBodyAt(plugOrigin, YapsLightPosition(slot));
 }
 
 // The SOCKET side of the same question: is this plug's tracker light the
@@ -528,6 +535,28 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // aimed hole was thrown away before the deform ever saw it.
                 // Range is what says a socket is not this plug's business.
                 if (d > far) continue;
+
+                // OWN BODY, the same question the lights ask and by the same
+                // means. The atlas is the transport for OTHER PEOPLE's
+                // sockets: a wearer's own is permanently in reach and
+                // permanently nearest, so without this it takes link 0 for
+                // ever and nothing anybody else wears is ever seen, which is
+                // exactly what the note over YapsSameBodyAs warns about.
+                //
+                // Nothing is lost by excluding them. A wearer's own sockets
+                // already reach this plug through the contact channel:
+                // exactly, locally, on every client, with no screen read at
+                // all. Own body is the channel's job, everybody else is the
+                // atlas's.
+                //
+                // _YAPS_SelfTag is the switch the lights use and it is set by
+                // both builders: below zero means this avatar wears no
+                // sockets and there is nothing to exclude. Tested here rather
+                // than after the sort because a rejected entry has to leave
+                // no hole in the list, and here it simply never enters it.
+                // The scan inside is over players, not taps, and only runs
+                // for a socket that already passed range, which is a handful.
+                if (_YAPS_SelfTag >= 0 && YapsSameBodyAt(root, at)) continue;
 
                 // Insertion sort, nearest first. Sorted here rather than
                 // later because THE ORDER IS THE PATH: socket one is the one
