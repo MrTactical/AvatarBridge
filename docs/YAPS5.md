@@ -1099,3 +1099,29 @@ material alone never was.
 
 **Anything converted before this needs converting again.** Two plugs in three were deforming
 against the wrong mesh, and nothing in the report said so.
+
+## The plug's base sits where the shaft starts, not where it was inherited (2026-09-04)
+
+A plug's root is whatever the original avatar's author put their plug component on, and authors
+routinely put it on the hub ABOVE the shaft. Everything else hanging off that hub is then
+measured as part of the plug: the length spans it, and the bend begins behind it.
+
+`YapsBaker.SuggestShaftRoot` reads the bone chains under the stated root and takes the one that
+reaches furthest. Bone positions, not vertices: a skinned mesh's vertices are in bind space and
+relating them to a bone costs the whole placement pass the bake does, while the bones are already
+posed and the only question is which chain goes furthest.
+
+Two guards, because a wrong root is worse than an inherited one. There has to be more than one
+chain carrying vertices, or the stated root already is the shaft's and this would chop its first
+bone off. And the winner has to reach at least twice as far as the runner-up: two chains of
+similar length is a shape this cannot read, and it says nothing.
+
+It runs inside `YapsBaker.Bake`, which is the one place both builders pass through, and it is
+reported rather than silent because it moves where the bend begins and changes what the length
+means. Sockets bake in their own frame and have no shaft to find, so `objectFrame` skips it.
+
+Moving the plug onto the bone you want overrides it: a root whose children are a single chain
+has nothing to choose between and the suggestion stands down.
+
+Wants the corpus before shipping. It changes the measured length and origin of every plug whose
+root sits on a hub, which is most of the ones that came from another format.

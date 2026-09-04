@@ -66,6 +66,31 @@ namespace AvatarBridge
                 failure = "the renderer has no mesh";
                 return null;
             }
+
+            // DOWN TO THE SHAFT, when the stated root is the hub above it.
+            // Here rather than in either builder, because both of them arrive
+            // with a root somebody else chose and this is the one place they
+            // both pass through. Reported, never silent: it moves where the
+            // bend begins and what the length means.
+            //
+            // A socket bakes in its own frame and has no shaft to find, so it
+            // is left alone.
+            if (!objectFrame)
+            {
+                var shaft = SuggestShaftRoot(renderer, plugRoot);
+                if (shaft != null)
+                {
+                    report?.Converted(Category,
+                        $"{plugRoot.name}: measured from \"{shaft.name}\" instead",
+                        $"The plug's root was set on \"{plugRoot.name}\", which has more than one " +
+                        $"chain of bones hanging off it, so everything on the others was being " +
+                        $"measured as part of the shaft: the length spanned them and the bend began " +
+                        $"behind them. \"{shaft.name}\" reaches more than twice as far as anything " +
+                        $"else there, so it is the shaft. Move the plug onto the bone you want if " +
+                        $"this is not it.");
+                    plugRoot = shaft;
+                }
+            }
             // Read/Write Enabled gates the player, not the editor, so ask the
             // mesh rather than the flag.
             Vector3[] probe;
@@ -285,6 +310,53 @@ namespace AvatarBridge
                 }
             }
             return CountWeighted(skin, plugBones);
+        }
+
+        // Which child bone chain is the SHAFT, when the stated root sits above
+        // it. Null when there is no clear answer, which is most of the time.
+        //
+        // A plug's root is inherited: it is wherever the original avatar's
+        // author put their plug component, and authors routinely put it on the
+        // hub ABOVE the shaft. Everything else hanging off that hub is then
+        // measured as part of the plug, so the length spans it and the bend
+        // starts behind it rather than at the base of the shaft.
+        //
+        // Bone positions, not vertices. A skinned mesh's vertices are in bind
+        // space and relating them to a bone costs the whole placement pass the
+        // bake does; the bones are already posed and the only question here is
+        // which chain goes furthest.
+        //
+        // Two guards, because a wrong root is worse than an inherited one.
+        // There must be more than one chain to choose between, or the stated
+        // root already IS the shaft's and this would just chop its first bone
+        // off. And the winner has to reach at least twice as far as the
+        // runner-up: two chains of similar length is a shape this cannot read.
+        public static Transform SuggestShaftRoot(Renderer renderer, Transform statedRoot)
+        {
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || statedRoot == null || skin.bones == null || skin.bones.Length == 0)
+            {
+                return null;
+            }
+
+            Transform best = null;
+            float bestReach = 0, nextReach = 0;
+            int candidates = 0;
+            for (int i = 0; i < statedRoot.childCount; i++)
+            {
+                var child = statedRoot.GetChild(i);
+                if (CountVerticesUnder(renderer, child) == 0) continue;
+                candidates++;
+                float reach = 0;
+                foreach (var t in child.GetComponentsInChildren<Transform>(true))
+                {
+                    reach = Mathf.Max(reach, Vector3.Distance(statedRoot.position, t.position));
+                }
+                if (reach > bestReach) { nextReach = bestReach; bestReach = reach; best = child; }
+                else if (reach > nextReach) { nextReach = reach; }
+            }
+            if (candidates < 2 || best == null || bestReach < nextReach * 2f) return null;
+            return best;
         }
 
         // Vertices weighted to any bone at or under one object, no
