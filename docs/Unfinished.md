@@ -123,9 +123,9 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      from the spike. Behind `_YAPS_UseAtlas`, default 0, set by the converter from
      `YapsAtlas.Enabled`.
 
-     **Only the FIRST link reaches the deform.** `YapsResolveSocket` takes the chain's socket 0 as
-     tier 3 and the deform still bends toward one socket. The chain and its ranges exist and are
-     correct; walking them is deform work and is not A4. Tier 3 needed a fourth length in the
+     **The whole chain reaches the deform** as of 2026-09-04: it rides on the socket struct and
+     `yaps_deform.cginc` picks a link per vertex by arc length, so the shaft passes through every
+     socket on the path instead of bending at the nearest. Tier 3 needed a fourth length in the
      "Resolved by" view, since it would otherwise read identically to a marker light, which is the
      exact confusion that view exists to prevent: quarter nobody, half channel, three quarters
      light, full atlas.
@@ -1468,23 +1468,3 @@ avatar to write against, so it waits for one.
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires
 it, not because ours is weak.
-
-
-## A4 resolves a chain and walks one link of it
-
-`YapsResolveChain` gathers up to four sockets, sorts them nearest-first because THE ORDER IS THE
-PATH, and fills `arc[]` with the arc-length range each one owns. `YapsResolveSocket` then hands
-the deform `chain.position[0]` and nothing else, and `yaps_deform.cginc` bends toward one socket
-the way it always has.
-
-So A4 as shipped is a working single-socket atlas resolver. The A4 contract said "ordered list,
-arc-length ranges, cubic chain", and two of those three are real: the list and the ranges exist
-and are correct, the cubic walk is not wired up. Called out by review rather than by me, and the
-distinction matters, because "A4 passes" reads as the whole contract to anybody who was not in
-the room.
-
-The walk is a deform change, not a resolver change: take `chain.count`, `chain.position[]`,
-`chain.forward[]` and `chain.arc[]`, and place each baked vertex by which arc range its distance
-along the plug falls into rather than bending the whole shaft at one target. Worth doing when a
-plug through two sockets is a case somebody actually has; the resolver has been ready for it
-since 2026-09-03.

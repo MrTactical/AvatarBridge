@@ -791,7 +791,66 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // turns sharper and arrives more directly, above 1 it sweeps a wider
     // arc. 1 is the law the deform has always used.
     float smoothness = max(_YAPS_BezierSmoothness, 0.05);
-    float approachHandle = gap * 0.5 * smoothness;
+
+    float zAlong = max(baked.position.z, 0);
+
+    // THE CHAIN. A plug resolved through the screen atlas gets an ORDERED
+    // LIST of sockets rather than a winner, each owning a stretch of the
+    // shaft's own length. The shaft passes through all of them: a ring at
+    // mid-shaft and a hole at the tip is one path with two bends, not a
+    // choice between two targets, and picking a winner is what used to make
+    // a plug flip between them as one or the other momentarily came closer.
+    //
+    // A vertex is only ever inside ONE link, so the walk stays a single
+    // cubic and costs what it always did. The link is chosen by where the
+    // vertex sits along the shaft; its segment runs from the previous
+    // socket to this one, LEAVING the previous socket along that socket's
+    // own forward. Consecutive segments meeting on a shared direction is
+    // what keeps the shaft smooth across the joint instead of kinked.
+    //
+    // Everything the root owns stays on segment 0: the pullout handle, the
+    // straight start, the entrance stiffness. Past the first socket the
+    // shaft is being carried by sockets, not by its own base.
+    //
+    // Arc positions are CHORD distances, so a segment's curve is a little
+    // longer than the range it was given and a vertex lands slightly short
+    // of its socket. Under a bend that reads as the shaft being a touch
+    // slack, which is the harmless direction to be wrong in.
+    float3 fromWorld = rootWorld;
+    float3 fromForward = rootForward;
+    float linkKind = socket.isHole;
+    int link = 0;
+    if (socket.chain.count > 1)
+    {
+        // A cascade, not a search, and no index computed from data: the
+        // arrays only stay in registers while every subscript is a literal,
+        // and one runtime subscript spills the whole chain to memory. Same
+        // rule that shaped the resolver's sort. The compare is per-vertex,
+        // the subscripts are not.
+        [unroll] for (int c = 0; c < YAPS_CHAIN_MAX; c++)
+        {
+            bool last = c == socket.chain.count - 1;
+            bool inside = c < socket.chain.count
+                       && zAlong >= socket.chain.arc[c]
+                       && (last || zAlong < socket.chain.arc[c + 1]);
+            if (inside)
+            {
+                link = c;
+                socketWorld = socket.chain.position[c];
+                socketForward = socket.chain.forward[c];
+                linkKind = socket.chain.kind[c];
+                zAlong -= socket.chain.arc[c];
+                if (c > 0)
+                {
+                    fromWorld = socket.chain.position[max(c - 1, 0)];
+                    fromForward = socket.chain.forward[max(c - 1, 0)];
+                }
+            }
+        }
+    }
+    float segGap = max(length(socketWorld - fromWorld), 1e-5);
+
+    float approachHandle = segGap * 0.5 * smoothness;
     float rootHandle = lerp(worldLength * 5, approachHandle, engage);
 
     // ENTRANCE STIFFNESS, from DPS. The base resists the bend: the root
@@ -802,8 +861,12 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // is allowed to begin.
     rootHandle = max(rootHandle, saturate(_YAPS_EntranceStiffness) * worldLength * engage);
 
-    float3 p0 = rootWorld;
-    float3 p1 = rootWorld + rootForward * rootHandle;
+    // A mid-chain segment has no base to resist it and nothing to hold
+    // straight, so both its ends get the same plain handle.
+    if (link > 0) { rootHandle = approachHandle; }
+
+    float3 p0 = fromWorld;
+    float3 p1 = fromWorld + fromForward * rootHandle;
     float3 p2 = socketWorld - socketForward * approachHandle;
     float3 p3 = socketWorld;
 
@@ -815,26 +878,25 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // distance PAST that start. A vertex inside the straight part is not
     // walked at all, it stays on the plug's own forward, which is exactly
     // "straight".
-    float straight = saturate(_YAPS_BezierStart) * worldLength;
+    float straight = link > 0 ? 0 : saturate(_YAPS_BezierStart) * worldLength;
     float ease = max(_YAPS_SmoothStart, 0) * worldLength;
-    float zAlong = max(baked.position.z, 0);
     float leftOver;
     YapsFrame frame;
     if (straight > 1e-5)
     {
-        float3 startWorld = rootWorld + rootForward * straight;
-        float3 sp1 = startWorld + rootForward * max(rootHandle - straight, worldLength * 0.1);
+        float3 startWorld = fromWorld + fromForward * straight;
+        float3 sp1 = startWorld + fromForward * max(rootHandle - straight, worldLength * 0.1);
         if (zAlong <= straight)
         {
             // In the straight part. On the plug's own axis, no walk.
-            frame.position = rootWorld + rootForward * zAlong;
-            frame.forward = rootForward;
+            frame.position = fromWorld + fromForward * zAlong;
+            frame.forward = fromForward;
             frame.up = rootUp;
             leftOver = 0;
         }
         else
         {
-            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, rootForward, leftOver);
+            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, fromForward, leftOver);
             // The join: blend the walked frame back toward the straight
             // frame over the ease length past the start, so the shaft
             // bends into the curve instead of breaking at one point.
@@ -842,7 +904,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             {
                 float k = saturate((zAlong - straight) / ease);
                 k = k * k * (3 - 2 * k);
-                float3 straightPos = rootWorld + rootForward * zAlong;
+                float3 straightPos = fromWorld + fromForward * zAlong;
                 frame.position = lerp(straightPos, frame.position, k);
                 frame.forward = YapsSafeNormalize(lerp(rootForward, frame.forward, k), rootForward);
                 frame.up = YapsPerpendicular(frame.forward, lerp(rootUp, frame.up, k));
@@ -851,13 +913,16 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
     else
     {
-        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
+        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, fromForward, leftOver);
     }
 
     // Past the end of the curve. A hole swallows the remainder and tapers
     // the tip to a point; a ring lets it carry straight on through.
     float radius = 1;
-    bool isHole = socket.isHole > 0.5;
+    // The link this vertex is inside, which past the first is not the one
+    // socket.isHole names. Only the last link can leave anything over: every
+    // earlier one has the next link's range waiting directly behind it.
+    bool isHole = linkKind > 0.5;
     if (leftOver > 0 && isHole)
     {
         // How far past the hole a vertex may travel before it starts

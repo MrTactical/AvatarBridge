@@ -66,6 +66,34 @@ inline float3 YapsNormalizeOr(float3 v, float3 fallback)
     return lengthSq < 1e-12 ? fallback : v * rsqrt(lengthSq);
 }
 
+// --- the screen atlas ------------------------------------------------
+//
+// A LIST, NOT A WINNER. The rest of this file picks the nearest socket and
+// throws the neighbourhood away, which makes a plug flip between two sockets
+// as whichever is momentarily closer to its ROOT changes, and lets a socket
+// BEHIND it beat one in front, because distance-to-root never asks which way
+// a plug points.
+//
+// The atlas hands back an ordered list instead, and the plug becomes a path
+// rather than an aim: each socket claims a range of arc length along the
+// shaft. A ring mid-shaft and a hole at the tip are then two entries, a
+// portal is two entries with a gap between their ranges, and a duplicate is
+// one range mapped twice. Only the list and the ranges are built here; what
+// walks them belongs to the deform.
+#define YAPS_CHAIN_MAX 4
+
+struct YapsChain
+{
+    float3 position[YAPS_CHAIN_MAX];
+    float3 forward[YAPS_CHAIN_MAX];
+    float  kind[YAPS_CHAIN_MAX];      // 0 ring, 1 hole
+    float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
+    int    count;
+    float  engaged;
+    float  headers;   // cells whose header said something was there
+    float  hits;      // payloads that then matched the cell's tag
+};
+
 struct YapsSocket
 {
     float3 position;
@@ -85,6 +113,12 @@ struct YapsSocket
     // stage that threw the socket away.
     float atlasHeaders;
     float atlasHits;
+    // The WHOLE ordered chain, not only the link this struct's position
+    // names. A shaft that passes a ring on its way to a hole has to follow
+    // both, and the deform picks a link per vertex by arc length. count is
+    // 0 for every source but the atlas, and 0 means the fields above are
+    // the only answer there is.
+    YapsChain chain;
 };
 
 // --- protocol lights -------------------------------------------------
@@ -390,37 +424,9 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 // --- the resolution --------------------------------------------------
 
 
-// --- the screen atlas ------------------------------------------------
-//
-// A LIST, NOT A WINNER. The rest of this file picks the nearest socket and
-// throws the neighbourhood away, which makes a plug flip between two sockets
-// as whichever is momentarily closer to its ROOT changes, and lets a socket
-// BEHIND it beat one in front, because distance-to-root never asks which way
-// a plug points.
-//
-// The atlas hands back an ordered list instead, and the plug becomes a path
-// rather than an aim: each socket claims a range of arc length along the
-// shaft. A ring mid-shaft and a hole at the tip are then two entries, a
-// portal is two entries with a gap between their ranges, and a duplicate is
-// one range mapped twice. Only the list and the ranges are built here; what
-// walks them belongs to the deform.
-#define YAPS_CHAIN_MAX 4
-
 // The sort below moves and places whole entries by literal index.
 #define YAPS_CH_MOVE(a, b) sockD[a] = sockD[b]; sockP[a] = sockP[b]; sockF[a] = sockF[b]; sockK[a] = sockK[b];
 #define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
-
-struct YapsChain
-{
-    float3 position[YAPS_CHAIN_MAX];
-    float3 forward[YAPS_CHAIN_MAX];
-    float  kind[YAPS_CHAIN_MAX];      // 0 ring, 1 hole
-    float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
-    int    count;
-    float  engaged;
-    float  headers;   // cells whose header said something was there
-    float  hits;      // payloads that then matched the cell's tag
-};
 
 // Reads the neighbourhood of the shaft's MIDPOINT rather than its root, so a
 // radius-1 read covers the whole plug instead of only the half nearest the
@@ -570,13 +576,15 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     {
         float3 seg = sockP[i3] - prev;
         float d3 = length(seg);
-        // A RING is turned to meet its approach. It is a loop with no wrong
-        // side, so which of the two faces the author happened to point it is
-        // not information, and trusting it makes the path arrive travelling
-        // backwards and tie itself in a hairpin. A HOLE keeps its sign: it
-        // has a front, the author chose which, and a plug arriving at the
-        // back was dropped from the list already.
-        if (sockK[i3] < 0.5 && d3 > 1e-5 && dot(sockF[i3], seg) > 0)
+        // Every socket is turned to meet its approach, ring and hole alike,
+        // which is the same law the deform applies to a lone socket. Trusting
+        // the sign makes the path arrive travelling backwards and tie itself
+        // in a hairpin. It used to be ring-only, because a hole aimed away
+        // was supposed to have been rejected before reaching here, and that
+        // rejection is gone: a converter inherits whatever convention the
+        // original avatar used, so an aimed-away hole is usually a correctly
+        // placed one with the other convention.
+        if (d3 > 1e-5 && dot(sockF[i3], seg) > 0)
             sockF[i3] = -sockF[i3];
         // Entries past the count get a range nothing can fall inside rather
         // than a branch that skips them. A runtime-dependent continue is what
@@ -597,6 +605,12 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
 YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugUp, float worldLength)
 {
     YapsSocket socket;
+
+    // The chain is filled by the atlas branch at the end and by nothing
+    // else, so it is zeroed here rather than left to whatever was in the
+    // registers. count 0 is what tells the deform there is no path to walk,
+    // and reading a stale count would send it walking one.
+    socket.chain = (YapsChain)0;
 
     // Engagement and flags: the discrete channel, always, alone.
     socket.engaged = saturate(_YAPS_SocketFlags.x);
@@ -926,9 +940,9 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // because it carries the socket's own facing and kind rather than
     // deriving them, so it takes the result outright rather than blending.
     //
-    // Only the FIRST link is handed back here. The rest of the chain exists
-    // and is ordered, but what walks it is the deform's job and the deform
-    // still bends toward one socket.
+    // The first link fills the single-socket fields, so everything that
+    // reads a socket and knows nothing of chains keeps working. The whole
+    // chain rides along beside it for the deform to walk.
     if (_YAPS_UseAtlas > 0.5)
     {
         YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
@@ -936,6 +950,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.atlasHits = chain.hits;
         if (chain.count > 0)
         {
+            socket.chain = chain;
             socket.position = chain.position[0];
             socket.forward = chain.forward[0];
             socket.isHole = chain.kind[0];

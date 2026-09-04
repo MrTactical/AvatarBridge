@@ -937,3 +937,48 @@ volume is detectable, and saying "this part will not bend, its vertices are weig
 outside the plug" turns a silent visual fault into a told one. Detection only. Re-weighting
 somebody's mesh is not the converter's business.
 
+
+## The cubic chain, wired (2026-09-04)
+
+A4 shipped as a working single-socket atlas resolver: `YapsResolveChain` built the ordered list
+and the arc-length ranges, and `YapsResolveSocket` handed the deform link 0 and threw the rest
+away. Review caught it, and "A4 passes" had been reading as the whole contract to anybody who
+was not in the room. The walk is now in.
+
+**The chain rides on the socket.** `YapsChain` moved above `YapsSocket` in `yaps_resolve.cginc`
+so it can be a field of it. Every other resolver source leaves `count` at 0, and 0 means the
+single-socket fields are the only answer there is, so tiers 1 and 2 take exactly the path they
+took before.
+
+**One vertex is inside one link.** The walk stays a single cubic and costs what it always did.
+`yaps_deform.cginc` picks the link whose arc range contains the vertex's distance along the
+shaft, and walks from the previous socket to that one. The segment leaves the previous socket
+along *that socket's* forward, which is the same direction the previous segment arrived on, so
+the joint is smooth rather than kinked.
+
+**The base's knobs stay on the base's segment.** Pullout handle, entrance stiffness and the
+straight start apply to link 0 only. Past the first socket the shaft is being carried by sockets,
+not by its own base, and a mid-chain segment gets the same plain handle at both ends.
+
+**No index computed from data.** The link choice is an unrolled cascade over `YAPS_CHAIN_MAX`
+with literal subscripts, not a search that produces an index. One runtime subscript spills the
+whole chain out of registers, which is the rule that already shaped the resolver's sort. The
+compare is per-vertex; the subscripts are not.
+
+**The taper asks the link, not link 0.** `isHole` now comes from the link the vertex is in.
+Only the last link can leave anything over, because every earlier one has the next link's range
+waiting directly behind it.
+
+**Every socket now flips to meet its approach, ring and hole alike.** The flip in the arc loop
+used to be ring-only, on the grounds that a hole aimed away had been rejected before it got
+there. That rejection was removed when it turned out to be a contradiction with the deform, and
+the ring-only flip was left behind: a hole with the other convention would hairpin the path. It
+matches the deform's own unconditional flip now.
+
+Known and left alone: arc positions are chord distances, so a segment's curve is slightly longer
+than the range it was given and a vertex lands a little short of its socket, which reads as the
+shaft being a touch slack. Squeeze and bulge still measure from link 0, so a mid-chain socket
+does not grip. Both want a real two-socket avatar before they are worth chasing.
+
+Compiles clean through `Dev/Probes/Hlsl/yaps-fxc.sh`. Not yet seen in ChilloutVR: nobody has a
+plug through two sockets to test it with, which is why the resolver sat half-used for a day.
