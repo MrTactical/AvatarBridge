@@ -804,7 +804,11 @@ namespace AvatarBridge
                 var wasSocket = mats[slot];
                 mats[slot] = material;
                 renderer.sharedMaterials = mats;
-                YapsSwapFollow.Follow(renderer, 0, wasSocket, material, report);
+                // The slot the bake actually went into, not 0. The repair is
+                // keyed by renderer and slot, so a swap animation on a
+                // non-zero socket slot was left unrepaired and put the
+                // unbaked material back the first time it fired.
+                YapsSwapFollow.Follow(renderer, slot, wasSocket, material, report);
             }
 
             WriteStages(material, stages.Select(s => (s.startsAt, s.fadeOver)).ToList());

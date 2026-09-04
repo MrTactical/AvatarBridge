@@ -1029,5 +1029,12 @@ animated from the shipped controller read as not animated at all, and YAPS built
 toggle against it, which is the two-drivers-one-property fight that leaves a plug permanently
 undeformed. Both go through `ClipsOfAvatar` now and it reads `avatar.overrides` first.
 
+**And the socket's swap repair still named slot 0.** Caught on the second pass, after the slot
+selection above went in: `YapsSwapFollow.Follow` was still called with a literal 0 while the bake
+had gone into the selected slot. The repair is keyed by renderer and slot, so a swap animation on
+a non-zero socket slot matched nothing, was left unrepaired, and put the unbaked material back the
+first time it fired. Exactly the shape of the converter bug fixed two days earlier, in the other
+code path.
+
 Also: the test plug left a uniquely named mesh asset behind on every spawn. One asset now,
 deleted and rewritten, since the test plug exists to try something and be deleted.
