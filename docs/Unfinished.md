@@ -148,6 +148,19 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
    B3 an atlas avatar meeting a legacy DPS avatar. B4 a viewer with custom shaders blocked.
 
+   Two more, added 2026-09-04, because both are code that has never once run against reality and
+   neither can be seen from here:
+
+   - **B5, a plug through TWO sockets.** The chain walk went in on the strength of an offline
+     compile. Nobody has built the avatar that exercises it, which is why the resolver sat half
+     used for a day and why the chord-versus-curve tear was found by reading rather than by
+     looking. What to watch for is a torn ring of mesh at the joint, and a shaft that picks one
+     socket and ignores the other.
+   - **B6, a multi-material plug seen by SOMEBODY ELSE.** The channel's per-slot driver tasks
+     only diverge remotely: the wearer's own view is correct either way, and a second material
+     left behind shows as half the mesh following the socket and half sitting still, on the other
+     person's screen only. Needs a second client, which means a second person.
+
    Phase C, make it primary: C1 blend by tier, never by presence, or the mirror divergence
    returns. C2 sockets keep emitting DPS ranges byte for byte, not negotiable. C3 flip the
    default, corpus, ship.
