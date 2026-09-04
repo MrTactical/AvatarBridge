@@ -1071,3 +1071,31 @@ screen copy per camera. Both builders read it now. What it costs in a crowded in
 behaves in mirrors and VR, and whether a viewer with custom shaders blocked sees anything at all
 are all still unmeasured: that is Phase B, and this switch is what makes Phase B runnable rather
 than a claim that it is finished. C3's corpus run is still owed before any of this ships.
+
+## Three plugs, one material, one bake (2026-09-04)
+
+The toolkit window listed three plugs on one avatar and gave all three the same length, 0.82 m,
+which is plainly not true of three different shaft meshes. The baked materials in the output
+folder held three different lengths, so the bake had measured them correctly and something after
+it had not.
+
+All three `YapsPlug` components pointed at three DIFFERENT renderers, each at material slot 0,
+and all three of those slots held the SAME material asset. Three plug meshes painted from one
+body material is ordinary; a material holds ONE bake; so the last plug baked won and the other
+two deformed against vertex positions belonging to a mesh they are not. Identical reported
+lengths were the symptom, not the fault.
+
+`YapsBaker.Apply` clones the source material precisely so this cannot happen, and its comment
+has said so since it was written. The clone's PATH was keyed on the source material alone, so
+all three plugs resolved to one clone and the clone did what a shared asset does. The morning's
+fix for two different materials sharing a NAME was the same shape of bug one level up and did
+not reach this: here the source material really is one asset, correctly hashed to one tail.
+
+The key now includes the mesh: `Tail(source, renderer)` hashes the material's GUID and local id
+together with the renderer's path under its avatar. Path rather than instance id, so a rebuild
+lands on the same asset instead of leaving the old one behind. A bake is indexed by mesh-global
+vertex id and no two meshes share one, which is the reason the pair is the right key and the
+material alone never was.
+
+**Anything converted before this needs converting again.** Two plugs in three were deforming
+against the wrong mesh, and nothing in the report said so.

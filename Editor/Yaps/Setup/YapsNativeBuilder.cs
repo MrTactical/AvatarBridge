@@ -981,7 +981,7 @@ namespace AvatarBridge
                             $"patched ({refusal}), so that part of the mesh will not bend with the rest.");
                         continue;
                     }
-                    target = YapsBaker.Generated(was, shader, dir + "/" + Sanitise(was.name) + "_YAPS_" + YapsBaker.Tail(was) + ".mat");
+                    target = YapsBaker.Generated(was, shader, dir + "/" + Sanitise(was.name) + "_YAPS_" + YapsBaker.Tail(was, renderer) + ".mat");
                     mats[i] = target;
                 }
                 CopyYapsProperties(primary, target);

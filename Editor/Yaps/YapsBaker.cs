@@ -32,6 +32,11 @@ namespace AvatarBridge
             public float Radius;        // plug-local, the widest active vertex off the axis
             public float ActiveVertices;
             public bool FromSkinnedMesh;
+            // The mesh this bake describes. Carried so Apply can name the
+            // generated material after the pair rather than the material
+            // alone: a bake is indexed by mesh-global vertex id, so two
+            // meshes can never share one.
+            public Renderer Renderer;
             public List<string> Shapes = new List<string>();
             public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
 
@@ -247,6 +252,7 @@ namespace AvatarBridge
                 Radius = Mathf.Sqrt(radius),
                 ActiveVertices = active,
                 FromSkinnedMesh = !staticMesh,
+                Renderer = renderer,
                 Shapes = shapeNames,
                 MovingShapes = movingShapes,
                 Origin = origin,
@@ -321,12 +327,14 @@ namespace AvatarBridge
             string outputDir, bool skinned)
         {
             var clone = Generated(source, patchedShader,
-                outputDir + "/" + Sanitise(source.name + " (YAPS)") + Tail(source) + ".mat");
+                outputDir + "/" + Sanitise(source.name + " (YAPS)")
+                + Tail(source, result.Renderer) + ".mat");
             Apply(result, clone, skinned);
             return clone;
         }
 
-        // Which source material this copy came from, in six bytes.
+        // Which source material AND WHICH MESH this copy came from, in six
+        // bytes.
         //
         // The path used to be the source's NAME alone, and two different
         // materials called "Material" is not a corner case, it is what an
@@ -341,13 +349,35 @@ namespace AvatarBridge
         // for two materials embedded in one FBX. An in-scene material has
         // neither and falls back to its instance id, which lasts as long as
         // the bake does.
-        internal static string Tail(Material source)
+        //
+        // THE MESH BELONGS IN THE KEY TOO. Three plug meshes sharing one
+        // material is ordinary: an avatar with three shaft variants paints
+        // them all from one body material. Keyed on the material alone they
+        // all resolved to one generated asset, a material holds ONE bake, and
+        // the last one baked won. The other two then deformed against vertex
+        // positions belonging to a mesh they are not, and every one of them
+        // reported the same length, which is what gave it away. Cloning was
+        // always meant to stop exactly this; the path just did not say which
+        // mesh it was cloning for.
+        //
+        // The renderer's path under its avatar rather than its instance id,
+        // so a rebuild lands on the same asset instead of leaving the old one
+        // behind.
+        internal static string Tail(Material source, Renderer on)
         {
             string id = AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
                 source, out string guid, out long local)
                 ? guid + local
                 : source.GetInstanceID().ToString();
-            return " " + YapsShaderPatcher.Hash(id);
+            return " " + YapsShaderPatcher.Hash(id + "|" + PathOf(on));
+        }
+
+        static string PathOf(Renderer on)
+        {
+            if (on == null) return "";
+            string path = on.name;
+            for (var t = on.transform.parent; t != null; t = t.parent) path = t.name + "/" + path;
+            return path;
         }
 
         // The per-MESH half of a bake, onto a material that already exists.
