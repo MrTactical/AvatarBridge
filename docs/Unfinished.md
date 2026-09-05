@@ -155,10 +155,13 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      observation. Sockets hash by spatial cell into 4096 cells per level with two homes each, so
      expected first-home collisions are about N squared over 8192: under two at a hundred
      sockets, about five at two hundred, and a first-home clash still reads from the second.
-     Forty people at four sockets each is a hundred and sixty. What the arithmetic does NOT
-     cover is throughput: every avatar's socket writers run on the VIEWER's client, so that is
-     a hundred and sixty times eight quads drawn ahead of the scene every frame. Test it if a
-     crowd ever turns up; do not hold a release for it.
+     The platform's real ceiling is nowhere near that: an instance rarely holds 28 people and
+     most of them will not be carrying any of this, so a realistic crowd is a couple of dozen
+     sockets and about 0.07 expected clashes. Even 28 people fully kitted is 112 sockets and
+     under two. The budget is not the risk it was written down as. What the arithmetic does NOT
+     cover is throughput: every avatar's socket writers run on the VIEWER's client, so a full
+     instance is a hundred-odd sockets times eight quads drawn ahead of the scene every frame.
+     Test it if a crowd ever turns up; do not hold a release for it.
    - **B3 PASSES 2026-09-05.** A YAPS plug resolved and bent toward the sockets on another
      player's legacy DPS avatar, in game, with no conversion on their side. The marker-light
      tier reads stock content as intended and the digit table is right.
