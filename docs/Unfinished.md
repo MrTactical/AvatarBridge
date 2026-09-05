@@ -150,6 +150,15 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
    B3 an atlas avatar meeting a legacy DPS avatar. B4 a viewer with custom shaders blocked.
 
+   - **B2's crowded instance is NOT a ship blocker, 2026-09-06.** The platform's population
+     makes it hard to arrange, and the half it was written for is arithmetic rather than
+     observation. Sockets hash by spatial cell into 4096 cells per level with two homes each, so
+     expected first-home collisions are about N squared over 8192: under two at a hundred
+     sockets, about five at two hundred, and a first-home clash still reads from the second.
+     Forty people at four sockets each is a hundred and sixty. What the arithmetic does NOT
+     cover is throughput: every avatar's socket writers run on the VIEWER's client, so that is
+     a hundred and sixty times eight quads drawn ahead of the scene every frame. Test it if a
+     crowd ever turns up; do not hold a release for it.
    - **B3 PASSES 2026-09-05.** A YAPS plug resolved and bent toward the sockets on another
      player's legacy DPS avatar, in game, with no conversion on their side. The marker-light
      tier reads stock content as intended and the digit table is right.
