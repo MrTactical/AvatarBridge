@@ -1303,3 +1303,15 @@ inside its own render.
 The lesson is not about mirrors. An instrument that changes the thing it measures has to be
 suspect number one when the measurement disagrees with a known-good case, and the debug view says
 so in its own help text. It was read as a colouring, not as a replacement.
+
+## Two avatars, and both eyes (2026-09-05)
+
+B1 and the stereo half of B2 pass. Two converted avatars in one instance read each other's
+sockets out of the atlas, and a plug bends in VR through both eyes.
+
+The stereo result was the one worth watching. ChilloutVR renders single-pass instanced, so both
+eyes share one wide target and each eye is a viewport inside it. The rect is placed from
+_ScreenParams, which reports the per-eye size rather than the whole texture, and the grab is
+sampled the same way, so writer and reader agree without either of them knowing there are two
+eyes. Nothing in the transport had to be told about stereo, which is the reason it works and also
+the reason it could not have been proven from here.

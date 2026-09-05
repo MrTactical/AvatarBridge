@@ -150,10 +150,12 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
    B3 an atlas avatar meeting a legacy DPS avatar. B4 a viewer with custom shaders blocked.
 
-   - **The mirror half of B2 passes, 2026-09-05.** A plug bent from the atlas in a desktop
-     mirror. It had looked broken for two days because the plug being watched had a debug view
-     set, and a debug view returns before every bend line, so that plug was straight in every
-     camera by design. VR and the crowded instance are still owed.
+   - **B1 PASSES and most of B2 PASSES, 2026-09-05.** Two atlas avatars in one instance carry
+     each other's sockets. A plug bends from the atlas in a desktop mirror, and in VR through
+     both eyes. The mirror had looked broken for two days because the plug being watched had a
+     debug view set, and a debug view returns before every bend line, so that plug was straight
+     in every camera by design. Still owed from B2: a CROWDED instance, which is the one that
+     tests the 4096 cells rather than the transport.
 
    Two more, added 2026-09-04, because both are code that has never once run against reality and
    neither can be seen from here:
