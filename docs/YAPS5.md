@@ -1275,3 +1275,31 @@ The size setting tops out at 4096 but is clamped to the camera, so a 1080p view 
 mirror, far larger than the rect: the size gate is not what stops it. The oblique matrix rewrites
 the third row only, so clip x and y placement is untouched. The target is HALF FLOAT, not eight bit,
 which is the one difference that reaches the payload.
+
+## The mirror was never the thing that was broken (2026-09-05)
+
+For two days the report was "bends in front of you, stands still in the mirror". Three theories
+were built on it, one of them was shipped, and it broke the working view badly enough to need a
+revert. None of them were about the mirror, because the mirror was fine.
+
+The plug being watched had a debug view set. `yaps_deform.cginc` handles that first:
+
+    if (_YAPS_Debug >= 0.5)
+    {
+        ...
+        return;
+    }
+
+The return sits before the enabled test and before every bend line, on purpose: the views report
+by LENGTH, and a bending plug would make the length unreadable. So a plug with any view set is
+straight in every camera, always. Switching to a plug with the view Off showed it bending in the
+mirror on the first look.
+
+What actually fixed the mirror, if anything did, was the queue move to Background-946/-945/-944.
+Unity grabs once per frame per texture NAME, and at Overlay the reflection camera was drawing
+after the only grab that had happened. Ahead of the scene, each camera reaches the grab pass
+inside its own render.
+
+The lesson is not about mirrors. An instrument that changes the thing it measures has to be
+suspect number one when the measurement disagrees with a known-good case, and the debug view says
+so in its own help text. It was read as a colouring, not as a replacement.
