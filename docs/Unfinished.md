@@ -187,6 +187,20 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    returns. C2 sockets keep emitting DPS ranges byte for byte, not negotiable. C3 flip the
    default, corpus, ship.
 
+   - **C1 DONE 2026-09-05.** The atlas already took its answer outright rather than blending, so
+     the tier part was in place. What was not was the behind-the-base guard: it sat ABOVE the
+     atlas block, and the atlas overwrites engagement afterwards, so a tier-3 socket decoded
+     behind the plug's own root engaged in full and folded the shaft back. Moved to last in the
+     function, where it judges whichever answer survived. The one presence switch left is a
+     marker light sharpening a channel position, which is bounded to close range on purpose and
+     documented where it happens.
+   - **C2 DONE 2026-09-05, no change needed.** One writer, `YapsSocketBuilder`, emitting 0.4130
+     hole root, 0.4230 ring root, 0.4530 front, which are the stock DPS values. It only ADDS a
+     light that was missing, so an authored socket's lights survive untouched; the sole rewrite
+     is on an explicit kind change in the toolkit. The resolver's header had documented a
+     YAPS-only 0.4706/0.4006 ordering that nothing emits, drafted and then dropped because a
+     legacy plug reads those digits as nothing. Comment corrected to say so.
+
    **The default is already flipped**, 2026-09-04, so Phase B can be run at all: an atlas nobody
    publishes to cannot be tested in an instance. C3 keeps the other two thirds, and the corpus
    run is the part that is owed. Nothing ships off a switch that was flipped to make a test

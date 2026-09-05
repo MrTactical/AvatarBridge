@@ -1315,3 +1315,36 @@ _ScreenParams, which reports the per-eye size rather than the whole texture, and
 sampled the same way, so writer and reader agree without either of them knowing there are two
 eyes. Nothing in the transport had to be told about stereo, which is the reason it works and also
 the reason it could not have been proven from here.
+
+## A guard applied by its position in the file (2026-09-05, C1)
+
+The resolver refuses a socket sitting a real way behind the plug's base, because a plug that
+bends toward something behind its own root folds back on itself. The guard was correct and had
+been correct for weeks. It ran in the wrong place.
+
+Order was: light refinement, behind-the-base guard, "nothing found means nothing engaged", then
+the atlas. The atlas sets `socket.engaged = chain.engaged` outright, so every tier-3 answer
+arrived after the guard had already run and skipped it entirely. A socket decoded from the screen
+behind the plug engaged in full.
+
+The fix is a move, not a line of logic: the guard now sits last in the function, so it judges
+whichever answer survived rather than whichever answer happened to be current when control
+reached it. Anything that decides engagement now belongs above it, and the comment says so.
+
+Worth naming the shape, because it is not a bug in either piece: two correct blocks, ordered by
+when they were written rather than by what depends on what. A new tier added at the end of a
+function inherits none of the checks written above it, silently.
+
+## The socket lights are stock DPS and stay that way (2026-09-05, C2)
+
+Checked rather than assumed. One writer, `YapsSocketBuilder`: 0.4130 for a hole root, 0.4230 for
+a ring root, 0.4530 for a front, which are the values every DPS plug already on the platform
+looks for. It only ever adds a light that was missing, so an authored socket keeps its own; the
+single rewrite path is an explicit kind change in the toolkit, which is the author asking for it.
+
+The check turned up a stale design instead. The resolver's header described YAPS authoring its
+own ordering, root 0.4706 and front 0.4006, on the reasoning that stock puts fronts above roots
+and Unity ranks vertex lights by range, so fronts evict the roots they belong to. That reasoning
+is sound and the scheme was never adopted, because 7 and 0 mean nothing to a legacy plug and the
+sockets would go dark for everything that is not YAPS. The comment now records it as a rejected
+option with the condition for revisiting it, which is emitting both sets rather than swapping.

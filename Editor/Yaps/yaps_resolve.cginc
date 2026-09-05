@@ -127,38 +127,38 @@ struct YapsSocket
 // encodes what it is. Unity hands back attenuation rather than range, and
 // range is recovered as 5/sqrt(atten).
 //
-// The stock DPS ordering puts fronts at 0.45 and roots at 0.41, and since
-// Unity ranks vertex lights by range, every front outranks its own root
-// and evicts it, with twelve sockets the four slots filled with fronts,
-// which are a direction with no origin. So YAPS authors its own ordering,
-// root above front.
+// WHAT A SOCKET EMITS IS STOCK DPS, BYTE FOR BYTE, and that is a
+// requirement rather than an accident. YapsSocketBuilder writes 0.4130 for
+// a hole root, 0.4230 for a ring root and 0.4530 for a front, which are the
+// values the platform's existing plugs already look for, and it only ever
+// ADDS a light that was missing. An existing socket's lights are left
+// exactly as authored. Change those constants and every DPS plug in
+// ChilloutVR stops seeing YAPS sockets, which is a far larger regression
+// than anything it would buy.
 //
-// Picking the digits is more constrained than it looks. Legacy already
-// speaks for almost all of them, 1 and 3 hole, 2 and 4 ring, 5 and 6
-// front, 8 and 9 plug tip, and the decoder only ever looks at the second
-// decimal, so 0.31 reads as a hole exactly like 0.41 does. That leaves
-// precisely two free digits, 0 and 7, and root must sit above front:
+// The digits: 1 and 3 hole, 2 and 4 ring, 5 and 6 front, 8 and 9 a plug's
+// own tip. The decoder reads the second decimal only, so 0.31 reads as a
+// hole exactly like 0.41 does. 0 and 7 are the two nobody claimed, and this
+// decoder still accepts them as front and root, because a YAPS-only
+// ordering was drafted around them: stock puts fronts ABOVE roots, Unity
+// ranks vertex lights by range, so every front outranks its own root and
+// evicts it, and with enough sockets the four slots hold nothing but
+// directions with no origin. Root at 0.4706, front at 0.4006 would fix
+// that. It was not adopted, and must not be adopted quietly: a legacy plug
+// reads 7 and 0 as nothing at all, so the sockets would go dark for every
+// plug that is not this one. If it is ever revisited it is an opt-in that
+// emits BOTH sets, never a replacement.
 //
-//     root  0.4706   digit 7
-//     front 0.4006   digit 0
-//
-// A first attempt used 0.4106 for the front, which is digit 1, legacy's
-// hole root. Both YAPS lights then decoded as roots, no front was ever
-// paired, and the socket had a position but no axis: the plug tracked the
-// socket around but ignored its rotation entirely.
-//
-// The legacy values are still DECODED, so a plug still reacts to the DPS
-// content already on the platform. Legacy plugs will not react to YAPS
-// sockets, since 7 and 0 mean nothing to them, the price of roots that
-// win their slots, and the reason emitting a legacy set as well is a
-// separate opt-in.
+// (A first draft of that ordering used 0.4106 for the front, digit 1, which
+// is legacy's hole root. Both lights decoded as roots, no front was ever
+// paired, and the socket had a position but no axis: the plug tracked it
+// around and ignored its rotation. The digit choice is not free.)
 
 // A root is a root however it was authored, but the legacy digits also say
 // what KIND of socket it is, and that is worth keeping: a hole closes
-// around the plug and stops it, a ring lets it pass straight through. The
-// YAPS encoding cannot say, 0 and 7 were the only free digits and both are
-// spent, so for converted sockets the kind travels on the contact channel
-// instead. Whoever resolved the position decides the kind.
+// around the plug and stops it, a ring lets it pass straight through.
+// Whoever resolved the position decides the kind, and where a light did not
+// say, the kind travels on the contact channel instead.
 #define YAPS_LIGHT_NONE  0
 #define YAPS_LIGHT_ROOT  1   // a root, kind unknown
 #define YAPS_LIGHT_FRONT 2
@@ -929,32 +929,6 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.tier = 2;
     }
 
-    // ONLY A SOCKET A REAL WAY BEHIND THE BASE IS REFUSED. Dead ahead and
-    // square beside both engage in full; it fades out over the last half of
-    // a plug length behind the root. That is enough to stop the plug
-    // folding back on itself and still lets one reach up.
-    //
-    // Asked as a DISTANCE along the shaft, never as a direction.
-    //
-    // It used to normalise the vector from the root to the socket and test
-    // its angle, and that had no answer at the one place it mattered.
-    // Engagement is computed per VERTEX — a skinned plug recovers its frame
-    // from each vertex's own normal and tangent, so every vertex brings its
-    // own plugOrigin — and near the root the scatter between those origins
-    // is as large as the gap itself. Each vertex normalised a different
-    // tiny vector, got a different answer, and the mesh came out half
-    // engaged: some vertices swallowed, some hanging out. Joe called it "a
-    // weird mixture of engagement and not", which is exactly what a
-    // per-vertex singularity looks like from outside.
-    //
-    // A signed distance passes smoothly through zero instead of being
-    // undefined there, so every vertex near the root agrees.
-    if (socket.engaged > 0)
-    {
-        float behind = dot(socket.position - plugOrigin, plugForward);
-        socket.engaged *= smoothstep(-worldLength * 0.5, -worldLength * 0.05, behind);
-    }
-
     // Nothing to bend toward. Say so, rather than bending toward nothing.
     if (!found)
     {
@@ -989,6 +963,40 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
             socket.engaged = chain.engaged;
             socket.tier = 3;
         }
+    }
+
+    // ONLY A SOCKET A REAL WAY BEHIND THE BASE IS REFUSED. Dead ahead and
+    // square beside both engage in full; it fades out over the last half of
+    // a plug length behind the root. That is enough to stop the plug
+    // folding back on itself and still lets one reach up.
+    //
+    // Asked as a DISTANCE along the shaft, never as a direction.
+    //
+    // It used to normalise the vector from the root to the socket and test
+    // its angle, and that had no answer at the one place it mattered.
+    // Engagement is computed per VERTEX — a skinned plug recovers its frame
+    // from each vertex's own normal and tangent, so every vertex brings its
+    // own plugOrigin — and near the root the scatter between those origins
+    // is as large as the gap itself. Each vertex normalised a different
+    // tiny vector, got a different answer, and the mesh came out half
+    // engaged: some vertices swallowed, some hanging out. Joe called it "a
+    // weird mixture of engagement and not", which is exactly what a
+    // per-vertex singularity looks like from outside.
+    //
+    // A signed distance passes smoothly through zero instead of being
+    // undefined there, so every vertex near the root agrees.
+    //
+    // LAST in this function, so it judges whatever answer won.
+    // It used to sit above the atlas block, which meant a tier-3 socket
+    // skipped it entirely: the atlas overwrites engagement after the fact,
+    // so a socket decoded from the screen behind the plug's own root engaged
+    // in full and folded the shaft back on itself. The guard was not wrong,
+    // it was being applied by position in the file rather than to the answer
+    // that survived. Anything that decides engagement belongs above this.
+    if (socket.engaged > 0)
+    {
+        float behind = dot(socket.position - plugOrigin, plugForward);
+        socket.engaged *= smoothstep(-worldLength * 0.5, -worldLength * 0.05, behind);
     }
 
     return socket;
