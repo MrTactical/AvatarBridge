@@ -143,78 +143,96 @@ namespace AvatarBridge
         //
         // The shader ignores this object's transform and writes clip space,
         // so the quads themselves are never seen. The matrix is the payload.
+        //
+        // EVERY POSITION IS ZERO and the corner lives in UV0 instead, which
+        // is what keeps that true for a viewer who has custom shaders turned
+        // off. ChilloutVR replaces the shader then, not the mesh, and the
+        // replacement reads POSITION the ordinary way: corners in POSITION
+        // drew these as metre-wide grey slabs hanging off the avatar, big
+        // enough to fill the view. A degenerate triangle rasterises nothing
+        // under any shader, so the mesh can no longer be drawn by a shader
+        // that does not understand it.
         static Mesh LevelQuads()
         {
             string path = Folder + "/YAPS Atlas Quads.asset";
             int quads = Levels * 2;
             var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (have != null && have.vertexCount == quads * 4)
+            // The UV check rebuilds a mesh saved before the corners moved off
+            // POSITION: the vertex count did not change, so counting alone
+            // would keep handing back the drawable one.
+            if (have != null && have.vertexCount == quads * 4
+                && have.HasVertexAttribute(VertexAttribute.TexCoord0))
             {
                 return have;
             }
 
             var verts = new List<Vector3>();
+            var corners = new List<Vector3>();
             var tris = new List<int>();
             for (int q = 0; q < quads; q++)
             {
                 int b = verts.Count;
-                verts.Add(new Vector3(-0.5f, -0.5f, q));
-                verts.Add(new Vector3(0.5f, -0.5f, q));
-                verts.Add(new Vector3(-0.5f, 0.5f, q));
-                verts.Add(new Vector3(0.5f, 0.5f, q));
+                corners.Add(new Vector3(-0.5f, -0.5f, q));
+                corners.Add(new Vector3(0.5f, -0.5f, q));
+                corners.Add(new Vector3(-0.5f, 0.5f, q));
+                corners.Add(new Vector3(0.5f, 0.5f, q));
+                for (int c = 0; c < 4; c++) verts.Add(Vector3.zero);
                 tris.AddRange(new[] { b, b + 2, b + 1, b + 1, b + 2, b + 3 });
             }
             var mesh = new Mesh { name = "YAPS Atlas Quads" };
             mesh.SetVertices(verts);
+            mesh.SetUVs(0, corners);
             mesh.SetTriangles(tris, 0);
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
             return Save(mesh, path, have != null);
         }
 
         // One unit quad. The clear shader scales it to the atlas rect in
-        // clip space, so the mesh carries no size of its own.
+        // clip space, so the mesh carries no size of its own. Corners in UV0
+        // and every position zero, for the reason given above LevelQuads.
         static Mesh UnitQuad()
         {
             string path = Folder + "/YAPS Atlas Quad.asset";
             var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (have != null)
+            if (have != null && have.HasVertexAttribute(VertexAttribute.TexCoord0))
             {
                 return have;
             }
             var mesh = new Mesh { name = "YAPS Atlas Quad" };
-            mesh.vertices = new[]
+            mesh.vertices = new[] { Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero };
+            mesh.SetUVs(0, new List<Vector3>
             {
                 new Vector3(-0.5f, -0.5f, 0f),
                 new Vector3(0.5f, -0.5f, 0f),
                 new Vector3(-0.5f, 0.5f, 0f),
                 new Vector3(0.5f, 0.5f, 0f)
-            };
+            });
             mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
-            return Save(mesh, path, false);
+            return Save(mesh, path, have != null);
         }
 
-        // One triangle a millimetre across. The grab pass writes no colour and
-        // no depth, so the draw exists only to make the grab run.
+        // One degenerate triangle. The grab pass writes no colour and no
+        // depth, so the draw exists only to make the grab run, and a grab
+        // runs because the pass is rendered rather than because it covers a
+        // pixel. It used to be a millimetre across, which was already too
+        // small to notice under a replacement shader, but zero is the same
+        // answer without depending on how far away somebody stands.
         static Mesh GrabTriangle()
         {
             string path = Folder + "/YAPS Atlas Grab.asset";
             var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (have != null)
+            if (have != null && have.vertexCount == 3 && have.bounds.extents.x >= BoundsSize * 0.4f
+                && have.vertices[1] == Vector3.zero)
             {
                 return have;
             }
             var mesh = new Mesh { name = "YAPS Atlas Grab" };
-            mesh.vertices = new[]
-            {
-                new Vector3(-0.0005f, 0f, 0f),
-                new Vector3(0.0005f, 0f, 0f),
-                new Vector3(0f, 0.001f, 0f)
-            };
+            mesh.vertices = new[] { Vector3.zero, Vector3.zero, Vector3.zero };
             mesh.triangles = new[] { 0, 1, 2 };
             // Last: assigning vertices recomputes bounds.
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
-            return Save(mesh, path, false);
+            return Save(mesh, path, have != null);
         }
 
         static Mesh Save(Mesh mesh, string path, bool replacing)

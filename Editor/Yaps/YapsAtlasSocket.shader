@@ -41,15 +41,17 @@ Shader "YAPS/Atlas Socket"
         #include "UnityCG.cginc"
         #include "yaps_atlas.cginc"
 
-        struct appdata { float4 vertex : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };
+        // Corner and quad index in UV0, not POSITION: see YapsAtlas.LevelQuads.
+        // Every position is zero so a replacement shader draws nothing.
+        struct appdata { float4 vertex : POSITION; float3 corner : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
 
         float _YAPS_Kind;
 
         // Everything a quad needs to know about where it belongs.
-        void Place(float4 vertex, out int cellPx, out int cellPy,
+        void Place(float3 corner, out int cellPx, out int cellPy,
                    out int sub, out float3 payload, out float3 facing, out float tag)
         {
-            int q = int(vertex.z + 0.5);
+            int q = int(corner.z + 0.5);
             int level = min(q / 2, YAPS_ATLAS_LEVELS - 1);
             int home = q % 2;
 
@@ -97,9 +99,9 @@ Shader "YAPS/Atlas Socket"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
                 int cx, cy, sub; float3 pay, fwd; float tag;
-                Place(v.vertex, cx, cy, sub, pay, fwd, tag);
+                Place(v.corner, cx, cy, sub, pay, fwd, tag);
 
-                float2 unit = v.vertex.xy + 0.5;
+                float2 unit = v.corner.xy + 0.5;
                 o.pos = YapsAtlasFits()
                     ? float4(YapsAtlasToClip(float2(cx, cy) + unit * YAPS_ATLAS_SLOTPX),
                              UNITY_NEAR_CLIP_VALUE, 1)
@@ -139,9 +141,9 @@ Shader "YAPS/Atlas Socket"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
                 int cx, cy, sub; float3 pay, fwd; float tag;
-                Place(v.vertex, cx, cy, sub, pay, fwd, tag);
+                Place(v.corner, cx, cy, sub, pay, fwd, tag);
 
-                float2 unit = v.vertex.xy + 0.5;
+                float2 unit = v.corner.xy + 0.5;
                 float2 atPx;
                 atPx.x = cx + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX + unit.x * 2 * YAPS_ATLAS_SLOTPX;
                 atPx.y = cy + unit.y * YAPS_ATLAS_SLOTPX;

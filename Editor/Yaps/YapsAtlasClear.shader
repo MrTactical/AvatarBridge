@@ -44,7 +44,9 @@ Shader "YAPS/Atlas Clear"
             #include "UnityCG.cginc"
             #include "yaps_atlas.cginc"
 
-            struct appdata { float4 vertex : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            // Corner in UV0, not POSITION: see YapsAtlas.LevelQuads. Every position
+            // is zero so a replacement shader draws nothing.
+            struct appdata { float4 vertex : POSITION; float3 corner : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct v2f { float4 pos : SV_POSITION; UNITY_VERTEX_OUTPUT_STEREO };
 
             v2f vert (appdata v)
@@ -55,7 +57,7 @@ Shader "YAPS/Atlas Clear"
 
                 // PIXELS, matching the snapped atlas. The object's own
                 // transform is ignored, so import scale cannot reach this.
-                float2 unit = v.vertex.xy + 0.5;
+                float2 unit = v.corner.xy + 0.5;
                 float2 span = float2(YapsAtlasWidthPx(), YapsAtlasHeightPx()) + 4;
                 o.pos = YapsAtlasFits()
                     ? float4(YapsAtlasToClip(unit * span), UNITY_NEAR_CLIP_VALUE, 1)

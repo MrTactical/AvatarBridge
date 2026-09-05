@@ -1348,3 +1348,41 @@ and Unity ranks vertex lights by range, so fronts evict the roots they belong to
 is sound and the scheme was never adopted, because 7 and 0 mean nothing to a legacy plug and the
 sockets would go dark for everything that is not YAPS. The comment now records it as a rejected
 option with the condition for revisiting it, which is emitting both sets rather than swapping.
+
+## What a blocked shader draws (2026-09-05, B4)
+
+B4 fails, and the failure is loud. A viewer with custom shaders turned off sees metre-wide grey
+slabs hanging off the avatar, several of them, large enough to fill the view.
+
+ChilloutVR replaces the SHADER, not the mesh. The atlas quads had their corner offsets in
+POSITION, and the whole design rests on the vertex stage ignoring the transform and writing clip
+space directly, so under a replacement shader that reads POSITION the ordinary way they become
+exactly what they are: unit quads at the avatar root.
+
+Detection is not possible and is the wrong question. Nothing of this converter's runs on that
+viewer's machine, so there is nothing to detect with, and the toggle is theirs rather than the
+wearer's. The fix is to make the mesh undrawable by anything that does not understand it: every
+position is now zero and the corner lives in UV0, so every triangle is degenerate. A degenerate
+triangle rasterises no pixels under any shader. The payload was never in the vertices anyway, it
+is in the object-to-world matrix, which is why this costs nothing.
+
+The saved mesh assets are rebuilt when their UV0 channel is missing, because the vertex count did
+not change and counting alone would have kept handing back the drawable ones.
+
+## The self portrait cannot carry the atlas, and that is the deal (2026-09-05)
+
+The plug bends in the view and in a mirror, and stands still in the self portrait. That is the
+size gate doing its job rather than a bug, and it is worth writing down because it looks like the
+mirror question all over again and is not.
+
+The rect is 552 by 520 pixels, and those are PIXELS rather than a fraction of the target, because
+each cell is one pixel and there are 4096 of them across four levels. The portrait renders into a
+small serialized render texture, so it fails YapsAtlasFits and the plug falls back to whatever
+the contact channel resolved.
+
+It cannot be scaled to fit. A fraction-of-target rect on a 512-wide portrait would ask 544
+columns to share fewer pixels than there are columns, and the cells would be destroyed by the
+first sample. Shrinking the level count only trims the HEIGHT, and the portrait fails on width.
+The alternative is a smaller grid on small targets, which both sides could agree on from
+_ScreenParams alone, at the cost of a coarser spatial hash on the one camera that is a preview
+window a few centimetres across. Not worth it. The portrait keeps the channel's answer.
