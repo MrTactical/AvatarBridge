@@ -693,7 +693,8 @@ socket with a mesh of its own opens around a plug**: the entry and up to fifteen
 staged, several allowed at one depth, driven straight from the shader — the socket-side deform DPS
 had and SPS dropped — so it reacts to a DPS plug that has never heard of this tool. (The socket
 shader measures depth from its mesh's own origin, which for a body is the avatar's root, so that
-route only opens right on a mesh whose origin is the socket.) **A socket whose shapes are on the
+route only opens right on a mesh whose origin is the socket. Where two plugs arrive at once it
+opens to the deeper of them, so neither passes through closed mesh.) **A socket whose shapes are on the
 body mesh gets them through a contact instead**: a depth trigger on the socket reads the plug's
 tip and a layer in your own animator plays the stages from it. That depth parameter is local by
 default — ChilloutVR computes a trigger's contact on the wearer's machine alone, so only you see

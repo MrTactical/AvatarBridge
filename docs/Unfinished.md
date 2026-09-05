@@ -153,6 +153,9 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **B3 PASSES 2026-09-05.** A YAPS plug resolved and bent toward the sockets on another
      player's legacy DPS avatar, in game, with no conversion on their side. The marker-light
      tier reads stock content as intended and the digit table is right.
+   - **Two plugs in one socket, 2026-09-05.** The socket opens to the deepest plug in reach
+     rather than the nearest. Untested in game: wants two people and one socket, and the shape
+     to watch for is the second plug passing through mesh that did not open.
    - **B6 PASSES 2026-09-05.** A second person watching from their own client saw the plug
      behave as the wearer did, whole mesh together. The per-slot driver tasks reach the remote
      copy, which is the only place they could have diverged. Worth remembering that the earlier

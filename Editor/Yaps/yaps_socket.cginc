@@ -99,17 +99,30 @@ float YapsSocketStageFade(uint s)
 // converted before this existed behaves exactly as it did.
 float _YAPS_SocketPower;
 
-// A plug's tracker light: black, vertex-only, second decimal 8 or 9.
-// Returns false when nothing in the four slots is one. Distance is
-// measured from the socket; whose-plug is judged from the owner anchor,
-// because a socket on a hand can sit in somebody else's lap while its
+// How far a shaft has travelled past this socket, as a fraction of its own
+// length. Zero when nothing has arrived.
+//
+// A plug announces itself with a tracker light: black, vertex-only, second
+// decimal 8 or 9, positioned at the plug's BASE with its LENGTH in the
+// colour's alpha, which is where Unity puts a vertex light's intensity.
+//
+// THE DEEPEST WINS, not the nearest. There is one depth for the socket, so
+// something has to choose, and this used to pick the plug whose base was
+// closest and then measure only that one. Depth is
+// (length - distance) / length, so a longer plug standing further off is
+// deeper than a short one close in: the old choice could report the shallower
+// of two and, with a single plug present, was already answering a question
+// nobody asked. Taking the maximum answers the actual one, which is how far
+// open this socket has to be, and it lets TWO plugs share a socket instead of
+// one of them passing through unopened mesh. Nothing else wanted the winner's
+// identity, so there is no longer a search, only a maximum.
+//
+// Distance is measured from the socket; whose-plug is judged from the owner
+// anchor, because a socket on a hand can sit in somebody else's lap while its
 // wearer's root stays put.
-bool YapsFindPlug(float3 socketAt, float3 ownerAnchor, out float3 plugAt, out float plugLength)
+float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 {
-    plugAt = 0;
-    plugLength = 0;
-    bool found = false;
-    float nearest = 1e9;
+    float depth = 0;
 
     [unroll]
     for (uint i = 0; i < 4; i++)
@@ -133,33 +146,12 @@ bool YapsFindPlug(float3 socketAt, float3 ownerAnchor, out float3 plugAt, out fl
         // wearer's, which ignores the one plug it exists for.
         if (_YAPS_SocketNoSelfExclude <= 0 && YapsSocketOwnPlug(ownerAnchor, i)) continue;
 
-        float3 at = YapsLightPosition(i);
-        float away = distance(at, socketAt);
-        if (away >= nearest) continue;
+        float plugLength = unity_LightColor[i].a;
+        if (plugLength <= 0.0001) continue;
 
-        nearest = away;
-        plugAt = at;
-        // The LENGTH, carried in the alpha of the light colour. Unity puts
-        // a vertex light's intensity there.
-        plugLength = unity_LightColor[i].a;
-        found = true;
-    }
-    return found;
-}
-
-// How far the shaft has travelled past this socket, as a fraction of its
-// own length. Zero when nothing has arrived.
-float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
-{
-    float depth = 0;
-
-    float3 plugAt;
-    float plugLength;
-    if (YapsFindPlug(socketAt, ownerAnchor, plugAt, plugLength) && plugLength > 0.0001)
-    {
         // Raliv's formula, and the reason the light has to be at the base.
-        float through = plugLength - distance(socketAt, plugAt);
-        depth = saturate(through / plugLength);
+        float through = plugLength - distance(socketAt, YapsLightPosition(i));
+        depth = max(depth, saturate(through / plugLength));
     }
 
     // The channel wins when it has an answer, because it measured the

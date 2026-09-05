@@ -1416,3 +1416,22 @@ socket and half of it standing still. Nothing local can see that, and neither ca
 Sixteen tasks is the whole avatar's budget, so a plug with many slots can still be trimmed, and
 the conversion report warns when it happens. That warning is now the thing to read before
 assuming a remote report is a mod problem.
+
+## Two plugs, one socket (2026-09-05)
+
+A socket now opens to the DEEPEST plug in reach rather than the nearest, which is both a fix and
+a feature.
+
+The plug end never needed anything. Nothing claims a socket: each plug resolves independently,
+the atlas is read-only for readers, and the light tier only decodes what was emitted, so two
+plugs bending into the same socket was already free.
+
+The socket end had a single winner. It ran a search over the four light slots, kept the plug
+whose base was NEAREST, and measured only that one, which left a second plug passing through
+unopened mesh. Worse, nearest is not the same question as deepest: depth is
+(length - distance) / length, so a longer plug standing further off is deeper than a short one
+close in, and with a single plug present the search could already answer about the wrong one.
+
+Ranking by the computed depth fixes both in the same expression. Nothing wanted the winner's
+identity, only the number, so the search collapsed into a max over the slots and `YapsFindPlug`
+is gone. Fewer lines than before.
