@@ -30,3 +30,6 @@ slim.md
 dead.md
 strip.md
 cloth.md
+
+# Local agent tooling config, same class as CLAUDE.md and AGENTS.md
+.codex/
