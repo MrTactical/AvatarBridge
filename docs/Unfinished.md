@@ -150,6 +150,9 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Phase B, prove it: B1 two atlas avatars in one instance. B2 a crowded instance, mirrors, VR.
    B3 an atlas avatar meeting a legacy DPS avatar. B4 a viewer with custom shaders blocked.
 
+   - **B3 PASSES 2026-09-05.** A YAPS plug resolved and bent toward the sockets on another
+     player's legacy DPS avatar, in game, with no conversion on their side. The marker-light
+     tier reads stock content as intended and the digit table is right.
    - **B4 FAILED and is FIXED, 2026-09-05.** With custom shaders off the atlas quads drew as
      metre-wide grey slabs filling the view: ChilloutVR replaces the shader and not the mesh,
      and the corners were in POSITION. Corners now live in UV0 with every position zero, so

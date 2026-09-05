@@ -1386,3 +1386,18 @@ first sample. Shrinking the level count only trims the HEIGHT, and the portrait 
 The alternative is a smaller grid on small targets, which both sides could agree on from
 _ScreenParams alone, at the cost of a coarser spatial hash on the one camera that is a preview
 window a few centimetres across. Not worth it. The portrait keeps the channel's answer.
+
+## Legacy sockets answer a YAPS plug (2026-09-05, B3)
+
+B3 passes. A YAPS plug found and bent toward the sockets on another player's unconverted DPS
+avatar, in an instance, with nothing installed on their side.
+
+That is the marker-light tier doing the only job it exists for. Most of the content already on
+ChilloutVR announces itself with lights and nothing else, no contacts and certainly no atlas, and
+a plug that insisted on either would have been blind to all of it. The digit table is confirmed
+against real content rather than against a socket this toolkit wrote: 1 and 3 read as a hole
+root, 2 and 4 as a ring root, 5 and 6 as a front.
+
+Read alongside C2, this is the two halves of the same promise. YAPS sockets emit stock DPS ranges
+so legacy plugs see them, and YAPS plugs decode stock DPS ranges so legacy sockets answer them.
+Neither side has to convert for the other to work, and both directions are now proven in game.
