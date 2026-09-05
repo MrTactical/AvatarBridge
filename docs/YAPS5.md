@@ -1401,3 +1401,18 @@ root, 2 and 4 as a ring root, 5 and 6 as a front.
 Read alongside C2, this is the two halves of the same promise. YAPS sockets emit stock DPS ranges
 so legacy plugs see them, and YAPS plugs decode stock DPS ranges so legacy sockets answer them.
 Neither side has to convert for the other to work, and both directions are now proven in game.
+
+## Somebody else's client agrees (2026-09-05, B6)
+
+B6 passes. A second person, on their own machine, saw the plug do what the wearer saw it do, with
+the whole mesh moving together.
+
+This is the only test that could have found a per-slot driver failure. A plug split across
+several material slots needs one set of driver tasks per slot, and the wearer's own view is
+correct whether or not the extra slots were written, because the wearer's client is the one that
+computed the answer. A slot left behind shows only remotely, as half the mesh following the
+socket and half of it standing still. Nothing local can see that, and neither can the wearer.
+
+Sixteen tasks is the whole avatar's budget, so a plug with many slots can still be trimmed, and
+the conversion report warns when it happens. That warning is now the thing to read before
+assuming a remote report is a mod problem.

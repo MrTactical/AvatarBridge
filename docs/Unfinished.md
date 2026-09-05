@@ -153,6 +153,10 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    - **B3 PASSES 2026-09-05.** A YAPS plug resolved and bent toward the sockets on another
      player's legacy DPS avatar, in game, with no conversion on their side. The marker-light
      tier reads stock content as intended and the digit table is right.
+   - **B6 PASSES 2026-09-05.** A second person watching from their own client saw the plug
+     behave as the wearer did, whole mesh together. The per-slot driver tasks reach the remote
+     copy, which is the only place they could have diverged. Worth remembering that the earlier
+     report of a broken material on a garment was never attributed and did not recur.
    - **B4 FAILED and is FIXED, 2026-09-05.** With custom shaders off the atlas quads drew as
      metre-wide grey slabs filling the view: ChilloutVR replaces the shader and not the mesh,
      and the corners were in POSITION. Corners now live in UV0 with every position zero, so
