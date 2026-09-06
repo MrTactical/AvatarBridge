@@ -1,31 +1,16 @@
-// Clears the atlas before anyone writes into it.
+// Clears the atlas before the writers run.
+// Without it every cell reads occupied.
 //
-// Without this there is no way to tell an empty cell from an occupied one. A
-// grab captures whatever the screen had at those pixels, the screen is
-// opaque, so alpha reads 1 everywhere and every cell looks occupied.
+// One quad, alpha 0. A socket writes over it.
 //
-// One quad over the whole atlas rect, painting alpha 0. A socket's patch then
-// writes over it and an empty cell keeps the 0. Costs one quad however many
-// sockets exist.
+// ALPHA ONLY. Colour too and the rect turns black on screen.
 //
-// ONLY the alpha channel. Painting colour as well makes the atlas a visible
-// black rectangle: the clear covers the whole rect, so it is by far the most
-// conspicuous part of the system. Masked off, the rect keeps whatever the
-// scene drew there and still reads alpha 0, which is all occupancy needs.
+// Queue Background-946, ahead of the writers at -945.
+// Order comes from the queue, never from distance.
 //
-// Queue Background-946, against the writers at -945 and the grab at -944.
-// Ordering comes from the QUEUE, not from distance, which matters because
-// these three live on different avatars and Unity sorts within a queue by
-// distance, which nobody controls. Across queues it is deterministic.
+// Before the scene. Painting last erased self portraits.
 //
-// Before the scene rather than after it. The whole rect is then painted over
-// by whatever the camera draws, so it never reaches the screen, and the alpha
-// it wrote is what a camera clearing to a transparent background wrote there
-// anyway. Painting last is what made the atlas visible and what erased self
-// portraits.
-//
-// If nobody in the room draws a clear, cells degrade to unreliable rather
-// than to wrong, which is the right direction for a fallback transport.
+// With no clear in the room cells go unreliable, not wrong.
 Shader "YAPS/Atlas Clear"
 {
     SubShader
@@ -44,8 +29,8 @@ Shader "YAPS/Atlas Clear"
             #include "UnityCG.cginc"
             #include "yaps_atlas.cginc"
 
-            // Corner in UV0, not POSITION: see YapsAtlas.LevelQuads. Every position
-            // is zero so a replacement shader draws nothing.
+            // Corner in UV0, not POSITION: see YapsAtlas.LevelQuads.
+            // Positions are all zero, so a replacement shader draws nothing.
             struct appdata { float4 vertex : POSITION; float3 corner : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct v2f { float4 pos : SV_POSITION; UNITY_VERTEX_OUTPUT_STEREO };
 
@@ -55,8 +40,8 @@ Shader "YAPS/Atlas Clear"
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-                // PIXELS, matching the snapped atlas. The object's own
-                // transform is ignored, so import scale cannot reach this.
+                // Pixels, matching the snapped atlas.
+                // The object transform is ignored, so import scale cannot reach it.
                 float2 unit = v.corner.xy + 0.5;
                 float2 span = float2(YapsAtlasWidthPx(), YapsAtlasHeightPx()) + 4;
                 o.pos = YapsAtlasFits()
@@ -65,8 +50,7 @@ Shader "YAPS/Atlas Clear"
                 return o;
             }
 
-            // Alpha 0 is "nothing here". Colour does not matter; only a
-            // socket's patch writes alpha over it.
+            // Alpha 0 means nothing here. Colour is ignored.
             fixed4 frag (v2f i) : SV_Target { return fixed4(0, 0, 0, 0); }
             ENDCG
         }

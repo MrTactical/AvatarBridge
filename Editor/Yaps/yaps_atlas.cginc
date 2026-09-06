@@ -1,43 +1,26 @@
-// The screen atlas protocol: where a socket writes and where a plug looks.
-//
-// These are #defines rather than material properties on purpose. Every avatar
-// in the instance shares them, because a socket hashes its world position
-// with them and a plug addresses cells with them, so a property here is a
-// slider somebody can drag and a dragged constant does not read as absence.
-// It reads as a real socket a few centimetres from where it is, which is the
-// phantom the tag exists to catch.
-//
-// Bump YAPS_ATLAS_VERSION whenever ANY of them changes. The version rides the
-// tag hash, so a mismatch is dropped by the check the reader already runs.
+// Screen atlas protocol. Sockets write, plugs read.
+// Defines, not properties: every avatar must agree.
 #ifndef YAPS_ATLAS_INCLUDED
 #define YAPS_ATLAS_INCLUDED
 
+// Bump on any change below. It rides the tag.
 #define YAPS_ATLAS_VERSION 2
 
-// 4096 cells. Sockets clash by hashing to a slot another cell owns, and the
-// second home is the recovery, so what matters is clashing on BOTH. At 120
-// sockets, an ordinary public instance, that is about one in twelve hundred.
-// A grid of 16 loses one socket in seven.
+// 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
 
-// COLUMNS, which is not the grid. The two were the same number for no reason,
-// which made the rect a wide strip: 4096 cells at 17 pixels is 1088 px
-// across, and a camera narrower than that clips the right-hand columns. A
-// clipped slot does not read as absent, it reads as the opaque screen. Found
-// in the editor as a bend dropping out every few centimetres and returning
-// when the view was widened. 32 columns is the same cells in 552 x 520, which
-// fits a 720p view, a mirror texture and an eye buffer.
+// Columns, not the grid. A rect wider than
+// the view clips slots, and they read as opaque.
 #define YAPS_ATLAS_COLS    32
 
 #define YAPS_ATLAS_SLOTPX  1
 #define YAPS_ATLAS_ORIGIN  8
 
-// Level 0 cell size in metres. Each level is four times the last, so four of
-// them span two centimetres to one metre thirty.
+// Level 0 cell size. Each level is four times.
 #define YAPS_ATLAS_CELL    0.02
 #define YAPS_ATLAS_LEVELS  4
 
-// 17 slots to a cell: a header, then eight octants of position and facing.
+// A header, then eight octants.
 #define YAPS_ATLAS_CELLSLOTS 17
 
 int YapsAtlasHash(int3 c)
@@ -48,8 +31,7 @@ int YapsAtlasHash(int3 c)
     return h;
 }
 
-// The second home. A bigger grid only makes a clash rarer; two independent
-// slots make it one in N squared.
+// The second home. Two slots square the odds.
 int YapsAtlasHash2(int3 c)
 {
     int h = c.x * 12582917;
@@ -58,10 +40,7 @@ int YapsAtlasHash2(int3 c)
     return h;
 }
 
-// Who owns this payload. A cell that merely shares a grid slot hands back
-// somebody else's socket decoded against the wrong cell, and an offset within
-// a cell decodes into that cell whichever cell you decode it against, so the
-// payload cannot reveal it alone.
+// Who owns the payload. An offset alone cannot say.
 float YapsAtlasTag(int3 c)
 {
     int h = c.x * 19349663;
@@ -72,7 +51,7 @@ float YapsAtlasTag(int3 c)
     return (h % 256) / 255.0;
 }
 
-// Where a cell's slots start, given its index within a level.
+// Where a cell's slots start.
 void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
 {
     int rowsPerLevel = max(YAPS_ATLAS_GRID * YAPS_ATLAS_GRID / YAPS_ATLAS_COLS, 1);
@@ -85,14 +64,8 @@ void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
 
 // --- reading ---------------------------------------------------------
 //
-// .Load, not a filtered sample. A cell is one pixel and any filtering
-// blends it with its neighbours, which is exactly the failure the early
-// spikes measured. A point read at integer coordinates is the only correct
-// primitive here.
-//
-// Under single-pass instanced the grab is a texture ARRAY. The patch is
-// written in clip space ignoring the eye, so both slices carry identical
-// content and slice 0 is always right.
+// .Load, never a sample. Filtering blends neighbouring cells.
+// Stereo instancing grabs an array. Both slices match.
 #if defined(UNITY_STEREO_INSTANCING_ENABLED)
     Texture2DArray _YAPS_Atlas;
     #define YAPS_ATLAS_LOAD(px, py) _YAPS_Atlas.Load(int4(px, py, 0, 0))
@@ -102,15 +75,8 @@ void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
 #endif
 float4 _YAPS_Atlas_TexelSize;
 
-// Row order is a COMPILE-TIME platform fact, NOT the runtime sign of
-// _TexelSize.y. That sign is the right signal for a UV sample and the wrong
-// one here, which cost a session to find: with it, every cell read the
-// opaque screen, all of them reported occupied, and the plug locked onto
-// whichever piece of floor decoded nearest.
-//
-// The writer places its patch in pixels from the TOP of the render target
-// and .Load indexes memory rows directly, so the only question is which end
-// of memory the top is.
+// Compile-time fact, never _TexelSize.y's sign.
+// That sign is for UV samples. Wrong here.
 int YapsAtlasRow(int fromTop)
 {
 #if UNITY_UV_STARTS_AT_TOP
@@ -120,15 +86,12 @@ int YapsAtlasRow(int fromTop)
 #endif
 }
 
-// How many cells out to read, and how far a socket may be and still count.
-// The radius is what actually caps how many sockets a plug can thread:
-// cells one step either way along the shaft is three cells, so three
-// sockets, and no list length changes that. Two would cost 125 reads
-// against 27.
+// The radius caps sockets per shaft, not the list.
+// Three cells, so three sockets. Two costs 125 reads.
 #define YAPS_ATLAS_RADIUS 1
 #define YAPS_ATLAS_REACH  1.6
 
-// The rect the atlas occupies, which the clear has to cover exactly.
+// The rect. The clear must cover it exactly.
 int YapsAtlasWidthPx()
 {
     return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_COLS * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
@@ -140,41 +103,22 @@ int YapsAtlasHeightPx()
     return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * rowsPerLevel * YAPS_ATLAS_SLOTPX;
 }
 
-// Whether this render target can hold the atlas at all.
-//
-// The rect sits in the target's corner at fixed pixel coordinates, so a
-// target smaller than the rect cannot carry the protocol however the shader
-// is written. Painting one anyway is what broke the self portrait: that
-// camera renders into a texture whose ALPHA is the compositing mask, and the
-// clear writes alpha 0 over the whole rect, so a portrait smaller than the
-// rect is erased entirely and a larger one loses a corner. The portrait's
-// scale slider does not defeat this, it scales the RawImage and not the
-// texture behind it.
-//
-// A precondition rather than a guess at which camera this is: nothing that
-// fails it could have worked.
+// Can this target hold the rect at all?
+// Painting a smaller one erased the self portrait.
 bool YapsAtlasFits()
 {
     return _ScreenParams.x >= YapsAtlasWidthPx() && _ScreenParams.y >= YapsAtlasHeightPx();
 }
 
-// Somewhere the clipper will throw away, for a vertex that must not be drawn.
-// x and y outside the cube are what does it, so z only has to be a value both
-// depth conventions accept rather than the near plane of either.
+// Outside the cube, so the clipper drops it.
+// z only has to suit both depth conventions.
 float4 YapsAtlasNowhere()
 {
     return float4(2, 2, 0.5, 1);
 }
 
-// Pixels to clip space. Rows count down from the top, which is why y flips.
-//
-// NOT multiplied by _ProjectionParams.x. Tried on the theory that rendering
-// into a texture flips the projection and lands the rows mirrored, which
-// would explain a plug that bends in the view and stands still in a mirror.
-// It broke the view instead: every cell the reader looks at was then one the
-// CLEAR had missed too, so they read alpha 1, counted as occupied, and the
-// plug locked onto sockets decoded out of screen noise. Whatever the mirror
-// is doing, this is not it.
+// Pixels to clip space. Rows count from the top.
+// Never times _ProjectionParams.x. Tried; broke the view.
 float2 YapsAtlasToClip(float2 atPx)
 {
     float2 p = atPx / _ScreenParams.xy * 2.0 - 1.0;

@@ -1,81 +1,45 @@
-// YAPS, the SOCKET side. A socket that reacts to what has gone into it,
-// in the vertex shader, without spending a single synced parameter.
+// YAPS, the SOCKET side. A socket reacts to what has entered it, in the
+// vertex shader, with no synced parameters.
 //
-// ---------------------------------------------------------------------
-// WHY THIS EXISTS WHEN THE ANIMATOR ROUTE ALREADY WORKS
-// ---------------------------------------------------------------------
+// The animator route is not replaced. A contact drives a "#" local
+// parameter, every client computes it, nothing crosses the wire.
 //
-// A converted avatar already plays its socket's own blendshapes from a
-// contact, and on ChilloutVR that is FREE: a contact drives a "#" local
-// parameter, every client computes it independently, nothing crosses the
-// wire. That route is not being replaced. It handles the author's own
-// shapes and it should stay.
+// This adds the two things that route cannot do:
+//   1. It works against content with NO CONTACTS. DPS is marker lights.
+//   2. It knows WHERE the plug is, not merely how deep.
 //
-// This adds the two things it cannot do:
-//
-//   1. It works against content with NO CONTACTS AT ALL. Raliv's DPS is
-//      marker lights and nothing else, and it is most of the penetration
-//      content ChilloutVR already has. A socket driven only by contacts
-//      is inert against every bit of it.
-//   2. It knows WHERE the plug is, not merely how deep. An animator
-//      parameter is one scalar; this reads the plug's actual position and
-//      length, so the shapes stage against real geometry.
-//
-// ---------------------------------------------------------------------
-// HOW A SOCKET FINDS A PLUG
-// ---------------------------------------------------------------------
-//
-// The mirror of the plug's own search, using the protocol's remaining
-// digits. A penetrator announces itself with ONE black vertex light:
-//
-//   range     second decimal 8 or 9    it is a plug's tracker
+// A plug announces itself with ONE black vertex light:
+//   range     second decimal 8 or 9
 //   position  the plug's BASE
 //   intensity the plug's LENGTH, in metres
 //
-// That last one is not a brightness and reading it as one is the mistake
-// this file exists to avoid repeating. Raliv's own penetrator ships
-// intensity 0.354 for a 0.354 m model, and the orifice does:
-//
-//   depth = max(0, plugLength - distance(socket, plugBase))
-//
-// which only means anything because the light sits at the BASE. A light
-// at the tip makes that subtraction nonsense.
-//
-// The contact channel can override the answer when it has one, so an
-// avatar with contacts gets the exact figure and one without still works.
-// Both, not either.
+// Intensity is a length, never a brightness. Raliv ships 0.354 for a
+// 0.354 m model, and depth = plugLength - distance(socket, plugBase)
+// only means anything because the light sits at the BASE.
 
 #ifndef YAPS_SOCKET_INCLUDED
 #define YAPS_SOCKET_INCLUDED
 
-// Brings the bake reader and YapsSafeNormalize, and through it the light
-// decode in yaps_resolve. One bake format and one light protocol serve
-// both ends, which is the point: a socket reading a plug and a plug
-// reading a socket are the same problem seen from opposite sides.
+// Brings the bake reader, YapsSafeNormalize and the light decode.
+// One bake format and one protocol serve both ends.
 #include "yaps_deform.cginc"
 
-// Depth published by the contact channel, as a fraction of the plug's
-// length, or negative when the channel has nothing to say. Lets a socket
-// that HAS contacts use them and one that does not fall back to lights.
+// Depth from the contact channel, as a fraction of plug length.
+// Negative when the channel has nothing to say.
 float _YAPS_SocketDepth;
 
 // The socket's position in the mesh's local space. Zero for a dedicated
-// socket mesh, whose origin IS the socket; set at bake time for a body
-// mesh, whose origin is the avatar root. Depth is measured from here.
-// Ownership is not: the whose-plug question stays on the mesh origin,
-// which for a body mesh is the root beside the wearer's own hip.
+// socket mesh, set at bake time for a body mesh. Depth measures from here.
+// Ownership does not: whose-plug stays on the mesh origin.
 float4 _YAPS_SocketOrigin;
 
-// Skip the self-exclusion below. Zero keeps it, which is what every
-// material baked before this existed does. The baker sets it when no
-// plug on the avatar rests within reach of this socket, because then
-// there is nothing to exclude and the test can only get it wrong.
+// Skip the self-exclusion below. Zero keeps it, as older bakes have.
+// The baker sets it when no plug of the wearer's rests within reach,
+// where the test can only get it wrong.
 float _YAPS_SocketNoSelfExclude;
 
-// Where each shape starts and how far it takes to arrive, in fractions of
-// the plug's length. Up to sixteen, each with its own depth, so several can
-// open together; the toolkit bakes the socket's named shapes in the order
-// the author staged them, the converter its own picks.
+// Where each shape starts and how long it takes, in fractions of plug
+// length. Up to sixteen, so several can open together.
 float4 _YAPS_SocketShapeStart, _YAPS_SocketShapeStart2, _YAPS_SocketShapeStart3, _YAPS_SocketShapeStart4;
 float4 _YAPS_SocketShapeFade, _YAPS_SocketShapeFade2, _YAPS_SocketShapeFade3, _YAPS_SocketShapeFade4;
 
@@ -95,31 +59,20 @@ float YapsSocketStageFade(uint s)
     return v[lane];
 }
 
-// How much of the baked shapes to apply at all. Zero is off, so a socket
-// converted before this existed behaves exactly as it did.
+// How much of the baked shapes to apply. Zero is off, as older bakes are.
 float _YAPS_SocketPower;
 
-// How far a shaft has travelled past this socket, as a fraction of its own
-// length. Zero when nothing has arrived.
+// How far a shaft has travelled past this socket, as a fraction of its
+// own length. Zero when nothing has arrived. The plug's length rides in
+// the light colour's alpha, where Unity keeps vertex-light intensity.
 //
-// A plug announces itself with a tracker light: black, vertex-only, second
-// decimal 8 or 9, positioned at the plug's BASE with its LENGTH in the
-// colour's alpha, which is where Unity puts a vertex light's intensity.
+// THE DEEPEST WINS, never the nearest. Depth is (length - distance) /
+// length, so a long plug standing off beats a short one close in. The
+// maximum also lets TWO plugs share a socket instead of one passing
+// through closed mesh.
 //
-// THE DEEPEST WINS, not the nearest. There is one depth for the socket, so
-// something has to choose, and this used to pick the plug whose base was
-// closest and then measure only that one. Depth is
-// (length - distance) / length, so a longer plug standing further off is
-// deeper than a short one close in: the old choice could report the shallower
-// of two and, with a single plug present, was already answering a question
-// nobody asked. Taking the maximum answers the actual one, which is how far
-// open this socket has to be, and it lets TWO plugs share a socket instead of
-// one of them passing through unopened mesh. Nothing else wanted the winner's
-// identity, so there is no longer a search, only a maximum.
-//
-// Distance is measured from the socket; whose-plug is judged from the owner
-// anchor, because a socket on a hand can sit in somebody else's lap while its
-// wearer's root stays put.
+// Distance measures from the socket, whose-plug from the owner anchor,
+// since a socket on a hand can sit in somebody else's lap.
 float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 {
     float depth = 0;
@@ -127,7 +80,7 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
     [unroll]
     for (uint i = 0; i < 4; i++)
     {
-        // Black, or it is somebody's actual lighting rather than protocol.
+        // Black, or it is real lighting rather than protocol.
         if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
 
         float range = YapsLightRange(i);
@@ -135,28 +88,22 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
         int digit = (int) round(fmod(range, 0.1) * 100);
         if (digit != 8 && digit != 9) continue;
 
-        // The wearer's own plug does not open the wearer's own socket. A
-        // converted avatar carrying both has its plug's tracker a hand's
-        // width from its own socket, permanently within a plug length, and
-        // without this the socket read as always full.
-        // Only where a plug of the wearer's actually rests on top of this
-        // socket. Elsewhere the test is both unnecessary and unreliable:
-        // it decides ownership by which player's hip is nearest, and a
-        // socket on a hand can be nearer a stranger's hip than its own
-        // wearer's, which ignores the one plug it exists for.
+        // The wearer's own plug must not open the wearer's own socket.
+        // Its tracker sits a hand's width off permanently, so the socket
+        // read as always full. Gated, because ownership goes by nearest
+        // hip and a socket on a hand can be nearer a stranger's.
         if (_YAPS_SocketNoSelfExclude <= 0 && YapsSocketOwnPlug(ownerAnchor, i)) continue;
 
         float plugLength = unity_LightColor[i].a;
         if (plugLength <= 0.0001) continue;
 
-        // Raliv's formula, and the reason the light has to be at the base.
+        // Raliv's formula. The light has to be at the base.
         float through = plugLength - distance(socketAt, YapsLightPosition(i));
         depth = max(depth, saturate(through / plugLength));
     }
 
-    // The channel wins when it has an answer, because it measured the
-    // thing rather than inferring it from a distance between two points.
-    // Negative means "nothing to say", which is not the same as zero.
+    // The channel wins when it has an answer, having measured it.
+    // Negative means nothing to say, which is not zero.
     if (_YAPS_SocketDepth >= 0)
     {
         depth = max(depth, saturate(_YAPS_SocketDepth));
@@ -165,11 +112,8 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 }
 
 // The deform. Baked shape deltas, staged by depth.
-//
-// Note what is NOT here: no bezier, no frame recovery, no walk. A socket
-// does not follow anything, it opens. All the geometry was decided by
-// whoever authored the blendshapes; this only chooses how much of each to
-// apply and when.
+// No bezier, no frame recovery, no walk. A socket does not follow
+// anything, it opens. The author's blendshapes decided the geometry.
 void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 tangent,
                       uint vertexId)
 {
@@ -179,16 +123,15 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
     if (vertexId >= total || shapeCount == 0) return;
 
-    // Two positions, two questions. The mesh origin answers whose socket
-    // this is; the baked offset answers where it is. On a dedicated socket
-    // mesh the offset is zero and they are the same point.
+    // Two positions, two questions. The mesh origin says whose socket
+    // this is, the baked offset where it is. Equal on a socket mesh.
     float3 ownerAnchor = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
     float3 socketAt = mul(unity_ObjectToWorld, float4(_YAPS_SocketOrigin.xyz, 1)).xyz;
     float depth = YapsPlugDepth(socketAt, ownerAnchor);
     if (depth <= 0) return;
 
-    // Same block layout the plug bake uses, so one baker serves both:
-    // a header float, ten floats a vertex, then nine a vertex per shape.
+    // Same block layout as the plug bake, so one baker serves both.
+    // A header float, ten floats a vertex, then nine a vertex per shape.
     uint block = 1 + total * 10;
 
     [loop]
@@ -197,15 +140,11 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
         float start = YapsSocketStageStart(s);
         float fade = max(YapsSocketStageFade(s), 0.0001);
 
-        // CUMULATIVE, as DPS is: once a shape has arrived it stays, and
-        // going deeper stacks the next one on top. Not a travelling band , 
-        // a tube being filled progressively is what this describes, and a
-        // band would empty the part already occupied.
+        // CUMULATIVE, as DPS is: an arrived shape stays and going deeper
+        // stacks the next on top. Never a travelling band, which would
+        // empty the part already occupied.
         //
-        // Eased with a cosine rather than left linear, which is DPS's
-        // touch and worth copying: a linear ramp starts and stops with a
-        // visible corner, and on a shape this large the corner reads as a
-        // pop.
+        // Cosine eased, DPS's touch. A linear ramp pops at the corners.
         float weight = saturate((depth - start) / fade);
         weight = -cos(weight * 3.14159265) * 0.5 + 0.5;
         weight *= _YAPS_SocketPower;

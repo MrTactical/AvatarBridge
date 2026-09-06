@@ -1,14 +1,10 @@
 // The named screen grab, and nothing else.
 //
-// A GrabPass with a NAME writes a texture every shader in the room can
-// sample, and Unity runs it once per frame per name however many objects
-// carry it. So one avatar wearing this serves every plug present, including
-// plugs on avatars carrying none, and a second copy in the room is free.
+// A named GrabPass runs once per frame per name.
+// One avatar wearing it serves every plug in the room.
 //
-// Queue Background-944, after the sockets at -945 and before the scene. The
-// grab holds what they wrote, and everything the camera draws afterwards
-// covers those pixels, so the payload never appears on screen. A plug drawing
-// at Geometry reads this frame's grab rather than the previous one.
+// Queue Background-944, after the writers, before the scene.
+// The scene covers those pixels, so nothing shows.
 Shader "YAPS/Atlas Grab"
 {
     SubShader
@@ -17,9 +13,8 @@ Shader "YAPS/Atlas Grab"
 
         GrabPass { "_YAPS_Atlas" }
 
-        // The grab is the whole point; this pass exists because a SubShader
-        // needs one for the object to be drawn at all. No colour, no depth,
-        // one triangle a millimetre across.
+        // A SubShader needs a pass or the object is never drawn.
+        // No colour, no depth, one tiny triangle.
         Pass
         {
             ColorMask 0
