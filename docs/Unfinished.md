@@ -242,6 +242,34 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
 
+   **D5, THE OTHER DIRECTION, Joe's idea 2026-09-06.** The atlas carries socket to plug and
+   nothing else, so a plug now resolves at range while the socket it entered still finds the plug
+   the old way: a tracker light in one of four vertex slots, or the contact channel. The visible
+   consequence is a plug that bends while the socket stays shut, and it gets worse the more
+   sockets and plugs are in the room, because the light slots are contested.
+
+   The same machinery inverts. A plug writer quad hashes the plug's base and length into cells at
+   Background-945 beside the socket writers, one grab still serves both, and the socket's vertex
+   shader reads its neighbourhood the way a plug reads its own. Depth is
+   (plugLength - distance) / plugLength and both operands fit a payload exactly like a socket's
+   position and facing do. Roughly doubles cell occupancy, which the arithmetic above says is
+   nowhere near the budget.
+
+   What it CANNOT carry, and this is the part to keep straight: haptics, and the depth parameter
+   that drives the author's own animated bulges. Those have to arrive in animator space, because
+   a toy mod reads a parameter and not a texture, and the atlas never leaves the GPU. That
+   crossing is D1's texture-parser route. Atlas plus D1 is the whole story; atlas alone is two
+   thirds of it.
+
+   Two things not to lose while doing it. The marker lights are not overhead to be deleted, they
+   are the INTEROP surface: emitting them is how a legacy plug sees a YAPS socket (C2) and
+   decoding them is how a YAPS plug sees a legacy socket (B3), both proven in game this week. The
+   atlas can be primary for YAPS to YAPS without either of those going anywhere. And the reader's
+   RANGE GATE has to stay: a plug already publishes its base and length as a tracker light, so
+   nothing new is disclosed by publishing to the atlas, but a socket across the room must not
+   start reacting to a plug that never came near it. Range is a decision in the shader, never a
+   property of the transport.
+
    **FIXED 2026-09-03.** The report string that removes VRChat's own screen atlas used to say
    ChilloutVR "publishes player positions to shaders directly, so none of that machinery is
    needed here", four bullets before the one that adds ours. It now says those objects speak
