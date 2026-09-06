@@ -172,11 +172,12 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      behave as the wearer did, whole mesh together. The per-slot driver tasks reach the remote
      copy, which is the only place they could have diverged. Worth remembering that the earlier
      report of a broken material on a garment was never attributed and did not recur.
-   - **B4 FAILED and is FIXED, 2026-09-05.** With custom shaders off the atlas quads drew as
+   - **B4 FAILED, FIXED and now PASSES, confirmed 2026-09-06 by a remote viewer with custom
+     shaders off: no slabs, the avatar renders under the replacement shader and nothing else
+     shows.** The failure was that with custom shaders off the atlas quads drew as
      metre-wide grey slabs filling the view: ChilloutVR replaces the shader and not the mesh,
      and the corners were in POSITION. Corners now live in UV0 with every position zero, so
-     every triangle is degenerate and no replacement shader can draw them. Needs a re-look in
-     game to confirm, since nothing local can render what that viewer sees.
+     every triangle is degenerate and no replacement shader can draw them.
    - **The self portrait does not bend, by design.** It fails the size gate: the rect is 552 by
      520 real pixels and the portrait's render texture is smaller. Not fixable by scaling, see
      docs/YAPS5.md. The portrait shows whatever the contact channel resolved.

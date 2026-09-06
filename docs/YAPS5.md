@@ -1452,3 +1452,12 @@ the three tiers, and the one it keeps at the top is the exact, viewer-agreeing o
 The warning now says that when the atlas is on, and keeps the old wording when it is off. Worth
 saying because a remote report of a garment behaving oddly was floating around unattributed, and
 this warning is the first place to look before blaming somebody's mods.
+
+## B4 confirmed from the other side (2026-09-06)
+
+A remote viewer with custom shaders off looked again and the slabs are gone. The avatar renders
+under ChilloutVR's replacement shader and nothing else shows, which is the whole of what was
+wanted: the transport is invisible to somebody who has opted out of the shader that implements it.
+
+Nothing local could have produced this evidence. The editor renders with the real shader, so the
+failure only ever existed on a machine that had refused it.
