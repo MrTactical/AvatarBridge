@@ -1,9 +1,10 @@
 // Bakes a plug mesh into the texture the deform reads. Format from
-// SPS's documented layout, not its code; see docs/YAPS-CLEAN-ROOM.md.
+// SPS's documented layout, never its code. See docs/YAPS-CLEAN-ROOM.md.
+//
 // Each vertex is stored in the plug root's frame without its scale, in
 // renderer units, placed through bone x bindpose. The active weight is
-// the vertex's skin weight on the plug's bone chain; it feathers the base.
-// Guarded on the CCK alone; nothing here touches a VRChat type.
+// the vertex's skin weight on the plug's bone chain, which feathers
+// the base.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -32,16 +33,14 @@ namespace AvatarBridge
             public float Radius;        // plug-local, the widest active vertex off the axis
             public float ActiveVertices;
             public bool FromSkinnedMesh;
-            // The mesh this bake describes. Carried so Apply can name the
-            // generated material after the pair rather than the material
-            // alone: a bake is indexed by mesh-global vertex id, so two
+            // The mesh this bake describes. Apply names the generated material
+            // after the pair: a bake is indexed by mesh-global vertex id, so two
             // meshes can never share one.
             public Renderer Renderer;
-            // The root the bake ACTUALLY measured from, which is not always
-            // the one it was handed: see the shaft descent in Bake. Anything
-            // that asks which vertices or which material slots are the plug's
-            // has to ask the same question the bake did, or it answers about
-            // a wider chain than the one that was baked.
+            // The root the bake ACTUALLY measured from, which is not always the one
+            // it was handed. Anything asking which vertices or which slots are the
+            // plug's has to ask the same question, or it answers about a wider
+            // chain than the one that was baked.
             public Transform Root;
             public List<string> Shapes = new List<string>();
             public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
@@ -73,14 +72,12 @@ namespace AvatarBridge
                 return null;
             }
 
-            // DOWN TO THE SHAFT, when the stated root is the hub above it.
-            // Here rather than in either builder, because both of them arrive
-            // with a root somebody else chose and this is the one place they
-            // both pass through. Reported, never silent: it moves where the
-            // bend begins and what the length means.
+            // DOWN TO THE SHAFT, when the stated root is the hub above it. Here
+            // because both builders arrive with a root somebody else chose, and
+            // this is the one place they both pass through. Reported, never
+            // silent: it moves where the bend begins and what the length means.
             //
-            // A socket bakes in its own frame and has no shaft to find, so it
-            // is left alone.
+            // A socket bakes in its own frame and has no shaft to find.
             if (!objectFrame)
             {
                 var shaft = SuggestShaftRoot(renderer, plugRoot);
@@ -124,9 +121,9 @@ namespace AvatarBridge
                 return null;
             }
 
-            // The bake is measured in the scene as it stands. A root that
-            // is turned or scaled there puts that turn and scale into
-            // every baked position, and the shader assumes neither.
+            // The bake is measured in the scene as it stands. A root turned or
+            // scaled there bakes that turn and scale into every position, and the
+            // shader assumes neither.
             var sceneRoot = renderer.transform.root;
             if (sceneRoot != null
                 && (Quaternion.Angle(sceneRoot.rotation, Quaternion.identity) > 1f
@@ -138,9 +135,9 @@ namespace AvatarBridge
                     "baking, then move it back afterwards.");
             }
 
-            // Frame measured from the mesh, not from the plug root. A
-            // plain mesh bakes in its object's own origin and +Z instead:
-            // it has no bones for the shader to recover a frame from.
+            // Frame measured from the mesh, not from the plug root. A plain mesh
+            // bakes in its object's own origin and +Z instead: it has no bones for
+            // the shader to recover a frame from.
             bool staticMesh = skin == null || skin.bones == null || skin.bones.Length == 0;
             Vector3 rootPos = plugRoot.position;
             Quaternion rootRot = plugRoot.rotation;
@@ -155,12 +152,10 @@ namespace AvatarBridge
             bool shared = shareFrameWith != null && !staticMesh;
             if (shared)
             {
-                // A second mesh on the same plug takes the FIRST one's frame
-                // rather than measuring its own. A collar weighted to the
-                // same bones would otherwise find its own axis, its own
-                // origin and its own length, and bend as a separate plug
-                // alongside the body it is sitting on. No drift to report:
-                // this frame was not measured, it was given.
+                // A second mesh on the same plug takes the FIRST one's frame rather
+                // than measuring its own. Otherwise a collar weighted to the same
+                // bones finds its own axis, origin and length, and bends as a separate
+                // plug. No drift to report: this frame was given, not measured.
                 origin = shareFrameWith.Origin;
                 rotation = shareFrameWith.Rotation;
             }
@@ -197,10 +192,9 @@ namespace AvatarBridge
                 }
             }
 
-            // The shaft is the same shaft for every mesh on the plug, so the
-            // length is the first one's too. Measured per mesh it would make
-            // every reach fraction — taper, squeeze, engagement — mean a
-            // different distance on each renderer.
+            // The shaft is the same shaft for every mesh on the plug, so the length
+            // is the first one's too. Measured per mesh, every reach fraction would
+            // mean a different distance on each renderer.
             if (shared)
             {
                 length = shareFrameWith.Length;
@@ -226,14 +220,14 @@ namespace AvatarBridge
 
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
-            // Named for the plug that wrote it, not numbered. A unique path
-            // is the wrong answer here: the name it was avoiding belongs to
-            // the SAME plug from the last conversion, so every reconvert left
-            // another ten megabytes in the project and none of them were ever
-            // read again. Overwriting the one this plug owns is the point.
+            // Named for the plug that wrote it, never numbered. A unique path is
+            // the wrong answer here: the name it avoids belongs to the SAME plug
+            // from the last conversion, so every reconvert left another ten
+            // megabytes nobody ever read again. Overwriting the one this plug owns
+            // is the point.
             //
-            // The parent goes in the name because two plugs on one renderer
-            // are usually called the same thing under different bones.
+            // The parent goes in the name because two plugs on one renderer are
+            // usually called the same thing under different bones.
             string owner = plugRoot != null && plugRoot.parent != null
                 ? plugRoot.parent.name + " " + plugRoot.name
                 : plugRoot != null ? plugRoot.name : "plug";
@@ -243,17 +237,17 @@ namespace AvatarBridge
             AssetDatabase.CreateAsset(texture, path);
             SettleForUpload(texture);
 
-            // The deform throws vertices well outside the rest pose, and
-            // Unity culls on the mesh's own bounds, so a plug that bends
-            // toward someone can vanish mid-bend precisely when it matters.
+            // The deform throws vertices well outside the rest pose and Unity culls
+            // on the mesh's own bounds, so a plug bending toward someone can vanish
+            // mid-bend, precisely when it matters.
             ExtendBounds(renderer, mesh, length);
 
             bool drifted = axisDrift > 5f || originDrift > 0.01f;
             if (staticMesh && drifted && !objectFrame)
             {
-                // A plain mesh bends around its object's origin along +Z,
-                // whatever the vertices say. Said loudly, because the plug
-                // looks fine until a socket engages it.
+                // A plain mesh bends around its object's origin along +Z, whatever the
+                // vertices say. Said loudly, because the plug looks fine until a socket
+                // engages it.
                 report?.Warning(Category, $"\"{renderer.name}\" is not modelled along its object's +Z",
                     $"Its shaft measures {axisDrift:0} degrees off the object's +Z and its base sits " +
                     $"{originDrift * 100f:0.#} cm from the object's origin. A plain mesh bends around " +
@@ -293,10 +287,8 @@ namespace AvatarBridge
         }
 
         // How much of this renderer belongs to that plug, without baking
-        // anything. Nothing on a baked avatar says which renderer carries
-        // a plug, VRCFury's component is gone by then and the flag that
-        // would have left a bake texture behind is deliberately off, so
-        // the answer is measured: the renderer with the most vertices
+        // anything. Nothing on a baked avatar says which renderer carries a
+        // plug, so the answer is measured: the renderer with the most vertices
         // weighted to the plug's bone chain is the one wearing it.
         public static int CountPlugVertices(Renderer renderer, Transform plugRoot)
         {
@@ -322,22 +314,18 @@ namespace AvatarBridge
         // Which child bone chain is the SHAFT, when the stated root sits above
         // it. Null when there is no clear answer, which is most of the time.
         //
-        // A plug's root is inherited: it is wherever the original avatar's
-        // author put their plug component, and authors routinely put it on the
-        // hub ABOVE the shaft. Everything else hanging off that hub is then
-        // measured as part of the plug, so the length spans it and the bend
-        // starts behind it rather than at the base of the shaft.
+        // A plug's root is inherited from wherever the original author put
+        // their component, and that is routinely the hub ABOVE the shaft.
+        // Everything else on that hub is then measured as part of the plug, so
+        // the length spans it and the bend starts behind the base.
         //
-        // Bone positions, not vertices. A skinned mesh's vertices are in bind
-        // space and relating them to a bone costs the whole placement pass the
-        // bake does; the bones are already posed and the only question here is
-        // which chain goes furthest.
+        // Bone positions, never vertices. A skinned mesh's vertices are in bind
+        // space, and the only question here is which chain goes furthest.
         //
         // Two guards, because a wrong root is worse than an inherited one.
         // There must be more than one chain to choose between, or the stated
-        // root already IS the shaft's and this would just chop its first bone
-        // off. And the winner has to reach at least twice as far as the
-        // runner-up: two chains of similar length is a shape this cannot read.
+        // root already IS the shaft's. And the winner has to reach twice as far
+        // as the runner-up: two chains of similar length cannot be read.
         public static Transform SuggestShaftRoot(Renderer renderer, Transform statedRoot)
         {
             var skin = renderer as SkinnedMeshRenderer;
@@ -366,9 +354,8 @@ namespace AvatarBridge
             return best;
         }
 
-        // Vertices weighted to any bone at or under one object, no
-        // climbing: the caller decides which level of the hierarchy is
-        // being asked about.
+        // Vertices weighted to any bone at or under one object, no climbing:
+        // the caller decides which level is being asked about.
         public static int CountVerticesUnder(Renderer renderer, Transform level)
         {
             var skin = renderer as SkinnedMeshRenderer;
@@ -399,9 +386,8 @@ namespace AvatarBridge
 
         // Applies the bake to a material, cloning it first so two renderers
         // sharing one material cannot overwrite each other's vertex counts.
-        // That is not hypothetical: a real avatar in the corpus has a
-        // clothing material sharing a renderer with a plug, and its bake
-        // data disagreed with its own declared vertex count.
+        // Not hypothetical: real content ships a clothing material sharing a
+        // renderer with a plug, its bake disagreeing with its own count.
         public static Material Apply(Result result, Material source, Shader patchedShader,
             string outputDir, bool skinned)
         {
@@ -415,33 +401,24 @@ namespace AvatarBridge
         // Which source material AND WHICH MESH this copy came from, in six
         // bytes.
         //
-        // The path used to be the source's NAME alone, and two different
-        // materials called "Material" is not a corner case, it is what an
-        // exporter writes when nobody renamed anything. The second bake then
-        // loaded the first one's asset by path, overwrote it, and left the
-        // first renderer pointing at a bake that describes a different mesh:
-        // wrong vertex count, wrong placements, a plug that deforms into
-        // nothing. Silent, because reusing an asset at a path is what this
-        // is supposed to do when the SAME material is baked twice.
+        // The path used to be the source's NAME alone, and two materials both
+        // called "Material" is what an exporter writes when nobody renamed
+        // anything. The second bake loaded the first one's asset by path,
+        // overwrote it, and left a plug deforming against a mesh it is not.
+        // Silent, because reusing an asset at a path is the intent when the
+        // SAME material is baked twice.
         //
-        // GUID plus local id, so it is stable across sessions and distinct
-        // for two materials embedded in one FBX. An in-scene material has
-        // neither and falls back to its instance id, which lasts as long as
-        // the bake does.
+        // GUID plus local id, so it is stable across sessions and distinct for
+        // two materials embedded in one FBX. An in-scene material has neither
+        // and falls back to its instance id.
         //
         // THE MESH BELONGS IN THE KEY TOO. Three plug meshes sharing one
-        // material is ordinary: an avatar with three shaft variants paints
-        // them all from one body material. Keyed on the material alone they
-        // all resolved to one generated asset, a material holds ONE bake, and
-        // the last one baked won. The other two then deformed against vertex
-        // positions belonging to a mesh they are not, and every one of them
-        // reported the same length, which is what gave it away. Cloning was
-        // always meant to stop exactly this; the path just did not say which
-        // mesh it was cloning for.
+        // material is ordinary. Keyed on the material alone they resolved to
+        // one asset, a material holds ONE bake, and the last one baked won.
+        // Every one of them then reported the same length, which gave it away.
         //
-        // The renderer's path under its avatar rather than its instance id,
-        // so a rebuild lands on the same asset instead of leaving the old one
-        // behind.
+        // The renderer's path under its avatar rather than its instance id, so
+        // a rebuild lands on the same asset instead of leaving the old one.
         internal static string Tail(Material source, Renderer on)
         {
             string id = AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
@@ -459,10 +436,9 @@ namespace AvatarBridge
             return path;
         }
 
-        // Unity lets two siblings carry the same name, and two renderers
-        // whose whole path matches share a generated material, which is the
-        // mixed-up bake this identity exists to stop. Only an ambiguous step
-        // is numbered, so an ordinary path stays the readable thing it was.
+        // Unity lets two siblings carry the same name, and two renderers whose
+        // paths match share a generated material, which is the mixed-up bake
+        // this identity exists to stop. Only an ambiguous step is numbered.
         static string Step(Transform t)
         {
             var parent = t.parent;
@@ -482,8 +458,7 @@ namespace AvatarBridge
         //
         // Split out because a plug spanning several renderers patches one
         // material per renderer and each needs its OWN bake: the texture is
-        // indexed by mesh-global vertex id and no two meshes share one.
-        // Everything here describes the mesh; the author's knobs are written
+        // indexed by mesh-global vertex id. The author's knobs are written
         // separately, from the component.
         public static void Apply(Result result, Material target, bool skinned)
         {
@@ -504,16 +479,14 @@ namespace AvatarBridge
         // The generated material for one source material, at a name that does
         // not move.
         //
-        // GenerateUniqueAssetPath was making a NEW file every time, so a plug
-        // removed and baked again left "Fur_YAPS_", "Fur_YAPS_ 1",
-        // "Fur_YAPS_ 2" behind it — full materials nobody pointed at, one per
+        // GenerateUniqueAssetPath made a NEW file every time, so a plug removed
+        // and baked again left "Fur_YAPS_ 1", "Fur_YAPS_ 2" behind it, one per
         // click, in a user's project.
         //
-        // What is already at the path is never trusted, only its identity:
-        // the values are re-derived from the source every time, so an asset
-        // left by an older version cannot carry stale settings forward. The
-        // file keeps its GUID, so anything already referencing it stays
-        // pointed at the right thing.
+        // What is already at the path is never trusted, only its identity: the
+        // values are re-derived from the source every time, so an asset left by
+        // an older version cannot carry stale settings forward. The file keeps
+        // its GUID, so anything referencing it stays pointed at it.
         public static Material Generated(Material source, Shader patched, string path)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -558,9 +531,9 @@ namespace AvatarBridge
 
             if (skin == null || skin.bones == null || skin.bones.Length == 0)
             {
-                // A plain mesh renderer: the shader reads its vertices in
-                // the object's own frame and scales by the object itself,
-                // so the bake is the mesh as modelled, untransformed.
+                // A plain mesh renderer: the shader reads its vertices in the object's
+                // own frame and scales by the object itself, so the bake is the mesh as
+                // modelled, untransformed.
                 for (int i = 0; i < meshVertices.Length; i++)
                 {
                     positions.Add(meshVertices[i]);
@@ -581,16 +554,15 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Which bones count as "the plug": its root and everything
-            // beneath it, so a plug with its own little chain of bones is
-            // baked whole rather than only at its base.
+            // Which bones count as "the plug": its root and everything beneath it,
+            // so a plug with its own little chain is baked whole rather than only
+            // at its base.
             var plugBones = BonesUnder(bones, plugRoot);
             if (plugBones.Count == 0)
             {
-                // The plug object is very often hung off a bone rather than
-                // being one, VRCFury's own baked plug sits as a child of
-                // the bone that carries it. Climb to the first real bone
-                // above it and take that subtree instead of baking nothing.
+                // The plug object is very often hung off a bone rather than being one.
+                // Climb to the first real bone above it and take that subtree instead
+                // of baking nothing.
                 for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
                      above = above.parent)
                 {
@@ -602,9 +574,8 @@ namespace AvatarBridge
             for (int i = 0; i < meshVertices.Length; i++)
             {
                 var w = i < weights.Length ? weights[i] : default;
-                // Skinning itself is bone × bindpose; anything else places
-                // the vertex where the modeller left it, not where the
-                // avatar wears it.
+                // Skinning itself is bone x bindpose. Anything else places the vertex
+                // where the modeller left it, not where the avatar wears it.
                 Matrix4x4 place = Blend(bones, bindposes, w);
                 positions.Add(place.MultiplyPoint3x4(meshVertices[i]));
                 normals.Add(i < meshNormals.Length
@@ -617,10 +588,9 @@ namespace AvatarBridge
             return true;
         }
 
-        // Origin and axis both from the mesh: the object VRCFury leaves
-        // behind points anywhere. A rod's axis is where its points spread
-        // most, the dominant eigenvector of their covariance. The base is
-        // the near end along it.
+        // Origin and axis both from the mesh, since the object left behind
+        // points anywhere. A rod's axis is where its points spread most, the
+        // dominant eigenvector of their covariance. The base is the near end.
         static void MeasureFrame(List<Vector3> positions, List<float> active, Vector3 rootPosition, Quaternion rootRotation, bool flip,
             out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
@@ -703,9 +673,9 @@ namespace AvatarBridge
             rotation = Quaternion.LookRotation(axis, up);
         }
 
-        // One entry per shape that moves the plug: delta position, normal
-        // and tangent per vertex, in the plug frame. Shapes that leave it
-        // alone are skipped, not stored as zeros.
+        // One entry per shape that moves the plug: delta position, normal and
+        // tangent per vertex, in the plug frame. Shapes that leave it alone are
+        // skipped, never stored as zeros.
         static List<Vector3[]> CaptureShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
             List<float> active, List<Matrix4x4> placements, out List<string> names,
             out List<string> movers, IList<string> wanted = null)
@@ -724,9 +694,8 @@ namespace AvatarBridge
             var deltaT = new Vector3[count];
             var scored = new List<(float moved, int index)>();
 
-            // Named shapes, in the order given: a socket's stages are
-            // the author's choice, entry first, and nothing else is
-            // stored. Names the mesh does not have are skipped.
+            // Named shapes, in the order given: a socket's stages are the author's
+            // choice, entry first. Names the mesh does not have are skipped.
             if (wanted != null)
             {
                 var picked = new List<(float, int)>();
@@ -791,10 +760,9 @@ namespace AvatarBridge
                 var block = new Vector3[count * 3];
                 for (int i = 0; i < count; i++)
                 {
-                    // Directions, so rotation only: a delta is a
-                    // displacement, and translating one would move the
-                    // whole plug by the frame's origin. Turned first by
-                    // whatever placed its vertex, then into the plug frame.
+                    // Directions, so rotation only: translating a delta would move the
+                    // whole plug by the frame's origin. Turned first by whatever placed its
+                    // vertex, then into the plug frame.
                     var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                     block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
                     block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
@@ -879,9 +847,9 @@ namespace AvatarBridge
                 Write(pixels, ref at, active[i]);
             }
 
-            // Shape blocks follow the base one, nine floats a vertex. The
-            // shader finds block s at 1 + count*10 + s*count*9, which is
-            // why the vertex count has to be on the material.
+            // Shape blocks follow the base one, nine floats a vertex. The shader
+            // finds block s at 1 + count*10 + s*count*9, which is why the vertex
+            // count has to be on the material.
             foreach (var block in shapes)
             {
                 for (int i = 0; i < count; i++)
@@ -896,9 +864,9 @@ namespace AvatarBridge
                 }
             }
 
-            // Point filtering and no mips are load-bearing, not tidiness:
-            // the shader reads these pixels as raw bytes and reassembles
-            // floats from them, so any interpolation corrupts the values.
+            // Point filtering and no mips are load-bearing, not tidiness: the
+            // shader reassembles floats from raw bytes, so any interpolation
+            // corrupts the values.
             var texture = new Texture2D(TextureWidth, height, TextureFormat.RGBA32, false, true)
             {
                 name = "YAPS Bake",
@@ -945,10 +913,9 @@ namespace AvatarBridge
                 return;
             }
             // From the mesh's OWN bounds, recomputed, never from whatever a
-            // previous bake left behind. This is a shared asset: expanding
-            // the current value grows it again on every reconvert, and the
-            // tool's own reports invite reconverting, so a session of
-            // tuning used to ratchet the bounds several times over.
+            // previous bake left behind. This is a shared asset: expanding the
+            // current value grows it again on every reconvert, and the reports
+            // invite reconverting, so a session of tuning used to ratchet it.
             mesh.RecalculateBounds();
             var bounds = mesh.bounds;
             bounds.Expand(length * 2f);
