@@ -175,10 +175,17 @@ namespace AvatarBridge
                     $"ChilloutVR's material driver carries {MaxDriverTasks} tasks for the whole " +
                     $"avatar and this plug's mesh needs {perSlot} for each of the {slots.Count} " +
                     $"materials it is made of. {dropped} of them keep the shader and the bake and " +
-                    "find sockets by their marker lights at close range instead, which is the same " +
-                    "path used for content this tool never converted: it works, it is simply less " +
-                    "exact and it is not guaranteed to agree between viewers. Fewer plugs, or a " +
-                    "plug built from fewer materials, frees tasks.");
+                    "find sockets another way instead. " +
+                    (YapsAtlas.Enabled
+                        ? "The screen atlas costs no tasks and is read by every material of the " +
+                          "plug, so those slots still resolve exactly and still agree between " +
+                          "viewers; what they lose is the close-range contact channel, which is " +
+                          "the more reliable of the two indoors and against sockets the atlas " +
+                          "cannot see."
+                        : "They fall back to marker lights at close range, the same path used for " +
+                          "content this tool never converted: it works, it is simply less exact " +
+                          "and it is not guaranteed to agree between viewers.") +
+                    " Fewer plugs, or a plug built from fewer materials, frees tasks.");
                 slots = slots.Take(Mathf.Max(affordable, 0)).ToList();
             }
             if (slots.Count == 0) return false;

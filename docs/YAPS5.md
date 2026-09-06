@@ -1435,3 +1435,20 @@ close in, and with a single plug present the search could already answer about t
 Ranking by the computed depth fixes both in the same expression. Nothing wanted the winner's
 identity, only the number, so the search collapsed into a max over the slots and `YapsFindPlug`
 is gone. Fewer lines than before.
+
+## What the driver cap actually costs now (2026-09-06)
+
+The corpus run turned up a plug driving one of its two materials, which is the sixteen-task
+material driver budget being spent before the plug's second slot got its share. The warning that
+reports it was written before the atlas existed and described a worse outcome than the one that
+now happens.
+
+A dropped slot loses the contact channel and nothing else. `_YAPS_UseAtlas` is set on every
+material of a plug rather than on the driven ones, deliberately, so a plug spanning two materials
+cannot read the atlas across half its mesh and the lights across the other. The marker lights are
+read from Unity's own per-camera light slots, which cost no tasks either. So the slot keeps two of
+the three tiers, and the one it keeps at the top is the exact, viewer-agreeing one.
+
+The warning now says that when the atlas is on, and keeps the old wording when it is off. Worth
+saying because a remote report of a garment behaving oddly was floating around unattributed, and
+this warning is the first place to look before blaming somebody's mods.
