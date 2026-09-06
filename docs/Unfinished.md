@@ -242,6 +242,26 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
 
+   **WHICH LEVER KILLS WHICH COST, 2026-09-06.** These get conflated, so they are written down
+   apart.
+
+   *Show the avatar's OWN depth animations to other players* costs 32 sync bits per socket and
+   nothing else. The trigger and the animator layer are local and exist either way; the bits buy
+   the room seeing the result. D5 below does not touch it. **D1 deletes it outright**: the reason
+   the value has to be sent is that ChilloutVR runs an avatar's triggers on the wearer's machine
+   alone, so only one client ever computes it. Every viewer's GPU can compute the same depth from
+   the atlas, and the texture parser hands it to that viewer's own animator, so every client
+   arrives at the answer independently and there is nothing left to transmit. The toggle stops
+   being cheaper and stops existing.
+
+   A second lever, for how many sockets can use the free shader route at all: **one material
+   carries one bake and one origin**, see AnotherSocketBaked in YapsNativeBuilder, so the second
+   socket on a mesh is pushed onto the animator whatever the transport does. A body mesh usually
+   carries several. Letting one material hold SEVERAL bakes and origins, with the socket deform
+   looping over blocks, would move most body-mesh sockets onto the shader route. Bigger than it
+   sounds: the bake texture grows and the deform gains a loop. Not a transport problem, which is
+   why no amount of atlas work reaches it.
+
    **D5, THE OTHER DIRECTION, Joe's idea 2026-09-06.** The atlas carries socket to plug and
    nothing else, so a plug now resolves at range while the socket it entered still finds the plug
    the old way: a tracker light in one of four vertex slots, or the contact channel. The visible
